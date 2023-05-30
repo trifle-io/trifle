@@ -1,0 +1,32 @@
+version: "3.7"
+name: "trifle"
+services:
+  redis:
+    image: redis:latest
+  mongo:
+    image: mongo:latest
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_PASSWORD: password
+  app:
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    env_file:
+      - ../../../.env
+    build:
+      context: ../../..
+      dockerfile: .devops/docker/local/Dockerfile
+    depends_on:
+      - redis
+      - mongo
+      - postgres
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
+    ports:
+      - 4000:4000
+    volumes:
+      - ../../..:/workspaces/trifle
+    working_dir: /workspaces/trifle
