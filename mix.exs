@@ -19,7 +19,7 @@ defmodule Trifle.MixProject do
   def application do
     [
       mod: {Trifle.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :os_mon]
     ]
   end
 
@@ -36,6 +36,7 @@ defmodule Trifle.MixProject do
       {:phoenix, "~> 1.7.2"},
       {:phoenix_ecto, "~> 4.4"},
       {:ecto_sql, "~> 3.6"},
+      {:ecto_psql_extras, "~> 0.6"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 3.3"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
