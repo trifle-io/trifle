@@ -70,6 +70,14 @@ defmodule TrifleWeb.Router do
       on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
       live "/users/settings", UserSettingsLive, :edit
       live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
+
+      live "/app", AppLive, :dashboard
+      live "/app/projects", ProjectsLive, :index
+      live "/app/projects/new", ProjectsLive, :new
+      live "/app/projects/:id", ProjectLive, :show
+      live "/app/projects/:id/settings", ProjectSettingsLive
+      live "/app/projects/:id/tokens", ProjectTokensLive, :index
+      live "/app/projects/:id/tokens/new", ProjectTokensLive, :new
     end
   end
 
