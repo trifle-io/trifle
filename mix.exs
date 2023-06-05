@@ -54,7 +54,8 @@ defmodule Trifle.MixProject do
       {:plug_cowboy, "~> 2.5"},
       {:slugy, "~> 4.1.1"},
       {:tzdata, "~> 1.1.1"},
-      {:timex, "~>3.7.11"}
+      {:timex, "~>3.7.11"},
+      {:trifle_stats, path: "packages/trifle_stats"}
     ]
   end
 
