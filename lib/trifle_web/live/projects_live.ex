@@ -98,7 +98,7 @@ defmodule TrifleWeb.ProjectsLive do
 
   def mount(_params, _session, socket) do
     is_new = socket.assigns.live_action == :new
-    projects = Organizations.list_projects()
+    projects = Organizations.list_users_projects(socket.assigns.current_user)
     changeset = Organizations.change_project(%Project{})
 
     socket =
@@ -128,7 +128,7 @@ defmodule TrifleWeb.ProjectsLive do
   end
 
   def handle_event("create", %{"project" => project_params}, socket) do
-    case Organizations.create_project(project_params) do
+    case Organizations.create_users_project(project_params, socket.assigns.current_user) do
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
 

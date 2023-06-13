@@ -21,6 +21,16 @@ defmodule Trifle.Organizations do
     Repo.all(Project)
   end
 
+  def list_users_projects(%Trifle.Accounts.User{} = user) do
+    query =
+      from(
+        p in Project,
+        where: p.user_id == ^user.id
+      )
+
+    Repo.all(query)
+  end
+
   @doc """
   Gets a single project.
 
@@ -50,6 +60,14 @@ defmodule Trifle.Organizations do
 
   """
   def create_project(attrs \\ %{}) do
+    %Project{}
+    |> Project.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def create_users_project(attrs \\ %{}, %Trifle.Accounts.User{} = user) do
+    attrs = Map.put(attrs, "user", user)
+
     %Project{}
     |> Project.changeset(attrs)
     |> Repo.insert()
@@ -117,6 +135,16 @@ defmodule Trifle.Organizations do
     Repo.all(ProjectToken)
   end
 
+  def list_projects_project_tokens(%Project{} = project) do
+    query =
+      from(
+        pt in ProjectToken,
+        where: pt.project_id == ^project.id
+      )
+
+    Repo.all(query)
+  end
+
   @doc """
   Gets a single project_token.
 
@@ -133,6 +161,16 @@ defmodule Trifle.Organizations do
   """
   def get_project_token!(id), do: Repo.get!(ProjectToken, id)
 
+  def get_project_by_token(token) when is_binary(token) do
+    with token when not is_nil(token) <- Repo.get_by(ProjectToken, token: token) |> Repo.preload(:project),
+      {:ok, id} <- Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", token.token, max_age: 86400 * 365) do
+      {:ok, token.project, token}
+    else
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
   @doc """
   Creates a project_token.
 
@@ -146,6 +184,14 @@ defmodule Trifle.Organizations do
 
   """
   def create_project_token(attrs \\ %{}) do
+    %ProjectToken{}
+    |> ProjectToken.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def create_projects_project_token(attrs \\ %{}, %Project{} = project) do
+    attrs = Map.put(attrs, "project", project)
+
     %ProjectToken{}
     |> ProjectToken.changeset(attrs)
     |> Repo.insert()

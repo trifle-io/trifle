@@ -55,7 +55,8 @@ defmodule Trifle.MixProject do
       {:slugy, "~> 4.1.1"},
       {:tzdata, "~> 1.1.1"},
       {:timex, "~>3.7.11"},
-      {:trifle_stats, path: "packages/trifle_stats"}
+      {:trifle_stats, path: "packages/trifle_stats"},
+      {:mongodb_driver, "~> 1.0.3"}
     ]
   end
 

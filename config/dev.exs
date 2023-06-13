@@ -77,3 +77,11 @@ config :phoenix, :plug_init_mode, :runtime
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# config :trifle_stats,
+#   driver: Mongo.start_link(url: "mongodb://mongo:27017/trifle"),
+#   track_ranges: [:minute, :hour, :day, :week, :month, :quarter, :year],
+#   separator: "::",
+#   time_zone: "Europe/Bratislava",
+#   time_zone_database: Tzdata.TimeZoneDatabase,
+#   beginning_of_week: :monday

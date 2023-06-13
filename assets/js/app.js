@@ -48,3 +48,9 @@ liveSocket.connect()
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket
 
+window.addEventListener("phx:copy", (event) => {
+  let text = event.target.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    console.log("All done!");
+  })
+})

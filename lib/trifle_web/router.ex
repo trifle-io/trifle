@@ -92,4 +92,12 @@ defmodule TrifleWeb.Router do
       live "/users/confirm", UserConfirmationInstructionsLive, :new
     end
   end
+
+  scope "/api", TrifleWeb.Api, as: :api do
+    pipe_through(:api)
+
+    post("/metrics", MetricsController, :create)
+    get("/metrics", MetricsController, :index)
+  end
+
 end
