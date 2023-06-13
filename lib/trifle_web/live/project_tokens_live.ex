@@ -35,43 +35,76 @@ defmodule TrifleWeb.ProjectTokensLive do
     </div>
 
     <%= if @is_new do %>
-      <.form for={@form} phx-submit="create">
+      <%= if @token do %>
         <div class="divide-y divide-gray-200 overflow-hidden rounded-lg bg-white shadow">
-          <div class="px-4 py-5 sm:px-6">
-            <h2 class="text-bold">New Token</h2>
+           <div class="px-4 py-5 sm:px-6">
+            <h2 class="text-bold">Token: <%= @token.name %></h2>
           </div>
           <div class="px-4 py-5 sm:p-6">
 
-            <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-              <div class="sm:col-span-6">
-                <label for="project_token_name" class="block text-sm font-medium leading-6 text-gray-900">Name</label>
-                <div class="mt-2">
-                  <.input field={@form[:name]} placeholder="" autocomplete="off" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
-                </div>
-              </div>
+            <div class="px-4 sm:px-0">
+              <h3 class="text-base font-semibold leading-7 text-gray-900">You've successfully created a Token!</h3>
+              <p class="mt-1 max-w-2xl text-sm leading-6 text-gray-500">Please copy your token now as this is the last time you can access it.</p>
+            </div>
+            <div class="mt-6 border-t border-gray-100">
+              <dl class="divide-y divide-gray-100">
+                <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0">
+                  <dd class="mt-1 flex text-sm leading-6 text-gray-700 sm:col-span-3 sm:mt-0">
+                    <span id="project_token_token" class="rounded-md font-mono text-lg px-2 w-auto max-w-max break-normal text-red-700 bg-red-100"><%= @token.token %></span>
 
-              <div class="sm:col-span-3">
-                <label for="project_token_read" class="block text-sm font-medium leading-6 text-gray-900">Read</label>
-                <div class="mt-2">
-                  <.input field={@form[:read]} type="checkbox" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                    <span phx-click={JS.dispatch("phx:copy", to: "#project_token_token")}>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+                      </svg>
+                      Copy
+                    </span>
+                  </dd>
                 </div>
-              </div>
-
-              <div class="sm:col-span-3">
-                <label for="project_token_write" class="block text-sm font-medium leading-6 text-gray-900">Write</label>
-                <div class="mt-2">
-                  <.input field={@form[:write]} type="checkbox" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
-                </div>
-              </div>
+              </dl>
             </div>
           </div>
           <div class="px-4 py-4 sm:px-6">
-            <.button phx-disable-with="Creating...">Create</.button>
-            <.link navigate={~p"/app/projects/#{@project.id}/tokens"} class="">Cancel</.link>
+            <.link navigate={~p"/app/projects/#{@project.id}/tokens"} class="">Done</.link>
           </div>
         </div>
-      </.form>
+      <% else %>
+        <.form for={@form} phx-submit="create">
+          <div class="divide-y divide-gray-200 overflow-hidden rounded-lg bg-white shadow">
+            <div class="px-4 py-5 sm:px-6">
+              <h2 class="text-bold">New Token</h2>
+            </div>
+            <div class="px-4 py-5 sm:p-6">
 
+              <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
+                <div class="sm:col-span-6">
+                  <label for="project_token_name" class="block text-sm font-medium leading-6 text-gray-900">Name</label>
+                  <div class="mt-2">
+                    <.input field={@form[:name]} placeholder="" autocomplete="off" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                  </div>
+                </div>
+
+                <div class="sm:col-span-3">
+                  <label for="project_token_read" class="block text-sm font-medium leading-6 text-gray-900">Read</label>
+                  <div class="mt-2">
+                    <.input field={@form[:read]} type="checkbox" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                  </div>
+                </div>
+
+                <div class="sm:col-span-3">
+                  <label for="project_token_write" class="block text-sm font-medium leading-6 text-gray-900">Write</label>
+                  <div class="mt-2">
+                    <.input field={@form[:write]} type="checkbox" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="px-4 py-4 sm:px-6">
+              <.button phx-disable-with="Creating...">Create</.button>
+              <.link navigate={~p"/app/projects/#{@project.id}/tokens"} class="">Cancel</.link>
+            </div>
+          </div>
+        </.form>
+      <% end %>
     <% else %>
       <.link navigate={~p"/app/projects/#{@project.id}/tokens/new"} class="">New</.link>
     <% end %>
@@ -87,7 +120,7 @@ defmodule TrifleWeb.ProjectTokensLive do
                   <div class="truncate">
                     <div class="flex text-sm">
                       <p class="truncate font-medium text-indigo-600"><%= token.name %></p>
-                      <p class="ml-1 flex-shrink-0 font-normal text-gray-500">as <span class="text-red-500"><%= token.name %></span></p>
+                      <p class="ml-1 flex-shrink-0 font-normal text-gray-500">ending <span class="text-red-500"><%= String.slice(token.token, -5, 5) %></span></p>
                     </div>
                     <div class="mt-2 flex">
                       <div class="flex items-center text-sm text-gray-500">
@@ -96,8 +129,8 @@ defmodule TrifleWeb.ProjectTokensLive do
                           <path fill-rule="evenodd" d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z" clip-rule="evenodd" />
                         </svg>
                         <p>
-                        Last data received at
-                          <time datetime="2020-01-07">January 7, 2020</time>
+                        Last used
+                          <time datetime="2020-01-07"><%= Calendar.strftime(token.updated_at, "%y-%m-%d %I:%M:%S %p")%></time>
                         </p>
                       </div>
                     </div>
@@ -120,11 +153,11 @@ defmodule TrifleWeb.ProjectTokensLive do
                     </div>
                   </div>
                 </div>
-                <div class="ml-20 flex-shrink-0">
-                  <svg class="h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                <button class="ml-20 flex-shrink-0" phx-click="delete" phx-value-id={token.id} data-confirm="Are you sure?">
+                  <svg class="h-5 w-5 text-indigo-500 hover:text-indigo-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                   </svg>
-                </div>
+                </button>
               </div>
             </div>
           </li>
@@ -138,7 +171,7 @@ defmodule TrifleWeb.ProjectTokensLive do
   def mount(params, _session, socket) do
     is_new = socket.assigns.live_action == :new
     project = Organizations.get_project!(params["id"])
-    tokens = Organizations.list_project_tokens()
+    tokens = Organizations.list_projects_project_tokens(project)
     changeset = Organizations.change_project_token(%ProjectToken{}, %{"project" => project})
 
     socket =
@@ -147,22 +180,32 @@ defmodule TrifleWeb.ProjectTokensLive do
         is_new: is_new,
         project: project,
         tokens: tokens,
+        token: nil,
         form: to_form(changeset)
       )
 
     {:ok, socket}
   end
 
-  require IEx
   def handle_event("create", %{"project_token" => project_token_params}, socket) do
-    project_token_params = Map.put(project_token_params, "project", socket.assigns.project)
-    IEx.pry
-    case Organizations.create_project_token(project_token_params) do
+    case Organizations.create_projects_project_token(project_token_params, socket.assigns.project) do
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
       {:ok, project_token} ->
-        {:noreply, push_redirect(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/tokens")}
+        socket = socket
+          |> assign(token: project_token)
+          |> put_flash(:info, "Token created successfully.")
+        {:noreply, socket}
     end
+  end
 
+  def handle_event("delete", %{"id" => id}, socket) do
+    token = Organizations.get_project_token!(id)
+    Organizations.delete_project_token(token)
+
+    socket = socket
+      |> assign(tokens: Organizations.list_projects_project_tokens(socket.assigns.project))
+      |> put_flash(:info, "Token deleted successfully.")
+    {:noreply, socket}
   end
 end

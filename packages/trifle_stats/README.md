@@ -41,7 +41,7 @@ driver = Trifle.Stats.Driver.Mongo.new(connection)
 config = Trifle.Stats.Configuration.configure(driver, [:hour, :day, :month, :year], "::", "Europe/Bratislava", Tzdata.TimeZoneDatabase, :monday)
 
 {:ok, now} = DateTime.now(config.time_zone, config.time_zone_database)
-prev = DateTime.add(now, -31, :day, config.time_zone_database)
+prev = DateTime.add(now, -1, :day, config.time_zone_database)
 
 Trifle.Stats.values("test", prev, now, :day, config)
 
