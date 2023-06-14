@@ -7,47 +7,81 @@ defmodule TrifleWeb.ProjectsLive do
   def render(assigns) do
     ~H"""
     <%= if @is_new do %>
-      <.form for={@form} phx-submit="create">
-        <div class="divide-y divide-gray-200 overflow-hidden rounded-lg bg-white shadow">
-          <div class="px-4 py-5 sm:px-6">
-            <h2 class="text-bold">New Project</h2>
-          </div>
-          <div class="px-4 py-5 sm:p-6">
+      <div class="relative z-10" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
+        <!-- Background backdrop, show/hide based on slide-over state. -->
+        <div class="fixed inset-0"></div>
 
-            <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-              <div class="sm:col-span-6">
-                <label for="project_name" class="block text-sm font-medium leading-6 text-gray-900">Project Name</label>
-                <div class="mt-2">
-                  <.input field={@form[:name]} placeholder="Secret weather station" autocomplete="off" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
-                </div>
-              </div>
+        <div class="fixed inset-0 overflow-hidden">
+          <div class="absolute inset-0 overflow-hidden">
+            <div class="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10 sm:pl-16" x-transition:enter="transform transition ease-in-out duration-500 sm:duration-700" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transform transition ease-in-out duration-500 sm:duration-700" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
+              <div class="pointer-events-auto w-screen max-w-2xl">
+                <.form for={@form} phx-submit="create" class="flex h-full flex-col overflow-y-scroll bg-white shadow-xl">
+                  <div class="flex-1">
+                    <!-- Header -->
+                    <div class="bg-gray-50 px-4 py-6 sm:px-6">
+                      <div class="flex items-start justify-between space-x-3">
+                        <div class="space-y-1">
+                          <h2 class="text-base font-semibold leading-6 text-gray-900" id="slide-over-title">New Project</h2>
+                          <p class="text-sm text-gray-500">Get started by filling in the information below to create your new project.</p>
+                        </div>
+                        <div class="text-gray-400 hover:text-gray-500">
+                          <.link navigate={~p"/app/projects"} class="">
+                            <span class="sr-only">Close panel</span>
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </.link>
+                        </div>
+                      </div>
+                    </div>
 
-              <div class="sm:col-span-3">
-                <label for="project_time_zone" class="block text-sm font-medium leading-6 text-gray-900">Time Zone</label>
-                <div class="mt-2">
-                  <.input field={@form[:time_zone]} type="select" options={@time_zones} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
-                </div>
-              </div>
+                    <!-- Container -->
+                    <div class="space-y-6 py-6 sm:space-y-0 sm:divide-y sm:divide-gray-200 sm:py-0">
+                      <div class="space-y-2 px-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 sm:px-6 sm:py-5">
+                        <div>
+                          <label for="project_name" class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5">Project Name</label>
+                        </div>
+                        <div class="sm:col-span-2">
+                          <.input field={@form[:name]} placeholder="Secret weather station" autocomplete="off" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                      </div>
 
-              <div class="sm:col-span-3">
-                <label for="project_beginning_of_week" class="block text-sm font-medium leading-6 text-gray-900">Beginning of Week</label>
-                <div class="mt-2">
-                  <.input field={@form[:beginning_of_week]} type="select" options={[{"Monday", 1}, {"Tuesday", 2}, {"Wednesday", 3}, {"Thursday", 4}, {"Friday", 5}, {"Saturday", 6}, {"Sunday", 7}]} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
-                </div>
+                      <div class="space-y-2 px-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 sm:px-6 sm:py-5">
+                        <div>
+                          <label for="project_time_zone" class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5">Time Zone</label>
+                        </div>
+                        <div class="sm:col-span-2">
+                          <.input field={@form[:time_zone]} type="select" options={@time_zones} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                      </div>
+
+                      <div class="space-y-2 px-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 sm:px-6 sm:py-5">
+                        <div>
+                          <label for="project_beginning_of_week" class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5">Beginning of Week</label>
+                        </div>
+                        <div class="sm:col-span-2">
+                          <.input field={@form[:beginning_of_week]} type="select" options={[{"Monday", 1}, {"Tuesday", 2}, {"Wednesday", 3}, {"Thursday", 4}, {"Friday", 5}, {"Saturday", 6}, {"Sunday", 7}]} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action buttons -->
+                  <div class="flex-shrink-0 border-t border-gray-200 px-4 py-5 sm:px-6">
+                    <div class="flex justify-end space-x-3">
+                      <.button phx-disable-with="Creating..." class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">Create</.button>
+                      <.link navigate={~p"/app/projects"} class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</.link>
+                    </div>
+                  </div>
+                 </.form>
               </div>
             </div>
           </div>
-          <div class="px-4 py-4 sm:px-6">
-            <.button phx-disable-with="Creating...">Create</.button>
-            <.link navigate={~p"/app/projects"} class="">Cancel</.link>
-          </div>
         </div>
-      </.form>
-
-    <% else %>
-      <.link navigate={~p"/app/projects/new"} class="">New</.link>
+      </div>
     <% end %>
 
+    <.link navigate={~p"/app/projects/new"} class="">New</.link>
 
     <div class="overflow-hidden bg-white shadow sm:rounded-md mt-4">
       <ul role="list" class="divide-y divide-gray-200">
