@@ -6,7 +6,7 @@ defmodule TrifleWeb.ProjectLive do
 
   def render(assigns) do
     ~H"""
-    <div>
+    <div class="">
       <div class="sm:p-4">
         <div class="border-b border-gray-200">
           <nav class="-mb-px space-x-8" aria-label="Tabs">
@@ -32,6 +32,277 @@ defmodule TrifleWeb.ProjectLive do
         </div>
       </div>
     </div>
+
+
+    <div class="flex min-h-full flex-col h-full">
+      <!-- 3 column wrapper -->
+      <div class="mx-auto w-full max-w-full grow lg:flex">
+        <!-- Left sidebar & main wrapper -->
+        <div class="flex-1 xl:flex bg-white rounded-lg shadow">
+          <div class="border-b border-gray-200 xl:w-64 xl:shrink-0 xl:border-b-0 xl:border-r">
+            <!-- Left column area -->
+            <table class="min-w-full divide-y divide-gray-300">
+              <thead>
+                <tr>
+                  <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3">Key</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white">
+                <tr class="even:bg-gray-50">
+                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">Sensors</td>
+                </tr>
+                <tr class="even:bg-gray-50">
+                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">Station</td>
+                </tr>
+                <tr class="even:bg-gray-50">
+                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">Outdoor</td>
+                </tr>
+              </tbody>
+            </table>
+            &nbsp
+          </div>
+
+          <div class="px-4 py-6 sm:px-6 lg:pl-8 xl:flex-1 xl:pl-6 overflow-x-auto overflow-hidden">
+            <!-- Main area -->
+
+            <table class="min-w-full divide-y divide-gray-300 overflow-auto">
+              <thead>
+                <tr>
+                  <th scope="col" class="top-0 left-0 sticky whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Path</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">00:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">01:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">02:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">03:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">04:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">05:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">06:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">07:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">08:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">09:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">10:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">11:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">12:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">13:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">14:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">15:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">16:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">17:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">18:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">19:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">20:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">21:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">22:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">23:00</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 bg-white">
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.temperature</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.humidity</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.noise</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.light</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.wind.speed</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.wind.gust</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+                <tr>
+                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.wind.smust</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+
+              </tbody>
+            </table>
+
+
+
+          </div>
+        </div>
+
+        <div class="shrink-0 border-t border-gray-200 lg:ml-4 ml-0 lg:mt-0 mt-4 px-4 py-6 sm:px-6 lg:w-96 lg:border-l lg:border-t-0 lg:pr-8 xl:pr-6 bg-white rounded-lg shadow">
+          <!-- Right column area -->
+          RIGHT
+        </div>
+      </div>
+    </div>
+
     """
   end
 
