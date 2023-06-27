@@ -1,11 +1,16 @@
 defmodule Trifle.Stats.Driver.Mongo do
   defstruct connection: nil, collection_name: "trifle_stats", separator: "::", write_concern: 1
 
-  def new(connection) do
-    %Trifle.Stats.Driver.Mongo{connection: connection}
+  def new(connection, collection_name \\ "trifle_stats", separator \\ "::", write_concern \\ 1) do
+    %Trifle.Stats.Driver.Mongo{
+      connection: connection,
+      collection_name: collection_name,
+      separator: separator,
+      write_concern: write_concern
+    }
   end
 
-  def setup!(connection, collection_name: "trifle_stats") do
+  def setup!(connection, collection_name \\ "trifle_stats") do
     # TODO: Implement
   end
 

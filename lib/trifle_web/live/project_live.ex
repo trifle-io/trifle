@@ -4,17 +4,97 @@ defmodule TrifleWeb.ProjectLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
 
+  require IEx
+
+  def mount(params, _session, socket) do
+    project = Organizations.get_project!(params["id"])
+
+    socket = socket
+    |> assign(page_title: "Projects |> #{project.name} |> Explore")
+    |> assign(project: project)
+
+    {:ok, socket}
+  end
+
+  def parse_date(date, time_zone) do
+    case DateTime.from_iso8601(date) do
+      {:ok, parsed, _} -> {:ok, parsed}
+      {:error, _} -> DateTime.now(time_zone, Tzdata.TimeZoneDatabase)
+    end
+  end
+
+  def handle_event("fetch", params, socket) do
+    range = params["range"]
+    {:ok, from} = parse_date("#{params["from"]}:00Z", socket.assigns.project.time_zone)
+    {:ok, to} = parse_date("#{params["to"]}:00Z", socket.assigns.project.time_zone)
+
+    socket = socket
+    |> assign(range: range, from: from, to: to)
+    |> push_patch(to: ~p"/app/projects/#{socket.assigns.project.id}?#{[range: range, from: DateTime.to_string(from), to: DateTime.to_string(to)]}")
+
+    {:noreply, socket}
+  end
+
+
+  def handle_params(params, session, socket) do
+    range = params["range"] || "daily"
+    {:ok, from} = parse_date((params["from"] || ""), socket.assigns.project.time_zone)
+    {:ok, to} = parse_date((params["to"] || ""), socket.assigns.project.time_zone)
+    project_stats = load_project_stats(socket.assigns.project, range, from, to)
+    # IEx.pry
+    socket = socket
+    |> assign(range: range, from: from, to: to)
+    |> assign(keys: project_stats)
+    |> assign(form: to_form(%{}))
+
+    {:noreply, socket}
+  end
+
+  def load_project_stats(project, range, from, to) do
+    range = String.to_atom(range)
+    intervals = %{hourly: :hour, daily: :day, weekly: :week, monthly: :month, quarterly: :quarter, yearly: :year}
+    range = intervals[range]
+
+    stats = Trifle.Stats.values("__system__keys__", from, to, range, Project.stats_config(project))
+
+    keys = Enum.reduce(stats[:values], [], fn(data, acc) -> [data["keys"] | acc] end)
+    # s = [%{"keys" => %{"sensors" => 2, "metrics" => 4}}, %{"keys" => %{"sensors" => 4}}, %{"keys" => %{"sensors" => 3, "metrics" => 2}}]
+    # k = Enum.reduce(s, [], fn(data, acc) -> [data["keys"] | acc] end)
+    # IEx.pry
+    Enum.reduce(keys, %{}, fn(data, acc) -> Trifle.Stats.Packer.deep_sum(acc, data) end)
+
+    #
+  #   %{
+  #     at: [#DateTime<2023-07-27 00:00:00+01:00 +01 Etc/GMT-1>],
+  #     values: [%{"count" => 6, "keys" => %{"test" => 6}}]
+  #   }
+  #   Enum.reduce(%{}, fn(d, acc) ->
+  #     Enum.reduce(acc, d["keys"])
+  #     Map.put(acc, d[])
+  #   end)
+  end
+
+  def load_project_key_stats(project, key, range, from, to) do
+    Trifle.Stats.values(key, from, to, range, Project.stats_config(project))
+  end
+
   def render(assigns) do
     ~H"""
     <div class="">
       <div class="sm:p-4">
         <div class="border-b border-gray-200">
           <nav class="-mb-px space-x-8" aria-label="Tabs">
-            <.link navigate={~p"/app/projects/#{@project.id}"} class="border-indigo-500 text-indigo-600 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium" aria-current="page">
-              <svg class="text-indigo-400 group-hover:text-indigo-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+            <.link navigate={~p"/app/projects/#{@project.id}"} class="border-teal-500 text-teal-600 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium" aria-current="page">
+              <svg class="text-teal-400 group-hover:text-teal-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5" />
               </svg>
               <span class="hidden sm:block">Explore</span>
+            </.link>
+            <.link navigate={~p"/app/projects/#{@project.id}/transponders"} class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium">
+              <svg class="text-gray-400 group-hover:text-gray-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+              </svg>
+              <span class="hidden sm:block">Transponders</span>
             </.link>
             <.link navigate={~p"/app/projects/#{@project.id}/tokens"} class="float-right border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium">
               <svg class="text-gray-400 group-hover:text-gray-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
@@ -33,13 +113,27 @@ defmodule TrifleWeb.ProjectLive do
       </div>
     </div>
 
+    <div class="min-h-full flex-col h-full">
+      <div class="py-8 text-2xl font-bold font-mono text-center text-gray-600">
+        <.form for={@form} phx-submit="fetch" class="flex h-full">
+          <div class="relative mr-2">
+            <.filter_input field={@form[:range]} value={@range} type="select" label="Range" options={[{"Hourly", :hourly}, {"Daily", :daily}, {"Weekly", :weekly}, {"Monthly", :monthly}, {"Quarterly", :quarterly}, {"Yearly", :yearly}]} />
+          </div>
+          <div class="relative mr-2">
+            <.filter_input field={@form[:from]} value={@from} name="from" id="filter_from" type="datetime-local" label="From" />
+          </div>
+          <div class="relative mr-2">
+            <.filter_input field={@form[:to]} name="to" value={@to} id="filter_to" type="datetime-local" label="To" />
+          </div>
 
-    <div class="flex min-h-full flex-col h-full">
-      <!-- 3 column wrapper -->
-      <div class="mx-auto w-full max-w-full grow lg:flex">
-        <!-- Left sidebar & main wrapper -->
+          <.button class="inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
+            <.icon name="hero-funnel" />
+          </.button>
+        </.form>
+
+      </div>
         <div class="flex-1 xl:flex bg-white rounded-lg shadow">
-          <div class="border-b border-gray-200 xl:w-64 xl:shrink-0 xl:border-b-0 xl:border-r">
+          <div class="border-b border-gray-200 xl:w-96 xl:shrink-0 xl:border-b-0 xl:border-r">
             <!-- Left column area -->
             <table class="min-w-full divide-y divide-gray-300">
               <thead>
@@ -48,56 +142,55 @@ defmodule TrifleWeb.ProjectLive do
                 </tr>
               </thead>
               <tbody class="bg-white">
-                <tr class="even:bg-gray-50">
-                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">Sensors</td>
-                </tr>
-                <tr class="even:bg-gray-50">
-                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">Station</td>
-                </tr>
-                <tr class="even:bg-gray-50">
-                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">Outdoor</td>
-                </tr>
+                <%= for {key, count} <- @keys do %>
+                  <tr class="border-b bg-gray-50">
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">
+                      <%= key %>
+                      <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right"><%= count %></span>
+                    </td>
+                  </tr>
+                <% end %>
               </tbody>
             </table>
             &nbsp
           </div>
 
-          <div class="px-4 py-6 sm:px-6 lg:pl-8 xl:flex-1 xl:pl-6 overflow-x-auto overflow-hidden">
-            <!-- Main area -->
-
+          <div class="xl:flex-1 overflow-x-auto overflow-hidden">
             <table class="min-w-full divide-y divide-gray-300 overflow-auto">
               <thead>
                 <tr>
-                  <th scope="col" class="top-0 left-0 sticky whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Path</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">00:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">01:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">02:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">03:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">04:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">05:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">06:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">07:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">08:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">09:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">10:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">11:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">12:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">13:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">14:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">15:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">16:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">17:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">18:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">19:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">20:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">21:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">22:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-sm font-semibold text-gray-900">23:00</th>
+                  <th scope="col" class="top-0 left-0 sticky bg-white whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 pl-4">Path</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">00:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">01:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">02:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">03:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">04:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">05:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">06:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">07:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">08:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">09:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">10:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">11:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">12:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">13:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">14:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">15:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">16:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">17:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">18:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">19:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">20:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">21:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">22:00</th>
+                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">23:00</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 bg-white">
                 <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.temperature</td>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-cyan-500">.temperature</span>
+                  </td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
@@ -124,35 +217,9 @@ defmodule TrifleWeb.ProjectLive do
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                 </tr>
                 <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.humidity</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-
-                <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.noise</td>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.humidity</span>
+                  </td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
@@ -180,7 +247,39 @@ defmodule TrifleWeb.ProjectLive do
                 </tr>
 
                 <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.light</td>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-blue-500">.noise</span>
+                  </td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+
+                <tr>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-indigo-500">.light</span>
+                  </td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
@@ -207,7 +306,9 @@ defmodule TrifleWeb.ProjectLive do
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                 </tr>
                 <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.wind.speed</td>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.wind</span><span class="text-violet-500">.speed</span>
+                  </td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
@@ -234,7 +335,9 @@ defmodule TrifleWeb.ProjectLive do
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                 </tr>
                 <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.wind.gust</td>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.wind</span><span class="text-purple-500">.gust</span>
+                  </td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
@@ -261,7 +364,68 @@ defmodule TrifleWeb.ProjectLive do
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                 </tr>
                 <tr>
-                  <td class="left-0 sticky whitespace-nowrap py-2 pl-4 pr-3 text-sm text-gray-500 sm:pl-0">outdoor.wind.smust</td>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.wind</span><span class="text-fuchsia-500">.smust</span>
+                  </td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+
+                    <tr>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-blue-500">indoor</span><span class="text-sky-500">.temperature</span>
+                  </td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
+                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
+                </tr>
+                <tr>
+                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                    <span class="text-blue-500">indoor</span><span class="text-indigo-500">.humidity</span>
+                  </td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
                   <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
@@ -293,22 +457,10 @@ defmodule TrifleWeb.ProjectLive do
 
 
 
-          </div>
-        </div>
-
-        <div class="shrink-0 border-t border-gray-200 lg:ml-4 ml-0 lg:mt-0 mt-4 px-4 py-6 sm:px-6 lg:w-96 lg:border-l lg:border-t-0 lg:pr-8 xl:pr-6 bg-white rounded-lg shadow">
-          <!-- Right column area -->
-          RIGHT
         </div>
       </div>
     </div>
 
     """
-  end
-
-  def mount(params, _session, socket) do
-    project = Organizations.get_project!(params["id"])
-
-    {:ok, assign(socket, page_title: "Projects |> #{project.name}", project: project)}
   end
 end

@@ -30,4 +30,20 @@ defmodule Trifle.Stats.Packer do
   defp deep_merge!(_key, _this_hash, other_hash) do
     other_hash
   end
+
+  def deep_sum(this_hash, other_hash) when is_nil(other_hash) do
+    this_hash
+  end
+
+  def deep_sum(this_hash, other_hash) do
+    Map.merge(this_hash, other_hash, &deep_sum!/3)
+  end
+
+  defp deep_sum!(_key, this_hash = %{}, other_hash = %{}) do
+    deep_sum(this_hash, other_hash)
+  end
+
+  defp deep_sum!(_key, this_hash, other_hash) do
+    this_hash + other_hash
+  end
 end
