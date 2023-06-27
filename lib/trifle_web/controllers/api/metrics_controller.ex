@@ -6,52 +6,41 @@ defmodule TrifleWeb.Api.MetricsController do
 
   require IEx
 
-  def create(%{assigns: %{current_project: current_project}} = conn, params) do
-    # IEx.pry
-    conn
-    |> put_status(:created)
-    |> render("created.json")
-  end
-
   def index(%{assigns: %{current_project: current_project}} = conn, params) do
-      conn
+    conn
     |> render("index.json")
   end
 
-  # def create(
-  #       %{assigns: %{current_user: current_user, current_project: current_project}} = conn,
-  #       params
-  #     ) do
-  #   with project_id when not is_nil(project_id) <- params["project_id"],
-  #        dimensions when not is_nil(dimensions) <- params["dimensions"],
-  #        data when not is_nil(data) <- params["data"],
-  #        method when not is_nil(method) <- params["method"],
-  #        payload <- [project_id, dimensions, data, method],
-  #        {:ok, _metric} <- Metric.create(payload, current_user, current_project) do
-  #     conn
-  #     |> put_status(:created)
-  #     |> put_view(TrifleWeb.Api.MetricView)
-  #     |> render("created.json", %{})
-  #   else
-  #     nil ->
-  #       conn
-  #       |> put_resp_content_type("application/json")
-  #       |> put_status(:bad_request)
-  #       |> put_view(TrifleWeb.Api.ErrorView)
-  #       |> render("400.json", %{})
+  def create(%{assigns: %{current_project: current_project}} = conn, %{"key" => key, "at" => at, "values" => values} = params) do
+    with key when is_binary(key) and byte_size(key) > 0 <- params["key"],
+         at when is_binary(at) and byte_size(at) > 0 <- params["at"],
+         values when not is_nil(values) <- params["values"],
+         {:ok, at, _} <- DateTime.from_iso8601(at),
+         key_stats <- Trifle.Stats.track("__system__keys__", at, %{count: 1, keys: %{key => 1}}, Trifle.Organizations.Project.stats_config(current_project)),
+         stats <- Trifle.Stats.track(key, at, values, Trifle.Organizations.Project.stats_config(current_project)) do
 
-  #     {:error, :unauthorized} ->
-  #       conn
-  #       |> put_resp_content_type("application/json")
-  #       |> put_status(:unauthorized)
-  #       |> put_view(TrifleWeb.Api.ErrorView)
-  #       |> render("401.json", %{})
+      conn
+      |> put_status(:created)
+      |> render("created.json")
+    else
+      nil ->
+        conn
+        |> put_status(:bad_request)
+        |> render("400.json")
+      "" ->
+        conn
+        |> put_status(:bad_request)
+        |> render("400.json")
+      {:error, :invalid_format} ->
+        conn
+        |> put_status(:bad_request)
+        |> render("400.json")
+    end
+  end
 
-  #     {:error, changeset} ->
-  #       conn
-  #       |> put_status(:unprocessable_entity)
-  #       |> put_view(TrifleWeb.ChangesetView)
-  #       |> render("error.json", changeset: changeset)
-  #   end
-  # end
+  def create(conn, params) do
+    conn
+    |> put_status(:bad_request)
+    |> render("400.json")
+  end
 end

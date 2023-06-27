@@ -85,6 +85,7 @@ defmodule TrifleWeb do
       import Phoenix.HTML
       # Core UI components and translation
       import TrifleWeb.CoreComponents
+      import TrifleWeb.FilterComponents
       import TrifleWeb.Gettext
 
       # Shortcut for generating JS commands

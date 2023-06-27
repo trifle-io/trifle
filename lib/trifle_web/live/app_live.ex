@@ -10,7 +10,7 @@ defmodule TrifleWeb.AppLive do
         <div class="px-4 py-5 sm:p-6">
           <dt class="text-base font-normal text-gray-900">Total Subscribers</dt>
           <dd class="mt-1 flex items-baseline justify-between md:block lg:flex">
-            <div class="flex items-baseline text-2xl font-semibold text-indigo-600">
+            <div class="flex items-baseline text-2xl font-semibold text-teal-600">
               71,897
               <span class="ml-2 text-sm font-medium text-gray-500">from 70,946</span>
             </div>
@@ -29,7 +29,7 @@ defmodule TrifleWeb.AppLive do
         <div class="px-4 py-5 sm:p-6">
           <dt class="text-base font-normal text-gray-900">Avg. Open Rate</dt>
           <dd class="mt-1 flex items-baseline justify-between md:block lg:flex">
-            <div class="flex items-baseline text-2xl font-semibold text-indigo-600">
+            <div class="flex items-baseline text-2xl font-semibold text-teal-600">
               58.16%
               <span class="ml-2 text-sm font-medium text-gray-500">from 56.14%</span>
             </div>
@@ -48,7 +48,7 @@ defmodule TrifleWeb.AppLive do
         <div class="px-4 py-5 sm:p-6">
           <dt class="text-base font-normal text-gray-900">Avg. Click Rate</dt>
           <dd class="mt-1 flex items-baseline justify-between md:block lg:flex">
-            <div class="flex items-baseline text-2xl font-semibold text-indigo-600">
+            <div class="flex items-baseline text-2xl font-semibold text-teal-600">
               24.57%
               <span class="ml-2 text-sm font-medium text-gray-500">from 28.62%</span>
             </div>

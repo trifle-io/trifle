@@ -42,7 +42,7 @@ defmodule TrifleWeb.ProjectsLive do
                           <label for="project_name" class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5">Project Name</label>
                         </div>
                         <div class="sm:col-span-2">
-                          <.input field={@form[:name]} placeholder="Secret weather station" autocomplete="off" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                          <.input field={@form[:name]} placeholder="Secret weather station" autocomplete="off" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6" />
                         </div>
                       </div>
 
@@ -51,7 +51,7 @@ defmodule TrifleWeb.ProjectsLive do
                           <label for="project_time_zone" class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5">Time Zone</label>
                         </div>
                         <div class="sm:col-span-2">
-                          <.input field={@form[:time_zone]} type="select" options={@time_zones} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                          <.input field={@form[:time_zone]} type="select" options={@time_zones} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6" />
                         </div>
                       </div>
 
@@ -60,7 +60,7 @@ defmodule TrifleWeb.ProjectsLive do
                           <label for="project_beginning_of_week" class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5">Beginning of Week</label>
                         </div>
                         <div class="sm:col-span-2">
-                          <.input field={@form[:beginning_of_week]} type="select" options={[{"Monday", 1}, {"Tuesday", 2}, {"Wednesday", 3}, {"Thursday", 4}, {"Friday", 5}, {"Saturday", 6}, {"Sunday", 7}]} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                          <.input field={@form[:beginning_of_week]} type="select" options={[{"Monday", 1}, {"Tuesday", 2}, {"Wednesday", 3}, {"Thursday", 4}, {"Friday", 5}, {"Saturday", 6}, {"Sunday", 7}]} class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6" />
                         </div>
                       </div>
                     </div>
@@ -69,7 +69,7 @@ defmodule TrifleWeb.ProjectsLive do
                   <!-- Action buttons -->
                   <div class="flex-shrink-0 border-t border-gray-200 px-4 py-5 sm:px-6">
                     <div class="flex justify-end space-x-3">
-                      <.button phx-disable-with="Creating..." class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">Create</.button>
+                      <.button phx-disable-with="Creating..." class="inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">Create</.button>
                       <.link navigate={~p"/app/projects"} class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</.link>
                     </div>
                   </div>
@@ -92,7 +92,7 @@ defmodule TrifleWeb.ProjectsLive do
                 <div class="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between">
                   <div class="truncate">
                     <div class="flex text-sm">
-                      <p class="truncate font-medium text-indigo-600"><%= project.name %></p>
+                      <p class="truncate font-medium text-teal-600"><%= project.name %></p>
                       <p class="ml-1 flex-shrink-0 font-normal text-gray-500">as <span class="text-red-500"><%= project.slug %></span></p>
                     </div>
                     <div class="mt-2 flex">
