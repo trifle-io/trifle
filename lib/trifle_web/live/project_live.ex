@@ -12,6 +12,7 @@ defmodule TrifleWeb.ProjectLive do
     socket = socket
     |> assign(page_title: "Projects |> #{project.name} |> Explore")
     |> assign(project: project)
+    |> assign(stats: nil)
 
     {:ok, socket}
   end
@@ -30,7 +31,7 @@ defmodule TrifleWeb.ProjectLive do
 
     socket = socket
     |> assign(range: range, from: from, to: to)
-    |> push_patch(to: ~p"/app/projects/#{socket.assigns.project.id}?#{[range: range, from: DateTime.to_string(from), to: DateTime.to_string(to)]}")
+    |> push_patch(to: ~p"/app/projects/#{socket.assigns.project.id}?#{[range: range, from: DateTime.to_string(from), to: DateTime.to_string(to), key: socket.assigns.key]}")
 
     {:noreply, socket}
   end
@@ -41,41 +42,36 @@ defmodule TrifleWeb.ProjectLive do
     {:ok, from} = parse_date((params["from"] || ""), socket.assigns.project.time_zone)
     {:ok, to} = parse_date((params["to"] || ""), socket.assigns.project.time_zone)
     project_stats = load_project_stats(socket.assigns.project, range, from, to)
-    # IEx.pry
+    key_stats = load_project_key_stats(socket.assigns.project, params["key"], range, from, to)
+
     socket = socket
     |> assign(range: range, from: from, to: to)
+    |> assign(key: params["key"])
     |> assign(keys: project_stats)
+    |> assign(stats: key_stats)
     |> assign(form: to_form(%{}))
 
     {:noreply, socket}
   end
 
   def load_project_stats(project, range, from, to) do
-    range = String.to_atom(range)
     intervals = %{hourly: :hour, daily: :day, weekly: :week, monthly: :month, quarterly: :quarter, yearly: :year}
-    range = intervals[range]
+    range = intervals[String.to_atom(range)]
 
     stats = Trifle.Stats.values("__system__keys__", from, to, range, Project.stats_config(project))
 
-    keys = Enum.reduce(stats[:values], [], fn(data, acc) -> [data["keys"] | acc] end)
-    # s = [%{"keys" => %{"sensors" => 2, "metrics" => 4}}, %{"keys" => %{"sensors" => 4}}, %{"keys" => %{"sensors" => 3, "metrics" => 2}}]
-    # k = Enum.reduce(s, [], fn(data, acc) -> [data["keys"] | acc] end)
-    # IEx.pry
-    Enum.reduce(keys, %{}, fn(data, acc) -> Trifle.Stats.Packer.deep_sum(acc, data) end)
-
-    #
-  #   %{
-  #     at: [#DateTime<2023-07-27 00:00:00+01:00 +01 Etc/GMT-1>],
-  #     values: [%{"count" => 6, "keys" => %{"test" => 6}}]
-  #   }
-  #   Enum.reduce(%{}, fn(d, acc) ->
-  #     Enum.reduce(acc, d["keys"])
-  #     Map.put(acc, d[])
-  #   end)
+    Enum.reduce(stats[:values], [], fn(data, acc) -> [data["keys"] | acc] end)
+    |> Enum.reduce(%{}, fn(data, acc) -> Trifle.Stats.Packer.deep_sum(acc, data) end)
   end
 
+  def load_project_key_stats(project, key, range, from, to) when is_nil(key), do: nil
+
   def load_project_key_stats(project, key, range, from, to) do
+    intervals = %{hourly: :hour, daily: :day, weekly: :week, monthly: :month, quarterly: :quarter, yearly: :year}
+    range = intervals[String.to_atom(range)]
+
     Trifle.Stats.values(key, from, to, range, Project.stats_config(project))
+    |> Trifle.Stats.Tabler.tabulize
   end
 
   def render(assigns) do
@@ -135,328 +131,71 @@ defmodule TrifleWeb.ProjectLive do
         <div class="flex-1 xl:flex bg-white rounded-lg shadow">
           <div class="border-b border-gray-200 xl:w-96 xl:shrink-0 xl:border-b-0 xl:border-r">
             <!-- Left column area -->
-            <table class="min-w-full divide-y divide-gray-300">
-              <thead>
-                <tr>
-                  <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3">Key</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white">
-                <%= for {key, count} <- @keys do %>
-                  <tr class="border-b bg-gray-50">
-                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">
-                      <%= key %>
-                      <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right"><%= count %></span>
-                    </td>
-                  </tr>
-                <% end %>
-              </tbody>
-            </table>
+            <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3 border-b">
+              <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right">Events</span>
+              Key
+            </div>
+            <ul role="list" class="divide-y divide-gray-100">
+              <%= for {key, count} <- @keys do %>
+                <li class="relative py-5 hover:bg-gray-50">
+                  <div class="px-4 sm:px-6 lg:px-8">
+                    <div class="mx-auto flex max-w-4xl justify-between gap-x-6">
+                      <div class="flex gap-x-4">
+                        <div class="min-w-0 flex-auto">
+                          <p class="text-sm font-semibold font-mono leading-6 text-gray-900">
+                            <.link navigate={~p"/app/projects/#{@project.id}?#{[range: @range, from: DateTime.to_string(@from), to: DateTime.to_string(@to), key: key]}"}>
+                              <span class="absolute inset-x-0 -top-px bottom-0"></span>
+                              <%= key %>
+                            </.link>
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-x-4">
+                        <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right"><%= count %></span>
+                        <svg class="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                          <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+                        </svg>
+                      </div>
+                   </div>
+                  </div>
+                </li>
+              <% end %>
+            </ul>
             &nbsp
           </div>
 
           <div class="xl:flex-1 overflow-x-auto overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-300 overflow-auto">
-              <thead>
-                <tr>
-                  <th scope="col" class="top-0 left-0 sticky bg-white whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 pl-4">Path</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">00:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">01:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">02:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">03:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">04:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">05:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">06:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">07:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700">08:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">09:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">10:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">11:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">12:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">13:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">14:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">15:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">16:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">17:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">18:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">19:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">20:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">21:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">22:00</th>
-                  <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-900">23:00</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200 bg-white">
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-cyan-500">.temperature</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.humidity</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-blue-500">.noise</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-indigo-500">.light</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.wind</span><span class="text-violet-500">.speed</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.wind</span><span class="text-purple-500">.gust</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-teal-500">outdoor</span><span class="text-sky-500">.wind</span><span class="text-fuchsia-500">.smust</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-
+            <%= if @stats do %>
+              <table class="min-w-full divide-y divide-gray-300 overflow-auto">
+                <thead>
+                  <tr>
+                    <th scope="col" class="top-0 left-0 sticky bg-white whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 pl-4">Path</th>
+                    <%= for at <- @stats[:at] do %>
+                      <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700"><%= at %></th>
+                    <% end %>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 bg-white">
+                  <%= for path <- @stats[:paths] do %>
                     <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-blue-500">indoor</span><span class="text-sky-500">.temperature</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-                <tr>
-                  <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                    <span class="text-blue-500">indoor</span><span class="text-indigo-500">.humidity</span>
-                  </td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">16</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">17</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">18</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">15</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">14</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">13</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">12</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">11</td>
-                  <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900">10</td>
-                </tr>
-
-              </tbody>
-            </table>
-
-
-
+                      <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                        <span class="text-teal-500"><%= path %></span>
+                      </td>
+                      <%= for at <- @stats[:at] do %>
+                        <% value = @stats[:values][{path, at}] %>
+                        <%= if value do %>
+                          <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900"><%= value %></td>
+                        <% else %>
+                          <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-300">0</td>
+                        <% end %>
+                      <% end %>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            <% else %>
+              &larr; Select Key there.
+            <% end %>
         </div>
       </div>
     </div>
