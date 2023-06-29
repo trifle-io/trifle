@@ -4,8 +4,6 @@ defmodule TrifleWeb.Api.MetricsController do
   plug(TrifleWeb.Plugs.AuthenticateByProjectToken, %{mode: :read} when action in [:index])
   plug(TrifleWeb.Plugs.AuthenticateByProjectToken, %{mode: :write} when action in [:create])
 
-  require IEx
-
   def index(%{assigns: %{current_project: current_project}} = conn, params) do
     conn
     |> render("index.json")
