@@ -13,6 +13,7 @@ defmodule TrifleWeb.ProjectLive do
     |> assign(page_title: "Projects |> #{project.name} |> Explore")
     |> assign(project: project)
     |> assign(stats: nil)
+    |> assign(timeline: "")
 
     {:ok, socket}
   end
@@ -42,12 +43,15 @@ defmodule TrifleWeb.ProjectLive do
     {:ok, from} = parse_date((params["from"] || ""), socket.assigns.project.time_zone)
     {:ok, to} = parse_date((params["to"] || ""), socket.assigns.project.time_zone)
     project_stats = load_project_stats(socket.assigns.project, range, from, to)
+    keys_sum = reduce_stats(project_stats[:values])
+    timeline = timeline_from(project_stats, params["key"])
     key_stats = load_project_key_stats(socket.assigns.project, params["key"], range, from, to)
 
     socket = socket
     |> assign(range: range, from: from, to: to)
     |> assign(key: params["key"])
-    |> assign(keys: project_stats)
+    |> assign(keys: keys_sum)
+    |> assign(timeline: timeline)
     |> assign(stats: key_stats)
     |> assign(form: to_form(%{}))
 
@@ -58,13 +62,24 @@ defmodule TrifleWeb.ProjectLive do
     intervals = %{hourly: :hour, daily: :day, weekly: :week, monthly: :month, quarterly: :quarter, yearly: :year}
     range = intervals[String.to_atom(range)]
 
-    stats = Trifle.Stats.values("__system__keys__", from, to, range, Project.stats_config(project))
-
-    Enum.reduce(stats[:values], [], fn(data, acc) -> [data["keys"] | acc] end)
-    |> Enum.reduce(%{}, fn(data, acc) -> Trifle.Stats.Packer.deep_sum(acc, data) end)
+    Trifle.Stats.values("__system__keys__", from, to, range, Project.stats_config(project))
   end
 
   def load_project_key_stats(project, key, range, from, to) when is_nil(key), do: nil
+
+  def reduce_stats(values) do
+    Enum.reduce(values, [], fn(data, acc) -> [data["keys"] | acc] end)
+    |> Enum.reduce(%{}, fn(data, acc) -> Trifle.Stats.Packer.deep_sum(acc, data) end)
+  end
+
+  def timeline_from(%{at: at, values: values} = stats, key) do
+    Enum.with_index(at)
+    |>  Enum.reduce([], fn({a, i}, acc) ->
+      v = get_in(Enum.at(values, i), ["keys", key])
+      acc = [[DateTime.to_unix(a) * 1000, (v || 0)] | acc]
+    end)
+    |> Jason.encode!()
+  end
 
   def load_project_key_stats(project, key, range, from, to) do
     intervals = %{hourly: :hour, daily: :day, weekly: :week, monthly: :month, quarterly: :quarter, yearly: :year}
@@ -128,6 +143,7 @@ defmodule TrifleWeb.ProjectLive do
         </.form>
 
       </div>
+
         <div class="flex-1 xl:flex bg-white rounded-lg shadow">
           <div class="border-b border-gray-200 xl:w-96 xl:shrink-0 xl:border-b-0 xl:border-r">
             <!-- Left column area -->
@@ -166,33 +182,39 @@ defmodule TrifleWeb.ProjectLive do
 
           <div class="xl:flex-1 overflow-x-auto overflow-hidden">
             <%= if @stats do %>
-              <table class="min-w-full divide-y divide-gray-300 overflow-auto">
-                <thead>
-                  <tr>
-                    <th scope="col" class="top-0 left-0 sticky bg-white whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 pl-4">Path</th>
-                    <%= for at <- @stats[:at] do %>
-                      <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700"><%= at %></th>
-                    <% end %>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 bg-white">
-                  <%= for path <- @stats[:paths] do %>
+              <div id="timeline-hook" phx-hook="ProjectTimeline" data-events={@timeline} data-key={@key} class="border-b"></div>
+              <div id="timeline-chart-wrapper" phx-update="ignore">
+                <div id="timeline-chart"></div>
+              </div>
+              <div class="overflow-x-auto overflow-hidden">
+                <table class="min-w-full divide-y divide-gray-300 overflow-auto">
+                  <thead>
                     <tr>
-                      <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
-                        <span class="text-teal-500"><%= path %></span>
-                      </td>
-                      <%= for at <- @stats[:at] do %>
-                        <% value = @stats[:values][{path, at}] %>
-                        <%= if value do %>
-                          <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900"><%= value %></td>
-                        <% else %>
-                          <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-300">0</td>
-                        <% end %>
+                      <th scope="col" class="top-0 left-0 sticky bg-white whitespace-nowrap py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 pl-4">Path</th>
+                      <%= for at <- Enum.reverse(@stats[:at]) do %>
+                        <th scope="col" class="top-0 sticky whitespace-nowrap px-2 py-3.5 text-left text-xs font-mono font-semibold text-teal-700"><%= at %></th>
                       <% end %>
                     </tr>
-                  <% end %>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 bg-white">
+                    <%= for path <- @stats[:paths] do %>
+                      <tr>
+                        <td class="left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-sm font-mono pl-4">
+                          <span class="text-teal-500"><%= path %></span>
+                        </td>
+                        <%= for at <- Enum.reverse(@stats[:at]) do %>
+                          <% value = @stats[:values][{path, at}] %>
+                          <%= if value do %>
+                            <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900"><%= value %></td>
+                          <% else %>
+                            <td class="whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-300">0</td>
+                          <% end %>
+                        <% end %>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
             <% else %>
               &larr; Select Key there.
             <% end %>

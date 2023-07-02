@@ -23,8 +23,77 @@ import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+
+let Hooks = {}
+Hooks.ProjectTimeline = {
+  createChart(data, key) {
+    return Highcharts.chart('timeline-chart', {
+      chart: {
+        type: 'column',
+        height: '150'
+      },
+      title: {
+        text: undefined
+      },
+      xAxis: {
+        type: 'datetime',
+        dateTimeLabelFormats: { // don't display the year
+          month: '%e. %b',
+          year: '%b'
+        },
+        title: {
+          enabled: false
+        }
+      },
+      yAxis: {
+        title: {
+          enabled: false
+        },
+        min: 0
+      },
+
+      legend: {
+        enabled: false
+      },
+
+      plotOptions: {
+        series: {
+          marker: {
+            enabled: true,
+            radius: 2.5
+          }
+        }
+      },
+
+      colors: ['#14b8a6', '#39F', '#06C', '#036', '#000'],
+
+      series: [
+        {
+          name: key,
+          data: data
+        }
+      ]
+    });
+  },
+
+  mounted() {
+    let data = JSON.parse(this.el.dataset.events);
+    let key = this.el.dataset.key;
+
+    this.chart = this.createChart(data, key);
+  },
+
+  updated() {
+    console.log("Something has happened!");
+    let data = JSON.parse(this.el.dataset.events);
+
+    this.chart.series[0].setData(data)
+  }
+}
+
 let liveSocket = new LiveSocket("/live", Socket, {
   params: {_csrf_token: csrfToken},
+  hooks: Hooks,
   dom: {
     onBeforeElUpdated(from, to) {
       if (from._x_dataStack) {
