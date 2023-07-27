@@ -44,15 +44,16 @@ defmodule TrifleWeb.ProjectLive do
     {:ok, to} = parse_date((params["to"] || ""), socket.assigns.project.time_zone)
     project_stats = load_project_stats(socket.assigns.project, range, from, to)
     keys_sum = reduce_stats(project_stats[:values])
-    timeline = timeline_from(project_stats, params["key"])
+    timeline = series_from(project_stats, ["keys", params["key"]])
     key_stats = load_project_key_stats(socket.assigns.project, params["key"], range, from, to)
-
+    {:ok, key_tabulized, key_seriesized} = process_project_key_stats(key_stats)
+    # IEx.pry
     socket = socket
     |> assign(range: range, from: from, to: to)
     |> assign(key: params["key"])
     |> assign(keys: keys_sum)
-    |> assign(timeline: timeline)
-    |> assign(stats: key_stats)
+    |> assign(timeline: Jason.encode!(timeline["keys.#{params["key"]}"]))
+    |> assign(stats: key_tabulized)
     |> assign(form: to_form(%{}))
 
     {:noreply, socket}
@@ -65,28 +66,38 @@ defmodule TrifleWeb.ProjectLive do
     Trifle.Stats.values("__system__keys__", from, to, range, Project.stats_config(project))
   end
 
-  def load_project_key_stats(project, key, range, from, to) when is_nil(key), do: nil
-
   def reduce_stats(values) do
     Enum.reduce(values, [], fn(data, acc) -> [data["keys"] | acc] end)
     |> Enum.reduce(%{}, fn(data, acc) -> Trifle.Stats.Packer.deep_sum(acc, data) end)
   end
 
-  def timeline_from(%{at: at, values: values} = stats, key) do
+  def series_from(%{at: at, values: values} = stats, path) when is_list(path) do
+    key = Enum.join(path, ".")
     Enum.with_index(at)
-    |>  Enum.reduce([], fn({a, i}, acc) ->
-      v = get_in(Enum.at(values, i), ["keys", key])
-      acc = [[DateTime.to_unix(a) * 1000, (v || 0)] | acc]
+    |> Enum.reduce(%{}, fn({a, i}, acc) ->
+      v = get_in(Enum.at(values, i), path)
+      acc = Map.put(acc, key, [[DateTime.to_unix(a) * 1000, (v || 0)] | (acc[key] || [])])
     end)
-    |> Jason.encode!()
   end
+
+  def load_project_key_stats(project, key, range, from, to) when is_nil(key), do: nil
+  def load_project_key_stats(project, key, range, from, to) when is_binary(key) and byte_size(key) == 0, do: nil
 
   def load_project_key_stats(project, key, range, from, to) do
     intervals = %{hourly: :hour, daily: :day, weekly: :week, monthly: :month, quarterly: :quarter, yearly: :year}
     range = intervals[String.to_atom(range)]
 
     Trifle.Stats.values(key, from, to, range, Project.stats_config(project))
-    |> Trifle.Stats.Tabler.tabulize
+  end
+
+  def process_project_key_stats(stats) when is_nil(stats), do: {:ok, nil, nil}
+
+  def process_project_key_stats(stats) do
+    {
+      :ok,
+      Trifle.Stats.Tabler.tabulize(stats),
+      Trifle.Stats.Tabler.seriesize(stats)
+    }
   end
 
   def render(assigns) do
@@ -125,68 +136,87 @@ defmodule TrifleWeb.ProjectLive do
     </div>
 
     <div class="min-h-full flex-col h-full">
-      <div class="py-8 text-2xl font-bold font-mono text-center text-gray-600">
-        <.form for={@form} phx-submit="fetch" class="flex h-full">
-          <div class="relative mr-2">
-            <.filter_input field={@form[:range]} value={@range} type="select" label="Range" options={[{"Hourly", :hourly}, {"Daily", :daily}, {"Weekly", :weekly}, {"Monthly", :monthly}, {"Quarterly", :quarterly}, {"Yearly", :yearly}]} />
-          </div>
-          <div class="relative mr-2">
-            <.filter_input field={@form[:from]} value={@from} name="from" id="filter_from" type="datetime-local" label="From" />
-          </div>
-          <div class="relative mr-2">
-            <.filter_input field={@form[:to]} name="to" value={@to} id="filter_to" type="datetime-local" label="To" />
-          </div>
 
-          <.button class="inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
-            <.icon name="hero-funnel" />
-          </.button>
-        </.form>
-
-      </div>
-
-        <div class="flex-1 xl:flex bg-white rounded-lg shadow">
-          <div class="border-b border-gray-200 xl:w-96 xl:shrink-0 xl:border-b-0 xl:border-r">
+        <div class="flex-1 xl:flex">
+          <div class="xl:w-96 xl:shrink-0">
             <!-- Left column area -->
-            <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3 border-b">
-              <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right">Events</span>
-              Key
+
+            <div class="text-lg font-semibold leading-6 text-gray-900">Timeframe</div>
+            <div class="text-2xl font-bold font-mono text-center text-gray-600 mt-5 mr-4">
+              <.form for={@form} phx-submit="fetch" class="flex h-full flex-col overflow-y-scroll bg-white rounded-lg shadow py-3.5 pl-4 pr-3 sm:pl-3">
+                <div class="relative mt-1">
+                  <.filter_input field={@form[:from]} value={@from} name="from" id="filter_from" type="datetime-local" label="From" />
+                </div>
+                <div class="relative mt-5">
+                  <.filter_input field={@form[:to]} name="to" value={@to} id="filter_to" type="datetime-local" label="To" />
+                </div>
+                <div class="relative mt-5">
+                  <.filter_input field={@form[:range]} value={@range} type="select" label="Range" options={[{"Hourly", :hourly}, {"Daily", :daily}, {"Weekly", :weekly}, {"Monthly", :monthly}, {"Quarterly", :quarterly}, {"Yearly", :yearly}]} />
+                </div>
+
+                <.button class="mt-5 w-full inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
+                  <.icon name="hero-funnel" />
+                </.button>
+              </.form>
             </div>
-            <ul role="list" class="divide-y divide-gray-100">
-              <%= for {key, count} <- @keys do %>
-                <li class="relative py-5 hover:bg-gray-50">
-                  <div class="px-4 sm:px-6 lg:px-8">
-                    <div class="mx-auto flex max-w-4xl justify-between gap-x-6">
-                      <div class="flex gap-x-4">
-                        <div class="min-w-0 flex-auto">
-                          <p class="text-sm font-semibold font-mono leading-6 text-gray-900">
-                            <.link navigate={~p"/app/projects/#{@project.id}?#{[range: @range, from: DateTime.to_string(@from), to: DateTime.to_string(@to), key: key]}"}>
-                              <span class="absolute inset-x-0 -top-px bottom-0"></span>
-                              <%= key %>
-                            </.link>
-                          </p>
+
+            <div class="text-lg font-semibold leading-6 text-gray-900 mt-5">Keys</div>
+            <div class="bg-white rounded-lg shadow mr-4 mt-5">
+              <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3 border-b">
+                <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right">Events</span>
+                Key
+              </div>
+              <ul role="list" class="divide-y divide-gray-100">
+                <%= for {key, count} <- @keys do %>
+                  <li class={if @key == key, do: "relative py-5 bg-teal-50 hover:bg-gray-50", else: "relative py-5 bg-white hover:bg-gray-50"}>
+                    <div class="px-4 sm:px-6 lg:px-8">
+                      <div class="mx-auto flex max-w-4xl justify-between gap-x-6">
+                        <div class="flex gap-x-4">
+                          <div class="min-w-0 flex-auto">
+                            <p class={if @key == key, do: "text-sm font-semibold font-mono leading-6 text-teal-700", else: "text-sm font-semibold font-mono leading-6 text-gray-900"}>
+                              <.link navigate={~p"/app/projects/#{@project.id}?#{[range: @range, from: DateTime.to_string(@from), to: DateTime.to_string(@to), key: key]}"}>
+                                <span class="absolute inset-x-0 -top-px bottom-0"></span>
+                                <%= key %>
+                              </.link>
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div class="flex items-center gap-x-4">
-                        <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right"><%= count %></span>
-                        <svg class="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                          <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-                        </svg>
-                      </div>
-                   </div>
-                  </div>
-                </li>
-              <% end %>
-            </ul>
+                        <div class="flex items-center gap-x-4">
+                          <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10 float-right"><%= count %></span>
+                          <svg class="h-5 w-5 flex-none text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+                          </svg>
+                        </div>
+                     </div>
+                    </div>
+                  </li>
+                <% end %>
+              </ul>
+            </div>
             &nbsp
           </div>
 
           <div class="xl:flex-1 overflow-x-auto overflow-hidden">
             <%= if @stats do %>
-              <div id="timeline-hook" phx-hook="ProjectTimeline" data-events={@timeline} data-key={@key} class="border-b"></div>
-              <div id="timeline-chart-wrapper" phx-update="ignore">
-                <div id="timeline-chart"></div>
+              <div class="text-lg font-semibold leading-6 text-gray-900">Events</div>
+              <div id="timeline-hook" phx-hook="ProjectTimeline" data-events={@timeline} data-key={@key} class=""></div>
+              <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5">
+                <div id="timeline-chart" class="bg-white rounded-lg shadow"></div>
               </div>
-              <div class="overflow-x-auto overflow-hidden">
+
+              <div class="text-lg font-semibold leading-6 text-gray-900 mt-5">Data</div>
+
+
+    <nav class="flex space-x-4 mt-5" aria-label="Tabs">
+      <!-- Current: "bg-gray-200 text-gray-800", Default: "text-gray-600 hover:text-gray-800" -->
+      <a href="#" class="text-gray-600 hover:text-gray-800 rounded-md px-3 py-2 text-sm font-medium">Charts</a>
+      <a href="#" class="bg-gray-200 text-gray-800 rounded-md px-3 py-2 text-sm font-medium" aria-current="page">Table</a>
+    </nav>
+
+
+
+
+              <div class="overflow-x-auto overflow-hidden bg-white rounded-lg shadow mt-5">
                 <table class="min-w-full divide-y divide-gray-300 overflow-auto">
                   <thead>
                     <tr>
@@ -224,4 +254,4 @@ defmodule TrifleWeb.ProjectLive do
 
     """
   end
-end
+ end
