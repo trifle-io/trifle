@@ -9,7 +9,10 @@ module.exports = {
   content: [
     "./js/**/*.js",
     "../lib/*_web.ex",
-    "../lib/*_web/**/*.*ex"
+    "../lib/*_web/**/*.*ex",
+    "../lib/trifle_app/**/*.*ex",
+    "../lib/trifle_api/**/*.*ex",
+    "../lib/trifle_admin/**/*.*ex"
   ],
   theme: {
     extend: {

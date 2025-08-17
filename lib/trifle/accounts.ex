@@ -350,4 +350,37 @@ defmodule Trifle.Accounts do
       {:error, :user, changeset, _} -> {:error, changeset}
     end
   end
+
+  ## Admin functions
+
+  @doc """
+  Returns the list of users.
+  """
+  def list_users do
+    Repo.all(User)
+  end
+
+  @doc """
+  Updates a user's admin status.
+
+  ## Examples
+
+      iex> update_user_admin_status(user_id, true)
+      {:ok, %User{}}
+
+      iex> update_user_admin_status(invalid_id, false)
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_user_admin_status(user_id, is_admin) when is_binary(user_id) do
+    user_id
+    |> String.to_integer()
+    |> update_user_admin_status(is_admin)
+  end
+
+  def update_user_admin_status(user_id, is_admin) when is_integer(user_id) do
+    user = Repo.get!(User, user_id)
+    changeset = Ecto.Changeset.change(user, is_admin: is_admin)
+    Repo.update(changeset)
+  end
 end

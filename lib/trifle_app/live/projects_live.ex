@@ -1,5 +1,5 @@
-defmodule TrifleWeb.ProjectsLive do
-  use TrifleWeb, :live_view
+defmodule TrifleApp.ProjectsLive do
+  use TrifleApp, :live_view
 
   alias Trifle.Organizations
   alias Trifle.Organizations.Project

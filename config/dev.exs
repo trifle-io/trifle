@@ -58,7 +58,10 @@ config :trifle, TrifleWeb.Endpoint,
     patterns: [
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/trifle_web/(controllers|live|components)/.*(ex|heex)$"
+      ~r"lib/trifle_web/(controllers|live|components)/.*(ex|heex)$",
+      ~r"lib/trifle_app/(controllers|live|components)/.*(ex|heex)$",
+      ~r"lib/trifle_api/(controllers|live|components)/.*(ex|heex)$",
+      ~r"lib/trifle_admin/(controllers|live|components)/.*(ex|heex)$"
     ]
   ]
 

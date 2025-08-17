@@ -1,9 +1,9 @@
-defmodule TrifleWeb.ProjectLive do
-  use TrifleWeb, :live_view
+defmodule TrifleApp.ProjectLive do
+  use TrifleApp, :live_view
 
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
-  alias TrifleWeb.DesignSystem.ChartColors
+  alias TrifleApp.DesignSystem.ChartColors
 
   require IEx
 

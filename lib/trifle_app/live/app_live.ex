@@ -1,5 +1,5 @@
-defmodule TrifleWeb.AppLive do
-  use TrifleWeb, :live_view
+defmodule TrifleApp.AppLive do
+  use TrifleApp, :live_view
 
 
   def render(assigns) do
