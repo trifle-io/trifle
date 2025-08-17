@@ -1,399 +1,70 @@
-<.flash_group flash={@flash} />
-
-<div class="bg-white" x-data="{isMobileOpened: false}">
-  <header class="absolute inset-x-0 top-0 z-50">
-    <nav class="flex items-center justify-between p-6 lg:px-8" aria-label="Global">
-      <div class="flex lg:flex-1">
-        <a href="#" class="-m-1.5 p-1.5">
-          <span class="sr-only">Your Company</span>
-          <svg viewbox="0 0 1024 1024" class="mx-auto h-16 w-16 text-teal-300" stroke="currentColor", fill="none" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
-            <path d="M512,255.985L767.995,768.015L256.005,768.015L512,255.985Z" stroke-width="48"/>
-            <path d="M384.035,512L191.977,543.055" stroke-width="48" />
-            <path d="M832.002,319.913L578.581,384.001" stroke-width="48" />
-            <path d="M832.002,414.511L611.315,447.956" stroke-width="48" />
-            <path d="M832.002,512L643.721,511.977" stroke-width="48" />
-            <path d="M832.002,604.858L677.831,575.999" stroke-width="48" />
-            <path d="M832.002,703.97L705.888,640.043" stroke-width="48" />
-          </svg>
+<div class="relative isolate overflow-hidden bg-white">
+  <div class="mx-auto max-w-7xl px-6 pb-24 pt-10 sm:pb-32 lg:flex lg:px-8 lg:py-40">
+    <div class="mx-auto max-w-2xl lg:mx-0 lg:max-w-xl lg:flex-shrink-0 lg:pt-8">
+      <div class="mt-24 sm:mt-32 lg:mt-16">
+        <a href="#" class="inline-flex space-x-6">
+          <span class="rounded-full bg-teal-600/10 px-3 py-1 text-sm font-semibold leading-6 text-teal-600 ring-1 ring-inset ring-teal-600/10">
+            What's new
+          </span>
+          <span class="inline-flex items-center space-x-2 text-sm font-medium leading-6 text-gray-600">
+            <span>Just shipped v1.0</span>
+          </span>
         </a>
       </div>
-      <div class="flex lg:hidden">
-        <button type="button" class="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-gray-700" x-on:click="isMobileOpened = true">
-          <span class="sr-only">Open main menu</span>
-          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-        </button>
-      </div>
-      <div class="hidden lg:flex lg:gap-x-12">
-        <a href="#" class="text-sm font-semibold leading-6 text-gray-900">Product</a>
-        <a href="#" class="text-sm font-semibold leading-6 text-gray-900">Features</a>
-      </div>
-      <div class="hidden lg:flex lg:flex-1 lg:justify-end">
-        <%= if @current_user do %>
-          <.link href={~p"/app"} class="text-sm font-semibold leading-6 text-gray-900 mr-4">Dashboard</.link>
-          <.link href={~p"/users/log_out"} method="delete" class="text-sm font-semibold leading-6 text-gray-900">Log out</.link>
-        <% else %>
-          <.link href={~p"/users/log_in"} class="text-sm font-semibold leading-6 text-gray-900">Log in <span aria-hidden="true">&rarr;</span></.link>
-        <% end %>
-      </div>
-    </nav>
-    <!-- Mobile menu, show/hide based on menu open state. -->
-    <div class="absolute inset-x-0 top-0 z-10 origin-top transform p-2 transition lg:hidden" x-show="isMobileOpened" x-transition:enter="transition duration-150 ease-out", x-transition:enter-start="opacity-0 transform scale-95", x-transition:enter-end="opacity-100 transform scale-100", x-transition:leave="transition duration-100 ease-in", x-transition:leave-start="opacity-100 transform scale-100", x-transition:leave-end="opacity-0 transform scale-95">
-      <div class="overflow-hidden rounded-lg bg-white shadow-md ring-1 ring-black ring-opacity-5">
-        <div class="flex items-center justify-between px-5 pt-4">
-          <div>
-            <svg viewbox="0 0 1024 1024" class="mx-auto h-16 w-16 text-teal-300" stroke="currentColor", fill="none" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
-              <path d="M512,255.985L767.995,768.015L256.005,768.015L512,255.985Z" stroke-width="48"/>
-              <path d="M384.035,512L191.977,543.055" stroke-width="48" />
-              <path d="M832.002,319.913L578.581,384.001" stroke-width="48" />
-              <path d="M832.002,414.511L611.315,447.956" stroke-width="48" />
-              <path d="M832.002,512L643.721,511.977" stroke-width="48" />
-              <path d="M832.002,604.858L677.831,575.999" stroke-width="48" />
-              <path d="M832.002,703.97L705.888,640.043" stroke-width="48" />
-            </svg>
-          </div>
-          <div class="-mr-2">
-            <button type="button" class="inline-flex items-center justify-center rounded-md bg-white p-2 text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600" x-on:click="isMobileOpened = false">
-              <span class="sr-only">Close menu</span>
-              <!-- Heroicon name: outline/x-mark -->
-              <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="pt-5 pb-6">
-          <div class="space-y-1 px-2">
-            <a href="#" class="block rounded-md px-3 py-2 text-base font-medium text-gray-900 hover:bg-gray-50">Product</a>
-            <a href="#" class="block rounded-md px-3 py-2 text-base font-medium text-gray-900 hover:bg-gray-50">Features</a>
-            <%= if @current_user do %>
-              <.link href={~p"/app"} class="block rounded-md px-3 py-2 text-base font-medium text-gray-900 hover:bg-gray-50">Dashboard</.link>
-              <.link href={~p"/users/log_out"} method="delete" class="block rounded-md px-3 py-2 text-base font-medium text-gray-900 hover:bg-gray-50">Log out</.link>
-            <% else %>
-              <.link href={~p"/users/log_in"} class="block rounded-md px-3 py-2 text-base font-medium text-gray-900 hover:bg-gray-50">Log in</.link>
-            <% end %>
-          </div>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <div class="relative isolate pt-14">
-    <svg class="absolute inset-0 -z-10 h-full w-full stroke-gray-200 [mask-image:radial-gradient(100%_100%_at_top_right,white,transparent)]" aria-hidden="true">
-      <defs>
-        <pattern id="83fd4e5a-9d52-42fc-97b6-718e5d7ee527" width="200" height="200" x="50%" y="-1" patternUnits="userSpaceOnUse">
-          <path d="M100 200V.5M.5 .5H200" fill="none" />
-        </pattern>
-      </defs>
-      <svg x="50%" y="-1" class="overflow-visible fill-gray-50">
-        <path d="M-100.5 0h201v201h-201Z M699.5 0h201v201h-201Z M499.5 400h201v201h-201Z M-300.5 600h201v201h-201Z" stroke-width="0" />
-      </svg>
-      <rect width="100%" height="100%" stroke-width="0" fill="url(#83fd4e5a-9d52-42fc-97b6-718e5d7ee527)" />
-    </svg>
-    <div class="mx-auto max-w-7xl px-6 py-24 sm:py-32 lg:flex lg:items-center lg:gap-x-10 lg:px-8 lg:py-40">
-      <div class="mx-auto max-w-2xl lg:mx-0 lg:flex-auto">
-        <div class="flex">
-          <div class="relative flex items-center gap-x-4 rounded-full px-4 py-1 text-sm leading-6 text-gray-600 ring-1 ring-gray-900/10 hover:ring-gray-900/20">
-            <span class="font-semibold text-teal-600">We’re hiring</span>
-            <span class="h-4 w-px bg-gray-900/10" aria-hidden="true"></span>
-            <a href="#" class="flex items-center gap-x-1">
-              <span class="absolute inset-0" aria-hidden="true"></span>
-              See open positions
-              <svg class="-mr-2 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-              </svg>
-            </a>
-          </div>
-        </div>
-        <h1 class="mt-10 max-w-lg text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">A better way to ship your projects</h1>
-        <p class="mt-6 text-lg leading-8 text-gray-600">Esse id magna consectetur fugiat non dolor in ad laboris magna laborum ea consequat. Nisi irure aliquip nisi adipisicing veniam voluptate id. In veniam incididunt ex veniam adipisicing sit.</p>
-        <div class="mt-10 flex items-center gap-x-6">
-          <a href="#" class="rounded-md bg-teal-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">Get started</a>
-          <a href="#" class="text-sm font-semibold leading-6 text-gray-900">Learn more <span aria-hidden="true">→</span></a>
-        </div>
-      </div>
-      <div class="mt-16 sm:mt-24 lg:mt-0 lg:flex-shrink-0 lg:flex-grow">
-        <svg viewBox="0 0 366 729" role="img" class="mx-auto w-[22.875rem] max-w-full drop-shadow-xl">
-          <title>App screenshot</title>
-          <defs>
-            <clipPath id="2ade4387-9c63-4fc4-b754-10e687a0d332">
-              <rect width="316" height="684" rx="36" />
-            </clipPath>
-          </defs>
-          <path fill="#4B5563" d="M363.315 64.213C363.315 22.99 341.312 1 300.092 1H66.751C25.53 1 3.528 22.99 3.528 64.213v44.68l-.857.143A2 2 0 0 0 1 111.009v24.611a2 2 0 0 0 1.671 1.973l.95.158a2.26 2.26 0 0 1-.093.236v26.173c.212.1.398.296.541.643l-1.398.233A2 2 0 0 0 1 167.009v47.611a2 2 0 0 0 1.671 1.973l1.368.228c-.139.319-.314.533-.511.653v16.637c.221.104.414.313.56.689l-1.417.236A2 2 0 0 0 1 237.009v47.611a2 2 0 0 0 1.671 1.973l1.347.225c-.135.294-.302.493-.49.607v377.681c0 41.213 22 63.208 63.223 63.208h95.074c.947-.504 2.717-.843 4.745-.843l.141.001h.194l.086-.001 33.704.005c1.849.043 3.442.37 4.323.838h95.074c41.222 0 63.223-21.999 63.223-63.212v-394.63c-.259-.275-.48-.796-.63-1.47l-.011-.133 1.655-.276A2 2 0 0 0 366 266.62v-77.611a2 2 0 0 0-1.671-1.973l-1.712-.285c.148-.839.396-1.491.698-1.811V64.213Z" />
-          <path fill="#343E4E" d="M16 59c0-23.748 19.252-43 43-43h246c23.748 0 43 19.252 43 43v615c0 23.196-18.804 42-42 42H58c-23.196 0-42-18.804-42-42V59Z" />
-          <foreignObject width="316" height="684" transform="translate(24 24)" clip-path="url(#2ade4387-9c63-4fc4-b754-10e687a0d332)">
-            <img src="https://tailwindui.com/img/component-images/mobile-app-screenshot.png" alt="" />
-          </foreignObject>
-        </svg>
+      <h1 class="mt-10 text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
+        Analytics tracking <br />made simple
+      </h1>
+      <p class="mt-6 text-lg leading-8 text-gray-600">
+        Track your metrics effortlessly with our high-performance analytics platform. Built for developers who need reliable data collection without the complexity.
+      </p>
+      <div class="mt-10 flex items-center gap-x-6">
+        <.link
+          navigate={~p"/users/register"}
+          class="rounded-md bg-teal-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+        >
+          Get started
+        </.link>
+        <.link navigate={~p"/toc"} class="text-sm font-semibold leading-6 text-gray-900">
+          Learn more <span aria-hidden="true">→</span>
+        </.link>
       </div>
     </div>
   </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  <main>
-    <div class="bg-gray-900 pt-10 sm:pt-16 lg:overflow-hidden lg:pt-8 lg:pb-14">
-      <div class="mx-auto max-w-7xl lg:px-8">
-        <div class="lg:grid lg:grid-cols-2 lg:gap-8">
-          <div class="mx-auto max-w-md px-6 sm:max-w-2xl sm:text-center lg:flex lg:items-center lg:px-0 lg:text-left">
-            <div class="lg:py-24">
-              <div class="hidden sm:mb-5 sm:flex sm:justify-center lg:justify-start">
-                <a href="#" class="flex items-center rounded-full bg-black p-1 pr-2 text-white hover:text-gray-200 sm:text-base lg:text-sm xl:text-base">
-                  <span class="rounded-full bg-teal-500 px-3 py-0.5 text-sm font-semibold leading-5 text-white">We're hiring</span>
-                  <span class="ml-4 text-sm">Visit our careers page</span>
-                  <!-- Heroicon name: mini/chevron-right -->
-                  <svg class="ml-2 h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-                  </svg>
-                </a>
-              </div>
-              <h1 class="text-4xl font-bold tracking-tight text-white sm:text-6xl lg:mt-6 xl:text-6xl">
-                <span class="block">Simple predictive</span>
-                <span class="block text-teal-400">analytics.</span>
-              </h1>
-              <p class="mt-3 text-base text-gray-300 sm:mt-5 sm:text-xl lg:text-lg xl:text-xl">Spend your time working <em><b>with data</b></em>; and not <u>for data</u>.</p>
-              <div class="mt-10 sm:mt-12">
-                <form action="#" class="sm:mx-auto sm:max-w-xl lg:mx-0">
-                  <div class="sm:flex">
-                    <div class="min-w-0 flex-1">
-                      <label for="email" class="sr-only">Email address</label>
-                      <input id="email" type="email" placeholder="Enter your email" class="block w-full rounded-md border-0 px-4 py-3 text-base text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-gray-900">
-                    </div>
-                    <div class="mt-3 sm:mt-0 sm:ml-3">
-                      <button type="submit" class="block w-full rounded-md bg-teal-500 py-3 px-4 font-medium text-white shadow hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-gray-900">Start free trial</button>
-                    </div>
-                  </div>
-                  <p class="mt-3 text-sm text-gray-300 sm:mt-4">Start your free 14-day trial, no credit card necessary. By providing your email, you agree to our <a href="#" class="font-medium text-white">terms of service</a>.</p>
-                </form>
-              </div>
-            </div>
-          </div>
-          <div class="mt-12 -mb-16 sm:-mb-48 lg:relative lg:m-0">
-            <div class="mx-auto max-w-md px-6 sm:max-w-2xl lg:max-w-none lg:px-0">
-              <!-- Illustration taken from Lucid Illustrations: https://lucid.pixsellz.io/ -->
-              <img class="w-full lg:absolute lg:inset-y-0 lg:left-0 lg:h-full lg:w-auto lg:max-w-none" src="https://tailwindui.com/img/component-images/cloud-illustration-teal-400.svg" alt="">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-
-    <section class="border-b py-8">
-      <div class="container mx-auto m-8">
-        <h2 class="w-full my-2 text-4xl font-bold leading-tight text-center text-gray-800">See it in action!</h2>
-        <div class="w-full mb-4">
-          <div class="mx-auto text-gray-600 gradient text-center my-0 py-0 rounded-t">While we build proper dynamic dashboard for your statistics, you can use Trifle API as a source of data for your own visualizations.</div>
-        </div>
-
-        <div class="flex flex-wrap pt-16">
-          <div class="w-5/6 sm:w-2/5 p-2 bg-gray-100 pt-6">
-            <h3 class="text-3xl text-gray-800 font-bold leading-none mb-8">Build your model</h3>
-            <p class="text-gray-600 mb-8 leading-normal">
-              <b>All data</b> you send is processed and used to build statistical model.
-            </p>
-            <p class="text-gray-600 mb-8 leading-normal">
-              You define what dimensions are you interested in tracking, and Trifle automatically creates statistical record for it. Dimensions can be simple hash values, hash with arrays, or even hash with array of hashes (like in this example).
-            </p>
-            <p class="text-gray-600 mb-8 leading-normal">
-              Trifle automatically unzips dimension definition into flat array and then updates all necessary statistical records.
-            </p>
-          </div>
-          <div class="w-full sm:w-3/5">
-            <pre class="overflow-auto text-white text-left bg-gray-800 pt-5 pb-5 p-3">
-    curl -X "POST" "https://trifle.io/api/metrics/" \
-         -H 'X-Auth-Token: TOKEN' \
-         -H 'Content-Type: application/json; charset=utf-8' \
-         -d $'{
-      "dimensions": {
-        "range": [
-          {
-            "range": "day",
-            "updated_at": "2019-04-04"
-          },
-          {
-            "range": "month",
-            "updated_at": "2019-04"
-          }
-        ],
-        "product_id": "157283205"
-      },
-      "model": "product",
-      "method": "inc",
-      "data": {
-        product: {
-          "price": "1449",
-          "sample": "1"
-        }
-      },
-      "project_id": "5ce58c895c19e18fc5aaff24"
-    }'
-
-    Response:
-    {"data":{"status":"Created"}}</pre>
-          </div>
-        </div>
-
-
-        <div class="flex flex-wrap flex-col-reverse sm:flex-row pt-8">
-          <div class="w-full sm:w-3/5 mt-2">
-            <pre class="overflow-x-auto text-white text-left bg-gray-800 pt-5 pb-5 p-3">
-    curl -X "POST" "https://trifle.io/api/metrics/aggregate" \
-         -H 'X-Auth-Token: TOKEN' \
-         -H 'Content-Type: text/plain; charset=utf-8' \
-         -d $'{
-      "project_id": "5ce58c895c19e18fc5aaff24",
-      "aggregate": [
-        {
-          "$match": {
-            "dimensions.range": "day",
-            "dimensions.product_id": "157283205"
-          }
-        },
-        {
-          "$group": {
-            "_id": "$dimensions.product_id",
-            "sample": {
-              "$sum": "$data.product.sample"
-            },
-            "price": {
-              "$sum": "$data.product.price"
-            }
-          }
-        }
-      ]
-    }'
-
-    Response:
-    {
-      "data": [
-        {
-          "id": "157283205",
-          "price": 7345.0,
-          "sample": 5.0
-        }
-      ]
-    }</pre>
-          </div>
-          <div class="w-full sm:w-2/5 p-6 bg-gray-100 pt-6">
-            <div class="align-middle">
-              <h3 class="text-3xl text-gray-800 font-bold leading-none mb-8">Powerful aggregation framework</h3>
-              <p class="text-gray-600 mb-8 leading-normal">To make it simple for processing, you aggregate to transform your data, execute sum, min, max and many other functions.</p>
-              <p class="text-gray-600 mb-8 leading-normal">Trifle follows similar aggregation pattern of MongoDB, so if you ever had to aggregate in MongoDB, you will be aggregating in Trifle in no time.</p>
-            </div>
-          </div>
-        </div>
-
-
-        <div class="flex flex-wrap pt-8">
-          <div class="w-5/6 sm:w-2/5 bg-gray-100 pt-6">
-            <h3 class="text-3xl text-gray-800 font-bold leading-none mb-8">Get dirty with raw data</h3>
-            <p class="text-gray-600 mb-8 leading-normal">For times when you need to see whats really in your statistical model, you can always get raw data from Trifle.</p>
-            <p class="text-gray-600 mb-8 leading-normal">This comes in handy when you wanna do the heavy lifting by yourself. Or let other libraries like Crossfilter to do calculations for you. Hey, we did both and it works great!</p>
-          </div>
-          <div class="w-full sm:w-3/5 p-2">
-            <pre class="overflow-x-auto text-white text-left bg-gray-800 pt-5 pb-5 p-3">
-    curl -X "POST" "https://trifle.io/api/metrics/raw" \
-         -H 'X-Auth-Token: TOKEN' \
-         -H 'Content-Type: application/json; charset=utf-8' \
-         -d $'{
-      "project_id": "5ce58c895c19e18fc5aaff24",
-      "dimensions": {
-        "range": "day",
-        "product_id": "157283205"
-      }
-    }'
-
-    Response:
-    {
-      "data": [
-        {
-          "data": {
-            "product": {
-              "price": 4447.0,
-              "sample": 3.0
-            }
-          },
-          "dimensions": {
-            "product_id": "157283205",
-            "range": "day",
-            "updated_at": "2019-04-02"
-          },
-          "project_id": "5ce58c895c19e18fc5aaff24"
-        },
-        {
-          "data": {
-            "product": {
-              "price": 1449.0,
-              "sample": 1.0
-            }
-          },
-          "dimensions": {
-            "product_id": "157283205",
-            "updated_at": "2019-04-03"
-          },
-          "model": "product",
-          "project_id": "5ce58c895c19e18fc5aaff24"
-        },
-        {
-          "data": {
-            "product": {
-              "price": 1449.0,
-              "sample": 1.0
-            }
-          },
-          "dimensions": {
-            "product_id": "157283205",
-            "range": "day",
-            "updated_at": "2019-04-04"
-          },
-          "project_id": "5ce58c895c19e18fc5aaff24"
-        }
-      ]
-    }</pre>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <section class="border-b py-8">
-      <div class="container max-w-5xl mx-auto m-8">
-        <h2 class="w-full my-2 text-4xl font-bold leading-tight text-center text-gray-800">Wait a second. Where does Trifle come from?</h2>
-        <div class="w-full mb-4">
-          <div class="mx-auto text-gray-600 ">
-            <div class="pt-5 leading-normal">Original idea for Trifle came in late 2015. I decided to build my own performance monitoring tool for Ruby on Rails. After running quick alpha and long beta, it actually worked really really well. Unfortunatelly, it didn't gain much traction so after almost a year in production I decided to move on. You can read more about it <a href="https://medium.com/trifle-io/what-i-learned-from-building-performance-monitoring-from-scratch-bb9314cb092">here</a>.</div>
-            <div class="pt-5 leading-normal">Now we are a year or two later. After building similar analytical engine for the third time, I decided thats enough and used everything I've learnt to make an universal one. The one that doesn't care if you wanna track performance of your application, prices of a product or your Instagram followers.</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="container mx-auto text-center pt-32 pb-8">
-      <div>&#9400; Trifle, Inc</div>
-    </section>
-
-
-
-
-  </main>
 </div>
 
+<!-- Feature section -->
+<div class="mx-auto max-w-7xl px-6 lg:px-8 py-24">
+  <div class="mx-auto max-w-2xl lg:text-center">
+    <h2 class="text-base font-semibold leading-7 text-teal-600">
+      High Performance Analytics
+    </h2>
+    <p class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+      Everything you need for metrics tracking
+    </p>
+    <p class="mt-6 text-lg leading-8 text-gray-600">
+      Built on MongoDB and PostgreSQL, our platform handles high-volume metrics collection with real-time visualization capabilities.
+    </p>
+  </div>
+</div>
 
+<!-- Simple API example -->
+<div class="bg-gray-50">
+  <div class="mx-auto max-w-7xl px-6 py-24 sm:py-32 lg:px-8">
+    <div class="mx-auto max-w-2xl lg:mx-0">
+      <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+        Simple API Integration
+      </h2>
+      <p class="mt-6 text-lg leading-8 text-gray-600">
+        Get started with just a few lines of code. Our REST API makes it easy to track any metric.
+      </p>
+    </div>
+    <div class="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">
+      <div class="bg-gray-900 p-6 rounded-lg">
+        <pre class="text-green-400 text-sm overflow-x-auto">curl -X POST "http://localhost:4000/api/metrics" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_TOKEN" \
+     -d '<%= Phoenix.HTML.raw("'{\"key\": \"page_views\", \"at\": \"2024-01-15T10:30:00Z\", \"values\": {\"total\": 1250}}'") %>'</pre>
+      </div>
+    </div>
+  </div>
+</div>
