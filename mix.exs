@@ -5,7 +5,7 @@ defmodule Trifle.MixProject do
     [
       app: :trifle,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -40,9 +40,9 @@ defmodule Trifle.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 3.3"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 0.18.16"},
+      {:phoenix_live_view, "~> 0.20.2"},
       {:floki, ">= 0.30.0", only: :test},
-      {:phoenix_live_dashboard, "~> 0.7.2"},
+      {:phoenix_live_dashboard, "~> 0.8.5"},
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
       {:swoosh, "~> 1.3"},
@@ -55,8 +55,9 @@ defmodule Trifle.MixProject do
       {:slugy, "~> 4.1.1"},
       {:tzdata, "~> 1.1.1"},
       {:timex, "~>3.7.11"},
-      {:trifle_stats, path: "packages/trifle_stats"},
-      {:mongodb_driver, "~> 1.0.3"}
+      {:trifle_stats, path: "../trifle_stats"},
+      # {:trifle_stats, "~>1.0.0"},
+      {:mongodb_driver, "~> 1.2.0"}
     ]
   end
 

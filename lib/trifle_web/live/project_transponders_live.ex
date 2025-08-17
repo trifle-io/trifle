@@ -45,6 +45,6 @@ defmodule TrifleWeb.ProjectTranspondersLive do
   def mount(params, _session, socket) do
     project = Organizations.get_project!(params["id"])
 
-    {:ok, assign(socket, page_title: "Projects |> #{project.name} |> Transponders", project: project)}
+    {:ok, assign(socket, page_title: ["Projects", project.name, "Transponders"], project: project)}
   end
 end

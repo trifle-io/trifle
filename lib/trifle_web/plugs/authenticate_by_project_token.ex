@@ -30,7 +30,7 @@ defmodule TrifleWeb.Plugs.AuthenticateByProjectToken do
   end
 
   def find_project_from_header(conn, mode) do
-    with token when not is_nil(token) <- List.first(Plug.Conn.get_req_header(conn, "x-project-token")),
+    with token when not is_nil(token) <- extract_bearer_token(conn),
       {:ok, project, token} <- Trifle.Organizations.get_project_by_token(token),
       {:ok, permission} <- valid_mode?(token, mode) do
         {:ok, project}
@@ -41,6 +41,13 @@ defmodule TrifleWeb.Plugs.AuthenticateByProjectToken do
         {:error, :not_found}
       nil ->
         {:error, :not_found}
+    end
+  end
+
+  defp extract_bearer_token(conn) do
+    case List.first(Plug.Conn.get_req_header(conn, "authorization")) do
+      "Bearer " <> token -> token
+      _ -> nil
     end
   end
 
