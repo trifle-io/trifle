@@ -137,7 +137,7 @@ defmodule TrifleWeb.ProjectsLive do
 
     socket =
       assign(socket,
-        page_title: (if is_new, do: "Projects |> New", else: "Projects"),
+        page_title: (if is_new, do: ["Projects", "New"], else: ["Projects"]),
         projects: projects,
         is_new: is_new,
         form: to_form(changeset),

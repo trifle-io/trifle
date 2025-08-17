@@ -637,4 +637,23 @@ defmodule TrifleWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  Formats a breadcrumb list into a string with proper spacing and dividers.
+  Uses non-breaking spaces to ensure proper spacing in HTML.
+  
+  ## Examples
+  
+      format_breadcrumb(["Projects", "MyProject", "Settings"])
+      # => "Projects &nbsp;&nbsp;&nbsp;▸&nbsp;&nbsp;&nbsp; MyProject &nbsp;&nbsp;&nbsp;▸&nbsp;&nbsp;&nbsp; Settings"
+      
+  """
+  def format_breadcrumb(breadcrumbs) when is_list(breadcrumbs) do
+    breadcrumbs
+    |> Enum.join(" • ")
+  end
+  
+  def format_breadcrumb(breadcrumb) when is_binary(breadcrumb) do
+    breadcrumb
+  end
 end

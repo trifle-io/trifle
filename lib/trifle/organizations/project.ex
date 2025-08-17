@@ -24,7 +24,8 @@ defmodule Trifle.Organizations.Project do
   end
 
   def stats_config(project) do
-    {:ok, connection} = Mongo.start_link(url: "mongodb://mongo:27017/trifle")
+    # Use a shared connection pool instead of creating new connections
+    connection = get_mongo_connection()
 
     Trifle.Stats.Configuration.configure(
       Trifle.Stats.Driver.MongoProject.new(connection, "proj_#{project.id}"),
@@ -32,6 +33,16 @@ defmodule Trifle.Organizations.Project do
       Tzdata.TimeZoneDatabase,
       Trifle.Organizations.Project.beginning_of_week_for(project)
     )
+  end
+
+  defp get_mongo_connection do
+    case Process.whereis(:trifle_mongo) do
+      nil ->
+        {:ok, conn} = Mongo.start_link(url: "mongodb://localhost:27017/trifle", name: :trifle_mongo)
+        conn
+      pid ->
+        pid
+    end
   end
 
   def beginning_of_week_for(project) do

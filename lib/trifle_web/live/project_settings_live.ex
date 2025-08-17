@@ -111,6 +111,6 @@ defmodule TrifleWeb.ProjectSettingsLive do
   def mount(params, _session, socket) do
     project = Organizations.get_project!(params["id"])
 
-    {:ok, assign(socket, page_title: "Projects |> #{project.name} |> Settings", project: project)}
+    {:ok, assign(socket, page_title: ["Projects", project.name, "Settings"], project: project)}
   end
 end
