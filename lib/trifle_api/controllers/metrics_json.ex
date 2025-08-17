@@ -1,4 +1,4 @@
-defmodule TrifleWeb.Api.MetricsJSON do
+defmodule TrifleApi.MetricsJSON do
   def create() do
     %{data: :ok}
   end

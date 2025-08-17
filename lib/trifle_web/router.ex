@@ -70,15 +70,23 @@ defmodule TrifleWeb.Router do
       on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
       live "/users/settings", UserSettingsLive, :edit
       live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
+    end
+  end
 
-      live "/app", AppLive, :dashboard
-      live "/app/projects", ProjectsLive, :index
-      live "/app/projects/new", ProjectsLive, :new
-      live "/app/projects/:id", ProjectLive, :show
-      live "/app/projects/:id/transponders", ProjectTranspondersLive
-      live "/app/projects/:id/settings", ProjectSettingsLive
-      live "/app/projects/:id/tokens", ProjectTokensLive, :index
-      live "/app/projects/:id/tokens/new", ProjectTokensLive, :new
+  # TrifleApp routes
+  scope "/app", TrifleApp do
+    pipe_through [:browser, :require_authenticated_user]
+
+    live_session :app_authenticated,
+      on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
+      live "/", AppLive, :dashboard
+      live "/projects", ProjectsLive, :index
+      live "/projects/new", ProjectsLive, :new
+      live "/projects/:id", ProjectLive, :show
+      live "/projects/:id/transponders", ProjectTranspondersLive
+      live "/projects/:id/settings", ProjectSettingsLive
+      live "/projects/:id/tokens", ProjectTokensLive, :index
+      live "/projects/:id/tokens/new", ProjectTokensLive, :new
     end
   end
 
@@ -94,11 +102,22 @@ defmodule TrifleWeb.Router do
     end
   end
 
-  scope "/api", TrifleWeb.Api, as: :api do
+  scope "/api", TrifleApi, as: :api do
     pipe_through(:api)
 
     post("/metrics", MetricsController, :create)
     get("/metrics", MetricsController, :index)
+  end
+
+  # Admin routes
+  scope "/admin", TrifleAdmin, as: :admin do
+    pipe_through [:browser, :require_authenticated_user]
+
+    live_session :admin_authenticated,
+      on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
+      live "/", AdminLive, :index
+      live "/users", UsersLive, :index
+    end
   end
 
 end

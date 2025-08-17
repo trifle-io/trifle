@@ -1,4 +1,4 @@
-defmodule TrifleWeb.Api.ErrorJSON do
+defmodule TrifleApi.ErrorJSON do
   def render("400.json", _assigns) do
     %{errors: %{detail: "Bad request"}}
   end

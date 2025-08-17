@@ -1,5 +1,5 @@
-defmodule TrifleWeb.Api.MetricsController do
-  use TrifleWeb, :controller
+defmodule TrifleApi.MetricsController do
+  use TrifleApi, :controller
 
   plug(TrifleWeb.Plugs.AuthenticateByProjectToken, %{mode: :read} when action in [:index])
   plug(TrifleWeb.Plugs.AuthenticateByProjectToken, %{mode: :write} when action in [:create])
