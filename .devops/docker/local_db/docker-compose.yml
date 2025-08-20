@@ -5,16 +5,12 @@ services:
     image: redis:latest
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
     restart: unless-stopped
 
   mongo:
     image: mongo:latest
     ports:
       - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
     restart: unless-stopped
 
   postgres:
@@ -25,11 +21,4 @@ services:
       POSTGRES_DB: trifle_dev
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-
-volumes:
-  redis_data:
-  mongo_data:
-  postgres_data:

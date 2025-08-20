@@ -34,6 +34,7 @@ Hooks.SmartTimeframeInput = {
   }
 }
 
+
 Hooks.ProjectTimeline = {
   createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
     // Calculate dynamic bar width based on container and data points
@@ -50,7 +51,9 @@ Hooks.ProjectTimeline = {
     return Highcharts.chart('timeline-chart', {
       chart: {
         type: 'column',
-        height: '200'
+        height: '120',
+        marginTop: 10,
+        spacingTop: 5
       },
       time: {
         useUTC: false
@@ -60,7 +63,13 @@ Hooks.ProjectTimeline = {
       },
       xAxis: {
         type: 'datetime',
-        dateTimeLabelFormats: { // don't display the year
+        dateTimeLabelFormats: {
+          millisecond: '%H:%M:%S.%L',
+          second: '%H:%M',
+          minute: '%H:%M',
+          hour: '%H:%M',
+          day: '%m-%d %H:%M',
+          week: '%m-%d',
           month: '%e. %b',
           year: '%b'
         },
@@ -72,17 +81,17 @@ Hooks.ProjectTimeline = {
         title: {
           enabled: false
         },
-        min: 0
+        min: 0,
+        endOnTick: false,
+        maxPadding: 0.05
+      },
+
+      tooltip: {
+        xDateFormat: '%Y-%m-%d %H:%M:%S'
       },
 
       legend: {
-        enabled: true,
-        align: 'center',
-        verticalAlign: 'bottom',
-        layout: 'horizontal',
-        itemStyle: {
-          fontSize: '12px'
-        }
+        enabled: false
       },
 
       plotOptions: {

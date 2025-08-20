@@ -3,6 +3,9 @@ defmodule Trifle.Organizations.Project do
   import Ecto.Changeset
   import Slugy
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "projects" do
     field :beginning_of_week, :integer
     field :name, :string
@@ -29,9 +32,10 @@ defmodule Trifle.Organizations.Project do
 
     Trifle.Stats.Configuration.configure(
       Trifle.Stats.Driver.MongoProject.new(connection, "proj_#{project.id}"),
-      project.time_zone,
-      Tzdata.TimeZoneDatabase,
-      Trifle.Organizations.Project.beginning_of_week_for(project)
+      time_zone: project.time_zone,
+      time_zone_database: Tzdata.TimeZoneDatabase,
+      beginning_of_week: Trifle.Organizations.Project.beginning_of_week_for(project),
+      track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
     )
   end
 
