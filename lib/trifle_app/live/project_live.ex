@@ -341,18 +341,109 @@ defmodule TrifleApp.ProjectLive do
 
     cond do
       # <= 1 hour
-      duration_seconds <= 3600 -> "hour"
+      duration_seconds <= 3600 -> "1m"
       # <= 1 day
-      duration_seconds <= 86400 -> "hour"
+      duration_seconds <= 86400 -> "1h"
       # <= 1 week
-      duration_seconds <= 604_800 -> "day"
+      duration_seconds <= 604_800 -> "1d"
       # <= 30 days
-      duration_seconds <= 2_592_000 -> "week"
+      duration_seconds <= 2_592_000 -> "1w"
       # <= 90 days
-      duration_seconds <= 7_776_000 -> "month"
+      duration_seconds <= 7_776_000 -> "1mo"
       # <= 1 year
-      duration_seconds <= 31_536_000 -> "month"
-      true -> "year"
+      duration_seconds <= 31_536_000 -> "1mo"
+      true -> "1y"
+    end
+  end
+
+  @doc """
+  Convert UI range values to trifle_stats granularity strings.
+  This maintains backward compatibility with the existing UI.
+  """
+  def ui_range_to_granularity(range) do
+    case range do
+      # Standard granularities (1-unit intervals)
+      "second" -> "1s"
+      "minute" -> "1m" 
+      "hour" -> "1h"
+      "day" -> "1d"
+      "week" -> "1w"
+      "month" -> "1mo"
+      "quarter" -> "1q"
+      "year" -> "1y"
+      
+      # Direct granularity strings (for future use or config)
+      granularity when is_binary(granularity) -> granularity
+      
+      # Fallback for any other cases
+      _ -> "1h"
+    end
+  end
+
+  @doc """
+  Get available granularities from the driver configuration.
+  This allows the UI to display the actual supported granularities.
+  """
+  def get_available_granularities(project) do
+    config = Project.stats_config(project)
+    config.granularities
+  end
+
+  @doc """
+  Convert granularity strings to human-readable labels for the UI.
+  """
+  def granularity_to_label(granularity) do
+    case granularity do
+      "1s" -> "Second"
+      "1m" -> "Minute" 
+      "1h" -> "Hour"
+      "1d" -> "Day"
+      "1w" -> "Week"
+      "1mo" -> "Month"
+      "1q" -> "Quarter"
+      "1y" -> "Year"
+      # For custom granularities, show the raw value
+      granularity -> granularity
+    end
+  end
+
+  @doc """
+  Get granularities with their labels and positions for the UI buttons.
+  """
+  def get_granularity_buttons(project) do
+    granularities = get_available_granularities(project)
+    
+    granularities
+    |> Enum.with_index()
+    |> Enum.map(fn {granularity, index} ->
+      label = granularity_to_label(granularity)
+      
+      position = cond do
+        index == 0 -> :first
+        index == length(granularities) - 1 -> :last
+        true -> :middle
+      end
+      
+      {label, granularity, position}
+    end)
+  end
+
+  @doc """
+  Convert granularity string to old UI range format for backward compatibility.
+  This is used for determining if a range button should be selected.
+  """
+  def granularity_to_ui_range(granularity) do
+    case granularity do
+      "1s" -> "second"
+      "1m" -> "minute"
+      "1h" -> "hour"
+      "1d" -> "day"
+      "1w" -> "week"
+      "1mo" -> "month"
+      "1q" -> "quarter"
+      "1y" -> "year"
+      # For custom granularities, return as-is
+      granularity -> granularity
     end
   end
 
@@ -471,10 +562,8 @@ defmodule TrifleApp.ProjectLive do
   end
 
   def load_project_stats(project, range, from, to) do
-    # Convert string range to atom (e.g., "hour" -> :hour)
-    range_atom = String.to_atom(range)
-
-    Trifle.Stats.values("__system__keys__", from, to, range_atom, Project.stats_config(project))
+    granularity = ui_range_to_granularity(range)
+    Trifle.Stats.values("__system__keys__", from, to, granularity, Project.stats_config(project))
   end
 
   def reduce_stats(values) when is_list(values) do
@@ -561,10 +650,8 @@ defmodule TrifleApp.ProjectLive do
       do: nil
 
   def load_project_key_stats(project, key, range, from, to) do
-    # Convert string range to atom (e.g., "hour" -> :hour)  
-    range_atom = String.to_atom(range)
-
-    Trifle.Stats.values(key, from, to, range_atom, Project.stats_config(project))
+    granularity = ui_range_to_granularity(range)
+    Trifle.Stats.values(key, from, to, granularity, Project.stats_config(project))
   end
 
   def process_project_key_stats(stats) when is_nil(stats), do: {:ok, nil, nil}
@@ -855,19 +942,11 @@ defmodule TrifleApp.ProjectLive do
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-2">Sensitivity</label>
               <div class="inline-flex rounded-md shadow-sm" role="group">
-                <%= for {label, value, position} <- [
-                    {"Minute", "minute", :first},
-                    {"Hour", "hour", :middle},
-                    {"Day", "day", :middle},
-                    {"Week", "week", :middle},
-                    {"Month", "month", :middle},
-                    {"Quarter", "quarter", :middle},
-                    {"Year", "year", :last}
-                  ] do %>
+                <%= for {label, granularity, position} <- get_granularity_buttons(@project) do %>
                   <button
                     type="button"
                     phx-click="select_sensitivity"
-                    phx-value-sensitivity={value}
+                    phx-value-sensitivity={granularity_to_ui_range(granularity)}
                     class={
                       base_classes =
                         "relative inline-flex items-center px-2 py-1 text-xs font-medium focus:z-10 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -880,7 +959,7 @@ defmodule TrifleApp.ProjectLive do
                         end
 
                       state_classes =
-                        if @range == value do
+                        if @range == granularity_to_ui_range(granularity) do
                           "bg-teal-600 text-white border-teal-600 hover:bg-teal-700"
                         else
                           "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"

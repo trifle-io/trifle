@@ -87,6 +87,8 @@ defmodule TrifleWeb.Router do
       live "/projects/:id/settings", ProjectSettingsLive
       live "/projects/:id/tokens", ProjectTokensLive, :index
       live "/projects/:id/tokens/new", ProjectTokensLive, :new
+      live "/explore", ExploreLive, :index
+      live "/explore/:id", DatabaseExploreLive, :show
     end
   end
 
@@ -117,6 +119,10 @@ defmodule TrifleWeb.Router do
       on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
       live "/", AdminLive, :index
       live "/users", UsersLive, :index
+      live "/databases", DatabasesLive, :index
+      live "/databases/new", DatabasesLive, :new
+      live "/databases/:id/edit", DatabasesLive, :edit
+      live "/databases/:id/show", DatabasesLive, :show
     end
   end
 

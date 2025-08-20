@@ -2,6 +2,9 @@ defmodule Trifle.Organizations.ProjectToken do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "project_tokens" do
     field :name, :string
     field :read, :boolean, default: false

@@ -6,7 +6,7 @@ defmodule Trifle.Organizations do
   import Ecto.Query, warn: false
   alias Trifle.Repo
 
-  alias Trifle.Organizations.Project
+  alias Trifle.Organizations.{Project, Database}
 
   @doc """
   Returns the list of projects.
@@ -242,5 +242,82 @@ defmodule Trifle.Organizations do
   """
   def change_project_token(%ProjectToken{} = project_token, attrs \\ %{}) do
     ProjectToken.changeset(project_token, attrs)
+  end
+
+  ## Database functions
+
+  @doc """
+  Returns the list of databases.
+  """
+  def list_databases do
+    from(d in Database, order_by: [asc: d.inserted_at, asc: d.id])
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a single database.
+
+  Raises `Ecto.NoResultsError` if the Database does not exist.
+  """
+  def get_database!(id), do: Repo.get!(Database, id)
+
+  @doc """
+  Creates a database.
+  """
+  def create_database(attrs \\ %{}) do
+    %Database{}
+    |> Database.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a database.
+  """
+  def update_database(%Database{} = database, attrs) do
+    database
+    |> Database.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a database.
+  """
+  def delete_database(%Database{} = database) do
+    Repo.delete(database)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking database changes.
+  """
+  def change_database(%Database{} = database, attrs \\ %{}) do
+    Database.changeset(database, attrs)
+  end
+
+  @doc """
+  Checks if the database is already set up.
+  """
+  def database_setup?(%Database{} = database) do
+    Database.is_setup?(database)
+  end
+
+  @doc """
+  Checks the database status and updates the tracking fields.
+  """
+  def check_database_status(%Database{} = database) do
+    Database.check_status(database)
+  end
+
+  @doc """
+  Sets up the database for Trifle::Stats.
+  """
+  def setup_database(%Database{} = database) do
+    Database.setup(database)
+  end
+
+  @doc """
+  Nukes all data from the database.
+  """
+  def nuke_database(%Database{} = database) do
+    Database.nuke(database)
   end
 end
