@@ -438,13 +438,13 @@ defmodule TrifleApp.DatabaseExploreLive do
                     {:error, _} ->
                       default_to = DateTime.utc_now()
                       default_from = DateTime.shift(default_to, hour: -24)
-                      {default_from, default_to, nil, false}
+                      {default_from, default_to, "24h", false}
                   end
 
                 true ->
                   default_to = DateTime.utc_now()
                   default_from = DateTime.shift(default_to, hour: -24)
-                  {default_from, default_to, nil, false}
+                  {default_from, default_to, "24h", false}
               end
           end
 
@@ -456,14 +456,14 @@ defmodule TrifleApp.DatabaseExploreLive do
               # Fallback to defaults if timeframe parsing fails
               default_to = DateTime.utc_now()
               default_from = DateTime.shift(default_to, hour: -24)
-              {default_from, default_to, nil, false}
+              {default_from, default_to, "24h", false}
           end
 
         # Default case: use 24-hour range from now
         true ->
           default_to = DateTime.utc_now()
           default_from = DateTime.shift(default_to, hour: -24)
-          {default_from, default_to, nil, false}
+          {default_from, default_to, "24h", false}
       end
 
     # Preserve the current key search filter if it exists, otherwise use empty string
@@ -480,15 +480,32 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(show_timeframe_dropdown: false)
       |> assign(show_sensitivity_dropdown: false)
 
-    # Check if we need to keep the current loading state (when coming from event handlers)
-    # or load data immediately (when first loading the page or refreshing)
-    if socket.assigns[:loading] do
-      # Loading state already set by event handler, trigger async data load
-      send(self(), :load_data)
+    # Check if this is a fresh page load without timeframe parameters
+    # If so, update URL to include default parameters for consistency
+    should_update_url = is_nil(params["timeframe"]) and is_nil(params["from"]) and is_nil(params["to"])
+
+    if should_update_url do
+      # Push default parameters to URL to maintain consistency between URL and UI state
+      url_params = %{
+        timeframe: smart_input,
+        granularity: granularity
+      }
+      # Only add key parameter if it exists
+      url_params = if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
+      
+      socket = push_patch(socket, to: ~p"/app/explore/#{socket.assigns.database.id}?#{url_params}")
       {:noreply, socket}
     else
-      # First page load or refresh - load data immediately without loading indicator
-      load_data_and_update_socket(socket)
+      # Check if we need to keep the current loading state (when coming from event handlers)
+      # or load data immediately (when first loading the page or refreshing)
+      if socket.assigns[:loading] do
+        # Loading state already set by event handler, trigger async data load
+        send(self(), :load_data)
+        {:noreply, socket}
+      else
+        # First page load or refresh - load data immediately without loading indicator
+        load_data_and_update_socket(socket)
+      end
     end
   end
 

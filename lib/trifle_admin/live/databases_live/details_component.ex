@@ -74,6 +74,24 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
             </div>
           <% end %>
 
+          <!-- Granularities -->
+          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+            <dt class="text-sm font-medium text-gray-900">Time granularities</dt>
+            <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0">
+              <%= if @database.granularities && length(@database.granularities) > 0 do %>
+                <div class="flex flex-wrap gap-1">
+                  <%= for granularity <- @database.granularities do %>
+                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                      <%= granularity %>
+                    </span>
+                  <% end %>
+                </div>
+              <% else %>
+                <span class="text-gray-500">Using defaults (1m, 1h, 1d, 1w, 1mo, 1q, 1y)</span>
+              <% end %>
+            </dd>
+          </div>
+
           <%= for {key, value} <- (@database.config || %{}) do %>
             <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
               <dt class="text-sm font-medium text-gray-900"><%= humanize_config_key(key) %></dt>
