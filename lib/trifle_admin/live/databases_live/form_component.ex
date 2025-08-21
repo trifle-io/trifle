@@ -197,10 +197,16 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
                           <div class="flex gap-3">
                             <div class="flex h-6 shrink-0 items-center">
                               <div class="group grid size-4 grid-cols-1">
+                                <!-- Hidden field to ensure unchecked state is sent -->
+                                <input 
+                                  name={"database[config][#{key}]"} 
+                                  type="hidden" 
+                                  value="false"
+                                />
                                 <input 
                                   name={"database[config][#{key}]"} 
                                   type="checkbox" 
-                                  checked={get_config_value(@form, key, value) == true}
+                                  checked={is_config_value_true(@form, key, value)}
                                   value="true"
                                   class="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600" 
                                 />
@@ -357,6 +363,15 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
           config when is_map(config) -> Map.get(config, key, default_value)
           _ -> default_value
         end
+    end
+  end
+
+  defp is_config_value_true(form, key, default_value) do
+    value = get_config_value(form, key, default_value)
+    case value do
+      true -> true
+      "true" -> true
+      _ -> false
     end
   end
 

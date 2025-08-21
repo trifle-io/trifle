@@ -10,8 +10,14 @@ defmodule Trifle.Application do
     children = [
       # Start the Telemetry supervisor
       TrifleWeb.Telemetry,
-      # Start the Ecto repository
+      # Start the Ecto repository (main application PostgreSQL)
       Trifle.Repo,
+      # Start dynamic database connection pool supervisors
+      Trifle.DatabasePools.PostgresPoolSupervisor,
+      Trifle.DatabasePools.MongoPoolSupervisor,
+      Trifle.DatabasePools.RedisPoolSupervisor,
+      Trifle.DatabasePools.SqlitePoolSupervisor,
+      Trifle.DatabasePools.MySQLPoolSupervisor,
       # Start the PubSub system
       {Phoenix.PubSub, name: Trifle.PubSub},
       # Start Finch

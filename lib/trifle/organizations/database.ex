@@ -65,7 +65,8 @@ defmodule Trifle.Organizations.Database do
       "pool_timeout" => 15000,
       "timeout" => 15000,
       "ssl" => false,
-      "table_name" => "trifle_stats"
+      "table_name" => "trifle_stats",
+      "joined_identifiers" => true
     }
   end
 
@@ -75,7 +76,8 @@ defmodule Trifle.Organizations.Database do
       "pool_timeout" => 5000,
       "timeout" => 5000,
       "collection_name" => "trifle_stats",
-      "expire_after" => nil
+      "expire_after" => nil,
+      "joined_identifiers" => true
     }
   end
 
@@ -83,7 +85,8 @@ defmodule Trifle.Organizations.Database do
     %{
       "pool_size" => 5,
       "timeout" => 5000,
-      "table_name" => "trifle_stats"
+      "table_name" => "trifle_stats",
+      "joined_identifiers" => true
     }
   end
 
@@ -136,173 +139,40 @@ defmodule Trifle.Organizations.Database do
         config = get_field(changeset, :config) || %{}
         default_config = default_config_options(driver)
         merged_config = Map.merge(default_config, config)
-        put_change(changeset, :config, merged_config)
+        normalized_config = normalize_config_values(merged_config)
+        put_change(changeset, :config, normalized_config)
     end
   end
+
+  # Convert string values to appropriate types
+  defp normalize_config_values(config) when is_map(config) do
+    config
+    |> Enum.map(fn {key, value} -> {key, normalize_config_value(key, value)} end)
+    |> Enum.into(%{})
+  end
+
+  defp normalize_config_value("ssl", "true"), do: true
+  defp normalize_config_value("ssl", "false"), do: false
+  defp normalize_config_value("joined_identifiers", "true"), do: true
+  defp normalize_config_value("joined_identifiers", "false"), do: false
+  defp normalize_config_value(_key, value), do: value
 
   def stats_config(database) do
-    case database.driver do
-      "redis" ->
-        Trifle.Stats.Configuration.configure(
-          build_redis_driver(database),
-          time_zone: "UTC",
-          time_zone_database: Tzdata.TimeZoneDatabase,
-          beginning_of_week: :monday,
-          track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
-        )
-
-      "mongo" ->
-        Trifle.Stats.Configuration.configure(
-          build_mongo_driver(database),
-          time_zone: "UTC",
-          time_zone_database: Tzdata.TimeZoneDatabase,
-          beginning_of_week: :monday,
-          track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
-        )
-
-      "postgres" ->
-        Trifle.Stats.Configuration.configure(
-          build_postgres_driver(database),
-          time_zone: "UTC",
-          time_zone_database: Tzdata.TimeZoneDatabase,
-          beginning_of_week: :monday,
-          track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
-        )
-
-      "sqlite" ->
-        Trifle.Stats.Configuration.configure(
-          build_sqlite_driver(database),
-          time_zone: "UTC",
-          time_zone_database: Tzdata.TimeZoneDatabase,
-          beginning_of_week: :monday,
-          track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
-        )
-
-      _ ->
-        raise ArgumentError, "Unsupported database driver: #{database.driver}"
-    end
+    driver = get_or_create_driver(database)
+    
+    Trifle.Stats.Configuration.configure(
+      driver,
+      time_zone: "UTC",
+      time_zone_database: Tzdata.TimeZoneDatabase,
+      beginning_of_week: :monday,
+      track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
+    )
   end
 
-  defp build_redis_driver(database) do
+  # Get or create supervised connection pool for a database
+  defp get_or_create_driver(%__MODULE__{driver: "postgres"} = database) do
+    {:ok, connection_name} = Trifle.DatabasePools.PostgresPoolSupervisor.start_postgres_pool(database)
     config = database.config || %{}
-    
-    # Build Redis connection URL
-    url = build_redis_url(database)
-    
-    # Start the Redis connection
-    {:ok, connection} = Redix.start_link(url)
-    
-    Trifle.Stats.Driver.Redis.new(
-      connection,
-      config["prefix"] || "trifle_stats",
-      "::"
-    )
-  end
-
-  defp build_redis_url(database) do
-    url = "redis://"
-    url = if database.password, do: "#{url}:#{database.password}@", else: url
-    url = "#{url}#{database.host}:#{database.port}"
-    url
-  end
-
-  defp build_mongo_driver(database) do
-    config = database.config || %{}
-    
-    # Build MongoDB connection URL
-    url = build_mongo_url(database)
-
-    # Convert string config values to appropriate types
-    pool_size = case config["pool_size"] do
-      nil -> 5
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
-    
-    timeout = case config["timeout"] do
-      nil -> 5000
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
-    
-    pool_timeout = case config["pool_timeout"] do
-      nil -> 5000
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
-
-    # Start the MongoDB connection
-    {:ok, connection} = Mongo.start_link(
-      url: url,
-      pool_size: pool_size,
-      timeout: timeout,
-      pool_timeout: pool_timeout
-    )
-
-    # Convert joined_identifiers to boolean
-    joined_identifiers = case config["joined_identifiers"] do
-      nil -> true
-      true -> true
-      false -> false
-      "true" -> true
-      "false" -> false
-      val -> val
-    end
-    
-    Trifle.Stats.Driver.Mongo.new(
-      connection,
-      config["collection_name"] || "trifle_stats",
-      "::",
-      1,
-      joined_identifiers,
-      config["expire_after"]
-    )
-  end
-
-  defp build_mongo_url(database) do
-    url = "mongodb://"
-    url = if database.username && database.password do
-      "#{url}#{database.username}:#{database.password}@"
-    else
-      url
-    end
-    url = "#{url}#{database.host}:#{database.port}/#{database.database_name}"
-    url
-  end
-
-  defp build_postgres_driver(database) do
-    config = database.config || %{}
-    
-    # Convert string config values to appropriate types
-    pool_size = case config["pool_size"] do
-      nil -> 10
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
-    
-    pool_timeout = case config["pool_timeout"] do
-      nil -> 15000
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
-    
-    timeout = case config["timeout"] do
-      nil -> 15000
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
-    
-    # Start the PostgreSQL connection
-    {:ok, connection} = Postgrex.start_link(
-      hostname: database.host,
-      port: database.port,
-      username: database.username,
-      password: database.password,
-      database: database.database_name,
-      pool_size: pool_size,
-      pool_timeout: pool_timeout,
-      timeout: timeout
-    )
     
     # Convert joined_identifiers to boolean
     joined_identifiers = case config["joined_identifiers"] do
@@ -315,18 +185,16 @@ defmodule Trifle.Organizations.Database do
     end
     
     Trifle.Stats.Driver.Postgres.new(
-      connection,
+      connection_name,
       config["table_name"] || "trifle_stats",
       joined_identifiers,
       config["ping_table_name"]
     )
   end
-
-  defp build_sqlite_driver(database) do
+  
+  defp get_or_create_driver(%__MODULE__{driver: "mongo"} = database) do
+    {:ok, connection_name} = Trifle.DatabasePools.MongoPoolSupervisor.start_mongo_pool(database)
     config = database.config || %{}
-    
-    # Start the SQLite connection
-    {:ok, connection} = Exqlite.start_link(database: database.file_path)
     
     # Convert joined_identifiers to boolean
     joined_identifiers = case config["joined_identifiers"] do
@@ -338,12 +206,89 @@ defmodule Trifle.Organizations.Database do
       val -> val
     end
     
-    Trifle.Stats.Driver.Sqlite.new(
-      connection,
-      config["table_name"] || "trifle_stats",
-      config["ping_table_name"],
-      joined_identifiers
+    Trifle.Stats.Driver.Mongo.new(
+      connection_name,
+      config["collection_name"] || "trifle_stats",
+      "::",
+      1,
+      joined_identifiers,
+      config["expire_after"]
     )
+  end
+  
+  defp get_or_create_driver(%__MODULE__{driver: "redis"} = database) do
+    case Trifle.DatabasePools.RedisPoolSupervisor.start_redis_pool(database) do
+      {:ok, pool_name} ->
+        config = database.config || %{}
+        
+        # Use the first connection from the pool as the connection reference
+        # The Redis driver will need to be updated to handle pool-based connections
+        first_connection_name = :"#{pool_name}_0"
+        
+        Trifle.Stats.Driver.Redis.new(
+          first_connection_name,
+          config["prefix"] || "trifle_stats",
+          "::"
+        )
+      {:error, reason} ->
+        raise "Failed to start Redis pool: #{inspect(reason)}"
+    end
+  end
+  
+  defp get_or_create_driver(%__MODULE__{driver: "sqlite"} = database) do
+    {:ok, connection_name} = Trifle.DatabasePools.SqlitePoolSupervisor.start_sqlite_pool(database)
+    config = database.config || %{}
+    
+    # Convert joined_identifiers to boolean
+    joined_identifiers = case config["joined_identifiers"] do
+      nil -> true
+      true -> true
+      false -> false
+      "true" -> true
+      "false" -> false
+      val -> val
+    end
+    
+    # Get the actual connection from our wrapper GenServer
+    case GenServer.call(connection_name, :get_connection) do
+      {:ok, actual_connection} ->
+        Trifle.Stats.Driver.Sqlite.new(
+          actual_connection,
+          config["table_name"] || "trifle_stats",
+          config["ping_table_name"],
+          joined_identifiers
+        )
+      {:error, reason} ->
+        raise "Failed to get SQLite connection: #{inspect(reason)}"
+    end
+  end
+  
+  defp get_or_create_driver(%__MODULE__{driver: "mysql"} = _database) do
+    # TODO: Implement MySQL driver in trifle_stats first
+    raise ArgumentError, "MySQL driver not yet implemented in trifle_stats library"
+  end
+  
+  defp get_or_create_driver(%__MODULE__{driver: driver}) do
+    raise ArgumentError, "Unsupported database driver: #{driver}"
+  end
+
+  # Helper functions for URL building (still used in setup/check functions)
+  defp build_redis_url(database) do
+    url = "redis://"
+    url = if database.password, do: "#{url}:#{database.password}@", else: url
+    url = "#{url}#{database.host}:#{database.port}"
+    url
+  end
+
+  defp build_mongo_url(database) do
+    url = "mongodb://"
+    url = if database.username && database.password do
+      "#{url}#{database.username}:#{database.password}@"
+    else
+      url
+    end
+    url = "#{url}#{database.host}:#{database.port}/#{database.database_name}"
+    url
   end
 
   def is_setup?(database) do
@@ -366,8 +311,7 @@ defmodule Trifle.Organizations.Database do
           {result, nil}
         "postgres" -> postgres_exists_direct?(database)
         "sqlite" -> 
-          driver = build_driver_for_check(database)
-          {sqlite_exists?(driver), nil}
+          {sqlite_exists_direct?(database), nil}
         _ -> {false, nil}
       end
 
@@ -416,14 +360,22 @@ defmodule Trifle.Organizations.Database do
       
       case database.driver do
         "sqlite" ->
+          require Logger
+          Logger.info("SQLite setup starting for database: #{database.id}")
+          
           # First ensure the directory exists
           file_path = database.file_path
-          dir_path = Path.dirname(file_path)
-          File.mkdir_p!(dir_path)
+          Logger.info("SQLite file path: #{file_path}")
           
-          # Open SQLite connection
-          case Exqlite.start_link(database: file_path) do
-            {:ok, connection} ->
+          if file_path do
+            dir_path = Path.dirname(file_path)
+            File.mkdir_p!(dir_path)
+            Logger.info("Created directory: #{dir_path}")
+          end
+          
+          # Use our connection pool to get or create the connection
+          case Trifle.DatabasePools.SqlitePoolSupervisor.start_sqlite_pool(database) do
+            {:ok, connection_name} ->
               table_name = config["table_name"] || "trifle_stats"
               joined_identifiers = case config["joined_identifiers"] do
                 "true" -> true
@@ -433,19 +385,29 @@ defmodule Trifle.Organizations.Database do
               end
               ping_table_name = config["ping_table_name"]
               
-              # Use the driver's setup function
-              result = Trifle.Stats.Driver.Sqlite.setup!(connection, table_name, joined_identifiers, ping_table_name)
-              
-              # Close the connection after setup
-              GenServer.stop(connection)
-              
-              case result do
-                :ok -> {:ok, "SQLite database setup completed successfully"}
-                other -> {:error, "Setup returned unexpected result: #{inspect(other)}"}
+              # Get the actual connection from our wrapper GenServer
+              case GenServer.call(connection_name, :get_connection) do
+                {:ok, actual_connection} ->
+                  # Use the driver's setup function instead of manual table creation
+                  try do
+                    result = Trifle.Stats.Driver.Sqlite.setup!(actual_connection, table_name, joined_identifiers, ping_table_name)
+                    
+                    case result do
+                      :ok -> {:ok, "SQLite database setup completed successfully"}
+                      other -> {:error, "Setup returned unexpected result: #{inspect(other)}"}
+                    end
+                  rescue
+                    error ->
+                      error_msg = Exception.message(error)
+                      {:error, "SQLite setup failed: #{error_msg}"}
+                  end
+                  
+                {:error, reason} ->
+                  {:error, "Failed to get SQLite connection: #{inspect(reason)}"}
               end
               
             {:error, reason} ->
-              {:error, "Failed to open SQLite file: #{inspect(reason)}"}
+              {:error, "Failed to create SQLite pool: #{inspect(reason)}"}
           end
           
         "redis" ->
@@ -712,11 +674,20 @@ defmodule Trifle.Organizations.Database do
     end
   end
 
-  defp sqlite_exists?(driver) do
-    query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
-    case Exqlite.query(driver.connection, query, [driver.table_name]) do
-      {:ok, %{rows: rows}} when length(rows) > 0 -> true
-      _ -> false
+  defp sqlite_exists_direct?(database) do
+    # Direct SQLite check without creating a driver
+    config = database.config || %{}
+    table_name = config["table_name"] || "trifle_stats"
+    
+    case Trifle.DatabasePools.SqlitePoolSupervisor.start_sqlite_pool(database) do
+      {:ok, connection_name} ->
+        query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+        case GenServer.call(connection_name, {:query, query, [table_name]}) do
+          {:ok, %{rows: rows}} when length(rows) > 0 -> true
+          _ -> false
+        end
+      {:error, _reason} ->
+        false
     end
   end
 
