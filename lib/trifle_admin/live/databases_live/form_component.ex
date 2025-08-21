@@ -181,6 +181,32 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
             </div>
           </div>
           
+          <!-- Granularities -->
+          <div>
+            <h2 class="text-base/7 font-semibold text-gray-900">Time Granularities</h2>
+            <p class="mt-1 max-w-2xl text-sm/6 text-gray-600">Comma-separated granularities for tracking metrics (e.g., 1m, 1h, 1d, 1w, 1mo, 1q, 1y).</p>
+            
+            <div class="mt-10 space-y-8 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t sm:border-t-gray-900/10 sm:pb-0">
+              <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
+                <label for="database_granularities" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Granularities</label>
+                <div class="mt-2 sm:col-span-2 sm:mt-0">
+                  <input 
+                    id="database_granularities" 
+                    name="database[granularities]" 
+                    type="text" 
+                    value={granularities_to_string(@form[:granularities].value)}
+                    placeholder="1m, 1h, 1d, 1w, 1mo, 1q, 1y"
+                    class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-xl sm:text-sm/6" 
+                  />
+                  <p class="mt-2 text-xs text-gray-500">Default: 1m, 1h, 1d, 1w, 1mo, 1q, 1y</p>
+                  <%= for error <- @form[:granularities].errors do %>
+                    <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <!-- Configuration Options -->
           <%= if @selected_driver && map_size(@config_options) > 0 do %>
             <div>
@@ -188,7 +214,7 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
               <p class="mt-1 max-w-2xl text-sm/6 text-gray-600">Driver-specific configuration settings.</p>
               
               <div class="mt-10 space-y-8 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t sm:border-t-gray-900/10 sm:pb-0">
-                <%= for {key, value} <- @config_options do %>
+                <%= for {key, value} <- sort_config_options(@config_options) do %>
                   <%= case config_field_type(key, @selected_driver) do %>
                     <% :boolean -> %>
                       <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
@@ -382,4 +408,25 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
   defp format_integer_value(value) when is_integer(value), do: to_string(value)
   defp format_integer_value(value) when is_binary(value), do: value
   defp format_integer_value(_), do: ""
+
+  # Convert granularities list to comma-separated string for form display
+  defp granularities_to_string(nil), do: ""
+  defp granularities_to_string([]), do: ""
+  defp granularities_to_string(granularities) when is_list(granularities) do
+    Enum.join(granularities, ", ")
+  end
+  defp granularities_to_string(value) when is_binary(value), do: value
+  defp granularities_to_string(_), do: ""
+
+  # Sort configuration options to put table/collection names first
+  defp sort_config_options(config_options) when is_map(config_options) do
+    config_options
+    |> Enum.sort_by(fn {key, _value} ->
+      case key do
+        "table_name" -> 0
+        "collection_name" -> 1
+        _ -> 2
+      end
+    end)
+  end
 end

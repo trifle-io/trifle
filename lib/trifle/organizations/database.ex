@@ -17,6 +17,7 @@ defmodule Trifle.Organizations.Database do
     field :username, :string
     field :password, :string
     field :config, :map, default: %{}
+    field :granularities, {:array, :string}, default: []
     field :last_check_at, :utc_datetime
     field :last_check_status, :string, default: "pending"
     field :last_error, :string
@@ -92,6 +93,8 @@ defmodule Trifle.Organizations.Database do
 
   def default_config_options(_), do: %{}
 
+  def default_granularities, do: ["1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
+
   @doc false
   def changeset(database, attrs) do
     database
@@ -101,6 +104,7 @@ defmodule Trifle.Organizations.Database do
     |> validate_conditional_fields()
     |> validate_length(:display_name, min: 1, max: 255)
     |> validate_number(:port, greater_than: 0, less_than: 65536)
+    |> parse_granularities(attrs)
     |> put_default_config()
   end
 
@@ -157,15 +161,72 @@ defmodule Trifle.Organizations.Database do
   defp normalize_config_value("joined_identifiers", "false"), do: false
   defp normalize_config_value(_key, value), do: value
 
+  # Parse comma-separated granularities string into array
+  defp parse_granularities(changeset, attrs) do
+    granularities_input = Map.get(attrs, "granularities") || Map.get(attrs, :granularities)
+    
+    parsed_granularities = case granularities_input do
+      nil -> 
+        # If no granularities specified in attrs, preserve existing or use default
+        existing_granularities = get_field(changeset, :granularities)
+        require Logger
+        Logger.debug("parse_granularities: attrs=#{inspect(attrs)}, existing=#{inspect(existing_granularities)}")
+        if existing_granularities && length(existing_granularities) > 0 do
+          existing_granularities
+        else
+          default_granularities()
+        end
+      
+      granularities when is_binary(granularities) ->
+        # Parse comma-separated string
+        granularities
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> case do
+          [] -> default_granularities()
+          list -> list
+        end
+      
+      granularities when is_list(granularities) ->
+        # Already parsed, validate and clean up
+        granularities
+        |> Enum.map(fn 
+          g when is_binary(g) -> String.trim(g) 
+          g -> to_string(g) 
+        end)
+        |> Enum.reject(&(&1 == ""))
+        |> case do
+          [] -> default_granularities()
+          list -> list
+        end
+      
+      _ ->
+        # Invalid format, use default
+        default_granularities()
+    end
+    
+    # Always put the granularities in changes so the form can access them
+    put_change(changeset, :granularities, parsed_granularities)
+  end
+
   def stats_config(database) do
     driver = get_or_create_driver(database)
+    
+    # Use database granularities if available, otherwise use defaults
+    granularities = case database.granularities do
+      [] -> default_granularities()
+      nil -> default_granularities()
+      list when is_list(list) -> list
+      _ -> default_granularities()
+    end
     
     Trifle.Stats.Configuration.configure(
       driver,
       time_zone: "UTC",
       time_zone_database: Tzdata.TimeZoneDatabase,
       beginning_of_week: :monday,
-      track_granularities: ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
+      track_granularities: granularities
     )
   end
 
