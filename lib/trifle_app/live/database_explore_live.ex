@@ -403,8 +403,13 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def handle_params(params, _session, socket) do
+    require Logger
+    Logger.info("DatabaseExploreLive.handle_params starting for database: #{socket.assigns.database.id}")
+    
     granularity = params["granularity"] || "1h"
+    Logger.info("Getting stats config for database...")
     config = Database.stats_config(socket.assigns.database)
+    Logger.info("Stats config retrieved successfully")
 
     # Determine from and to times based on URL parameters
     {from, to, smart_input, use_fixed_display} =
@@ -535,12 +540,14 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def load_database_stats(database, granularity, from, to) do
+    config = Database.stats_config(database)
+    
     Trifle.Stats.values(
       "__system__keys__",
       from,
       to,
       granularity,
-      Database.stats_config(database)
+      config
     )
   end
 
@@ -619,7 +626,8 @@ defmodule TrifleApp.DatabaseExploreLive do
       do: nil
 
   def load_database_key_stats(database, key, granularity, from, to) do
-    Trifle.Stats.values(key, from, to, granularity, Database.stats_config(database))
+    config = Database.stats_config(database)
+    Trifle.Stats.values(key, from, to, granularity, config)
   end
 
   def process_database_key_stats(stats) when is_nil(stats), do: {:ok, nil, nil}
@@ -1095,4 +1103,5 @@ defmodule TrifleApp.DatabaseExploreLive do
     </div>
     """
   end
+
 end

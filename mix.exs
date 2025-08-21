@@ -57,7 +57,10 @@ defmodule Trifle.MixProject do
       {:timex, "~>3.7.11"},
       {:trifle_stats, path: "../trifle_stats"},
       # {:trifle_stats, "~>1.0.0"},
-      {:mongodb_driver, "~> 1.2.0"}
+      {:mongodb_driver, "~> 1.2.0"},
+      {:myxql, "~> 0.7.0"},
+      {:redix, "~> 1.3.0"},
+      {:exqlite, "~> 0.20"}
     ]
   end
 
