@@ -14,7 +14,6 @@ defmodule TrifleApi.MetricsController do
          at when is_binary(at) and byte_size(at) > 0 <- params["at"],
          values when not is_nil(values) <- params["values"],
          {:ok, at, _} <- DateTime.from_iso8601(at),
-         key_stats <- Trifle.Stats.track("__system__keys__", at, %{count: 1, keys: %{key => 1}}, Trifle.Organizations.Project.stats_config(current_project)),
          stats <- Trifle.Stats.track(key, at, values, Trifle.Organizations.Project.stats_config(current_project)) do
 
       conn

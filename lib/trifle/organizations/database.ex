@@ -160,6 +160,13 @@ defmodule Trifle.Organizations.Database do
   defp normalize_config_value("ssl", "false"), do: false
   defp normalize_config_value("joined_identifiers", "true"), do: true
   defp normalize_config_value("joined_identifiers", "false"), do: false
+  defp normalize_config_value("expire_after", ""), do: nil
+  defp normalize_config_value("expire_after", val) when is_binary(val) do
+    case Integer.parse(val) do
+      {num, ""} -> num
+      _ -> nil
+    end
+  end
   defp normalize_config_value(_key, value), do: value
 
   # Parse comma-separated granularities string into array

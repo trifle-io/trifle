@@ -25,7 +25,11 @@ defmodule Trifle.Stats.Tabler do
     Enum.reduce(tabulized[:paths], %{}, fn(path, acc) ->
       data = Enum.map(tabulized[:at], fn(a) ->
         v = tabulized[:values][{path, a}]
-        [DateTime.to_unix(a) * 1000, (v || 0)]
+        # Convert to naive datetime to preserve the local time representation  
+        naive = DateTime.to_naive(a)
+        # Create UTC datetime with the same time values to display correctly in charts
+        utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
+        [(DateTime.to_unix(utc_dt) * 1000), (v || 0)]
       end)
       Map.merge(acc, %{path => data})
     end)

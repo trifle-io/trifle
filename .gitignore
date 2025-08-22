@@ -36,3 +36,6 @@ npm-debug.log
 /assets/node_modules/
 
 .DS_Store
+
+trifle_stats_joined.sqlite
+trifle_stats_separated.sqlite
