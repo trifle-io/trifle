@@ -408,13 +408,8 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def handle_params(params, _session, socket) do
-    require Logger
-    Logger.info("DatabaseExploreLive.handle_params starting for database: #{socket.assigns.database.id}")
-    
     granularity = params["granularity"] || "1h"
-    Logger.info("Getting stats config for database...")
     config = Database.stats_config(socket.assigns.database)
-    Logger.info("Stats config retrieved successfully")
 
     # Determine from and to times based on URL parameters
     {from, to, smart_input, use_fixed_display} =
@@ -679,8 +674,8 @@ defmodule TrifleApp.DatabaseExploreLive do
     
     # Generate full timeline and split into chunks
     parser = Trifle.Stats.Nocturnal.Parser.new(socket.assigns.granularity)
-    from_normalized = DateTime.shift_zone!(socket.assigns.from, "Etc/UTC")
-    to_normalized = DateTime.shift_zone!(socket.assigns.to, "Etc/UTC")
+    from_normalized = DateTime.shift_zone!(socket.assigns.from, config.time_zone)
+    to_normalized = DateTime.shift_zone!(socket.assigns.to, config.time_zone)
     
     full_timeline = Trifle.Stats.Nocturnal.timeline(
       from: from_normalized,
@@ -784,8 +779,8 @@ defmodule TrifleApp.DatabaseExploreLive do
   
   def should_slice_timeline?(from, to, granularity, config) do
     parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-    from_normalized = DateTime.shift_zone!(from, "Etc/UTC")
-    to_normalized = DateTime.shift_zone!(to, "Etc/UTC")
+    from_normalized = DateTime.shift_zone!(from, config.time_zone)
+    to_normalized = DateTime.shift_zone!(to, config.time_zone)
     
     # Generate timeline to check point count
     timeline = Trifle.Stats.Nocturnal.timeline(
@@ -802,8 +797,8 @@ defmodule TrifleApp.DatabaseExploreLive do
   
   defp load_database_stats_sliced(database, granularity, from, to, config) do
     parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-    from_normalized = DateTime.shift_zone!(from, "Etc/UTC")
-    to_normalized = DateTime.shift_zone!(to, "Etc/UTC")
+    from_normalized = DateTime.shift_zone!(from, config.time_zone)
+    to_normalized = DateTime.shift_zone!(to, config.time_zone)
     
     # Generate full timeline
     full_timeline = Trifle.Stats.Nocturnal.timeline(
@@ -928,8 +923,8 @@ defmodule TrifleApp.DatabaseExploreLive do
   
   defp load_key_stats_sliced(key, granularity, from, to, config) do
     parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-    from_normalized = DateTime.shift_zone!(from, "Etc/UTC")
-    to_normalized = DateTime.shift_zone!(to, "Etc/UTC")
+    from_normalized = DateTime.shift_zone!(from, config.time_zone)
+    to_normalized = DateTime.shift_zone!(to, config.time_zone)
     
     # Generate full timeline
     full_timeline = Trifle.Stats.Nocturnal.timeline(
@@ -1116,7 +1111,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 for="smart_timeframe"
                 class="absolute -top-2 left-2 inline-block bg-white px-1 text-xs font-medium text-gray-900"
               >
-                Timeframe UTC{get_timezone_offset_display("UTC")}
+                Timeframe {@database.time_zone || "UTC"}{get_timezone_offset_display(@database.time_zone || "UTC")}
               </label>
               <input
                 type="text"
@@ -1259,7 +1254,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           phx-hook="ProjectTimeline"
           data-events={@timeline}
           data-key={@key}
-          data-timezone="UTC"
+          data-timezone={@database.time_zone || "UTC"}
           data-chart-type={@chart_type}
           data-colors={ChartColors.json_palette()}
           data-selected-key-color={@selected_key_color}
