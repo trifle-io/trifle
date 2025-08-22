@@ -364,17 +364,17 @@ defmodule TrifleApp.ProjectLive do
     case range do
       # Standard granularities (1-unit intervals)
       "second" -> "1s"
-      "minute" -> "1m" 
+      "minute" -> "1m"
       "hour" -> "1h"
       "day" -> "1d"
       "week" -> "1w"
       "month" -> "1mo"
       "quarter" -> "1q"
       "year" -> "1y"
-      
+
       # Direct granularity strings (for future use or config)
       granularity when is_binary(granularity) -> granularity
-      
+
       # Fallback for any other cases
       _ -> "1h"
     end
@@ -395,7 +395,7 @@ defmodule TrifleApp.ProjectLive do
   def granularity_to_label(granularity) do
     case granularity do
       "1s" -> "Second"
-      "1m" -> "Minute" 
+      "1m" -> "Minute"
       "1h" -> "Hour"
       "1d" -> "Day"
       "1w" -> "Week"
@@ -412,18 +412,18 @@ defmodule TrifleApp.ProjectLive do
   """
   def get_granularity_buttons(project) do
     granularities = get_available_granularities(project)
-    
+
     granularities
     |> Enum.with_index()
     |> Enum.map(fn {granularity, index} ->
       label = granularity_to_label(granularity)
-      
+
       position = cond do
         index == 0 -> :first
         index == length(granularities) - 1 -> :last
         true -> :middle
       end
-      
+
       {label, granularity, position}
     end)
   end
@@ -563,7 +563,7 @@ defmodule TrifleApp.ProjectLive do
 
   def load_project_stats(project, range, from, to) do
     granularity = ui_range_to_granularity(range)
-    Trifle.Stats.values("__system__keys__", from, to, granularity, Project.stats_config(project))
+    Trifle.Stats.values("__system__key__", from, to, granularity, Project.stats_config(project))
   end
 
   def reduce_stats(values) when is_list(values) do
@@ -683,11 +683,11 @@ defmodule TrifleApp.ProjectLive do
   @doc """
   Returns a styled HTML representation of a nested path with hierarchical coloring.
   Each nesting level starts from color 0, supporting unlimited depth.
-  
+
   Examples:
     "count" -> <span style="color: color0">count</span>
     "severity.high" -> <span style="color: color1">severity</span>.<span style="color: color0">high</span>
-    "severity.high.duration.standard_deviation" -> 
+    "severity.high.duration.standard_deviation" ->
       <span style="color: color1">severity</span>.<span style="color: color0">high</span>.<span style="color: color0">duration</span>.<span style="color: color0">standard_deviation</span>
   """
   def format_nested_path(path, all_paths) when is_binary(path) do
@@ -709,10 +709,10 @@ defmodule TrifleApp.ProjectLive do
     # Intermediate component - get its index at current level
     index = get_component_index_at_level(component, all_paths, path_so_far)
     color = ChartColors.color_for(index)
-    
+
     current_html = "<span style=\"color: #{color} !important\">#{component}</span>"
     new_path_so_far = path_so_far ++ [component]
-    
+
     [current_html | build_nested_html(rest, all_paths, new_path_so_far)]
   end
 
@@ -733,22 +733,22 @@ defmodule TrifleApp.ProjectLive do
       [] -> ""
       parts -> Enum.join(parts, ".") <> "."
     end
-    
+
     # Get all components at this level with the same prefix
-    siblings = 
+    siblings =
       all_paths
-      |> Enum.filter(fn path -> 
-        String.starts_with?(path, prefix) && 
+      |> Enum.filter(fn path ->
+        String.starts_with?(path, prefix) &&
         length(String.split(path, ".")) > length(path_so_far)
       end)
-      |> Enum.map(fn path -> 
+      |> Enum.map(fn path ->
         String.split(path, ".")
         |> Enum.drop(length(path_so_far))
         |> hd()
       end)
       |> Enum.uniq()
       |> Enum.sort()
-    
+
     # Find the index of this component among its siblings
     Enum.find_index(siblings, &(&1 == component)) || 0
   end
@@ -909,7 +909,7 @@ defmodule TrifleApp.ProjectLive do
                   <div class="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
                     <%= for {label, value} <- [
                         {"Last 5 minutes", "5m"},
-                        {"Last 15 minutes", "15m"}, 
+                        {"Last 15 minutes", "15m"},
                         {"Last 30 minutes", "30m"},
                         {"Last 1 hour", "1h"},
                         {"Last 4 hours", "4h"},
@@ -937,7 +937,7 @@ defmodule TrifleApp.ProjectLive do
                 <% end %>
               </div>
             </div>
-            
+
             <!-- Sensitivity controls -->
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-2">Sensitivity</label>
@@ -975,7 +975,7 @@ defmodule TrifleApp.ProjectLive do
                 <% end %>
               </div>
             </div>
-            
+
             <!-- Current selection display -->
             <div class="flex-shrink-0">
               <div class="text-xs text-gray-500 bg-gray-50 rounded px-3 py-2">

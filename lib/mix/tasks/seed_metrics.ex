@@ -147,10 +147,7 @@ defmodule Mix.Tasks.SeedMetrics do
       
       # Submit the metric directly using Trifle.Stats
       try do
-        # Track the system keys first (like the API does)
-        _key_stats = Trifle.Stats.track("__system__keys__", timestamp, %{count: 1, keys: %{key => 1}}, config)
-        
-        # Track the actual metric
+        # Track the metric
         _result = Trifle.Stats.track(key, timestamp, values, config)
         
         new_count = success_count + 1
