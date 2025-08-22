@@ -13,10 +13,15 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(page_title: ["Explore", database.display_name])
       |> assign(database: database)
       |> assign(stats: nil)
-      |> assign(timeline: "")
+      |> assign(timeline: "[]")
+      |> assign(chart_type: "stacked")
+      |> assign(keys: %{})
+      |> assign(selected_key_color: nil)
       |> assign(smart_timeframe_input: nil)
       |> assign(key_search_filter: "")
       |> assign(loading: false)
+      |> assign(loading_chunks: false)
+      |> assign(loading_progress: nil)
       |> assign(show_timeframe_dropdown: false)
       |> assign(show_sensitivity_dropdown: false)
 
@@ -517,25 +522,39 @@ defmodule TrifleApp.DatabaseExploreLive do
     # Load data asynchronously to show loading indicator
     load_data_and_update_socket(socket)
   end
-
-
-  defp load_data_and_update_socket(socket) do
-    database_stats = load_database_stats(socket.assigns.database, socket.assigns.granularity, socket.assigns.from, socket.assigns.to)
-    keys_sum = reduce_stats(database_stats[:values])
-
+  
+  def handle_info(:heartbeat, socket) do
+    # Heartbeat to keep the process alive during long operations
+    # Only continue heartbeat if we're still loading
+    if socket.assigns.loading_chunks do
+      :timer.send_after(5000, self(), :heartbeat)
+    end
+    {:noreply, socket}
+  end
+  
+  def handle_async(:chunk_task, {:ok, {chunk_index, chunk_result}}, socket) do
+    # Accumulate the chunk data (prepend since we're loading newest first)
+    current_stats = socket.assigns.accumulated_stats
+    new_stats = %{
+      at: chunk_result[:at] ++ current_stats.at,
+      values: chunk_result[:values] ++ current_stats.values
+    }
+    
+    # Update progress 
+    progress = socket.assigns.loading_progress
+    new_progress = %{progress | current: chunk_index + 1}
+    
+    # Generate chart data from accumulated stats
+    keys_sum = reduce_stats(new_stats[:values])
+    
     {timeline_data, chart_type} =
       if socket.assigns.key && socket.assigns.key != "" do
-        timeline = series_from(database_stats, ["keys", socket.assigns.key])
+        timeline = series_from(new_stats, ["keys", socket.assigns.key])
         {Jason.encode!(timeline["keys.#{socket.assigns.key}"]), "single"}
       else
-        timeline = series_from_all_keys(database_stats, keys_sum)
+        timeline = series_from_all_keys(new_stats, keys_sum)
         {Jason.encode!(timeline), "stacked"}
       end
-
-    key_stats =
-      load_database_key_stats(socket.assigns.database, socket.assigns.key, socket.assigns.granularity, socket.assigns.from, socket.assigns.to)
-
-    {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(key_stats)
 
     selected_key_color =
       if socket.assigns.key && socket.assigns.key != "" do
@@ -543,29 +562,283 @@ defmodule TrifleApp.DatabaseExploreLive do
       else
         nil
       end
-
-    socket =
-      socket
+    
+    socket = socket
+      |> assign(accumulated_stats: new_stats)
+      |> assign(loading_progress: new_progress)
+      |> assign(keys: keys_sum)
+      |> assign(timeline: timeline_data)
+      |> assign(chart_type: chart_type)
+      |> assign(selected_key_color: selected_key_color)
+    
+    # Continue loading next chunk or finish
+    if new_progress.current >= new_progress.total do
+      # All chunks loaded - load final table data
+      config = Database.stats_config(socket.assigns.database)
+      load_final_table_data(socket, config)
+    else
+      # Load next chunk
+      config = Database.stats_config(socket.assigns.database)
+      timeline_chunks = socket.assigns.timeline_chunks
+      load_chunk_async(socket, timeline_chunks, chunk_index + 1, config)
+    end
+  end
+  
+  def handle_async(:chunk_task, {:exit, reason}, socket) do
+    # Handle chunk loading failure
+    socket = socket
+      |> assign(loading: false)
+      |> assign(loading_chunks: false)
+      |> assign(loading_progress: nil)
+      |> put_flash(:error, "Failed to load data chunk: #{inspect(reason)}")
+    
+    {:noreply, socket}
+  end
+  
+  def handle_async(:single_chunk_task, {:ok, {keys_sum, timeline_data, chart_type, selected_key_color, key_tabulized}}, socket) do
+    # Handle single chunk (synchronous loading) completion
+    socket = socket
       |> assign(keys: keys_sum)
       |> assign(timeline: timeline_data)
       |> assign(chart_type: chart_type)
       |> assign(selected_key_color: selected_key_color)
       |> assign(stats: key_tabulized)
       |> assign(loading: false)
+      |> assign(loading_chunks: false)
+      |> assign(loading_progress: nil)
+    
+    {:noreply, socket}
+  end
+  
+  def handle_async(:single_chunk_task, {:exit, reason}, socket) do
+    # Handle single chunk loading failure
+    socket = socket
+      |> assign(loading: false)
+      |> assign(loading_chunks: false)
+      |> assign(loading_progress: nil)
+      |> put_flash(:error, "Failed to load data: #{inspect(reason)}")
+    
+    {:noreply, socket}
+  end
+  
 
+
+  defp load_data_and_update_socket(socket) do
+    config = Database.stats_config(socket.assigns.database)
+    
+    # Check if we need progressive loading
+    if should_slice_timeline?(socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config) do
+      start_progressive_loading(socket)
+    else
+      # Load normally for small timelines
+      load_data_synchronously(socket)
+    end
+  end
+  
+  defp load_data_synchronously(socket) do
+    # Show unified loading indicator even for single chunk
+    socket = socket
+      |> assign(loading: true)
+      |> assign(loading_chunks: true)
+      |> assign(loading_progress: %{current: 0, total: 1})
+    
+    # Start async task to prevent blocking
+    socket = start_async(socket, :single_chunk_task, fn ->
+      database_stats = load_database_stats(socket.assigns.database, socket.assigns.granularity, socket.assigns.from, socket.assigns.to)
+      keys_sum = reduce_stats(database_stats[:values])
+
+      {timeline_data, chart_type} =
+        if socket.assigns.key && socket.assigns.key != "" do
+          timeline = series_from(database_stats, ["keys", socket.assigns.key])
+          {Jason.encode!(timeline["keys.#{socket.assigns.key}"]), "single"}
+        else
+          timeline = series_from_all_keys(database_stats, keys_sum)
+          {Jason.encode!(timeline), "stacked"}
+        end
+
+      key_stats =
+        load_database_key_stats(socket.assigns.database, socket.assigns.key, socket.assigns.granularity, socket.assigns.from, socket.assigns.to)
+
+      {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(key_stats)
+
+      selected_key_color =
+        if socket.assigns.key && socket.assigns.key != "" do
+          get_key_color(keys_sum, socket.assigns.key)
+        else
+          nil
+        end
+
+      {keys_sum, timeline_data, chart_type, selected_key_color, key_tabulized}
+    end, timeout: 300_000)
+
+    {:noreply, socket}
+  end
+  
+  defp start_progressive_loading(socket) do
+    config = Database.stats_config(socket.assigns.database)
+    
+    # Generate full timeline and split into chunks
+    parser = Trifle.Stats.Nocturnal.Parser.new(socket.assigns.granularity)
+    from_normalized = DateTime.shift_zone!(socket.assigns.from, "Etc/UTC")
+    to_normalized = DateTime.shift_zone!(socket.assigns.to, "Etc/UTC")
+    
+    full_timeline = Trifle.Stats.Nocturnal.timeline(
+      from: from_normalized,
+      to: to_normalized,
+      offset: parser.offset,
+      unit: parser.unit,
+      config: config
+    )
+    
+    # Split timeline into chunks of 720 and reverse to load newest first
+    timeline_chunks = full_timeline
+      |> Enum.chunk_every(720)
+      |> Enum.reverse()
+    total_chunks = length(timeline_chunks)
+    
+    # Initialize progressive loading state
+    socket = socket
+      |> assign(loading_chunks: true)
+      |> assign(loading_progress: %{current: 0, total: total_chunks})
+      |> assign(accumulated_stats: %{at: [], values: []})
+      |> assign(timeline_chunks: timeline_chunks)
+      |> assign(keys: %{}) # Start with empty keys
+      |> assign(timeline: "[]") # Start with empty chart
+      |> assign(chart_type: "stacked") # Default chart type
+      |> assign(selected_key_color: nil)
+      |> assign(stats: nil) # Keep table loading
+    
+    # Start heartbeat to keep the process alive during long operations
+    :timer.send_after(5000, self(), :heartbeat)
+    
+    # Start loading first chunk
+    load_chunk_async(socket, timeline_chunks, 0, config)
+  end
+  
+  defp load_chunk_async(socket, chunks, chunk_index, config) do
+    if chunk_index < length(chunks) do
+      chunk = Enum.at(chunks, chunk_index)
+      chunk_from = List.first(chunk)
+      chunk_to = List.last(chunk)
+      
+      # Start async task for this chunk using LiveView's async mechanism
+      # Use longer timeout for potentially slow database queries
+      socket = start_async(socket, :chunk_task, fn ->
+        chunk_result = Trifle.Stats.values(
+          "__system__keys__",
+          chunk_from,
+          chunk_to,
+          socket.assigns.granularity,
+          config
+        )
+        {chunk_index, chunk_result}
+      end, timeout: 300_000)
+      
+      {:noreply, socket}
+    else
+      # All chunks loaded - now load the table data
+      load_final_table_data(socket, config)
+    end
+  end
+  
+  defp load_final_table_data(socket, config) do
+    # Load key stats for the table (only once at the end)
+    key_stats = if socket.assigns.key && socket.assigns.key != "" do
+      if should_slice_timeline?(socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config) do
+        load_key_stats_sliced(socket.assigns.key, socket.assigns.granularity, socket.assigns.from, socket.assigns.to, config)
+      else
+        Trifle.Stats.values(socket.assigns.key, socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config)
+      end
+    else
+      nil
+    end
+
+    {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(key_stats)
+    
+    # Preserve all existing chart data when finishing loading
+    socket = socket
+      |> assign(stats: key_tabulized)
+      |> assign(loading: false)
+      |> assign(loading_chunks: false)
+      |> assign(loading_progress: nil)
+    
     {:noreply, socket}
   end
 
   def load_database_stats(database, granularity, from, to) do
     config = Database.stats_config(database)
     
-    Trifle.Stats.values(
-      "__system__keys__",
-      from,
-      to,
-      granularity,
-      config
+    # Check if timeline would be too large and needs slicing
+    if should_slice_timeline?(from, to, granularity, config) do
+      load_database_stats_sliced(database, granularity, from, to, config)
+    else
+      Trifle.Stats.values(
+        "__system__keys__",
+        from,
+        to,
+        granularity,
+        config
+      )
+    end
+  end
+  
+  def should_slice_timeline?(from, to, granularity, config) do
+    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
+    from_normalized = DateTime.shift_zone!(from, "Etc/UTC")
+    to_normalized = DateTime.shift_zone!(to, "Etc/UTC")
+    
+    # Generate timeline to check point count
+    timeline = Trifle.Stats.Nocturnal.timeline(
+      from: from_normalized,
+      to: to_normalized,
+      offset: parser.offset,
+      unit: parser.unit,
+      config: config
     )
+    
+    # Slice if more than 720 points
+    length(timeline) > 720
+  end
+  
+  defp load_database_stats_sliced(database, granularity, from, to, config) do
+    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
+    from_normalized = DateTime.shift_zone!(from, "Etc/UTC")
+    to_normalized = DateTime.shift_zone!(to, "Etc/UTC")
+    
+    # Generate full timeline
+    full_timeline = Trifle.Stats.Nocturnal.timeline(
+      from: from_normalized,
+      to: to_normalized,
+      offset: parser.offset,
+      unit: parser.unit,
+      config: config
+    )
+    
+    # Split timeline into chunks of 720
+    # Split timeline into chunks of 720 and reverse to load newest first
+    timeline_chunks = full_timeline
+      |> Enum.chunk_every(720)
+      |> Enum.reverse()
+    
+    # Load each chunk and combine results
+    {combined_at, combined_values} = 
+      timeline_chunks
+      |> Enum.reduce({[], []}, fn chunk, {acc_at, acc_values} ->
+        chunk_from = List.first(chunk)
+        chunk_to = List.last(chunk)
+        
+        chunk_result = Trifle.Stats.values(
+          "__system__keys__",
+          chunk_from,
+          chunk_to,
+          granularity,
+          config
+        )
+        
+        {acc_at ++ chunk_result[:at], acc_values ++ chunk_result[:values]}
+      end)
+    
+    %{at: combined_at, values: combined_values}
   end
 
   def reduce_stats(values) when is_list(values) do
@@ -644,7 +917,54 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def load_database_key_stats(database, key, granularity, from, to) do
     config = Database.stats_config(database)
-    Trifle.Stats.values(key, from, to, granularity, config)
+    
+    # Check if timeline would be too large and needs slicing
+    if should_slice_timeline?(from, to, granularity, config) do
+      load_key_stats_sliced(key, granularity, from, to, config)
+    else
+      Trifle.Stats.values(key, from, to, granularity, config)
+    end
+  end
+  
+  defp load_key_stats_sliced(key, granularity, from, to, config) do
+    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
+    from_normalized = DateTime.shift_zone!(from, "Etc/UTC")
+    to_normalized = DateTime.shift_zone!(to, "Etc/UTC")
+    
+    # Generate full timeline
+    full_timeline = Trifle.Stats.Nocturnal.timeline(
+      from: from_normalized,
+      to: to_normalized,
+      offset: parser.offset,
+      unit: parser.unit,
+      config: config
+    )
+    
+    # Split timeline into chunks of 720
+    # Split timeline into chunks of 720 and reverse to load newest first
+    timeline_chunks = full_timeline
+      |> Enum.chunk_every(720)
+      |> Enum.reverse()
+    
+    # Load each chunk and combine results
+    {combined_at, combined_values} = 
+      timeline_chunks
+      |> Enum.reduce({[], []}, fn chunk, {acc_at, acc_values} ->
+        chunk_from = List.first(chunk)
+        chunk_to = List.last(chunk)
+        
+        chunk_result = Trifle.Stats.values(
+          key,
+          chunk_from,
+          chunk_to,
+          granularity,
+          config
+        )
+        
+        {acc_at ++ chunk_result[:at], acc_values ++ chunk_result[:values]}
+      end)
+    
+    %{at: combined_at, values: combined_values}
   end
 
   def process_database_key_stats(stats) when is_nil(stats), do: {:ok, nil, nil}
@@ -906,7 +1226,53 @@ defmodule TrifleApp.DatabaseExploreLive do
       </div>
     </div>
 
-    <!-- Row 2: Key Selection -->
+    <!-- Row 2: Activity/Events Chart -->
+    <div class="sticky top-16 z-40 mb-6">
+      <div class="bg-white rounded-lg shadow py-1 px-3 relative">
+        <%= if @loading_chunks && @loading_progress do %>
+          <div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg" style="top: -16px;">
+            <div class="flex flex-col items-center space-y-3">
+              <div class="flex items-center space-x-2">
+                <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-teal-500"></div>
+                <span class="text-sm text-gray-600">
+                  Scientificating piece <%= @loading_progress.current + 1 %> of <%= @loading_progress.total %>...
+                </span>
+              </div>
+              <div class="w-64 bg-gray-200 rounded-full h-2">
+                <div 
+                  class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                  style={"width: #{((@loading_progress.current + 1) / @loading_progress.total * 100)}%"}
+                ></div>
+              </div>
+              <%= if @loading_progress.total > 1 do %>
+                <div class="flex items-center justify-center">
+                  <span class="text-xs text-gray-500">
+                    Chart updates continuously • Table loads when complete
+                  </span>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+        <div
+          id="timeline-hook"
+          phx-hook="ProjectTimeline"
+          data-events={@timeline}
+          data-key={@key}
+          data-timezone="UTC"
+          data-chart-type={@chart_type}
+          data-colors={ChartColors.json_palette()}
+          data-selected-key-color={@selected_key_color}
+          class=""
+        >
+        </div>
+        <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5">
+          <div id="timeline-chart"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Key Selection -->
     <div class="mb-6">
       <div class="bg-white rounded-lg shadow">
         <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3 border-b flex items-center justify-between">
@@ -926,7 +1292,7 @@ defmodule TrifleApp.DatabaseExploreLive do
             </div>
           </div>
         </div>
-        <div class="max-h-48 overflow-y-auto"> <!-- Fixed height for ~3 items with scrolling -->
+        <div class="h-48 overflow-y-auto"> <!-- Fixed height for ~3 items with scrolling -->
           <ul role="list" class="divide-y divide-gray-100">
             <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
               <li class={
@@ -1006,36 +1372,19 @@ defmodule TrifleApp.DatabaseExploreLive do
                 </button>
               </li>
             <% end %>
+            <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
+              <div class="flex items-center justify-center h-full text-gray-500 text-sm">
+                <%= if @loading_chunks do %>
+                  <div class="flex items-center space-x-2">
+                    <div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-gray-500"></div>
+                    <span>Loading keys...</span>
+                  </div>
+                <% else %>
+                  <span>No keys found</span>
+                <% end %>
+              </div>
+            <% end %>
           </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Row 3: Activity/Events Chart -->
-    <div class="sticky top-16 z-40 mb-6">
-      <div class="bg-white rounded-lg shadow py-1 px-3 relative">
-        <%= if @loading do %>
-          <div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
-            <div class="flex items-center space-x-2">
-              <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-teal-500"></div>
-              <span class="text-sm text-gray-600">Loading data...</span>
-            </div>
-          </div>
-        <% end %>
-        <div
-          id="timeline-hook"
-          phx-hook="ProjectTimeline"
-          data-events={@timeline}
-          data-key={@key}
-          data-timezone="UTC"
-          data-chart-type={@chart_type}
-          data-colors={ChartColors.json_palette()}
-          data-selected-key-color={@selected_key_color}
-          class=""
-        >
-        </div>
-        <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5">
-          <div id="timeline-chart"></div>
         </div>
       </div>
     </div>
@@ -1054,7 +1403,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <tr>
                   <th
                     scope="col"
-                    class="top-0 left-0 sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 pl-4 h-16 z-20"
+                    class="top-0 lg:left-0 lg:sticky bg-white whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 pl-4 h-16 z-20 border-r border-gray-300 lg:border-r-0"
                     style="box-shadow: 1px 0 0 0 #d1d5db;"
                   >
                     Path
@@ -1074,7 +1423,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
                   <tr data-row={row_index}>
                     <td
-                      class="left-0 sticky bg-white whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono pl-4 z-10 transition-colors duration-150"
+                      class="lg:left-0 lg:sticky bg-white whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono pl-4 z-10 transition-colors duration-150 border-r border-gray-300 lg:border-r-0"
                       style="box-shadow: 1px 0 0 0 #d1d5db;"
                       data-row={row_index}
                     >
@@ -1108,12 +1457,24 @@ defmodule TrifleApp.DatabaseExploreLive do
         </div>
       <% else %>
         <div class="bg-white rounded-lg shadow p-8">
-          <div class="text-gray-500 text-center">
-            <p class="text-lg">↑ Select a key to view detailed data</p>
-            <p class="text-sm mt-2">
-              The chart above shows a stacked view of all events in this database.
-            </p>
-          </div>
+          <%= if @loading_chunks do %>
+            <div class="text-gray-500 text-center">
+              <div class="flex items-center justify-center space-x-2">
+                <div class="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-teal-500"></div>
+                <p class="text-lg">Loading table data...</p>
+              </div>
+              <p class="text-sm mt-2">
+                Chart is updating above • Table will appear when loading completes
+              </p>
+            </div>
+          <% else %>
+            <div class="text-gray-500 text-center">
+              <p class="text-lg">↑ Select a key to view detailed data</p>
+              <p class="text-sm mt-2">
+                The chart above shows a stacked view of all events in this database.
+              </p>
+            </div>
+          <% end %>
         </div>
       <% end %>
     </div>
