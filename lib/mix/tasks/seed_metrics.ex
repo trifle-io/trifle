@@ -115,8 +115,9 @@ defmodule Mix.Tasks.SeedMetrics do
   end
 
   defp process_batch(config, batch_size, hours, offset) do
-    # Generate timestamps randomly distributed over the time range
-    now = DateTime.utc_now()
+    # Generate timestamps randomly distributed over the time range using the database's timezone
+    timezone = config.time_zone || "Etc/UTC"
+    now = DateTime.now!(timezone)
     start_time = DateTime.shift(now, second: -hours * 3600)
     
     metrics_keys = [
