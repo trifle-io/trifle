@@ -63,7 +63,8 @@ Hooks.ProjectTimeline = {
         spacingTop: 5
       },
       time: {
-        useUTC: false
+        useUTC: true,
+        timezone: timezone
       },
       title: {
         text: undefined
@@ -137,17 +138,12 @@ Hooks.ProjectTimeline = {
   },
 
   updated() {
-    console.log("Chart updated - Something has happened!");
     let data = JSON.parse(this.el.dataset.events);
     let key = this.el.dataset.key;
     let timezone = this.el.dataset.timezone;
     let chartType = this.el.dataset.chartType;
     let colors = JSON.parse(this.el.dataset.colors);
     let selectedKeyColor = this.el.dataset.selectedKeyColor;
-    
-    console.log("Chart data:", data);
-    console.log("Chart type:", chartType);
-    console.log("Data length:", Array.isArray(data) ? data.length : 'not array');
 
     // Check if chart type changed - if so, recreate the entire chart
     if (this.currentChartType !== chartType) {
@@ -288,6 +284,6 @@ window.liveSocket = liveSocket
 window.addEventListener("phx:copy", (event) => {
   let text = event.target.textContent;
   navigator.clipboard.writeText(text).then(() => {
-    console.log("All done!");
+    // Copy completed
   })
 })
