@@ -46,7 +46,14 @@ Hooks.ProjectTimeline = {
     
     // Configure series and options based on chart type
     const isStacked = chartType === 'stacked';
-    const series = isStacked ? data : [{name: key, data: data}];
+    
+    // Handle empty data case - ensure we have at least an empty series structure
+    let series;
+    if (isStacked) {
+      series = (data && data.length > 0) ? data : [];
+    } else {
+      series = [{name: key || 'Data', data: data || []}];
+    }
     
     return Highcharts.chart('timeline-chart', {
       chart: {
@@ -130,13 +137,17 @@ Hooks.ProjectTimeline = {
   },
 
   updated() {
-    console.log("Something has happened!");
+    console.log("Chart updated - Something has happened!");
     let data = JSON.parse(this.el.dataset.events);
     let key = this.el.dataset.key;
     let timezone = this.el.dataset.timezone;
     let chartType = this.el.dataset.chartType;
     let colors = JSON.parse(this.el.dataset.colors);
     let selectedKeyColor = this.el.dataset.selectedKeyColor;
+    
+    console.log("Chart data:", data);
+    console.log("Chart type:", chartType);
+    console.log("Data length:", Array.isArray(data) ? data.length : 'not array');
 
     // Check if chart type changed - if so, recreate the entire chart
     if (this.currentChartType !== chartType) {
@@ -172,13 +183,18 @@ Hooks.ProjectTimeline = {
       while (this.chart.series.length > 0) {
         this.chart.series[0].remove(false);
       }
-      data.forEach(series => {
-        this.chart.addSeries(series, false);
-      });
+      // Only add series if data exists and is not empty
+      if (data && data.length > 0) {
+        data.forEach(series => {
+          this.chart.addSeries(series, false);
+        });
+      }
       this.chart.redraw();
     } else {
-      // Update single series
-      this.chart.series[0].setData(data);
+      // Update single series - only if data exists
+      if (this.chart.series[0] && data) {
+        this.chart.series[0].setData(data);
+      }
     }
   }
 }
