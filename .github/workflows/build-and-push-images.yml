@@ -147,11 +147,43 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ env.APP_IMAGE_NAME }}:latest'
+          format: 'table'
+          output: 'trivy-results.txt'
+
+      - name: Display security scan results
+        if: always()
+        run: |
+          echo "🛡️ Security Scan Results:"
+          echo "========================="
+          if [ -f trivy-results.txt ]; then
+            cat trivy-results.txt
+          else
+            echo "No scan results found"
+          fi
+
+      - name: Run Trivy vulnerability scanner (SARIF format for GitHub Security)
+        if: github.repository_owner != github.actor  # Skip for personal repos
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.APP_IMAGE_NAME }}:latest'
           format: 'sarif'
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: github.repository_owner != github.actor  # Only for org repos with Advanced Security
         with:
           sarif_file: 'trivy-results.sarif'
+
+      - name: Check for critical vulnerabilities
+        if: always()
+        run: |
+          if [ -f trivy-results.txt ]; then
+            if grep -q "CRITICAL" trivy-results.txt; then
+              echo "❌ CRITICAL vulnerabilities found!"
+              echo "Please review the security scan results above."
+              exit 1
+            else
+              echo "✅ No critical vulnerabilities found."
+            fi
+          fi

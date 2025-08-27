@@ -29,7 +29,7 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 2. **Builds assets** with Node.js/Elixir on GitHub Actions
 3. **Builds application image** with pre-compiled assets
 4. **Multi-platform**: AMD64 and ARM64
-5. **Security scanning**: Trivy vulnerability checks
+5. **Security scanning**: Trivy vulnerability checks (shows in build logs)
 
 ### Environment Build (`build-environment-image.yml`)
 **Triggers**:
@@ -70,8 +70,21 @@ image:
   tag: latest  # or specific version like "v1.0.0"
 ```
 
+## Security Scanning
+
+### Free/Personal Repositories
+- **Trivy security scan** runs automatically
+- **Results shown** in build logs (Actions tab)
+- **Build fails** if critical vulnerabilities found
+- **GitHub Security tab** not available (requires GitHub Advanced Security)
+
+### Organization Repositories with GitHub Advanced Security
+- **Full SARIF integration** with GitHub Security tab
+- **Vulnerability tracking** and remediation guidance
+- **Automated security alerts**
+
 ## Monitoring
 
-- Check the **Actions** tab for build status
-- Check **Security** tab for vulnerability reports
+- Check the **Actions** tab for build status and security scan results
+- Check **Security** tab for vulnerability reports (org repos only)
 - Docker Hub shows download stats and image layers
