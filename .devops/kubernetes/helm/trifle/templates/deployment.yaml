@@ -60,6 +60,12 @@ spec:
               value: {{ .Values.app.poolSize | quote }}
             - name: TZ
               value: {{ .Values.app.timezone | quote }}
+            - name: LANG
+              value: "en_US.UTF-8"
+            - name: LC_ALL
+              value: "en_US.UTF-8"
+            - name: ELIXIR_ERL_OPTIONS
+              value: "+fnu"
           {{- if .Values.healthCheck.enabled }}
           livenessProbe:
             httpGet:

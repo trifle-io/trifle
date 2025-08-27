@@ -114,6 +114,9 @@ jobs:
           # Set environment variables
           ENV MIX_ENV=prod
           ENV PHX_SERVER=true
+          ENV LANG=en_US.UTF-8
+          ENV LC_ALL=en_US.UTF-8
+          ENV ELIXIR_ERL_OPTIONS=+fnu
           
           # Health check
           HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
