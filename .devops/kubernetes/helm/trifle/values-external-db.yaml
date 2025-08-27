@@ -1,0 +1,46 @@
+# Example configuration using external databases
+# Use this when you want to connect to existing database instances
+# instead of running them in the Kubernetes cluster
+
+replicaCount: 2
+
+# Disable internal database
+postgresql:
+  enabled: false
+
+# Configure external database connection
+externalPostgresql:
+  host: "postgres.example.com"
+  port: 5432
+  username: "trifle"
+  password: "secure-postgres-password"
+  database: "trifle_prod"
+  # Alternative: use existing secret
+  # existingSecret: "postgres-credentials"
+  # existingSecretPasswordKey: "password"
+
+# Application configuration
+app:
+  secretKeyBase: "your-64-character-secret-key-base-here"
+  host: "trifle.yourdomain.com"
+
+# Initial user creation (runs during installation)
+initialUser:
+  enabled: true
+  email: "admin@yourdomain.com"  # Set your admin email
+  password: "password"           # Set a secure password
+  admin: true
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: trifle.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: trifle-tls
+      hosts:
+        - trifle.yourdomain.com

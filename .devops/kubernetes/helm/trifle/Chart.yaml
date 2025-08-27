@@ -1,0 +1,22 @@
+apiVersion: v2
+name: trifle
+description: A Helm chart for Trifle analytics application
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - analytics
+  - elixir
+  - phoenix
+  - metrics
+home: https://github.com/your-org/trifle
+sources:
+  - https://github.com/your-org/trifle
+maintainers:
+  - name: Trifle Team
+    email: team@trifle.dev
+dependencies:
+  - name: postgresql
+    version: 12.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

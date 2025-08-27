@@ -1,0 +1,16 @@
+# Alternative: Namespace-specific Issuer (instead of ClusterIssuer)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-prod
+  namespace: default  # CHANGE_ME: Use same namespace as your app
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: your-email@domain.com  # CHANGE_ME: Replace with your email
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx

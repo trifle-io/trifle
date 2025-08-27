@@ -1,0 +1,129 @@
+# Default values for trifle
+replicaCount: 2
+
+image:
+  repository: trifle/app
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 4000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: trifle.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Certificate Manager configuration
+certManager:
+  enabled: false
+  # Choose: "Issuer" (namespace-scoped) or "ClusterIssuer" (cluster-wide)
+  kind: "Issuer"
+  server: "https://acme-v02.api.letsencrypt.org/directory"
+  email: ""  # REQUIRED: Set your email for Let's Encrypt
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Application configuration
+app:
+  secretKeyBase: ""
+  host: "trifle.local"
+  port: 4000
+  poolSize: 10
+  timezone: "UTC"
+  
+  # Environment variables
+  env:
+    MIX_ENV: "prod"
+    PHX_SERVER: "true"
+
+# Initial user creation (runs during installation)
+initialUser:
+  enabled: true
+  email: ""
+  password: "password"
+  # Set to true to make the user an admin
+  admin: true
+
+# Health checks
+healthCheck:
+  enabled: true
+  path: "/api/health"
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Persistence for uploads
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  mountPath: /home/app/uploads
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    username: trifle
+    password: ""
+    database: trifle_prod
+  primary:
+    persistence:
+      enabled: true
+      storageClass: ""
+      size: 20Gi
+  metrics:
+    enabled: true
+
+# External database configuration (when internal DB is disabled)
+externalPostgresql:
+  host: ""
+  port: 5432
+  username: ""
+  password: ""
+  database: ""
+  existingSecret: ""
+  existingSecretPasswordKey: ""

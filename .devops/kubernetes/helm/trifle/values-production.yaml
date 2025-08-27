@@ -1,0 +1,112 @@
+# Production values for trifle
+# This is an example production configuration
+
+replicaCount: 3
+
+image:
+  repository: trifle/app
+  pullPolicy: Always
+  tag: "latest"
+
+# Production resource limits
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+# Enable autoscaling for production
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Production ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/issuer: "{{ include \"trifle.fullname\" . }}-letsencrypt"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+  hosts:
+    - host: trifle.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: trifle-tls
+      hosts:
+        - trifle.yourdomain.com
+
+# Application configuration  
+app:
+  # IMPORTANT: Set this to a secure 64-character secret
+  secretKeyBase: "CHANGE_ME_IN_PRODUCTION"
+  host: "trifle.yourdomain.com"
+  port: 4000
+  poolSize: 20
+  timezone: "UTC"
+
+# Initial user creation (runs during installation)
+initialUser:
+  enabled: true
+  email: "admin@yourdomain.com"  # CHANGE_ME: Set your admin email
+  password: "password"           # CHANGE_ME: Set a secure password
+  admin: true
+
+# Certificate Manager configuration
+certManager:
+  enabled: true
+  kind: "Issuer"  # Use "ClusterIssuer" if you prefer cluster-wide
+  server: "https://acme-v02.api.letsencrypt.org/directory"
+  email: "admin@yourdomain.com"  # CHANGE_ME: Set your email for Let's Encrypt
+
+# Enable persistent storage
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"  # Adjust based on your cluster
+  size: 20Gi
+
+# PostgreSQL production configuration
+postgresql:
+  enabled: true
+  auth:
+    username: trifle
+    # IMPORTANT: Set secure password in production
+    password: "CHANGE_ME_IN_PRODUCTION"
+    database: trifle_prod
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "fast-ssd"  # Adjust based on your cluster
+      size: 100Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  metrics:
+    enabled: true
+
+
+# Node affinity for better distribution
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - trifle
+        topologyKey: kubernetes.io/hostname

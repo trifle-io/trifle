@@ -14,4 +14,8 @@ defmodule TrifleApi.MetricsJSON do
   def render("400.json", _assigns) do
     %{errors: %{detail: "Bad request"}}
   end
+
+  def render("health.json", _assigns) do
+    %{status: "ok", timestamp: DateTime.utc_now()}
+  end
 end
