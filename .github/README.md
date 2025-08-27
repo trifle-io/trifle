@@ -16,20 +16,30 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 3. Name it `github-actions-trifle`
 4. Copy the token and add it as `DOCKERHUB_TOKEN` secret
 
-## What the Workflow Does
+## What the Workflows Do
 
-### Triggers
-- **Push to main**: Builds and pushes images tagged as `latest`
-- **Push tags (v*)**: Builds and pushes images with version tags
-- **Pull requests**: Builds images but doesn't push (for testing)
+### Application Build (`build-and-push-images.yml`)
+**Triggers**:
+- **Push to main**: Builds and pushes `trifle/app` images
+- **Push tags (v*)**: Builds and pushes with version tags
+- **Pull requests**: Builds for testing only
 
-### Build Process
-1. **Environment Image**: Builds `trifle/environment` with Elixir, Erlang, Ruby
-2. **Application Image**: Builds `trifle/app` with your application
-3. **Multi-platform**: Both AMD64 and ARM64 architectures
-4. **Pre-built Assets**: Assets are built on GitHub Actions (avoiding segfaults)
-5. **Security Scan**: Trivy vulnerability scanning
-6. **Cache**: Uses GitHub Actions cache for faster builds
+**Process**:
+1. **Uses existing environment image** from Docker Hub
+2. **Builds assets** with Node.js/Elixir on GitHub Actions
+3. **Builds application image** with pre-compiled assets
+4. **Multi-platform**: AMD64 and ARM64
+5. **Security scanning**: Trivy vulnerability checks
+
+### Environment Build (`build-environment-image.yml`)
+**Triggers**:
+- **Changes to** `.devops/docker/environment/` files
+- **Manual trigger**: For version upgrades
+
+**Process**:
+1. **Builds base environment** with Ruby, Erlang, Elixir
+2. **Only when needed**: Not on every deployment
+3. **Manual control**: Can specify versions via workflow dispatch
 
 ### Image Tags Generated
 - `trifle/environment:ruby_3.2.0-erlang_28.0.2-elixir_1.18.4`
