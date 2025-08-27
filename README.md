@@ -2,6 +2,23 @@
 
 A Phoenix LiveView analytics platform with metrics tracking capabilities built on MongoDB and PostgreSQL.
 
+## 🚀 Deployment
+
+### Automated Docker Builds
+Docker images are automatically built and pushed to Docker Hub via GitHub Actions:
+- **Environment Image**: `trifle/environment` (Ruby, Erlang, Elixir)
+- **Application Image**: `trifle/app` (Your application)
+- **Multi-platform**: Both AMD64 and ARM64 architectures
+- **Triggers**: Every push to `main` and version tags
+
+### Kubernetes Deployment
+Use the Helm chart for easy Kubernetes deployment:
+```bash
+helm install trifle .devops/kubernetes/helm/trifle
+```
+
+See [Kubernetes README](.devops/kubernetes/README.md) for detailed deployment instructions.
+
 ## Development Setup
 
 ### Prerequisites
@@ -214,6 +231,32 @@ The palette is used throughout the analytics dashboard for:
 - Legend indicators
 - Data series differentiation
 - JavaScript chart libraries (automatically injected via data attributes)
+
+## Deployment
+
+### Docker Compose (Production)
+
+For production deployment using Docker Compose:
+
+```bash
+cd .devops/docker/production
+cp .env.example .env
+# Edit .env with your production values
+docker-compose up -d
+```
+
+### Kubernetes (Helm)
+
+For Kubernetes deployment using Helm:
+
+```bash
+helm install trifle .devops/kubernetes/helm/trifle \
+  --set app.secretKeyBase="$(openssl rand -base64 48)" \
+  --set postgresql.auth.password="$(openssl rand -base64 32)" \
+  --set initialUser.email="admin@example.com"
+```
+
+See detailed deployment documentation in `.devops/` directory.
 
 ## Phoenix Framework
 

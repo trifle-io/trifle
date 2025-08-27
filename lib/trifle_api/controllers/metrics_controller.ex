@@ -40,4 +40,10 @@ defmodule TrifleApi.MetricsController do
     |> put_status(:bad_request)
     |> render("400.json")
   end
+
+  def health(conn, _params) do
+    conn
+    |> put_status(:ok)
+    |> render("health.json")
+  end
 end

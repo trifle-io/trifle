@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trifle_prod
+      POSTGRES_USER: trifle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trifle -d trifle_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7-jammy
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: trifle
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  app:
+    build:
+      context: ../../..
+      dockerfile: .devops/docker/production/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Database configuration
+      DATABASE_URL: "postgresql://trifle:${POSTGRES_PASSWORD:-changeme}@postgres:5432/trifle_prod"
+      
+      # MongoDB configuration
+      MONGODB_URL: "mongodb://trifle:${MONGO_PASSWORD:-changeme}@mongodb:27017/trifle_metrics"
+      
+      # Redis configuration
+      REDIS_URL: "redis://redis:6379"
+      
+      # Application configuration
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PORT: 4000
+      MIX_ENV: prod
+      PHX_SERVER: "true"
+      
+      # Pool configuration
+      POOL_SIZE: ${POOL_SIZE:-10}
+      
+      # Timezone
+      TZ: ${TZ:-UTC}
+      
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app_uploads:/home/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  app_uploads:
+    driver: local

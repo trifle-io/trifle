@@ -1,0 +1,21 @@
+{{- if .Values.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: {{ .Values.certManager.kind }}
+metadata:
+  name: {{ include "trifle.fullname" . }}-letsencrypt
+  {{- if eq .Values.certManager.kind "Issuer" }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "trifle.labels" . | nindent 4 }}
+spec:
+  acme:
+    server: {{ .Values.certManager.server }}
+    email: {{ .Values.certManager.email }}
+    privateKeySecretRef:
+      name: {{ include "trifle.fullname" . }}-letsencrypt-key
+    solvers:
+    - http01:
+        ingress:
+          class: {{ .Values.ingress.className | default "nginx" }}
+{{- end }}

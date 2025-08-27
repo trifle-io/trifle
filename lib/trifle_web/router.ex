@@ -21,6 +21,7 @@ defmodule TrifleWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/home", PageController, :home_page
     get "/toc", PageController, :toc
     get "/privacy", PageController, :privacy
   end
@@ -54,7 +55,7 @@ defmodule TrifleWeb.Router do
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [{TrifleWeb.UserAuth, :redirect_if_user_is_authenticated}] do
-      live "/users/register", UserRegistrationLive, :new
+      # live "/users/register", UserRegistrationLive, :new  # TEMPORARILY DISABLED
       live "/users/log_in", UserLoginLive, :new
       live "/users/reset_password", UserForgotPasswordLive, :new
       live "/users/reset_password/:token", UserResetPasswordLive, :edit
@@ -107,6 +108,7 @@ defmodule TrifleWeb.Router do
   scope "/api", TrifleApi, as: :api do
     pipe_through(:api)
 
+    get("/health", MetricsController, :health)
     post("/metrics", MetricsController, :create)
     get("/metrics", MetricsController, :index)
   end
