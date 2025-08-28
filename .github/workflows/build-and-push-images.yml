@@ -48,10 +48,11 @@ jobs:
       - name: Install Elixir dependencies
         run: mix deps.get
 
-      - name: Install Node.js dependencies
+      - name: Install asset dependencies (Tailwind/ESBuild)
         run: |
-          cd assets
-          npm install
+          echo "Installing Tailwind and ESBuild..."
+          MIX_ENV=prod mix tailwind.install
+          MIX_ENV=prod mix esbuild.install
 
       - name: Build assets
         run: |
@@ -61,12 +62,12 @@ jobs:
           
       - name: Debug asset build process
         run: |
-          echo "Checking mix tasks..."
-          mix help | grep assets
-          echo "Checking Tailwind config..."
-          ls -la assets/
-          echo "Checking if Tailwind ran..."
-          mix tailwind --version || echo "Tailwind not available"
+          echo "Checking mix asset tasks..."
+          mix help | grep -E "(assets|tailwind|esbuild)"
+          echo "Checking Tailwind..."
+          MIX_ENV=prod mix tailwind --version || echo "Tailwind not available"
+          echo "Checking ESBuild..."  
+          MIX_ENV=prod mix esbuild --version || echo "ESBuild not available"
           
       - name: Verify assets were built
         run: |
