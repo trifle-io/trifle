@@ -981,14 +981,16 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def filter_keys(keys, filter) when filter == "" or is_nil(filter) do
-    keys
+    keys |> Enum.sort_by(fn {key, _count} -> key end)
   end
 
   def filter_keys(keys, filter) when is_binary(filter) do
     filter_lower = String.downcase(filter)
-    Enum.filter(keys, fn {key, _count} ->
+    keys
+    |> Enum.filter(fn {key, _count} ->
       String.contains?(String.downcase(key), filter_lower)
     end)
+    |> Enum.sort_by(fn {key, _count} -> key end)
   end
 
   def get_key_color(keys, target_key) when is_map(keys) do
