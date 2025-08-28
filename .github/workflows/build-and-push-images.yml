@@ -45,19 +45,39 @@ jobs:
           elixir-version: '1.18.4'
           otp-version: '28.0'
 
-      - name: Install dependencies
+      - name: Install Elixir dependencies
         run: mix deps.get
+
+      - name: Install Node.js dependencies
+        run: |
+          cd assets
+          npm install
 
       - name: Build assets
         run: |
+          echo "Building assets with MIX_ENV=prod..."
           MIX_ENV=prod mix assets.setup
           MIX_ENV=prod mix assets.deploy
+          
+      - name: Debug asset build process
+        run: |
+          echo "Checking mix tasks..."
+          mix help | grep assets
+          echo "Checking Tailwind config..."
+          ls -la assets/
+          echo "Checking if Tailwind ran..."
+          mix tailwind --version || echo "Tailwind not available"
           
       - name: Verify assets were built
         run: |
           echo "Checking built assets..."
           ls -la priv/static/assets/ || echo "No assets directory found"
-          find priv/static -name "*.css" -o -name "*.js" | head -5
+          echo "CSS files:"
+          find priv/static -name "*.css" | head -5
+          echo "JS files:"
+          find priv/static -name "*.js" | head -3
+          echo "All files in priv/static:"
+          find priv/static -type f | head -10
 
       - name: Extract metadata for app image
         id: meta-app
