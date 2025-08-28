@@ -48,10 +48,20 @@ jobs:
       - name: Install Elixir dependencies
         run: mix deps.get
 
-      - name: Build assets
+      - name: Build assets step by step
         run: |
           echo "Building assets with MIX_ENV=prod..."
-          MIX_ENV=prod mix assets.deploy
+          echo "Step 1: Install asset tools"
+          MIX_ENV=prod mix assets.setup
+          
+          echo "Step 2: Build Tailwind CSS"
+          MIX_ENV=prod mix tailwind default --minify
+          
+          echo "Step 3: Build JavaScript with ESBuild"
+          MIX_ENV=prod mix esbuild default --minify
+          
+          echo "Step 4: Digest assets"
+          MIX_ENV=prod mix phx.digest
           
       - name: Verify assets were built
         run: |
