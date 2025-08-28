@@ -31,7 +31,7 @@ ingress:
   className: "nginx"
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/issuer: "{{ include \"trifle.fullname\" . }}-letsencrypt"
+    cert-manager.io/issuer: "trifle-letsencrypt"
     nginx.ingress.kubernetes.io/rate-limit: "100"
     nginx.ingress.kubernetes.io/rate-limit-window: "1m"
   hosts:
