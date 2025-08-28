@@ -52,6 +52,12 @@ jobs:
         run: |
           MIX_ENV=prod mix assets.setup
           MIX_ENV=prod mix assets.deploy
+          
+      - name: Verify assets were built
+        run: |
+          echo "Checking built assets..."
+          ls -la priv/static/assets/ || echo "No assets directory found"
+          find priv/static -name "*.css" -o -name "*.js" | head -5
 
       - name: Extract metadata for app image
         id: meta-app
