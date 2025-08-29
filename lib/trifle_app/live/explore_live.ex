@@ -4,7 +4,7 @@ defmodule TrifleApp.ExploreLive do
   alias Trifle.Organizations
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Explore", databases: list_databases())}
+    {:ok, assign(socket, page_title: "Databases", databases: list_databases())}
   end
 
   defp list_databases do
@@ -38,7 +38,7 @@ defmodule TrifleApp.ExploreLive do
       <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <%= for database <- @databases do %>
           <%= if is_supported_driver?(database.driver) do %>
-            <.link navigate={~p"/app/explore/#{database.id}"} class="group block">
+            <.link navigate={~p"/app/dbs/#{database.id}"} class="group block">
               <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow duration-200 hover:border-gray-300">
                 <div class="flex items-center justify-between">
                   <h3 class="text-lg font-medium text-gray-900 group-hover:text-teal-600">

@@ -19,7 +19,7 @@
               <div class="ml-10 flex items-baseline space-x-4">
                 <.link navigate={~p"/app"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</.link>
                 <.link navigate={~p"/app/projects"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Projects</.link>
-                <.link navigate={~p"/app/explore"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Explore</.link>
+                <.link navigate={~p"/app/dbs"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Databases</.link>
               </div>
             </div>
           </div>
@@ -79,7 +79,7 @@
         <div class="space-y-1 px-2 pt-2 pb-3 sm:px-3">
           <.link navigate={~p"/app"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Dashboard</.link>
           <.link navigate={~p"/app/projects"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Projects</.link>
-          <.link navigate={~p"/app/explore"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Explore</.link>
+          <.link navigate={~p"/app/dbs"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Databases</.link>
         </div>
         <%= if @current_user.is_admin do %>
           <div class="border-t border-gray-700 pt-2 pb-3">
@@ -136,7 +136,7 @@
         From: "opacity-100"
         To: "opacity-0"
     -->
-        <div class="pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5">
+        <div class="pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg bg-white dark:bg-slate-800 shadow-lg ring-1 ring-black ring-opacity-5 dark:ring-white dark:ring-opacity-10">
           <div class="p-4">
             <div class="flex items-start">
               <div class="flex-shrink-0">
@@ -145,10 +145,10 @@
                 </svg>
               </div>
               <div class="ml-3 w-0 flex-1 pt-0.5">
-                <p class="text-sm text-gray-900"><%= live_flash(@flash, :info) %></p>
+                <p class="text-sm text-gray-900 dark:text-white"><%= live_flash(@flash, :info) %></p>
               </div>
               <div class="ml-4 flex flex-shrink-0" >
-                <button type="button" class="inline-flex rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" @click="show = false; setTimeout(() => $wire.call('lv:clear-flash', 'info'), 300)">
+                <button type="button" class="inline-flex rounded-md bg-white dark:bg-slate-700 text-gray-400 hover:text-gray-500 dark:text-slate-300 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" @click="show = false; setTimeout(() => $wire.call('lv:clear-flash', 'info'), 300)">
                   <span class="sr-only">Close</span>
                   <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -175,7 +175,7 @@
         From: "opacity-100"
         To: "opacity-0"
     -->
-        <div class="pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5">
+        <div class="pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg bg-white dark:bg-slate-800 shadow-lg ring-1 ring-black ring-opacity-5 dark:ring-white dark:ring-opacity-10">
           <div class="p-4">
             <div class="flex items-start">
               <div class="flex-shrink-0">
@@ -184,10 +184,10 @@
                 </svg>
               </div>
               <div class="ml-3 w-0 flex-1 pt-0.5">
-                <p class="text-sm text-gray-900"><%= live_flash(@flash, :error) %></p>
+                <p class="text-sm text-gray-900 dark:text-white"><%= live_flash(@flash, :error) %></p>
               </div>
               <div class="ml-4 flex flex-shrink-0" >
-                <button type="button" class="inline-flex rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" @click="show = false; setTimeout(() => $wire.call('lv:clear-flash', 'error'), 300)">
+                <button type="button" class="inline-flex rounded-md bg-white dark:bg-slate-700 text-gray-400 hover:text-gray-500 dark:text-slate-300 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" @click="show = false; setTimeout(() => $wire.call('lv:clear-flash', 'error'), 300)">
                   <span class="sr-only">Close</span>
                   <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -202,9 +202,9 @@
   <% end %>
 
   <%= if assigns[:page_title] do %>
-    <header class="bg-white shadow-sm">
+    <header class="bg-white dark:bg-slate-800 shadow-sm">
       <div class="mx-auto max-w-full py-4 px-4 sm:px-6 lg:px-8">
-        <h1 class="text-lg font-semibold leading-6 text-gray-900">
+        <h1 class="text-lg font-semibold leading-6 text-gray-900 dark:text-white">
           <%= format_breadcrumb(assigns[:page_title]) %>
         </h1>
       </div>
