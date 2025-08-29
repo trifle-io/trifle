@@ -21,6 +21,7 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
+import Sortable from "sortablejs"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
@@ -55,12 +56,20 @@ Hooks.ProjectTimeline = {
       series = [{name: key || 'Data', data: data || []}];
     }
     
+    // Detect dark mode
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const backgroundColor = isDarkMode ? '#1e293b' : '#ffffff';
+    const textColor = isDarkMode ? '#94a3b8' : '#374151';
+    const lineColor = isDarkMode ? '#475569' : '#d1d5db';
+    const gridColor = isDarkMode ? '#475569' : '#f3f4f6';
+    
     return Highcharts.chart('timeline-chart', {
       chart: {
         type: 'column',
         height: '120',
         marginTop: 10,
-        spacingTop: 5
+        spacingTop: 5,
+        backgroundColor: backgroundColor
       },
       time: {
         useUTC: true,
@@ -83,7 +92,14 @@ Hooks.ProjectTimeline = {
         },
         title: {
           enabled: false
-        }
+        },
+        labels: {
+          style: {
+            color: textColor
+          }
+        },
+        lineColor: lineColor,
+        tickColor: lineColor
       },
       yAxis: {
         title: {
@@ -91,11 +107,22 @@ Hooks.ProjectTimeline = {
         },
         min: 0,
         endOnTick: false,
-        maxPadding: 0.05
+        maxPadding: 0.05,
+        labels: {
+          style: {
+            color: textColor
+          }
+        },
+        gridLineColor: gridColor
       },
 
       tooltip: {
-        xDateFormat: '%Y-%m-%d %H:%M:%S'
+        xDateFormat: '%Y-%m-%d %H:%M:%S',
+        backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+        style: {
+          color: isDarkMode ? '#ffffff' : '#374151'
+        },
+        borderColor: isDarkMode ? '#475569' : '#d1d5db'
       },
 
       legend: {
@@ -215,31 +242,35 @@ Hooks.TableHover = {
         const row = e.target.dataset.row;
         const col = e.target.dataset.col;
         
+        // Detect if we're in dark mode
+        const isDarkMode = document.documentElement.classList.contains('dark');
+        const highlightColor = isDarkMode ? '#1e293b' : '#f0fdfa';
+        
         // Highlight current cell's row header with important style
         const rowHeader = table.querySelector(`td[data-row="${row}"]:not([data-col])`);
         if (rowHeader) {
-          rowHeader.style.backgroundColor = '#f0fdfa';
+          rowHeader.style.backgroundColor = highlightColor;
           rowHeader.classList.add('table-highlight');
         }
         
         // Highlight current cell's column header
         const colHeader = table.querySelector(`th[data-col="${col}"]`);
         if (colHeader) {
-          colHeader.style.backgroundColor = '#f0fdfa';
+          colHeader.style.backgroundColor = highlightColor;
           colHeader.classList.add('table-highlight');
         }
         
         // Highlight all cells in the same column
         const colCells = table.querySelectorAll(`td[data-col="${col}"]`);
         colCells.forEach(colCell => {
-          colCell.style.backgroundColor = '#f0fdfa';
+          colCell.style.backgroundColor = highlightColor;
           colCell.classList.add('table-highlight');
         });
         
         // Highlight all cells in the same row
         const rowCells = table.querySelectorAll(`td[data-row="${row}"]`);
         rowCells.forEach(rowCell => {
-          rowCell.style.backgroundColor = '#f0fdfa';
+          rowCell.style.backgroundColor = highlightColor;
           rowCell.classList.add('table-highlight');
         });
       });
@@ -252,6 +283,111 @@ Hooks.TableHover = {
         });
       });
     });
+  }
+}
+
+Hooks.Sortable = {
+  mounted() {
+    const group = this.el.dataset.group;
+    const handle = this.el.dataset.handle;
+    
+    this.sortable = Sortable.create(this.el, {
+      group: group,
+      handle: handle,
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      dragClass: 'sortable-drag',
+      onEnd: (evt) => {
+        // Get all item IDs in the new order
+        const ids = Array.from(this.el.children).map(child => child.dataset.id);
+        
+        // Send the new order to LiveView
+        this.pushEvent("reorder_transponders", { ids: ids });
+      }
+    });
+  },
+  
+  destroyed() {
+    if (this.sortable) {
+      this.sortable.destroy();
+    }
+  }
+}
+
+Hooks.FastTooltip = {
+  mounted() {
+    this.initTooltips();
+  },
+  
+  updated() {
+    this.initTooltips();
+  },
+  
+  initTooltips() {
+    // Remove existing tooltips
+    document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
+    
+    const tooltipElements = this.el.querySelectorAll('[data-tooltip]');
+    
+    tooltipElements.forEach(el => {
+      el.addEventListener('mouseenter', (e) => {
+        this.showTooltip(e.target, e.target.dataset.tooltip);
+      });
+      
+      el.addEventListener('mouseleave', (e) => {
+        this.hideTooltip();
+      });
+    });
+  },
+  
+  showTooltip(element, text) {
+    // Detect dark mode
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const backgroundColor = isDarkMode ? '#0f172a' : '#374151';
+    const textColor = isDarkMode ? '#ffffff' : '#ffffff';
+    
+    // Create tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.className = 'fast-tooltip';
+    tooltip.textContent = text;
+    tooltip.style.cssText = `
+      position: absolute;
+      background: ${backgroundColor};
+      color: ${textColor};
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 1000;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    `;
+    
+    document.body.appendChild(tooltip);
+    
+    // Position tooltip
+    const rect = element.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    
+    let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2) + window.scrollX;
+    let top = rect.top - tooltipRect.height - 8 + window.scrollY;
+    
+    // Keep tooltip within viewport
+    if (left < 8) left = 8;
+    if (left + tooltipRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - tooltipRect.width - 8;
+    }
+    if (top < 8 + window.scrollY) {
+      top = rect.bottom + 8 + window.scrollY;
+    }
+    
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+  },
+  
+  hideTooltip() {
+    document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
   }
 }
 

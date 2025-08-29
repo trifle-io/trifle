@@ -12,6 +12,21 @@ module.exports = {
     "../lib/trifle_api/**/*.*ex",
     "../lib/trifle_admin/**/*.*ex"
   ],
+  darkMode: 'class', // Enable class-based dark mode
+  safelist: [
+    // Force include essential dark mode classes
+    'dark:bg-slate-900',
+    'dark:bg-slate-800', 
+    'dark:bg-slate-700',
+    'dark:text-white',
+    'dark:text-slate-400',
+    'dark:text-slate-300',
+    'dark:border-slate-600',
+    'dark:border-slate-700',
+    'dark:divide-slate-700',
+    'dark:hover:bg-slate-700',
+    'dark:hover:text-white'
+  ],
   theme: {
     extend: {
       colors: {

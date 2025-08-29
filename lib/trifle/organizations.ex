@@ -320,4 +320,81 @@ defmodule Trifle.Organizations do
   def nuke_database(%Database{} = database) do
     Database.nuke(database)
   end
+
+  ## Transponder functions
+
+  alias Trifle.Organizations.Transponder
+
+  @doc """
+  Returns the list of transponders for a database.
+  """
+  def list_transponders_for_database(%Database{} = database) do
+    Repo.all(from t in Transponder, where: t.database_id == ^database.id, order_by: [asc: t.order, asc: t.key])
+  end
+
+  @doc """
+  Gets a single transponder.
+  """
+  def get_transponder!(id), do: Repo.get!(Transponder, id)
+
+  @doc """
+  Creates a transponder.
+  """
+  def create_transponder(attrs \\ %{}) do
+    %Transponder{}
+    |> Transponder.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a transponder.
+  """
+  def update_transponder(%Transponder{} = transponder, attrs) do
+    transponder
+    |> Transponder.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a transponder.
+  """
+  def delete_transponder(%Transponder{} = transponder) do
+    Repo.delete(transponder)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking transponder changes.
+  """
+  def change_transponder(%Transponder{} = transponder, attrs \\ %{}) do
+    Transponder.changeset(transponder, attrs)
+  end
+
+  @doc """
+  Updates the order of transponders for a database.
+  """
+  def update_transponder_order(%Database{} = database, transponder_ids) do
+    Repo.transaction(fn ->
+      transponder_ids
+      |> Enum.with_index()
+      |> Enum.each(fn {transponder_id, index} ->
+        from(t in Transponder, where: t.id == ^transponder_id and t.database_id == ^database.id)
+        |> Repo.update_all(set: [order: index])
+      end)
+    end)
+  end
+
+  @doc """
+  Sets the next available order for a new transponder.
+  """
+  def get_next_transponder_order(%Database{} = database) do
+    query = from(t in Transponder, 
+      where: t.database_id == ^database.id, 
+      select: max(t.order)
+    )
+    
+    case Repo.one(query) do
+      nil -> 0
+      max_order -> max_order + 1
+    end
+  end
 end
