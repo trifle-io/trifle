@@ -209,26 +209,26 @@ defmodule TrifleApp.DatabaseTranspondersLive do
                     <div class="flex items-center justify-between">
                       <div class="flex items-center gap-3">
                         <div class="flex-shrink-0 text-gray-400 dark:text-slate-500 text-lg font-medium min-w-[2rem] text-center">
-                          <%= transponder.order %>
+                          <%= transponder.order + 1 %>
                         </div>
 
                         <div class="min-w-0 flex-1">
-                          <div class="flex items-center justify-between">
-                            <div>
-                              <.link
-                                patch={~p"/app/dbs/#{@database.id}/transponders/#{transponder.id}"}
-                                class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400 block"
-                              >
-                                <%= transponder.name || transponder.key %>
-                              </.link>
-                              <p class="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                                Pattern: <%= transponder.key %>
-                              </p>
-                            </div>
-                            <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-700 px-2 py-1 text-xs font-medium text-gray-600 dark:text-slate-300">
+                          <div class="flex items-center gap-2 mb-1">
+                            <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200">
                               <%= Transponder.get_type_display_name(transponder.type) %>
                             </span>
+                            <.link
+                              patch={~p"/app/dbs/#{@database.id}/transponders/#{transponder.id}"}
+                              class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"
+                            >
+                              <%= transponder.name || transponder.key %>
+                            </.link>
                           </div>
+                          <p class="text-xs text-gray-500 dark:text-slate-400">
+                            Key Pattern: <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono"><%= transponder.key %></code>
+                            <span class="mx-3">•</span>
+                            Response Path: <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono"><%= Map.get(transponder.config, "response_path", "N/A") %></code>
+                          </p>
                         </div>
                       </div>
 

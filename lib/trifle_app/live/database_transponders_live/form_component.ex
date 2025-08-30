@@ -20,7 +20,7 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
         phx-submit="save"
       >
         <.input field={@form[:name]} type="text" label="Name" placeholder="e.g., Conversion Rate Calculator" />
-        <.input field={@form[:key]} type="text" label="Pattern" placeholder="e.g., customer::(.*)::orders" />
+        <.input field={@form[:key]} type="text" label="Key Pattern" placeholder="e.g., customer::(.*)::orders" />
         
         <div>
           <.label>Type</.label>
