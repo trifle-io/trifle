@@ -1529,9 +1529,9 @@ defmodule TrifleApp.DatabaseExploreLive do
 
     <!-- Row 2: Activity/Events Chart -->
     <div class="sticky top-16 z-40 mb-6">
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow py-1 px-3 relative">
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow py-1 px-3 relative" style="height: 160px;">
         <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-          <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-800 dark:bg-opacity-90 flex items-center justify-center z-10 rounded-lg" style="top: -16px;">
+          <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-800 dark:bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
             <div class="flex flex-col items-center space-y-3">
               <div class="flex items-center space-x-2">
                 <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
@@ -1543,21 +1543,17 @@ defmodule TrifleApp.DatabaseExploreLive do
                   <% end %>
                 </span>
               </div>
-              <%= if @loading_chunks && @loading_progress do %>
-                <div class="w-64 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                  <div
-                    class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                    style={"width: #{((@loading_progress.current + 1) / @loading_progress.total * 100)}%"}
-                  ></div>
-                </div>
-                <%= if @loading_progress.total > 1 do %>
-                  <div class="flex items-center justify-center">
-                    <span class="text-xs text-gray-500 dark:text-slate-300">
-                      Chart updates continuously • Table loads when complete
-                    </span>
+              <!-- Always reserve space for progress bar to keep text position consistent -->
+              <div class="w-64 h-2">
+                <%= if @loading_chunks && @loading_progress do %>
+                  <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                    <div
+                      class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                      style={"width: #{((@loading_progress.current + 1) / @loading_progress.total * 100)}%"}
+                    ></div>
                   </div>
                 <% end %>
-              <% end %>
+              </div>
             </div>
           </div>
         <% end %>
@@ -1573,7 +1569,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           class=""
         >
         </div>
-        <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5">
+        <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5 h-full">
           <div id="timeline-chart"></div>
         </div>
       </div>
