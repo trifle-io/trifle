@@ -1907,12 +1907,13 @@ defmodule TrifleApp.DatabaseExploreLive do
             id="table-hover-container"
             phx-hook="TableHover"
           >
-            <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto" id="data-table" phx-hook="FastTooltip">
+            <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto" id="data-table" phx-hook="FastTooltip" style="table-layout: fixed;">
               <thead>
                 <tr>
                   <th
                     scope="col"
                     class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.25)] dark:lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.5)]"
+                    style="width: 200px;"
                   >
                     Path
                   </th>
@@ -1921,6 +1922,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                       scope="col"
                       class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 dark:text-teal-400 bg-white dark:bg-slate-800 h-16 align-top z-10 transition-colors duration-150"
                       data-col={col_index}
+                      style="width: 120px;"
                     >
                       {format_table_timestamp(at, @granularity)}
                     </th>
