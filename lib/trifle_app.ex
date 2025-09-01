@@ -62,6 +62,16 @@ defmodule TrifleApp do
       import Phoenix.HTML
       import TrifleApp.CoreComponents
       import TrifleApp.Gettext
+      
+      # Design System Components
+      import TrifleApp.DesignSystem.ButtonGroup
+      import TrifleApp.DesignSystem.Modal
+      import TrifleApp.DesignSystem.LabeledControl
+      import TrifleApp.DesignSystem.DataTable
+      import TrifleApp.DesignSystem.TabNavigation
+      import TrifleApp.DesignSystem.FormField
+      import TrifleApp.DesignSystem.FormButtons
+      import TrifleApp.DesignSystem.FormContainer
 
       alias Phoenix.LiveView.JS
 

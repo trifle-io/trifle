@@ -174,6 +174,86 @@ curl -X POST "http://localhost:4000/api/metrics" \
 
 ## Design System
 
+### UI Components
+
+The application includes a comprehensive design system with reusable components for consistent styling:
+
+#### **Form Components**
+```elixir
+# Unified form field with validation and error handling
+<.form_field field={@form[:email]} type="email" label="Email" required />
+<.form_field field={@form[:description]} type="textarea" label="Description" help_text="Optional" />
+<.form_field field={@form[:status]} type="select" label="Status" options={@options} prompt="Choose..." />
+
+# Standardized form buttons
+<.form_actions>
+  <.primary_button phx-disable-with="Saving...">Save</.primary_button>
+  <.secondary_button navigate={~p"/back"}>Cancel</.secondary_button>
+  <.danger_button data-confirm="Are you sure?">Delete</.danger_button>
+</.form_actions>
+
+# Form container with layout support
+<.form_container for={@form} phx-submit="save" layout="simple">
+  <:header title="Create Item" subtitle="Add a new item" />
+  <.form_field field={@form[:name]} label="Name" required />
+  <:actions>
+    <.primary_button>Create</.primary_button>
+    <.secondary_button navigate={~p"/back"}>Cancel</.secondary_button>
+  </:actions>
+</.form_container>
+```
+
+#### **Navigation Components**
+```elixir
+# Tab navigation
+<.tab_navigation>
+  <:tab navigate={~p"/explore"} active={true}>
+    <:icon><svg>...</svg></:icon>
+    <:label>Explore</:label>
+  </:tab>
+</.tab_navigation>
+
+# Button groups
+<.button_group label="Controls">
+  <:button phx-click="action" title="Action">
+    <.icon />
+  </:button>
+</.button_group>
+```
+
+#### **Data Display Components**
+```elixir
+# Data tables with headers and search
+<.data_table>
+  <:header>
+    <.table_header title="Items" count={@count}>
+      <:search>
+        <input placeholder="Search..." />
+      </:search>
+    </.table_header>
+  </:header>
+  <:body>
+    <!-- table content -->
+  </:body>
+</.data_table>
+
+# Modals
+<.app_modal id="my-modal" show={@show}>
+  <:title>Modal Title</:title>
+  <:body>Modal content</:body>
+  <:actions>
+    <.primary_button>Confirm</.primary_button>
+  </:actions>
+</.app_modal>
+```
+
+#### **Design System Benefits**
+- **Consistent styling** across all UI components
+- **Built-in dark mode support** for all components
+- **Accessible design** with proper ARIA labels and keyboard navigation
+- **Validation handling** with unified error display patterns
+- **Flexible layouts** supporting simple, grid, and slide-over patterns
+
 ### Official Chart Color Palette
 
 The analytics dashboard uses a carefully curated color palette managed by the `TrifleWeb.DesignSystem.ChartColors` module:

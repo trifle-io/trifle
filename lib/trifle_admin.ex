@@ -60,7 +60,7 @@ defmodule TrifleAdmin do
   defp html_helpers do
     quote do
       import Phoenix.HTML
-      import TrifleAdmin.CoreComponents
+      import TrifleApp.CoreComponents
       import TrifleAdmin.Gettext
 
       alias Phoenix.LiveView.JS

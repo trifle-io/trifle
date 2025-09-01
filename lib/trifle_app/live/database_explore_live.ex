@@ -1673,16 +1673,10 @@ defmodule TrifleApp.DatabaseExploreLive do
               id={"smart_timeframe_container_#{@smart_timeframe_input}"}
               phx-update="replace"
             >
-              <label
-                for="smart_timeframe"
-                class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white"
-              >
-                Timeframe {@database.time_zone || "UTC"}{get_timezone_offset_display(@database.time_zone || "UTC")}
-              </label>
-              <input
-                type="text"
-                name="smart_timeframe"
+              <.labeled_input
+                label={"Timeframe #{@database.time_zone || "UTC"}#{get_timezone_offset_display(@database.time_zone || "UTC")}"}
                 id="smart_timeframe"
+                name="smart_timeframe"
                 value={format_smart_timeframe_display(@smart_timeframe_input, Database.stats_config(@database), @use_fixed_display, @from, @to)}
                 placeholder="e.g., 5m, 2h, 1d, 3w, 6mo, 1y"
                 phx-keydown="smart_timeframe_keydown"
@@ -1690,41 +1684,40 @@ defmodule TrifleApp.DatabaseExploreLive do
                 phx-focus="show_timeframe_dropdown"
                 phx-blur="delayed_hide_timeframe_dropdown"
                 phx-hook="SmartTimeframeInput"
-                class="block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm pr-20"
-              />
-              <%= if @smart_timeframe_input && @smart_timeframe_input != "" do %>
-                <div class="absolute inset-y-0 right-8 flex items-center">
-                  <span class={[
-                    "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset",
-                    if @smart_timeframe_input == "c" do
-                      "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 ring-gray-500/10 dark:ring-gray-500/30"
-                    else
-                      "bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-200 ring-gray-500/10 dark:ring-teal-500/30"
-                    end
-                  ]}>
-                    {if @smart_timeframe_input == "c", do: "custom", else: @smart_timeframe_input}
-                  </span>
-                </div>
-              <% end %>
-
-              <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-                <svg
-                  class="h-5 w-5 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </div>
+              >
+                <:badge>
+                  <%= if @smart_timeframe_input && @smart_timeframe_input != "" do %>
+                    <span class={[
+                      "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset",
+                      if @smart_timeframe_input == "c" do
+                        "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 ring-gray-500/10 dark:ring-gray-500/30"
+                      else
+                        "bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-200 ring-gray-500/10 dark:ring-teal-500/30"
+                      end
+                    ]}>
+                      {if @smart_timeframe_input == "c", do: "custom", else: @smart_timeframe_input}
+                    </span>
+                  <% end %>
+                </:badge>
+                <:suffix>
+                  <svg
+                    class="h-5 w-5 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </:suffix>
+              </.labeled_input>
 
               <%= if @show_timeframe_dropdown do %>
-                <div class="absolute z-10 mt-1 w-full bg-white dark:bg-slate-700 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 dark:ring-white dark:ring-opacity-20 overflow-auto focus:outline-none sm:text-sm">
+                <div class="absolute z-50 mt-1 w-full bg-white dark:bg-slate-700 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 dark:ring-white dark:ring-opacity-20 overflow-auto focus:outline-none sm:text-sm">
                   <%= for {value, label} <- get_timeframe_dropdown_options() do %>
                     <div
                       phx-click="select_timeframe_preset"
@@ -1748,48 +1741,23 @@ defmodule TrifleApp.DatabaseExploreLive do
 
           <div class="flex gap-4">
             <!-- Navigation controls -->
-            <div class="relative">
-              <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-                Controls
-              </label>
-              <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
-                <!-- Previous timeframe button -->
-                <button
-                  type="button"
-                  phx-click="navigate_timeframe_backward"
-                  class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 rounded-l-md bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                  title="Move timeframe backward"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
-                  </svg>
-                </button>
-                
-                <!-- Reload button -->
-                <button
-                  type="button"
-                  phx-click="reload_data"
-                  class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 border-l border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                  title="Reload current timeframe"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                  </svg>
-                </button>
-                
-                <!-- Next timeframe button -->
-                <button
-                  type="button"
-                  phx-click="navigate_timeframe_forward"
-                  class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 rounded-r-md border-l border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                  title="Move timeframe forward"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+            <.button_group label="Controls">
+              <:button phx-click="navigate_timeframe_backward" title="Move timeframe backward">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
+                </svg>
+              </:button>
+              <:button phx-click="reload_data" title="Reload current timeframe">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              </:button>
+              <:button phx-click="navigate_timeframe_forward" title="Move timeframe forward">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+                </svg>
+              </:button>
+            </.button_group>
 
             <!-- Granularity controls -->
             <div class="relative">
@@ -1890,124 +1858,128 @@ defmodule TrifleApp.DatabaseExploreLive do
 
     <!-- Row 3: Key Selection -->
     <div class="mb-6">
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
-        <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span>Keys</span>
-            <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
-              <%= length(filter_keys(@keys, @key_search_filter)) %>
-            </span>
-          </div>
-          <div class="relative">
-            <input
-              type="text"
-              placeholder="Search keys..."
-              value={@key_search_filter}
-              phx-keyup="filter_keys"
-              class="block w-64 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-xs !pl-9"
-            />
-            <div class="absolute inset-y-0 left-2 flex items-center">
-              <svg class="h-4 w-4 text-gray-400 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-        <div class="h-48 overflow-y-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
-          <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden">
-            <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
-              <li class={
-                  if @key == key,
-                    do: "relative bg-teal-50 dark:bg-teal-900/30",
-                    else: "relative bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-slate-700"
-                }>
-                <button
-                  type="button"
-                  phx-click={if @key == key, do: "deselect_key", else: "select_key"}
-                  phx-value-key={key}
-                  class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left"
-                >
-                  <div class="flex justify-between gap-x-6">
-                    <div class="flex gap-x-3 items-center">
-                      <%= if @key == key do %>
-                        <svg
-                          class="h-5 w-5 text-teal-600 flex-shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                          <circle cx="12" cy="12" r="4" fill="currentColor" />
-                        </svg>
-                      <% else %>
-                        <svg
-                          class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                      <% end %>
+      <.data_table>
+        <:header>
+          <.table_header 
+            title="Keys" 
+            count={length(filter_keys(@keys, @key_search_filter))}
+          >
+            <:search>
+              <div class="relative">
+                <input
+                  type="text"
+                  placeholder="Search keys..."
+                  value={@key_search_filter}
+                  phx-keyup="filter_keys"
+                  class="block w-64 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-xs !pl-9"
+                />
+                <div class="absolute inset-y-0 left-2 flex items-center">
+                  <svg class="h-4 w-4 text-gray-400 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+            </:search>
+          </.table_header>
+        </:header>
+        
+        <:body>
+          <div class="h-48 overflow-y-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
+            <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden">
+              <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
+                <li class={
+                    if @key == key,
+                      do: "relative bg-teal-50 dark:bg-teal-900/30",
+                      else: "relative bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-slate-700"
+                  }>
+                  <button
+                    type="button"
+                    phx-click={if @key == key, do: "deselect_key", else: "select_key"}
+                    phx-value-key={key}
+                    class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left"
+                  >
+                    <div class="flex justify-between gap-x-6">
+                      <div class="flex gap-x-3 items-center">
+                        <%= if @key == key do %>
+                          <svg
+                            class="h-5 w-5 text-teal-600 flex-shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                            <circle cx="12" cy="12" r="4" fill="currentColor" />
+                          </svg>
+                        <% else %>
+                          <svg
+                            class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        <% end %>
 
-                      <div class="min-w-0 flex-auto">
-                        <p
-                          class="text-sm font-semibold font-mono leading-6"
-                          style={"color: #{get_key_color(@keys, key)} !important"}
+                        <div class="min-w-0 flex-auto">
+                          <p
+                            class="text-sm font-semibold font-mono leading-6"
+                            style={"color: #{get_key_color(@keys, key)} !important"}
+                          >
+                            {key}
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-x-4">
+                        <span
+                          class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium border float-right"
+                          style={"background-color: #{get_key_color(@keys, key)}15; color: #{get_key_color(@keys, key)} !important; border-color: #{get_key_color(@keys, key)}40 !important"}
                         >
-                          {key}
-                        </p>
+                          {format_number(count)}
+                        </span>
+                        <svg
+                          class="h-5 w-5 flex-none text-gray-400 dark:text-slate-400"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill-rule="evenodd"
+                            d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
                       </div>
                     </div>
-                    <div class="flex items-center gap-x-4">
-                      <span
-                        class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium border float-right"
-                        style={"background-color: #{get_key_color(@keys, key)}15; color: #{get_key_color(@keys, key)} !important; border-color: #{get_key_color(@keys, key)}40 !important"}
-                      >
-                        {format_number(count)}
-                      </span>
-                      <svg
-                        class="h-5 w-5 flex-none text-gray-400 dark:text-slate-400"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fill-rule="evenodd"
-                          d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
+                  </button>
+                </li>
+              <% end %>
+              <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
+                <div class="flex items-center justify-center h-full text-gray-500 dark:text-slate-400 text-sm">
+                  <%= if @loading_chunks do %>
+                    <div class="flex items-center space-x-2">
+                      <div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+                      <span>Loading keys...</span>
                     </div>
-                  </div>
-                </button>
-              </li>
-            <% end %>
-            <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
-              <div class="flex items-center justify-center h-full text-gray-500 dark:text-slate-400 text-sm">
-                <%= if @loading_chunks do %>
-                  <div class="flex items-center space-x-2">
-                    <div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-                    <span>Loading keys...</span>
-                  </div>
-                <% else %>
-                  <span>No keys found</span>
-                <% end %>
-              </div>
-            <% end %>
-          </ul>
-        </div>
-      </div>
+                  <% else %>
+                    <span>No keys found</span>
+                  <% end %>
+                </div>
+              <% end %>
+            </ul>
+          </div>
+        </:body>
+      </.data_table>
     </div>
 
     <!-- Row 4: Data for Selected Key -->

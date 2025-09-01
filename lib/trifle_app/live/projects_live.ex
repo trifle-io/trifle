@@ -166,8 +166,8 @@ defmodule TrifleApp.ProjectsLive do
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
 
-      {:ok, project} ->
-        {:noreply, push_redirect(socket, to: ~p"/app/projects")}
+      {:ok, _project} ->
+        {:noreply, push_navigate(socket, to: ~p"/app/projects")}
     end
   end
 end
