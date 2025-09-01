@@ -40,6 +40,9 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(transponding: false)
       |> assign(show_timeframe_dropdown: false)
       |> assign(show_sensitivity_dropdown: false)
+      |> assign(transponder_errors: [])
+      |> assign(show_error_modal: false)
+      |> assign(transponder_results: [])
 
     {:ok, socket}
   end
@@ -342,6 +345,14 @@ defmodule TrifleApp.DatabaseExploreLive do
     {:noreply, socket}
   end
 
+  def handle_event("show_transponder_errors", _, socket) do
+    {:noreply, assign(socket, show_error_modal: true)}
+  end
+
+  def handle_event("hide_transponder_errors", _, socket) do
+    {:noreply, assign(socket, show_error_modal: false)}
+  end
+
   def determine_granularity_for_timeframe(from, to) do
     duration_seconds = DateTime.diff(to, from, :second)
 
@@ -639,10 +650,11 @@ defmodule TrifleApp.DatabaseExploreLive do
     {:noreply, socket}
   end
 
-  def handle_async(:transpond_task, {:ok, transponded_table_stats}, socket) do
+  def handle_async(:transpond_task, {:ok, {transponded_table_stats, transponder_results}}, socket) do
     # Handle transponding completion - transponded_table_stats is already in table format
     socket = socket
       |> assign(stats: transponded_table_stats)
+      |> assign(transponder_results: transponder_results)
       |> assign(transponding: false)
 
     {:noreply, socket}
@@ -667,12 +679,12 @@ defmodule TrifleApp.DatabaseExploreLive do
       # No specific key selected or no raw stats, process without transponding
       if socket.assigns.raw_key_stats do
         {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(socket.assigns.raw_key_stats)
-        {false, key_tabulized}
+        {false, key_tabulized, []}
       else
-        {false, nil}
+        {false, nil, []}
       end
-      |> then(fn {transponding, stats} ->
-        socket |> assign(transponding: transponding, stats: stats)
+      |> then(fn {transponding, stats, transponder_results} ->
+        socket |> assign(transponding: transponding, stats: stats, transponder_results: transponder_results)
       end)
     end
   end
@@ -688,16 +700,41 @@ defmodule TrifleApp.DatabaseExploreLive do
     series = Trifle.Stats.Series.new(raw_stats)
     IO.inspect(series, label: "Created Series object")
 
-    # Apply each transponder in order using Series transformations
-    result_series = Enum.reduce(transponders, series, fn transponder, acc_series ->
-      apply_single_transponder(transponder, acc_series)
+    # Apply each transponder in order using Series transformations and track results
+    {result_series, transponder_results} = Enum.reduce(transponders, {series, []}, fn transponder, {acc_series, acc_results} ->
+      IO.inspect("Processing transponder: #{transponder.type}", label: "TRANSPONDER DEBUG")
+      try do
+        new_series = apply_single_transponder(transponder, acc_series)
+        result = %{
+          transponder: transponder,
+          success: true,
+          error: nil
+        }
+        IO.inspect("Transponder succeeded: #{transponder.type}", label: "TRANSPONDER SUCCESS")
+        {new_series, [result | acc_results]}
+      rescue
+        error ->
+          IO.inspect("Transponder failed: #{transponder.type} - #{Exception.message(error)}", label: "TRANSPONDER FAILURE")
+          result = %{
+            transponder: transponder,
+            success: false,
+            error: %{
+              message: Exception.message(error),
+              stacktrace: __STACKTRACE__
+            }
+          }
+          {acc_series, [result | acc_results]}
+      end
     end)
 
     IO.inspect(result_series, label: "Final Series after transponders")
 
     # Now convert the transponded Series to table format using existing process
     {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(result_series.series)
-    key_tabulized
+    IO.inspect(key_tabulized, label: "Final tabulized data ready for display")
+    
+    # Return both the table data and transponder results
+    {key_tabulized, Enum.reverse(transponder_results)}
   end
 
   defp apply_single_transponder(transponder, series) do
@@ -706,93 +743,81 @@ defmodule TrifleApp.DatabaseExploreLive do
       config: transponder.config
     }, label: "Applying transponder")
 
-    try do
-      case transponder.type do
-        "Trifle.Stats.Transponder.Add" ->
-          path1 = Map.get(transponder.config, "path1", "")
-          path2 = Map.get(transponder.config, "path2", "")
-          response_path = Map.get(transponder.config, "response_path", "result")
-          IO.inspect({path1, path2, response_path}, label: "Add parameters")
-          Trifle.Stats.Series.transform_add(series, path1, path2, response_path)
+    case transponder.type do
+      "Trifle.Stats.Transponder.Add" ->
+        path1 = Map.get(transponder.config, "path1", "")
+        path2 = Map.get(transponder.config, "path2", "")
+        response_path = Map.get(transponder.config, "response_path", "result")
+        IO.inspect({path1, path2, response_path}, label: "Add parameters")
+        Trifle.Stats.Series.transform_add(series, path1, path2, response_path)
 
-        "Trifle.Stats.Transponder.Subtract" ->
-          path1 = Map.get(transponder.config, "path1", "")
-          path2 = Map.get(transponder.config, "path2", "")
-          response_path = Map.get(transponder.config, "response_path", "result")
-          IO.inspect({path1, path2, response_path}, label: "Subtract parameters")
-          Trifle.Stats.Series.transform_subtract(series, path1, path2, response_path)
+      "Trifle.Stats.Transponder.Subtract" ->
+        path1 = Map.get(transponder.config, "path1", "")
+        path2 = Map.get(transponder.config, "path2", "")
+        response_path = Map.get(transponder.config, "response_path", "result")
+        IO.inspect({path1, path2, response_path}, label: "Subtract parameters")
+        Trifle.Stats.Series.transform_subtract(series, path1, path2, response_path)
 
-        "Trifle.Stats.Transponder.Multiply" ->
-          path1 = Map.get(transponder.config, "path1", "")
-          path2 = Map.get(transponder.config, "path2", "")
-          response_path = Map.get(transponder.config, "response_path", "result")
-          IO.inspect({path1, path2, response_path}, label: "Multiply parameters")
-          Trifle.Stats.Series.transform_multiply(series, path1, path2, response_path)
+      "Trifle.Stats.Transponder.Multiply" ->
+        path1 = Map.get(transponder.config, "path1", "")
+        path2 = Map.get(transponder.config, "path2", "")
+        response_path = Map.get(transponder.config, "response_path", "result")
+        IO.inspect({path1, path2, response_path}, label: "Multiply parameters")
+        Trifle.Stats.Series.transform_multiply(series, path1, path2, response_path)
 
-        "Trifle.Stats.Transponder.Divide" ->
-          path1 = Map.get(transponder.config, "path1", "")
-          path2 = Map.get(transponder.config, "path2", "")
-          response_path = Map.get(transponder.config, "response_path", "result")
-          IO.inspect({path1, path2, response_path}, label: "Divide parameters")
-          Trifle.Stats.Series.transform_divide(series, path1, path2, response_path)
+      "Trifle.Stats.Transponder.Divide" ->
+        path1 = Map.get(transponder.config, "path1", "")
+        path2 = Map.get(transponder.config, "path2", "")
+        response_path = Map.get(transponder.config, "response_path", "result")
+        IO.inspect({path1, path2, response_path}, label: "Divide parameters")
+        Trifle.Stats.Series.transform_divide(series, path1, path2, response_path)
 
-        "Trifle.Stats.Transponder.Ratio" ->
-          path1 = Map.get(transponder.config, "path1", "")
-          path2 = Map.get(transponder.config, "path2", "")
-          response_path = Map.get(transponder.config, "response_path", "ratio")
-          IO.inspect({path1, path2, response_path}, label: "Ratio parameters")
-          Trifle.Stats.Series.transform_ratio(series, path1, path2, response_path)
+      "Trifle.Stats.Transponder.Ratio" ->
+        path1 = Map.get(transponder.config, "path1", "")
+        path2 = Map.get(transponder.config, "path2", "")
+        response_path = Map.get(transponder.config, "response_path", "ratio")
+        IO.inspect({path1, path2, response_path}, label: "Ratio parameters")
+        Trifle.Stats.Series.transform_ratio(series, path1, path2, response_path)
 
-        "Trifle.Stats.Transponder.Sum" ->
-          paths_string = Map.get(transponder.config, "path", "")
-          paths = parse_comma_separated_paths(paths_string)
-          response_path = Map.get(transponder.config, "response_path", "sum")
-          IO.inspect({paths, response_path}, label: "Sum parameters")
-          Trifle.Stats.Series.transform_sum(series, paths, response_path)
+      "Trifle.Stats.Transponder.Sum" ->
+        paths_string = Map.get(transponder.config, "path", "")
+        paths = parse_comma_separated_paths(paths_string)
+        response_path = Map.get(transponder.config, "response_path", "sum")
+        IO.inspect({paths, response_path}, label: "Sum parameters")
+        Trifle.Stats.Series.transform_sum(series, paths, response_path)
 
-        "Trifle.Stats.Transponder.Mean" ->
-          paths_string = Map.get(transponder.config, "path", "")
-          paths = parse_comma_separated_paths(paths_string)
-          response_path = Map.get(transponder.config, "response_path", "mean")
-          IO.inspect({paths, response_path}, label: "Mean parameters")
-          Trifle.Stats.Series.transform_mean(series, paths, response_path)
+      "Trifle.Stats.Transponder.Mean" ->
+        paths_string = Map.get(transponder.config, "path", "")
+        paths = parse_comma_separated_paths(paths_string)
+        response_path = Map.get(transponder.config, "response_path", "mean")
+        IO.inspect({paths, response_path}, label: "Mean parameters")
+        Trifle.Stats.Series.transform_mean(series, paths, response_path)
 
-        "Trifle.Stats.Transponder.Min" ->
-          paths_string = Map.get(transponder.config, "path", "")
-          paths = parse_comma_separated_paths(paths_string)
-          response_path = Map.get(transponder.config, "response_path", "min")
-          IO.inspect({paths, response_path}, label: "Min parameters")
-          Trifle.Stats.Series.transform_min(series, paths, response_path)
+      "Trifle.Stats.Transponder.Min" ->
+        paths_string = Map.get(transponder.config, "path", "")
+        paths = parse_comma_separated_paths(paths_string)
+        response_path = Map.get(transponder.config, "response_path", "min")
+        IO.inspect({paths, response_path}, label: "Min parameters")
+        Trifle.Stats.Series.transform_min(series, paths, response_path)
 
-        "Trifle.Stats.Transponder.Max" ->
-          paths_string = Map.get(transponder.config, "path", "")
-          paths = parse_comma_separated_paths(paths_string)
-          response_path = Map.get(transponder.config, "response_path", "max")
-          IO.inspect({paths, response_path}, label: "Max parameters")
-          Trifle.Stats.Series.transform_max(series, paths, response_path)
+      "Trifle.Stats.Transponder.Max" ->
+        paths_string = Map.get(transponder.config, "path", "")
+        paths = parse_comma_separated_paths(paths_string)
+        response_path = Map.get(transponder.config, "response_path", "max")
+        IO.inspect({paths, response_path}, label: "Max parameters")
+        Trifle.Stats.Series.transform_max(series, paths, response_path)
 
-        "Trifle.Stats.Transponder.StandardDeviation" ->
-          sum_path = Map.get(transponder.config, "sum", "")
-          count_path = Map.get(transponder.config, "count", "")
-          square_path = Map.get(transponder.config, "square", "")
-          response_path = Map.get(transponder.config, "response_path", "stddev")
-          IO.inspect({sum_path, count_path, square_path, response_path}, label: "StandardDeviation parameters")
-          Trifle.Stats.Series.transform_stddev(series, sum_path, count_path, square_path, response_path)
+      "Trifle.Stats.Transponder.StandardDeviation" ->
+        sum_path = Map.get(transponder.config, "sum", "")
+        count_path = Map.get(transponder.config, "count", "")
+        square_path = Map.get(transponder.config, "square", "")
+        response_path = Map.get(transponder.config, "response_path", "stddev")
+        IO.inspect({sum_path, count_path, square_path, response_path}, label: "StandardDeviation parameters")
+        Trifle.Stats.Series.transform_stddev(series, sum_path, count_path, square_path, response_path)
 
-        _ ->
-          # Unknown transponder type, return unchanged
-          IO.inspect(transponder.type, label: "Unknown transponder type")
-          series
-      end
-    rescue
-      error ->
-        # If transponder fails, return original series
-        IO.inspect(%{
-          error: error,
-          type: transponder.type,
-          config: transponder.config,
-          stacktrace: __STACKTRACE__
-        }, label: "Detailed transponder error")
+      _ ->
+        # Unknown transponder type, return unchanged
+        IO.inspect(transponder.type, label: "Unknown transponder type")
         series
     end
   end
@@ -1218,6 +1243,58 @@ defmodule TrifleApp.DatabaseExploreLive do
     |> case do
       {_key, index} -> ChartColors.color_for(index)
       nil -> ChartColors.primary()
+    end
+  end
+
+  def get_summary_stats(assigns) do
+    case assigns do
+      %{key: key, stats: stats, transponder_results: transponder_results, transponder_info: transponder_info, database: database} when not is_nil(key) and key != "" and not is_nil(stats) ->
+        # Count columns (timeline points)
+        column_count = if stats[:at], do: length(stats[:at]), else: 0
+        
+        # Count paths (rows)
+        path_count = if stats[:paths], do: length(stats[:paths]), else: 0
+        
+        # Count transponded paths (paths created by transponders)
+        transponded_paths = if stats[:paths] do
+          stats[:paths]
+          |> Enum.filter(fn path -> Map.has_key?(transponder_info, path) end)
+          |> length()
+        else
+          0
+        end
+        
+        # Count transponders and their success/failure rates
+        matching_transponders = if transponder_results do
+          length(transponder_results)
+        else
+          # Fall back to checking available transponders for this key
+          transponders = Organizations.list_transponders_for_database(database)
+          |> Enum.filter(&(&1.enabled && key_matches_pattern?(&1.key, key)))
+          length(transponders)
+        end
+        
+        {successful_transponders, failed_transponders, transponder_errors} = if transponder_results do
+          successful = Enum.count(transponder_results, & &1.success)
+          failed = Enum.count(transponder_results, &(not &1.success))
+          errors = Enum.filter(transponder_results, &(not &1.success))
+          {successful, failed, errors}
+        else
+          {0, 0, []}
+        end
+
+        %{
+          key: key,
+          column_count: column_count,
+          path_count: path_count,
+          transponded_paths: transponded_paths,
+          matching_transponders: matching_transponders,
+          successful_transponders: successful_transponders,
+          failed_transponders: failed_transponders,
+          transponder_errors: transponder_errors
+        }
+      _ ->
+        nil
     end
   end
 
@@ -1760,6 +1837,82 @@ defmodule TrifleApp.DatabaseExploreLive do
               </tbody>
             </table>
           </div>
+          
+          <!-- Summary Bar -->
+          <%= if summary = get_summary_stats(assigns) do %>
+            <div class="border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50 px-4 py-3">
+              <div class="flex flex-wrap items-center gap-4 text-xs">
+                <!-- Selected Key -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                  </svg>
+                  <span class="font-medium text-gray-700 dark:text-slate-300">Key:</span>
+                  <span class="font-mono text-gray-900 dark:text-white max-w-xs truncate" title={summary.key}>{summary.key}</span>
+                </div>
+
+                <!-- Columns -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
+                  </svg>
+                  <span class="font-medium text-gray-700 dark:text-slate-300">Columns:</span>
+                  <span class="text-gray-900 dark:text-white">{summary.column_count}</span>
+                </div>
+
+                <!-- Paths -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                  </svg>
+                  <span class="font-medium text-gray-700 dark:text-slate-300">Paths:</span>
+                  <span class="text-gray-900 dark:text-white">{summary.path_count}</span>
+                </div>
+
+                <!-- Transponded Paths -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                  </svg>
+                  <span class="font-medium text-gray-700 dark:text-slate-300">Transponded Paths:</span>
+                  <span class="text-gray-900 dark:text-white">{summary.transponded_paths}</span>
+                </div>
+
+                <!-- Transponders -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+                  </svg>
+                  <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
+                  
+                  <!-- Success count -->
+                  <div class="flex items-center gap-1">
+                    <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    <span class="text-gray-900 dark:text-white">{summary.successful_transponders}</span>
+                  </div>
+                  
+                  <!-- Fail count -->
+                  <div class="flex items-center gap-1">
+                    <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                    </svg>
+                    <%= if summary.failed_transponders > 0 do %>
+                      <button 
+                        phx-click="show_transponder_errors"
+                        class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
+                      >
+                        {summary.failed_transponders}
+                      </button>
+                    <% else %>
+                      <span class="text-gray-900 dark:text-white">0</span>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
         </div>
       <% else %>
         <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-8">
@@ -1784,6 +1937,61 @@ defmodule TrifleApp.DatabaseExploreLive do
         </div>
       <% end %>
     </div>
+    
+    <!-- Transponder Error Modal -->
+    <%= if @show_error_modal do %>
+      <% modal_summary = get_summary_stats(assigns) %>
+      <%= if modal_summary && length(modal_summary.transponder_errors) > 0 do %>
+        <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
+          <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"></div>
+            
+            <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6" phx-click-away="hide_transponder_errors">
+              <div class="sm:flex sm:items-start">
+                <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
+                  <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                  <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                    Transponder Errors
+                  </h3>
+                  <div class="mt-4">
+                    <div class="space-y-4">
+                      <%= for error <- modal_summary.transponder_errors do %>
+                        <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
+                          <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-medium text-red-800 dark:text-red-300">
+                              {error.transponder.name || error.transponder.key}
+                            </h4>
+                            <span class="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 px-2 py-1 rounded">
+                              {error.transponder.type}
+                            </span>
+                          </div>
+                          <p class="text-sm text-red-700 dark:text-red-300 font-mono">
+                            {error.error.message}
+                          </p>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  phx-click="hide_transponder_errors"
+                  class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gray-600 text-base font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    <% end %>
     </div>
     """
   end
