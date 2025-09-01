@@ -9,82 +9,110 @@ defmodule TrifleAdmin.UsersLive do
 
   def render(assigns) do
     ~H"""
-    <div class="px-4 sm:px-6 lg:px-8">
-      <div class="sm:flex sm:items-center">
-        <div class="sm:flex-auto">
-          <h1 class="text-base font-semibold leading-6 text-gray-900">Users</h1>
-          <p class="mt-2 text-sm text-gray-700">
-            A list of all users in the system including their email and admin status.
-          </p>
-        </div>
-      </div>
-      <div class="mt-8 flow-root">
-        <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-          <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-            <table class="min-w-full divide-y divide-gray-300">
-              <thead>
+    <.admin_table>
+      <:header>
+        <.admin_table_header 
+          title="Users" 
+          description="A list of all users in the system including their email and admin status."
+        />
+      </:header>
+      
+      <:body>
+        <.admin_table_container>
+          <.admin_table_full>
+            <:columns>
+              <.admin_table_column first>Email</.admin_table_column>
+              <.admin_table_column>Admin</.admin_table_column>
+              <.admin_table_column>Confirmed</.admin_table_column>
+              <.admin_table_column>Created</.admin_table_column>
+              <.admin_table_column actions />
+            </:columns>
+            
+            <:rows>
+              <%= for user <- @users do %>
                 <tr>
-                  <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">
-                    Email
-                  </th>
-                  <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Admin
-                  </th>
-                  <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Confirmed
-                  </th>
-                  <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Created
-                  </th>
-                  <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-0">
-                    <span class="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200">
-                <%= for user <- @users do %>
-                  <tr>
-                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-0">
-                      <%= user.email %>
-                    </td>
-                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      <%= if user.is_admin do %>
-                        <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Admin</span>
-                      <% else %>
-                        <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">User</span>
-                      <% end %>
-                    </td>
-                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                  <.admin_table_cell first>
+                    <div class="group flex items-center space-x-3">
+                      <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-gradient-to-br from-teal-50 to-blue-50 dark:from-teal-900 dark:to-blue-900 rounded-lg flex items-center justify-center group-hover:from-teal-100 group-hover:to-blue-100 dark:group-hover:from-teal-800 dark:group-hover:to-blue-800 transition-all duration-200">
+                          <svg class="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white transition-colors duration-200">
+                          <%= user.email %>
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">
+                          <%= if user.is_admin, do: "Administrator", else: "Standard User" %>
+                        </p>
+                      </div>
+                    </div>
+                  </.admin_table_cell>
+                  <.admin_table_cell>
+                    <%= if user.is_admin do %>
+                      <.status_badge variant="admin">Admin</.status_badge>
+                    <% else %>
+                      <.status_badge>User</.status_badge>
+                    <% end %>
+                  </.admin_table_cell>
+                  <.admin_table_cell>
+                    <div class="flex flex-col">
+                      <div class="mb-1">
+                        <%= if user.confirmed_at do %>
+                          <.status_badge variant="success">Confirmed</.status_badge>
+                        <% else %>
+                          <.status_badge variant="warning">Unconfirmed</.status_badge>
+                        <% end %>
+                      </div>
                       <%= if user.confirmed_at do %>
-                        <span class="text-green-600">Yes</span>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">
+                          <%= Calendar.strftime(user.confirmed_at, "%Y-%m-%d %H:%M") %> UTC
+                        </div>
                       <% else %>
-                        <span class="text-red-600">No</span>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">
+                          Awaiting confirmation
+                        </div>
                       <% end %>
-                    </td>
-                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      <%= Calendar.strftime(user.inserted_at, "%Y-%m-%d") %>
-                    </td>
-                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0">
-                      <%= if user.is_admin do %>
-                        <button phx-click="revoke_admin" phx-value-id={user.id} 
-                                class="text-red-600 hover:text-red-900">
-                          Revoke Admin
-                        </button>
-                      <% else %>
-                        <button phx-click="grant_admin" phx-value-id={user.id}
-                                class="text-indigo-600 hover:text-indigo-900">
-                          Grant Admin
-                        </button>
-                      <% end %>
-                    </td>
-                  </tr>
-                <% end %>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+                    </div>
+                  </.admin_table_cell>
+                  <.admin_table_cell>
+                    <div class="flex flex-col">
+                      <div class="text-gray-900 dark:text-white">
+                        <%= Calendar.strftime(user.inserted_at, "%Y-%m-%d") %>
+                      </div>
+                      <div class="text-xs text-gray-400 dark:text-gray-500">
+                        <%= Calendar.strftime(user.inserted_at, "%H:%M") %> UTC
+                      </div>
+                    </div>
+                  </.admin_table_cell>
+                  <.admin_table_cell actions>
+                    <%= if user.is_admin do %>
+                      <.table_action_button 
+                        variant="danger" 
+                        phx_click="revoke_admin" 
+                        phx_value_id={user.id}
+                      >
+                        Revoke Admin
+                      </.table_action_button>
+                    <% else %>
+                      <.table_action_button 
+                        variant="primary" 
+                        phx_click="grant_admin" 
+                        phx_value_id={user.id}
+                      >
+                        Grant Admin
+                      </.table_action_button>
+                    <% end %>
+                  </.admin_table_cell>
+                </tr>
+              <% end %>
+            </:rows>
+          </.admin_table_full>
+        </.admin_table_container>
+      </:body>
+    </.admin_table>
     """
   end
 

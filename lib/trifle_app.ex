@@ -68,10 +68,12 @@ defmodule TrifleApp do
       import TrifleApp.DesignSystem.Modal
       import TrifleApp.DesignSystem.LabeledControl
       import TrifleApp.DesignSystem.DataTable
+      import TrifleApp.DesignSystem.AdminTable
       import TrifleApp.DesignSystem.TabNavigation
       import TrifleApp.DesignSystem.FormField
       import TrifleApp.DesignSystem.FormButtons
       import TrifleApp.DesignSystem.FormContainer
+      import TrifleApp.DesignSystem.DatabaseLabel
 
       alias Phoenix.LiveView.JS
 
