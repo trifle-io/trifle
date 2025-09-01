@@ -43,6 +43,8 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(transponder_errors: [])
       |> assign(show_error_modal: false)
       |> assign(transponder_results: [])
+      |> assign(load_start_time: nil)
+      |> assign(load_duration_microseconds: nil)
 
     {:ok, socket}
   end
@@ -59,6 +61,27 @@ defmodule TrifleApp.DatabaseExploreLive do
     |> DateTime.truncate(:second)
     |> DateTime.to_naive()
     |> NaiveDateTime.to_iso8601()
+  end
+
+  def format_duration(microseconds) when is_nil(microseconds), do: nil
+  
+  def format_duration(microseconds) when is_integer(microseconds) do
+    cond do
+      microseconds < 1_000 ->
+        "#{microseconds}μs"
+      
+      microseconds < 1_000_000 ->
+        ms = div(microseconds, 1_000)
+        "#{ms}ms"
+      
+      microseconds < 60_000_000 ->
+        seconds = div(microseconds, 1_000_000)
+        "#{seconds}s"
+      
+      true ->
+        minutes = div(microseconds, 60_000_000)
+        "#{minutes}m"
+    end
   end
 
   def format_timeframe_display(from, to) do
@@ -735,10 +758,18 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def handle_async(:transpond_task, {:ok, {transponded_table_stats, transponder_results}}, socket) do
     # Handle transponding completion - transponded_table_stats is already in table format
+    # Calculate total loading duration
+    load_duration = if socket.assigns.load_start_time do
+      System.monotonic_time(:microsecond) - socket.assigns.load_start_time
+    else
+      nil
+    end
+    
     socket = socket
       |> assign(stats: transponded_table_stats)
       |> assign(transponder_results: transponder_results)
       |> assign(transponding: false)
+      |> assign(load_duration_microseconds: load_duration)
 
     {:noreply, socket}
   end
@@ -942,6 +973,9 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   defp load_data_and_update_socket(socket) do
     config = Database.stats_config(socket.assigns.database)
+    
+    # Start timing the data loading process
+    socket = assign(socket, load_start_time: System.monotonic_time(:microsecond))
 
     # Check if we need progressive loading
     if should_slice_timeline?(socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config) do
@@ -1767,8 +1801,8 @@ defmodule TrifleApp.DatabaseExploreLive do
             </div>
           </div>
         </div>
-        <div class="h-48 overflow-y-auto"> <!-- Fixed height for ~3 items with scrolling -->
-          <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700">
+        <div class="h-48 overflow-y-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
+          <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden">
             <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
               <li class={
                   if @key == key,
@@ -2000,6 +2034,16 @@ defmodule TrifleApp.DatabaseExploreLive do
                     <% end %>
                   </div>
                 </div>
+                
+                <!-- Load Speed -->
+                <%= if @load_duration_microseconds do %>
+                  <div class="flex items-center gap-1">
+                    <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                    </svg>
+                    <span class="text-gray-900 dark:text-white">{format_duration(@load_duration_microseconds)}</span>
+                  </div>
+                <% end %>
               </div>
             </div>
           <% end %>
