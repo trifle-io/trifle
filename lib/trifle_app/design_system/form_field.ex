@@ -16,7 +16,7 @@ defmodule TrifleApp.DesignSystem.FormField do
                    prompt="Choose status..." />
   """
   attr :field, Phoenix.HTML.FormField, required: true
-  attr :type, :string, default: "text", values: ~w(text email password textarea select checkbox hidden)
+  attr :type, :string, default: "text", values: ~w(text email password number textarea select checkbox hidden)
   attr :label, :string, required: true
   attr :help_text, :string, default: nil
   attr :required, :boolean, default: false
@@ -39,15 +39,16 @@ defmodule TrifleApp.DesignSystem.FormField do
       <div class="relative">
         <%= case @type do %>
           <% "select" -> %>
-            <select
-              id={@field.id}
-              name={@field.name}
-              class={[
-                "block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
-                @field.errors != [] && "border-red-400 focus:border-red-400 focus:ring-red-400"
-              ]}
-              disabled={@disabled}
-            >
+            <div class="grid grid-cols-1">
+              <select
+                id={@field.id}
+                name={@field.name}
+                class={[
+                  "col-start-1 row-start-1 w-full appearance-none rounded-lg bg-white dark:bg-slate-700 py-2 pr-8 pl-3 text-base text-gray-900 dark:text-white outline-1 -outline-offset-1 outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm",
+                  @field.errors != [] && "outline-red-400 focus:outline-red-400"
+                ]}
+                disabled={@disabled}
+              >
               <%= if @prompt do %>
                 <option value=""><%= @prompt %></option>
               <% end %>
@@ -56,7 +57,13 @@ defmodule TrifleApp.DesignSystem.FormField do
                   <%= label %>
                 </option>
               <% end %>
-            </select>
+              </select>
+              
+              <!-- Dropdown arrow -->
+              <svg class="col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-400 dark:text-slate-500 sm:h-4 sm:w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+              </svg>
+            </div>
           
           <% "textarea" -> %>
             <textarea
@@ -85,7 +92,7 @@ defmodule TrifleApp.DesignSystem.FormField do
               <input type="hidden" name={@field.name} value="false" />
             </div>
           
-          <% type when type in ~w(text email password hidden) -> %>
+          <% type when type in ~w(text email password number hidden) -> %>
             <input
               type={@type}
               id={@field.id}

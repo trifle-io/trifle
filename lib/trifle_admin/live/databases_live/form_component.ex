@@ -7,308 +7,145 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
-      <div class="px-4 py-6 sm:px-6">
-        <h3 class="text-base/7 font-semibold text-gray-900"><%= @title %></h3>
-        <p class="mt-1 max-w-2xl text-sm/6 text-gray-500">Configure database connection for Trifle::Stats drivers</p>
-      </div>
-      
-      <form phx-target={@myself} phx-change="validate" phx-submit="save">
-        <div class="space-y-12 sm:space-y-16">
-          <div>
-            <div class="border-t border-gray-100 mt-10 space-y-8 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t-gray-900/10 sm:pb-0">
-              
-              <!-- Display Name -->
-              <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                <label for="database_display_name" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Display Name</label>
-                <div class="mt-2 sm:col-span-2 sm:mt-0">
-                  <input 
-                    id="database_display_name" 
-                    name="database[display_name]" 
-                    type="text" 
-                    value={@form[:display_name].value}
-                    class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-md sm:text-sm/6" 
-                  />
-                  <%= for error <- @form[:display_name].errors do %>
-                    <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                  <% end %>
-                </div>
-              </div>
-              
-              <!-- Driver -->
-              <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                <label for="database_driver" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Driver</label>
-                <div class="mt-2 sm:col-span-2 sm:mt-0">
-                  <div class="grid grid-cols-1 sm:max-w-xs">
-                    <select 
-                      id="database_driver" 
-                      name="database[driver]" 
-                      class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      disabled={@action == :edit}
-                    >
-                      <option value="">Choose a driver...</option>
-                      <%= for driver <- Database.drivers() do %>
-                        <option value={driver} selected={@form[:driver].value == driver}>
-                          <%= String.capitalize(driver) %>
-                        </option>
-                      <% end %>
-                    </select>
-                    <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4">
-                      <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                    </svg>
-                  </div>
-                  <%= for error <- @form[:driver].errors do %>
-                    <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                  <% end %>
-                </div>
-              </div>
-              
-              <!-- Host -->
-              <%= if @selected_driver && Database.requires_host?(@selected_driver) do %>
-                <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                  <label for="database_host" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Host</label>
-                  <div class="mt-2 sm:col-span-2 sm:mt-0">
-                    <input 
-                      id="database_host" 
-                      name="database[host]" 
-                      type="text" 
-                      value={@form[:host].value}
-                      class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-md sm:text-sm/6" 
-                    />
-                    <%= for error <- @form[:host].errors do %>
-                      <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-              
-              <!-- Port -->
-              <%= if @selected_driver && Database.requires_port?(@selected_driver) do %>
-                <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                  <label for="database_port" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Port</label>
-                  <div class="mt-2 sm:col-span-2 sm:mt-0">
-                    <input 
-                      id="database_port" 
-                      name="database[port]" 
-                      type="number" 
-                      value={@form[:port].value}
-                      placeholder={if @selected_driver, do: to_string(Database.default_port(@selected_driver)), else: ""}
-                      class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-xs sm:text-sm/6" 
-                    />
-                    <%= for error <- @form[:port].errors do %>
-                      <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-              
-              <!-- Database Name -->
-              <%= if @selected_driver && @selected_driver != "redis" && @selected_driver != "sqlite" do %>
-                <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                  <label for="database_database_name" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Database Name</label>
-                  <div class="mt-2 sm:col-span-2 sm:mt-0">
-                    <input 
-                      id="database_database_name" 
-                      name="database[database_name]" 
-                      type="text" 
-                      value={@form[:database_name].value}
-                      class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-md sm:text-sm/6" 
-                    />
-                    <%= for error <- @form[:database_name].errors do %>
-                      <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-              
-              <!-- File Path for SQLite -->
-              <%= if @selected_driver && @selected_driver == "sqlite" do %>
-                <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                  <label for="database_file_path" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Database File Path</label>
-                  <div class="mt-2 sm:col-span-2 sm:mt-0">
-                    <input 
-                      id="database_file_path" 
-                      name="database[file_path]" 
-                      type="text" 
-                      value={@form[:file_path].value}
-                      placeholder="e.g., /path/to/database.sqlite"
-                      class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-xl sm:text-sm/6" 
-                    />
-                    <%= for error <- @form[:file_path].errors do %>
-                      <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-              
-              <!-- Username -->
-              <%= if @selected_driver && Database.shows_username?(@selected_driver) do %>
-                <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                  <label for="database_username" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Username</label>
-                  <div class="mt-2 sm:col-span-2 sm:mt-0">
-                    <input 
-                      id="database_username" 
-                      name="database[username]" 
-                      type="text" 
-                      value={@form[:username].value}
-                      class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-md sm:text-sm/6" 
-                    />
-                    <%= for error <- @form[:username].errors do %>
-                      <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-              
-              <!-- Password -->
-              <%= if @selected_driver && Database.shows_password?(@selected_driver) do %>
-                <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                  <label for="database_password" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Password</label>
-                  <div class="mt-2 sm:col-span-2 sm:mt-0">
-                    <input 
-                      id="database_password" 
-                      name="database[password]" 
-                      type="password" 
-                      value={@form[:password].value}
-                      class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-md sm:text-sm/6" 
-                    />
-                    <%= for error <- @form[:password].errors do %>
-                      <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          </div>
-          
-          <!-- Granularities & Timezone -->
-          <div>
-            <h2 class="text-base/7 font-semibold text-gray-900">Time Configuration</h2>
-            <p class="mt-1 max-w-2xl text-sm/6 text-gray-600">Configure time granularities and timezone for tracking metrics.</p>
-            
-            <div class="mt-10 space-y-8 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t sm:border-t-gray-900/10 sm:pb-0">
-              <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                <label for="database_granularities" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Granularities</label>
-                <div class="mt-2 sm:col-span-2 sm:mt-0">
-                  <input 
-                    id="database_granularities" 
-                    name="database[granularities]" 
-                    type="text" 
-                    value={granularities_to_string(@form[:granularities].value)}
-                    placeholder="1m, 1h, 1d, 1w, 1mo, 1q, 1y"
-                    class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-xl sm:text-sm/6" 
-                  />
-                  <p class="mt-2 text-xs text-gray-500">Default: 1m, 1h, 1d, 1w, 1mo, 1q, 1y</p>
-                  <%= for error <- @form[:granularities].errors do %>
-                    <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                  <% end %>
-                </div>
-              </div>
-              
-              <!-- Time Zone -->
-              <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                <label for="database_time_zone" class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5">Time Zone</label>
-                <div class="mt-2 sm:col-span-2 sm:mt-0">
-                  <div class="grid grid-cols-1 sm:max-w-md">
-                    <select 
-                      id="database_time_zone" 
-                      name="database[time_zone]" 
-                      class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                    >
-                      <%= for {label, value} <- @time_zones do %>
-                        <option value={value} selected={@form[:time_zone].value == value}>
-                          <%= label %>
-                        </option>
-                      <% end %>
-                    </select>
-                    <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4">
-                      <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                    </svg>
-                  </div>
-                  <%= for error <- @form[:time_zone].errors do %>
-                    <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
-                  <% end %>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Configuration Options -->
-          <%= if @selected_driver && map_size(@config_options) > 0 do %>
-            <div>
-              <h2 class="text-base/7 font-semibold text-gray-900">Configuration Options</h2>
-              <p class="mt-1 max-w-2xl text-sm/6 text-gray-600">Driver-specific configuration settings.</p>
-              
-              <div class="mt-10 space-y-8 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t sm:border-t-gray-900/10 sm:pb-0">
-                <%= for {key, value} <- sort_config_options(@config_options) do %>
-                  <%= case config_field_type(key, @selected_driver) do %>
-                    <% :boolean -> %>
-                      <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                        <label class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5"><%= humanize_config_key(key) %></label>
-                        <div class="mt-2 sm:col-span-2 sm:mt-0">
-                          <div class="flex gap-3">
-                            <div class="flex h-6 shrink-0 items-center">
-                              <div class="group grid size-4 grid-cols-1">
-                                <!-- Hidden field to ensure unchecked state is sent -->
-                                <input 
-                                  name={"database[config][#{key}]"} 
-                                  type="hidden" 
-                                  value="false"
-                                />
-                                <input 
-                                  name={"database[config][#{key}]"} 
-                                  type="checkbox" 
-                                  checked={is_config_value_true(@form, key, value)}
-                                  value="true"
-                                  class="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600" 
-                                />
-                                <svg viewBox="0 0 14 14" fill="none" class="pointer-events-none col-start-1 row-start-1 size-3.5 self-center justify-self-center stroke-white">
-                                  <path d="M3 8L6 11L11 3.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-0 group-has-checked:opacity-100" />
-                                </svg>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    <% :integer -> %>
-                      <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                        <label class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5"><%= humanize_config_key(key) %><%= if is_nullable_field?(key), do: " (Optional)" %></label>
-                        <div class="mt-2 sm:col-span-2 sm:mt-0">
-                          <input 
-                            name={"database[config][#{key}]"} 
-                            type="number" 
-                            value={format_integer_value(get_config_value(@form, key, value))}
-                            placeholder={if is_nullable_field?(key), do: "Leave empty for no expiration", else: nil}
-                            class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-xs sm:text-sm/6" 
-                          />
-                        </div>
-                      </div>
-                    <% :string -> %>
-                      <div class="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-                        <label class="block text-sm/6 font-medium text-gray-900 sm:pt-1.5"><%= humanize_config_key(key) %></label>
-                        <div class="mt-2 sm:col-span-2 sm:mt-0">
-                          <input 
-                            name={"database[config][#{key}]"} 
-                            type="text" 
-                            value={get_config_value(@form, key, value)}
-                            class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-md sm:text-sm/6" 
-                          />
-                        </div>
-                      </div>
-                  <% end %>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
-        </div>
+    <div>
+      <.form_container for={@form} phx-target={@myself} phx-change="validate" phx-submit="save">
+        <:header title={@title} subtitle="Configure database connection for Trifle::Stats drivers" />
         
-        <div class="border-t border-gray-100 px-4 py-6 sm:px-6">
-          <div class="flex items-center justify-end gap-x-6">
-            <button type="button" phx-click={JS.patch(~p"/admin/databases")} class="text-sm/6 font-semibold text-gray-900">Cancel</button>
-            <button type="submit" phx-disable-with="Saving..." class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">Save Database</button>
+        <.form_field field={@form[:display_name]} label="Display Name" required />
+        
+        <.form_field 
+          field={@form[:driver]} 
+          type="select" 
+          label="Driver" 
+          options={Database.drivers() |> Enum.map(&{String.capitalize(&1), &1})} 
+          prompt="Choose a driver..." 
+          disabled={@action == :edit}
+        />
+        
+        <%= if @selected_driver && Database.requires_host?(@selected_driver) do %>
+          <.form_field field={@form[:host]} label="Host" />
+        <% end %>
+        
+        <%= if @selected_driver && Database.requires_port?(@selected_driver) do %>
+          <.form_field 
+            field={@form[:port]} 
+            type="number" 
+            label="Port" 
+            placeholder={if @selected_driver, do: to_string(Database.default_port(@selected_driver)), else: ""}
+          />
+        <% end %>
+        
+        <%= if @selected_driver && @selected_driver != "redis" && @selected_driver != "sqlite" do %>
+          <.form_field field={@form[:database_name]} label="Database Name" />
+        <% end %>
+        
+        <%= if @selected_driver && @selected_driver == "sqlite" do %>
+          <.form_field 
+            field={@form[:file_path]} 
+            label="Database File Path" 
+            placeholder="e.g., /path/to/database.sqlite"
+          />
+        <% end %>
+        
+        <%= if @selected_driver && Database.shows_username?(@selected_driver) do %>
+          <.form_field field={@form[:username]} label="Username" />
+        <% end %>
+        
+        <%= if @selected_driver && Database.shows_password?(@selected_driver) do %>
+          <.form_field field={@form[:password]} type="password" label="Password" />
+        <% end %>
+        
+        <%= if @selected_driver do %>
+          <div class="border-t pt-6 mt-6">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Time Configuration</h3>
+          
+          <div class="space-y-2">
+            <label for={@form[:granularities].id} class="block text-sm font-medium text-gray-900 dark:text-white">
+              Granularities
+            </label>
+            <input 
+              id={@form[:granularities].id}
+              name={@form[:granularities].name}
+              type="text" 
+              value={granularities_to_string(@form[:granularities].value)}
+              placeholder="1m, 1h, 1d, 1w, 1mo, 1q, 1y"
+              class="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm" 
+            />
+            <p class="text-xs text-gray-600 dark:text-gray-400">Default: 1m, 1h, 1d, 1w, 1mo, 1q, 1y</p>
+            <%= for error <- @form[:granularities].errors do %>
+              <p class="text-sm text-red-600 dark:text-red-400"><%= translate_error(error) %></p>
+            <% end %>
           </div>
+          
+          <.form_field 
+            field={@form[:time_zone]} 
+            type="select" 
+            label="Time Zone" 
+            options={@time_zones}
+          />
         </div>
-      </form>
+        <% end %>
+        
+        <%= if @selected_driver && map_size(@config_options) > 0 do %>
+          <div class="border-t pt-6 mt-6">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Configuration Options</h3>
+            <p class="text-xs text-gray-600 dark:text-gray-400 mb-4">Driver-specific configuration settings.</p>
+            
+            <%= for {key, value} <- sort_config_options(@config_options) do %>
+              <%= case config_field_type(key, @selected_driver) do %>
+                <% :boolean -> %>
+                  <div class="mb-4">
+                    <input 
+                      name={"database[config][#{key}]"} 
+                      type="hidden" 
+                      value="false"
+                    />
+                    <label class="flex items-center space-x-3">
+                      <input 
+                        name={"database[config][#{key}]"} 
+                        type="checkbox" 
+                        checked={is_config_value_true(@form, key, value)}
+                        value="true"
+                        class="rounded border-gray-300 text-teal-600 focus:ring-teal-500 dark:border-gray-600 dark:bg-gray-700" 
+                      />
+                      <span class="text-sm font-medium text-gray-900 dark:text-white"><%= humanize_config_key(key) %></span>
+                    </label>
+                  </div>
+                <% :integer -> %>
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                      <%= humanize_config_key(key) %><%= if is_nullable_field?(key), do: " (Optional)" %>
+                    </label>
+                    <input 
+                      name={"database[config][#{key}]"} 
+                      type="number" 
+                      value={format_integer_value(get_config_value(@form, key, value))}
+                      placeholder={if is_nullable_field?(key), do: "Leave empty for no expiration", else: nil}
+                      class="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm" 
+                    />
+                  </div>
+                <% :string -> %>
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2"><%= humanize_config_key(key) %></label>
+                    <input 
+                      name={"database[config][#{key}]"} 
+                      type="text" 
+                      value={get_config_value(@form, key, value)}
+                      class="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm" 
+                    />
+                  </div>
+              <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      
+        <:actions>
+          <.form_actions>
+            <.primary_button phx-disable-with="Saving...">Save Database</.primary_button>
+            <.secondary_button phx-click={JS.patch(~p"/admin/databases")}>Cancel</.secondary_button>
+          </.form_actions>
+        </:actions>
+      </.form_container>
     </div>
     """
   end

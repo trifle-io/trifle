@@ -62,6 +62,14 @@ defmodule TrifleAdmin do
       import Phoenix.HTML
       import TrifleApp.CoreComponents
       import TrifleAdmin.Gettext
+      
+      # Design System Components
+      import TrifleApp.DesignSystem.AdminTable
+      import TrifleApp.DesignSystem.Modal
+      import TrifleApp.DesignSystem.FormField
+      import TrifleApp.DesignSystem.FormButtons
+      import TrifleApp.DesignSystem.FormContainer
+      import TrifleApp.DesignSystem.DatabaseLabel
 
       alias Phoenix.LiveView.JS
 

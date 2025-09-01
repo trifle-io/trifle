@@ -78,7 +78,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
 
   defp add_attr_if_present(attrs, _key, nil), do: attrs
   defp add_attr_if_present(attrs, _key, false), do: attrs
-  defp add_attr_if_present(attrs, key, value), do: [{String.to_atom(String.replace(key, "-", "_")), value} | attrs]
+  defp add_attr_if_present(attrs, key, value), do: [{String.to_atom(key), value} | attrs]
 
   defp button_classes(button, position) do
     base_classes = "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"

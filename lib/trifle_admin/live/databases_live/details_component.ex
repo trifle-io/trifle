@@ -6,8 +6,8 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
-      <div class="px-4 py-6 sm:px-6">
+    <div>
+      <div class="pb-6">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-base/7 font-semibold text-gray-900"><%= @database.display_name %></h3>
@@ -18,35 +18,33 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
           </span>
         </div>
       </div>
-      <div class="border-t border-gray-100">
-        <dl class="divide-y divide-gray-100">
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Driver</dt>
-            <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0">
-              <span class={driver_badge_class(@database.driver)}>
-                <%= String.capitalize(@database.driver) %>
-              </span>
+      <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+        <dl class="divide-y divide-gray-200 dark:divide-slate-600">
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">Driver</dt>
+            <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+              <.database_label driver={@database.driver} />
             </dd>
           </div>
             
           <%= if @database.host do %>
-            <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-900">Host</dt>
-              <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0 font-mono">
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Host</dt>
+              <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0 font-mono">
                 <%= @database.host %><%= if @database.port, do: ":#{@database.port}" %>
               </dd>
             </div>
           <% end %>
             
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">
               <%= cond do %>
                 <% @database.driver == "sqlite" -> %>Database file
                 <% @database.driver == "redis" -> %>Database
                 <% true -> %>Database name
               <% end %>
             </dt>
-            <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0 font-mono break-all">
+            <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0 font-mono break-all">
               <%= cond do %>
                 <% @database.driver == "sqlite" -> %>
                   <%= @database.file_path || "—" %>
@@ -59,25 +57,25 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
           </div>
             
           <%= if @database.username do %>
-            <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-900">Username</dt>
-              <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0"><%= @database.username %></dd>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Username</dt>
+              <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0"><%= @database.username %></dd>
             </div>
           <% end %>
 
           <%= if @database.last_check_at do %>
-            <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-900">Last checked</dt>
-              <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0">
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Last checked</dt>
+              <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
                 <%= Calendar.strftime(@database.last_check_at, "%B %d, %Y at %I:%M %p UTC") %>
               </dd>
             </div>
           <% end %>
 
           <!-- Granularities -->
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Time granularities</dt>
-            <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0">
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">Time granularities</dt>
+            <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
               <%= if @database.granularities && length(@database.granularities) > 0 do %>
                 <div class="flex flex-wrap gap-1">
                   <%= for granularity <- @database.granularities do %>
@@ -93,25 +91,25 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
           </div>
           
           <!-- Time Zone -->
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Time Zone</dt>
-            <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0">
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">Time Zone</dt>
+            <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
               <%= @database.time_zone || "UTC" %>
             </dd>
           </div>
 
           <%= for {key, value} <- (@database.config || %{}) do %>
-            <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-900"><%= humanize_config_key(key) %></dt>
-              <dd class="mt-1 text-sm/6 text-gray-700 sm:col-span-2 sm:mt-0"><%= format_config_value(value) %></dd>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white"><%= humanize_config_key(key) %></dt>
+              <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0"><%= format_config_value(value) %></dd>
             </div>
           <% end %>
         </dl>
       </div>
       
       <%= if @database.last_error do %>
-        <div class="border-t border-gray-100 px-4 py-6 sm:px-6">
-          <div class="rounded-md bg-red-50 p-4">
+        <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+          <div class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
             <div class="flex">
               <div class="flex-shrink-0">
                 <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -129,7 +127,7 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
         </div>
       <% end %>
       
-      <div class="border-t border-gray-100 px-4 py-6 sm:px-6">
+      <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
         <div class="flex items-center justify-end gap-x-6">
           <button
             phx-click="check_status"
@@ -159,7 +157,7 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
           </button>
         </div>
         
-        <div class="mt-6 border-t border-gray-100 pt-6">
+        <div class="mt-6 border-t border-gray-200 dark:border-slate-600 pt-6">
           <div class="flex items-center justify-between">
             <p class="text-sm text-gray-500">Danger zone</p>
             <div class="flex gap-x-4">
@@ -254,11 +252,6 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
   defp status_badge_class("pending"), do: "inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-800 ring-1 ring-inset ring-yellow-600/20"
   defp status_badge_class(_), do: "inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10"
   
-  defp driver_badge_class("redis"), do: "inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10"
-  defp driver_badge_class("postgres"), do: "inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10"
-  defp driver_badge_class("mongo"), do: "inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20"
-  defp driver_badge_class("sqlite"), do: "inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10"
-  defp driver_badge_class(_), do: "inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10"
 
   defp status_text("success"), do: "Connected"
   defp status_text("error"), do: "Error"

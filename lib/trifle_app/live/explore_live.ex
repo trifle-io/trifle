@@ -11,11 +11,6 @@ defmodule TrifleApp.ExploreLive do
     Organizations.list_databases()
   end
 
-  defp driver_badge_class("redis"), do: "inline-flex items-center rounded-md bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/10"
-  defp driver_badge_class("mongo"), do: "inline-flex items-center rounded-md bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/10"
-  defp driver_badge_class("postgres"), do: "inline-flex items-center rounded-md bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/10"
-  defp driver_badge_class("sqlite"), do: "inline-flex items-center rounded-md bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/10"
-  defp driver_badge_class(_), do: "inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10"
 
   defp is_supported_driver?("redis"), do: true
   defp is_supported_driver?("mongo"), do: true
@@ -50,9 +45,7 @@ defmodule TrifleApp.ExploreLive do
                 </div>
                 
                 <div class="mt-4 flex items-center space-x-4">
-                  <span class={driver_badge_class(database.driver)}>
-                    <%= String.capitalize(database.driver) %>
-                  </span>
+                  <.database_label driver={database.driver} />
                   
                   <%= if database.host do %>
                     <span class="text-sm text-gray-500">
@@ -86,9 +79,7 @@ defmodule TrifleApp.ExploreLive do
                 </div>
                 
                 <div class="mt-4 flex items-center space-x-4">
-                  <span class={driver_badge_class(database.driver)}>
-                    <%= String.capitalize(database.driver) %>
-                  </span>
+                  <.database_label driver={database.driver} />
                   
                   <%= if database.host do %>
                     <span class="text-sm text-gray-400">
