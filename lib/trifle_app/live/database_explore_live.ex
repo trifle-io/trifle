@@ -1760,7 +1760,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                   class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 rounded-l-md bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
                   title="Move timeframe backward"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
                   </svg>
                 </button>
@@ -1772,7 +1772,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                   class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 border-l border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
                   title="Reload current timeframe"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                   </svg>
                 </button>
@@ -1784,7 +1784,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                   class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 rounded-r-md border-l border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
                   title="Move timeframe forward"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
                   </svg>
                 </button>
