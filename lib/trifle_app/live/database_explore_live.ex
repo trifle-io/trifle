@@ -459,6 +459,72 @@ defmodule TrifleApp.DatabaseExploreLive do
     {:noreply, assign(socket, show_error_modal: false)}
   end
 
+  def handle_event("navigate_timeframe_backward", _, socket) do
+    navigate_timeframe(socket, :backward)
+  end
+
+  def handle_event("navigate_timeframe_forward", _, socket) do
+    navigate_timeframe(socket, :forward)
+  end
+
+  def handle_event("reload_data", _, socket) do
+    reload_current_timeframe(socket)
+  end
+
+  defp navigate_timeframe(socket, direction) do
+    from = socket.assigns.from
+    to = socket.assigns.to
+    
+    # Calculate the duration between from and to
+    duration_seconds = DateTime.diff(to, from, :second)
+    
+    # Calculate new timeframe based on direction
+    {new_from, new_to} = case direction do
+      :backward ->
+        # Move backwards: TO becomes FROM, FROM = FROM - duration
+        new_from = DateTime.add(from, -duration_seconds, :second)
+        {new_from, from}
+        
+      :forward ->
+        # Move forwards: FROM becomes TO, TO = TO + duration  
+        new_to = DateTime.add(to, duration_seconds, :second)
+        {to, new_to}
+    end
+    
+    # Update socket with new timeframe and trigger reload
+    granularity = socket.assigns.granularity
+    
+    socket =
+      socket
+      |> assign(from: new_from, to: new_to)
+      |> assign(loading: true)
+      |> assign(use_fixed_display: false)
+      |> assign(smart_timeframe_input: "c")  # Mark as custom since it's a calculated range
+      |> push_event("update_smart_timeframe_input", %{
+        value: format_timeframe_display(new_from, new_to)
+      })
+      |> push_patch(
+        to:
+          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
+      )
+
+    {:noreply, socket}
+  end
+
+  defp reload_current_timeframe(socket) do
+    granularity = socket.assigns.granularity
+    
+    socket =
+      socket
+      |> assign(loading: true)
+      |> push_patch(
+        to:
+          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
+      )
+
+    {:noreply, socket}
+  end
+
   def determine_granularity_for_timeframe(from, to) do
     duration_seconds = DateTime.diff(to, from, :second)
 
@@ -1680,47 +1746,93 @@ defmodule TrifleApp.DatabaseExploreLive do
             </div>
           </div>
 
-          <!-- Granularity controls -->
-          <div class="relative">
-            <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-              Granularity
-            </label>
-            <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
-              <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
+          <div class="flex gap-4">
+            <!-- Navigation controls -->
+            <div class="relative">
+              <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                Controls
+              </label>
+              <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
+                <!-- Previous timeframe button -->
                 <button
                   type="button"
-                  phx-click="select_granularity"
-                  phx-value-granularity={granularity}
-                  class={
-                    base_classes =
-                      "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
-
-                    position_classes =
-                      case position do
-                        :first -> "rounded-l-md"
-                        :middle -> ""
-                        :last -> "rounded-r-md"
-                      end
-
-                    state_classes =
-                      if @granularity == granularity do
-                        "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
-                      else
-                        "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                      end
-
-                    separator_classes =
-                      case position do
-                        :first -> ""
-                        _ -> "border-l border-gray-300 dark:border-slate-600"
-                      end
-
-                    "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
-                  }
+                  phx-click="navigate_timeframe_backward"
+                  class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 rounded-l-md bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
+                  title="Move timeframe backward"
                 >
-                  {label}
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
+                  </svg>
                 </button>
-              <% end %>
+                
+                <!-- Reload button -->
+                <button
+                  type="button"
+                  phx-click="reload_data"
+                  class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 border-l border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
+                  title="Reload current timeframe"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                  </svg>
+                </button>
+                
+                <!-- Next timeframe button -->
+                <button
+                  type="button"
+                  phx-click="navigate_timeframe_forward"
+                  class="relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 rounded-r-md border-l border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
+                  title="Move timeframe forward"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Granularity controls -->
+            <div class="relative">
+              <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                Granularity
+              </label>
+              <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
+                <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
+                  <button
+                    type="button"
+                    phx-click="select_granularity"
+                    phx-value-granularity={granularity}
+                    class={
+                      base_classes =
+                        "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
+
+                      position_classes =
+                        case position do
+                          :first -> "rounded-l-md"
+                          :middle -> ""
+                          :last -> "rounded-r-md"
+                        end
+
+                      state_classes =
+                        if @granularity == granularity do
+                          "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
+                        else
+                          "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
+                        end
+
+                      separator_classes =
+                        case position do
+                          :first -> ""
+                          _ -> "border-l border-gray-300 dark:border-slate-600"
+                        end
+
+                      "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
+                    }
+                  >
+                    {label}
+                  </button>
+                <% end %>
+              </div>
             </div>
           </div>
 
