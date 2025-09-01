@@ -315,6 +315,7 @@ Hooks.Sortable = {
   }
 }
 
+
 Hooks.FastTooltip = {
   mounted() {
     this.initTooltips();
