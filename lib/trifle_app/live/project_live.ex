@@ -906,7 +906,7 @@ defmodule TrifleApp.ProjectLive do
                 </div>
                 <!-- Dropdown menu -->
                 <%= if @show_timeframe_dropdown do %>
-                  <div class="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+                  <div class="absolute z-50 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
                     <%= for {label, value} <- [
                         {"Last 5 minutes", "5m"},
                         {"Last 15 minutes", "15m"},

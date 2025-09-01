@@ -12,15 +12,15 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
         <:subtitle>Create or edit transponders to collect data from your applications.</:subtitle>
       </.header>
 
-      <.simple_form
+      <.form_container
         for={@form}
         id="transponder-form"
         phx-target={@myself}
         phx-change="validate"
         phx-submit="save"
       >
-        <.input field={@form[:name]} type="text" label="Name" placeholder="e.g., Conversion Rate Calculator" />
-        <.input field={@form[:key]} type="text" label="Key Pattern" placeholder="e.g., customer::(.*)::orders" />
+        <.form_field field={@form[:name]} type="text" label="Name" placeholder="e.g., Conversion Rate Calculator" />
+        <.form_field field={@form[:key]} type="text" label="Key Pattern" placeholder="e.g., customer::(.*)::orders" />
         
         <div>
           <.label>Type</.label>
@@ -71,11 +71,13 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
         <% end %>
 
         <:actions>
-          <.button phx-disable-with="Saving..." class="bg-teal-600 hover:bg-teal-500">
-            <%= if @action == :new, do: "Create Transponder", else: "Update Transponder" %>
-          </.button>
+          <.form_actions>
+            <.primary_button phx-disable-with="Saving..." class="bg-teal-600 hover:bg-teal-500">
+              <%= if @action == :new, do: "Create Transponder", else: "Update Transponder" %>
+            </.primary_button>
+          </.form_actions>
         </:actions>
-      </.simple_form>
+      </.form_container>
     </div>
     """
   end
@@ -174,8 +176,4 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
-  defp get_config_value(%Transponder{config: config}, field_name) when is_map(config) do
-    config[field_name] || config[String.to_atom(field_name)] || ""
-  end
-  defp get_config_value(_, _), do: ""
 end

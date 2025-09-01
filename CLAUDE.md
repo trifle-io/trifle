@@ -146,6 +146,102 @@ Values support arbitrary nesting:
 - Nested breakdowns: `{"pages": {"home": 100, "dashboard": 50}}`
 - Multi-level hierarchies: `{"severity": {"high": {"database": 5}}}`
 
+## Design System Components
+
+**IMPORTANT**: Always use the design system components instead of creating custom UI. All components are imported in `TrifleApp` and available everywhere.
+
+### Form Components
+```elixir
+# Use these standardized form components for ALL forms:
+
+# 1. Form fields (replaces manual input/label/error handling)
+<.form_field field={@form[:name]} label="Name" required />
+<.form_field field={@form[:email]} type="email" label="Email" help_text="We'll never share your email" />
+<.form_field field={@form[:driver]} type="select" label="Driver" options={@drivers} prompt="Choose driver..." />
+<.form_field field={@form[:description]} type="textarea" label="Description" rows={6} />
+<.form_field field={@form[:enabled]} type="checkbox" label="Enabled" />
+
+# 2. Form buttons (consistent hierarchy)
+<.form_actions align="right">
+  <.primary_button phx-disable-with="Saving...">Save</.primary_button>
+  <.secondary_button navigate={~p"/back"}>Cancel</.secondary_button>
+  <.danger_button phx-click="delete" data-confirm="Are you sure?">Delete</.danger_button>
+  <.ghost_button patch={~p"/edit"}>Edit</.ghost_button>
+</.form_actions>
+
+# 3. Form containers (replaces simple_form)
+<.form_container for={@form} phx-submit="save" layout="simple">
+  <:header title="Create Database" subtitle="Add a new database connection" />
+  <.form_field field={@form[:name]} label="Name" required />
+  <.form_field field={@form[:driver]} type="select" label="Driver" options={@drivers} />
+  <:actions>
+    <.primary_button>Create Database</.primary_button>
+    <.secondary_button navigate={~p"/databases"}>Cancel</.secondary_button>
+  </:actions>
+</.form_container>
+
+# Layout options: "simple" (default), "grid" (admin-style), "slide_over" (modal forms)
+```
+
+### UI Components
+```elixir
+# 1. Button groups (for controls like granularity, navigation)
+<.button_group label="Granularity">
+  <:button phx-click="set_granularity" phx-value-granularity="minute" selected={@granularity == "minute"}>
+    1m
+  </:button>
+  <:button phx-click="set_granularity" phx-value-granularity="hour" selected={@granularity == "hour"}>
+    1h
+  </:button>
+</.button_group>
+
+# 2. Data tables (for list views)
+<.data_table>
+  <:header>
+    <.table_header title="Items" count={@count}>
+      <:search>
+        <input phx-keyup="search" placeholder="Search..." />
+      </:search>
+    </.table_header>
+  </:header>
+  <:body>
+    <ul class="divide-y">
+      <!-- list items -->
+    </ul>
+  </:body>
+</.data_table>
+
+# 3. Modals (use app_modal, NOT the core modal)
+<.app_modal id="error-modal" show={@show_errors} on_cancel="hide_errors">
+  <:title>Transponder Errors</:title>
+  <:body>
+    Error details here...
+  </:body>
+  <:actions>
+    <.secondary_button phx-click="hide_errors">Close</.secondary_button>
+  </:actions>
+</.app_modal>
+
+# 4. Tab navigation (for page tabs)
+<.tab_navigation>
+  <:tab navigate={~p"/explore"} active={@current_tab == "explore"}>
+    <:icon><svg>...</svg></:icon>
+    <:label>Explore</:label>
+  </:tab>
+  <:tab navigate={~p"/transponders"} active={@current_tab == "transponders"}>
+    <:icon><svg>...</svg></:icon>
+    <:label>Transponders</:label>
+  </:tab>
+</.tab_navigation>
+```
+
+### Component Guidelines
+- **ALWAYS use design system components** instead of creating custom UI
+- **Form validation**: Use `form_field` component - it handles errors automatically
+- **Button hierarchy**: Primary for main actions, secondary for cancel, danger for delete
+- **Modal consistency**: Use `app_modal` with proper slot structure
+- **Color scheme**: Components use teal primary, gray neutral, red danger
+
 ## Key Files & Modules
 
 ### Core LiveView Logic

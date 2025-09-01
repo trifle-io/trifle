@@ -84,7 +84,7 @@ defmodule TrifleWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components and translation
-      import TrifleWeb.CoreComponents
+      import TrifleApp.CoreComponents
       import TrifleWeb.FilterComponents
       import TrifleWeb.Gettext
 
