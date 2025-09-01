@@ -175,6 +175,62 @@ defmodule TrifleApp.DatabaseExploreLive do
     end
   end
 
+  def parse_direct_timeframe(input, config) do
+    # Parse direct timeframe format: "YYYY-MM-DD HH:MM:SS - YYYY-MM-DD HH:MM:SS"
+    case String.split(input, " - ") do
+      [from_str, to_str] when length([from_str, to_str]) == 2 ->
+        with {:ok, from} <- parse_date(from_str, config.time_zone),
+             {:ok, to} <- parse_date(to_str, config.time_zone) do
+          # Try to detect if this matches a shorthand
+          detected_shorthand = detect_shorthand_from_range(from, to, config)
+          {:ok, from, to, detected_shorthand}
+        else
+          _ -> {:error, "Invalid datetime format"}
+        end
+      _ ->
+        {:error, "Invalid timeframe format"}
+    end
+  end
+
+  defp detect_shorthand_from_range(from, to, config) do
+    # Calculate the difference between from and to
+    diff_seconds = DateTime.diff(to, from, :second)
+    
+    # Get current time in database timezone
+    now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone)
+    
+    # Check if 'to' is approximately now (within 60 seconds)
+    to_diff_from_now = abs(DateTime.diff(to, now, :second))
+    
+    if to_diff_from_now <= 60 do
+      # This looks like a "last X" timeframe, try to match common patterns
+      case diff_seconds do
+        300 -> "5m"      # 5 minutes
+        600 -> "10m"     # 10 minutes  
+        900 -> "15m"     # 15 minutes
+        1800 -> "30m"    # 30 minutes
+        3600 -> "1h"     # 1 hour
+        7200 -> "2h"     # 2 hours
+        10800 -> "3h"    # 3 hours
+        21600 -> "6h"    # 6 hours
+        43200 -> "12h"   # 12 hours
+        86400 -> "1d"    # 1 day
+        172800 -> "2d"   # 2 days
+        259200 -> "3d"   # 3 days
+        604800 -> "1w"   # 1 week
+        1209600 -> "2w"  # 2 weeks
+        2629746 -> "1mo" # ~1 month (30.44 days)
+        5259492 -> "2mo" # ~2 months
+        7889238 -> "3mo" # ~3 months
+        15778476 -> "6mo" # ~6 months
+        31556952 -> "1y" # ~1 year
+        _ -> "c" # Custom timeframe
+      end
+    else
+      "c" # Custom timeframe (not relative to now)
+    end
+  end
+
   def parse_smart_timeframe(input, config) do
     # Use Trifle.Stats.Nocturnal.Parser for consistent parsing
     try do
@@ -267,36 +323,63 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def handle_event("smart_timeframe_keydown", %{"key" => "Enter", "value" => input}, socket) do
-    short_input =
-      case find_short_code_from_description(input) do
-        nil -> input
-        short_code -> short_code
-      end
-
     config = Database.stats_config(socket.assigns.database)
-    case parse_smart_timeframe(short_input, config) do
-      {:ok, from, to} ->
+    
+    # First try to parse as a direct timeframe range (YYYY-MM-DD HH:MM:SS - YYYY-MM-DD HH:MM:SS)
+    case parse_direct_timeframe(input, config) do
+      {:ok, from, to, detected_shorthand} ->
+        # Direct timeframe parsing succeeded
         granularity = socket.assigns.granularity
-
+        
         socket =
           socket
           |> assign(from: from, to: to)
-          |> assign(smart_timeframe_input: short_input)
+          |> assign(smart_timeframe_input: detected_shorthand)
           |> assign(use_fixed_display: false)
           |> assign(loading: true)
           |> assign(show_timeframe_dropdown: false)
           |> push_event("update_smart_timeframe_input", %{
-            value: format_smart_timeframe_display(short_input, config)
+            value: format_timeframe_display(from, to)
           })
           |> push_patch(
             to:
-              ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+              ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
           )
 
         {:noreply, socket}
-
+        
       {:error, _} ->
-        {:noreply, assign(socket, show_timeframe_dropdown: false)}
+        # Fall back to smart timeframe parsing
+        short_input =
+          case find_short_code_from_description(input) do
+            nil -> input
+            short_code -> short_code
+          end
+
+        case parse_smart_timeframe(short_input, config) do
+          {:ok, from, to} ->
+            granularity = socket.assigns.granularity
+
+            socket =
+              socket
+              |> assign(from: from, to: to)
+              |> assign(smart_timeframe_input: short_input)
+              |> assign(use_fixed_display: false)
+              |> assign(loading: true)
+              |> assign(show_timeframe_dropdown: false)
+              |> push_event("update_smart_timeframe_input", %{
+                value: format_smart_timeframe_display(short_input, config)
+              })
+              |> push_patch(
+                to:
+                  ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+              )
+
+            {:noreply, socket}
+
+          {:error, _} ->
+            {:noreply, assign(socket, show_timeframe_dropdown: false)}
+        end
     end
   end
 
@@ -1511,8 +1594,15 @@ defmodule TrifleApp.DatabaseExploreLive do
               />
               <%= if @smart_timeframe_input && @smart_timeframe_input != "" do %>
                 <div class="absolute inset-y-0 right-8 flex items-center">
-                  <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-200 ring-1 ring-inset ring-gray-500/10 dark:ring-teal-500/30">
-                    {@smart_timeframe_input}
+                  <span class={[
+                    "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset",
+                    if @smart_timeframe_input == "c" do
+                      "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 ring-gray-500/10 dark:ring-gray-500/30"
+                    else
+                      "bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-200 ring-gray-500/10 dark:ring-teal-500/30"
+                    end
+                  ]}>
+                    {if @smart_timeframe_input == "c", do: "custom", else: @smart_timeframe_input}
                   </span>
                 </div>
               <% end %>
@@ -1689,7 +1779,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                   type="button"
                   phx-click={if @key == key, do: "deselect_key", else: "select_key"}
                   phx-value-key={key}
-                  class="w-full py-4 px-4 sm:px-6 lg:px-8 text-left"
+                  class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left"
                 >
                   <div class="flex justify-between gap-x-6">
                     <div class="flex gap-x-3 items-center">
@@ -1788,7 +1878,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <tr>
                   <th
                     scope="col"
-                    class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0"
+                    class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.25)] dark:lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.5)]"
                   >
                     Path
                   </th>
@@ -1807,7 +1897,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
                   <tr data-row={row_index}>
                     <td
-                      class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0"
+                      class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.25)] dark:lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.5)]"
                         data-row={row_index}
                     >
                       {format_nested_path(path, @stats[:paths], @transponder_info)}
@@ -1840,7 +1930,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           
           <!-- Summary Bar -->
           <%= if summary = get_summary_stats(assigns) do %>
-            <div class="border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50 px-4 py-3">
+            <div class="border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3">
               <div class="flex flex-wrap items-center gap-4 text-xs">
                 <!-- Selected Key -->
                 <div class="flex items-center gap-1">
