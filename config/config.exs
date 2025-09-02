@@ -56,6 +56,11 @@ config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# Configure Honeybadger
+config :honeybadger,
+  environment_name: config_env(),
+  insights_enabled: true # Enable logging and performance insights
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
