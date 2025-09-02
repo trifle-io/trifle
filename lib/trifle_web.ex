@@ -87,6 +87,10 @@ defmodule TrifleWeb do
       import TrifleApp.CoreComponents
       import TrifleWeb.FilterComponents
       import TrifleWeb.Gettext
+      # Design system components for modern UI
+      import TrifleApp.DesignSystem.FormField
+      import TrifleApp.DesignSystem.FormContainer
+      import TrifleApp.DesignSystem.FormButtons
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS

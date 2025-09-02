@@ -5,69 +5,136 @@ defmodule TrifleWeb.UserSettingsLive do
 
   def render(assigns) do
     ~H"""
-    <.header class="text-center">
-      Account Settings
-      <:subtitle>Manage your account email address and password settings</:subtitle>
-    </.header>
+    <div class="px-4 sm:px-6 lg:px-8">
+      <div class="mx-auto max-w-4xl">
+        <!-- Page Header -->
+        <div class="pb-8">
+          <h1 class="text-2xl font-bold leading-7 text-gray-900 dark:text-white">Account Settings</h1>
+          <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-400">
+            Manage your account email address and password settings
+          </p>
+        </div>
 
-    <div class="space-y-12 divide-y">
-      <div>
-        <.simple_form
-          for={@email_form}
-          id="email_form"
-          phx-submit="update_email"
-          phx-change="validate_email"
-        >
-          <.input field={@email_form[:email]} type="email" label="Email" required />
-          <.input
-            field={@email_form[:current_password]}
-            name="current_password"
-            id="current_password_for_email"
-            type="password"
-            label="Current password"
-            value={@email_form_current_password}
-            required
-          />
-          <:actions>
-            <.button phx-disable-with="Changing...">Change Email</.button>
-          </:actions>
-        </.simple_form>
-      </div>
-      <div>
-        <.simple_form
-          for={@password_form}
-          id="password_form"
-          action={~p"/users/log_in?_action=password_updated"}
-          method="post"
-          phx-change="validate_password"
-          phx-submit="update_password"
-          phx-trigger-action={@trigger_submit}
-        >
-          <.input
-            field={@password_form[:email]}
-            type="hidden"
-            id="hidden_user_email"
-            value={@current_email}
-          />
-          <.input field={@password_form[:password]} type="password" label="New password" required />
-          <.input
-            field={@password_form[:password_confirmation]}
-            type="password"
-            label="Confirm new password"
-          />
-          <.input
-            field={@password_form[:current_password]}
-            name="current_password"
-            type="password"
-            label="Current password"
-            id="current_password_for_password"
-            value={@current_password}
-            required
-          />
-          <:actions>
-            <.button phx-disable-with="Changing...">Change Password</.button>
-          </:actions>
-        </.simple_form>
+        <!-- Settings Sections -->
+        <div class="divide-y divide-gray-900/10 dark:divide-slate-700">
+          <!-- Email Settings Section -->
+          <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
+            <div class="px-4 sm:px-0">
+              <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Email Address</h2>
+              <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+                Update your email address. You'll need to verify the new email before the change takes effect.
+              </p>
+            </div>
+
+            <.form_container 
+              for={@email_form} 
+              phx-submit="update_email" 
+              phx-change="validate_email" 
+              layout="simple"
+              class="bg-white dark:bg-slate-800 shadow-sm ring-1 ring-gray-900/5 dark:ring-slate-700 sm:rounded-xl md:col-span-2"
+            >
+              <div class="px-4 py-6 sm:p-8">
+                <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
+                  <div class="col-span-full">
+                    <.form_field 
+                      field={@email_form[:email]} 
+                      type="email" 
+                      label="New email address" 
+                      required 
+                      placeholder="Enter your new email"
+                    />
+                  </div>
+
+                  <div class="col-span-full">
+                    <.form_field 
+                      field={@email_form[:current_password]}
+                      type="password" 
+                      label="Current password" 
+                      required 
+                      placeholder="Enter your current password"
+                      help_text="We need your current password to confirm this change"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <:actions>
+                <div class="flex items-center justify-end gap-x-6 border-t border-gray-900/10 dark:border-slate-700 px-4 py-4 sm:px-8">
+                  <.primary_button phx-disable-with="Changing..." type="submit">
+                    Update Email
+                  </.primary_button>
+                </div>
+              </:actions>
+            </.form_container>
+          </div>
+
+          <!-- Password Settings Section -->
+          <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
+            <div class="px-4 sm:px-0">
+              <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Password</h2>
+              <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+                Update your password to keep your account secure. Use a strong password with at least 8 characters.
+              </p>
+            </div>
+
+            <.form_container 
+              for={@password_form} 
+              phx-submit="update_password"
+              phx-change="validate_password"
+              action={~p"/users/log_in?_action=password_updated"}
+              method="post"
+              phx-trigger-action={@trigger_submit}
+              layout="simple"
+              class="bg-white dark:bg-slate-800 shadow-sm ring-1 ring-gray-900/5 dark:ring-slate-700 sm:rounded-xl md:col-span-2"
+            >
+              <div class="px-4 py-6 sm:p-8">
+                <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
+                  <input type="hidden" name="user[email]" value={@current_email} />
+                  
+                  <div class="col-span-full">
+                    <.form_field 
+                      field={@password_form[:password]} 
+                      type="password" 
+                      label="New password" 
+                      required 
+                      placeholder="Enter your new password"
+                      help_text="Must be at least 8 characters long"
+                    />
+                  </div>
+
+                  <div class="col-span-full">
+                    <.form_field 
+                      field={@password_form[:password_confirmation]} 
+                      type="password" 
+                      label="Confirm new password" 
+                      required 
+                      placeholder="Confirm your new password"
+                    />
+                  </div>
+
+                  <div class="col-span-full">
+                    <.form_field 
+                      field={@password_form[:current_password]}
+                      type="password" 
+                      label="Current password" 
+                      required 
+                      placeholder="Enter your current password"
+                      help_text="We need your current password to confirm this change"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <:actions>
+                <div class="flex items-center justify-end gap-x-6 border-t border-gray-900/10 dark:border-slate-700 px-4 py-4 sm:px-8">
+                  <.primary_button phx-disable-with="Changing..." type="submit">
+                    Update Password
+                  </.primary_button>
+                </div>
+              </:actions>
+            </.form_container>
+          </div>
+        </div>
       </div>
     </div>
     """
