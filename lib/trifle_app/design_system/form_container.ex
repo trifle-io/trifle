@@ -27,7 +27,7 @@ defmodule TrifleApp.DesignSystem.FormContainer do
   attr :for, :any, required: true
   attr :layout, :string, default: "simple", values: ~w(simple grid slide_over)
   attr :class, :string, default: ""
-  attr :rest, :global, include: ~w(phx-submit phx-change)
+  attr :rest, :global, include: ~w(phx-submit phx-change phx-update action method phx-trigger-action)
 
   slot :header do
     attr :title, :string
