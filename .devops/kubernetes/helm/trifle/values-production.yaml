@@ -53,6 +53,10 @@ app:
   poolSize: 20
   timezone: "UTC"
 
+  # Third-party integrations
+  honeybadger:
+    apiKey: "CHANGE_ME_IN_PRODUCTION"  # Set your Honeybadger API key
+
 # Initial user creation (runs during installation)
 initialUser:
   enabled: true

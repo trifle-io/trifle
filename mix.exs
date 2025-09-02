@@ -61,7 +61,8 @@ defmodule Trifle.MixProject do
       {:mongodb_driver, "~> 1.2.0"},
       {:myxql, "~> 0.7.0"},
       {:redix, "~> 1.3.0"},
-      {:exqlite, "~> 0.20"}
+      {:exqlite, "~> 0.20"},
+      {:honeybadger, "~> 0.22"}
     ]
   end
 

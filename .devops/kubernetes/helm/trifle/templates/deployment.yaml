@@ -52,6 +52,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: database-url
+            {{- if .Values.app.honeybadger.apiKey }}
+            - name: HONEYBADGER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" . }}-secret
+                  key: honeybadger-api-key
+            {{- end }}
             - name: PHX_HOST
               value: {{ .Values.app.host | quote }}
             - name: PORT

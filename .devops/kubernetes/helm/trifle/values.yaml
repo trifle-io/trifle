@@ -73,6 +73,10 @@ app:
   poolSize: 10
   timezone: "UTC"
   
+  # Third-party integrations
+  honeybadger:
+    apiKey: ""  # Set in production values
+  
   # Environment variables
   env:
     MIX_ENV: "prod"
