@@ -180,8 +180,25 @@ Hooks.ProjectTimeline = {
       return;
     }
 
-    // Same chart type - just update data
+    // Check if data structure changed significantly (granularity change)
+    const currentDataLength = this.chart.series[0]?.data?.length || 0;
+    const newDataLength = chartType === 'stacked' ? (data[0]?.data?.length || 0) : data.length;
+    const dataLengthChange = Math.abs(newDataLength - currentDataLength) / Math.max(currentDataLength, 1);
+    
+    // If data points change by more than 30%, recreate the chart for better rendering
+    if (dataLengthChange > 0.3) {
+      this.chart.destroy();
+      this.chart = this.createChart(data, key, timezone, chartType, colors, selectedKeyColor);
+      this.currentChartType = chartType;
+      return;
+    }
+
+    // Same chart type and similar data size - just update data
     const container = document.getElementById('timeline-chart');
+    // Force layout reflow before measuring to ensure accurate dimensions
+    container.style.display = 'none';
+    container.offsetHeight; // Force reflow
+    container.style.display = '';
     const containerWidth = container.clientWidth || 800;
     const dataPointsLength = chartType === 'stacked' ? (data[0]?.data?.length || 0) : data.length;
     const availableWidth = containerWidth * 0.8;
@@ -362,7 +379,7 @@ Hooks.FastTooltip = {
       z-index: 1000;
       pointer-events: none;
       white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
     `;
     
     document.body.appendChild(tooltip);
