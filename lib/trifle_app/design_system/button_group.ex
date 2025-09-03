@@ -33,6 +33,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
     attr :phx_value_option, :string
     attr :phx_value_granularity, :string
     attr :title, :string
+    attr :"data-tooltip", :string
     attr :selected, :boolean
     attr :disabled, :boolean
   end
@@ -57,6 +58,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
             {button_attributes(button)}
             class={button_classes(button, position)}
             title={button[:title]}
+            data-tooltip={button[:"data-tooltip"]}
           >
             <%= render_slot(button) %>
           </button>
