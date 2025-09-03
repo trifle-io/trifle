@@ -2114,9 +2114,9 @@ defmodule TrifleApp.DatabaseExploreLive do
     <!-- Row 4: Data for Selected Key -->
     <div class="flex-1 flex flex-col min-h-0">
       <%= if @stats do %>
-        <div class="flex-1 bg-white dark:bg-slate-800 flex flex-col min-h-0">
+        <div id="phantom-rows-container" class="flex-1 bg-white dark:bg-slate-800 flex flex-col min-h-0" phx-hook="PhantomRows">
           <div
-            class="flex-1 overflow-x-auto overflow-y-auto"
+            class="flex-1 overflow-x-auto overflow-y-auto relative"
             id="table-hover-container"
             phx-hook="TableHover"
           >
@@ -2175,7 +2175,11 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <% end %>
               </tbody>
             </table>
+            
+            <!-- Border after last row -->
+            <div class="border-t border-gray-200 dark:border-slate-700"></div>
           </div>
+          
         </div>
         
         <!-- Sticky Summary Footer -->
