@@ -924,15 +924,11 @@ defmodule TrifleApp.DatabaseExploreLive do
     transponders = Organizations.list_transponders_for_database(database)
     |> Enum.filter(&(&1.enabled && key_matches_pattern?(&1.key, key)))
 
-    IO.inspect(raw_stats, label: "Raw stats from Trifle.Stats.values()")
-
     # Create Series object from the raw stats data
     series = Trifle.Stats.Series.new(raw_stats)
-    IO.inspect(series, label: "Created Series object")
 
     # Apply each transponder in order using Series transformations and track results
     {result_series, transponder_results} = Enum.reduce(transponders, {series, []}, fn transponder, {acc_series, acc_results} ->
-      IO.inspect("Processing transponder: #{transponder.type}", label: "TRANSPONDER DEBUG")
       try do
         new_series = apply_single_transponder(transponder, acc_series)
         result = %{
@@ -940,11 +936,9 @@ defmodule TrifleApp.DatabaseExploreLive do
           success: true,
           error: nil
         }
-        IO.inspect("Transponder succeeded: #{transponder.type}", label: "TRANSPONDER SUCCESS")
         {new_series, [result | acc_results]}
       rescue
         error ->
-          IO.inspect("Transponder failed: #{transponder.type} - #{Exception.message(error)}", label: "TRANSPONDER FAILURE")
           result = %{
             transponder: transponder,
             success: false,
@@ -957,84 +951,68 @@ defmodule TrifleApp.DatabaseExploreLive do
       end
     end)
 
-    IO.inspect(result_series, label: "Final Series after transponders")
-
     # Now convert the transponded Series to table format using existing process
     {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(result_series.series)
-    IO.inspect(key_tabulized, label: "Final tabulized data ready for display")
     
     # Return both the table data and transponder results
     {key_tabulized, Enum.reverse(transponder_results)}
   end
 
   defp apply_single_transponder(transponder, series) do
-    IO.inspect(%{
-      type: transponder.type,
-      config: transponder.config
-    }, label: "Applying transponder")
 
     case transponder.type do
       "Trifle.Stats.Transponder.Add" ->
         path1 = Map.get(transponder.config, "path1", "")
         path2 = Map.get(transponder.config, "path2", "")
         response_path = Map.get(transponder.config, "response_path", "result")
-        IO.inspect({path1, path2, response_path}, label: "Add parameters")
         Trifle.Stats.Series.transform_add(series, path1, path2, response_path)
 
       "Trifle.Stats.Transponder.Subtract" ->
         path1 = Map.get(transponder.config, "path1", "")
         path2 = Map.get(transponder.config, "path2", "")
         response_path = Map.get(transponder.config, "response_path", "result")
-        IO.inspect({path1, path2, response_path}, label: "Subtract parameters")
         Trifle.Stats.Series.transform_subtract(series, path1, path2, response_path)
 
       "Trifle.Stats.Transponder.Multiply" ->
         path1 = Map.get(transponder.config, "path1", "")
         path2 = Map.get(transponder.config, "path2", "")
         response_path = Map.get(transponder.config, "response_path", "result")
-        IO.inspect({path1, path2, response_path}, label: "Multiply parameters")
         Trifle.Stats.Series.transform_multiply(series, path1, path2, response_path)
 
       "Trifle.Stats.Transponder.Divide" ->
         path1 = Map.get(transponder.config, "path1", "")
         path2 = Map.get(transponder.config, "path2", "")
         response_path = Map.get(transponder.config, "response_path", "result")
-        IO.inspect({path1, path2, response_path}, label: "Divide parameters")
         Trifle.Stats.Series.transform_divide(series, path1, path2, response_path)
 
       "Trifle.Stats.Transponder.Ratio" ->
         path1 = Map.get(transponder.config, "path1", "")
         path2 = Map.get(transponder.config, "path2", "")
         response_path = Map.get(transponder.config, "response_path", "ratio")
-        IO.inspect({path1, path2, response_path}, label: "Ratio parameters")
         Trifle.Stats.Series.transform_ratio(series, path1, path2, response_path)
 
       "Trifle.Stats.Transponder.Sum" ->
         paths_string = Map.get(transponder.config, "path", "")
         paths = parse_comma_separated_paths(paths_string)
         response_path = Map.get(transponder.config, "response_path", "sum")
-        IO.inspect({paths, response_path}, label: "Sum parameters")
         Trifle.Stats.Series.transform_sum(series, paths, response_path)
 
       "Trifle.Stats.Transponder.Mean" ->
         paths_string = Map.get(transponder.config, "path", "")
         paths = parse_comma_separated_paths(paths_string)
         response_path = Map.get(transponder.config, "response_path", "mean")
-        IO.inspect({paths, response_path}, label: "Mean parameters")
         Trifle.Stats.Series.transform_mean(series, paths, response_path)
 
       "Trifle.Stats.Transponder.Min" ->
         paths_string = Map.get(transponder.config, "path", "")
         paths = parse_comma_separated_paths(paths_string)
         response_path = Map.get(transponder.config, "response_path", "min")
-        IO.inspect({paths, response_path}, label: "Min parameters")
         Trifle.Stats.Series.transform_min(series, paths, response_path)
 
       "Trifle.Stats.Transponder.Max" ->
         paths_string = Map.get(transponder.config, "path", "")
         paths = parse_comma_separated_paths(paths_string)
         response_path = Map.get(transponder.config, "response_path", "max")
-        IO.inspect({paths, response_path}, label: "Max parameters")
         Trifle.Stats.Series.transform_max(series, paths, response_path)
 
       "Trifle.Stats.Transponder.StandardDeviation" ->
@@ -1042,12 +1020,10 @@ defmodule TrifleApp.DatabaseExploreLive do
         count_path = Map.get(transponder.config, "count", "")
         square_path = Map.get(transponder.config, "square", "")
         response_path = Map.get(transponder.config, "response_path", "stddev")
-        IO.inspect({sum_path, count_path, square_path, response_path}, label: "StandardDeviation parameters")
         Trifle.Stats.Series.transform_stddev(series, sum_path, count_path, square_path, response_path)
 
       _ ->
         # Unknown transponder type, return unchanged
-        IO.inspect(transponder.type, label: "Unknown transponder type")
         series
     end
   end
