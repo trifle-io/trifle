@@ -77,6 +77,10 @@ app:
   honeybadger:
     apiKey: ""  # Set in production values
   
+  # User registration settings
+  registration:
+    enabled: true  # Set to false to disable user registration
+  
   # Environment variables
   env:
     MIX_ENV: "prod"

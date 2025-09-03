@@ -59,6 +59,8 @@ spec:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: honeybadger-api-key
             {{- end }}
+            - name: REGISTRATION_ENABLED
+              value: {{ .Values.app.registration.enabled | quote }}
             - name: PHX_HOST
               value: {{ .Values.app.host | quote }}
             - name: PORT

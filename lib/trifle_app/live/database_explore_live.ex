@@ -40,6 +40,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(transponding: false)
       |> assign(show_timeframe_dropdown: false)
       |> assign(show_sensitivity_dropdown: false)
+      |> assign(show_granularity_dropdown: false)
       |> assign(transponder_errors: [])
       |> assign(show_error_modal: false)
       |> assign(transponder_results: [])
@@ -312,6 +313,14 @@ defmodule TrifleApp.DatabaseExploreLive do
     {:noreply, assign(socket, show_timeframe_dropdown: false)}
   end
 
+  def handle_event("show_granularity_dropdown", _, socket) do
+    {:noreply, assign(socket, show_granularity_dropdown: true)}
+  end
+
+  def handle_event("hide_granularity_dropdown", _, socket) do
+    {:noreply, assign(socket, show_granularity_dropdown: false)}
+  end
+
   def handle_event("delayed_hide_timeframe_dropdown", _, socket) do
     Process.send_after(self(), :hide_dropdown_after_delay, 150)
     {:noreply, socket}
@@ -419,6 +428,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       socket
       |> assign(granularity: granularity)
       |> assign(loading: true)
+      |> assign(show_granularity_dropdown: false)
       |> push_patch(
         to:
           ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
@@ -558,6 +568,45 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   @doc """
+  Format granularity to human readable text like "1 minute" or "15 minutes" 
+  """
+  def granularity_to_readable(granularity) do
+    case granularity do
+      "1s" -> "1 second"
+      "1m" -> "1 minute"
+      "1h" -> "1 hour"
+      "1d" -> "1 day"
+      "1w" -> "1 week"
+      "1mo" -> "1 month"
+      "1q" -> "1 quarter"
+      "1y" -> "1 year"
+      _ ->
+        # For custom granularities like "5m", "15m", etc., try to parse with Nocturnal.Parser
+        try do
+          parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
+          if Trifle.Stats.Nocturnal.Parser.valid?(parser) do
+            unit_name = case parser.unit do
+              :second -> if parser.offset == 1, do: "second", else: "seconds"
+              :minute -> if parser.offset == 1, do: "minute", else: "minutes"
+              :hour -> if parser.offset == 1, do: "hour", else: "hours"
+              :day -> if parser.offset == 1, do: "day", else: "days"
+              :week -> if parser.offset == 1, do: "week", else: "weeks"
+              :month -> if parser.offset == 1, do: "month", else: "months"
+              :quarter -> if parser.offset == 1, do: "quarter", else: "quarters"
+              :year -> if parser.offset == 1, do: "year", else: "years"
+              _ -> "units"
+            end
+            "#{parser.offset} #{unit_name}"
+          else
+            granularity
+          end
+        rescue
+          _ -> granularity
+        end
+    end
+  end
+
+  @doc """
   Get granularities with their labels and positions for the UI buttons.
   """
   def get_granularity_buttons(database) do
@@ -678,6 +727,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(key_search_filter: current_key_filter)
       |> assign(show_timeframe_dropdown: false)
       |> assign(show_sensitivity_dropdown: false)
+      |> assign(show_granularity_dropdown: false)
 
     # Check if this is a fresh page load without timeframe parameters
     # If so, update URL to include default parameters for consistency
@@ -1739,20 +1789,20 @@ defmodule TrifleApp.DatabaseExploreLive do
             </div>
           </div>
 
-          <div class="flex gap-4">
+          <div id="controls-container" class="flex gap-4" phx-hook="FastTooltip">
             <!-- Navigation controls -->
             <.button_group label="Controls">
-              <:button phx-click="navigate_timeframe_backward" title="Move timeframe backward">
+              <:button phx-click="navigate_timeframe_backward" data-tooltip="Move timeframe backward in time">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
                 </svg>
               </:button>
-              <:button phx-click="reload_data" title="Reload current timeframe">
+              <:button phx-click="reload_data" data-tooltip="Refresh data for current timeframe">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
               </:button>
-              <:button phx-click="navigate_timeframe_forward" title="Move timeframe forward">
+              <:button phx-click="navigate_timeframe_forward" data-tooltip="Move timeframe forward in time">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
                 </svg>
@@ -1760,48 +1810,151 @@ defmodule TrifleApp.DatabaseExploreLive do
             </.button_group>
 
             <!-- Granularity controls -->
-            <div class="relative">
-              <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-                Granularity
-              </label>
-              <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
-                <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
-                  <button
-                    type="button"
-                    phx-click="select_granularity"
-                    phx-value-granularity={granularity}
-                    class={
-                      base_classes =
-                        "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
+            <%= if length(get_granularity_buttons(@database)) > 3 do %>
+              <!-- Dropdown for small screens when more than 3 options -->
+              <div class="relative">
+                <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                  Granularity
+                </label>
+                <!-- Button group for larger screens -->
+                <div class="hidden sm:block">
+                  <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
+                    <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
+                      <button
+                        type="button"
+                        phx-click="select_granularity"
+                        phx-value-granularity={granularity}
+                        data-tooltip={granularity_to_readable(granularity)}
+                        class={
+                          base_classes =
+                            "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
 
-                      position_classes =
-                        case position do
-                          :first -> "rounded-l-md"
-                          :middle -> ""
-                          :last -> "rounded-r-md"
-                        end
+                          position_classes =
+                            case position do
+                              :first -> "rounded-l-md"
+                              :middle -> ""
+                              :last -> "rounded-r-md"
+                            end
 
-                      state_classes =
-                        if @granularity == granularity do
-                          "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
-                        else
-                          "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                        end
+                          state_classes =
+                            if @granularity == granularity do
+                              "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
+                            else
+                              "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
+                            end
 
-                      separator_classes =
-                        case position do
-                          :first -> ""
-                          _ -> "border-l border-gray-300 dark:border-slate-600"
-                        end
+                          separator_classes =
+                            case position do
+                              :first -> ""
+                              _ -> "border-l border-gray-300 dark:border-slate-600"
+                            end
 
-                      "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
-                    }
-                  >
-                    {label}
-                  </button>
-                <% end %>
+                          "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
+                        }
+                      >
+                        {label}
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+                <!-- Custom dropdown for small screens -->
+                <div class="block sm:hidden relative">
+                  <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-20">
+                    Granularity
+                  </label>
+                  
+                  <div class="relative">
+                    <button
+                      type="button"
+                      phx-click="show_granularity_dropdown"
+                      data-tooltip="Select granularity for data aggregation"
+                      class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    >
+                      <div class="flex items-center justify-between">
+                        <span><%= granularity_to_readable(@granularity) %></span>
+                        <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900/30 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-600/50">
+                          <%= @granularity %>
+                        </span>
+                      </div>
+                      <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </span>
+                    </button>
+                    
+                    <%= if @show_granularity_dropdown do %>
+                      <div 
+                        phx-click-away="hide_granularity_dropdown"
+                        class="absolute z-50 mt-1 w-40 max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-700 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                      >
+                        <%= for {_label, granularity, _position} <- get_granularity_buttons(@database) do %>
+                          <button
+                            type="button"
+                            phx-click="select_granularity"
+                            phx-value-granularity={granularity}
+                            onmousedown="event.preventDefault()"
+                            class="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer"
+                          >
+                            <div class="flex items-center justify-between">
+                              <span class="text-sm text-gray-900 dark:text-white"><%= granularity_to_readable(granularity) %></span>
+                              <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900/30 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-600/50">
+                                <%= granularity %>
+                              </span>
+                            </div>
+                          </button>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
               </div>
-            </div>
+            <% else %>
+              <!-- Regular button group for 3 or fewer options -->
+              <div class="relative">
+                <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                  Granularity
+                </label>
+                <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
+                  <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
+                    <button
+                      type="button"
+                      phx-click="select_granularity"
+                      phx-value-granularity={granularity}
+                      data-tooltip={granularity_to_readable(granularity)}
+                      class={
+                        base_classes =
+                          "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
+
+                        position_classes =
+                          case position do
+                            :first -> "rounded-l-md"
+                            :middle -> ""
+                            :last -> "rounded-r-md"
+                          end
+
+                        state_classes =
+                          if @granularity == granularity do
+                            "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
+                          else
+                            "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
+                          end
+
+                        separator_classes =
+                          case position do
+                            :first -> ""
+                            _ -> "border-l border-gray-300 dark:border-slate-600"
+                          end
+
+                        "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
+                      }
+                    >
+                      {label}
+                    </button>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
           </div>
 
         </div>
@@ -1884,7 +2037,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         </:header>
         
         <:body>
-          <div class="h-48 overflow-y-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
+          <div class="h-48 overflow-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
             <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden">
               <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
                 <li class={
@@ -1896,7 +2049,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                     type="button"
                     phx-click={if @key == key, do: "deselect_key", else: "select_key"}
                     phx-value-key={key}
-                    class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left"
+                    class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left min-w-max"
                   >
                     <div class="flex justify-between gap-x-6">
                       <div class="flex gap-x-3 items-center">
@@ -1933,7 +2086,7 @@ defmodule TrifleApp.DatabaseExploreLive do
 
                         <div class="min-w-0 flex-auto">
                           <p
-                            class="text-sm font-semibold font-mono leading-6"
+                            class="text-sm font-semibold font-mono leading-6 whitespace-nowrap"
                             style={"color: #{get_key_color(@keys, key)} !important"}
                           >
                             {key}

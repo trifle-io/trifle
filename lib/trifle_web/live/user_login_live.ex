@@ -3,7 +3,7 @@ defmodule TrifleWeb.UserLoginLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="min-h-screen flex items-start justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 pt-16 pb-12 px-4 sm:px-6 lg:px-8">
       <div class="max-w-md w-full space-y-8">
         <!-- Logo and Brand -->
         <div class="text-center">
@@ -68,6 +68,18 @@ defmodule TrifleWeb.UserLoginLive do
             </:actions>
           </.form_container>
         </div>
+
+        <!-- Navigation Links -->
+        <%= if TrifleWeb.RegistrationConfig.enabled?() do %>
+          <div class="text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+              Don't have an account?
+              <.link navigate={~p"/users/register"} class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300">
+                Sign up
+              </.link>
+            </p>
+          </div>
+        <% end %>
 
         <!-- Footer -->
         <div class="text-center">
