@@ -2112,11 +2112,11 @@ defmodule TrifleApp.DatabaseExploreLive do
     </div>
 
     <!-- Row 4: Data for Selected Key -->
-    <div class="mb-6">
+    <div class="flex-1 flex flex-col min-h-0">
       <%= if @stats do %>
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
+        <div class="flex-1 bg-white dark:bg-slate-800 flex flex-col min-h-0">
           <div
-            class="overflow-x-auto overflow-hidden"
+            class="flex-1 overflow-x-auto overflow-y-auto"
             id="table-hover-container"
             phx-hook="TableHover"
           >
@@ -2176,10 +2176,11 @@ defmodule TrifleApp.DatabaseExploreLive do
               </tbody>
             </table>
           </div>
-          
-          <!-- Summary Bar -->
-          <%= if summary = get_summary_stats(assigns) do %>
-            <div class="border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3">
+        </div>
+        
+        <!-- Sticky Summary Footer -->
+        <%= if summary = get_summary_stats(assigns) do %>
+          <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
               <div class="flex flex-wrap items-center gap-4 text-xs">
                 <!-- Selected Key -->
                 <div class="flex items-center gap-1">
@@ -2260,11 +2261,10 @@ defmodule TrifleApp.DatabaseExploreLive do
                   </div>
                 <% end %>
               </div>
-            </div>
-          <% end %>
-        </div>
+          </div>
+        <% end %>
       <% else %>
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-8">
+        <div class="bg-white dark:bg-slate-800 p-8">
           <%= if @loading_chunks do %>
             <div class="text-gray-500 dark:text-slate-300 text-center">
               <div class="flex items-center justify-center space-x-2">
