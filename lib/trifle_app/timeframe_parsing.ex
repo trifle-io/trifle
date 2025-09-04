@@ -77,7 +77,7 @@ defmodule TrifleApp.TimeframeParsing do
     end
   end
   
-  defp detect_shorthand_from_range(from, to, config) do
+  def detect_shorthand_from_range(from, to, config) do
     diff_seconds = DateTime.diff(to, from, :second)
     now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
     to_diff_from_now = abs(DateTime.diff(to, now, :second))
