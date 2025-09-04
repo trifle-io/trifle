@@ -332,11 +332,11 @@ defmodule TrifleApp.Components.FilterBar do
   
   defp get_input_value(smart_timeframe_input, use_fixed_display, from, to) do
     cond do
-      # If using fixed display (custom range), show the datetime range in editable format
-      use_fixed_display && from && to ->
+      # Always show the datetime range if we have from/to dates
+      from && to ->
         TimeframeParsing.format_timeframe_display(from, to)
       
-      # Otherwise show the shorthand input (what user typed or selected)  
+      # Fallback to shorthand if no dates available
       smart_timeframe_input ->
         smart_timeframe_input
       

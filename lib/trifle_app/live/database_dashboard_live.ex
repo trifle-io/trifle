@@ -1,6 +1,9 @@
 defmodule TrifleApp.DatabaseDashboardLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
+  alias Trifle.Organizations.Database
+  alias TrifleApp.TimeframeParsing
+  alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
 
   def mount(params, _session, socket) do
     case params do
@@ -8,13 +11,12 @@ defmodule TrifleApp.DatabaseDashboardLive do
         # Authenticated access
         database = Organizations.get_database!(database_id)
         dashboard = Organizations.get_dashboard!(dashboard_id)
+        
+        # Initialize dashboard data state
+        socket = initialize_dashboard_state(socket, database, dashboard, false, nil)
 
         {:ok,
          socket
-         |> assign(:database, database)
-         |> assign(:dashboard, dashboard)
-         |> assign(:is_public_access, false)
-         |> assign(:public_token, nil)
          |> assign(:page_title, ["Database", database.display_name, "Dashboards", dashboard.name])
          |> assign(:breadcrumb_links, [
            {"Database", ~p"/app/dbs"},
@@ -41,11 +43,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
       
       case Organizations.get_dashboard_by_token(dashboard_id, token) do
         {:ok, dashboard} ->
+          # Initialize dashboard data state for public access
+          socket = initialize_dashboard_state(socket, dashboard.database, dashboard, true, token)
+          
+          socket = apply_url_params(socket, params)
+          
           {:noreply,
            socket
-           |> assign(:database, dashboard.database)
-           |> assign(:dashboard, dashboard)
-           |> assign(:public_token, token)
            |> assign(:page_title, ["Dashboard", dashboard.name])
            |> assign(:breadcrumb_links, [])
            |> then(fn s -> apply_action(s, socket.assigns.live_action, params) end)}
@@ -57,14 +61,22 @@ defmodule TrifleApp.DatabaseDashboardLive do
            |> redirect(to: "/")}
       end
     else
+      socket = apply_url_params(socket, params)
       {:noreply, apply_action(socket, socket.assigns.live_action, params)}
     end
   end
 
   defp apply_action(socket, :show, _params) do
-    socket
-    |> assign(:dashboard_changeset, nil)
-    |> assign(:dashboard_form, nil)
+    socket = socket
+      |> assign(:dashboard_changeset, nil)
+      |> assign(:dashboard_form, nil)
+    
+    # Load dashboard data if key is configured
+    if dashboard_has_key?(socket) do
+      load_dashboard_data(socket)
+    else
+      socket
+    end
   end
 
   defp apply_action(socket, :edit, _params) do
@@ -225,7 +237,204 @@ defmodule TrifleApp.DatabaseDashboardLive do
      |> assign(:dashboard_form, nil)
      |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}")}
   end
+  
+  # Filter bar message handling
+  def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
+    # Update socket with filter changes from FilterBar component
+    socket = Enum.reduce(changes, socket, fn {key, value}, acc ->
+      case key do
+        :from -> assign(acc, :from, value)
+        :to -> assign(acc, :to, value)
+        :granularity -> assign(acc, :granularity, value)
+        :smart_timeframe_input -> assign(acc, :smart_timeframe_input, value)
+        :use_fixed_display -> assign(acc, :use_fixed_display, value)
+        :reload -> acc  # Just trigger reload
+        _ -> acc
+      end
+    end)
+    
+    # Update URL with new parameters
+    params = build_url_params(socket)
+    path = if socket.assigns.is_public_access do
+      ~p"/d/#{socket.assigns.dashboard.id}?#{params}"
+    else
+      ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}?#{params}"
+    end
+    
+    socket = push_patch(socket, to: path)
+    
+    # Reload dashboard data
+    socket = if dashboard_has_key?(socket) do
+      load_dashboard_data(socket)
+    else
+      socket
+    end
+    
+    {:noreply, socket}
+  end
 
+  # Dashboard Data Management
+  
+  defp initialize_dashboard_state(socket, database, dashboard, is_public_access, public_token) do
+    # Parse timeframe from URL or use default
+    {from, to, granularity, smart_timeframe_input, use_fixed_display} = get_default_timeframe_params(database)
+    
+    # Cache config to avoid recalculation on every render
+    database_config = Database.stats_config(database)
+    available_granularities = get_available_granularities(database)
+    
+    socket
+    |> assign(:database, database)
+    |> assign(:dashboard, dashboard)
+    |> assign(:is_public_access, is_public_access)
+    |> assign(:public_token, public_token)
+    |> assign(:database_config, database_config)
+    |> assign(:available_granularities, available_granularities)
+    |> assign(:from, from)
+    |> assign(:to, to)
+    |> assign(:granularity, granularity)
+    |> assign(:smart_timeframe_input, smart_timeframe_input)
+    |> assign(:use_fixed_display, use_fixed_display)
+    |> assign(:stats, nil)
+    |> assign(:timeline, "[]")
+    |> assign(:transponder_results, [])
+    |> assign(:transponder_errors, [])
+    |> assign(:show_error_modal, false)
+    |> assign(:loading, false)
+    |> assign(:loading_chunks, false)
+    |> assign(:loading_progress, nil)
+    |> assign(:transponding, false)
+    |> assign(:load_duration_microseconds, nil)
+  end
+  
+  defp apply_url_params(socket, params) do
+    # Parse URL parameters for filters
+    config = socket.assigns.database_config
+    
+    {from, to, granularity, smart_timeframe_input, use_fixed_display} = 
+      UrlParsing.parse_url_params(params, config, socket.assigns.available_granularities)
+    
+    socket
+    |> assign(:from, from)
+    |> assign(:to, to)
+    |> assign(:granularity, granularity)
+    |> assign(:smart_timeframe_input, smart_timeframe_input)
+    |> assign(:use_fixed_display, use_fixed_display)
+  end
+  
+  defp get_default_timeframe_params(database) do
+    config = Database.stats_config(database)
+    granularities = get_available_granularities(database)
+    
+    # Default to 24h timeframe
+    case TimeframeParsing.parse_smart_timeframe("24h", config) do
+      {:ok, from, to, smart_input, use_fixed} ->
+        {from, to, Enum.at(granularities, 3, "1h"), smart_input, use_fixed}
+      {:error, _} ->
+        # Fallback
+        now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+        from = DateTime.add(now, -24 * 60 * 60, :second)
+        {from, now, "1h", "24h", false}
+    end
+  end
+  
+  defp get_available_granularities(database) do
+    config = Database.stats_config(database)
+    config.track_granularities
+  end
+  
+  defp dashboard_has_key?(socket) when is_struct(socket, Phoenix.LiveView.Socket) do
+    case socket.assigns.dashboard.key do
+      nil -> false
+      "" -> false
+      _key -> true
+    end
+  end
+  
+  defp dashboard_has_key?(assigns) when is_map(assigns) do
+    case assigns.dashboard.key do
+      nil -> false
+      "" -> false
+      _key -> true
+    end
+  end
+  
+  defp load_dashboard_data(socket) do
+    if dashboard_has_key?(socket) do
+      socket = assign(socket, 
+        load_start_time: System.monotonic_time(:microsecond), 
+        loading: true,
+        loading_chunks: true,
+        loading_progress: %{current: 0, total: 1},
+        transponding: false
+      )
+      
+      # Extract values to avoid async socket warnings
+      database = socket.assigns.database
+      key = socket.assigns.dashboard.key
+      granularity = socket.assigns.granularity
+      from = socket.assigns.from
+      to = socket.assigns.to
+      
+      start_async(socket, :dashboard_data_task, fn ->
+        config = Database.stats_config(database)
+        Trifle.Stats.values(key, from, to, granularity, config)
+      end)
+    else
+      socket
+    end
+  end
+  
+  defp build_url_params(socket) do
+    %{
+      "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
+      "to" => TimeframeParsing.format_for_datetime_input(socket.assigns.to),
+      "granularity" => socket.assigns.granularity,
+      "timeframe" => socket.assigns.smart_timeframe_input || "24h"
+    }
+  end
+  
+  def handle_async(:dashboard_data_task, {:ok, raw_stats}, socket) do
+    # Calculate load duration
+    load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
+    
+    # Debug output to see what we received
+    IO.inspect(raw_stats, label: "Dashboard received raw_stats")
+    
+    # Just store the raw stats without processing
+    {:noreply, 
+     socket
+     |> assign(loading: false)
+     |> assign(loading_chunks: false)
+     |> assign(loading_progress: nil)
+     |> assign(transponding: false)
+     |> assign(stats: raw_stats)
+     |> assign(load_duration_microseconds: load_duration)}
+  end
+  
+  def handle_async(:dashboard_data_task, {:error, error_data}, socket) do
+    # Handle error case - the error_data contains the actual stats
+    load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
+    
+    IO.inspect(error_data, label: "Dashboard error data (contains stats)")
+    
+    # Store the error_data as stats since that's where the actual data is
+    {:noreply, 
+     socket
+     |> assign(loading: false)
+     |> assign(loading_chunks: false)
+     |> assign(loading_progress: nil)
+     |> assign(transponding: false)
+     |> assign(stats: error_data)
+     |> assign(load_duration_microseconds: load_duration)}
+  end
+  
+  def handle_async(:dashboard_data_task, {:exit, reason}, socket) do
+    IO.inspect(reason, label: "Dashboard data fetch failed")
+    {:noreply, assign(socket, loading: false)}
+  end
+  
+  
   defp gravatar_url(email) do
     hash = email
       |> String.trim()
@@ -234,6 +443,55 @@ defmodule TrifleApp.DatabaseDashboardLive do
       |> Base.encode16(case: :lower)
 
     "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
+  end
+  
+  # Summary stats for footer (simplified for raw stats)
+  def get_summary_stats(assigns) do
+    case assigns do
+      %{dashboard: %{key: key}, stats: stats} when not is_nil(key) and key != "" and not is_nil(stats) ->
+        # Count columns (timeline points)
+        column_count = if stats[:at], do: length(stats[:at]), else: 0
+        
+        # Count paths (rows)
+        path_count = if stats[:paths], do: length(stats[:paths]), else: 0
+
+        %{
+          key: key,
+          column_count: column_count,
+          path_count: path_count
+        }
+      _ ->
+        nil
+    end
+  end
+  
+  def handle_event("show_transponder_errors", _params, socket) do
+    {:noreply, assign(socket, show_error_modal: true)}
+  end
+  
+  def handle_event("hide_transponder_errors", _params, socket) do
+    {:noreply, assign(socket, show_error_modal: false)}
+  end
+  
+  def format_duration(microseconds) when is_nil(microseconds), do: nil
+  
+  def format_duration(microseconds) when is_integer(microseconds) do
+    cond do
+      microseconds < 1_000 ->
+        "#{microseconds}μs"
+      
+      microseconds < 1_000_000 ->
+        ms = div(microseconds, 1_000)
+        "#{ms}ms"
+      
+      microseconds < 60_000_000 ->
+        seconds = div(microseconds, 1_000_000)
+        "#{seconds}s"
+      
+      true ->
+        minutes = div(microseconds, 60_000_000)
+        "#{minutes}m"
+    end
   end
 
   def render(assigns) do
@@ -392,6 +650,24 @@ defmodule TrifleApp.DatabaseDashboardLive do
           <% end %>
         </div>
       </div>
+
+      <!-- Filter Bar (only show if dashboard has a key) -->
+      <%= if dashboard_has_key?(assigns) do %>
+        <.live_component
+          module={TrifleApp.Components.FilterBar}
+          id="dashboard_filter_bar"
+          config={@database_config}
+          from={@from}
+          to={@to}
+          granularity={@granularity}
+          smart_timeframe_input={@smart_timeframe_input}
+          use_fixed_display={@use_fixed_display}
+          available_granularities={@available_granularities}
+          show_controls={true}
+          show_timeframe_dropdown={false}
+          show_granularity_dropdown={false}
+        />
+      <% end %>
 
       <!-- Edit Form (only shown in edit mode for authenticated users) -->
       <%= if !@is_public_access && @live_action == :edit && @dashboard_form do %>
@@ -601,7 +877,36 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
       <!-- Dashboard Content -->
       <div class="flex-1">
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
+        <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
+          <!-- Loading Indicator -->
+          <%= if (@loading_chunks && @loading_progress) || @transponding do %>
+            <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-800 dark:bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
+              <div class="flex flex-col items-center space-y-3">
+                <div class="flex items-center space-x-2">
+                  <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+                  <span class="text-sm text-gray-600 dark:text-white">
+                    <%= if @transponding do %>
+                      Transponding data...
+                    <% else %>
+                      Scientificating piece <%= @loading_progress.current + 1 %> of <%= @loading_progress.total %>...
+                    <% end %>
+                  </span>
+                </div>
+                <!-- Always reserve space for progress bar to keep text position consistent -->
+                <div class="w-64 h-2">
+                  <%= if @loading_chunks && @loading_progress do %>
+                    <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                      <div
+                        class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                        style={"width: #{((@loading_progress.current + 1) / @loading_progress.total * 100)}%"}
+                      ></div>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          <% end %>
+          
           <div class="p-6">
             <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
               <!-- Dashboard has content - render it -->
@@ -657,35 +962,56 @@ defmodule TrifleApp.DatabaseDashboardLive do
         </div>
       </div>
 
-      <!-- Dashboard Info -->
-      <div class="mt-6">
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Dashboard Information</h3>
-          <dl class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <%= if @dashboard.user do %>
-              <div>
-                <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Created By</dt>
-                <dd class="mt-1 flex items-center gap-2">
-                  <img src={gravatar_url(@dashboard.user.email)} class="h-5 w-5 rounded-full" />
-                  <span class="text-sm text-gray-900 dark:text-white"><%= @dashboard.user.email %></span>
-                </dd>
+      
+      <!-- Sticky Summary Footer -->
+      <%= if summary = get_summary_stats(assigns) do %>
+        <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
+          <div class="flex flex-wrap items-center gap-4 text-xs">
+            
+            <!-- Selected Key -->
+            <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+              <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+              </svg>
+              <span class="font-medium">Key:</span>
+              <span class="truncate max-w-32" title={summary.key}><%= summary.key %></span>
+            </div>
+            
+            <!-- Points -->
+            <%= if summary.column_count > 0 do %>
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+                </svg>
+                <span class="font-medium">Points:</span>
+                <span><%= summary.column_count %></span>
               </div>
             <% end %>
-            <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Created</dt>
-              <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                <%= Calendar.strftime(@dashboard.inserted_at, "%B %d, %Y at %I:%M %p") %>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Last Updated</dt>
-              <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                <%= Calendar.strftime(@dashboard.updated_at, "%B %d, %Y at %I:%M %p") %>
-              </dd>
-            </div>
-          </dl>
+            
+            <!-- Paths -->
+            <%= if summary.path_count > 0 do %>
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                </svg>
+                <span class="font-medium">Paths:</span>
+                <span><%= summary.path_count %></span>
+              </div>
+            <% end %>
+
+            <!-- Load Duration -->
+            <%= if @load_duration_microseconds do %>
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                </svg>
+                <span class="font-medium">Load:</span>
+                <span><%= format_duration(@load_duration_microseconds) %></span>
+              </div>
+            <% end %>
+          </div>
         </div>
-      </div>
+      <% end %>
     </div>
     """
   end

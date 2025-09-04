@@ -53,11 +53,17 @@ defmodule Trifle.Stats.SeriesFetcher do
   Generates timeline for the given parameters.
   """
   def generate_timeline(from, to, granularity, config) do
-    parser = Trifle.Stats.Parser.new(granularity, config.time_zone || "UTC")
-    normalized_from = Trifle.Stats.Normalizer.normalize(from, parser)
-    normalized_to = Trifle.Stats.Normalizer.normalize(to, parser)
+    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
+    from_normalized = DateTime.shift_zone!(from, config.time_zone)
+    to_normalized = DateTime.shift_zone!(to, config.time_zone)
     
-    Trifle.Stats.Timeline.generate(normalized_from, normalized_to, parser)
+    Trifle.Stats.Nocturnal.timeline(
+      from: from_normalized,
+      to: to_normalized,
+      offset: parser.offset,
+      unit: parser.unit,
+      time_zone: config.time_zone
+    )
   end
   
   @doc """
