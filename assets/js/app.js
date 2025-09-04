@@ -524,3 +524,4 @@ window.addEventListener("phx:copy", (event) => {
     // Copy completed
   })
 })
+

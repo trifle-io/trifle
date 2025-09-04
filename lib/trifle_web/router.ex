@@ -97,6 +97,11 @@ defmodule TrifleWeb.Router do
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
       live "/dbs/:id/transponders/:transponder_id", DatabaseTranspondersLive, :show
       live "/dbs/:id/transponders/:transponder_id/edit", DatabaseTranspondersLive, :edit
+      live "/dbs/:id/dashboards", DatabaseDashboardsLive, :index
+      live "/dbs/:id/dashboards/new", DatabaseDashboardsLive, :new
+      live "/dbs/:id/dashboards/:dashboard_id", DatabaseDashboardLive, :show
+      live "/dbs/:id/dashboards/:dashboard_id/edit", DatabaseDashboardLive, :edit
+      live "/dbs/:id/dashboards/:dashboard_id/configure", DatabaseDashboardLive, :configure
     end
   end
 
@@ -109,6 +114,16 @@ defmodule TrifleWeb.Router do
       on_mount: [{TrifleWeb.UserAuth, :mount_current_user}] do
       live "/users/confirm/:token", UserConfirmationLive, :edit
       live "/users/confirm", UserConfirmationInstructionsLive, :new
+    end
+  end
+
+  # Public dashboard access (no authentication required)
+  scope "/d", TrifleApp do
+    pipe_through [:browser]
+
+    live_session :public_dashboard,
+      on_mount: [{TrifleWeb.UserAuth, :mount_current_user}] do
+      live "/:dashboard_id", DatabaseDashboardLive, :public
     end
   end
 

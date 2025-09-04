@@ -80,6 +80,7 @@ defmodule TrifleApp.DesignSystem.FormField do
           
           <% "checkbox" -> %>
             <div class="flex items-center">
+              <input type="hidden" name={@field.name} value="false" />
               <input
                 type="checkbox"
                 id={@field.id}
@@ -89,7 +90,6 @@ defmodule TrifleApp.DesignSystem.FormField do
                 class="h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500"
                 disabled={@disabled}
               />
-              <input type="hidden" name={@field.name} value="false" />
             </div>
           
           <% type when type in ~w(text email password number hidden) -> %>
