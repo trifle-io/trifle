@@ -4,6 +4,8 @@ defmodule TrifleApp.DatabaseExploreLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias TrifleApp.DesignSystem.ChartColors
+  alias TrifleApp.TimeframeParsing
+  alias Trifle.Stats.SeriesFetcher
 
   def mount(params, _session, socket) do
     database = Organizations.get_database!(params["id"])
@@ -21,10 +23,16 @@ defmodule TrifleApp.DatabaseExploreLive do
 
     transponder_response_paths = Map.keys(transponder_info)
 
+    # Cache config to avoid recalculation on every render
+    database_config = Database.stats_config(database)
+    available_granularities = get_available_granularities(database)
+
     socket =
       socket
       |> assign(page_title: ["Database", database.display_name, "Explore"])
       |> assign(database: database)
+      |> assign(database_config: database_config)
+      |> assign(available_granularities: available_granularities)
       |> assign(transponder_response_paths: transponder_response_paths)
       |> assign(transponder_info: transponder_info)
       |> assign(stats: nil)
@@ -656,6 +664,9 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def handle_params(params, _session, socket) do
+    require Logger
+    Logger.info("DatabaseExploreLive.handle_params called with: #{inspect(params)}")
+    
     granularity = params["granularity"] || "1h"
     config = Database.stats_config(socket.assigns.database)
 
@@ -664,7 +675,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       cond do
         # If we have explicit from/to parameters, use them (they take precedence)
         params["from"] && params["from"] != "" && params["to"] && params["to"] != "" ->
-          case {parse_date(params["from"], config.time_zone), parse_date(params["to"], config.time_zone)} do
+          case {TimeframeParsing.parse_date(params["from"], config.time_zone), TimeframeParsing.parse_date(params["to"], config.time_zone)} do
             {{:ok, from}, {:ok, to}} ->
               # When explicit from/to are provided, prioritize the timeframe parameter from URL
               # Only fall back to determining smart input if no timeframe parameter exists
@@ -681,8 +692,8 @@ defmodule TrifleApp.DatabaseExploreLive do
               # If parsing fails, fall back to timeframe or defaults
               cond do
                 params["timeframe"] && params["timeframe"] != "" ->
-                  case parse_smart_timeframe(params["timeframe"], config) do
-                    {:ok, from, to} -> {from, to, params["timeframe"], false}
+                  case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
+                    {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
                     {:error, _} ->
                       default_to = DateTime.utc_now()
                       default_from = DateTime.shift(default_to, hour: -24)
@@ -698,8 +709,8 @@ defmodule TrifleApp.DatabaseExploreLive do
 
         # If we have a timeframe parameter but no explicit from/to, calculate from timeframe
         params["timeframe"] && params["timeframe"] != "" ->
-          case parse_smart_timeframe(params["timeframe"], config) do
-            {:ok, from, to} -> {from, to, params["timeframe"], false}
+          case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
+            {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
             {:error, _} ->
               # Fallback to defaults if timeframe parsing fails
               default_to = DateTime.utc_now()
@@ -774,6 +785,43 @@ defmodule TrifleApp.DatabaseExploreLive do
       :timer.send_after(5000, self(), :heartbeat)
     end
     {:noreply, socket}
+  end
+  
+  def handle_info({:hide_timeframe_dropdown, _component_id}, socket) do
+    # Handle timeframe dropdown hide from FilterBar component
+    {:noreply, socket}
+  end
+  
+  def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
+    require Logger
+    Logger.info("DatabaseExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
+    
+    # Handle filter changes from the FilterBar component
+    updated_socket = Enum.reduce(changes, socket, fn {key, value}, acc ->
+      assign(acc, key, value)
+    end)
+    
+    # Update URL with new parameters if needed
+    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) do
+      url_params = %{
+        timeframe: updated_socket.assigns.smart_timeframe_input,
+        granularity: updated_socket.assigns.granularity,
+        from: if(updated_socket.assigns.from, do: DateTime.to_iso8601(updated_socket.assigns.from), else: nil),
+        to: if(updated_socket.assigns.to, do: DateTime.to_iso8601(updated_socket.assigns.to), else: nil)
+      }
+      |> Enum.filter(fn {_k, v} -> v != nil end)
+      |> Enum.into(%{})
+      
+      # Add key parameter if it exists
+      url_params = if updated_socket.assigns.key, 
+        do: Map.put(url_params, :key, updated_socket.assigns.key), 
+        else: url_params
+      
+      # Just update URL - let handle_params handle the data loading to avoid double loading
+      {:noreply, push_patch(updated_socket, to: ~p"/app/dbs/#{updated_socket.assigns.database.id}?#{url_params}")}
+    else
+      {:noreply, updated_socket}
+    end
   end
 
   def handle_async(:chunk_task, {:ok, {chunk_index, chunk_result}}, socket) do
@@ -1708,254 +1756,21 @@ defmodule TrifleApp.DatabaseExploreLive do
       </nav>
     </div>
 
-    <!-- Row 1: Timeframe Selection -->
-    <div class="sticky top-0 z-50 mb-6">
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <!-- Smart input field with dropdown -->
-          <div class="w-full md:w-[26rem]">
-            <div
-              class="relative"
-              id={"smart_timeframe_container_#{@smart_timeframe_input}"}
-              phx-update="replace"
-            >
-              <.labeled_input
-                label={"Timeframe #{@database.time_zone || "UTC"}#{get_timezone_offset_display(@database.time_zone || "UTC")}"}
-                id="smart_timeframe"
-                name="smart_timeframe"
-                value={format_smart_timeframe_display(@smart_timeframe_input, Database.stats_config(@database), @use_fixed_display, @from, @to)}
-                placeholder="e.g., 5m, 2h, 1d, 3w, 6mo, 1y"
-                phx-keydown="smart_timeframe_keydown"
-                phx-key="Enter"
-                phx-focus="show_timeframe_dropdown"
-                phx-blur="delayed_hide_timeframe_dropdown"
-                phx-hook="SmartTimeframeInput"
-              >
-                <:badge>
-                  <%= if @smart_timeframe_input && @smart_timeframe_input != "" do %>
-                    <span class={[
-                      "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset",
-                      if @smart_timeframe_input == "c" do
-                        "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 ring-gray-500/10 dark:ring-gray-500/30"
-                      else
-                        "bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-200 ring-gray-500/10 dark:ring-teal-500/30"
-                      end
-                    ]}>
-                      {if @smart_timeframe_input == "c", do: "custom", else: @smart_timeframe_input}
-                    </span>
-                  <% end %>
-                </:badge>
-                <:suffix>
-                  <svg
-                    class="h-5 w-5 text-gray-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </:suffix>
-              </.labeled_input>
-
-              <%= if @show_timeframe_dropdown do %>
-                <div class="absolute z-50 mt-1 w-full bg-white dark:bg-slate-700 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 dark:ring-white dark:ring-opacity-20 overflow-auto focus:outline-none sm:text-sm">
-                  <%= for {value, label} <- get_timeframe_dropdown_options() do %>
-                    <div
-                      phx-click="select_timeframe_preset"
-                      phx-value-preset={value}
-                      phx-value-label={label}
-                      onmousedown="event.preventDefault()"
-                      class="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-50 dark:hover:bg-slate-600"
-                    >
-                      <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-900 dark:text-white">{label}</span>
-                        <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-200 ring-1 ring-inset ring-gray-500/10 dark:ring-teal-500/30">
-                          {value}
-                        </span>
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          </div>
-
-          <div id="controls-container" class="flex gap-4" phx-hook="FastTooltip">
-            <!-- Navigation controls -->
-            <.button_group label="Controls">
-              <:button phx-click="navigate_timeframe_backward" data-tooltip="Move timeframe backward in time">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
-                </svg>
-              </:button>
-              <:button phx-click="reload_data" data-tooltip="Refresh data for current timeframe">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-              </:button>
-              <:button phx-click="navigate_timeframe_forward" data-tooltip="Move timeframe forward in time">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
-                </svg>
-              </:button>
-            </.button_group>
-
-            <!-- Granularity controls -->
-            <%= if length(get_granularity_buttons(@database)) > 3 do %>
-              <!-- Dropdown for small screens when more than 3 options -->
-              <div class="relative">
-                <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-                  Granularity
-                </label>
-                <!-- Button group for larger screens -->
-                <div class="hidden sm:block">
-                  <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
-                    <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
-                      <button
-                        type="button"
-                        phx-click="select_granularity"
-                        phx-value-granularity={granularity}
-                        data-tooltip={granularity_to_readable(granularity)}
-                        class={
-                          base_classes =
-                            "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
-
-                          position_classes =
-                            case position do
-                              :first -> "rounded-l-md"
-                              :middle -> ""
-                              :last -> "rounded-r-md"
-                            end
-
-                          state_classes =
-                            if @granularity == granularity do
-                              "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
-                            else
-                              "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                            end
-
-                          separator_classes =
-                            case position do
-                              :first -> ""
-                              _ -> "border-l border-gray-300 dark:border-slate-600"
-                            end
-
-                          "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
-                        }
-                      >
-                        {label}
-                      </button>
-                    <% end %>
-                  </div>
-                </div>
-                <!-- Custom dropdown for small screens -->
-                <div class="block sm:hidden relative">
-                  <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-20">
-                    Granularity
-                  </label>
-                  
-                  <div class="relative">
-                    <button
-                      type="button"
-                      phx-click="show_granularity_dropdown"
-                      data-tooltip="Select granularity for data aggregation"
-                      class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                    >
-                      <div class="flex items-center justify-between">
-                        <span><%= granularity_to_readable(@granularity) %></span>
-                        <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900/30 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-600/50">
-                          <%= @granularity %>
-                        </span>
-                      </div>
-                      <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </span>
-                    </button>
-                    
-                    <%= if @show_granularity_dropdown do %>
-                      <div 
-                        phx-click-away="hide_granularity_dropdown"
-                        class="absolute z-50 mt-1 w-40 max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-700 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
-                      >
-                        <%= for {_label, granularity, _position} <- get_granularity_buttons(@database) do %>
-                          <button
-                            type="button"
-                            phx-click="select_granularity"
-                            phx-value-granularity={granularity}
-                            onmousedown="event.preventDefault()"
-                            class="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer"
-                          >
-                            <div class="flex items-center justify-between">
-                              <span class="text-sm text-gray-900 dark:text-white"><%= granularity_to_readable(granularity) %></span>
-                              <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900/30 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-600/50">
-                                <%= granularity %>
-                              </span>
-                            </div>
-                          </button>
-                        <% end %>
-                      </div>
-                    <% end %>
-                  </div>
-                </div>
-              </div>
-            <% else %>
-              <!-- Regular button group for 3 or fewer options -->
-              <div class="relative">
-                <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-                  Granularity
-                </label>
-                <div class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500" role="group">
-                  <%= for {label, granularity, position} <- get_granularity_buttons(@database) do %>
-                    <button
-                      type="button"
-                      phx-click="select_granularity"
-                      phx-value-granularity={granularity}
-                      data-tooltip={granularity_to_readable(granularity)}
-                      class={
-                        base_classes =
-                          "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9"
-
-                        position_classes =
-                          case position do
-                            :first -> "rounded-l-md"
-                            :middle -> ""
-                            :last -> "rounded-r-md"
-                          end
-
-                        state_classes =
-                          if @granularity == granularity do
-                            "bg-white dark:bg-slate-700 text-teal-500 dark:text-teal-400 border-b-2 border-b-teal-500 font-semibold hover:shadow-[inset_0_-8px_16px_-8px_rgba(20,184,166,0.2)]"
-                          else
-                            "bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-b-2 border-b-transparent hover:border-b-gray-300 dark:hover:border-b-slate-400 hover:shadow-[inset_0_-8px_16px_-8px_rgba(107,114,128,0.15)] dark:hover:shadow-[inset_0_-8px_16px_-8px_rgba(148,163,184,0.15)]"
-                          end
-
-                        separator_classes =
-                          case position do
-                            :first -> ""
-                            _ -> "border-l border-gray-300 dark:border-slate-600"
-                          end
-
-                        "#{base_classes} #{position_classes} #{state_classes} #{separator_classes}"
-                      }
-                    >
-                      {label}
-                    </button>
-                  <% end %>
-                </div>
-              </div>
-            <% end %>
-          </div>
-
-        </div>
-      </div>
-    </div>
+    <!-- Filter Bar Component -->
+    <.live_component 
+      module={TrifleApp.Components.FilterBar}
+      id="explore-filter-bar"
+      config={@database_config}
+      granularity={@granularity}
+      available_granularities={@available_granularities}
+      from={@from}
+      to={@to}
+      smart_timeframe_input={@smart_timeframe_input}
+      use_fixed_display={@use_fixed_display}
+      show_timeframe_dropdown={@show_timeframe_dropdown}
+      show_granularity_dropdown={@show_granularity_dropdown}
+      show_controls={true}
+    />
 
     <!-- Row 2: Activity/Events Chart -->
     <div class="sticky top-16 z-40 mb-6">

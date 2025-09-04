@@ -35,6 +35,21 @@ Hooks.SmartTimeframeInput = {
   }
 }
 
+Hooks.SmartTimeframeBlur = {
+  mounted() {
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        // Blur the input after Enter to trigger value update
+        setTimeout(() => this.el.blur(), 100);
+      }
+    });
+    
+    this.handleEvent("update_timeframe_input", ({value}) => {
+      this.el.value = value;
+    });
+  }
+}
+
 
 Hooks.ProjectTimeline = {
   createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
