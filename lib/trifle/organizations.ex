@@ -6,7 +6,7 @@ defmodule Trifle.Organizations do
   import Ecto.Query, warn: false
   alias Trifle.Repo
 
-  alias Trifle.Organizations.{Project, Database}
+  alias Trifle.Organizations.{Project, Database, Dashboard, Transponder}
 
   @doc """
   Returns the list of projects.
@@ -163,7 +163,7 @@ defmodule Trifle.Organizations do
 
   def get_project_by_token(token) when is_binary(token) do
     with token when not is_nil(token) <- Repo.get_by(ProjectToken, token: token) |> Repo.preload(:project),
-      {:ok, id} <- Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", token.token, max_age: 86400 * 365) do
+      {:ok, _id} <- Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", token.token, max_age: 86400 * 365) do
       {:ok, token.project, token}
     else
       nil ->
@@ -395,6 +395,91 @@ defmodule Trifle.Organizations do
     case Repo.one(query) do
       nil -> 0
       max_order -> max_order + 1
+    end
+  end
+
+  @doc """
+  Returns the list of dashboards for a database.
+  """
+  def list_dashboards_for_database(%Database{} = database) do
+    from(d in Dashboard, 
+      where: d.database_id == ^database.id, 
+      order_by: [asc: d.inserted_at],
+      preload: :user
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a single dashboard.
+  """
+  def get_dashboard!(id) do
+    Dashboard
+    |> Repo.get!(id)
+    |> Repo.preload(:user)
+  end
+
+  @doc """
+  Creates a dashboard.
+  """
+  def create_dashboard(attrs \\ %{}) do
+    %Dashboard{}
+    |> Dashboard.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a dashboard.
+  """
+  def update_dashboard(%Dashboard{} = dashboard, attrs) do
+    dashboard
+    |> Dashboard.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a dashboard.
+  """
+  def delete_dashboard(%Dashboard{} = dashboard) do
+    Repo.delete(dashboard)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking dashboard changes.
+  """
+  def change_dashboard(%Dashboard{} = dashboard, attrs \\ %{}) do
+    Dashboard.changeset(dashboard, attrs)
+  end
+
+  @doc """
+  Generates a public access token for a dashboard.
+  """
+  def generate_dashboard_public_token(%Dashboard{} = dashboard) do
+    dashboard
+    |> Dashboard.generate_public_token()
+    |> Repo.update()
+  end
+
+  @doc """
+  Removes the public access token from a dashboard.
+  """
+  def remove_dashboard_public_token(%Dashboard{} = dashboard) do
+    dashboard
+    |> Dashboard.remove_public_token()
+    |> Repo.update()
+  end
+
+  @doc """
+  Gets a dashboard by public access token for unauthenticated access.
+  """
+  def get_dashboard_by_token(dashboard_id, token) when is_binary(dashboard_id) and is_binary(token) do
+    case Repo.get(Dashboard, dashboard_id) do
+      %Dashboard{access_token: ^token} = dashboard when not is_nil(token) ->
+        dashboard = Repo.preload(dashboard, [:user, :database])
+        {:ok, dashboard}
+      
+      _ ->
+        {:error, :not_found}
     end
   end
 end

@@ -5,7 +5,10 @@ defmodule TrifleAdmin.DatabasesLive do
   alias Trifle.Organizations.Database
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Database Management", databases: list_databases())}
+    {:ok, assign(socket, 
+      page_title: ["Admin", "Database Management"], 
+      breadcrumb_links: [{"Admin", ~p"/admin"}, "Database Management"],
+      databases: list_databases())}
   end
 
   def handle_params(params, _url, socket) do
@@ -13,20 +16,25 @@ defmodule TrifleAdmin.DatabasesLive do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
+    database = Organizations.get_database!(id)
     socket
-    |> assign(:page_title, "Edit Database")
-    |> assign(:database, Organizations.get_database!(id))
+    |> assign(:page_title, ["Admin", "Database Management", "Edit #{database.display_name}"])
+    |> assign(:breadcrumb_links, [{"Admin", ~p"/admin"}, {"Database Management", ~p"/admin/databases"}, "Edit #{database.display_name}"])
+    |> assign(:database, database)
   end
 
   defp apply_action(socket, :show, %{"id" => id}) do
+    database = Organizations.get_database!(id)
     socket
-    |> assign(:page_title, "Database Details")
-    |> assign(:database, Organizations.get_database!(id))
+    |> assign(:page_title, ["Admin", "Database Management", database.display_name])
+    |> assign(:breadcrumb_links, [{"Admin", ~p"/admin"}, {"Database Management", ~p"/admin/databases"}, database.display_name])
+    |> assign(:database, database)
   end
 
   defp apply_action(socket, :new, _params) do
     socket
-    |> assign(:page_title, "New Database")
+    |> assign(:page_title, ["Admin", "Database Management", "New Database"])
+    |> assign(:breadcrumb_links, [{"Admin", ~p"/admin"}, {"Database Management", ~p"/admin/databases"}, "New Database"])
     |> assign(:database, %Database{})
   end
 

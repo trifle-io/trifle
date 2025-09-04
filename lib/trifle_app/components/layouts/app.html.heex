@@ -204,9 +204,13 @@
   <%= if assigns[:page_title] do %>
     <header class="bg-white dark:bg-slate-800 shadow-sm">
       <div class="mx-auto max-w-full py-4 px-4 sm:px-6 lg:px-8">
-        <h1 class="text-lg font-semibold leading-6 text-gray-900 dark:text-white">
-          <%= format_breadcrumb(assigns[:page_title]) %>
-        </h1>
+        <%= if assigns[:breadcrumb_links] do %>
+          <.breadcrumb_links breadcrumbs={assigns[:breadcrumb_links]} />
+        <% else %>
+          <h1 class="text-lg font-semibold leading-6 text-gray-900 dark:text-white">
+            <%= format_breadcrumb(assigns[:page_title]) %>
+          </h1>
+        <% end %>
       </div>
     </header>
   <% end %>
