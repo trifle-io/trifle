@@ -2,6 +2,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
+  alias Trifle.Stats.SeriesFetcher
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
 
@@ -273,6 +274,15 @@ defmodule TrifleApp.DatabaseDashboardLive do
     {:noreply, socket}
   end
 
+  # Progress message handling
+  def handle_info({:loading_progress, progress_map}, socket) do
+    {:noreply, assign(socket, :loading_progress, progress_map)}
+  end
+
+  def handle_info({:transponding, state}, socket) do
+    {:noreply, assign(socket, :transponding, state)}
+  end
+
   # Dashboard Data Management
   
   defp initialize_dashboard_state(socket, database, dashboard, is_public_access, public_token) do
@@ -283,6 +293,19 @@ defmodule TrifleApp.DatabaseDashboardLive do
     database_config = Database.stats_config(database)
     available_granularities = get_available_granularities(database)
     
+    # Load transponders to identify response paths and their names
+    transponders = Organizations.list_transponders_for_database(database)
+    transponder_info = transponders
+    |> Enum.map(fn transponder ->
+      response_path = Map.get(transponder.config, "response_path", "")
+      transponder_name = transponder.name || transponder.key
+      if response_path != "", do: {response_path, transponder_name}, else: nil
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.into(%{})
+
+    transponder_response_paths = Map.keys(transponder_info)
+    
     socket
     |> assign(:database, database)
     |> assign(:dashboard, dashboard)
@@ -290,6 +313,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
     |> assign(:public_token, public_token)
     |> assign(:database_config, database_config)
     |> assign(:available_granularities, available_granularities)
+    |> assign(:transponder_response_paths, transponder_response_paths)
+    |> assign(:transponder_info, transponder_info)
     |> assign(:from, from)
     |> assign(:to, to)
     |> assign(:granularity, granularity)
@@ -297,7 +322,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     |> assign(:use_fixed_display, use_fixed_display)
     |> assign(:stats, nil)
     |> assign(:timeline, "[]")
-    |> assign(:transponder_results, [])
+    |> assign(:transponder_results, %{successful: [], failed: [], errors: []})
     |> assign(:transponder_errors, [])
     |> assign(:show_error_modal, false)
     |> assign(:loading, false)
@@ -365,7 +390,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
         load_start_time: System.monotonic_time(:microsecond), 
         loading: true,
         loading_chunks: true,
-        loading_progress: %{current: 0, total: 1},
+        loading_progress: nil,
         transponding: false
       )
       
@@ -375,10 +400,29 @@ defmodule TrifleApp.DatabaseDashboardLive do
       granularity = socket.assigns.granularity
       from = socket.assigns.from
       to = socket.assigns.to
+      liveview_pid = self() # Capture LiveView PID before async task
       
       start_async(socket, :dashboard_data_task, fn ->
-        config = Database.stats_config(database)
-        Trifle.Stats.values(key, from, to, granularity, config)
+        # Get transponders that match the dashboard key
+        matching_transponders = Organizations.list_transponders_for_database(database)
+        |> Enum.filter(&(&1.enabled))
+        |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
+        |> Enum.sort_by(& &1.order)
+        
+        # Create progress callback to send updates back to LiveView
+        progress_callback = fn progress_info ->
+          case progress_info do
+            {:chunk_progress, current, total} ->
+              send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+            {:transponder_progress, :starting} ->
+              send(liveview_pid, {:transponding, true})
+          end
+        end
+        
+        case SeriesFetcher.fetch_series(database, key, from, to, granularity, matching_transponders, progress_callback: progress_callback) do
+          {:ok, result} -> result
+          {:error, error} -> {:error, error}
+        end
       end)
     else
       socket
@@ -394,39 +438,34 @@ defmodule TrifleApp.DatabaseDashboardLive do
     }
   end
   
-  def handle_async(:dashboard_data_task, {:ok, raw_stats}, socket) do
+  def handle_async(:dashboard_data_task, {:ok, result}, socket) do
     # Calculate load duration
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
     
-    # Debug output to see what we received
-    IO.inspect(raw_stats, label: "Dashboard received raw_stats")
-    
-    # Just store the raw stats without processing
+    # SeriesFetcher now returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
     {:noreply, 
      socket
      |> assign(loading: false)
      |> assign(loading_chunks: false)
      |> assign(loading_progress: nil)
      |> assign(transponding: false)
-     |> assign(stats: raw_stats)
+     |> assign(stats: result.series)
+     |> assign(transponder_results: result.transponder_results)
      |> assign(load_duration_microseconds: load_duration)}
   end
   
-  def handle_async(:dashboard_data_task, {:error, error_data}, socket) do
-    # Handle error case - the error_data contains the actual stats
+  def handle_async(:dashboard_data_task, {:error, error}, socket) do
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
     
-    IO.inspect(error_data, label: "Dashboard error data (contains stats)")
-    
-    # Store the error_data as stats since that's where the actual data is
     {:noreply, 
      socket
      |> assign(loading: false)
      |> assign(loading_chunks: false)
      |> assign(loading_progress: nil)
      |> assign(transponding: false)
-     |> assign(stats: error_data)
-     |> assign(load_duration_microseconds: load_duration)}
+     |> assign(stats: nil)
+     |> assign(load_duration_microseconds: load_duration)
+     |> put_flash(:error, "Failed to load dashboard data: #{inspect(error)}")}
   end
   
   def handle_async(:dashboard_data_task, {:exit, reason}, socket) do
@@ -445,22 +484,57 @@ defmodule TrifleApp.DatabaseDashboardLive do
     "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
   end
   
-  # Summary stats for footer (simplified for raw stats)
+  # Summary stats for footer (with transponder statistics)
   def get_summary_stats(assigns) do
     case assigns do
-      %{dashboard: %{key: key}, stats: stats} when not is_nil(key) and key != "" and not is_nil(stats) ->
+      %{dashboard: %{key: key}, stats: stats, transponder_info: transponder_info, transponder_results: transponder_results} when not is_nil(key) and key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
         column_count = if stats[:at], do: length(stats[:at]), else: 0
         
         # Count paths (rows)
         path_count = if stats[:paths], do: length(stats[:paths]), else: 0
+        
+        # Use actual transponder results from SeriesFetcher
+        successful_transponders = length(transponder_results.successful)
+        failed_transponders = length(transponder_results.failed)
+        transponder_errors = transponder_results.errors
 
-        %{
+        result = %{
           key: key,
           column_count: column_count,
-          path_count: path_count
+          path_count: path_count,
+          matching_transponders: successful_transponders + failed_transponders,
+          successful_transponders: successful_transponders,
+          failed_transponders: failed_transponders,
+          transponder_errors: transponder_errors
         }
-      _ ->
+        
+        # Debug logging to help troubleshoot
+        IO.inspect(result, label: "Dashboard summary stats")
+        result
+        
+      %{dashboard: %{key: key}} when not is_nil(key) and key != "" ->
+        # Dashboard has key but no stats loaded yet - show basic info
+        result = %{
+          key: key,
+          column_count: 0,
+          path_count: 0,
+          matching_transponders: 0,
+          successful_transponders: 0,
+          failed_transponders: 0,
+          transponder_errors: []
+        }
+        IO.inspect(result, label: "Dashboard summary stats (no data)")
+        result
+        
+      assigns ->
+        IO.inspect(%{
+          has_dashboard: Map.has_key?(assigns, :dashboard),
+          dashboard_key: assigns[:dashboard][:key],
+          has_stats: Map.has_key?(assigns, :stats),
+          stats_nil: is_nil(assigns[:stats]),
+          has_transponder_results: Map.has_key?(assigns, :transponder_results)
+        }, label: "Dashboard summary stats conditions")
         nil
     end
   end
@@ -888,7 +962,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                     <%= if @transponding do %>
                       Transponding data...
                     <% else %>
-                      Scientificating piece <%= @loading_progress.current + 1 %> of <%= @loading_progress.total %>...
+                      Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
                     <% end %>
                   </span>
                 </div>
@@ -898,7 +972,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                     <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
                       <div
                         class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                        style={"width: #{((@loading_progress.current + 1) / @loading_progress.total * 100)}%"}
+                        style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
                       ></div>
                     </div>
                   <% end %>
@@ -999,6 +1073,39 @@ defmodule TrifleApp.DatabaseDashboardLive do
               </div>
             <% end %>
 
+            <!-- Transponders -->
+            <div class="flex items-center gap-1">
+              <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+              </svg>
+              <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
+              
+              <!-- Success count -->
+              <div class="flex items-center gap-1">
+                <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                <span class="text-gray-900 dark:text-white"><%= summary.successful_transponders %></span>
+              </div>
+              
+              <!-- Fail count -->
+              <div class="flex items-center gap-1">
+                <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                <%= if summary.failed_transponders > 0 do %>
+                  <button 
+                    phx-click="show_transponder_errors"
+                    class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
+                  >
+                    <%= summary.failed_transponders %>
+                  </button>
+                <% else %>
+                  <span class="text-gray-900 dark:text-white">0</span>
+                <% end %>
+              </div>
+            </div>
+
             <!-- Load Duration -->
             <%= if @load_duration_microseconds do %>
               <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
@@ -1012,7 +1119,33 @@ defmodule TrifleApp.DatabaseDashboardLive do
           </div>
         </div>
       <% end %>
+
+      <!-- Debug Series Data (only show when data is loaded) -->
+      <%= if @stats && !@is_public_access do %>
+        <div class="mt-4 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 px-4 py-3">
+          <details class="text-sm">
+            <summary class="cursor-pointer text-gray-700 dark:text-slate-300 font-medium hover:text-gray-900 dark:hover:text-white">
+              Debug: Series Data (<%= if @stats[:paths], do: length(@stats[:paths]), else: 0 %> paths, <%= if @stats[:at], do: length(@stats[:at]), else: 0 %> points)
+            </summary>
+            <div class="mt-3 bg-white dark:bg-slate-800 rounded-lg p-3 border border-gray-200 dark:border-slate-700">
+              <pre class="text-xs text-gray-600 dark:text-slate-400 overflow-x-auto max-h-64 overflow-y-auto"><%= Jason.encode!(@stats, pretty: true) %></pre>
+            </div>
+          </details>
+        </div>
+      <% end %>
     </div>
     """
+  end
+
+  defp key_matches_pattern?(key, pattern) do
+    cond do
+      String.contains?(pattern, "^") or String.contains?(pattern, "$") ->
+        case Regex.compile(pattern) do
+          {:ok, regex} -> Regex.match?(regex, key)
+          {:error, _} -> false
+        end
+      true ->
+        key == pattern
+    end
   end
 end

@@ -3,9 +3,9 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
+  alias Trifle.Stats.SeriesFetcher
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
-  alias Trifle.Stats.SeriesFetcher
 
   def mount(params, _session, socket) do
     database = Organizations.get_database!(params["id"])
@@ -52,6 +52,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(transponder_errors: [])
       |> assign(show_error_modal: false)
       |> assign(transponder_results: [])
+      |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
       |> assign(load_start_time: nil)
       |> assign(load_duration_microseconds: nil)
 
@@ -824,515 +825,193 @@ defmodule TrifleApp.DatabaseExploreLive do
     end
   end
 
-  def handle_async(:chunk_task, {:ok, {chunk_index, chunk_result}}, socket) do
-    # Accumulate the chunk data (prepend since we're loading newest first)
-    current_stats = socket.assigns.accumulated_stats
-    new_stats = %{
-      at: chunk_result[:at] ++ current_stats.at,
-      values: chunk_result[:values] ++ current_stats.values
-    }
-
-    # Update progress
-    progress = socket.assigns.loading_progress
-    new_progress = %{progress | current: chunk_index + 1}
-
-    # Generate chart data from accumulated stats
-    keys_sum = reduce_stats(new_stats[:values])
-
-    {timeline_data, chart_type} =
-      if socket.assigns.key && socket.assigns.key != "" do
-        timeline = series_from(new_stats, ["keys", socket.assigns.key])
-        {Jason.encode!(timeline["keys.#{socket.assigns.key}"]), "single"}
-      else
-        timeline = series_from_all_keys(new_stats, keys_sum)
-        {Jason.encode!(timeline), "stacked"}
-      end
-
-    selected_key_color =
-      if socket.assigns.key && socket.assigns.key != "" do
-        get_key_color(keys_sum, socket.assigns.key)
-      else
-        nil
-      end
-
-    socket = socket
-      |> assign(accumulated_stats: new_stats)
-      |> assign(loading_progress: new_progress)
-      |> assign(keys: keys_sum)
-      |> assign(timeline: timeline_data)
-      |> assign(chart_type: chart_type)
-      |> assign(selected_key_color: selected_key_color)
-
-    # Continue loading next chunk or finish
-    if new_progress.current >= new_progress.total do
-      # All chunks loaded - load final table data
-      config = Database.stats_config(socket.assigns.database)
-      load_final_table_data(socket, config)
-    else
-      # Load next chunk
-      config = Database.stats_config(socket.assigns.database)
-      timeline_chunks = socket.assigns.timeline_chunks
-      load_chunk_async(socket, timeline_chunks, chunk_index + 1, config)
-    end
+  # Progress message handling
+  def handle_info({:loading_progress, progress_map}, socket) do
+    {:noreply, assign(socket, :loading_progress, progress_map)}
   end
 
-  def handle_async(:chunk_task, {:exit, reason}, socket) do
-    # Handle chunk loading failure
-    socket = socket
-      |> assign(loading: false)
-      |> assign(loading_chunks: false)
-      |> assign(loading_progress: nil)
-      |> assign(transponding: false)
-      |> put_flash(:error, "Failed to load data chunk: #{inspect(reason)}")
-
-    {:noreply, socket}
+  def handle_info({:transponding, state}, socket) do
+    {:noreply, assign(socket, :transponding, state)}
   end
 
-  def handle_async(:single_chunk_task, {:ok, {keys_sum, timeline_data, chart_type, selected_key_color, key_tabulized, raw_key_stats}}, socket) do
-    # Handle single chunk (synchronous loading) completion - start transponding stage
-    socket = socket
-      |> assign(keys: keys_sum)
-      |> assign(timeline: timeline_data)
-      |> assign(chart_type: chart_type)
-      |> assign(selected_key_color: selected_key_color)
-      |> assign(stats: key_tabulized)
-      |> assign(raw_key_stats: raw_key_stats)
-      |> assign(loading: false)
-      |> assign(loading_chunks: false)
-      |> assign(loading_progress: nil)
-      |> assign(transponding: true)
-
-    # Start transponding process
-    socket = start_transponding(socket)
-
-    {:noreply, socket}
-  end
-
-  def handle_async(:single_chunk_task, {:exit, reason}, socket) do
-    # Handle single chunk loading failure
-    socket = socket
-      |> assign(loading: false)
-      |> assign(loading_chunks: false)
-      |> assign(loading_progress: nil)
-      |> assign(transponding: false)
-      |> put_flash(:error, "Failed to load data: #{inspect(reason)}")
-
-    {:noreply, socket}
-  end
-
-  def handle_async(:transpond_task, {:ok, {transponded_table_stats, transponder_results}}, socket) do
-    # Handle transponding completion - transponded_table_stats is already in table format
-    # Calculate total loading duration
-    load_duration = if socket.assigns.load_start_time do
-      System.monotonic_time(:microsecond) - socket.assigns.load_start_time
-    else
-      nil
-    end
+  def handle_async(:data_task, {:ok, data}, socket) do
+    # Handle both single system stats and dual system+key stats
+    load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
     
-    socket = socket
-      |> assign(stats: transponded_table_stats)
-      |> assign(transponder_results: transponder_results)
-      |> assign(transponding: false)
-      |> assign(load_duration_microseconds: load_duration)
+    case data do
+      %{system: system_stats, key: key_stats, key_transponder_results: key_transponder_results} ->
+        # When specific key is selected:
+        # - Use system stats for keys summary AND chart (events count)
+        # - Use key stats only for table data
+        keys_sum = reduce_stats(system_stats[:values] || [])
+        # Chart always shows events from system data, for the specific key
+        timeline = series_from(system_stats, ["keys", socket.assigns.key])
+        timeline_data = Jason.encode!(timeline["keys.#{socket.assigns.key}"])
+        selected_key_color = get_key_color(keys_sum, socket.assigns.key)
+        table_stats = Trifle.Stats.Tabler.tabulize(key_stats)
+        
+        {:noreply,
+         socket
+         |> assign(loading: false)
+         |> assign(loading_chunks: false)
+         |> assign(loading_progress: nil)
+         |> assign(transponding: false)
+         |> assign(stats: table_stats)
+         |> assign(keys: keys_sum)
+         |> assign(timeline: timeline_data)
+         |> assign(chart_type: "single")
+         |> assign(selected_key_color: selected_key_color)
+         |> assign(key_transponder_results: key_transponder_results)
+         |> assign(load_duration_microseconds: load_duration)}
+         
+      %{system: system_stats} ->
+        # When no specific key is selected, use system stats for everything
+        keys_sum = reduce_stats(system_stats[:values] || [])
+        timeline = series_from_all_keys(system_stats, keys_sum)
+        timeline_data = Jason.encode!(timeline)
+        table_stats = Trifle.Stats.Tabler.tabulize(system_stats)
+        
+        {:noreply,
+         socket
+         |> assign(loading: false)
+         |> assign(loading_chunks: false)
+         |> assign(loading_progress: nil)
+         |> assign(transponding: false)
+         |> assign(stats: table_stats)
+         |> assign(keys: keys_sum)
+         |> assign(timeline: timeline_data)
+         |> assign(chart_type: "stacked")
+         |> assign(selected_key_color: nil)
+         |> assign(load_duration_microseconds: load_duration)}
+         
+      raw_stats ->
+        # Fallback: handle raw stats directly (legacy format)
+        keys_sum = reduce_stats(raw_stats[:values] || [])
+        
+        {timeline_data, chart_type} =
+          if socket.assigns.key && socket.assigns.key != "" do
+            timeline = series_from(raw_stats, ["keys", socket.assigns.key])
+            {Jason.encode!(timeline["keys.#{socket.assigns.key}"]), "single"}
+          else
+            timeline = series_from_all_keys(raw_stats, keys_sum)
+            {Jason.encode!(timeline), "stacked"}
+          end
 
-    {:noreply, socket}
-  end
+        selected_key_color =
+          if socket.assigns.key && socket.assigns.key != "" do
+            get_key_color(keys_sum, socket.assigns.key)
+          else
+            nil
+          end
 
-  def handle_async(:transpond_task, {:exit, reason}, socket) do
-    # Handle transponding failure - keep original stats
-    socket = socket
-      |> assign(transponding: false)
-      |> put_flash(:error, "Failed to apply transponders: #{inspect(reason)}")
+        table_stats = Trifle.Stats.Tabler.tabulize(raw_stats)
 
-    {:noreply, socket}
-  end
-
-  defp start_transponding(socket) do
-    if socket.assigns.key && socket.assigns.key != "" && socket.assigns.raw_key_stats do
-      # Start async transponding task with raw stats
-      start_async(socket, :transpond_task, fn ->
-        apply_transponders_to_raw_stats(socket.assigns.database, socket.assigns.key, socket.assigns.raw_key_stats)
-      end, timeout: 300_000)
-    else
-      # No specific key selected or no raw stats, process without transponding
-      if socket.assigns.raw_key_stats do
-        {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(socket.assigns.raw_key_stats)
-        {false, key_tabulized, []}
-      else
-        {false, nil, []}
-      end
-      |> then(fn {transponding, stats, transponder_results} ->
-        socket |> assign(transponding: transponding, stats: stats, transponder_results: transponder_results)
-      end)
+        {:noreply,
+         socket
+         |> assign(loading: false)
+         |> assign(loading_chunks: false)
+         |> assign(loading_progress: nil)
+         |> assign(transponding: false)
+         |> assign(stats: table_stats)
+         |> assign(keys: keys_sum)
+         |> assign(timeline: timeline_data)
+         |> assign(chart_type: chart_type)
+         |> assign(selected_key_color: selected_key_color)
+         |> assign(load_duration_microseconds: load_duration)}
     end
   end
 
-  defp apply_transponders_to_raw_stats(database, key, raw_stats) do
-    # Get all enabled transponders for this database matching the key, ordered by priority
-    transponders = Organizations.list_transponders_for_database(database)
-    |> Enum.filter(&(&1.enabled && key_matches_pattern?(&1.key, key)))
-
-    # Create Series object from the raw stats data
-    series = Trifle.Stats.Series.new(raw_stats)
-
-    # Apply each transponder in order using Series transformations and track results
-    {result_series, transponder_results} = Enum.reduce(transponders, {series, []}, fn transponder, {acc_series, acc_results} ->
-      try do
-        new_series = apply_single_transponder(transponder, acc_series)
-        result = %{
-          transponder: transponder,
-          success: true,
-          error: nil
-        }
-        {new_series, [result | acc_results]}
-      rescue
-        error ->
-          result = %{
-            transponder: transponder,
-            success: false,
-            error: %{
-              message: Exception.message(error),
-              stacktrace: __STACKTRACE__
-            }
-          }
-          {acc_series, [result | acc_results]}
-      end
-    end)
-
-    # Now convert the transponded Series to table format using existing process
-    {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(result_series.series)
+  def handle_async(:data_task, {:error, error}, socket) do
+    load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
     
-    # Return both the table data and transponder results
-    {key_tabulized, Enum.reverse(transponder_results)}
+    {:noreply,
+     socket
+     |> assign(loading: false)
+     |> assign(loading_chunks: false)
+     |> assign(loading_progress: nil)
+     |> assign(transponding: false)
+     |> assign(load_duration_microseconds: load_duration)
+     |> put_flash(:error, "Failed to load data: #{inspect(error)}")}
   end
 
-  defp apply_single_transponder(transponder, series) do
-
-    case transponder.type do
-      "Trifle.Stats.Transponder.Add" ->
-        path1 = Map.get(transponder.config, "path1", "")
-        path2 = Map.get(transponder.config, "path2", "")
-        response_path = Map.get(transponder.config, "response_path", "result")
-        Trifle.Stats.Series.transform_add(series, path1, path2, response_path)
-
-      "Trifle.Stats.Transponder.Subtract" ->
-        path1 = Map.get(transponder.config, "path1", "")
-        path2 = Map.get(transponder.config, "path2", "")
-        response_path = Map.get(transponder.config, "response_path", "result")
-        Trifle.Stats.Series.transform_subtract(series, path1, path2, response_path)
-
-      "Trifle.Stats.Transponder.Multiply" ->
-        path1 = Map.get(transponder.config, "path1", "")
-        path2 = Map.get(transponder.config, "path2", "")
-        response_path = Map.get(transponder.config, "response_path", "result")
-        Trifle.Stats.Series.transform_multiply(series, path1, path2, response_path)
-
-      "Trifle.Stats.Transponder.Divide" ->
-        path1 = Map.get(transponder.config, "path1", "")
-        path2 = Map.get(transponder.config, "path2", "")
-        response_path = Map.get(transponder.config, "response_path", "result")
-        Trifle.Stats.Series.transform_divide(series, path1, path2, response_path)
-
-      "Trifle.Stats.Transponder.Ratio" ->
-        path1 = Map.get(transponder.config, "path1", "")
-        path2 = Map.get(transponder.config, "path2", "")
-        response_path = Map.get(transponder.config, "response_path", "ratio")
-        Trifle.Stats.Series.transform_ratio(series, path1, path2, response_path)
-
-      "Trifle.Stats.Transponder.Sum" ->
-        paths_string = Map.get(transponder.config, "path", "")
-        paths = parse_comma_separated_paths(paths_string)
-        response_path = Map.get(transponder.config, "response_path", "sum")
-        Trifle.Stats.Series.transform_sum(series, paths, response_path)
-
-      "Trifle.Stats.Transponder.Mean" ->
-        paths_string = Map.get(transponder.config, "path", "")
-        paths = parse_comma_separated_paths(paths_string)
-        response_path = Map.get(transponder.config, "response_path", "mean")
-        Trifle.Stats.Series.transform_mean(series, paths, response_path)
-
-      "Trifle.Stats.Transponder.Min" ->
-        paths_string = Map.get(transponder.config, "path", "")
-        paths = parse_comma_separated_paths(paths_string)
-        response_path = Map.get(transponder.config, "response_path", "min")
-        Trifle.Stats.Series.transform_min(series, paths, response_path)
-
-      "Trifle.Stats.Transponder.Max" ->
-        paths_string = Map.get(transponder.config, "path", "")
-        paths = parse_comma_separated_paths(paths_string)
-        response_path = Map.get(transponder.config, "response_path", "max")
-        Trifle.Stats.Series.transform_max(series, paths, response_path)
-
-      "Trifle.Stats.Transponder.StandardDeviation" ->
-        sum_path = Map.get(transponder.config, "sum", "")
-        count_path = Map.get(transponder.config, "count", "")
-        square_path = Map.get(transponder.config, "square", "")
-        response_path = Map.get(transponder.config, "response_path", "stddev")
-        Trifle.Stats.Series.transform_stddev(series, sum_path, count_path, square_path, response_path)
-
-      _ ->
-        # Unknown transponder type, return unchanged
-        series
-    end
+  def handle_async(:data_task, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(loading: false)
+     |> assign(loading_chunks: false)
+     |> assign(loading_progress: nil)
+     |> assign(transponding: false)
+     |> put_flash(:error, "Data loading failed: #{inspect(reason)}")}
   end
 
-  # Helper function to parse comma-separated paths and clean whitespace
-  defp parse_comma_separated_paths(paths_string) when is_binary(paths_string) do
-    paths_string
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
 
-  defp parse_comma_separated_paths(_), do: []
 
-  # Helper function to check if a key matches a transponder pattern (supports regex)
-  defp key_matches_pattern?(transponder_pattern, actual_key) when is_binary(transponder_pattern) and is_binary(actual_key) do
-    cond do
-      # Direct string match (backward compatibility)
-      transponder_pattern == actual_key ->
-        true
 
-      # Check if pattern contains regex metacharacters - if so, treat as regex
-      String.contains?(transponder_pattern, ["(", ")", "*", "+", "?", "[", "]", "^", "$", ".", "|", "{", "}", "\\"]) ->
-        case Regex.compile(transponder_pattern) do
-          {:ok, regex} ->
-            Regex.match?(regex, actual_key)
-          {:error, _} ->
-            # If regex compilation fails, fall back to exact match
-            transponder_pattern == actual_key
-        end
 
-      # No regex metacharacters, use exact match
-      true ->
-        transponder_pattern == actual_key
-    end
-  end
-
-  defp key_matches_pattern?(_, _), do: false
 
   defp load_data_and_update_socket(socket) do
-    config = Database.stats_config(socket.assigns.database)
-    
     # Start timing the data loading process
-    socket = assign(socket, load_start_time: System.monotonic_time(:microsecond))
-
-    # Check if we need progressive loading
-    if should_slice_timeline?(socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config) do
-      start_progressive_loading(socket)
-    else
-      # Load normally for small timelines
-      load_data_synchronously(socket)
-    end
-  end
-
-  defp load_data_synchronously(socket) do
-    # Show unified loading indicator even for single chunk
-    socket = socket
-      |> assign(loading: true)
-      |> assign(loading_chunks: true)
-      |> assign(loading_progress: %{current: 0, total: 1})
-
-    # Start async task to prevent blocking
-    socket = start_async(socket, :single_chunk_task, fn ->
-      database_stats = load_database_stats(socket.assigns.database, socket.assigns.granularity, socket.assigns.from, socket.assigns.to)
-      keys_sum = reduce_stats(database_stats[:values])
-
-      {timeline_data, chart_type} =
-        if socket.assigns.key && socket.assigns.key != "" do
-          timeline = series_from(database_stats, ["keys", socket.assigns.key])
-          {Jason.encode!(timeline["keys.#{socket.assigns.key}"]), "single"}
-        else
-          timeline = series_from_all_keys(database_stats, keys_sum)
-          {Jason.encode!(timeline), "stacked"}
-        end
-
-      key_stats =
-        load_database_key_stats(socket.assigns.database, socket.assigns.key, socket.assigns.granularity, socket.assigns.from, socket.assigns.to)
-
-      {:ok, key_tabulized, _key_seriesized} = process_database_key_stats(key_stats)
-
-      selected_key_color =
-        if socket.assigns.key && socket.assigns.key != "" do
-          get_key_color(keys_sum, socket.assigns.key)
-        else
-          nil
-        end
-
-      {keys_sum, timeline_data, chart_type, selected_key_color, key_tabulized, key_stats}
-    end, timeout: 300_000)
-
-    {:noreply, socket}
-  end
-
-  defp start_progressive_loading(socket) do
-    config = Database.stats_config(socket.assigns.database)
-
-    # Generate full timeline and split into chunks
-    parser = Trifle.Stats.Nocturnal.Parser.new(socket.assigns.granularity)
-    from_normalized = DateTime.shift_zone!(socket.assigns.from, config.time_zone)
-    to_normalized = DateTime.shift_zone!(socket.assigns.to, config.time_zone)
-
-    full_timeline = Trifle.Stats.Nocturnal.timeline(
-      from: from_normalized,
-      to: to_normalized,
-      offset: parser.offset,
-      unit: parser.unit,
-      config: config
+    socket = assign(socket, 
+      load_start_time: System.monotonic_time(:microsecond),
+      loading: true,
+      loading_chunks: true,
+      loading_progress: nil,
+      transponding: false
     )
 
-    # Split timeline into chunks of 720 and reverse to load newest first
-    timeline_chunks = full_timeline
-      |> Enum.chunk_every(720)
-      |> Enum.reverse()
-    total_chunks = length(timeline_chunks)
+    # Extract values to avoid async socket warnings
+    database = socket.assigns.database
+    key = socket.assigns.key
+    granularity = socket.assigns.granularity
+    from = socket.assigns.from
+    to = socket.assigns.to
+    liveview_pid = self() # Capture LiveView PID before async task
 
-    # Initialize progressive loading state
-    socket = socket
-      |> assign(loading_chunks: true)
-      |> assign(loading_progress: %{current: 0, total: total_chunks})
-      |> assign(accumulated_stats: %{at: [], values: []})
-      |> assign(timeline_chunks: timeline_chunks)
-      |> assign(keys: %{}) # Start with empty keys
-      |> assign(timeline: "[]") # Start with empty chart
-      |> assign(chart_type: "stacked") # Default chart type
-      |> assign(selected_key_color: nil)
-      |> assign(stats: nil) # Keep table loading
+    # Use SeriesFetcher for all data loading to ensure consistent transponder application
+    {:noreply, start_async(socket, :data_task, fn ->
+      if key && key != "" do
+        # Get transponders that match the specific key
+        matching_transponders = Organizations.list_transponders_for_database(database)
+        |> Enum.filter(&(&1.enabled))
+        |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
+        |> Enum.sort_by(& &1.order)
+        
+        # Create progress callback to send updates back to LiveView
+        progress_callback = fn progress_info ->
+          case progress_info do
+            {:chunk_progress, current, total} ->
+              send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+            {:transponder_progress, :starting} ->
+              send(liveview_pid, {:transponding, true})
+          end
+        end
 
-    # Start heartbeat to keep the process alive during long operations
-    :timer.send_after(5000, self(), :heartbeat)
-
-    # Start loading first chunk
-    load_chunk_async(socket, timeline_chunks, 0, config)
-  end
-
-  defp load_chunk_async(socket, chunks, chunk_index, config) do
-    if chunk_index < length(chunks) do
-      chunk = Enum.at(chunks, chunk_index)
-      chunk_from = List.first(chunk)
-      chunk_to = List.last(chunk)
-
-      # Start async task for this chunk using LiveView's async mechanism
-      # Use longer timeout for potentially slow database queries
-      socket = start_async(socket, :chunk_task, fn ->
-        chunk_result = Trifle.Stats.values(
-          "__system__key__",
-          chunk_from,
-          chunk_to,
-          socket.assigns.granularity,
-          config
-        )
-        {chunk_index, chunk_result}
-      end, timeout: 300_000)
-
-      {:noreply, socket}
-    else
-      # All chunks loaded - now load the table data
-      load_final_table_data(socket, config)
-    end
-  end
-
-  defp load_final_table_data(socket, config) do
-    # Load key stats for the table (only once at the end)
-    key_stats = if socket.assigns.key && socket.assigns.key != "" do
-      if should_slice_timeline?(socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config) do
-        load_key_stats_sliced(socket.assigns.key, socket.assigns.granularity, socket.assigns.from, socket.assigns.to, config)
+        # Load both system key (no transponders) and specific key (with transponders)
+        case {SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, []),
+              SeriesFetcher.fetch_series(database, key, from, to, granularity, matching_transponders, progress_callback: progress_callback)} do
+          {{:ok, system_result}, {:ok, key_result}} ->
+            %{system: system_result.series, key: key_result.series, key_transponder_results: key_result.transponder_results}
+          {{:error, error}, _} ->
+            {:error, {:system_key_failed, error}}
+          {_, {:error, error}} ->
+            {:error, {:specific_key_failed, error}}
+        end
       else
-        Trifle.Stats.values(socket.assigns.key, socket.assigns.from, socket.assigns.to, socket.assigns.granularity, config)
+        # Only load system key when no specific key is selected (no transponders)
+        case SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, []) do
+          {:ok, result} -> %{system: result.series}
+          {:error, error} -> {:error, error}
+        end
       end
-    else
-      nil
-    end
-
-    # Store the raw key stats and start transponding stage
-    socket = socket
-      |> assign(raw_key_stats: key_stats)
-      |> assign(loading: false)
-      |> assign(loading_chunks: false)
-      |> assign(loading_progress: nil)
-      |> assign(transponding: true)
-
-    # Start transponding process with raw stats
-    socket = start_transponding(socket)
-
-    {:noreply, socket}
+    end, timeout: 300_000)}
   end
 
-  def load_database_stats(database, granularity, from, to) do
-    config = Database.stats_config(database)
 
-    # Check if timeline would be too large and needs slicing
-    if should_slice_timeline?(from, to, granularity, config) do
-      load_database_stats_sliced(database, granularity, from, to, config)
-    else
-      Trifle.Stats.values(
-        "__system__key__",
-        from,
-        to,
-        granularity,
-        config
-      )
-    end
-  end
 
-  def should_slice_timeline?(from, to, granularity, config) do
-    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-    from_normalized = DateTime.shift_zone!(from, config.time_zone)
-    to_normalized = DateTime.shift_zone!(to, config.time_zone)
 
-    # Generate timeline to check point count
-    timeline = Trifle.Stats.Nocturnal.timeline(
-      from: from_normalized,
-      to: to_normalized,
-      offset: parser.offset,
-      unit: parser.unit,
-      config: config
-    )
 
-    # Slice if more than 720 points
-    length(timeline) > 720
-  end
 
-  defp load_database_stats_sliced(database, granularity, from, to, config) do
-    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-    from_normalized = DateTime.shift_zone!(from, config.time_zone)
-    to_normalized = DateTime.shift_zone!(to, config.time_zone)
 
-    # Generate full timeline
-    full_timeline = Trifle.Stats.Nocturnal.timeline(
-      from: from_normalized,
-      to: to_normalized,
-      offset: parser.offset,
-      unit: parser.unit,
-      config: config
-    )
-
-    # Split timeline into chunks of 720
-    # Split timeline into chunks of 720 and reverse to load newest first
-    timeline_chunks = full_timeline
-      |> Enum.chunk_every(720)
-      |> Enum.reverse()
-
-    # Load each chunk and combine results
-    {combined_at, combined_values} =
-      timeline_chunks
-      |> Enum.reduce({[], []}, fn chunk, {acc_at, acc_values} ->
-        chunk_from = List.first(chunk)
-        chunk_to = List.last(chunk)
-
-        chunk_result = Trifle.Stats.values(
-          "__system__key__",
-          chunk_from,
-          chunk_to,
-          granularity,
-          config
-        )
-
-        {acc_at ++ chunk_result[:at], acc_values ++ chunk_result[:values]}
-      end)
-
-    %{at: combined_at, values: combined_values}
-  end
 
   def reduce_stats(values) when is_list(values) do
     Enum.reduce(values, [], fn data, acc -> [data["keys"] | acc] end)
@@ -1410,73 +1089,8 @@ defmodule TrifleApp.DatabaseExploreLive do
     end)
   end
 
-  def load_database_key_stats(_database, key, _granularity, _from, _to) when is_nil(key), do: nil
 
-  def load_database_key_stats(_database, key, _granularity, _from, _to)
-      when is_binary(key) and byte_size(key) == 0,
-      do: nil
 
-  def load_database_key_stats(database, key, granularity, from, to) do
-    config = Database.stats_config(database)
-
-    # Check if timeline would be too large and needs slicing
-    if should_slice_timeline?(from, to, granularity, config) do
-      load_key_stats_sliced(key, granularity, from, to, config)
-    else
-      Trifle.Stats.values(key, from, to, granularity, config)
-    end
-  end
-
-  defp load_key_stats_sliced(key, granularity, from, to, config) do
-    parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-    from_normalized = DateTime.shift_zone!(from, config.time_zone)
-    to_normalized = DateTime.shift_zone!(to, config.time_zone)
-
-    # Generate full timeline
-    full_timeline = Trifle.Stats.Nocturnal.timeline(
-      from: from_normalized,
-      to: to_normalized,
-      offset: parser.offset,
-      unit: parser.unit,
-      config: config
-    )
-
-    # Split timeline into chunks of 720
-    # Split timeline into chunks of 720 and reverse to load newest first
-    timeline_chunks = full_timeline
-      |> Enum.chunk_every(720)
-      |> Enum.reverse()
-
-    # Load each chunk and combine results
-    {combined_at, combined_values} =
-      timeline_chunks
-      |> Enum.reduce({[], []}, fn chunk, {acc_at, acc_values} ->
-        chunk_from = List.first(chunk)
-        chunk_to = List.last(chunk)
-
-        chunk_result = Trifle.Stats.values(
-          key,
-          chunk_from,
-          chunk_to,
-          granularity,
-          config
-        )
-
-        {acc_at ++ chunk_result[:at], acc_values ++ chunk_result[:values]}
-      end)
-
-    %{at: combined_at, values: combined_values}
-  end
-
-  def process_database_key_stats(stats) when is_nil(stats), do: {:ok, nil, nil}
-
-  def process_database_key_stats(stats) do
-    {
-      :ok,
-      Trifle.Stats.Tabler.tabulize(stats),
-      Trifle.Stats.Tabler.seriesize(stats)
-    }
-  end
 
   def filter_keys(keys, filter) when filter == "" or is_nil(filter) do
     keys |> Enum.sort_by(fn {key, _count} -> key end)
@@ -1505,51 +1119,46 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def get_summary_stats(assigns) do
     case assigns do
-      %{key: key, stats: stats, transponder_results: transponder_results, transponder_info: transponder_info, database: database} when not is_nil(key) and key != "" and not is_nil(stats) ->
+      %{key: key, stats: stats, transponder_info: transponder_info, key_transponder_results: key_transponder_results} when not is_nil(key) and key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
         column_count = if stats[:at], do: length(stats[:at]), else: 0
         
         # Count paths (rows)
         path_count = if stats[:paths], do: length(stats[:paths]), else: 0
         
-        # Count transponded paths (paths created by transponders)
-        transponded_paths = if stats[:paths] do
-          stats[:paths]
-          |> Enum.filter(fn path -> Map.has_key?(transponder_info, path) end)
-          |> length()
-        else
-          0
-        end
-        
-        # Count transponders and their success/failure rates
-        matching_transponders = if transponder_results do
-          length(transponder_results)
-        else
-          # Fall back to checking available transponders for this key
-          transponders = Organizations.list_transponders_for_database(database)
-          |> Enum.filter(&(&1.enabled && key_matches_pattern?(&1.key, key)))
-          length(transponders)
-        end
-        
-        {successful_transponders, failed_transponders, transponder_errors} = if transponder_results do
-          successful = Enum.count(transponder_results, & &1.success)
-          failed = Enum.count(transponder_results, &(not &1.success))
-          errors = Enum.filter(transponder_results, &(not &1.success))
-          {successful, failed, errors}
-        else
-          {0, 0, []}
-        end
+        # Use actual transponder results from SeriesFetcher
+        successful_transponders = length(key_transponder_results.successful)
+        failed_transponders = length(key_transponder_results.failed)
+        transponder_errors = key_transponder_results.errors
 
         %{
           key: key,
           column_count: column_count,
           path_count: path_count,
-          transponded_paths: transponded_paths,
-          matching_transponders: matching_transponders,
+          matching_transponders: successful_transponders + failed_transponders,
           successful_transponders: successful_transponders,
           failed_transponders: failed_transponders,
           transponder_errors: transponder_errors
         }
+        
+      %{key: key, stats: stats} when (is_nil(key) or key == "") and not is_nil(stats) ->
+        # When no key is selected, show system overview stats (no transponders)
+        # Count columns (timeline points)
+        column_count = if stats[:at], do: length(stats[:at]), else: 0
+        
+        # Count paths (rows)
+        path_count = if stats[:paths], do: length(stats[:paths]), else: 0
+        
+        %{
+          key: nil,
+          column_count: column_count,
+          path_count: path_count,
+          matching_transponders: 0,
+          successful_transponders: 0,
+          failed_transponders: 0,
+          transponder_errors: []
+        }
+        
       _ ->
         nil
     end
@@ -1784,7 +1393,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                   <%= if @transponding do %>
                     Transponding data...
                   <% else %>
-                    Scientificating piece <%= @loading_progress.current + 1 %> of <%= @loading_progress.total %>...
+                    Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
                   <% end %>
                 </span>
               </div>
@@ -1794,7 +1403,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                   <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
                     <div
                       class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                      style={"width: #{((@loading_progress.current + 1) / @loading_progress.total * 100)}%"}
+                      style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
                     ></div>
                   </div>
                 <% end %>
@@ -2021,14 +1630,16 @@ defmodule TrifleApp.DatabaseExploreLive do
         <%= if summary = get_summary_stats(assigns) do %>
           <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
               <div class="flex flex-wrap items-center gap-4 text-xs">
-                <!-- Selected Key -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-                  </svg>
-                  <span class="font-medium text-gray-700 dark:text-slate-300">Key:</span>
-                  <span class="font-mono text-gray-900 dark:text-white max-w-xs truncate" title={summary.key}>{summary.key}</span>
-                </div>
+                <!-- Selected Key (only show if key is selected) -->
+                <%= if summary.key do %>
+                  <div class="flex items-center gap-1">
+                    <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                    </svg>
+                    <span class="font-medium text-gray-700 dark:text-slate-300">Key:</span>
+                    <span class="font-mono text-gray-900 dark:text-white max-w-xs truncate" title={summary.key}>{summary.key}</span>
+                  </div>
+                <% end %>
 
                 <!-- Columns -->
                 <div class="flex items-center gap-1">
@@ -2046,15 +1657,6 @@ defmodule TrifleApp.DatabaseExploreLive do
                   </svg>
                   <span class="font-medium text-gray-700 dark:text-slate-300">Paths:</span>
                   <span class="text-gray-900 dark:text-white">{summary.path_count}</span>
-                </div>
-
-                <!-- Transponded Paths -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                  </svg>
-                  <span class="font-medium text-gray-700 dark:text-slate-300">Transponded Paths:</span>
-                  <span class="text-gray-900 dark:text-white">{summary.transponded_paths}</span>
                 </div>
 
                 <!-- Transponders -->
@@ -2182,6 +1784,18 @@ defmodule TrifleApp.DatabaseExploreLive do
     <% end %>
     </div>
     """
+  end
+
+  defp key_matches_pattern?(key, pattern) do
+    cond do
+      String.contains?(pattern, "^") or String.contains?(pattern, "$") ->
+        case Regex.compile(pattern) do
+          {:ok, regex} -> Regex.match?(regex, key)
+          {:error, _} -> false
+        end
+      true ->
+        key == pattern
+    end
   end
 
 end
