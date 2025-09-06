@@ -26,19 +26,19 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
       <div class="mt-6">
         <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
           <div>
-            <dt class="text-sm font-medium leading-6 text-gray-900">Type</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700"><%= Transponder.get_type_display_name(@transponder.type) %></dd>
+            <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Type</dt>
+            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300"><%= Transponder.get_type_display_name(@transponder.type) %></dd>
           </div>
           
           <div>
-            <dt class="text-sm font-medium leading-6 text-gray-900">Status</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700">
+            <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Status</dt>
+            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
               <%= if @transponder.enabled do %>
-                <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                <span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/20 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
                   Enabled
                 </span>
               <% else %>
-                <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+                <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-slate-700 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-300">
                   Disabled
                 </span>
               <% end %>
@@ -47,17 +47,17 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
           
           <%= if not Enum.empty?(@transponder.config) do %>
             <div class="sm:col-span-2">
-              <dt class="text-sm font-medium leading-6 text-gray-900">Configuration</dt>
+              <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Configuration</dt>
               <dd class="mt-2">
-                <div class="overflow-hidden bg-gray-50 shadow sm:rounded-lg">
+                <div class="overflow-hidden bg-gray-50 dark:bg-slate-700 shadow sm:rounded-lg">
                   <div class="px-4 py-5 sm:p-6">
                     <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                       <%= for {key, value} <- @transponder.config do %>
                         <div>
-                          <dt class="text-sm font-medium text-gray-500">
+                          <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">
                             <%= String.capitalize(String.replace(to_string(key), "_", " ")) %>
                           </dt>
-                          <dd class="mt-1 text-sm text-gray-900"><%= value %></dd>
+                          <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= value %></dd>
                         </div>
                       <% end %>
                     </dl>
@@ -68,15 +68,15 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
           <% end %>
           
           <div>
-            <dt class="text-sm font-medium leading-6 text-gray-900">Created</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700">
+            <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Created</dt>
+            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
               <%= Calendar.strftime(@transponder.inserted_at, "%B %d, %Y at %I:%M %p") %>
             </dd>
           </div>
           
           <div>
-            <dt class="text-sm font-medium leading-6 text-gray-900">Last Updated</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700">
+            <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Last Updated</dt>
+            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
               <%= Calendar.strftime(@transponder.updated_at, "%B %d, %Y at %I:%M %p") %>
             </dd>
           </div>

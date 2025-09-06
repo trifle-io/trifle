@@ -215,6 +215,37 @@ defmodule Trifle.Accounts do
     end
   end
 
+  @doc """
+  Returns an `%Ecto.Changeset{}` for changing the user theme.
+
+  ## Examples
+
+      iex> change_user_theme(user)
+      %Ecto.Changeset{data: %User{}}
+
+  """
+  def change_user_theme(user, attrs \\ %{}) do
+    User.theme_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates the user theme preference.
+
+  ## Examples
+
+      iex> update_user_theme(user, %{theme: "dark"})
+      {:ok, %User{}}
+
+      iex> update_user_theme(user, %{theme: "invalid"})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_user_theme(user, attrs) do
+    user
+    |> User.theme_changeset(attrs)
+    |> Repo.update()
+  end
+
   ## Session
 
   @doc """

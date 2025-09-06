@@ -364,7 +364,7 @@ defmodule TrifleApp.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class="block text-sm font-semibold leading-6 text-zinc-800">
+    <label for={@for} class="block text-sm font-semibold leading-6 text-zinc-800 dark:text-white">
       <%= render_slot(@inner_block) %>
     </label>
     """
@@ -397,10 +397,10 @@ defmodule TrifleApp.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", @class]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8 text-zinc-800">
+        <h1 class="text-lg font-semibold leading-8 text-zinc-800 dark:text-white">
           <%= render_slot(@inner_block) %>
         </h1>
-        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600">
+        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600 dark:text-slate-300">
           <%= render_slot(@subtitle) %>
         </p>
       </div>
@@ -703,4 +703,37 @@ defmodule TrifleApp.CoreComponents do
   end
   
   def has_clickable_breadcrumbs?(_), do: false
+
+  @doc """
+  Returns theme classes based on user preference, including Highcharts classes.
+  
+  ## Examples
+      
+      iex> theme_classes("light")
+      "highcharts-light"
+      
+      iex> theme_classes("dark") 
+      "dark highcharts-dark"
+      
+      iex> theme_classes("system")
+      ""
+  """
+  def theme_classes(theme) when theme in ["light", "dark", "system"] do
+    case theme do
+      "dark" -> "dark highcharts-dark"
+      "light" -> "highcharts-light"
+      _ -> ""  # system uses default (no override classes)
+    end
+  end
+  
+  def theme_classes(_), do: ""
+  
+  @doc """
+  Returns theme data attributes for JavaScript theme handling.
+  """
+  def theme_data_attrs(theme) when theme in ["light", "dark", "system"] do
+    %{"data-theme" => theme}
+  end
+  
+  def theme_data_attrs(_), do: %{"data-theme" => "system"}
 end

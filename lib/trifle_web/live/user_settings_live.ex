@@ -17,6 +17,50 @@ defmodule TrifleWeb.UserSettingsLive do
 
         <!-- Settings Sections -->
         <div class="divide-y divide-gray-900/10 dark:divide-slate-700">
+          <!-- Theme Settings Section -->
+          <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
+            <div class="px-4 sm:px-0">
+              <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Theme Preference</h2>
+              <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+                Choose your preferred theme. System will automatically switch between light and dark based on your device settings.
+              </p>
+            </div>
+
+            <.form_container 
+              for={@theme_form} 
+              phx-submit="update_theme" 
+              phx-change="validate_theme" 
+              layout="simple"
+              class="bg-white dark:bg-slate-800 shadow-sm ring-1 ring-gray-900/5 dark:ring-slate-700 sm:rounded-xl md:col-span-2"
+            >
+              <div class="px-4 py-6 sm:p-8">
+                <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
+                  <div class="col-span-full">
+                    <.form_field 
+                      field={@theme_form[:theme]} 
+                      type="select" 
+                      label="Theme" 
+                      options={[
+                        {"Light", "light"},
+                        {"Dark", "dark"},
+                        {"System", "system"}
+                      ]}
+                      help_text="System theme follows your device's appearance settings"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <:actions>
+                <div class="flex items-center justify-end gap-x-6 border-t border-gray-900/10 dark:border-slate-700 px-4 py-4 sm:px-8">
+                  <.primary_button phx-disable-with="Saving..." type="submit">
+                    Save Theme
+                  </.primary_button>
+                </div>
+              </:actions>
+            </.form_container>
+          </div>
+
           <!-- Email Settings Section -->
           <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
             <div class="px-4 sm:px-0">
@@ -157,6 +201,7 @@ defmodule TrifleWeb.UserSettingsLive do
     user = socket.assigns.current_user
     email_changeset = Accounts.change_user_email(user)
     password_changeset = Accounts.change_user_password(user)
+    theme_changeset = Accounts.change_user_theme(user)
 
     socket =
       socket
@@ -165,6 +210,7 @@ defmodule TrifleWeb.UserSettingsLive do
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
+      |> assign(:theme_form, to_form(theme_changeset))
       |> assign(:trigger_submit, false)
 
     {:ok, socket}
@@ -229,6 +275,42 @@ defmodule TrifleWeb.UserSettingsLive do
 
       {:error, changeset} ->
         {:noreply, assign(socket, password_form: to_form(changeset))}
+    end
+  end
+
+  def handle_event("validate_theme", params, socket) do
+    %{"user" => user_params} = params
+
+    theme_form =
+      socket.assigns.current_user
+      |> Accounts.change_user_theme(user_params)
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    {:noreply, assign(socket, theme_form: theme_form)}
+  end
+
+  def handle_event("update_theme", params, socket) do
+    %{"user" => user_params} = params
+    user = socket.assigns.current_user
+
+    case Accounts.update_user_theme(user, user_params) do
+      {:ok, updated_user} ->
+        theme_form =
+          updated_user
+          |> Accounts.change_user_theme()
+          |> to_form()
+
+        {:noreply, 
+         socket
+         |> assign(theme_form: theme_form)
+         |> assign(current_user: updated_user)
+         |> put_flash(:info, "Theme preference updated successfully.")
+         |> push_event("theme-changed", %{theme: updated_user.theme})
+}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, theme_form: to_form(changeset))}
     end
   end
 end
