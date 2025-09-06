@@ -967,6 +967,16 @@ defmodule TrifleApp.DatabaseExploreLive do
     to = socket.assigns.to
     liveview_pid = self() # Capture LiveView PID before async task
 
+    # Create progress callback to send updates back to LiveView
+    progress_callback = fn progress_info ->
+      case progress_info do
+        {:chunk_progress, current, total} ->
+          send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+        {:transponder_progress, :starting} ->
+          send(liveview_pid, {:transponding, true})
+      end
+    end
+
     # Use SeriesFetcher for all data loading to ensure consistent transponder application
     {:noreply, start_async(socket, :data_task, fn ->
       if key && key != "" do
@@ -975,19 +985,9 @@ defmodule TrifleApp.DatabaseExploreLive do
         |> Enum.filter(&(&1.enabled))
         |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
         |> Enum.sort_by(& &1.order)
-        
-        # Create progress callback to send updates back to LiveView
-        progress_callback = fn progress_info ->
-          case progress_info do
-            {:chunk_progress, current, total} ->
-              send(liveview_pid, {:loading_progress, %{current: current, total: total}})
-            {:transponder_progress, :starting} ->
-              send(liveview_pid, {:transponding, true})
-          end
-        end
 
         # Load both system key (no transponders) and specific key (with transponders)
-        case {SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, []),
+        case {SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, [], progress_callback: progress_callback),
               SeriesFetcher.fetch_series(database, key, from, to, granularity, matching_transponders, progress_callback: progress_callback)} do
           {{:ok, system_result}, {:ok, key_result}} ->
             %{system: system_result.series, key: key_result.series, key_transponder_results: key_result.transponder_results}
@@ -998,7 +998,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         end
       else
         # Only load system key when no specific key is selected (no transponders)
-        case SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, []) do
+        case SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, [], progress_callback: progress_callback) do
           {:ok, result} -> %{system: result.series}
           {:error, error} -> {:error, error}
         end
@@ -1364,6 +1364,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         </.link>
       </nav>
     </div>
+
 
     <!-- Filter Bar Component -->
     <.live_component 
