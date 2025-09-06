@@ -198,21 +198,6 @@ defmodule TrifleApp.DatabaseDashboardLive do
   end
 
   def handle_event("save_dashboard", %{"dashboard" => dashboard_params}, socket) do
-    # Parse JSON payload if provided
-    dashboard_params = 
-      case dashboard_params["payload"] do
-        payload when is_binary(payload) and payload != "" ->
-          case Jason.decode(payload) do
-            {:ok, parsed_payload} ->
-              Map.put(dashboard_params, "payload", parsed_payload)
-            {:error, _} ->
-              # Keep the string value, let the changeset validation handle the error
-              dashboard_params
-          end
-        _ ->
-          Map.put(dashboard_params, "payload", %{})
-      end
-    
     case Organizations.update_dashboard(socket.assigns.dashboard, dashboard_params) do
       {:ok, dashboard} ->
         {:noreply,
@@ -570,10 +555,40 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def render(assigns) do
     ~H"""
+    <!-- Loading Indicator -->
+    <%= if (@loading_chunks && @loading_progress) || @transponding do %>
+      <div class="fixed inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center space-y-3">
+          <div class="flex items-center space-x-2">
+            <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+            <span class="text-sm text-gray-600 dark:text-white">
+              <%= if @transponding do %>
+                Transponding data...
+              <% else %>
+                Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
+              <% end %>
+            </span>
+          </div>
+          <!-- Always reserve space for progress bar to keep text position consistent -->
+          <div class="w-64 h-2">
+            <%= if @loading_chunks && @loading_progress do %>
+              <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                <div
+                  class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                  style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
+                ></div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
     <div class="flex flex-col dark:bg-slate-900 min-h-screen">
-      <!-- Header -->
-      <div class="mb-6">
-        <div class="flex items-center">
+      <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-6">
+          <div class="flex items-center">
           <%= if @is_public_access do %>
             <div class="flex items-center gap-2 w-64">
               <svg class="h-5 w-5 text-gray-400 dark:text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -722,10 +737,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
               <div class="w-64"></div>
             <% end %>
           <% end %>
+          </div>
         </div>
-      </div>
 
-      <!-- Filter Bar (only show if dashboard has a key) -->
+        <!-- Filter Bar (only show if dashboard has a key) -->
       <%= if dashboard_has_key?(assigns) do %>
         <.live_component
           module={TrifleApp.Components.FilterBar}
@@ -764,8 +779,15 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   placeholder="e.g., sales.metrics"
                   required
                 ><%= Phoenix.HTML.Form.input_value(@dashboard_form, :key) %></textarea>
-                <%= if @dashboard_changeset.errors[:key] do %>
-                  <p class="mt-1 text-sm text-red-600 dark:text-red-400"><%= elem(hd(@dashboard_changeset.errors[:key]), 0) %></p>
+                <%= if @dashboard_changeset && @dashboard_changeset.errors[:key] do %>
+                  <p class="mt-1 text-sm text-red-600 dark:text-red-400">
+                    <%= case @dashboard_changeset.errors[:key] do
+                      [{message, _}] -> message
+                      [{message, _} | _] -> message  
+                      message when is_binary(message) -> message
+                      _ -> "Invalid key format"
+                    end %>
+                  </p>
                 <% end %>
               </div>
               
@@ -778,8 +800,15 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
                   placeholder="JSON configuration for dashboard visualization"
                 ><%= if @dashboard.payload, do: Jason.encode!(@dashboard.payload, pretty: true), else: "" %></textarea>
-                <%= if @dashboard_changeset.errors[:payload] do %>
-                  <p class="mt-1 text-sm text-red-600 dark:text-red-400"><%= elem(hd(@dashboard_changeset.errors[:payload]), 0) %></p>
+                <%= if @dashboard_changeset && @dashboard_changeset.errors[:payload] do %>
+                  <p class="mt-1 text-sm text-red-600 dark:text-red-400">
+                    <%= case @dashboard_changeset.errors[:payload] do
+                      [{message, _}] -> message
+                      [{message, _} | _] -> message  
+                      message when is_binary(message) -> message
+                      _ -> "Invalid payload format"
+                    end %>
+                  </p>
                 <% end %>
                 <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">Enter valid JSON configuration for the dashboard visualization</p>
               </div>
@@ -949,190 +978,159 @@ defmodule TrifleApp.DatabaseDashboardLive do
         </.app_modal>
       <% end %>
 
-      <!-- Dashboard Content -->
-      <div class="flex-1">
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
-          <!-- Loading Indicator -->
-          <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-            <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-800 dark:bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
-              <div class="flex flex-col items-center space-y-3">
-                <div class="flex items-center space-x-2">
-                  <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-                  <span class="text-sm text-gray-600 dark:text-white">
-                    <%= if @transponding do %>
-                      Transponding data...
-                    <% else %>
-                      Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
-                    <% end %>
-                  </span>
-                </div>
-                <!-- Always reserve space for progress bar to keep text position consistent -->
-                <div class="w-64 h-2">
-                  <%= if @loading_chunks && @loading_progress do %>
-                    <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                      <div
-                        class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                        style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                      ></div>
+        <!-- Dashboard Content -->
+        <div class="flex-1">
+          <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
+            <!-- Dashboard with data -->
+            <div 
+              id="highcharts-dashboard-container"
+              phx-hook="HighchartsDashboard"
+              data-payload={Jason.encode!(@dashboard.payload)}
+              class="dashboard-content w-full"
+            >
+              <!-- Highcharts Dashboard will be rendered here -->
+            </div>
+          <% else %>
+            <!-- Empty state in white panel -->
+            <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
+              <div class="p-6">
+                <!-- Empty state -->
+                <div class="text-center py-12">
+                  <svg
+                    class="mx-auto h-12 w-12 text-gray-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
+                    />
+                  </svg>
+                  <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Dashboard is empty</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                    This dashboard doesn't have any visualization data yet. Edit the dashboard to add charts and metrics.
+                  </p>
+                  <%= if !@is_public_access do %>
+                    <div class="mt-6">
+                      <.link
+                        patch={~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}/edit"}
+                        class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+                      >
+                        <svg class="-ml-0.5 mr-1.5 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                        </svg>
+                        Edit Dashboard
+                      </.link>
                     </div>
                   <% end %>
                 </div>
               </div>
             </div>
           <% end %>
-          
-          <div class="p-6">
-            <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
-              <!-- Dashboard has content - render it -->
-              <div class="dashboard-content">
-                <div class="text-sm text-gray-500 dark:text-slate-400 mb-4">
-                  Dashboard content will be rendered here based on the payload.
+        </div>
+        
+        <!-- Sticky Summary Footer -->
+        <%= if summary = get_summary_stats(assigns) do %>
+          <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
+            <div class="flex flex-wrap items-center gap-4 text-xs">
+              
+              <!-- Selected Key -->
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                </svg>
+                <span class="font-medium">Key:</span>
+                <span class="truncate max-w-32" title={summary.key}><%= summary.key %></span>
+              </div>
+              
+              <!-- Points -->
+              <%= if summary.column_count > 0 do %>
+                <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                  <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+                  </svg>
+                  <span class="font-medium">Points:</span>
+                  <span><%= summary.column_count %></span>
+                </div>
+              <% end %>
+              
+              <!-- Paths -->
+              <%= if summary.path_count > 0 do %>
+                <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                  <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                  </svg>
+                  <span class="font-medium">Paths:</span>
+                  <span><%= summary.path_count %></span>
+                </div>
+              <% end %>
+
+              <!-- Transponders -->
+              <div class="flex items-center gap-1">
+                <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+                </svg>
+                <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
+                
+                <!-- Success count -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                  </svg>
+                  <span class="text-gray-900 dark:text-white"><%= summary.successful_transponders %></span>
                 </div>
                 
-                <!-- Temporary payload display for development -->
-                <div class="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                  <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Payload (JSON):</h3>
-                  <pre class="text-xs text-gray-600 dark:text-slate-300 overflow-x-auto"><%= Jason.encode!(@dashboard.payload, pretty: true) %></pre>
+                <!-- Fail count -->
+                <div class="flex items-center gap-1">
+                  <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <%= if summary.failed_transponders > 0 do %>
+                    <button 
+                      phx-click="show_transponder_errors"
+                      class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
+                    >
+                      <%= summary.failed_transponders %>
+                    </button>
+                  <% else %>
+                    <span class="text-gray-900 dark:text-white">0</span>
+                  <% end %>
                 </div>
               </div>
-            <% else %>
-              <!-- Empty state -->
-              <div class="text-center py-12">
-                <svg
-                  class="mx-auto h-12 w-12 text-gray-400"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
-                  />
-                </svg>
-                <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Dashboard is empty</h3>
-                <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                  This dashboard doesn't have any visualization data yet. Edit the dashboard to add charts and metrics.
-                </p>
-                <%= if !@is_public_access do %>
-                  <div class="mt-6">
-                    <.link
-                      patch={~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}/edit"}
-                      class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-                    >
-                      <svg class="-ml-0.5 mr-1.5 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                      </svg>
-                      Edit Dashboard
-                    </.link>
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
+
+              <!-- Load Duration -->
+              <%= if @load_duration_microseconds do %>
+                <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                  <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                  </svg>
+                  <span class="font-medium">Load:</span>
+                  <span><%= format_duration(@load_duration_microseconds) %></span>
+                </div>
+              <% end %>
+            </div>
           </div>
-        </div>
+        <% end %>
+
+        <!-- Debug Series Data (only show when data is loaded) -->
+        <%= if @stats && !@is_public_access do %>
+          <div class="mt-4 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 px-4 py-3">
+            <details class="text-sm">
+              <summary class="cursor-pointer text-gray-700 dark:text-slate-300 font-medium hover:text-gray-900 dark:hover:text-white">
+                Debug: Series Data (<%= if @stats[:paths], do: length(@stats[:paths]), else: 0 %> paths, <%= if @stats[:at], do: length(@stats[:at]), else: 0 %> points)
+              </summary>
+              <div class="mt-3 bg-white dark:bg-slate-800 rounded-lg p-3 border border-gray-200 dark:border-slate-700">
+                <pre class="text-xs text-gray-600 dark:text-slate-400 overflow-x-auto max-h-64 overflow-y-auto"><%= Jason.encode!(@stats, pretty: true) %></pre>
+              </div>
+            </details>
+          </div>
+        <% end %>
       </div>
-
-      
-      <!-- Sticky Summary Footer -->
-      <%= if summary = get_summary_stats(assigns) do %>
-        <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
-          <div class="flex flex-wrap items-center gap-4 text-xs">
-            
-            <!-- Selected Key -->
-            <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-              <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-              </svg>
-              <span class="font-medium">Key:</span>
-              <span class="truncate max-w-32" title={summary.key}><%= summary.key %></span>
-            </div>
-            
-            <!-- Points -->
-            <%= if summary.column_count > 0 do %>
-              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
-                </svg>
-                <span class="font-medium">Points:</span>
-                <span><%= summary.column_count %></span>
-              </div>
-            <% end %>
-            
-            <!-- Paths -->
-            <%= if summary.path_count > 0 do %>
-              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                </svg>
-                <span class="font-medium">Paths:</span>
-                <span><%= summary.path_count %></span>
-              </div>
-            <% end %>
-
-            <!-- Transponders -->
-            <div class="flex items-center gap-1">
-              <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
-              </svg>
-              <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
-              
-              <!-- Success count -->
-              <div class="flex items-center gap-1">
-                <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                </svg>
-                <span class="text-gray-900 dark:text-white"><%= summary.successful_transponders %></span>
-              </div>
-              
-              <!-- Fail count -->
-              <div class="flex items-center gap-1">
-                <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-                <%= if summary.failed_transponders > 0 do %>
-                  <button 
-                    phx-click="show_transponder_errors"
-                    class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
-                  >
-                    <%= summary.failed_transponders %>
-                  </button>
-                <% else %>
-                  <span class="text-gray-900 dark:text-white">0</span>
-                <% end %>
-              </div>
-            </div>
-
-            <!-- Load Duration -->
-            <%= if @load_duration_microseconds do %>
-              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
-                </svg>
-                <span class="font-medium">Load:</span>
-                <span><%= format_duration(@load_duration_microseconds) %></span>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      <% end %>
-
-      <!-- Debug Series Data (only show when data is loaded) -->
-      <%= if @stats && !@is_public_access do %>
-        <div class="mt-4 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 px-4 py-3">
-          <details class="text-sm">
-            <summary class="cursor-pointer text-gray-700 dark:text-slate-300 font-medium hover:text-gray-900 dark:hover:text-white">
-              Debug: Series Data (<%= if @stats[:paths], do: length(@stats[:paths]), else: 0 %> paths, <%= if @stats[:at], do: length(@stats[:at]), else: 0 %> points)
-            </summary>
-            <div class="mt-3 bg-white dark:bg-slate-800 rounded-lg p-3 border border-gray-200 dark:border-slate-700">
-              <pre class="text-xs text-gray-600 dark:text-slate-400 overflow-x-auto max-h-64 overflow-y-auto"><%= Jason.encode!(@stats, pretty: true) %></pre>
-            </div>
-          </details>
-        </div>
-      <% end %>
     </div>
     """
   end

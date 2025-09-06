@@ -507,6 +507,187 @@ Hooks.FastTooltip = {
   }
 }
 
+Hooks.HighchartsDashboard = {
+  mounted() {
+    this.initOrWaitForDashboards();
+  },
+  
+  updated() {
+    this.initOrWaitForDashboards();
+  },
+  
+  initOrWaitForDashboards() {
+    // Check if Dashboards is already loaded
+    if (window.dashboardsReady && typeof window.Dashboards !== 'undefined') {
+      this.initDashboard();
+      return;
+    }
+    
+    // Check if there was an error loading Dashboards
+    if (window.dashboardsError) {
+      this.showError(window.dashboardsError);
+      return;
+    }
+    
+    // Show loading message
+    this.showLoading('Loading Dashboards library...');
+    
+    // Listen for the dashboards-loaded event
+    const handleDashboardsLoaded = () => {
+      window.removeEventListener('dashboards-loaded', handleDashboardsLoaded);
+      if (typeof window.Dashboards !== 'undefined') {
+        this.initDashboard();
+      } else {
+        this.showError('Dashboards library loaded but not available');
+      }
+    };
+    
+    window.addEventListener('dashboards-loaded', handleDashboardsLoaded);
+    
+    // Fallback timeout in case the event doesn't fire
+    setTimeout(() => {
+      window.removeEventListener('dashboards-loaded', handleDashboardsLoaded);
+      if (!window.dashboardsReady) {
+        this.showError('Timeout waiting for Dashboards library to load');
+      }
+    }, 10000); // 10 second timeout
+  },
+  
+  initDashboard() {
+    // Check if required libraries are loaded
+    if (typeof window.Highcharts === 'undefined') {
+      console.error('Highcharts library not loaded');
+      this.showError('Highcharts library not loaded');
+      return;
+    }
+    
+    if (typeof window.Dashboards === 'undefined') {
+      console.error('Dashboards library not loaded');
+      this.showError('Dashboards library not available');
+      return;
+    }
+    
+    console.log('Both libraries available, initializing dashboard...');
+    
+    // Get the dashboard payload from data attribute
+    const payloadData = this.el.dataset.payload;
+    
+    if (!payloadData) {
+      console.warn('No payload data found for Highcharts Dashboard');
+      this.showError('No dashboard configuration found');
+      return;
+    }
+    
+    try {
+      const dashboardConfig = JSON.parse(payloadData);
+      console.log('Dashboard configuration:', dashboardConfig);
+      
+      // Check if the config uses renderTo with specific cell IDs
+      if (dashboardConfig.components) {
+        console.log('Components renderTo values:', dashboardConfig.components.map(c => c.renderTo));
+      }
+      
+      // Clear any existing dashboard (but don't clear DOM)
+      if (this.dashboard) {
+        try {
+          if (typeof this.dashboard.destroy === 'function') {
+            this.dashboard.destroy();
+          }
+        } catch (e) {
+          console.warn('Error destroying existing dashboard:', e);
+        }
+        this.dashboard = null;
+      }
+      
+      // Create required HTML cell elements based on component renderTo values
+      this.createRequiredCells(dashboardConfig);
+      
+      window.Highcharts.setOptions({ chart: { styledMode: true } });
+      // Initialize Highcharts Dashboard with the payload
+      // Use the third parameter (true) for responsive behavior as mentioned by user
+      this.dashboard = window.Dashboards.board(this.el, dashboardConfig, true);
+      
+      console.log('Highcharts Dashboard initialized successfully', this.dashboard);
+      
+    } catch (error) {
+      console.error('Error initializing Highcharts Dashboard:', error);
+      console.error('Dashboard config:', payloadData);
+      this.showError('Failed to load dashboard: ' + error.message);
+    }
+  },
+  
+  createRequiredCells(dashboardConfig) {
+    // Clear the container first
+    this.el.innerHTML = '';
+    
+    // Extract unique cell IDs from components
+    const cellIds = [];
+    if (dashboardConfig.components) {
+      dashboardConfig.components.forEach(component => {
+        if (component.renderTo && !cellIds.includes(component.renderTo)) {
+          cellIds.push(component.renderTo);
+        }
+      });
+    }
+    
+    console.log('Creating cells:', cellIds);
+    
+    // Create div elements for each required cell
+    cellIds.forEach(cellId => {
+      const cellDiv = document.createElement('div');
+      cellDiv.id = cellId;
+      // Remove temporary styling - let dashboard handle its own styling
+      this.el.appendChild(cellDiv);
+    });
+  },
+  
+  clearDashboard() {
+    if (this.dashboard) {
+      try {
+        // Check if destroy method exists before calling it
+        if (typeof this.dashboard.destroy === 'function') {
+          this.dashboard.destroy();
+        } else {
+          console.warn('Dashboard destroy method not available');
+        }
+      } catch (e) {
+        console.warn('Error destroying existing dashboard:', e);
+      }
+      this.dashboard = null;
+    }
+    // Don't clear the container - let Highcharts Dashboard manage the DOM structure
+    // this.el.innerHTML = '';
+  },
+  
+  showLoading(message) {
+    this.el.innerHTML = `
+      <div class="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div class="text-blue-700 dark:text-blue-400 font-medium">Loading Dashboard</div>
+        <div class="text-blue-600 dark:text-blue-300 text-sm mt-1">${message}</div>
+        <div class="mt-2">
+          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    `;
+  },
+  
+  showError(message) {
+    this.el.innerHTML = `
+      <div class="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div class="text-red-700 dark:text-red-400 font-medium">Dashboard Error</div>
+        <div class="text-red-600 dark:text-red-300 text-sm mt-1">${message}</div>
+        <div class="text-red-500 dark:text-red-400 text-xs mt-2">
+          Check browser console for more details.
+        </div>
+      </div>
+    `;
+  },
+  
+  destroyed() {
+    this.clearDashboard();
+  }
+}
+
 let liveSocket = new LiveSocket("/live", Socket, {
   params: {_csrf_token: csrfToken},
   hooks: Hooks,
