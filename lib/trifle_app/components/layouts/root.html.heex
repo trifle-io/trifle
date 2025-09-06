@@ -8,9 +8,32 @@
       <%= TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %>
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <!-- Highcharts Dashboards - following official documentation -->
+    <script src="https://code.highcharts.com/dashboards/datagrid.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+    <script src="https://code.highcharts.com/dashboards/dashboards.js"></script>
+    <script src="https://code.highcharts.com/dashboards/modules/layout.js"></script>
+    <link rel="stylesheet" href="https://code.highcharts.com/css/highcharts.css" />
+    <link rel="stylesheet" href="https://code.highcharts.com/dashboards/css/dashboards.css" />
+    <link rel="stylesheet" href="https://code.highcharts.com/dashboards/css/datagrid.css" />
+    
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, checking Dashboards...');
+        console.log('Dashboards available:', typeof window.Dashboards !== 'undefined');
+        if (typeof window.Dashboards !== 'undefined') {
+          console.log('Dashboards.board available:', typeof window.Dashboards.board === 'function');
+          window.dashboardsReady = true;
+          window.dispatchEvent(new CustomEvent('dashboards-loaded'));
+          console.log('✅ Dashboards ready!');
+        } else {
+          console.error('❌ Dashboards not available');
+        }
+      });
+    </script>
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
     <script defer src="https://unpkg.com/alpinejs@3.10.5/dist/cdn.min.js"></script>
-    <script src="https://code.highcharts.com/highcharts.js"></script>
   </head>
   <body class="dark bg-slate-100 dark:bg-slate-900 text-gray-900 dark:text-white antialiased h-screen">
     <%= @inner_content %>
