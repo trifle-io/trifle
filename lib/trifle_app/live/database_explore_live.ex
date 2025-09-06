@@ -1570,7 +1570,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <tr>
                   <th
                     scope="col"
-                    class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.25)] dark:lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.5)]"
+                    class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
                     style="width: 200px;"
                   >
                     Path
@@ -1591,7 +1591,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
                   <tr data-row={row_index}>
                     <td
-                      class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.25)] dark:lg:shadow-[1px_0_2px_-1px_rgba(0,0,0,0.5)]"
+                      class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
                         data-row={row_index}
                     >
                       {format_nested_path(path, @stats[:paths], @transponder_info)}
