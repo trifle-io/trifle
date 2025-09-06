@@ -34,8 +34,8 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
               class={[
                 "col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 focus:outline-2 focus:-outline-offset-2 sm:text-sm/6",
                 if(@action == :edit, 
-                  do: "bg-gray-50 text-gray-500 cursor-not-allowed outline-gray-200", 
-                  else: "bg-white text-gray-900 outline-gray-300 focus:outline-teal-600")
+                  do: "bg-gray-50 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed outline-gray-200 dark:outline-slate-600", 
+                  else: "bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-teal-600")
               ]}
             >
               <option value="">Select transponder type...</option>
@@ -45,7 +45,7 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
                 </option>
               <% end %>
             </select>
-            <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 sm:h-4 sm:w-4">
+            <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
               <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
             </svg>
           </div>
@@ -56,13 +56,13 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
             <div>
               <.label>
                 <%= field.label %>
-                <%= if field.required do %><span class="text-red-500">*</span><% end %>
+                <%= if field.required do %><span class="text-red-500 dark:text-red-400">*</span><% end %>
               </.label>
               <input
                 type="text"
                 name={"transponder[config][#{field.name}]"}
                 value={@config_values[field.name] || @config_values[String.to_atom(field.name)] || ""}
-                class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6"
+                class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
                 placeholder={field.label}
                 required={field.required}
               />

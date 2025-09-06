@@ -71,20 +71,16 @@ Hooks.ProjectTimeline = {
       series = [{name: key || 'Data', data: data || []}];
     }
     
-    // Detect dark mode
-    const isDarkMode = document.documentElement.classList.contains('dark');
-    const backgroundColor = isDarkMode ? '#1e293b' : '#ffffff';
-    const textColor = isDarkMode ? '#94a3b8' : '#374151';
-    const lineColor = isDarkMode ? '#475569' : '#d1d5db';
-    const gridColor = isDarkMode ? '#475569' : '#f3f4f6';
     
-    return Highcharts.chart('timeline-chart', {
+    const chart = Highcharts.chart('timeline-chart', {
       chart: {
         type: 'column',
         height: '120',
         marginTop: 10,
         spacingTop: 5,
-        backgroundColor: backgroundColor
+        style: {
+          fontFamily: 'inherit'
+        }
       },
       time: {
         useUTC: true,
@@ -107,14 +103,7 @@ Hooks.ProjectTimeline = {
         },
         title: {
           enabled: false
-        },
-        labels: {
-          style: {
-            color: textColor
-          }
-        },
-        lineColor: lineColor,
-        tickColor: lineColor
+        }
       },
       yAxis: {
         title: {
@@ -122,22 +111,11 @@ Hooks.ProjectTimeline = {
         },
         min: 0,
         endOnTick: false,
-        maxPadding: 0.05,
-        labels: {
-          style: {
-            color: textColor
-          }
-        },
-        gridLineColor: gridColor
+        maxPadding: 0.05
       },
 
       tooltip: {
-        xDateFormat: '%Y-%m-%d %H:%M:%S',
-        backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
-        style: {
-          color: isDarkMode ? '#ffffff' : '#374151'
-        },
-        borderColor: isDarkMode ? '#475569' : '#d1d5db'
+        xDateFormat: '%Y-%m-%d %H:%M:%S'
       },
 
       legend: {
@@ -164,6 +142,8 @@ Hooks.ProjectTimeline = {
 
       series: series
     });
+
+    return chart;
   },
 
 
@@ -720,4 +700,97 @@ window.addEventListener("phx:copy", (event) => {
     // Copy completed
   })
 })
+
+// Theme Management
+class ThemeManager {
+  constructor() {
+    this.init();
+  }
+
+  init() {
+    // Apply theme on page load
+    this.applyTheme();
+    
+    // Listen for theme changes from LiveView
+    window.addEventListener("phx:theme-changed", (event) => {
+      this.applyTheme(event.detail.theme);
+    });
+
+    // Listen for system theme changes
+    if (window.matchMedia) {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      mediaQuery.addEventListener('change', () => {
+        // Only apply system theme change if user has system preference
+        const currentTheme = document.body.getAttribute('data-theme') || 'system';
+        if (currentTheme === 'system') {
+          this.applyTheme();
+        }
+      });
+    }
+  }
+
+  shouldUseDarkTheme(themePreference = null) {
+    const body = document.body;
+    const currentTheme = themePreference || body.getAttribute('data-theme') || 'system';
+    
+    let shouldUseDark;
+    switch (currentTheme) {
+      case 'dark':
+        shouldUseDark = true;
+        break;
+      case 'light':
+        shouldUseDark = false;
+        break;
+      case 'system':
+      default:
+        // Check system preference
+        shouldUseDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        break;
+    }
+    
+    return shouldUseDark;
+  }
+
+  applyTheme(themePreference = null) {
+    const body = document.body;
+    const currentTheme = themePreference || body.getAttribute('data-theme') || 'system';
+    const shouldUseDark = this.shouldUseDarkTheme(themePreference);
+    
+    // Update data-theme attribute if preference was provided
+    if (themePreference) {
+      body.setAttribute('data-theme', themePreference);
+    }
+    
+    // Remove existing theme classes (both our dark class and Highcharts classes)
+    body.classList.remove('dark', 'highcharts-light', 'highcharts-dark');
+    document.documentElement.classList.remove('dark');
+    
+    // Apply theme classes based on user preference
+    switch (currentTheme) {
+      case 'dark':
+        body.classList.add('dark', 'highcharts-dark');
+        document.documentElement.classList.add('dark');
+        break;
+      case 'light':
+        body.classList.add('highcharts-light');
+        break;
+      case 'system':
+      default:
+        // No Highcharts override classes - let adaptive theme use system preference
+        if (shouldUseDark) {
+          body.classList.add('dark');
+          document.documentElement.classList.add('dark');
+        }
+        break;
+    }
+
+    // No need to manually update Highcharts - adaptive theme handles it with CSS classes
+  }
+
+}
+
+// Initialize theme manager when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  window.themeManager = new ThemeManager();
+});
 

@@ -201,7 +201,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
             <%= if @streams.transponders.inserts == [] do %>
               <div class="py-12 text-center">
                 <svg
-                  class="mx-auto h-12 w-12 text-gray-400"
+                  class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"

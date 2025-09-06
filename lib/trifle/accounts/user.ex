@@ -11,6 +11,7 @@ defmodule Trifle.Accounts.User do
     field :hashed_password, :string, redact: true
     field :confirmed_at, :naive_datetime
     field :is_admin, :boolean, default: false
+    field :theme, :string, default: "system"
 
     timestamps()
   end
@@ -158,5 +159,14 @@ defmodule Trifle.Accounts.User do
     else
       add_error(changeset, :current_password, "is not valid")
     end
+  end
+
+  @doc """
+  A user changeset for changing the theme preference.
+  """
+  def theme_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:theme])
+    |> validate_inclusion(:theme, ~w(light dark system), message: "is not a valid theme")
   end
 end
