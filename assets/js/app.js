@@ -53,6 +53,14 @@ Hooks.SmartTimeframeBlur = {
 
 Hooks.ProjectTimeline = {
   createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
+    // Debug logging for color issues
+    console.log('ProjectTimeline colors debug:', {
+      chartType,
+      colors: typeof colors === 'string' ? JSON.parse(colors) : colors,
+      selectedKeyColor,
+      key
+    });
+    
     // Calculate dynamic bar width based on container and data points
     const container = document.getElementById('timeline-chart');
     const containerWidth = container.clientWidth || 800; // fallback width
@@ -72,12 +80,21 @@ Hooks.ProjectTimeline = {
     }
     
     
+    // Ensure styled mode is disabled globally for this chart
+    const originalStyledMode = Highcharts.getOptions().chart.styledMode;
+    Highcharts.setOptions({
+      chart: {
+        styledMode: false
+      }
+    });
+    
     const chart = Highcharts.chart('timeline-chart', {
       chart: {
         type: 'column',
         height: '120',
         marginTop: 10,
         spacingTop: 5,
+        styledMode: false, // Disable styled mode to use programmatic colors
         style: {
           fontFamily: 'inherit'
         }
@@ -138,10 +155,45 @@ Hooks.ProjectTimeline = {
         }
       },
 
-      colors: chartType === 'single' && selectedKeyColor ? [selectedKeyColor] : colors,
+      colors: (() => {
+        const finalColors = chartType === 'single' && selectedKeyColor ? [selectedKeyColor] : colors;
+        console.log('Final colors assigned to chart:', finalColors);
+        return finalColors;
+      })(),
 
       series: series
     });
+    
+    // Restore original styled mode setting
+    if (originalStyledMode !== undefined) {
+      Highcharts.setOptions({
+        chart: {
+          styledMode: originalStyledMode
+        }
+      });
+    }
+    
+    // Force colors directly on chart elements after creation
+    setTimeout(() => {
+      if (chartType === 'single' && selectedKeyColor) {
+        // For single series, force the selected key color
+        chart.series.forEach((series, seriesIndex) => {
+          series.update({
+            color: selectedKeyColor
+          }, false);
+        });
+        chart.redraw();
+      } else if (chartType === 'stacked') {
+        // For stacked series, force individual colors
+        chart.series.forEach((series, seriesIndex) => {
+          const seriesColor = colors[seriesIndex % colors.length];
+          series.update({
+            color: seriesColor
+          }, false);
+        });
+        chart.redraw();
+      }
+    }, 10);
 
     return chart;
   },
@@ -200,8 +252,10 @@ Hooks.ProjectTimeline = {
     const maxBarWidth = Math.max(8, Math.min(40, availableWidth / dataPointsLength * 0.7));
     
     // Update chart options with new bar width and colors
+    const updateColors = chartType === 'single' && selectedKeyColor ? [selectedKeyColor] : colors;
+    console.log('Update colors assigned to chart:', updateColors);
     this.chart.update({
-      colors: chartType === 'single' && selectedKeyColor ? [selectedKeyColor] : colors,
+      colors: updateColors,
       plotOptions: {
         column: {
           pointPadding: 0.2,
@@ -489,10 +543,15 @@ Hooks.FastTooltip = {
 
 Hooks.HighchartsDashboard = {
   mounted() {
+    console.log('🚀 HighchartsDashboard hook mounted');
+    console.log('🚀 Element:', this.el);
+    console.log('🚀 Dataset:', this.el.dataset);
     this.initOrWaitForDashboards();
   },
   
   updated() {
+    console.log('🔄 HighchartsDashboard hook updated');
+    console.log('🔄 Dataset:', this.el.dataset);
     this.initOrWaitForDashboards();
   },
   
@@ -560,7 +619,66 @@ Hooks.HighchartsDashboard = {
     
     try {
       const dashboardConfig = JSON.parse(payloadData);
-      console.log('Dashboard configuration:', dashboardConfig);
+      console.log('🔧 Dashboard configuration:', dashboardConfig);
+      
+      // Check if edit mode should be enabled based on data attribute
+      const isEditMode = this.el.dataset.editMode === 'true';
+      console.log('🔧 Edit mode dataset value:', this.el.dataset.editMode);
+      console.log('🔧 Edit mode enabled:', isEditMode);
+      console.log('🔧 All dataset attributes:', this.el.dataset);
+      
+      // Add edit mode configuration if in edit mode
+      if (isEditMode && !dashboardConfig.editMode) {
+        console.log('🔧 Adding edit mode configuration to dashboard config');
+        dashboardConfig.editMode = {
+          enabled: true,
+          contextMenu: {
+            enabled: true
+          }
+        };
+        console.log('🔧 Dashboard config after adding edit mode:', dashboardConfig);
+      } else if (isEditMode && dashboardConfig.editMode) {
+        console.log('🔧 Edit mode already exists in config:', dashboardConfig.editMode);
+      } else {
+        console.log('🔧 Not in edit mode, skipping edit mode configuration');
+      }
+      
+      // Add event handlers to editMode configuration if it exists (regardless of data-edit-mode)
+      const hasEditModeInConfig = dashboardConfig.editMode && dashboardConfig.editMode.enabled;
+      console.log('🔧 Has edit mode in config:', hasEditModeInConfig);
+      if (hasEditModeInConfig) {
+        console.log('🔧 Adding event handlers to editMode configuration');
+        
+        // Store reference to this context for use in callbacks
+        const hookContext = this;
+        
+        if (!dashboardConfig.editMode.events) {
+          dashboardConfig.editMode.events = {};
+        }
+        
+        dashboardConfig.editMode.events.componentChanged = function(e) {
+          console.log('🎯 Component changed via config events:', e);
+          hookContext.handleDashboardChange('componentChanged', e);
+        };
+        
+        dashboardConfig.editMode.events.layoutChanged = function(e) {
+          console.log('🎯 Layout changed via config events:', e);
+          hookContext.handleDashboardChange('layoutChanged', e);
+        };
+        
+        // Also try different callback patterns
+        dashboardConfig.editMode.componentChanged = function(e) {
+          console.log('🎯 Component changed via config callback:', e);
+          hookContext.handleDashboardChange('componentChanged', e);
+        };
+        
+        dashboardConfig.editMode.layoutChanged = function(e) {
+          console.log('🎯 Layout changed via config callback:', e);
+          hookContext.handleDashboardChange('layoutChanged', e);
+        };
+        
+        console.log('🔧 Event handlers added to editMode config:', dashboardConfig.editMode);
+      }
       
       // Check if the config uses renderTo with specific cell IDs
       if (dashboardConfig.components) {
@@ -585,13 +703,135 @@ Hooks.HighchartsDashboard = {
       window.Highcharts.setOptions({ chart: { styledMode: true } });
       // Initialize Highcharts Dashboard with the payload
       // Use the third parameter (true) for responsive behavior as mentioned by user
-      this.dashboard = window.Dashboards.board(this.el, dashboardConfig, true);
-      
-      console.log('Highcharts Dashboard initialized successfully', this.dashboard);
+      window.Dashboards.board(this.el, dashboardConfig, true).then(board => {
+        console.log('🔧 Dashboard initialized successfully:', board);
+        this.dashboard = board;
+        
+        // Setup edit mode callbacks if edit mode is enabled
+        const hasEditModeInConfig = dashboardConfig.editMode && dashboardConfig.editMode.enabled;
+        console.log('🔧 Edit mode in config:', hasEditModeInConfig);
+        
+        if (hasEditModeInConfig && board.editMode) {
+          console.log('🔧 Setting up edit mode callbacks with Dashboards.addEvent...');
+          
+          const editMode = board.editMode;
+          const addEvent = window.Dashboards.addEvent;
+          
+          console.log('🔧 EditMode object:', editMode);
+          console.log('🔧 Dashboards.addEvent available:', !!addEvent);
+          
+          if (addEvent) {
+            // Component changed callback
+            addEvent(editMode, 'componentChanged', e => {
+              console.log('🎯 Component Changed:', e);
+              this.handleDashboardChange('componentChanged', e);
+            });
+            
+            // Component changes discarded callback  
+            addEvent(editMode, 'componentChangesDiscarded', e => {
+              console.log('🎯 Component Changes Discarded:', e);
+              this.handleDashboardChange('componentChangesDiscarded', e);
+            });
+            
+            // Layout changed callback
+            addEvent(editMode, 'layoutChanged', e => {
+              console.log('🎯 Layout Changed:', e);
+              this.handleDashboardChange('layoutChanged', e);
+            });
+            
+            // Add more event types to see if any of them fire
+            const additionalEvents = [
+              'activate', 'deactivate', 'toggle', 'editModeToggle', 
+              'change', 'beforeEdit', 'afterEdit', 'edit', 'save',
+              'componentUpdate', 'layoutUpdate', 'boardChanged'
+            ];
+            
+            additionalEvents.forEach(eventType => {
+              try {
+                addEvent(editMode, eventType, e => {
+                  console.log(`🎯 EditMode event "${eventType}":`, e);
+                  this.handleDashboardChange(eventType, e);
+                });
+              } catch (error) {
+                // Silently ignore errors for non-existent events
+              }
+            });
+            
+            // Also try attaching to the board itself
+            try {
+              addEvent(board, 'componentChanged', e => {
+                console.log('🎯 Board Component Changed:', e);
+                this.handleDashboardChange('board-componentChanged', e);
+              });
+              
+              addEvent(board, 'layoutChanged', e => {
+                console.log('🎯 Board Layout Changed:', e);
+                this.handleDashboardChange('board-layoutChanged', e);
+              });
+            } catch (error) {
+              console.log('🔧 Board events not available:', error.message);
+            }
+            
+            // Monitor editMode.active status changes and detect config changes during active editing
+            let lastActiveState = editMode.active;
+            let lastConfigSnapshot = null;
+            let configMonitorInterval = null;
+            
+            const activeStateMonitor = setInterval(() => {
+              if (editMode.active !== lastActiveState) {
+                lastActiveState = editMode.active;
+                
+                if (editMode.active) {
+                  // Start monitoring config changes while edit mode is active
+                  lastConfigSnapshot = JSON.stringify(board.options);
+                  
+                  configMonitorInterval = setInterval(() => {
+                    try {
+                      const currentConfigSnapshot = JSON.stringify(board.options);
+                      if (currentConfigSnapshot !== lastConfigSnapshot) {
+                        this.handleDashboardChange('configChanged-while-active', {
+                          type: 'configChanged-while-active',
+                          previousConfig: lastConfigSnapshot,
+                          currentConfig: currentConfigSnapshot
+                        });
+                        
+                        lastConfigSnapshot = currentConfigSnapshot;
+                      }
+                    } catch (error) {
+                      console.error('Error monitoring config during active edit:', error);
+                    }
+                  }, 250); // Check every 250ms while editing
+                  
+                } else {
+                  // Stop monitoring config changes and save dashboard
+                  if (configMonitorInterval) {
+                    clearInterval(configMonitorInterval);
+                    configMonitorInterval = null;
+                  }
+                  
+                  // Always trigger save when edit mode exits
+                  this.handleDashboardChange('editModeExit', {
+                    type: 'editModeExit',
+                    reason: 'edit_mode_deactivated'
+                  });
+                }
+              }
+            }, 500);
+            
+            // Clean up monitor after 30 seconds
+            setTimeout(() => clearInterval(activeStateMonitor), 30000);
+            
+          } else {
+            console.error('Dashboards.addEvent not available');
+          }
+        }
+      }).catch(error => {
+        console.error('Error initializing dashboard:', error);
+        this.showError('Failed to initialize dashboard: ' + error.message);
+      });
       
     } catch (error) {
       console.error('Error initializing Highcharts Dashboard:', error);
-      console.error('Dashboard config:', payloadData);
       this.showError('Failed to load dashboard: ' + error.message);
     }
   },
@@ -663,7 +903,69 @@ Hooks.HighchartsDashboard = {
     `;
   },
   
+  
+  handleDashboardChange(changeType, event) {
+    try {
+      const completePayload = this.getCompleteDashboardPayload();
+      
+      if (completePayload) {
+        this.pushEvent('dashboard_changed', {
+          change_type: changeType,
+          payload: completePayload,
+          event_details: {
+            type: event.type,
+            target: event.target?.id || null
+          }
+        });
+        
+        if (changeType === 'editModeExit') {
+          console.log('Dashboard changes saved');
+        }
+      }
+    } catch (error) {
+      console.error('Error handling dashboard change:', error);
+    }
+  },
+  
+  getCompleteDashboardPayload() {
+    try {
+      if (!this.dashboard) {
+        return null;
+      }
+      
+      // Try to get the complete configuration from the dashboard
+      let config = null;
+      
+      if (typeof this.dashboard.toJSON === 'function') {
+        config = this.dashboard.toJSON();
+      } else if (typeof this.dashboard.getOptions === 'function') {
+        config = this.dashboard.getOptions();
+      } else if (this.dashboard.options) {
+        config = JSON.parse(JSON.stringify(this.dashboard.options));
+      } else {
+        return null;
+      }
+      
+      // Validate config before returning
+      if (!config || typeof config !== 'object' || Object.keys(config).length === 0) {
+        return null;
+      }
+      
+      return config;
+      
+    } catch (error) {
+      console.error('Error extracting dashboard payload:', error);
+      return null;
+    }
+  },
+  
   destroyed() {
+    // Clean up polling interval
+    if (this.changeDetectionInterval) {
+      clearInterval(this.changeDetectionInterval);
+      console.log('🔧 Polling change detection stopped');
+    }
+    
     this.clearDashboard();
   }
 }
