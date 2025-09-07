@@ -20,24 +20,38 @@ defmodule Trifle.Organizations.Dashboard do
 
   def changeset(dashboard, attrs) do
     # Handle payload separately to avoid Ecto's automatic casting
-    {payload_raw, attrs_without_payload} = Map.pop(attrs, "payload")
+    # Check if payload was provided in attrs - if not, don't modify it
+    payload_provided = Map.has_key?(attrs, "payload") || Map.has_key?(attrs, :payload)
+    {payload_raw, attrs_without_payload} = 
+      if Map.has_key?(attrs, "payload") do
+        Map.pop(attrs, "payload")
+      else
+        Map.pop(attrs, :payload)
+      end
     
     dashboard
     |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key])
     |> validate_required([:database_id, :user_id, :name, :key])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
-    |> handle_payload_field(payload_raw)
+    |> handle_payload_field(payload_raw, payload_provided)
     |> unique_constraint(:access_token)
   end
 
-  defp handle_payload_field(changeset, payload_raw) do
-    case payload_raw do
-      nil -> 
+  defp handle_payload_field(changeset, payload_raw, payload_provided) do
+    case {payload_provided, payload_raw} do
+      # If no payload was provided in attrs, don't modify the existing payload
+      {false, _} ->
+        changeset
+        
+      # Empty or nil payload from forms - reset to empty map  
+      {true, nil} -> 
         put_change(changeset, :payload, %{})
-      "" ->
+      {true, ""} ->
         put_change(changeset, :payload, %{})
-      payload when is_binary(payload) ->
+        
+      # String payload from forms - parse as JSON
+      {true, payload} when is_binary(payload) ->
         # Trim whitespace
         trimmed_payload = String.trim(payload)
         
@@ -57,11 +71,14 @@ defmodule Trifle.Organizations.Dashboard do
               add_error(changeset, :payload, "invalid JSON: #{inspect(error)}")
           end
         end
-      %{} = payload ->
-        # Already a map, keep it
+        
+      # Map payload from API calls - keep as is
+      {true, %{} = payload} ->
         put_change(changeset, :payload, payload)
-      _other ->
-        add_error(changeset, :payload, "must be a JSON object")
+        
+      # Invalid payload type
+      {true, _other} ->
+        add_error(changeset, :payload, "must be a JSON object or map")
     end
   end
 

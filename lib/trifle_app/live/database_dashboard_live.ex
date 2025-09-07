@@ -532,6 +532,48 @@ defmodule TrifleApp.DatabaseDashboardLive do
     {:noreply, assign(socket, show_error_modal: false)}
   end
   
+  def handle_event("reload_data", _params, socket) do
+    reload_current_timeframe(socket)
+  end
+
+  def handle_event("dashboard_changed", params, socket) do
+    %{
+      "change_type" => change_type,
+      "payload" => payload,
+      "event_details" => event_details
+    } = params
+
+    require Logger
+
+    # Only save if user owns the dashboard
+    if socket.assigns.dashboard.user_id == socket.assigns.current_user.id do
+      
+      # Validate payload and save only on edit mode exit
+      cond do
+        is_nil(payload) or payload == %{} or map_size(payload) == 0 ->
+          {:noreply, socket}
+          
+        change_type == "editModeExit" ->
+          case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
+            {:ok, updated_dashboard} ->
+              Logger.info("Dashboard configuration saved")
+              {:noreply, assign(socket, dashboard: updated_dashboard)}
+              
+            {:error, changeset} ->
+              Logger.error("Failed to save dashboard: #{inspect(changeset.errors)}")
+              {:noreply, socket}
+          end
+          
+        true ->
+          # Don't save during active editing
+          {:noreply, socket}
+      end
+    else
+      Logger.warn("Unauthorized dashboard change attempt")
+      {:noreply, socket}
+    end
+  end
+  
   def format_duration(microseconds) when is_nil(microseconds), do: nil
   
   def format_duration(microseconds) when is_integer(microseconds) do
@@ -987,6 +1029,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               id="highcharts-dashboard-container"
               phx-hook="HighchartsDashboard"
               data-payload={Jason.encode!(@dashboard.payload)}
+              data-edit-mode={to_string(@live_action == :edit)}
               class="dashboard-content w-full"
             >
               <!-- Highcharts Dashboard will be rendered here -->
@@ -1145,6 +1188,32 @@ defmodule TrifleApp.DatabaseDashboardLive do
         end
       true ->
         key == pattern
+    end
+  end
+  
+  defp reload_current_timeframe(socket) do
+    granularity = socket.assigns.granularity
+    
+    socket =
+      socket
+      |> assign(loading: true)
+      |> push_patch(
+        to: build_dashboard_url(socket, %{
+          "granularity" => granularity,
+          "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
+          "to" => TimeframeParsing.format_for_datetime_input(socket.assigns.to),
+          "timeframe" => socket.assigns.smart_timeframe_input || "24h"
+        })
+      )
+
+    {:noreply, socket}
+  end
+
+  defp build_dashboard_url(socket, params) do
+    if socket.assigns.is_public_access do
+      ~p"/d/#{socket.assigns.dashboard.id}?#{params}&token=#{socket.assigns.public_token}"
+    else
+      ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
   end
 end

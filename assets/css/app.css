@@ -118,15 +118,17 @@ select[class*="grid"], select[class*="col-"] {
     fill: var(--highcharts-neutral-color-100) !important;
 }
 
-.highcharts-color-0 {
+/* Only apply predefined colors for Dashboard charts within dashboard containers */
+.highcharts-dashboards-wrapper .highcharts-color-0 {
     stroke: var(--highcharts-dashboards-green);
     fill: var(--highcharts-dashboards-green);
 }
 
-.highcharts-color-1 {
+.highcharts-dashboards-wrapper .highcharts-color-1 {
     stroke: var(--highcharts-dashboards-orange);
     fill: var(--highcharts-dashboards-orange);
 }
+
 
 /* Rows and cells */
 .highcharts-dashboards-cell > .highcharts-dashboards-component {
@@ -184,21 +186,6 @@ select[class*="grid"], select[class*="col-"] {
     stop-opacity: 0;
 }
 
-#dashboard-row-1-cell-1,
-#dashboard-row-1-cell-2,
-#dashboard-row-1-cell-3 {
-    height: 160px;
-}
-
-#dashboard-row-2-cell-1 {
-  height: 300px;
-}
-
-#dashboard-row-3-cell-1,
-#dashboard-row-3-cell-2,
-#dashboard-row-3-cell-3 {
-    height: 260px;
-}
 
 
 /* SMALL */
@@ -209,3 +196,6 @@ select[class*="grid"], select[class*="col-"] {
 }
 
 
+.highcharts-dashboards-edit-sidebar {
+    width: 340px !important;
+}
