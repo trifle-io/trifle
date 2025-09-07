@@ -310,7 +310,7 @@ Hooks.TableHover = {
         
         // Detect if we're in dark mode
         const isDarkMode = document.documentElement.classList.contains('dark');
-        const highlightColor = isDarkMode ? '#1e293b' : '#f0fdfa';
+        const highlightColor = isDarkMode ? '#334155' : '#f9fafb';
         
         // Highlight current cell's row header with important style
         const rowHeader = table.querySelector(`td[data-row="${row}"]:not([data-col])`);
