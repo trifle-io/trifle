@@ -1277,7 +1277,35 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col dark:bg-slate-900 min-h-screen">
+    <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
+    <!-- Loading Overlay (covers entire page content) -->
+    <%= if (@loading_chunks && @loading_progress) || @transponding do %>
+      <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center space-y-3">
+          <div class="flex items-center space-x-2">
+            <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+            <span class="text-sm text-gray-600 dark:text-white">
+              <%= if @transponding do %>
+                Transponding data...
+              <% else %>
+                Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
+              <% end %>
+            </span>
+          </div>
+          <!-- Always reserve space for progress bar to keep text position consistent -->
+          <div class="w-64 h-2">
+            <%= if @loading_chunks && @loading_progress do %>
+              <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                <div
+                  class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                  style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
+                ></div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    <% end %>
     <!-- Tab Navigation -->
     <div class="mb-6 border-b border-gray-200 dark:border-slate-700">
       <nav class="-mb-px space-x-8" aria-label="Tabs">
@@ -1384,49 +1412,54 @@ defmodule TrifleApp.DatabaseExploreLive do
 
     <!-- Row 2: Activity/Events Chart -->
     <div class="sticky top-16 z-40 mb-6">
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow py-1 px-3 relative" style="height: 160px;">
-        <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-          <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-800 dark:bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
-            <div class="flex flex-col items-center space-y-3">
-              <div class="flex items-center space-x-2">
-                <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-                <span class="text-sm text-gray-600 dark:text-white">
-                  <%= if @transponding do %>
-                    Transponding data...
-                  <% else %>
-                    Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
-                  <% end %>
-                </span>
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow py-1 px-3" style="height: 160px;">
+        <%= if map_size(@keys) == 0 && !(@loading_chunks || @transponding) do %>
+          <!-- Empty State: No Data Tracked -->
+          <div class="flex flex-col items-center justify-center h-full text-center">
+            <div class="space-y-2">
+              <div class="flex items-center justify-center gap-2">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  Nothing to see here... yet
+                </h3>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-gray-500 dark:text-slate-400">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" />
+                </svg>
               </div>
-              <!-- Always reserve space for progress bar to keep text position consistent -->
-              <div class="w-64 h-2">
-                <%= if @loading_chunks && @loading_progress do %>
-                  <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                    <div
-                      class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                      style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                    ></div>
-                  </div>
-                <% end %>
+              <p class="text-sm text-gray-500 dark:text-slate-400 max-w-md">
+                Your dashboard is having trust issues with empty data. Feed it some metrics and it'll start showing off!
+              </p>
+              <div class="mt-4">
+                <.link
+                  navigate={~p"/app/dbs/#{@database.id}/transponders"}
+                  class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
+                  </svg>
+                  Set up Transponders →
+                </.link>
               </div>
             </div>
           </div>
+        <% else %>
+          <!-- Chart (when data exists) -->
+          <div
+            id="timeline-hook"
+            phx-hook="ProjectTimeline"
+            data-events={@timeline}
+            data-key={@key}
+            data-timezone={@database.time_zone || "UTC"}
+            data-chart-type={@chart_type}
+            data-colors={ChartColors.json_palette()}
+            data-selected-key-color={@selected_key_color}
+            class=""
+          >
+          </div>
+          <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5 h-full">
+            <div id="timeline-chart"></div>
+          </div>
         <% end %>
-        <div
-          id="timeline-hook"
-          phx-hook="ProjectTimeline"
-          data-events={@timeline}
-          data-key={@key}
-          data-timezone={@database.time_zone || "UTC"}
-          data-chart-type={@chart_type}
-          data-colors={ChartColors.json_palette()}
-          data-selected-key-color={@selected_key_color}
-          class=""
-        >
-        </div>
-        <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5 h-full">
-          <div id="timeline-chart"></div>
-        </div>
       </div>
     </div>
 
@@ -1539,15 +1572,8 @@ defmodule TrifleApp.DatabaseExploreLive do
                 </li>
               <% end %>
               <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
-                <div class="flex items-center justify-center h-full text-gray-500 dark:text-slate-400 text-sm">
-                  <%= if @loading_chunks do %>
-                    <div class="flex items-center space-x-2">
-                      <div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-                      <span>Loading keys...</span>
-                    </div>
-                  <% else %>
-                    <span>No keys found</span>
-                  <% end %>
+                <div class="flex items-center justify-center h-48 text-gray-500 dark:text-slate-400 text-sm">
+                  <span>No keys found</span>
                 </div>
               <% end %>
             </ul>
@@ -1707,24 +1733,12 @@ defmodule TrifleApp.DatabaseExploreLive do
         <% end %>
       <% else %>
         <div class="bg-white dark:bg-slate-800 p-8">
-          <%= if @loading_chunks do %>
-            <div class="text-gray-500 dark:text-slate-300 text-center">
-              <div class="flex items-center justify-center space-x-2">
-                <div class="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-                <p class="text-lg">Loading table data...</p>
-              </div>
-              <p class="text-sm mt-2">
-                Chart is updating above • Table will appear when loading completes
-              </p>
-            </div>
-          <% else %>
-            <div class="text-gray-500 dark:text-slate-300 text-center">
-              <p class="text-lg">↑ Select a key to view detailed data</p>
-              <p class="text-sm mt-2">
-                The chart above shows a stacked view of all events in this database.
-              </p>
-            </div>
-          <% end %>
+          <div class="text-gray-500 dark:text-slate-300 text-center">
+            <p class="text-lg">↑ Select a key to view detailed data</p>
+            <p class="text-sm mt-2">
+              The chart above shows a stacked view of all events in this database.
+            </p>
+          </div>
         </div>
       <% end %>
     </div>

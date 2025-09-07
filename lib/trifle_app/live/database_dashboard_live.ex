@@ -597,35 +597,6 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def render(assigns) do
     ~H"""
-    <!-- Loading Indicator -->
-    <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-      <div class="fixed inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 flex items-center justify-center z-50">
-        <div class="flex flex-col items-center space-y-3">
-          <div class="flex items-center space-x-2">
-            <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-            <span class="text-sm text-gray-600 dark:text-white">
-              <%= if @transponding do %>
-                Transponding data...
-              <% else %>
-                Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
-              <% end %>
-            </span>
-          </div>
-          <!-- Always reserve space for progress bar to keep text position consistent -->
-          <div class="w-64 h-2">
-            <%= if @loading_chunks && @loading_progress do %>
-              <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                <div
-                  class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                  style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                ></div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </div>
-    <% end %>
-
     <div class="flex flex-col dark:bg-slate-900 min-h-screen">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Header -->
@@ -1022,7 +993,36 @@ defmodule TrifleApp.DatabaseDashboardLive do
       <% end %>
 
         <!-- Dashboard Content -->
-        <div class="flex-1">
+        <div class="flex-1 relative">
+          <!-- Loading Indicator (only covers content area) -->
+          <%= if (@loading_chunks && @loading_progress) || @transponding do %>
+            <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 flex items-center justify-center z-50 rounded-lg">
+              <div class="flex flex-col items-center space-y-3">
+                <div class="flex items-center space-x-2">
+                  <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+                  <span class="text-sm text-gray-600 dark:text-white">
+                    <%= if @transponding do %>
+                      Transponding data...
+                    <% else %>
+                      Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
+                    <% end %>
+                  </span>
+                </div>
+                <!-- Always reserve space for progress bar to keep text position consistent -->
+                <div class="w-64 h-2">
+                  <%= if @loading_chunks && @loading_progress do %>
+                    <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                      <div
+                        class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                        style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
+                      ></div>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          <% end %>
+          
           <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
             <!-- Dashboard with data -->
             <div 
