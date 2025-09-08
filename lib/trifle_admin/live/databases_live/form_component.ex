@@ -55,6 +55,15 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
           <.form_field field={@form[:password]} type="password" label="Password" />
         <% end %>
         
+        <%= if @selected_driver == "mongo" do %>
+          <.form_field 
+            field={@form[:auth_database]} 
+            label="Authentication Database" 
+            help_text="Database to authenticate against (usually 'admin'). Leave empty to authenticate against the target database."
+            placeholder="admin"
+          />
+        <% end %>
+        
         <%= if @selected_driver do %>
           <div class="border-t pt-6 mt-6">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Time Configuration</h3>
