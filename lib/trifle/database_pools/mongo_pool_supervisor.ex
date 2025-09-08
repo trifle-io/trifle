@@ -139,8 +139,16 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
     # Build full URL
     port = database.port || 27017
     db_name = database.database_name || "admin"
+    
+    # Add authSource parameter if auth_database is specified
+    auth_source_param =
+      if database.auth_database && database.auth_database != "" do
+        "?authSource=#{database.auth_database}"
+      else
+        ""
+      end
 
-    "mongodb://#{auth_part}#{database.host}:#{port}/#{db_name}"
+    "mongodb://#{auth_part}#{database.host}:#{port}/#{db_name}#{auth_source_param}"
   end
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do
