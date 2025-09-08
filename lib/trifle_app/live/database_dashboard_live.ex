@@ -339,7 +339,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     # Default to 24h timeframe
     case TimeframeParsing.parse_smart_timeframe("24h", config) do
       {:ok, from, to, smart_input, use_fixed} ->
-        {from, to, Enum.at(granularities, 3, "1h"), smart_input, use_fixed}
+        {from, to, "1h", smart_input, use_fixed}
       {:error, _} ->
         # Fallback
         now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
