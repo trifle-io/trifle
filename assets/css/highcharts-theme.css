@@ -1,0 +1,226 @@
+/*
+ * Trifle Analytics - Custom Highcharts Theme
+ * 
+ * This theme extends the default Highcharts styling with our Tailwind-based
+ * color palette and custom design system elements.
+ */
+
+/* Import the base Highcharts CSS */
+@import url('https://code.highcharts.com/css/highcharts.css');
+@import url('https://code.highcharts.com/dashboards/css/dashboards.css');
+@import url('https://code.highcharts.com/dashboards/css/datagrid.css');
+
+/* ================================
+   TRIFLE COLOR PALETTE OVERRIDE
+   ================================ */
+
+:root {
+    /* Unified Highcharts Colors - Using official 12-color palette from ChartColors module */
+    --highcharts-color-0: #14b8a6;  /* Teal-600 (primary) */
+    --highcharts-color-1: #f59e0b;  /* Amber-500 */
+    --highcharts-color-2: #ef4444;  /* Red-500 */
+    --highcharts-color-3: #8b5cf6;  /* Violet-500 */
+    --highcharts-color-4: #06b6d4;  /* Cyan-500 */
+    --highcharts-color-5: #10b981;  /* Emerald-500 */
+    --highcharts-color-6: #f97316;  /* Orange-500 */
+    --highcharts-color-7: #ec4899;  /* Pink-500 */
+    --highcharts-color-8: #3b82f6;  /* Blue-500 */
+    --highcharts-color-9: #84cc16;  /* Lime-500 */
+    --highcharts-color-10: #f43f5e; /* Rose-500 */
+    --highcharts-color-11: #6366f1; /* Indigo-500 */
+    
+    /* Legacy aliases for backward compatibility */
+    --highcharts-dashboards-green: var(--highcharts-color-0);
+    --highcharts-dashboards-orange: var(--highcharts-color-1);
+    --highcharts-dashboards-green-transparent: #14b8a630;
+    
+    /* Theme colors for light/dark mode */
+    --highcharts-background-color: #ffffff; /* bg-white for light theme */
+    --highcharts-neutral-color-100: #374151; /* text color for light theme */
+    --highcharts-neutral-color-80: #6b7280; /* secondary text for light theme */
+    --highcharts-neutral-color-60: #9ca3af; /* tertiary text for light theme */
+}
+
+/* Dark theme colors */
+.dark {
+    --highcharts-background-color: #1e293b; /* bg-slate-800 for dark theme */
+    --highcharts-neutral-color-100: #ffffff; /* text color for dark theme */
+    --highcharts-neutral-color-80: #e2e8f0; /* secondary text for dark theme */
+    --highcharts-neutral-color-60: #94a3b8; /* tertiary text for dark theme */
+}
+
+/* ================================
+   COLOR CLASS OVERRIDES
+   ================================ */
+
+/* Force override of default Highcharts colors with high specificity */
+.highcharts-container .highcharts-color-0,
+.highcharts-dashboards-wrapper .highcharts-color-0 {
+    stroke: var(--highcharts-color-0) !important;
+    fill: var(--highcharts-color-0) !important;
+}
+
+.highcharts-container .highcharts-color-1,
+.highcharts-dashboards-wrapper .highcharts-color-1 {
+    stroke: var(--highcharts-color-1) !important;
+    fill: var(--highcharts-color-1) !important;
+}
+
+.highcharts-container .highcharts-color-2,
+.highcharts-dashboards-wrapper .highcharts-color-2 {
+    stroke: var(--highcharts-color-2) !important;
+    fill: var(--highcharts-color-2) !important;
+}
+
+.highcharts-container .highcharts-color-3,
+.highcharts-dashboards-wrapper .highcharts-color-3 {
+    stroke: var(--highcharts-color-3) !important;
+    fill: var(--highcharts-color-3) !important;
+}
+
+.highcharts-container .highcharts-color-4,
+.highcharts-dashboards-wrapper .highcharts-color-4 {
+    stroke: var(--highcharts-color-4) !important;
+    fill: var(--highcharts-color-4) !important;
+}
+
+.highcharts-container .highcharts-color-5,
+.highcharts-dashboards-wrapper .highcharts-color-5 {
+    stroke: var(--highcharts-color-5) !important;
+    fill: var(--highcharts-color-5) !important;
+}
+
+.highcharts-container .highcharts-color-6,
+.highcharts-dashboards-wrapper .highcharts-color-6 {
+    stroke: var(--highcharts-color-6) !important;
+    fill: var(--highcharts-color-6) !important;
+}
+
+.highcharts-container .highcharts-color-7,
+.highcharts-dashboards-wrapper .highcharts-color-7 {
+    stroke: var(--highcharts-color-7) !important;
+    fill: var(--highcharts-color-7) !important;
+}
+
+.highcharts-container .highcharts-color-8,
+.highcharts-dashboards-wrapper .highcharts-color-8 {
+    stroke: var(--highcharts-color-8) !important;
+    fill: var(--highcharts-color-8) !important;
+}
+
+.highcharts-container .highcharts-color-9,
+.highcharts-dashboards-wrapper .highcharts-color-9 {
+    stroke: var(--highcharts-color-9) !important;
+    fill: var(--highcharts-color-9) !important;
+}
+
+.highcharts-container .highcharts-color-10,
+.highcharts-dashboards-wrapper .highcharts-color-10 {
+    stroke: var(--highcharts-color-10) !important;
+    fill: var(--highcharts-color-10) !important;
+}
+
+.highcharts-container .highcharts-color-11,
+.highcharts-dashboards-wrapper .highcharts-color-11 {
+    stroke: var(--highcharts-color-11) !important;
+    fill: var(--highcharts-color-11) !important;
+}
+
+/* ================================
+   CUSTOM CHART STYLING
+   ================================ */
+
+/* General styling improvements */
+.highcharts-dashboards,
+.highcharts-dashboards-wrapper {
+    background-color: transparent !important;
+    padding: 0 !important;
+}
+
+.highcharts-background {
+    fill: var(--highcharts-background-color);
+}
+
+/* Text styling for both Dashboard and ProjectTimeline charts */
+.highcharts-axis-labels text,
+.highcharts-xaxis-labels text,
+.highcharts-yaxis-labels text {
+    fill: var(--highcharts-neutral-color-80) !important;
+}
+
+.highcharts-tooltip-box {
+    fill: var(--highcharts-background-color) !important;
+    stroke: var(--highcharts-neutral-color-60) !important;
+}
+
+.highcharts-tooltip text {
+    fill: var(--highcharts-neutral-color-100) !important;
+}
+
+.highcharts-legend-item text {
+    fill: var(--highcharts-neutral-color-100) !important;
+}
+
+.highcharts-title {
+    fill: var(--highcharts-neutral-color-100) !important;
+    font-weight: 600;
+}
+
+.highcharts-subtitle {
+    fill: var(--highcharts-neutral-color-100) !important;
+}
+
+/* Dashboard-specific layout */
+.highcharts-dashboards-cell > .highcharts-dashboards-component {
+    background-color: var(--highcharts-background-color);
+    border-radius: 20px;
+    padding: 10px;
+    text-align: left;
+}
+
+.highcharts-dashboards-cell > .highcharts-dashboards-component > .highcharts-dashboards-component-content {
+    border-radius: 15px;
+}
+
+.highcharts-dashboards-component-title {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--highcharts-neutral-color-100);
+}
+
+/* DataGrid styling */
+.highcharts-datagrid-table th {
+    background-color: var(--highcharts-background-color);
+    color: var(--highcharts-neutral-color-100);
+}
+
+.highcharts-datagrid-table td {
+    color: var(--highcharts-neutral-color-100);
+}
+
+/* Row hover effects */
+.highcharts-dashboards-cell {
+    transition: all 0.2s ease;
+}
+
+.highcharts-dashboards-cell:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode adjustments */
+.dark .highcharts-dashboards-cell:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .highcharts-dashboards-cell {
+        margin-bottom: 1rem;
+    }
+    
+    .highcharts-dashboards-cell > .highcharts-dashboards-component {
+        padding: 8px;
+    }
+}

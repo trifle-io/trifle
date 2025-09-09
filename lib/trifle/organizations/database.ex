@@ -358,6 +358,14 @@ defmodule Trifle.Organizations.Database do
       url
     end
     url = "#{url}#{database.host}:#{database.port}/#{database.database_name}"
+    
+    # Add authSource parameter if auth_database is specified
+    url = if database.auth_database && database.auth_database != "" do
+      "#{url}?authSource=#{database.auth_database}"
+    else
+      url
+    end
+    
     url
   end
 

@@ -26,7 +26,8 @@ config :trifle, TrifleWeb.Endpoint,
   secret_key_base: "ppvB4Hbwizt8mlVK13MXLvXSCbJRMeV3iZ9MzYc/Uf8JQz37T+cELXyT7y7AZ9QT",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
+    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]},
+    tailwind_highcharts: {Tailwind, :install_and_run, [:highcharts_theme, ~w(--watch)]}
   ]
 
 # ## SSL Support
