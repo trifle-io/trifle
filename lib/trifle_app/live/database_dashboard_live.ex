@@ -51,7 +51,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
           
           {:noreply,
            socket
-           |> assign(:page_title, ["Dashboard", dashboard.name])
+           |> assign(:page_title, nil)
            |> assign(:breadcrumb_links, [])
            |> then(fn s -> apply_action(s, socket.assigns.live_action, params) end)}
         
@@ -600,7 +600,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     <div class="flex flex-col dark:bg-slate-900 min-h-screen">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Header -->
-        <div class="mb-6">
+        <div class={if(@is_public_access, do: "mb-2", else: "mb-6")}>
           <div class="flex items-center">
           <%= if @is_public_access do %>
             <div class="flex items-center gap-2 w-64">
@@ -1078,8 +1078,9 @@ defmodule TrifleApp.DatabaseDashboardLive do
           <% end %>
         </div>
         
-        <!-- Sticky Summary Footer -->
-        <%= if summary = get_summary_stats(assigns) do %>
+        <!-- Sticky Summary Footer (only for authenticated users) -->
+        <%= if !@is_public_access do %>
+          <%= if summary = get_summary_stats(assigns) do %>
           <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
             <div class="flex flex-wrap items-center gap-4 text-xs">
               
@@ -1159,6 +1160,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               <% end %>
             </div>
           </div>
+        <% end %>
         <% end %>
 
         <!-- Debug Series Data (only show when data is loaded) -->
