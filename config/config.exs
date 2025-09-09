@@ -49,6 +49,14 @@ config :tailwind,
       --output=../priv/static/assets/app.css
     ),
     cd: Path.expand("../assets", __DIR__)
+  ],
+  highcharts_theme: [
+    args: ~w(
+      --config=tailwind.config.js
+      --input=css/highcharts-theme.css
+      --output=../priv/static/assets/highcharts-theme.css
+    ),
+    cd: Path.expand("../assets", __DIR__)
   ]
 
 # Configures Elixir's Logger

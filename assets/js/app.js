@@ -56,7 +56,7 @@ Hooks.ProjectTimeline = {
     // Debug logging for color issues
     console.log('ProjectTimeline colors debug:', {
       chartType,
-      colors: typeof colors === 'string' ? JSON.parse(colors) : colors,
+      passedColors: typeof colors === 'string' ? JSON.parse(colors) : colors,
       selectedKeyColor,
       key
     });
@@ -80,7 +80,10 @@ Hooks.ProjectTimeline = {
     }
     
     
-    // Ensure styled mode is disabled globally for this chart
+    // Parse colors from the passed parameter (ensure it's an array)
+    const colorArray = typeof colors === 'string' ? JSON.parse(colors) : colors;
+    
+    // Ensure styled mode is disabled globally for this chart to allow JS colors
     const originalStyledMode = Highcharts.getOptions().chart.styledMode;
     Highcharts.setOptions({
       chart: {
@@ -156,9 +159,15 @@ Hooks.ProjectTimeline = {
       },
 
       colors: (() => {
-        const finalColors = chartType === 'single' && selectedKeyColor ? [selectedKeyColor] : colors;
-        console.log('Final colors assigned to chart:', finalColors);
-        return finalColors;
+        // For single series with a selected key color, use that specific color
+        if (chartType === 'single' && selectedKeyColor) {
+          console.log('Using selected key color:', selectedKeyColor);
+          return [selectedKeyColor];
+        }
+        
+        // Use the unified color palette passed from Elixir
+        console.log('Using unified color palette:', colorArray);
+        return colorArray;
       })(),
 
       series: series
@@ -175,6 +184,11 @@ Hooks.ProjectTimeline = {
     
     // Force colors directly on chart elements after creation
     setTimeout(() => {
+      // Check if chart and series exist
+      if (!chart || !chart.series) {
+        return;
+      }
+      
       if (chartType === 'single' && selectedKeyColor) {
         // For single series, force the selected key color
         chart.series.forEach((series, seriesIndex) => {
@@ -185,8 +199,10 @@ Hooks.ProjectTimeline = {
         chart.redraw();
       } else if (chartType === 'stacked') {
         // For stacked series, force individual colors
+        // Get colors from the chart configuration or use the parsed colorArray
+        const chartColors = chart.options.colors || colorArray;
         chart.series.forEach((series, seriesIndex) => {
-          const seriesColor = colors[seriesIndex % colors.length];
+          const seriesColor = chartColors[seriesIndex % chartColors.length];
           series.update({
             color: seriesColor
           }, false);

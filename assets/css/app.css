@@ -65,21 +65,7 @@ select[class*="grid"], select[class*="col-"] {
 
 /* Colors */
 :root {
-    --highcharts-dashboards-green: #20d17e;
-    --highcharts-dashboards-orange: #feaa61;
-    --highcharts-dashboards-green-transparent: #20d17e30;
-    --highcharts-background-color: #ffffff; /* bg-white for light theme */
-    --highcharts-neutral-color-100: #374151; /* text color for light theme */
-    --highcharts-neutral-color-80: #6b7280; /* secondary text for light theme */
-    --highcharts-neutral-color-60: #9ca3af; /* tertiary text for light theme */
-}
-
-/* Dark theme colors */
-.dark {
-    --highcharts-background-color: #1e293b; /* bg-slate-800 for dark theme */
-    --highcharts-neutral-color-100: #ffffff; /* text color for dark theme */
-    --highcharts-neutral-color-80: #e2e8f0; /* secondary text for dark theme */
-    --highcharts-neutral-color-60: #94a3b8; /* tertiary text for dark theme */
+    /* Main app colors - Highcharts colors are now in highcharts-theme.css */
 }
 
 /* General */
@@ -93,41 +79,9 @@ select[class*="grid"], select[class*="col-"] {
     fill: var(--highcharts-background-color);
 }
 
-/* Highcharts text styling for both Dashboard and ProjectTimeline charts */
-.highcharts-axis-labels text,
-.highcharts-xaxis-labels text,
-.highcharts-yaxis-labels text {
-    fill: var(--highcharts-neutral-color-80) !important;
-}
+/* Highcharts text styling moved to highcharts-theme.css for better separation */
 
-.highcharts-tooltip-box {
-    fill: var(--highcharts-background-color) !important;
-    stroke: var(--highcharts-neutral-color-60) !important;
-}
-
-.highcharts-tooltip text {
-    fill: var(--highcharts-neutral-color-100) !important;
-}
-
-.highcharts-legend-item text {
-    fill: var(--highcharts-neutral-color-100) !important;
-}
-
-.highcharts-title,
-.highcharts-subtitle {
-    fill: var(--highcharts-neutral-color-100) !important;
-}
-
-/* Only apply predefined colors for Dashboard charts within dashboard containers */
-.highcharts-dashboards-wrapper .highcharts-color-0 {
-    stroke: var(--highcharts-dashboards-green);
-    fill: var(--highcharts-dashboards-green);
-}
-
-.highcharts-dashboards-wrapper .highcharts-color-1 {
-    stroke: var(--highcharts-dashboards-orange);
-    fill: var(--highcharts-dashboards-orange);
-}
+/* Highcharts color overrides moved to highcharts-theme.css for better separation */
 
 
 /* Rows and cells */

@@ -7,16 +7,16 @@
     <.live_title suffix=" | Trifle">
       <%= TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <!-- Highcharts Dashboards - following official documentation -->
     <script src="https://code.highcharts.com/dashboards/datagrid.js"></script>
     <script src="https://code.highcharts.com/highcharts.js"></script>
     <script src="https://code.highcharts.com/modules/accessibility.js"></script>
     <script src="https://code.highcharts.com/dashboards/dashboards.js"></script>
     <script src="https://code.highcharts.com/dashboards/modules/layout.js"></script>
-    <link rel="stylesheet" href="https://code.highcharts.com/css/highcharts.css" />
-    <link rel="stylesheet" href="https://code.highcharts.com/dashboards/css/dashboards.css" />
-    <link rel="stylesheet" href="https://code.highcharts.com/dashboards/css/datagrid.css" />
+    <!-- Load our custom Highcharts theme (includes base CSS + our overrides) -->
+    <link phx-track-static rel="stylesheet" href={~p"/assets/highcharts-theme.css"} />
+    <!-- Load main app CSS -->
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     
     <script>
       document.addEventListener('DOMContentLoaded', function() {
