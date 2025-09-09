@@ -1029,7 +1029,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               id="highcharts-dashboard-container"
               phx-hook="HighchartsDashboard"
               data-payload={Jason.encode!(@dashboard.payload)}
-              data-edit-mode={to_string(@live_action == :edit)}
+              data-public-access={to_string(@is_public_access)}
               class="dashboard-content w-full"
             >
               <!-- Highcharts Dashboard will be rendered here -->

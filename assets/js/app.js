@@ -637,26 +637,25 @@ Hooks.HighchartsDashboard = {
       const dashboardConfig = JSON.parse(payloadData);
       console.log('🔧 Dashboard configuration:', dashboardConfig);
       
-      // Check if edit mode should be enabled based on data attribute
-      const isEditMode = this.el.dataset.editMode === 'true';
-      console.log('🔧 Edit mode dataset value:', this.el.dataset.editMode);
-      console.log('🔧 Edit mode enabled:', isEditMode);
+      // Check if this is public access - only restriction for edit mode
+      const isPublicAccess = this.el.dataset.publicAccess === 'true';
+      console.log('🔧 Public access:', isPublicAccess);
       console.log('🔧 All dataset attributes:', this.el.dataset);
       
-      // Add edit mode configuration if in edit mode
-      if (isEditMode && !dashboardConfig.editMode) {
-        console.log('🔧 Adding edit mode configuration to dashboard config');
+      // Always enable edit mode unless it's public access
+      if (!isPublicAccess) {
+        console.log('🔧 Enabling edit mode (not public access)');
         dashboardConfig.editMode = {
           enabled: true,
           contextMenu: {
             enabled: true
           }
         };
-        console.log('🔧 Dashboard config after adding edit mode:', dashboardConfig);
-      } else if (isEditMode && dashboardConfig.editMode) {
-        console.log('🔧 Edit mode already exists in config:', dashboardConfig.editMode);
+        console.log('🔧 Dashboard config with edit mode:', dashboardConfig);
       } else {
-        console.log('🔧 Not in edit mode, skipping edit mode configuration');
+        console.log('🔧 Public access - edit mode disabled');
+        // Remove any existing editMode from payload for public access
+        delete dashboardConfig.editMode;
       }
       
       // Add event handlers to editMode configuration if it exists (regardless of data-edit-mode)
