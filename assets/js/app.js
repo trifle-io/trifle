@@ -44,6 +44,24 @@ Hooks.SmartTimeframeBlur = {
       }
     });
     
+    // Auto-select text when input is focused
+    this.el.addEventListener('focus', () => {
+      // Use setTimeout to ensure selection happens after other focus events
+      setTimeout(() => {
+        this.el.select();
+      }, 10);
+    });
+    
+    // Also handle click events in case focus doesn't work
+    this.el.addEventListener('click', () => {
+      // Only select if the input wasn't already focused
+      if (document.activeElement !== this.el) {
+        setTimeout(() => {
+          this.el.select();
+        }, 10);
+      }
+    });
+    
     this.handleEvent("update_timeframe_input", ({value}) => {
       this.el.value = value;
     });
