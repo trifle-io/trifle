@@ -22,6 +22,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import Sortable from "sortablejs"
+import * as echarts from "echarts"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
@@ -318,6 +319,275 @@ Hooks.ProjectTimeline = {
       if (this.chart.series[0] && data) {
         this.chart.series[0].setData(data);
       }
+    }
+  }
+}
+
+Hooks.DatabaseExploreChart = {
+  createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
+    // Parse colors from the passed parameter
+    const colorArray = typeof colors === 'string' ? JSON.parse(colors) : colors;
+    
+    // Initialize ECharts instance
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const container = document.getElementById('timeline-chart');
+    
+    // Set theme based on dark mode
+    const theme = isDarkMode ? 'dark' : undefined;
+    this.chart = echarts.init(container, theme, { height: 120 });
+    
+    // Configure options based on chart type
+    const isStacked = chartType === 'stacked';
+    
+    // Prepare series data
+    let series;
+    if (isStacked) {
+      // For stacked chart, data comes as array of series
+      series = (data && data.length > 0) ? data.map((seriesData, index) => ({
+        name: seriesData.name,
+        type: 'bar',
+        stack: 'total',
+        data: seriesData.data,
+        itemStyle: {
+          color: colorArray[index % colorArray.length]
+        }
+      })) : [];
+    } else {
+      // For single series
+      const seriesColor = selectedKeyColor || colorArray[0];
+      series = [{
+        name: key || 'Data',
+        type: 'bar',
+        data: data || [],
+        itemStyle: {
+          color: seriesColor
+        }
+      }];
+    }
+    
+    // Create ECharts options with theme-aware colors
+    const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
+    const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+    
+    const option = {
+      backgroundColor: 'transparent',
+      grid: {
+        top: 10,
+        bottom: 30,
+        left: 50,
+        right: 20
+      },
+      textStyle: {
+        color: textColor
+      },
+      tooltip: {
+        trigger: 'item',
+        axisPointer: {
+          type: 'shadow'
+        },
+        backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+        borderColor: isDarkMode ? '#374151' : '#E5E7EB',
+        textStyle: {
+          color: isDarkMode ? '#F3F4F6' : '#1F2937'
+        },
+        extraCssText: 'z-index: 9999;',
+        formatter: function(params) {
+          const date = new Date(params.value[0]);
+          const dateStr = echarts.format.formatTime('yyyy-MM-dd hh:mm:ss', date, false);
+          const value = params.value[1];
+          return `${dateStr}<br/>${params.marker} ${params.seriesName}: ${value}`;
+        }
+      },
+      xAxis: {
+        type: 'time',
+        axisLine: {
+          lineStyle: {
+            color: axisLineColor
+          }
+        },
+        axisLabel: {
+          color: textColor,
+          formatter: function(value) {
+            // Format based on the granularity
+            const date = new Date(value);
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            
+            // Show date when it's midnight
+            if (hours === 0 && minutes === 0) {
+              return echarts.format.formatTime('MM-dd', value, false);
+            }
+            // Otherwise show time
+            return echarts.format.formatTime('hh:mm', value, false);
+          }
+        },
+        splitLine: {
+          show: false
+        }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        axisLine: {
+          lineStyle: {
+            color: axisLineColor
+          }
+        },
+        axisLabel: {
+          color: textColor
+        },
+        splitLine: {
+          lineStyle: {
+            color: axisLineColor
+          }
+        }
+      },
+      series: series,
+      animation: true,
+      animationDuration: 300
+    };
+    
+    // Set the option
+    this.chart.setOption(option);
+    
+    // Handle window resize
+    this.resizeHandler = () => {
+      if (this.chart && !this.chart.isDisposed()) {
+        this.chart.resize();
+      }
+    };
+    window.addEventListener('resize', this.resizeHandler);
+    
+    // Handle theme changes
+    this.handleEvent("phx:theme-changed", () => {
+      if (this.chart && !this.chart.isDisposed()) {
+        this.chart.dispose();
+        this.chart = this.createChart(
+          JSON.parse(this.el.dataset.events),
+          this.el.dataset.key,
+          this.el.dataset.timezone,
+          this.el.dataset.chartType,
+          JSON.parse(this.el.dataset.colors),
+          this.el.dataset.selectedKeyColor
+        );
+      }
+    });
+    
+    return this.chart;
+  },
+
+  mounted() {
+    let data = JSON.parse(this.el.dataset.events);
+    let key = this.el.dataset.key;
+    let timezone = this.el.dataset.timezone;
+    let chartType = this.el.dataset.chartType;
+    let colors = JSON.parse(this.el.dataset.colors);
+    let selectedKeyColor = this.el.dataset.selectedKeyColor;
+
+    this.currentChartType = chartType;
+    this.chart = this.createChart(data, key, timezone, chartType, colors, selectedKeyColor);
+  },
+
+  updated() {
+    let data = JSON.parse(this.el.dataset.events);
+    let key = this.el.dataset.key;
+    let timezone = this.el.dataset.timezone;
+    let chartType = this.el.dataset.chartType;
+    let colors = JSON.parse(this.el.dataset.colors);
+    let selectedKeyColor = this.el.dataset.selectedKeyColor;
+
+    // Check if chart type changed - if so, recreate the entire chart
+    if (this.currentChartType !== chartType) {
+      if (this.chart && !this.chart.isDisposed()) {
+        this.chart.dispose();
+      }
+      this.chart = this.createChart(data, key, timezone, chartType, colors, selectedKeyColor);
+      this.currentChartType = chartType;
+      return;
+    }
+
+    // Update existing chart with new data
+    if (this.chart && !this.chart.isDisposed()) {
+      // Check current theme
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
+      const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+      
+      // Prepare series data
+      let series;
+      if (chartType === 'stacked') {
+        series = (data && data.length > 0) ? data.map((seriesData, index) => ({
+          name: seriesData.name,
+          type: 'bar',
+          stack: 'total',
+          data: seriesData.data,
+          itemStyle: {
+            color: colors[index % colors.length]
+          }
+        })) : [];
+      } else {
+        const seriesColor = selectedKeyColor || colors[0];
+        series = [{
+          name: key || 'Data',
+          type: 'bar',
+          data: data || [],
+          itemStyle: {
+            color: seriesColor
+          }
+        }];
+      }
+
+      // Update the chart with theme-aware colors
+      this.chart.setOption({
+        textStyle: {
+          color: textColor
+        },
+        tooltip: {
+          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+          borderColor: isDarkMode ? '#374151' : '#E5E7EB',
+          textStyle: {
+            color: isDarkMode ? '#F3F4F6' : '#1F2937'
+          }
+        },
+        xAxis: {
+          axisLine: {
+            lineStyle: {
+              color: axisLineColor
+            }
+          },
+          axisLabel: {
+            color: textColor
+          }
+        },
+        yAxis: {
+          axisLine: {
+            lineStyle: {
+              color: axisLineColor
+            }
+          },
+          axisLabel: {
+            color: textColor
+          },
+          splitLine: {
+            lineStyle: {
+              color: axisLineColor
+            }
+          }
+        },
+        series: series
+      });
+    }
+  },
+
+  destroyed() {
+    // Remove resize handler
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler);
+    }
+    
+    // Dispose chart
+    if (this.chart && !this.chart.isDisposed()) {
+      this.chart.dispose();
     }
   }
 }

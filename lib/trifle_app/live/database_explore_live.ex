@@ -1446,7 +1446,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           <!-- Chart (when data exists) -->
           <div
             id="timeline-hook"
-            phx-hook="ProjectTimeline"
+            phx-hook="DatabaseExploreChart"
             data-events={@timeline}
             data-key={@key}
             data-timezone={@database.time_zone || "UTC"}
