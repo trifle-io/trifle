@@ -5,9 +5,7 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
   Provides a curated set of 12 vibrant colors based on Tailwind CSS 
   for consistent data visualization across charts and graphs.
   
-  These colors are unified with CSS variables (--highcharts-color-0 through 
-  --highcharts-color-11) to ensure consistency across all Highcharts instances,
-  including Dashboard charts and ProjectTimeline charts.
+  These colors ensure consistency across all chart instances in the application.
   """
 
   @official_palette [

@@ -705,23 +705,23 @@ defmodule TrifleApp.CoreComponents do
   def has_clickable_breadcrumbs?(_), do: false
 
   @doc """
-  Returns theme classes based on user preference, including Highcharts classes.
+  Returns theme classes based on user preference.
   
   ## Examples
       
       iex> theme_classes("light")
-      "highcharts-light"
+      ""
       
       iex> theme_classes("dark") 
-      "dark highcharts-dark"
+      "dark"
       
       iex> theme_classes("system")
       ""
   """
   def theme_classes(theme) when theme in ["light", "dark", "system"] do
     case theme do
-      "dark" -> "dark highcharts-dark"
-      "light" -> "highcharts-light"
+      "dark" -> "dark"
+      "light" -> ""
       _ -> ""  # system uses default (no override classes)
     end
   end

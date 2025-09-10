@@ -7,33 +7,11 @@
     <.live_title suffix=" | Trifle">
       <%= TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %>
     </.live_title>
-    <!-- Highcharts Dashboards - following official documentation -->
-    <script src="https://code.highcharts.com/dashboards/datagrid.js"></script>
-    <script src="https://code.highcharts.com/highcharts.js"></script>
-    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
-    <script src="https://code.highcharts.com/dashboards/dashboards.js"></script>
-    <script src="https://code.highcharts.com/dashboards/modules/layout.js"></script>
-    <!-- Load our custom Highcharts theme (includes base CSS + our overrides) -->
-    <link phx-track-static rel="stylesheet" href={~p"/assets/highcharts-theme.css"} />
     <!-- Load main app CSS -->
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
     <script defer src="https://unpkg.com/alpinejs@3.10.5/dist/cdn.min.js"></script>
     
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM loaded, checking Dashboards...');
-        console.log('Dashboards available:', typeof window.Dashboards !== 'undefined');
-        if (typeof window.Dashboards !== 'undefined') {
-          console.log('Dashboards.board available:', typeof window.Dashboards.board === 'function');
-          window.dashboardsReady = true;
-          window.dispatchEvent(new CustomEvent('dashboards-loaded'));
-          console.log('✅ Dashboards ready!');
-        } else {
-          console.error('❌ Dashboards not available');
-        }
-      });
-    </script>
   </head>
   <body class={"#{TrifleApp.CoreComponents.theme_classes((assigns[:current_user] && assigns.current_user.theme) || "system")} bg-slate-100 dark:bg-slate-900 text-gray-900 dark:text-white antialiased h-screen"} {TrifleApp.CoreComponents.theme_data_attrs((assigns[:current_user] && assigns.current_user.theme) || "system")}>
     <%= @inner_content %>
