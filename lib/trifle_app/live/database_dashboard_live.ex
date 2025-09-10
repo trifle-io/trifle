@@ -12,7 +12,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
         # Authenticated access
         database = Organizations.get_database!(database_id)
         dashboard = Organizations.get_dashboard!(dashboard_id)
-        
+
         # Initialize dashboard data state
         socket = initialize_dashboard_state(socket, database, dashboard, false, nil)
 
@@ -41,20 +41,20 @@ defmodule TrifleApp.DatabaseDashboardLive do
       # Handle public access with token verification
       token = params["token"]
       dashboard_id = socket.assigns.dashboard_id
-      
+
       case Organizations.get_dashboard_by_token(dashboard_id, token) do
         {:ok, dashboard} ->
           # Initialize dashboard data state for public access
           socket = initialize_dashboard_state(socket, dashboard.database, dashboard, true, token)
-          
+
           socket = apply_url_params(socket, params)
-          
+
           {:noreply,
            socket
            |> assign(:page_title, nil)
            |> assign(:breadcrumb_links, [])
            |> then(fn s -> apply_action(s, socket.assigns.live_action, params) end)}
-        
+
         {:error, :not_found} ->
           {:noreply,
            socket
@@ -71,7 +71,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     socket = socket
       |> assign(:dashboard_changeset, nil)
       |> assign(:dashboard_form, nil)
-    
+
     # Load dashboard data if key is configured
     if dashboard_has_key?(socket) do
       load_dashboard_data(socket)
@@ -92,7 +92,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     |> assign(:dashboard_changeset, nil)
     |> assign(:dashboard_form, nil)
   end
-  
+
   defp apply_action(socket, :configure, _params) do
     socket
     |> assign(:dashboard_changeset, nil)
@@ -107,7 +107,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("save_name", %{"name" => name}, socket) do
     dashboard = socket.assigns.dashboard
-    
+
     case Organizations.update_dashboard(dashboard, %{name: name}) do
       {:ok, updated_dashboard} ->
         # Update breadcrumbs and page title with new dashboard name
@@ -116,13 +116,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
             [db_link, db_name, dashboards_link, updated_dashboard.name]
           other -> other
         end
-        
+
         updated_page_title = case socket.assigns[:page_title] do
           ["Database", db_name, "Dashboards", _old_dashboard_name] ->
             ["Database", db_name, "Dashboards", updated_dashboard.name]
           other -> other
         end
-        
+
         {:noreply,
          socket
          |> assign(:dashboard, updated_dashboard)
@@ -130,7 +130,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
          |> assign(:breadcrumb_links, updated_breadcrumbs)
          |> assign(:page_title, updated_page_title)
          |> put_flash(:info, "Dashboard name updated successfully")}
-      
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to update dashboard name")}
     end
@@ -138,14 +138,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("toggle_visibility", _params, socket) do
     dashboard = socket.assigns.dashboard
-    
+
     case Organizations.update_dashboard(dashboard, %{visibility: !dashboard.visibility}) do
       {:ok, updated_dashboard} ->
         {:noreply,
          socket
          |> assign(:dashboard, updated_dashboard)
          |> put_flash(:info, "Dashboard visibility updated successfully")}
-      
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to update dashboard visibility")}
     end
@@ -153,14 +153,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("generate_public_token", _params, socket) do
     dashboard = socket.assigns.dashboard
-    
+
     case Organizations.generate_dashboard_public_token(dashboard) do
       {:ok, updated_dashboard} ->
         {:noreply,
          socket
          |> assign(:dashboard, updated_dashboard)
          |> put_flash(:info, "Public link generated successfully")}
-      
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to generate public link")}
     end
@@ -169,14 +169,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("remove_public_token", _params, socket) do
     dashboard = socket.assigns.dashboard
-    
+
     case Organizations.remove_dashboard_public_token(dashboard) do
       {:ok, updated_dashboard} ->
         {:noreply,
          socket
          |> assign(:dashboard, updated_dashboard)
          |> put_flash(:info, "Public link removed successfully")}
-      
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to remove public link")}
     end
@@ -184,14 +184,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("delete_dashboard", _params, socket) do
     dashboard = socket.assigns.dashboard
-    
+
     case Organizations.delete_dashboard(dashboard) do
       {:ok, _} ->
         {:noreply,
          socket
          |> push_navigate(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards")
          |> put_flash(:info, "Dashboard deleted successfully")}
-      
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to delete dashboard")}
     end
@@ -207,12 +207,33 @@ defmodule TrifleApp.DatabaseDashboardLive do
          |> assign(:dashboard_form, nil)
          |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{dashboard.id}")
          |> put_flash(:info, "Dashboard updated successfully")}
-      
+
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, 
+        {:noreply,
          socket
          |> assign(:dashboard_changeset, changeset)
          |> assign(:dashboard_form, to_form(changeset))}
+    end
+  end
+
+  # Persist Grid layout changes from client (GridStack)
+  def handle_event("dashboard_grid_changed", %{"items" => items}, socket) do
+    # Only owner can persist layout, and never on public access
+    cond do
+      socket.assigns.is_public_access -> {:noreply, socket}
+      is_nil(socket.assigns[:current_user]) -> {:noreply, socket}
+      socket.assigns.dashboard.user_id != socket.assigns.current_user.id -> {:noreply, socket}
+      true ->
+        dashboard = socket.assigns.dashboard
+        existing_payload = dashboard.payload || %{}
+        new_payload = Map.put(existing_payload, "grid", items)
+
+        case Organizations.update_dashboard(dashboard, %{payload: new_payload}) do
+          {:ok, updated_dashboard} ->
+            {:noreply, assign(socket, :dashboard, updated_dashboard)}
+          {:error, _changeset} ->
+            {:noreply, socket}
+        end
     end
   end
 
@@ -223,7 +244,69 @@ defmodule TrifleApp.DatabaseDashboardLive do
      |> assign(:dashboard_form, nil)
      |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}")}
   end
-  
+
+  # Widget editing modal controls
+  def handle_event("open_widget_editor", %{"id" => id}, socket) do
+    cond do
+      socket.assigns.is_public_access -> {:noreply, socket}
+      is_nil(socket.assigns[:current_user]) -> {:noreply, socket}
+      socket.assigns.dashboard.user_id != socket.assigns.current_user.id -> {:noreply, socket}
+      true ->
+        items = socket.assigns.dashboard.payload["grid"] || []
+        widget = Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
+        {:noreply, assign(socket, :editing_widget, widget || %{"id" => id, "title" => ""})}
+    end
+  end
+
+  def handle_event("close_widget_editor", _params, socket) do
+    {:noreply, assign(socket, :editing_widget, nil)}
+  end
+
+  def handle_event("save_widget", %{"widget_id" => id, "widget_title" => title}, socket) do
+    cond do
+      socket.assigns.is_public_access -> {:noreply, socket}
+      is_nil(socket.assigns[:current_user]) -> {:noreply, socket}
+      socket.assigns.dashboard.user_id != socket.assigns.current_user.id -> {:noreply, socket}
+      true ->
+        title = String.trim(to_string(title || ""))
+        items = socket.assigns.dashboard.payload["grid"] || []
+        updated = Enum.map(items, fn i -> if to_string(i["id"]) == to_string(id), do: Map.put(i, "title", title), else: i end)
+        payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
+        case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
+          {:ok, dashboard} ->
+            {:noreply,
+             socket
+             |> assign(:dashboard, dashboard)
+             |> assign(:editing_widget, nil)
+             |> push_event("dashboard_grid_widget_updated", %{id: id, title: title})}
+          {:error, _} ->
+            {:noreply, socket}
+        end
+    end
+  end
+
+  def handle_event("delete_widget", %{"id" => id}, socket) do
+    cond do
+      socket.assigns.is_public_access -> {:noreply, socket}
+      is_nil(socket.assigns[:current_user]) -> {:noreply, socket}
+      socket.assigns.dashboard.user_id != socket.assigns.current_user.id -> {:noreply, socket}
+      true ->
+        items = socket.assigns.dashboard.payload["grid"] || []
+        updated = Enum.reject(items, fn i -> to_string(i["id"]) == to_string(id) end)
+        payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
+        case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
+          {:ok, dashboard} ->
+            {:noreply,
+             socket
+             |> assign(:dashboard, dashboard)
+             |> assign(:editing_widget, nil)
+             |> push_event("dashboard_grid_widget_deleted", %{id: id})}
+          {:error, _} ->
+            {:noreply, socket}
+        end
+    end
+  end
+
   # Filter bar message handling
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     # Update socket with filter changes from FilterBar component
@@ -238,7 +321,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
         _ -> acc
       end
     end)
-    
+
     # Update URL with new parameters
     params = build_url_params(socket)
     path = if socket.assigns.is_public_access do
@@ -246,16 +329,16 @@ defmodule TrifleApp.DatabaseDashboardLive do
     else
       ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
-    
+
     socket = push_patch(socket, to: path)
-    
+
     # Reload dashboard data
     socket = if dashboard_has_key?(socket) do
       load_dashboard_data(socket)
     else
       socket
     end
-    
+
     {:noreply, socket}
   end
 
@@ -269,15 +352,15 @@ defmodule TrifleApp.DatabaseDashboardLive do
   end
 
   # Dashboard Data Management
-  
+
   defp initialize_dashboard_state(socket, database, dashboard, is_public_access, public_token) do
     # Parse timeframe from URL or use default
     {from, to, granularity, smart_timeframe_input, use_fixed_display} = get_default_timeframe_params(database)
-    
+
     # Cache config to avoid recalculation on every render
     database_config = Database.stats_config(database)
     available_granularities = get_available_granularities(database)
-    
+
     # Load transponders to identify response paths and their names
     transponders = Organizations.list_transponders_for_database(database)
     transponder_info = transponders
@@ -290,7 +373,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     |> Enum.into(%{})
 
     transponder_response_paths = Map.keys(transponder_info)
-    
+
     socket
     |> assign(:database, database)
     |> assign(:dashboard, dashboard)
@@ -315,15 +398,16 @@ defmodule TrifleApp.DatabaseDashboardLive do
     |> assign(:loading_progress, nil)
     |> assign(:transponding, false)
     |> assign(:load_duration_microseconds, nil)
+    |> assign(:editing_widget, nil)
   end
-  
+
   defp apply_url_params(socket, params) do
     # Parse URL parameters for filters
     config = socket.assigns.database_config
-    
-    {from, to, granularity, smart_timeframe_input, use_fixed_display} = 
+
+    {from, to, granularity, smart_timeframe_input, use_fixed_display} =
       UrlParsing.parse_url_params(params, config, socket.assigns.available_granularities)
-    
+
     socket
     |> assign(:from, from)
     |> assign(:to, to)
@@ -331,11 +415,11 @@ defmodule TrifleApp.DatabaseDashboardLive do
     |> assign(:smart_timeframe_input, smart_timeframe_input)
     |> assign(:use_fixed_display, use_fixed_display)
   end
-  
+
   defp get_default_timeframe_params(database) do
     config = Database.stats_config(database)
     granularities = get_available_granularities(database)
-    
+
     # Default to 24h timeframe
     case TimeframeParsing.parse_smart_timeframe("24h", config) do
       {:ok, from, to, smart_input, use_fixed} ->
@@ -347,12 +431,12 @@ defmodule TrifleApp.DatabaseDashboardLive do
         {from, now, "1h", "24h", false}
     end
   end
-  
+
   defp get_available_granularities(database) do
     config = Database.stats_config(database)
     config.track_granularities
   end
-  
+
   defp dashboard_has_key?(socket) when is_struct(socket, Phoenix.LiveView.Socket) do
     case socket.assigns.dashboard.key do
       nil -> false
@@ -360,7 +444,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
       _key -> true
     end
   end
-  
+
   defp dashboard_has_key?(assigns) when is_map(assigns) do
     case assigns.dashboard.key do
       nil -> false
@@ -368,17 +452,17 @@ defmodule TrifleApp.DatabaseDashboardLive do
       _key -> true
     end
   end
-  
+
   defp load_dashboard_data(socket) do
     if dashboard_has_key?(socket) do
-      socket = assign(socket, 
-        load_start_time: System.monotonic_time(:microsecond), 
+      socket = assign(socket,
+        load_start_time: System.monotonic_time(:microsecond),
         loading: true,
         loading_chunks: true,
         loading_progress: nil,
         transponding: false
       )
-      
+
       # Extract values to avoid async socket warnings
       database = socket.assigns.database
       key = socket.assigns.dashboard.key
@@ -386,14 +470,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
       from = socket.assigns.from
       to = socket.assigns.to
       liveview_pid = self() # Capture LiveView PID before async task
-      
+
       start_async(socket, :dashboard_data_task, fn ->
         # Get transponders that match the dashboard key
         matching_transponders = Organizations.list_transponders_for_database(database)
         |> Enum.filter(&(&1.enabled))
         |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
         |> Enum.sort_by(& &1.order)
-        
+
         # Create progress callback to send updates back to LiveView
         progress_callback = fn progress_info ->
           case progress_info do
@@ -403,7 +487,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               send(liveview_pid, {:transponding, true})
           end
         end
-        
+
         case SeriesFetcher.fetch_series(database, key, from, to, granularity, matching_transponders, progress_callback: progress_callback) do
           {:ok, result} -> result
           {:error, error} -> {:error, error}
@@ -413,7 +497,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
       socket
     end
   end
-  
+
   defp build_url_params(socket) do
     %{
       "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
@@ -422,13 +506,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
       "timeframe" => socket.assigns.smart_timeframe_input || "24h"
     }
   end
-  
+
   def handle_async(:dashboard_data_task, {:ok, result}, socket) do
     # Calculate load duration
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
-    
+
     # SeriesFetcher now returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
-    {:noreply, 
+    {:noreply,
      socket
      |> assign(loading: false)
      |> assign(loading_chunks: false)
@@ -438,11 +522,11 @@ defmodule TrifleApp.DatabaseDashboardLive do
      |> assign(transponder_results: result.transponder_results)
      |> assign(load_duration_microseconds: load_duration)}
   end
-  
+
   def handle_async(:dashboard_data_task, {:error, error}, socket) do
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
-    
-    {:noreply, 
+
+    {:noreply,
      socket
      |> assign(loading: false)
      |> assign(loading_chunks: false)
@@ -452,13 +536,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
      |> assign(load_duration_microseconds: load_duration)
      |> put_flash(:error, "Failed to load dashboard data: #{inspect(error)}")}
   end
-  
+
   def handle_async(:dashboard_data_task, {:exit, reason}, socket) do
     IO.inspect(reason, label: "Dashboard data fetch failed")
     {:noreply, assign(socket, loading: false)}
   end
-  
-  
+
+
   defp gravatar_url(email) do
     hash = email
       |> String.trim()
@@ -468,17 +552,17 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
     "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
   end
-  
+
   # Summary stats for footer (with transponder statistics)
   def get_summary_stats(assigns) do
     case assigns do
       %{dashboard: %{key: key}, stats: stats, transponder_info: transponder_info, transponder_results: transponder_results} when not is_nil(key) and key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
         column_count = if stats[:at], do: length(stats[:at]), else: 0
-        
+
         # Count paths (rows)
         path_count = if stats[:paths], do: length(stats[:paths]), else: 0
-        
+
         # Use actual transponder results from SeriesFetcher
         successful_transponders = length(transponder_results.successful)
         failed_transponders = length(transponder_results.failed)
@@ -493,11 +577,11 @@ defmodule TrifleApp.DatabaseDashboardLive do
           failed_transponders: failed_transponders,
           transponder_errors: transponder_errors
         }
-        
+
         # Debug logging to help troubleshoot
         IO.inspect(result, label: "Dashboard summary stats")
         result
-        
+
       %{dashboard: %{key: key}} when not is_nil(key) and key != "" ->
         # Dashboard has key but no stats loaded yet - show basic info
         result = %{
@@ -511,7 +595,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
         }
         IO.inspect(result, label: "Dashboard summary stats (no data)")
         result
-        
+
       assigns ->
         IO.inspect(%{
           has_dashboard: Map.has_key?(assigns, :dashboard),
@@ -523,35 +607,35 @@ defmodule TrifleApp.DatabaseDashboardLive do
         nil
     end
   end
-  
+
   def handle_event("show_transponder_errors", _params, socket) do
     {:noreply, assign(socket, show_error_modal: true)}
   end
-  
+
   def handle_event("hide_transponder_errors", _params, socket) do
     {:noreply, assign(socket, show_error_modal: false)}
   end
-  
+
   def handle_event("reload_data", _params, socket) do
     reload_current_timeframe(socket)
   end
 
-  
+
   def format_duration(microseconds) when is_nil(microseconds), do: nil
-  
+
   def format_duration(microseconds) when is_integer(microseconds) do
     cond do
       microseconds < 1_000 ->
         "#{microseconds}μs"
-      
+
       microseconds < 1_000_000 ->
         ms = div(microseconds, 1_000)
         "#{ms}ms"
-      
+
       microseconds < 60_000_000 ->
         seconds = div(microseconds, 1_000_000)
         "#{seconds}s"
-      
+
       true ->
         minutes = div(microseconds, 60_000_000)
         "#{minutes}m"
@@ -586,14 +670,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
               </.link>
             </div>
           <% end %>
-          
+
           <!-- Dashboard Title -->
           <div class="flex-1 text-center">
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
               <%= @dashboard.name %>
             </h1>
           </div>
-          
+
           <%= if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
             <!-- Dashboard owner controls -->
             <div class="flex items-center gap-4 w-64 justify-end">
@@ -619,7 +703,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </svg>
                   <span class="hidden md:inline">Edit</span>
                 </.link>
-                
+
                 <!-- Configure Button -->
                 <.link
                   patch={~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}/configure"}
@@ -632,14 +716,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   <span class="hidden md:inline">Configure</span>
                 </.link>
               <% end %>
-              
+
               <!-- Status Icon Badges -->
               <div id="status-badges" class="flex items-center gap-2" phx-hook="FastTooltip">
                 <!-- Visibility Badge - hidden on XS screens -->
-                <div 
+                <div
                   class={[
                     "hidden sm:inline-flex items-center rounded-md px-3 py-2 text-xs font-medium",
-                    if(@dashboard.visibility, 
+                    if(@dashboard.visibility,
                       do: "bg-teal-50 dark:bg-teal-900 text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30",
                       else: "bg-teal-50 dark:bg-teal-900 text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30"
                     )
@@ -655,19 +739,19 @@ defmodule TrifleApp.DatabaseDashboardLive do
                     </svg>
                   <% end %>
                 </div>
-                
+
                 <!-- Public Link Badge -->
                 <%= if @dashboard.access_token do %>
                   <!-- Hidden element with the URL to copy -->
                   <span id="dashboard-public-url" class="hidden"><%= url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}") %></span>
-                  
+
                   <!-- Has token: clickable teal badge with visual feedback - hidden on XS screens -->
-                  <button 
+                  <button
                     type="button"
                     phx-click={
                       JS.dispatch("phx:copy", to: "#dashboard-public-url")
                       |> JS.hide(to: "#header-link-icon")
-                      |> JS.show(to: "#header-check-icon") 
+                      |> JS.show(to: "#header-check-icon")
                       |> JS.hide(to: "#header-check-icon", transition: {"", "", ""}, time: 2000)
                       |> JS.show(to: "#header-link-icon", transition: {"", "", ""}, time: 2000)
                     }
@@ -678,7 +762,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                     <svg id="header-link-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" />
                     </svg>
-                    
+
                     <!-- Check Icon (shown temporarily when copied) -->
                     <svg id="header-check-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5 text-green-600 hidden">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -686,7 +770,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </button>
                 <% else %>
                   <!-- No token: gray badge - hidden on XS screens -->
-                  <div 
+                  <div
                     class="hidden sm:inline-flex items-center rounded-md bg-gray-50 dark:bg-gray-900 px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 ring-1 ring-inset ring-gray-600/20 dark:ring-gray-500/30"
                     data-tooltip="No public link available">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
@@ -702,7 +786,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               <div class="flex items-center gap-2 w-64 justify-end">
                 <span class={[
                   "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
-                  if(@dashboard.visibility, 
+                  if(@dashboard.visibility,
                     do: "bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-600/20 dark:ring-blue-500/30",
                     else: "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-600/20 dark:ring-gray-500/30"
                   )
@@ -740,16 +824,16 @@ defmodule TrifleApp.DatabaseDashboardLive do
         <div class="mb-6">
           <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
             <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Edit Dashboard</h2>
-            
-            <.form 
-              for={@dashboard_form} 
+
+            <.form
+              for={@dashboard_form}
               phx-submit="save_dashboard"
               class="space-y-4"
             >
               <div>
                 <label for="dashboard_key" class="block text-sm font-medium text-gray-700 dark:text-slate-300">Key</label>
-                <textarea 
-                  name="dashboard[key]" 
+                <textarea
+                  name="dashboard[key]"
                   id="dashboard_key"
                   rows="3"
                   class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
@@ -760,18 +844,18 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   <p class="mt-1 text-sm text-red-600 dark:text-red-400">
                     <%= case @dashboard_changeset.errors[:key] do
                       [{message, _}] -> message
-                      [{message, _} | _] -> message  
+                      [{message, _} | _] -> message
                       message when is_binary(message) -> message
                       _ -> "Invalid key format"
                     end %>
                   </p>
                 <% end %>
               </div>
-              
+
               <div>
                 <label for="dashboard_payload" class="block text-sm font-medium text-gray-700 dark:text-slate-300">Payload</label>
-                <textarea 
-                  name="dashboard[payload]" 
+                <textarea
+                  name="dashboard[payload]"
                   id="dashboard_payload"
                   rows="10"
                   class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
@@ -781,7 +865,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   <p class="mt-1 text-sm text-red-600 dark:text-red-400">
                     <%= case @dashboard_changeset.errors[:payload] do
                       [{message, _}] -> message
-                      [{message, _} | _] -> message  
+                      [{message, _} | _] -> message
                       message when is_binary(message) -> message
                       _ -> "Invalid payload format"
                     end %>
@@ -789,16 +873,16 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 <% end %>
                 <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">Enter valid JSON configuration for the dashboard visualization</p>
               </div>
-              
+
               <div class="flex items-center justify-end gap-3 pt-4">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   phx-click="cancel_edit"
                   class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
                 >
@@ -810,6 +894,35 @@ defmodule TrifleApp.DatabaseDashboardLive do
         </div>
       <% end %>
 
+      <!-- Grid Layout -->
+      <div class="mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-medium text-gray-700 dark:text-slate-300">Layout</h2>
+          <%= if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
+            <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
+            <button id={add_btn_id}
+              type="button"
+              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="-ml-0.5 mr-1.5 h-4 w-4">
+                <path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
+              </svg>
+              Add Widget
+            </button>
+          <% end %>
+        </div>
+        <div id="dashboard-grid"
+             class="grid-stack"
+             phx-update="ignore"
+             phx-hook="DashboardGrid"
+             data-editable={if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id, do: "true", else: "false"}
+             data-cols="12"
+             data-min-rows="8"
+             data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
+             data-initial-grid={Jason.encode!(@dashboard.payload["grid"] || [])}>
+        </div>
+      </div>
+
       <!-- Configure Modal -->
       <%= if !@is_public_access && @live_action == :configure do %>
         <.app_modal id="configure-modal" show={true} on_cancel={JS.patch(~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}")}>
@@ -820,13 +933,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
               <div>
                 <label for="configure_name" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dashboard Name</label>
                 <div class="flex gap-2">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     id="configure_name"
                     name="name"
                     value={@temp_name || @dashboard.name}
                     phx-keyup="update_temp_name"
-                    class="flex-1 block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" 
+                    class="flex-1 block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
                     placeholder="Dashboard name"
                   />
                   <button
@@ -839,14 +952,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </button>
                 </div>
               </div>
-              
+
               <!-- Visibility Toggle -->
               <div class="flex items-center justify-between">
                 <div>
                   <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Visibility</span>
                   <p class="text-xs text-gray-500 dark:text-slate-400">Make this dashboard visible to everyone in the organization</p>
                 </div>
-                <button 
+                <button
                   type="button"
                   phx-click="toggle_visibility"
                   class={[
@@ -860,7 +973,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   ]}></span>
                 </button>
               </div>
-              
+
               <!-- Public Link Management -->
               <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
                 <div class="flex items-center justify-between mb-4">
@@ -869,14 +982,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
                     <p class="text-xs text-gray-500 dark:text-slate-400">Allow unauthenticated Read-only access to this dashboard</p>
                   </div>
                 </div>
-                
+
                 <%= if @dashboard.access_token do %>
                   <!-- Hidden element with the URL to copy -->
                   <span id="modal-dashboard-public-url" class="hidden"><%= url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}") %></span>
-                  
+
                   <div class="flex items-center gap-3">
                     <!-- Copy Link Button -->
-                    <span 
+                    <span
                       id="modal-copy-dashboard-link"
                       x-data="{ copied: false }"
                       phx-click={JS.dispatch("phx:copy", to: "#modal-dashboard-public-url")}
@@ -889,19 +1002,19 @@ defmodule TrifleApp.DatabaseDashboardLive do
                       <svg x-show="!copied" class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
                       </svg>
-                      
+
                       <!-- Check Icon (show when copied) -->
                       <svg x-show="copied" class="-ml-0.5 mr-2 h-4 w-4 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      
+
                       <!-- Text -->
                       <span x-show="!copied">Copy Public Link</span>
                       <span x-show="copied" class="text-green-600">Copied!</span>
                     </span>
-                    
+
                     <!-- Remove Button -->
-                    <button 
+                    <button
                       type="button"
                       phx-click="remove_public_token"
                       data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
@@ -916,7 +1029,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </div>
                 <% else %>
                   <!-- No token: show generate -->
-                  <button 
+                  <button
                     type="button"
                     phx-click="generate_public_token"
                     class="w-full inline-flex items-center justify-center rounded-md bg-teal-50 dark:bg-teal-900 px-3 py-2 text-sm font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30 hover:bg-teal-100 dark:hover:bg-teal-800"
@@ -929,15 +1042,15 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </button>
                 <% end %>
               </div>
-              
+
               <!-- Danger Zone -->
               <div class="border-t border-red-200 dark:border-red-800 pt-6">
                 <div class="mb-4">
                   <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger Zone</span>
                   <p class="text-xs text-red-600 dark:text-red-400">This action cannot be undone</p>
                 </div>
-                
-                <button 
+
+                <button
                   type="button"
                   phx-click="delete_dashboard"
                   data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
@@ -949,6 +1062,53 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </svg>
                   Delete Dashboard
                 </button>
+              </div>
+            </div>
+          </:body>
+        </.app_modal>
+      <% end %>
+
+      <!-- Widget Edit Modal -->
+      <%= if !@is_public_access && @editing_widget do %>
+        <.app_modal id="widget-modal" show={true} on_cancel={JS.push("close_widget_editor")}>
+          <:title>Edit Widget</:title>
+          <:body>
+            <div class="space-y-6">
+              <!-- Widget Title -->
+              <.form for={%{}} phx-submit="save_widget" class="space-y-3">
+                <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
+                <div>
+                  <label for="widget_title" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Title</label>
+                  <input
+                    type="text"
+                    id="widget_title"
+                    name="widget_title"
+                    value={@editing_widget["title"] || ""}
+                    class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    placeholder="Widget title"
+                  />
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-2">
+                  <button type="button" phx-click="close_widget_editor" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">Cancel</button>
+                  <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">Save</button>
+                </div>
+              </.form>
+
+              <!-- Danger Zone -->
+              <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
+                <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
+                <p class="text-xs text-gray-500 dark:text-slate-400">Delete this widget permanently from the dashboard.</p>
+                <div class="mt-3">
+                  <button
+                    type="button"
+                    phx-click="delete_widget"
+                    phx-value-id={@editing_widget["id"]}
+                    data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
+                    class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                  >
+                    Delete Widget
+                  </button>
+                </div>
               </div>
             </div>
           </:body>
@@ -985,7 +1145,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               </div>
             </div>
           <% end %>
-          
+
           <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
             <!-- Dashboard functionality has been removed -->
             <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
@@ -1055,13 +1215,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
             </div>
           <% end %>
         </div>
-        
+
         <!-- Sticky Summary Footer (only for authenticated users) -->
         <%= if !@is_public_access do %>
           <%= if summary = get_summary_stats(assigns) do %>
           <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
             <div class="flex flex-wrap items-center gap-4 text-xs">
-              
+
               <!-- Selected Key -->
               <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
                 <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1070,7 +1230,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 <span class="font-medium">Key:</span>
                 <span class="truncate max-w-32" title={summary.key}><%= summary.key %></span>
               </div>
-              
+
               <!-- Points -->
               <%= if summary.column_count > 0 do %>
                 <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
@@ -1081,7 +1241,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   <span><%= summary.column_count %></span>
                 </div>
               <% end %>
-              
+
               <!-- Paths -->
               <%= if summary.path_count > 0 do %>
                 <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
@@ -1099,7 +1259,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
                 </svg>
                 <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
-                
+
                 <!-- Success count -->
                 <div class="flex items-center gap-1">
                   <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1107,14 +1267,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </svg>
                   <span class="text-gray-900 dark:text-white"><%= summary.successful_transponders %></span>
                 </div>
-                
+
                 <!-- Fail count -->
                 <div class="flex items-center gap-1">
                   <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                   </svg>
                   <%= if summary.failed_transponders > 0 do %>
-                    <button 
+                    <button
                       phx-click="show_transponder_errors"
                       class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
                     >
@@ -1170,10 +1330,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
         key == pattern
     end
   end
-  
+
   defp reload_current_timeframe(socket) do
     granularity = socket.assigns.granularity
-    
+
     socket =
       socket
       |> assign(loading: true)

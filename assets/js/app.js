@@ -23,6 +23,7 @@ import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import Sortable from "sortablejs"
 import * as echarts from "echarts"
+import { GridStack } from "gridstack"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
@@ -433,6 +434,181 @@ Hooks.Sortable = {
   }
 }
 
+// GridStack layout for Dashboards
+Hooks.DashboardGrid = {
+  mounted() {
+    const editableAttr = this.el.dataset.editable;
+    this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
+    this.cols = parseInt(this.el.dataset.cols || '12', 10);
+    this.minRows = parseInt(this.el.dataset.minRows || '8', 10);
+    this.addBtnId = this.el.dataset.addBtnId;
+    try {
+      this.initialItems = this.el.dataset.initialGrid ? JSON.parse(this.el.dataset.initialGrid) : [];
+    } catch (_) {
+      this.initialItems = [];
+    }
+
+    this.initGrid();
+
+    // Delegate click for Add Widget button to survive DOM patches
+    if (this.editable && this.addBtnId) {
+      this._docClick = (e) => {
+        const btn = e.target && (e.target.id === this.addBtnId ? e.target : e.target.closest && e.target.closest(`#${this.addBtnId}`));
+        if (btn) {
+          e.preventDefault();
+          this.addNewWidget();
+        }
+      };
+      document.addEventListener('click', this._docClick, true);
+    }
+
+    // Handle edit button clicks inside grid
+    this._gridClick = (e) => {
+      const editBtn = e.target && (e.target.closest && e.target.closest('.grid-widget-edit'));
+      if (editBtn) {
+        e.preventDefault();
+        const id = editBtn.getAttribute('data-widget-id');
+        if (id) this.pushEvent('open_widget_editor', { id });
+      }
+    };
+    this.el.addEventListener('click', this._gridClick, true);
+
+    // LiveView -> Hook updates for widget edits/deletes
+    this.handleEvent('dashboard_grid_widget_updated', ({ id, title }) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+      const titleEl = item && item.querySelector('.grid-widget-title');
+      if (titleEl) titleEl.textContent = title;
+      // ensure layout save reflects new title
+      this.saveLayout();
+    });
+    this.handleEvent('dashboard_grid_widget_deleted', ({ id }) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+      if (item) {
+        this.grid.removeWidget(item);
+        this.saveLayout();
+      }
+    });
+  },
+
+  destroyed() {
+    if (this.grid && this.grid.destroy) {
+      this.grid.destroy(false);
+    }
+    if (this._docClick) {
+      document.removeEventListener('click', this._docClick, true);
+      this._docClick = null;
+    }
+    if (this._gridClick) {
+      this.el.removeEventListener('click', this._gridClick, true);
+      this._gridClick = null;
+    }
+  },
+
+  initGrid() {
+    // Pre-populate items into DOM so GridStack can pick them up
+    if (Array.isArray(this.initialItems) && this.initialItems.length > 0) {
+      this.initialItems.forEach((item) => this.addGridItemEl(item));
+    }
+
+    this.grid = GridStack.init({
+      column: this.cols,
+      minRow: this.minRows,
+      float: true,
+      margin: 5,
+      disableOneColumnMode: true,
+      styleInHead: true,
+      cellHeight: 80,
+    }, this.el);
+
+    if (!this.editable) {
+      this.grid.setStatic(true);
+    }
+
+    const save = () => this.saveLayout();
+    this.grid.on('change', save);
+    this.grid.on('added', save);
+    this.grid.on('removed', save);
+
+    // No direct button binding needed; delegated handler set in mounted
+  },
+
+  addGridItemEl(item) {
+    const el = document.createElement('div');
+    el.className = 'grid-stack-item';
+    el.setAttribute('gs-w', item.w || 3);
+    el.setAttribute('gs-h', item.h || 2);
+    el.setAttribute('gs-x', item.x || 0);
+    el.setAttribute('gs-y', item.y || 0);
+    el.setAttribute('gs-id', item.id || (item.id = this.genId()));
+    const content = document.createElement('div');
+    content.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col';
+    const titleText = item.title || `Widget ${String(item.id || '').slice(0,6)}`;
+    const editBtn = this.editable ? `
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${el.getAttribute('gs-id')}\" title=\"Edit widget\"> 
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z\" />
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z\" />
+        </svg>
+      </button>` : '';
+    content.innerHTML = `
+      <div class=\"grid-widget-header flex items-center justify-between mb-2 text-gray-800 dark:text-slate-200\">\n        <div class=\"grid-widget-title font-semibold truncate\">${this.escapeHtml(titleText)}</div>\n        ${editBtn}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
+    el.appendChild(content);
+    this.el.appendChild(el);
+  },
+
+  genId() { return Math.random().toString(36).slice(2); },
+
+  addNewWidget() {
+    // compute bottom-most occupied row so we don't reflow existing items
+    let bottom = 0;
+    this.el.querySelectorAll('.grid-stack-item').forEach((it) => {
+      const y = parseInt(it.getAttribute('gs-y') || '0', 10);
+      const h = parseInt(it.getAttribute('gs-h') || '1', 10);
+      bottom = Math.max(bottom, y + h);
+    });
+
+    const id = this.genId();
+    const w = 3, h = 2, x = 0, y = bottom;
+
+    const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
+    const contentEl = el && el.querySelector('.grid-stack-item-content');
+    if (contentEl) {
+      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col';
+      contentEl.innerHTML = `
+        <div class=\"grid-widget-header flex items-center justify-between mb-2 text-gray-800 dark:text-slate-200\"> 
+          <div class=\"grid-widget-title font-semibold truncate\">New Widget</div> 
+          <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Edit widget\"> 
+          <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
+            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z\" /> 
+            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z\" /> 
+          </svg> 
+          </button> 
+        </div>
+        <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\"> 
+          Chart is coming soon 
+        </div>`;
+    }
+    this.saveLayout();
+  },
+
+  saveLayout() {
+    if (!this.editable) return;
+    const items = Array.from(this.el.querySelectorAll('.grid-stack-item')).map((el) => ({
+      x: parseInt(el.getAttribute('gs-x') || '0', 10),
+      y: parseInt(el.getAttribute('gs-y') || '0', 10),
+      w: parseInt(el.getAttribute('gs-w') || '1', 10),
+      h: parseInt(el.getAttribute('gs-h') || '1', 10),
+      id: el.getAttribute('gs-id') || this.genId(),
+      title: (el.querySelector('.grid-widget-title')?.textContent || '').trim(),
+    }));
+    this.pushEvent('dashboard_grid_changed', { items });
+  },
+
+  escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
+  },
+}
+
 
 Hooks.PhantomRows = {
   mounted() {
@@ -704,4 +880,3 @@ class ThemeManager {
 document.addEventListener('DOMContentLoaded', () => {
   window.themeManager = new ThemeManager();
 });
-

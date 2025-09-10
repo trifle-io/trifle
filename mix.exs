@@ -78,9 +78,26 @@ defmodule Trifle.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing", "cmd cd assets && npm install"],
-      "assets.build": ["tailwind default", "esbuild default"],
-      "assets.deploy": ["cmd cd assets && npm install", "tailwind default --minify", "esbuild default --minify", "phx.digest"]
+      "assets.setup": [
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing",
+        "cmd cd assets && npm install"
+      ],
+      "assets.build": [
+        "tailwind default",
+        "esbuild default",
+        # Ensure vendor assets (like gridstack CSS) are available under priv/static for CSS @import
+        "cmd mkdir -p priv/static/vendor",
+        "cmd cp -f assets/node_modules/gridstack/dist/gridstack.min.css priv/static/vendor/gridstack.min.css"
+      ],
+      "assets.deploy": [
+        "cmd cd assets && npm install",
+        "tailwind default --minify",
+        "esbuild default --minify",
+        "cmd mkdir -p priv/static/vendor",
+        "cmd cp -f assets/node_modules/gridstack/dist/gridstack.min.css priv/static/vendor/gridstack.min.css",
+        "phx.digest"
+      ]
     ]
   end
 end
