@@ -2,6 +2,9 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* GridStack styles (imported from node_modules) */
+@import url("../node_modules/gridstack/dist/gridstack.min.css");
+
 /* Form element base styles - equivalent to @tailwindcss/forms plugin */
 input[type="text"],
 input[type="email"],
@@ -60,6 +63,4 @@ select[class*="grid"], select[class*="col-"] {
 }
 
 /* This file is for your main application CSS */
-
-
 
