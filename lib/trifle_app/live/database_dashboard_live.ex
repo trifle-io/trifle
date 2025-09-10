@@ -536,43 +536,6 @@ defmodule TrifleApp.DatabaseDashboardLive do
     reload_current_timeframe(socket)
   end
 
-  def handle_event("dashboard_changed", params, socket) do
-    %{
-      "change_type" => change_type,
-      "payload" => payload,
-      "event_details" => event_details
-    } = params
-
-    require Logger
-
-    # Only save if user owns the dashboard
-    if socket.assigns.dashboard.user_id == socket.assigns.current_user.id do
-      
-      # Validate payload and save only on edit mode exit
-      cond do
-        is_nil(payload) or payload == %{} or map_size(payload) == 0 ->
-          {:noreply, socket}
-          
-        change_type == "editModeExit" ->
-          case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
-            {:ok, updated_dashboard} ->
-              Logger.info("Dashboard configuration saved")
-              {:noreply, assign(socket, dashboard: updated_dashboard)}
-              
-            {:error, changeset} ->
-              Logger.error("Failed to save dashboard: #{inspect(changeset.errors)}")
-              {:noreply, socket}
-          end
-          
-        true ->
-          # Don't save during active editing
-          {:noreply, socket}
-      end
-    else
-      Logger.warn("Unauthorized dashboard change attempt")
-      {:noreply, socket}
-    end
-  end
   
   def format_duration(microseconds) when is_nil(microseconds), do: nil
   
@@ -1024,15 +987,30 @@ defmodule TrifleApp.DatabaseDashboardLive do
           <% end %>
           
           <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
-            <!-- Dashboard with data -->
-            <div 
-              id="highcharts-dashboard-container"
-              phx-hook="HighchartsDashboard"
-              data-payload={Jason.encode!(@dashboard.payload)}
-              data-public-access={to_string(@is_public_access)}
-              class="dashboard-content w-full"
-            >
-              <!-- Highcharts Dashboard will be rendered here -->
+            <!-- Dashboard functionality has been removed -->
+            <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
+              <div class="p-6">
+                <div class="text-center py-12">
+                  <svg class="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Dashboard visualization unavailable</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                    The dashboard visualization feature has been removed. Please use the Database Explore view for data analysis.
+                  </p>
+                  <div class="mt-4">
+                    <.link
+                      navigate={~p"/app/dbs/#{@database.id}/explore"}
+                      class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                    >
+                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                      </svg>
+                      Go to Database Explore →
+                    </.link>
+                  </div>
+                </div>
+              </div>
             </div>
           <% else %>
             <!-- Empty state in white panel -->

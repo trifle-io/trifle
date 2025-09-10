@@ -99,7 +99,7 @@ mix populate_metrics --token=your_token_here --count=100 --hours=24
 - **Multi-tenant**: Projects are isolated with user-based access control
 
 ### Data Visualization
-- **Highcharts Integration**: Time-series and stacked charts
+- **Apache Echarts Integration**: Time-series and stacked charts
 - **Smart Timeframes**: Natural language inputs like "5m", "1d", "3w"
 - **Color System**: Consistent 12-color palette with hierarchical path coloring
 - **Interactive Tables**: Sticky headers, hover effects, nested path visualization
@@ -247,7 +247,7 @@ Values support arbitrary nesting:
 ### Core LiveView Logic
 - `lib/trifle_web/live/project_live.ex` - Main dashboard with 1,096 lines handling:
   - Smart timeframe parsing and URL parameter handling
-  - Chart data serialization for Highcharts
+  - Chart data serialization for Charts
   - Interactive filtering and drill-down
   - Hierarchical data path formatting
 
@@ -257,7 +257,7 @@ Values support arbitrary nesting:
 - `lib/mix/tasks/populate_metrics.ex` - Test data generation with realistic nested structures
 
 ### Frontend Integration
-- JavaScript hooks in `assets/js/app.js` for Highcharts integration
+- JavaScript hooks in `assets/js/app.js` for Charts integration
 - `data-*` attributes pass configuration from Elixir to JavaScript
 - Color palette automatically injected via `ChartColors.json_palette()`
 
