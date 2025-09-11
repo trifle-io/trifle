@@ -20,6 +20,8 @@ defmodule Trifle.Organizations.Database do
     field :config, :map, default: %{}
     field :granularities, {:array, :string}, default: []
     field :time_zone, :string, default: "UTC"
+    field :default_timeframe, :string
+    field :default_granularity, :string
     field :last_check_at, :utc_datetime
     field :last_check_status, :string, default: "pending"
     field :last_error, :string
@@ -100,7 +102,7 @@ defmodule Trifle.Organizations.Database do
   @doc false
   def changeset(database, attrs) do
     database
-    |> cast(attrs, [:display_name, :driver, :host, :port, :database_name, :file_path, :username, :password, :auth_database, :config, :time_zone, :last_check_at, :last_check_status, :last_error])
+    |> cast(attrs, [:display_name, :driver, :host, :port, :database_name, :file_path, :username, :password, :auth_database, :config, :time_zone, :last_check_at, :last_check_status, :last_error, :default_timeframe, :default_granularity])
     |> validate_required([:display_name, :driver])
     |> validate_inclusion(:driver, @drivers)
     |> validate_conditional_fields()

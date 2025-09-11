@@ -98,6 +98,32 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
             </dd>
           </div>
 
+          <!-- Defaults -->
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">Default Timeframe</dt>
+            <dd class="mt-1 sm:col-span-2 sm:mt-0">
+              <%= if @database.default_timeframe && @database.default_timeframe != "" do %>
+                <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                  <%= @database.default_timeframe %>
+                </span>
+              <% else %>
+                <span class="text-sm text-gray-500 dark:text-slate-400">Not set</span>
+              <% end %>
+            </dd>
+          </div>
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">Default Granularity</dt>
+            <dd class="mt-1 sm:col-span-2 sm:mt-0">
+              <%= if @database.default_granularity && @database.default_granularity != "" do %>
+                <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                  <%= @database.default_granularity %>
+                </span>
+              <% else %>
+                <span class="text-sm text-gray-500 dark:text-slate-400">Not set</span>
+              <% end %>
+            </dd>
+          </div>
+
           <%= for {key, value} <- (@database.config || %{}) do %>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
               <dt class="text-sm font-medium text-gray-900 dark:text-white"><%= humanize_config_key(key) %></dt>

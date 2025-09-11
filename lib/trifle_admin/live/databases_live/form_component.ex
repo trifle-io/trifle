@@ -67,8 +67,8 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
         <%= if @selected_driver do %>
           <div class="border-t pt-6 mt-6">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Time Configuration</h3>
-          
-          <div class="space-y-2">
+
+            <div class="space-y-2">
             <label for={@form[:granularities].id} class="block text-sm font-medium text-gray-900 dark:text-white">
               Granularities
             </label>
@@ -85,13 +85,37 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
               <p class="text-sm text-red-600 dark:text-red-400"><%= translate_error(error) %></p>
             <% end %>
           </div>
-          
+
           <.form_field 
             field={@form[:time_zone]} 
             type="select" 
             label="Time Zone" 
             options={@time_zones}
           />
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <.form_field 
+              field={@form[:default_timeframe]} 
+              label="Default Timeframe" 
+              placeholder="e.g. 24h, 7d, 1mo" 
+              help_text="Smart input used when Explore/Dashboards open without explicit timeframe."
+            />
+            <div>
+              <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Default Granularity</label>
+              <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                <select name={@form[:default_granularity].name}
+                  class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                  <%= for g <- @database.granularities || [] do %>
+                    <option value={g} selected={g == @form[:default_granularity].value}><%= g %></option>
+                  <% end %>
+                </select>
+                <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                  <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                </svg>
+              </div>
+              <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Used as initial granularity in Explore/Dashboards.</p>
+            </div>
+          </div>
         </div>
         <% end %>
         

@@ -58,6 +58,8 @@ defmodule TrifleApp.DatabaseDashboardsLive.FormComponent do
       |> Map.put("user_id", socket.assigns.current_user.id)
       |> Map.put("key", "dashboard")  # Default key
       |> Map.put("visibility", false)  # Default to personal
+      |> Map.put_new("default_timeframe", socket.assigns.database.default_timeframe || "24h")
+      |> Map.put_new("default_granularity", socket.assigns.database.default_granularity || "1h")
 
     case Organizations.create_dashboard(dashboard_params) do
       {:ok, dashboard} ->

@@ -10,8 +10,9 @@ defmodule TrifleApp.TimeframeParsing.Url do
   
   Returns {from, to, granularity, smart_timeframe_input, use_fixed_display}
   """
-  def parse_url_params(params, config, available_granularities) do
-    granularity = params["granularity"] || Enum.at(available_granularities, 3, "1h")
+  def parse_url_params(params, config, available_granularities, opts \\ %{}) do
+    default_gran = Map.get(opts, :default_granularity)
+    granularity = params["granularity"] || default_gran || Enum.at(available_granularities, 3, "1h")
     
     {from, to, smart_input, use_fixed_display} =
       cond do
@@ -28,39 +29,54 @@ defmodule TrifleApp.TimeframeParsing.Url do
               {from, to, smart_input, use_fixed_display}
             _ ->
               # If parsing fails, fall back to timeframe or defaults
-              get_fallback_timeframe(params, config)
+              get_fallback_timeframe(params, config, opts)
           end
         
         # If we have a timeframe parameter, use it
         params["timeframe"] && params["timeframe"] != "" ->
           case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
             {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
-            {:error, _} -> get_default_timeframe(config)
+            {:error, _} -> get_default_timeframe(config, opts)
           end
         
         # No parameters, use default 24h
         true ->
-          get_default_timeframe(config)
+          get_default_timeframe(config, opts)
       end
     
     {from, to, granularity, smart_input, use_fixed_display}
   end
   
-  defp get_fallback_timeframe(params, config) do
+  defp get_fallback_timeframe(params, config, opts) do
     cond do
       params["timeframe"] && params["timeframe"] != "" ->
         case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
           {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
-          {:error, _} -> get_default_timeframe(config)
+          {:error, _} -> get_default_timeframe(config, opts)
         end
       true ->
-        get_default_timeframe(config)
+        get_default_timeframe(config, opts)
     end
   end
   
   defp get_default_timeframe(config) do
-    to = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
-    from = DateTime.add(to, -24 * 60 * 60, :second)
-    {from, to, "24h", false}
+    get_default_timeframe(config, %{})
+  end
+
+  defp get_default_timeframe(config, opts) do
+    case Map.get(opts, :default_timeframe) do
+      tf when is_binary(tf) and tf != "" ->
+        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+          {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
+          {:error, _} ->
+            to = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+            from = DateTime.add(to, -24 * 60 * 60, :second)
+            {from, to, "24h", false}
+        end
+      _ ->
+        to = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+        from = DateTime.add(to, -24 * 60 * 60, :second)
+        {from, to, "24h", false}
+    end
   end
 end
