@@ -218,21 +218,23 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   # Persist Grid layout changes from client (GridStack)
   def handle_event("dashboard_grid_changed", %{"items" => items}, socket) do
-    # Only owner can persist layout, and never on public access
     cond do
       socket.assigns.is_public_access -> {:noreply, socket}
       is_nil(socket.assigns[:current_user]) -> {:noreply, socket}
       socket.assigns.dashboard.user_id != socket.assigns.current_user.id -> {:noreply, socket}
       true ->
         dashboard = socket.assigns.dashboard
-        existing_payload = dashboard.payload || %{}
-        new_payload = Map.put(existing_payload, "grid", items)
-
-        case Organizations.update_dashboard(dashboard, %{payload: new_payload}) do
-          {:ok, updated_dashboard} ->
-            {:noreply, assign(socket, :dashboard, updated_dashboard)}
-          {:error, _changeset} ->
-            {:noreply, socket}
+        existing = (dashboard.payload || %{})["grid"] || []
+        by_id = Map.new(existing, fn i -> {to_string(i["id"]), i} end)
+        merged = Enum.map(items, fn item ->
+          id = to_string(item["id"]) 
+          prev = Map.get(by_id, id, %{})
+          Map.merge(prev, item)
+        end)
+        payload = Map.put(dashboard.payload || %{}, "grid", merged)
+        case Organizations.update_dashboard(dashboard, %{payload: payload}) do
+          {:ok, updated_dashboard} -> {:noreply, assign(socket, :dashboard, updated_dashboard)}
+          {:error, _} -> {:noreply, socket}
         end
     end
   end
@@ -254,7 +256,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
       true ->
         items = socket.assigns.dashboard.payload["grid"] || []
         widget = Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
-        {:noreply, assign(socket, :editing_widget, widget || %{"id" => id, "title" => ""})}
+        widget = (widget || %{"id" => id, "title" => ""}) |> Map.put_new("type", "kpi")
+        {:noreply, assign(socket, :editing_widget, widget)}
     end
   end
 
@@ -262,15 +265,51 @@ defmodule TrifleApp.DatabaseDashboardLive do
     {:noreply, assign(socket, :editing_widget, nil)}
   end
 
-  def handle_event("save_widget", %{"widget_id" => id, "widget_title" => title}, socket) do
+  def handle_event("save_widget", params, socket) do
+    %{"widget_id" => id} = params
+    title = String.trim(to_string(Map.get(params, "widget_title", "")))
+    type = String.downcase(Map.get(params, "widget_type", "kpi"))
+
     cond do
       socket.assigns.is_public_access -> {:noreply, socket}
       is_nil(socket.assigns[:current_user]) -> {:noreply, socket}
       socket.assigns.dashboard.user_id != socket.assigns.current_user.id -> {:noreply, socket}
       true ->
-        title = String.trim(to_string(title || ""))
         items = socket.assigns.dashboard.payload["grid"] || []
-        updated = Enum.map(items, fn i -> if to_string(i["id"]) == to_string(id), do: Map.put(i, "title", title), else: i end)
+        updated = Enum.map(items, fn i ->
+          if to_string(i["id"]) == to_string(id) do
+            base = i |> Map.put("title", title) |> Map.put("type", type)
+            case type do
+              "kpi" ->
+                base
+                |> Map.put("path", Map.get(params, "kpi_path", ""))
+                |> Map.put("function", Map.get(params, "kpi_function", "mean"))
+                |> Map.put("split", Map.has_key?(params, "kpi_split"))
+                |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+                |> Map.put("size", Map.get(params, "kpi_size", "m"))
+              "timeseries" ->
+                paths =
+                  params
+                  |> Map.get("ts_paths", "")
+                  |> String.split(["\n", "\r"], trim: true)
+                  |> Enum.map(&String.trim/1)
+                  |> Enum.reject(&(&1 == ""))
+                base
+                |> Map.put("paths", paths)
+                |> Map.put("chart_type", Map.get(params, "ts_chart_type", "line"))
+                |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
+                |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
+              "category" ->
+                base
+                |> Map.put("path", Map.get(params, "cat_path", ""))
+                |> Map.put("chart_type", Map.get(params, "cat_chart_type", "bar"))
+              _ -> base
+            end
+          else
+            i
+          end
+        end)
+
         payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
         case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
           {:ok, dashboard} ->
@@ -279,10 +318,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
              |> assign(:dashboard, dashboard)
              |> assign(:editing_widget, nil)
              |> push_event("dashboard_grid_widget_updated", %{id: id, title: title})}
-          {:error, _} ->
-            {:noreply, socket}
+          {:error, _} -> {:noreply, socket}
         end
     end
+  end
+
+  def handle_event("change_widget_type", %{"widget_id" => id, "widget_type" => type}, socket) do
+    w = socket.assigns.editing_widget || %{"id" => id}
+    {:noreply, assign(socket, :editing_widget, Map.put(w, "type", String.downcase(type)))}
   end
 
   def handle_event("delete_widget", %{"id" => id}, socket) do
@@ -1074,20 +1117,144 @@ defmodule TrifleApp.DatabaseDashboardLive do
           <:title>Edit Widget</:title>
           <:body>
             <div class="space-y-6">
-              <!-- Widget Title -->
-              <.form for={%{}} phx-submit="save_widget" class="space-y-3">
+              <!-- Widget Type (change updates the modal content) -->
+              <.form for={%{}} phx-change="change_widget_type" class="space-y-3">
                 <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
                 <div>
-                  <label for="widget_title" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Title</label>
-                  <input
-                    type="text"
-                    id="widget_title"
-                    name="widget_title"
-                    value={@editing_widget["title"] || ""}
-                    class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                    placeholder="Widget title"
-                  />
+                  <label for="widget_type" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Widget Type</label>
+                  <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                    <select id="widget_type" name="widget_type"
+                      class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                      <% sel = (@editing_widget["type"] || "kpi") %>
+                      <option value="kpi" selected={sel == "kpi"}>KPI</option>
+                      <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
+                      <option value="category" selected={sel == "category"}>Category</option>
+                    </select>
+                    <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                      <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                    </svg>
+                  </div>
                 </div>
+              </.form>
+
+              <!-- Widget Title and Options -->
+              <.form for={%{}} phx-submit="save_widget" class="space-y-4">
+                <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
+                <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
+                <div>
+                  <label for="widget_title" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Title</label>
+                  <input type="text" id="widget_title" name="widget_title" value={@editing_widget["title"] || ""} class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="Widget title" />
+                </div>
+
+                <%= case (@editing_widget["type"] || "kpi") do %>
+                  <% "kpi" -> %>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div class="sm:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Path</label>
+                        <input type="text" name="kpi_path" value={@editing_widget["path"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. sales.total" />
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Function</label>
+                        <% fnv = @editing_widget["function"] || "mean" %>
+                        <% fnv = if fnv == "avg", do: "mean", else: fnv %>
+                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                          <select name="kpi_function"
+                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                            <option value="max" selected={fnv == "max"}>max</option>
+                            <option value="min" selected={fnv == "min"}>min</option>
+                            <option value="mean" selected={fnv == "mean"}>mean</option>
+                            <option value="sum" selected={fnv == "sum"}>sum</option>
+                          </select>
+                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Size</label>
+                        <% sz = @editing_widget["size"] || "m" %>
+                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                          <select name="kpi_size"
+                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                            <option value="s" selected={sz == "s"}>Small</option>
+                            <option value="m" selected={sz == "m"}>Medium</option>
+                            <option value="l" selected={sz == "l"}>Large</option>
+                          </select>
+                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-4 sm:col-span-2">
+                        <% split = @editing_widget["split"] || false %>
+                        <% ts = @editing_widget["timeseries"] || false %>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input type="checkbox" name="kpi_split" checked={split} /> Split by dimension
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input type="checkbox" name="kpi_timeseries" checked={ts} /> Show timeseries
+                        </label>
+                      </div>
+                    </div>
+
+                  <% "timeseries" -> %>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div class="sm:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Paths (one per line)</label>
+                        <% paths = (@editing_widget["paths"] || []) |> Enum.join("\n") %>
+                        <textarea name="ts_paths" rows="4" class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="metrics.sales\nmetrics.orders"><%= paths %></textarea>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Chart Type</label>
+                        <% ctype = @editing_widget["chart_type"] || "line" %>
+                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                          <select name="ts_chart_type"
+                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                            <option value="line" selected={ctype == "line"}>Line</option>
+                            <option value="area" selected={ctype == "area"}>Area</option>
+                            <option value="bar" selected={ctype == "bar"}>Bar</option>
+                          </select>
+                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-4 sm:col-span-2">
+                        <% stacked = @editing_widget["stacked"] || false %>
+                        <% normalized = @editing_widget["normalized"] || false %>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input type="checkbox" name="ts_stacked" checked={stacked} /> Stacked
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input type="checkbox" name="ts_normalized" checked={normalized} /> Normalized
+                        </label>
+                      </div>
+                    </div>
+
+                  <% "category" -> %>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div class="sm:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Path</label>
+                        <input type="text" name="cat_path" value={@editing_widget["path"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="metrics.category" />
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Chart Type</label>
+                        <% ctype = @editing_widget["chart_type"] || "bar" %>
+                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                          <select name="cat_chart_type"
+                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                            <option value="bar" selected={ctype == "bar"}>Bar</option>
+                            <option value="pie" selected={ctype == "pie"}>Pie</option>
+                            <option value="donut" selected={ctype == "donut"}>Donut</option>
+                          </select>
+                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                <% end %>
+
                 <div class="flex items-center justify-end gap-3 pt-2">
                   <button type="button" phx-click="close_widget_editor" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">Cancel</button>
                   <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">Save</button>
@@ -1146,33 +1313,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
             </div>
           <% end %>
 
-          <%= if @dashboard.payload && map_size(@dashboard.payload) > 0 do %>
-            <!-- Dashboard functionality has been removed -->
-            <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
-              <div class="p-6">
-                <div class="text-center py-12">
-                  <svg class="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                  </svg>
-                  <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Dashboard visualization unavailable</h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                    The dashboard visualization feature has been removed. Please use the Database Explore view for data analysis.
-                  </p>
-                  <div class="mt-4">
-                    <.link
-                      navigate={~p"/app/dbs/#{@database.id}/explore"}
-                      class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
-                    >
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
-                      </svg>
-                      Go to Database Explore →
-                    </.link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          <% else %>
+          <%= if !( @dashboard.payload && map_size(@dashboard.payload) > 0 ) do %>
             <!-- Empty state in white panel -->
             <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
               <div class="p-6">
