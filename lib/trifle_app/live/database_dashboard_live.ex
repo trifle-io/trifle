@@ -526,10 +526,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
     items
   end
 
-  # Build category chart data for category widgets
+  # Build category chart data for category widgets using the formatter
   defp compute_category_widgets(series_struct, grid_items) do
-    values = series_struct.series[:values] || []
-
     items = grid_items
     |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "category" end)
     |> Enum.map(fn item ->
@@ -537,28 +535,25 @@ defmodule TrifleApp.DatabaseDashboardLive do
       path = to_string(item["path"] || "")
       chart_type = String.downcase(to_string(item["chart_type"] || "bar"))
 
-      keys = String.split(path, ".")
-      # Find the most recent non-empty category map from the end (handles empty last buckets)
-      cat_map =
-        values
-        |> Enum.reverse()
-        |> Enum.reduce_while(%{}, fn v, _acc ->
-          case (get_in(v, keys) || get_in(v, Enum.map(keys, &String.to_atom/1))) do
-            m when is_map(m) and map_size(m) > 0 -> {:halt, m}
-            _ -> {:cont, %{}}
-          end
-        end)
+      # Use format_category to aggregate across timeframe. With slices=2 we avoid the single-slice
+      # timeline return and get maps we can merge into a single total category map.
+      formatted = Trifle.Stats.Series.format_category(series_struct, path, 2)
+
+      merged_map =
+        cond do
+          is_list(formatted) ->
+            formatted
+            |> Enum.filter(&is_map/1)
+            |> Enum.reduce(%{}, fn m, acc ->
+              Map.merge(acc, m, fn _k, a, b -> normalize_number(a) + normalize_number(b) end)
+            end)
+          is_map(formatted) -> formatted
+          true -> %{}
+        end
+
       data =
-        cat_map
-        |> Enum.map(fn {k, v} ->
-          name = to_string(k)
-          val = case v do
-            %Decimal{} = d -> Decimal.to_float(d)
-            x when is_number(x) -> x * 1.0
-            _ -> 0.0
-          end
-          %{name: name, value: val}
-        end)
+        merged_map
+        |> Enum.map(fn {k, v} -> %{name: to_string(k), value: normalize_number(v)} end)
         |> Enum.sort_by(& &1.name)
 
       %{
@@ -573,6 +568,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
     end)
     items
   end
+
+  defp normalize_number(%Decimal{} = d), do: Decimal.to_float(d)
+  defp normalize_number(v) when is_number(v), do: v * 1.0
+  defp normalize_number(_), do: 0.0
 
   # Filter bar message handling
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
@@ -896,6 +895,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("reload_data", _params, socket) do
     reload_current_timeframe(socket)
+  end
+
+  def handle_event("navigate_timeframe_backward", _params, socket) do
+    navigate_timeframe(socket, :backward)
+  end
+
+  def handle_event("navigate_timeframe_forward", _params, socket) do
+    navigate_timeframe(socket, :forward)
   end
 
 
@@ -1740,5 +1747,33 @@ defmodule TrifleApp.DatabaseDashboardLive do
     else
       ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
+  end
+
+  defp navigate_timeframe(socket, direction) do
+    from = socket.assigns.from
+    to = socket.assigns.to
+
+    duration_seconds = DateTime.diff(to, from, :second)
+
+    {new_from, new_to} = case direction do
+      :backward ->
+        new_from = DateTime.add(from, -duration_seconds, :second)
+        {new_from, from}
+      :forward ->
+        new_to = DateTime.add(to, duration_seconds, :second)
+        {to, new_to}
+    end
+
+    params = %{
+      "granularity" => socket.assigns.granularity,
+      "from" => TimeframeParsing.format_for_datetime_input(new_from),
+      "to" => TimeframeParsing.format_for_datetime_input(new_to),
+      "timeframe" => "c"
+    }
+
+    {:noreply,
+     socket
+     |> assign(from: new_from, to: new_to, loading: true, smart_timeframe_input: "c")
+     |> push_patch(to: build_dashboard_url(socket, params))}
   end
 end
