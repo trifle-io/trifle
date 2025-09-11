@@ -446,6 +446,22 @@ Hooks.DashboardGrid = {
     this._sparklines = {};
     this._tsCharts = {};
     this._catCharts = {};
+
+    // Global window resize handler to resize all charts
+    this._onWindowResize = () => {
+      try {
+        if (this._sparklines) {
+          Object.values(this._sparklines).forEach(c => c && !c.isDisposed() && c.resize());
+        }
+        if (this._tsCharts) {
+          Object.values(this._tsCharts).forEach(c => c && !c.isDisposed() && c.resize());
+        }
+        if (this._catCharts) {
+          Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
+        }
+      } catch (_) {}
+    };
+    window.addEventListener('resize', this._onWindowResize);
     this._sparkTimers = {};
     const editableAttr = this.el.dataset.editable;
     this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
@@ -818,6 +834,10 @@ Hooks.DashboardGrid = {
     if (this._sparkResize) {
       window.removeEventListener('resize', this._sparkResize);
       this._sparkResize = null;
+    }
+    if (this._onWindowResize) {
+      window.removeEventListener('resize', this._onWindowResize);
+      this._onWindowResize = null;
     }
     if (this._sparklines) {
       Object.values(this._sparklines).forEach((c) => {
