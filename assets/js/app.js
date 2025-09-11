@@ -437,6 +437,16 @@ Hooks.Sortable = {
 // GridStack layout for Dashboards
 Hooks.DashboardGrid = {
   mounted() {
+    // colors palette for sparklines
+    try {
+      this.colors = this.el.dataset.colors ? JSON.parse(this.el.dataset.colors) : [];
+    } catch (_) {
+      this.colors = [];
+    }
+    this._sparklines = {};
+    this._tsCharts = {};
+    this._catCharts = {};
+    this._sparkTimers = {};
     const editableAttr = this.el.dataset.editable;
     this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
     this.cols = parseInt(this.el.dataset.cols || '12', 10);
@@ -488,6 +498,309 @@ Hooks.DashboardGrid = {
         this.saveLayout();
       }
     });
+
+    // Update KPI numeric values inside widgets
+    this.handleEvent('dashboard_grid_kpi_values', ({ items }) => {
+      if (!Array.isArray(items)) return;
+      items.forEach((it) => {
+        const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+        const body = item && item.querySelector('.grid-widget-body');
+        if (!body) return;
+        // KPI display
+        const fmt = (v) => {
+          if (v === null || v === undefined || Number.isNaN(v)) return '—';
+          const n = Number(v);
+          if (!Number.isFinite(n)) return String(v);
+          // Compact formatting
+          if (Math.abs(n) >= 1000) {
+            const units = ['','K','M','B','T'];
+            let u = 0; let num = Math.abs(n);
+            while (num >= 1000 && u < units.length-1) { num /= 1000; u++; }
+            const sign = n < 0 ? '-' : '';
+            return `${sign}${num.toFixed(num < 10 ? 2 : 1)}${units[u]}`;
+          }
+          return n.toFixed(2).replace(/\.00$/, '');
+        };
+        // Ensure persistent containers for top value + sparkline; stack vertically
+        let wrap = body.querySelector('.kpi-wrap');
+        if (!wrap) {
+          body.innerHTML = `<div class="kpi-wrap w-full flex flex-col justify-center"><div class="kpi-top"></div><div class="kpi-spark mt-2" style="height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -36px;"></div></div>`;
+          wrap = body.querySelector('.kpi-wrap');
+        }
+        let top = wrap.querySelector('.kpi-top');
+        if (it.split) {
+          const prevNum = (it.previous == null ? null : Number(it.previous));
+          const currNum = (it.current == null ? null : Number(it.current));
+          const prev = fmt(it.previous);
+          const curr = fmt(it.current);
+          let diffHtml = '';
+          if (it.diff && prevNum != null && currNum != null && isFinite(prevNum) && prevNum !== 0) {
+            const delta = currNum - prevNum;
+            const pct = (delta / Math.abs(prevNum)) * 100;
+            const up = delta >= 0;
+            const pctText = `${Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 2 : 1)}%`;
+            const clrWrap = up ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+            const arrow = up
+              ? '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mr-0.5 -ml-1 size-4 shrink-0 self-center text-green-500"><path d="M10 17a.75.75 0 0 1-.75-.75V5.612L5.29 9.77a.75.75 0 0 1-1.08-1.04l5.25-5.5a.75.75 0 0 1 1.08 0l5.25 5.5a.75.75 0 1 1-1.08 1.04l-3.96-4.158V16.25A.75.75 0 0 1 10 17Z" clip-rule="evenodd" fill-rule="evenodd"/></svg>'
+              : '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mr-0.5 -ml-1 size-4 shrink-0 self-center text-red-500"><path d="M10 3a.75.75 0 0 1 .75.75v10.638l3.96-4.158a.75.75 0 1 1 1.08 1.04l-5.25 5.5a.75.75 0 0 1-1.08 0l-5.25-5.5a.75.75 0 1 1 1.08-1.04l3.96 4.158V3.75A.75.75 0 0 1 10 3Z" clip-rule="evenodd" fill-rule="evenodd"/></svg>';
+            diffHtml = `<div class="inline-flex items-baseline rounded-full px-2.5 py-0.5 text-sm font-medium ${clrWrap}">${arrow}<span class="sr-only"> ${up ? 'Increased' : 'Decreased'} by </span>${pctText}</div>`;
+          }
+          top.innerHTML = `
+            <div class="w-full">
+              <div class="flex items-baseline justify-between w-full">
+                <div class="flex items-baseline text-2xl font-bold text-gray-900 dark:text-white">${curr}<span class="ml-2 text-sm font-medium text-gray-500 dark:text-slate-400">from ${prev}</span></div>
+                ${diffHtml}
+              </div>
+            </div>`;
+        } else {
+          const val = fmt(it.value);
+          top.innerHTML = `<div class="text-3xl font-bold text-gray-900 dark:text-white">${val}</div>`;
+        }
+      });
+    });
+
+    // Draw/update sparkline charts for KPI widgets
+    this.handleEvent('dashboard_grid_kpi_sparkline', ({ items }) => {
+      if (!Array.isArray(items)) return;
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      const color = (this.colors && this.colors[0]) || '#14b8a6';
+      items.forEach((it) => {
+        const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+        const body = item && item.querySelector('.grid-widget-body');
+        if (!body) return;
+        let spark = body.querySelector('.kpi-spark');
+        if (!spark) {
+          spark = document.createElement('div');
+          spark.className = 'kpi-spark mt-2';
+          spark.style.height = '40px';
+          spark.style.width = 'calc(100% + 24px)';
+          spark.style.marginLeft = '-12px';
+          spark.style.marginRight = '-12px';
+          spark.style.marginBottom = '-36px';
+          body.appendChild(spark);
+        }
+        const render = () => {
+          let chart = this._sparklines[it.id];
+          const theme = isDarkMode ? 'dark' : undefined;
+          if (!chart) {
+            // Avoid init when container has zero size
+            if (spark.clientWidth === 0 || spark.clientHeight === 0) {
+              if (this._sparkTimers[it.id]) clearTimeout(this._sparkTimers[it.id]);
+              this._sparkTimers[it.id] = setTimeout(render, 80);
+              return;
+            }
+            chart = echarts.init(spark, theme, { height: 40 });
+            this._sparklines[it.id] = chart;
+          }
+          chart.setOption({
+            backgroundColor: 'transparent',
+            grid: { top: 0, bottom: 0, left: 0, right: 0 },
+            xAxis: { type: 'time', show: false },
+            yAxis: { type: 'value', show: false },
+            tooltip: { show: false },
+            series: [{
+              type: 'line',
+              data: it.data || [],
+              smooth: true,
+              showSymbol: false,
+              lineStyle: { width: 1, color },
+              areaStyle: { color, opacity: 0.08 },
+            }]
+          }, true);
+          chart.resize();
+          if (!this._sparkResize) {
+            this._sparkResize = () => {
+              Object.values(this._sparklines).forEach(c => c && !c.isDisposed() && c.resize());
+            };
+            window.addEventListener('resize', this._sparkResize);
+          }
+        };
+        // Defer one frame to allow DOM layout
+        setTimeout(render, 0);
+      });
+    });
+
+    // Draw/update per-widget timeseries charts
+    this.handleEvent('dashboard_grid_timeseries', ({ items }) => {
+      try { console.debug('dashboard_grid_timeseries', items && items.slice ? items.slice(0,2) : items); } catch (_) {}
+      if (!Array.isArray(items)) return;
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      const colors = this.colors || [];
+      items.forEach((it) => {
+        const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+        const body = item && item.querySelector('.grid-widget-body');
+        if (!body) return;
+
+        // Prepare container
+        let container = body.querySelector('.ts-chart');
+        if (!container) {
+          // Clear placeholder
+          body.innerHTML = '';
+          body.classList.remove('items-center','justify-center','text-sm','text-gray-500','dark:text-slate-400');
+          container = document.createElement('div');
+          container.className = 'ts-chart';
+          container.style.width = '100%';
+          container.style.height = '100%';
+          body.appendChild(container);
+        }
+
+        // Init or reuse chart
+        let chart = this._tsCharts[it.id];
+        const theme = isDarkMode ? 'dark' : undefined;
+        const ensureInit = () => {
+          if (!chart) {
+            if (container.clientWidth === 0 || container.clientHeight === 0) {
+              try { console.debug('ts chart delayed (zero size)', it.id); } catch (_) {}
+              setTimeout(ensureInit, 80);
+              return;
+            }
+            chart = echarts.init(container, theme);
+            this._tsCharts[it.id] = chart;
+          }
+
+          // Build series options
+          const type = (it.chart_type || 'line');
+          const stacked = !!it.stacked;
+          const normalized = !!it.normalized;
+          const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
+          const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+          const series = (it.series || []).map((s, idx) => {
+            const base = {
+              name: s.name || `Series ${idx+1}`,
+              type: (type === 'area') ? 'line' : type,
+              data: s.data || [],
+              showSymbol: false,
+            };
+            if (stacked) base.stack = 'total';
+            if (type === 'area') base.areaStyle = { opacity: 0.1 };
+            if (colors.length) base.itemStyle = { color: colors[idx % colors.length] };
+            return base;
+          });
+
+          // Axis formatting
+          const yAxis = {
+            type: 'value',
+            min: 0,
+            name: normalized ? 'Percentage' : 'Value',
+            nameLocation: 'middle',
+            nameGap: 40,
+            nameTextStyle: { color: textColor },
+            axisLine: { lineStyle: { color: axisLineColor } },
+            axisLabel: { color: textColor },
+          };
+          if (normalized) {
+            yAxis.max = 100;
+            yAxis.axisLabel = { formatter: (v) => `${v}%` };
+          }
+
+          chart.setOption({
+            backgroundColor: 'transparent',
+            grid: { top: 12, bottom: 28, left: 48, right: 16 },
+            xAxis: {
+              type: 'time',
+              name: 'Time',
+              nameLocation: 'middle',
+              nameGap: 22,
+              nameTextStyle: { color: textColor },
+              axisLine: { lineStyle: { color: axisLineColor } },
+              axisLabel: { color: textColor },
+            },
+            yAxis,
+            tooltip: {
+              trigger: 'axis',
+              confine: true,
+              valueFormatter: (v) => v == null ? '-' : (normalized ? `${Number(v).toFixed(2)}%` : `${v}`),
+            },
+            series,
+          }, true);
+          chart.resize();
+        };
+        setTimeout(ensureInit, 0);
+      });
+    });
+
+    // Draw/update per-widget category charts
+    this.handleEvent('dashboard_grid_category', ({ items }) => {
+      try { console.debug('dashboard_grid_category', items && items.slice ? items.slice(0,2) : items); } catch (_) {}
+      if (!Array.isArray(items)) return;
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      const colors = this.colors || [];
+      items.forEach((it) => {
+        const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+        const body = item && item.querySelector('.grid-widget-body');
+        if (!body) return;
+
+        // Prepare container
+        let container = body.querySelector('.cat-chart');
+        if (!container) {
+          body.innerHTML = '';
+          body.classList.remove('items-center','justify-center','text-sm','text-gray-500','dark:text-slate-400');
+          container = document.createElement('div');
+          container.className = 'cat-chart';
+          container.style.width = '100%';
+          container.style.height = '100%';
+          body.appendChild(container);
+        }
+
+        // Init or reuse chart
+        let chart = this._catCharts[it.id];
+        const theme = isDarkMode ? 'dark' : undefined;
+        const ensureInit = () => {
+          if (!chart) {
+            if (container.clientWidth === 0 || container.clientHeight === 0) {
+              setTimeout(ensureInit, 80);
+              return;
+            }
+            chart = echarts.init(container, theme);
+            this._catCharts[it.id] = chart;
+          }
+
+          const data = it.data || [];
+          const type = (it.chart_type || 'bar');
+          let option;
+          if (type === 'pie' || type === 'donut') {
+            option = {
+              backgroundColor: 'transparent',
+              tooltip: { trigger: 'item' },
+              // Use the same palette as other charts
+              color: (colors && colors.length ? colors : undefined),
+              series: [{
+                type: 'pie',
+                radius: (type === 'donut') ? ['50%','70%'] : '70%',
+                avoidLabelOverlap: true,
+                data,
+                // Ensure each slice uses a palette color by index
+                itemStyle: {
+                  color: (params) => (colors && colors.length)
+                    ? colors[params.dataIndex % colors.length]
+                    : params.color
+                }
+              }]
+            };
+          } else {
+            // bar chart
+            option = {
+              backgroundColor: 'transparent',
+              grid: { top: 12, bottom: 28, left: 48, right: 16 },
+              xAxis: {
+                type: 'category',
+                data: data.map(d => d.name),
+              },
+              yAxis: { type: 'value', min: 0 },
+              tooltip: { trigger: 'axis' },
+              series: [{
+                type: 'bar',
+                data: data.map(d => d.value),
+                itemStyle: { color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6' }
+              }]
+            };
+          }
+          chart.setOption(option, true);
+          chart.resize();
+        };
+        setTimeout(ensureInit, 0);
+      });
+    });
   },
 
   destroyed() {
@@ -501,6 +814,28 @@ Hooks.DashboardGrid = {
     if (this._gridClick) {
       this.el.removeEventListener('click', this._gridClick, true);
       this._gridClick = null;
+    }
+    if (this._sparkResize) {
+      window.removeEventListener('resize', this._sparkResize);
+      this._sparkResize = null;
+    }
+    if (this._sparklines) {
+      Object.values(this._sparklines).forEach((c) => {
+        if (c && !c.isDisposed()) c.dispose();
+      });
+      this._sparklines = {};
+    }
+    if (this._tsCharts) {
+      Object.values(this._tsCharts).forEach((c) => {
+        if (c && !c.isDisposed()) c.dispose();
+      });
+      this._tsCharts = {};
+    }
+    if (this._catCharts) {
+      Object.values(this._catCharts).forEach((c) => {
+        if (c && !c.isDisposed()) c.dispose();
+      });
+      this._catCharts = {};
     }
   },
 
@@ -525,9 +860,20 @@ Hooks.DashboardGrid = {
     }
 
     const save = () => this.saveLayout();
-    this.grid.on('change', save);
-    this.grid.on('added', save);
-    this.grid.on('removed', save);
+    const resizeCharts = () => {
+      if (this._sparklines) {
+        Object.values(this._sparklines).forEach(c => c && !c.isDisposed() && c.resize());
+      }
+      if (this._tsCharts) {
+        Object.values(this._tsCharts).forEach(c => c && !c.isDisposed() && c.resize());
+      }
+      if (this._catCharts) {
+        Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
+      }
+    };
+    this.grid.on('change', () => { save(); resizeCharts(); });
+    this.grid.on('added', () => { save(); resizeCharts(); });
+    this.grid.on('removed', () => { save(); resizeCharts(); });
 
     // No direct button binding needed; delegated handler set in mounted
   },

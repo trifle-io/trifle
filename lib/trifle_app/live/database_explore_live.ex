@@ -843,12 +843,12 @@ defmodule TrifleApp.DatabaseExploreLive do
         # When specific key is selected:
         # - Use system stats for keys summary AND chart (events count)
         # - Use key stats only for table data
-        keys_sum = reduce_stats(system_stats[:values] || [])
+        keys_sum = reduce_stats(system_stats.series[:values] || [])
         # Chart always shows events from system data, for the specific key
-        timeline = series_from(system_stats, ["keys", socket.assigns.key])
+        timeline = series_from(system_stats.series, ["keys", socket.assigns.key])
         timeline_data = Jason.encode!(timeline["keys.#{socket.assigns.key}"])
         selected_key_color = get_key_color(keys_sum, socket.assigns.key)
-        table_stats = Trifle.Stats.Tabler.tabulize(key_stats)
+        table_stats = Trifle.Stats.Tabler.tabulize(key_stats.series)
         
         {:noreply,
          socket
@@ -866,10 +866,10 @@ defmodule TrifleApp.DatabaseExploreLive do
          
       %{system: system_stats} ->
         # When no specific key is selected, use system stats for everything
-        keys_sum = reduce_stats(system_stats[:values] || [])
-        timeline = series_from_all_keys(system_stats, keys_sum)
+        keys_sum = reduce_stats(system_stats.series[:values] || [])
+        timeline = series_from_all_keys(system_stats.series, keys_sum)
         timeline_data = Jason.encode!(timeline)
-        table_stats = Trifle.Stats.Tabler.tabulize(system_stats)
+        table_stats = Trifle.Stats.Tabler.tabulize(system_stats.series)
         
         {:noreply,
          socket

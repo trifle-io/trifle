@@ -4,7 +4,9 @@ defmodule TrifleApp.DatabaseDashboardLive do
   alias Trifle.Organizations.Database
   alias Trifle.Stats.SeriesFetcher
   alias TrifleApp.TimeframeParsing
+  alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
+  require Logger
 
   def mount(params, _session, socket) do
     case params do
@@ -233,7 +235,25 @@ defmodule TrifleApp.DatabaseDashboardLive do
         end)
         payload = Map.put(dashboard.payload || %{}, "grid", merged)
         case Organizations.update_dashboard(dashboard, %{payload: payload}) do
-          {:ok, updated_dashboard} -> {:noreply, assign(socket, :dashboard, updated_dashboard)}
+          {:ok, updated_dashboard} ->
+            # If stats are loaded, recompute KPI values (in case new widgets were added)
+            socket = assign(socket, :dashboard, updated_dashboard)
+            socket =
+              if socket.assigns[:stats] do
+                items = updated_dashboard.payload["grid"] || []
+                kpi_items = compute_kpi_values(socket.assigns.stats, items)
+                kpi_lines = compute_kpi_sparklines(socket.assigns.stats, items)
+                ts_items = compute_timeseries_widgets(socket.assigns.stats, items)
+                cat_items = compute_category_widgets(socket.assigns.stats, items)
+                socket
+                |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
+                |> push_event("dashboard_grid_kpi_sparkline", %{items: kpi_lines})
+                |> push_event("dashboard_grid_timeseries", %{items: ts_items})
+                |> push_event("dashboard_grid_category", %{items: cat_items})
+              else
+                socket
+              end
+            {:noreply, socket}
           {:error, _} -> {:noreply, socket}
         end
     end
@@ -285,6 +305,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 |> Map.put("path", Map.get(params, "kpi_path", ""))
                 |> Map.put("function", Map.get(params, "kpi_function", "mean"))
                 |> Map.put("split", Map.has_key?(params, "kpi_split"))
+                |> Map.put("diff", Map.has_key?(params, "kpi_diff"))
                 |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
                 |> Map.put("size", Map.get(params, "kpi_size", "m"))
               "timeseries" ->
@@ -313,10 +334,25 @@ defmodule TrifleApp.DatabaseDashboardLive do
         payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
         case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
           {:ok, dashboard} ->
+            # After saving, recompute KPI values if stats already loaded
+            socket = socket |> assign(:dashboard, dashboard) |> assign(:editing_widget, nil)
+            socket =
+              if socket.assigns[:stats] do
+                items = dashboard.payload["grid"] || []
+                kpi_items = compute_kpi_values(socket.assigns.stats, items)
+                kpi_lines = compute_kpi_sparklines(socket.assigns.stats, items)
+                ts_items = compute_timeseries_widgets(socket.assigns.stats, items)
+                cat_items = compute_category_widgets(socket.assigns.stats, items)
+                socket
+                |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
+                |> push_event("dashboard_grid_kpi_sparkline", %{items: kpi_lines})
+                |> push_event("dashboard_grid_timeseries", %{items: ts_items})
+                |> push_event("dashboard_grid_category", %{items: cat_items})
+              else
+                socket
+              end
             {:noreply,
              socket
-             |> assign(:dashboard, dashboard)
-             |> assign(:editing_widget, nil)
              |> push_event("dashboard_grid_widget_updated", %{id: id, title: title})}
           {:error, _} -> {:noreply, socket}
         end
@@ -348,6 +384,194 @@ defmodule TrifleApp.DatabaseDashboardLive do
             {:noreply, socket}
         end
     end
+  end
+
+  # Compute KPI values for KPI widgets from current series
+  defp compute_kpi_values(series_struct, grid_items) do
+    grid_items
+    |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "kpi")) == "kpi" end)
+    |> Enum.map(fn item ->
+      id = to_string(item["id"]) 
+      path = to_string(item["path"] || "")
+      func = String.downcase(to_string(item["function"] || "mean"))
+      split = !!item["split"]
+      diff = !!item["diff"]
+      slices = if split, do: 2, else: 1
+      list = aggregate_for_function(series_struct, path, func, slices) |> List.wrap()
+      if split do
+        len = length(list)
+        prev = if len >= 2, do: Enum.at(list, len - 2), else: nil
+        curr = if len >= 1, do: Enum.at(list, len - 1), else: nil
+        %{id: id, split: true, diff: diff, previous: to_number(prev), current: to_number(curr)}
+      else
+        value = list |> List.first()
+        %{id: id, split: false, value: to_number(value)}
+      end
+    end)
+  end
+
+  defp aggregate_for_function(series_struct, path, func, slices) do
+    case func do
+      "sum" -> Trifle.Stats.Series.aggregate_sum(series_struct, path, slices)
+      "min" -> Trifle.Stats.Series.aggregate_min(series_struct, path, slices)
+      "max" -> Trifle.Stats.Series.aggregate_max(series_struct, path, slices)
+      _ -> Trifle.Stats.Series.aggregate_mean(series_struct, path, slices)
+    end
+  end
+
+  defp to_number(%Decimal{} = d), do: Decimal.to_float(d)
+  defp to_number(v) when is_number(v), do: v * 1.0
+  defp to_number(_), do: nil
+
+  # Build sparkline points for KPI widgets that have timeseries enabled
+  defp compute_kpi_sparklines(series_struct, grid_items) do
+    grid_items
+    |> Enum.filter(fn item ->
+      String.downcase(to_string(item["type"] || "kpi")) == "kpi" and (item["timeseries"] || false)
+    end)
+    |> Enum.map(fn item ->
+      id = to_string(item["id"]) 
+      path = to_string(item["path"] || "")
+      points = Trifle.Stats.Series.format_timeline(series_struct, path, 1, fn at, value ->
+        # Convert to ms timestamp for ECharts
+        # Keep local wall time representation by reinterpreting naive as UTC (aligns with Explore)
+        naive = DateTime.to_naive(at)
+        utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
+        ts = DateTime.to_unix(utc_dt, :millisecond)
+        val = cond do
+          match?(%Decimal{}, value) -> Decimal.to_float(value)
+          is_number(value) -> value * 1.0
+          true -> 0.0
+        end
+        [ts, val]
+      end)
+      %{id: id, data: points}
+    end)
+  end
+
+  # Build timeseries chart data for timeseries widgets
+  defp compute_timeseries_widgets(series_struct, grid_items) do
+    items = grid_items
+    |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "timeseries" end)
+    |> Enum.map(fn item ->
+      id = to_string(item["id"]) 
+      paths = (item["paths"] || []) |> Enum.map(&to_string/1)
+      chart_type = String.downcase(to_string(item["chart_type"] || "line"))
+      stacked = !!item["stacked"]
+      normalized = !!item["normalized"]
+
+      # Use formatter to align timeline and values per path
+      per_path = Enum.map(paths, fn path ->
+        data = Trifle.Stats.Series.format_timeline(series_struct, path, 1, fn at, value ->
+          naive = DateTime.to_naive(at)
+          utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
+          ts = DateTime.to_unix(utc_dt, :millisecond)
+          val = case value do
+            %Decimal{} = d -> Decimal.to_float(d)
+            v when is_number(v) -> v * 1.0
+            _ -> 0.0
+          end
+          [ts, val]
+        end) || []
+        %{name: path, data: data}
+      end)
+
+      series =
+        if normalized and length(per_path) > 0 do
+          # Build normalized percentages across series
+          Enum.map(per_path, fn s ->
+            values = s.data
+            normed =
+              Enum.with_index(values)
+              |> Enum.map(fn {point, idx} ->
+                {ts, v} =
+                  case point do
+                    [ts0, v0] -> {ts0, v0}
+                    {ts0, v0} -> {ts0, v0}
+                    _ -> {nil, 0.0}
+                  end
+
+                total = Enum.reduce(per_path, 0.0, fn other, acc ->
+                  ov = case Enum.at(other.data, idx) do
+                    [_, ovv] -> ovv
+                    {_, ovv} -> ovv
+                    _ -> 0.0
+                  end
+                  acc + (ov || 0.0)
+                end)
+
+                pct = if total > 0.0 and is_number(v), do: (v / total) * 100.0, else: 0.0
+                [ts, pct]
+              end)
+            %{s | data: normed}
+          end)
+        else
+          per_path
+        end
+
+      %{
+        id: id,
+        chart_type: chart_type,
+        stacked: stacked,
+        normalized: normalized,
+        series: series
+      }
+    end)
+    Logger.debug(fn ->
+      summary = Enum.map(items, fn i ->
+        %{id: i.id, series: Enum.map(i.series, fn s -> %{name: s.name, points: length(s.data)} end)}
+      end)
+      "Timeseries widgets: " <> inspect(summary)
+    end)
+    items
+  end
+
+  # Build category chart data for category widgets
+  defp compute_category_widgets(series_struct, grid_items) do
+    values = series_struct.series[:values] || []
+
+    items = grid_items
+    |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "category" end)
+    |> Enum.map(fn item ->
+      id = to_string(item["id"]) 
+      path = to_string(item["path"] || "")
+      chart_type = String.downcase(to_string(item["chart_type"] || "bar"))
+
+      keys = String.split(path, ".")
+      # Find the most recent non-empty category map from the end (handles empty last buckets)
+      cat_map =
+        values
+        |> Enum.reverse()
+        |> Enum.reduce_while(%{}, fn v, _acc ->
+          case (get_in(v, keys) || get_in(v, Enum.map(keys, &String.to_atom/1))) do
+            m when is_map(m) and map_size(m) > 0 -> {:halt, m}
+            _ -> {:cont, %{}}
+          end
+        end)
+      data =
+        cat_map
+        |> Enum.map(fn {k, v} ->
+          name = to_string(k)
+          val = case v do
+            %Decimal{} = d -> Decimal.to_float(d)
+            x when is_number(x) -> x * 1.0
+            _ -> 0.0
+          end
+          %{name: name, value: val}
+        end)
+        |> Enum.sort_by(& &1.name)
+
+      %{
+        id: id,
+        chart_type: chart_type,
+        data: data
+      }
+    end)
+    Logger.debug(fn ->
+      summary = Enum.map(items, fn i -> %{id: i.id, entries: length(i.data)} end)
+      "Category widgets: " <> inspect(summary)
+    end)
+    items
   end
 
   # Filter bar message handling
@@ -555,6 +779,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
 
     # SeriesFetcher now returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
+    # Compute KPI values for existing widgets, if any
+    grid_items = socket.assigns.dashboard.payload["grid"] || []
+    kpi_items = compute_kpi_values(result.series, grid_items)
+    kpi_lines = compute_kpi_sparklines(result.series, grid_items)
+    ts_items = compute_timeseries_widgets(result.series, grid_items)
+    cat_items = compute_category_widgets(result.series, grid_items)
+
     {:noreply,
      socket
      |> assign(loading: false)
@@ -563,7 +794,11 @@ defmodule TrifleApp.DatabaseDashboardLive do
      |> assign(transponding: false)
      |> assign(stats: result.series)
      |> assign(transponder_results: result.transponder_results)
-     |> assign(load_duration_microseconds: load_duration)}
+     |> assign(load_duration_microseconds: load_duration)
+     |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
+     |> push_event("dashboard_grid_kpi_sparkline", %{items: kpi_lines})
+     |> push_event("dashboard_grid_timeseries", %{items: ts_items})
+     |> push_event("dashboard_grid_category", %{items: cat_items})}
   end
 
   def handle_async(:dashboard_data_task, {:error, error}, socket) do
@@ -601,10 +836,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
     case assigns do
       %{dashboard: %{key: key}, stats: stats, transponder_info: transponder_info, transponder_results: transponder_results} when not is_nil(key) and key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
-        column_count = if stats[:at], do: length(stats[:at]), else: 0
+        column_count = if stats.series[:at], do: length(stats.series[:at]), else: 0
 
         # Count paths (rows)
-        path_count = if stats[:paths], do: length(stats[:paths]), else: 0
+        path_count = if stats.series[:paths], do: length(stats.series[:paths]), else: 0
 
         # Use actual transponder results from SeriesFetcher
         successful_transponders = length(transponder_results.successful)
@@ -962,6 +1197,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
              data-cols="12"
              data-min-rows="8"
              data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
+             data-colors={ChartColors.json_palette()}
              data-initial-grid={Jason.encode!(@dashboard.payload["grid"] || [])}>
         </div>
       </div>
@@ -1189,11 +1425,19 @@ defmodule TrifleApp.DatabaseDashboardLive do
                         <% split = @editing_widget["split"] || false %>
                         <% ts = @editing_widget["timeseries"] || false %>
                         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                          <input type="checkbox" name="kpi_split" checked={split} /> Split by dimension
+                          <input type="checkbox" name="kpi_split" checked={split} /> Split timeframe by half
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input type="checkbox" name="kpi_diff" checked={@editing_widget["diff"] || false} /> Difference between splits
                         </label>
                         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
                           <input type="checkbox" name="kpi_timeseries" checked={ts} /> Show timeseries
                         </label>
+                      </div>
+                      <div class="sm:col-span-2 -mt-2">
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Shows percent change between halves: (Now − Prev) / |Prev| × 100. Hidden when Prev is missing or zero.
+                        </p>
                       </div>
                     </div>
 
@@ -1447,10 +1691,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
           <div class="mt-4 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 px-4 py-3">
             <details class="text-sm">
               <summary class="cursor-pointer text-gray-700 dark:text-slate-300 font-medium hover:text-gray-900 dark:hover:text-white">
-                Debug: Series Data (<%= if @stats[:paths], do: length(@stats[:paths]), else: 0 %> paths, <%= if @stats[:at], do: length(@stats[:at]), else: 0 %> points)
+                Debug: Series Data (<%= if @stats.series[:paths], do: length(@stats.series[:paths]), else: 0 %> paths, <%= if @stats.series[:at], do: length(@stats.series[:at]), else: 0 %> points)
               </summary>
               <div class="mt-3 bg-white dark:bg-slate-800 rounded-lg p-3 border border-gray-200 dark:border-slate-700">
-                <pre class="text-xs text-gray-600 dark:text-slate-400 overflow-x-auto max-h-64 overflow-y-auto"><%= Jason.encode!(@stats, pretty: true) %></pre>
+                <pre class="text-xs text-gray-600 dark:text-slate-400 overflow-x-auto max-h-64 overflow-y-auto"><%= Jason.encode!(@stats.series, pretty: true) %></pre>
               </div>
             </details>
           </div>

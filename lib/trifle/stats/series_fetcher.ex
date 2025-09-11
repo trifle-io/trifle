@@ -158,7 +158,7 @@ defmodule Trifle.Stats.SeriesFetcher do
   defp apply_transponders_to_stats(raw_stats, transponders, progress_callback \\ nil) do
     if Enum.empty?(transponders) do
       {:ok, %{
-        series: raw_stats,
+        series: Trifle.Stats.Series.new(raw_stats),
         transponder_results: %{
           successful: [],
           failed: [],
@@ -194,7 +194,7 @@ defmodule Trifle.Stats.SeriesFetcher do
           end)
           
           {:ok, %{
-            series: final_series.series,
+            series: final_series,
             transponder_results: %{
               successful: Enum.reverse(results.successful),
               failed: Enum.reverse(results.failed),
@@ -205,13 +205,13 @@ defmodule Trifle.Stats.SeriesFetcher do
           e -> {:error, {:transponder_exception, e}}
         end
       end)
-      
+
       case Task.await(task, @transponder_timeout) do
         {:ok, result} -> {:ok, result}
         {:error, error} -> 
           Logger.error("Transponder application failed: #{inspect(error)}")
           {:ok, %{
-            series: raw_stats,
+            series: Trifle.Stats.Series.new(raw_stats),
             transponder_results: %{
               successful: [],
               failed: transponders,
