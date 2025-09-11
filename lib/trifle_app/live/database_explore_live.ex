@@ -668,7 +668,8 @@ defmodule TrifleApp.DatabaseExploreLive do
     require Logger
     Logger.info("DatabaseExploreLive.handle_params called with: #{inspect(params)}")
     
-    granularity = params["granularity"] || "1h"
+    db_default_gran = socket.assigns.database.default_granularity
+    granularity = params["granularity"] || db_default_gran || "1h"
     config = Database.stats_config(socket.assigns.database)
 
     # Determine from and to times based on URL parameters
@@ -696,15 +697,25 @@ defmodule TrifleApp.DatabaseExploreLive do
                   case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
                     {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
                     {:error, _} ->
+                      tf = socket.assigns.database.default_timeframe || "24h"
+                      case TimeframeParsing.parse_smart_timeframe(tf, config) do
+                        {:ok, f, t, si, uf} -> {f, t, si, uf}
+                        {:error, _} ->
+                          default_to = DateTime.utc_now()
+                          default_from = DateTime.shift(default_to, hour: -24)
+                          {default_from, default_to, "24h", false}
+                      end
+                  end
+
+                true ->
+                  tf = socket.assigns.database.default_timeframe || "24h"
+                  case TimeframeParsing.parse_smart_timeframe(tf, config) do
+                    {:ok, f, t, si, uf} -> {f, t, si, uf}
+                    {:error, _} ->
                       default_to = DateTime.utc_now()
                       default_from = DateTime.shift(default_to, hour: -24)
                       {default_from, default_to, "24h", false}
                   end
-
-                true ->
-                  default_to = DateTime.utc_now()
-                  default_from = DateTime.shift(default_to, hour: -24)
-                  {default_from, default_to, "24h", false}
               end
           end
 
@@ -721,9 +732,14 @@ defmodule TrifleApp.DatabaseExploreLive do
 
         # Default case: use 24-hour range from now
         true ->
-          default_to = DateTime.utc_now()
-          default_from = DateTime.shift(default_to, hour: -24)
-          {default_from, default_to, "24h", false}
+          tf = socket.assigns.database.default_timeframe || "24h"
+          case TimeframeParsing.parse_smart_timeframe(tf, config) do
+            {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
+            {:error, _} ->
+              default_to = DateTime.utc_now()
+              default_from = DateTime.shift(default_to, hour: -24)
+              {default_from, default_to, "24h", false}
+          end
       end
 
     # Preserve the current key search filter if it exists, otherwise use empty string

@@ -11,6 +11,8 @@ defmodule Trifle.Organizations.Dashboard do
     field :access_token, :string  # For public URL access, nullable
     field :payload, :map, default: %{}
     field :key, :string
+    field :default_timeframe, :string
+    field :default_granularity, :string
 
     belongs_to :database, Trifle.Organizations.Database
     belongs_to :user, Trifle.Accounts.User
@@ -30,7 +32,7 @@ defmodule Trifle.Organizations.Dashboard do
       end
     
     dashboard
-    |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key])
+    |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key, :default_timeframe, :default_granularity])
     |> validate_required([:database_id, :user_id, :name, :key])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)

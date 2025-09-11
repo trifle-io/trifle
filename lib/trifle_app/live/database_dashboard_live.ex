@@ -671,8 +671,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
     # Parse URL parameters for filters
     config = socket.assigns.database_config
 
+    defaults = %{
+      default_timeframe: socket.assigns.dashboard.default_timeframe || socket.assigns.database.default_timeframe,
+      default_granularity: socket.assigns.dashboard.default_granularity || socket.assigns.database.default_granularity
+    }
+
     {from, to, granularity, smart_timeframe_input, use_fixed_display} =
-      UrlParsing.parse_url_params(params, config, socket.assigns.available_granularities)
+      UrlParsing.parse_url_params(params, config, socket.assigns.available_granularities, defaults)
 
     socket
     |> assign(:from, from)
@@ -686,10 +691,14 @@ defmodule TrifleApp.DatabaseDashboardLive do
     config = Database.stats_config(database)
     granularities = get_available_granularities(database)
 
-    # Default to 24h timeframe
-    case TimeframeParsing.parse_smart_timeframe("24h", config) do
+    # Use database defaults if present
+    default_tf = database.default_timeframe || "24h"
+    default_gran = database.default_granularity || "1h"
+
+    case TimeframeParsing.parse_smart_timeframe(default_tf, config) do
       {:ok, from, to, smart_input, use_fixed} ->
-        {from, to, "1h", smart_input, use_fixed}
+        gran = if Enum.member?(granularities, default_gran), do: default_gran, else: Enum.at(granularities, 3, "1h")
+        {from, to, gran, smart_input, use_fixed}
       {:error, _} ->
         # Fallback
         now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
@@ -895,6 +904,20 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def handle_event("reload_data", _params, socket) do
     reload_current_timeframe(socket)
+  end
+
+  def handle_event("save_defaults", %{"timeframe" => tf, "granularity" => gran}, socket) do
+    dashboard = socket.assigns.dashboard
+    attrs = %{
+      default_timeframe: String.trim(to_string(tf || "")),
+      default_granularity: String.trim(to_string(gran || ""))
+    }
+    case Trifle.Organizations.update_dashboard(dashboard, attrs) do
+      {:ok, updated} ->
+        {:noreply, socket |> assign(:dashboard, updated) |> put_flash(:info, "Defaults saved")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to save defaults")}
+    end
   end
 
   def handle_event("navigate_timeframe_backward", _params, socket) do
@@ -1213,10 +1236,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
       <%= if !@is_public_access && @live_action == :configure do %>
         <.app_modal id="configure-modal" show={true} on_cancel={JS.patch(~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}")}>
           <:title>Configure Dashboard</:title>
-          <:body>
-            <div class="space-y-6">
-              <!-- Dashboard Name -->
-              <div>
+      <:body>
+        <div class="space-y-6">
+          <!-- Dashboard Name -->
+          <div>
                 <label for="configure_name" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dashboard Name</label>
                 <div class="flex gap-2">
                   <input
@@ -1239,8 +1262,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 </div>
               </div>
 
-              <!-- Visibility Toggle -->
-              <div class="flex items-center justify-between">
+          <!-- Visibility Toggle -->
+          <div class="flex items-center justify-between">
                 <div>
                   <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Visibility</span>
                   <p class="text-xs text-gray-500 dark:text-slate-400">Make this dashboard visible to everyone in the organization</p>
@@ -1327,6 +1350,39 @@ defmodule TrifleApp.DatabaseDashboardLive do
                     Generate Public Link
                   </button>
                 <% end %>
+              </div>
+
+              <!-- Defaults -->
+              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                <div class="mb-4">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Defaults</h3>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                    These values are used as the initial timeframe and granularity when opening this dashboard.
+                    Timeframe accepts smart inputs like 24h, 2d, 1w, 1mo. You can override database defaults here.
+                  </p>
+                </div>
+                <.form for={%{}} phx-submit="save_defaults" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Timeframe</label>
+                    <input type="text" name="timeframe" value={@dashboard.default_timeframe || @database.default_timeframe || "24h"} class="mt-2 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. 24h, 2d, 1w, 1mo, 1y" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Granularity</label>
+                    <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                      <select name="granularity" class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                        <%= for g <- @available_granularities do %>
+                          <option value={g} selected={g == (@dashboard.default_granularity || @database.default_granularity || "1h") }><%= g %></option>
+                        <% end %>
+                      </select>
+                      <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                        <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="sm:col-span-2 flex justify-end">
+                    <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500">Save Defaults</button>
+                  </div>
+                </.form>
               </div>
 
               <!-- Danger Zone -->
@@ -1690,6 +1746,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
               <% end %>
             </div>
           </div>
+
         <% end %>
         <% end %>
 
