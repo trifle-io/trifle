@@ -30,6 +30,8 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
   slot :button, required: true do
     attr :"phx-click", :string
     attr :phx_click, :string
+    attr :"phx-target", :any
+    attr :phx_target, :any
     attr :phx_value_option, :string
     attr :phx_value_granularity, :string
     attr :title, :string
@@ -73,6 +75,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
     
     base_attrs
     |> add_attr_if_present("phx-click", button[:"phx-click"] || button[:phx_click])
+    |> add_attr_if_present("phx-target", button[:"phx-target"] || button[:phx_target])
     |> add_attr_if_present("phx-value-option", button[:phx_value_option])
     |> add_attr_if_present("phx-value-granularity", button[:phx_value_granularity])
     |> add_attr_if_present("disabled", button[:disabled])

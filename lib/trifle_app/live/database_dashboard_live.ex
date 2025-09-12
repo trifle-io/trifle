@@ -789,12 +789,18 @@ defmodule TrifleApp.DatabaseDashboardLive do
   end
 
   defp build_url_params(socket) do
-    %{
-      "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
-      "to" => TimeframeParsing.format_for_datetime_input(socket.assigns.to),
+    base = %{
       "granularity" => socket.assigns.granularity,
       "timeframe" => socket.assigns.smart_timeframe_input || "24h"
     }
+    if socket.assigns.use_fixed_display do
+      Map.merge(base, %{
+        "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
+        "to" => TimeframeParsing.format_for_datetime_input(socket.assigns.to)
+      })
+    else
+      base
+    end
   end
 
   def handle_async(:dashboard_data_task, {:ok, result}, socket) do
@@ -918,6 +924,27 @@ defmodule TrifleApp.DatabaseDashboardLive do
   end
 
   def handle_event("reload_data", _params, socket) do
+    reload_current_timeframe(socket)
+  end
+
+  # Toggle Play/Pause from parent LiveView (in case event bubbles up)
+  def handle_event("toggle_play_pause", _params, socket) do
+    socket =
+      if socket.assigns.use_fixed_display do
+        # Switch to Play: recompute from/to from current smart timeframe, and mark as live (not fixed)
+        tf = socket.assigns.smart_timeframe_input || "24h"
+        config = socket.assigns.database_config
+        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+          {:ok, from, to, smart, _use_fixed} ->
+            assign(socket, from: from, to: to, smart_timeframe_input: smart, use_fixed_display: false)
+          {:error, _} ->
+            assign(socket, use_fixed_display: false)
+        end
+      else
+        # Switch to Pause: keep current from/to and mark fixed
+        assign(socket, use_fixed_display: true)
+      end
+
     reload_current_timeframe(socket)
   end
 
@@ -1781,19 +1808,25 @@ defmodule TrifleApp.DatabaseDashboardLive do
   defp reload_current_timeframe(socket) do
     granularity = socket.assigns.granularity
 
-    socket =
-      socket
-      |> assign(loading: true)
-      |> push_patch(
-        to: build_dashboard_url(socket, %{
+    params =
+      if socket.assigns.use_fixed_display do
+        %{
           "granularity" => granularity,
           "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
           "to" => TimeframeParsing.format_for_datetime_input(socket.assigns.to),
           "timeframe" => socket.assigns.smart_timeframe_input || "24h"
-        })
-      )
+        }
+      else
+        %{
+          "granularity" => granularity,
+          "timeframe" => socket.assigns.smart_timeframe_input || "24h"
+        }
+      end
 
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(loading: true)
+     |> push_patch(to: build_dashboard_url(socket, params))}
   end
 
   defp build_dashboard_url(socket, params) do

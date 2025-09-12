@@ -95,6 +95,19 @@ defmodule TrifleApp.Components.FilterBar do
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
               </:button>
+              <:button phx-target={@myself} phx-click="toggle_play_pause" selected={!@use_fixed_display} data-tooltip={if @use_fixed_display, do: "Play (auto-update)", else: "Pause (freeze range)"}>
+                <%= if @use_fixed_display do %>
+                  <!-- Currently Paused: show Play icon, normal background -->
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+                  </svg>
+                <% else %>
+                  <!-- Currently Playing: show Pause icon, teal selected background provided by selected=true -->
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                  </svg>
+                <% end %>
+              </:button>
               <:button phx-target={@myself} phx-click="navigate_timeframe_forward" data-tooltip="Move timeframe forward in time">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
@@ -308,6 +321,27 @@ defmodule TrifleApp.Components.FilterBar do
     {from, to} = TimeframeParsing.calculate_next_timeframe(socket.assigns.from, socket.assigns.to)
     notify_parent({:filter_changed, %{from: from, to: to, use_fixed_display: true}})
     {:noreply, socket}
+  end
+
+  def handle_event("toggle_play_pause", _params, socket) do
+    # Toggle between play (use_fixed_display=false) and pause (use_fixed_display=true)
+    if socket.assigns.use_fixed_display do
+      # Switch to Play: recompute latest from/to from smart_timeframe_input
+      tf = socket.assigns.smart_timeframe_input || "24h"
+      case TimeframeParsing.parse_smart_timeframe(tf, socket.assigns.config) do
+        {:ok, from, to, _smart, _use_fixed} ->
+          notify_parent({:filter_changed, %{from: from, to: to, use_fixed_display: false}})
+          {:noreply, socket}
+        {:error, _} ->
+          # Fallback: keep current range but mark as play
+          notify_parent({:filter_changed, %{use_fixed_display: false}})
+          {:noreply, socket}
+      end
+    else
+      # Switch to Pause: keep current from/to
+      notify_parent({:filter_changed, %{use_fixed_display: true}})
+      {:noreply, socket}
+    end
   end
   
   def handle_event("reload_data", _params, socket) do
