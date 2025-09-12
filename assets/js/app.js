@@ -480,11 +480,11 @@ Hooks.DashboardGrid = {
 
     this.initGrid();
 
-    // Toggle to one column on small screens (SM and XS)
-    // Tailwind defaults: sm=640px, md=768px; we want < md
+    // Toggle to one column on MD and smaller screens
+    // Tailwind defaults: md=768px, lg=1024px; we want < lg (i.e., MD and below)
     this._applyResponsiveGrid = () => {
       if (!this.grid) return;
-      const oneCol = window.innerWidth < 768; // SM and below
+      const oneCol = window.innerWidth < 1024; // MD and below
       if (oneCol !== this._isOneCol) {
         this._isOneCol = oneCol;
         try {
