@@ -318,7 +318,23 @@ defmodule TrifleApp.Components.FilterBar do
   end
   
   def handle_event("navigate_timeframe_forward", _params, socket) do
-    {from, to} = TimeframeParsing.calculate_next_timeframe(socket.assigns.from, socket.assigns.to)
+    # Propose next window
+    {new_from, new_to} = TimeframeParsing.calculate_next_timeframe(socket.assigns.from, socket.assigns.to)
+
+    # Clamp to current time in configured timezone to avoid going into the future
+    config = socket.assigns.config
+    now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+    duration = DateTime.diff(socket.assigns.to, socket.assigns.from, :second)
+
+    {from, to} =
+      case DateTime.compare(new_to, now) do
+        :gt ->
+          to = now
+          from = DateTime.add(to, -duration, :second)
+          {from, to}
+        _ -> {new_from, new_to}
+      end
+
     notify_parent({:filter_changed, %{from: from, to: to, use_fixed_display: true}})
     {:noreply, socket}
   end
