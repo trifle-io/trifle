@@ -409,6 +409,7 @@ Hooks.Sortable = {
   mounted() {
     const group = this.el.dataset.group;
     const handle = this.el.dataset.handle;
+    const eventName = this.el.dataset.event || "reorder_transponders";
     
     this.sortable = Sortable.create(this.el, {
       group: group,
@@ -419,10 +420,14 @@ Hooks.Sortable = {
       dragClass: 'sortable-drag',
       onEnd: (evt) => {
         // Get all item IDs in the new order
-        const ids = Array.from(this.el.children).map(child => child.dataset.id);
+        const ids = Array.from(evt.to.children).map(child => child.dataset.id).filter(Boolean);
+        const fromIds = Array.from(evt.from.children).map(child => child.dataset.id).filter(Boolean);
+        const parentId = evt.to.dataset.parentId || null;
+        const fromParentId = evt.from.dataset.parentId || null;
+        const movedId = evt.item && evt.item.dataset ? evt.item.dataset.id : null;
         
         // Send the new order to LiveView
-        this.pushEvent("reorder_transponders", { ids: ids });
+        this.pushEvent(eventName, { ids, parent_id: parentId, from_ids: fromIds, from_parent_id: fromParentId, moved_id: movedId });
       }
     });
   },
@@ -431,6 +436,23 @@ Hooks.Sortable = {
     if (this.sortable) {
       this.sortable.destroy();
     }
+  }
+}
+
+// Collapsible Dashboard Groups: sync collapsed state to localStorage
+Hooks.DashboardGroupsCollapse = {
+  mounted() {
+    const dbId = this.el.dataset.dbId || 'default';
+    const key = `dashboard_group_collapsed_${dbId}`;
+    let map = {};
+    try { map = JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { map = {}; }
+    const ids = Object.keys(map).filter(id => map[id]);
+    try { this.pushEvent('set_collapsed_groups', { ids }); } catch (_) {}
+    this.handleEvent('save_collapsed_groups', ({ ids }) => {
+      const store = {};
+      (ids || []).forEach(id => { store[id] = true; });
+      try { localStorage.setItem(key, JSON.stringify(store)); } catch (_) {}
+    });
   }
 }
 

@@ -1025,7 +1025,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
           </div>
         </div>
       <% end %>
-      <div class="w-full px-4 sm:px-6 lg:px-8">
+      <div class="w-full">
         <!-- Header -->
         <div class={if(@is_public_access, do: "mb-2", else: "mb-6")}>
           <div class="flex items-center justify-between">

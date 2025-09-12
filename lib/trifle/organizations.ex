@@ -6,7 +6,7 @@ defmodule Trifle.Organizations do
   import Ecto.Query, warn: false
   alias Trifle.Repo
 
-  alias Trifle.Organizations.{Project, Database, Dashboard, Transponder}
+  alias Trifle.Organizations.{Project, Database, Dashboard, Transponder, DashboardGroup}
 
   @doc """
   Returns the list of projects.
@@ -402,12 +402,192 @@ defmodule Trifle.Organizations do
   Returns the list of dashboards for a database.
   """
   def list_dashboards_for_database(%Database{} = database) do
-    from(d in Dashboard, 
-      where: d.database_id == ^database.id, 
-      order_by: [asc: d.inserted_at],
+    from(d in Dashboard,
+      where: d.database_id == ^database.id,
+      order_by: [asc: d.position, asc: d.inserted_at],
       preload: :user
     )
     |> Repo.all()
+  end
+
+  @doc """
+  Returns the list of dashboard groups for a database under an optional parent.
+  """
+  def list_dashboard_groups_for_database(%Database{} = database, nil) do
+    from(g in DashboardGroup,
+      where: g.database_id == ^database.id and is_nil(g.parent_group_id),
+      order_by: [asc: g.position]
+    )
+    |> Repo.all()
+  end
+
+  def list_dashboard_groups_for_database(%Database{} = database, parent_group_id) when is_binary(parent_group_id) do
+    from(g in DashboardGroup,
+      where: g.database_id == ^database.id and g.parent_group_id == ^parent_group_id,
+      order_by: [asc: g.position]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns dashboards for a database and optional group_id.
+  """
+  def list_dashboards_for_group(%Database{} = database, group_id \\ nil) do
+    base = from(d in Dashboard,
+      where: d.database_id == ^database.id,
+      order_by: [asc: d.position, asc: d.inserted_at],
+      preload: :user
+    )
+
+    query =
+      case group_id do
+        nil -> from(d in base, where: is_nil(d.group_id))
+        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
+      end
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Builds a nested tree of groups and dashboards for a database.
+  Returns a list of maps: %{group: %DashboardGroup{}, children: [...], dashboards: [%Dashboard{}]}
+  for each top-level group, plus a special top-level entry with group: nil for ungrouped dashboards if desired by the caller.
+  """
+  def list_dashboard_tree_for_database(%Database{} = database) do
+    top_groups = list_dashboard_groups_for_database(database, nil)
+
+    Enum.map(top_groups, fn g ->
+      build_group_tree(database, g)
+    end)
+  end
+
+  defp build_group_tree(%Database{} = database, %DashboardGroup{} = group) do
+    children = list_dashboard_groups_for_database(database, group.id)
+    %{
+      group: group,
+      children: Enum.map(children, &build_group_tree(database, &1)),
+      dashboards: list_dashboards_for_group(database, group.id)
+    }
+  end
+
+  @doc """
+  Creates a dashboard group.
+  """
+  def create_dashboard_group(attrs \\ %{}) do
+    %DashboardGroup{}
+    |> DashboardGroup.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a dashboard group.
+  """
+  def update_dashboard_group(%DashboardGroup{} = group, attrs) do
+    group
+    |> DashboardGroup.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a dashboard group, moving its children (groups and dashboards) to its parent.
+  """
+  def delete_dashboard_group(%DashboardGroup{} = group) do
+    Repo.transaction(fn ->
+      # Move dashboards to parent
+      from(d in Dashboard, where: d.group_id == ^group.id)
+      |> Repo.update_all(set: [group_id: group.parent_group_id])
+
+      # Move child groups to parent
+      from(g in DashboardGroup, where: g.parent_group_id == ^group.id)
+      |> Repo.update_all(set: [parent_group_id: group.parent_group_id])
+
+      Repo.delete!(group)
+    end)
+  end
+
+  @doc """
+  Gets a dashboard group by id.
+  """
+  def get_dashboard_group!(id), do: Repo.get!(DashboardGroup, id)
+
+  @doc """
+  Reorders dashboards within a target group, and normalizes the source group ordering.
+  ids: the ordered list of dashboard ids now present in target container.
+  parent_group_id: target group id (nil for top-level)
+  from_ids/from_parent_id: the ordered list of dashboard ids remaining in the source container after the move
+  """
+  def reorder_dashboards(%Database{} = database, parent_group_id, ids, from_parent_id, from_ids) when is_list(ids) do
+    Repo.transaction(fn ->
+      # Update target container
+      Enum.with_index(ids)
+      |> Enum.each(fn {dashboard_id, idx} ->
+        from(d in Dashboard,
+          where: d.id == ^dashboard_id and d.database_id == ^database.id
+        )
+        |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
+      end)
+
+      # Normalize source container positions if provided and different
+      cond do
+        is_list(from_ids) and (from_parent_id != parent_group_id) ->
+          Enum.with_index(from_ids)
+          |> Enum.each(fn {dashboard_id, idx} ->
+            from(d in Dashboard,
+              where: d.id == ^dashboard_id and d.database_id == ^database.id
+            )
+            |> Repo.update_all(set: [position: idx])
+          end)
+        true -> :ok
+      end
+    end)
+  end
+
+  @doc """
+  Reorders groups within a target parent group, with cycle protection.
+  ids: ordered list of group ids in the target container.
+  parent_group_id: target parent group id (nil for top-level)
+  from_ids/from_parent_id: ordered list of ids remaining in source container
+  moved_id: the group id that was moved (for cycle check)
+  """
+  def reorder_dashboard_groups(%Database{} = database, parent_group_id, ids, from_parent_id, from_ids, moved_id) when is_list(ids) do
+    # Prevent moving a group under its own descendant
+    if moved_id && parent_group_id && group_descendant?(moved_id, parent_group_id) do
+      {:error, :invalid_parent}
+    else
+      Repo.transaction(fn ->
+        # Update target container
+        Enum.with_index(ids)
+        |> Enum.each(fn {group_id, idx} ->
+          from(g in DashboardGroup,
+            where: g.id == ^group_id and g.database_id == ^database.id
+          )
+          |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
+        end)
+
+        # Normalize source container positions if provided and different
+        cond do
+          is_list(from_ids) and (from_parent_id != parent_group_id) ->
+            Enum.with_index(from_ids)
+            |> Enum.each(fn {group_id, idx} ->
+              from(g in DashboardGroup,
+                where: g.id == ^group_id and g.database_id == ^database.id
+              )
+              |> Repo.update_all(set: [position: idx])
+            end)
+          true -> :ok
+        end
+      end)
+    end
+  end
+
+  # Returns true if possible_parent_id is a descendant of group_id
+  defp group_descendant?(group_id, possible_parent_id) do
+    case Repo.get(DashboardGroup, possible_parent_id) do
+      nil -> false
+      %DashboardGroup{parent_group_id: nil} -> group_id == possible_parent_id
+      %DashboardGroup{parent_group_id: parent_id} = g ->
+        group_id == g.id || group_descendant?(group_id, parent_id)
+    end
   end
 
   @doc """
