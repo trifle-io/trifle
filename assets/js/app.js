@@ -450,6 +450,10 @@ Hooks.DashboardGrid = {
     // Global window resize handler to resize all charts
     this._onWindowResize = () => {
       try {
+        // Apply responsive column toggle if available
+        if (typeof this._applyResponsiveGrid === 'function') {
+          this._applyResponsiveGrid();
+        }
         if (this._sparklines) {
           Object.values(this._sparklines).forEach(c => c && !c.isDisposed() && c.resize());
         }
@@ -475,6 +479,29 @@ Hooks.DashboardGrid = {
     }
 
     this.initGrid();
+
+    // Toggle to one column on small screens (SM and XS)
+    // Tailwind defaults: sm=640px, md=768px; we want < md
+    this._applyResponsiveGrid = () => {
+      if (!this.grid) return;
+      const oneCol = window.innerWidth < 768; // SM and below
+      if (oneCol !== this._isOneCol) {
+        this._isOneCol = oneCol;
+        try {
+          // Avoid persisting layout while switching responsive columns
+          this._suppressSave = true;
+          if (typeof this.grid.column === 'function') {
+            this.grid.column(oneCol ? 1 : this.cols);
+          }
+        } catch (_) {
+          // noop
+        } finally {
+          this._suppressSave = false;
+        }
+      }
+    };
+    // Apply once on mount
+    this._applyResponsiveGrid();
 
     // Delegate click for Add Widget button to survive DOM patches
     if (this.editable && this.addBtnId) {
@@ -898,7 +925,7 @@ Hooks.DashboardGrid = {
         Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
       }
     };
-    this.grid.on('change', () => { save(); resizeCharts(); });
+    this.grid.on('change', () => { if (!this._suppressSave) save(); resizeCharts(); });
     this.grid.on('added', () => { save(); resizeCharts(); });
     this.grid.on('removed', () => { save(); resizeCharts(); });
 
