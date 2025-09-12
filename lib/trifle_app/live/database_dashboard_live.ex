@@ -328,6 +328,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 |> Map.put("chart_type", Map.get(params, "ts_chart_type", "line"))
                 |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
                 |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
+                |> Map.put("legend", Map.has_key?(params, "ts_legend"))
+                |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
               "category" ->
                 base
                 |> Map.put("path", Map.get(params, "cat_path", ""))
@@ -402,6 +404,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
       id = to_string(item["id"]) 
       path = to_string(item["path"] || "")
       func = String.downcase(to_string(item["function"] || "mean"))
+      size = to_string(item["size"] || "m")
       split = !!item["split"]
       diff = !!item["diff"]
       slices = if split, do: 2, else: 1
@@ -410,10 +413,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
         len = length(list)
         prev = if len >= 2, do: Enum.at(list, len - 2), else: nil
         curr = if len >= 1, do: Enum.at(list, len - 1), else: nil
-        %{id: id, split: true, diff: diff, previous: to_number(prev), current: to_number(curr)}
+        %{id: id, split: true, diff: diff, size: size, previous: to_number(prev), current: to_number(curr)}
       else
         value = list |> List.first()
-        %{id: id, split: false, value: to_number(value)}
+        %{id: id, split: false, size: size, value: to_number(value)}
       end
     end)
   end
@@ -467,6 +470,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
       chart_type = String.downcase(to_string(item["chart_type"] || "line"))
       stacked = !!item["stacked"]
       normalized = !!item["normalized"]
+      legend = !!item["legend"]
+      y_label = to_string(item["y_label"] || "")
 
       # Use formatter to align timeline and values per path
       per_path = Enum.map(paths, fn path ->
@@ -522,6 +527,8 @@ defmodule TrifleApp.DatabaseDashboardLive do
         chart_type: chart_type,
         stacked: stacked,
         normalized: normalized,
+        legend: legend,
+        y_label: y_label,
         series: series
       }
     end)
@@ -1495,6 +1502,10 @@ defmodule TrifleApp.DatabaseDashboardLive do
                         <textarea name="ts_paths" rows="4" class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="metrics.sales\nmetrics.orders"><%= paths %></textarea>
                       </div>
                       <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Y-axis label</label>
+                        <input type="text" name="ts_y_label" value={@editing_widget["y_label"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g., Revenue ($), Orders, Errors (%)" />
+                      </div>
+                      <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Chart Type</label>
                         <% ctype = @editing_widget["chart_type"] || "line" %>
                         <div class="grid grid-cols-1 sm:max-w-xs mt-2">
@@ -1512,11 +1523,15 @@ defmodule TrifleApp.DatabaseDashboardLive do
                       <div class="flex items-center gap-4 sm:col-span-2">
                         <% stacked = @editing_widget["stacked"] || false %>
                         <% normalized = @editing_widget["normalized"] || false %>
+                        <% legend = @editing_widget["legend"] || false %>
                         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
                           <input type="checkbox" name="ts_stacked" checked={stacked} /> Stacked
                         </label>
                         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
                           <input type="checkbox" name="ts_normalized" checked={normalized} /> Normalized
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input type="checkbox" name="ts_legend" checked={legend} /> Show legend
                         </label>
                       </div>
                     </div>
