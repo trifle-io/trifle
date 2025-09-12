@@ -15,10 +15,10 @@ defmodule TrifleApp.Components.FilterBar do
     ~H"""
     <div class="sticky top-0 z-50 mb-6">
       <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
         
         <!-- Timeframe Input Section -->
-        <div class="w-full md:w-[26rem]">
+        <div class="w-full md:w-full lg:w-[26rem]">
           <div class="relative">
             <div class="relative">
               <.labeled_input
@@ -80,7 +80,7 @@ defmodule TrifleApp.Components.FilterBar do
         </div>
         
         <!-- Controls and Granularity Section -->
-        <div class="flex items-center gap-4 flex-shrink-0">
+        <div class="flex items-center gap-4 flex-shrink-0 md:w-full md:justify-end lg:w-auto lg:ml-auto">
           <!-- Controls Section -->
           <%= if @show_controls do %>
             <div id="controls-container" phx-hook="FastTooltip">
