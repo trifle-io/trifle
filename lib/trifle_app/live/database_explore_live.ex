@@ -505,9 +505,17 @@ defmodule TrifleApp.DatabaseExploreLive do
         {new_from, from}
         
       :forward ->
-        # Move forwards: FROM becomes TO, TO = TO + duration  
-        new_to = DateTime.add(to, duration_seconds, :second)
-        {to, new_to}
+        # Move forwards: FROM becomes TO, TO = TO + duration (clamped to 'now')
+        proposed_to = DateTime.add(to, duration_seconds, :second)
+        config = socket.assigns.database_config
+        now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+        if DateTime.compare(proposed_to, now) == :gt do
+          clamped_to = now
+          clamped_from = DateTime.add(clamped_to, -duration_seconds, :second)
+          {clamped_from, clamped_to}
+        else
+          {to, proposed_to}
+        end
     end
     
     # Update socket with new timeframe and trigger reload
@@ -1328,30 +1336,32 @@ defmodule TrifleApp.DatabaseExploreLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
-    <!-- Loading Overlay (covers entire page content) -->
+    <!-- Loading Overlay (covers entire page content; message at 1/3 height) -->
     <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-      <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 flex items-center justify-center z-50">
-        <div class="flex flex-col items-center space-y-3">
-          <div class="flex items-center space-x-2">
-            <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-            <span class="text-sm text-gray-600 dark:text-white">
-              <%= if @transponding do %>
-                Transponding data...
-              <% else %>
-                Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
+      <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
+        <div class="absolute left-1/2 -translate-x-1/2" style="top: 33%;">
+          <div class="flex flex-col items-center space-y-3">
+            <div class="flex items-center space-x-2">
+              <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+              <span class="text-sm text-gray-600 dark:text-white">
+                <%= if @transponding do %>
+                  Transponding data...
+                <% else %>
+                  Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
+                <% end %>
+              </span>
+            </div>
+            <!-- Always reserve space for progress bar to keep text position consistent -->
+            <div class="w-64 h-2">
+              <%= if @loading_chunks && @loading_progress do %>
+                <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                  <div
+                    class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                    style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
+                  ></div>
+                </div>
               <% end %>
-            </span>
-          </div>
-          <!-- Always reserve space for progress bar to keep text position consistent -->
-          <div class="w-64 h-2">
-            <%= if @loading_chunks && @loading_progress do %>
-              <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                <div
-                  class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                  style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                ></div>
-              </div>
-            <% end %>
+            </div>
           </div>
         </div>
       </div>
