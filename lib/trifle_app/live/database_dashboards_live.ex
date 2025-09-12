@@ -15,7 +15,11 @@ defmodule TrifleApp.DatabaseDashboardsLive do
        {database.display_name, ~p"/app/dbs/#{database_id}"},
        "Dashboards"
      ])
-     |> stream(:dashboards, Organizations.list_dashboards_for_database(database))}
+     |> assign(:dashboards_count, Organizations.list_dashboards_for_database(database) |> length())
+     |> assign(:groups_tree, Organizations.list_dashboard_tree_for_database(database))
+     |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_group(database, nil))
+     |> assign(:editing_group_id, nil)
+     |> assign(:collapsed_groups, MapSet.new())}
   end
 
   def handle_params(params, _url, socket) do
@@ -32,25 +36,119 @@ defmodule TrifleApp.DatabaseDashboardsLive do
     |> assign(:dashboard, %Dashboard{})
   end
 
-  def handle_info({TrifleApp.DatabaseDashboardsLive.FormComponent, {:saved, dashboard}}, socket) do
-    {:noreply, stream_insert(socket, :dashboards, dashboard)}
+  def handle_info({TrifleApp.DatabaseDashboardsLive.FormComponent, {:saved, _dashboard}}, socket) do
+    {:noreply, refresh_tree(socket)}
   end
 
   def handle_event("delete_dashboard", %{"id" => id}, socket) do
     dashboard = Organizations.get_dashboard!(id)
     {:ok, _} = Organizations.delete_dashboard(dashboard)
 
-    # Reload the list to ensure consistency
-    dashboards = Organizations.list_dashboards_for_database(socket.assigns.database)
-
     {:noreply,
      socket
-     |> stream(:dashboards, dashboards, reset: true)
+     |> refresh_tree()
      |> put_flash(:info, "Dashboard deleted successfully")}
   end
 
   def handle_event("dashboard_clicked", %{"id" => dashboard_id}, socket) do
     {:noreply, push_navigate(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{dashboard_id}")}
+  end
+
+  # Group CRUD
+  def handle_event("set_collapsed_groups", %{"ids" => ids}, socket) do
+    ids = ids || []
+    {:noreply, assign(socket, :collapsed_groups, MapSet.new(ids))}
+  end
+
+  def handle_event("toggle_group", %{"id" => id}, socket) do
+    collapsed = socket.assigns.collapsed_groups || MapSet.new()
+    collapsed = if MapSet.member?(collapsed, id), do: MapSet.delete(collapsed, id), else: MapSet.put(collapsed, id)
+    socket = socket |> assign(:collapsed_groups, collapsed) |> push_event("save_collapsed_groups", %{ids: MapSet.to_list(collapsed)})
+    {:noreply, socket}
+  end
+
+  def handle_event("expand_all_groups", _params, socket) do
+    socket = socket |> assign(:collapsed_groups, MapSet.new()) |> push_event("save_collapsed_groups", %{ids: []})
+    {:noreply, socket}
+  end
+
+  def handle_event("collapse_all_groups", _params, socket) do
+    ids = socket.assigns.groups_tree |> all_group_ids()
+    socket = socket |> assign(:collapsed_groups, MapSet.new(ids)) |> push_event("save_collapsed_groups", %{ids: ids})
+    {:noreply, socket}
+  end
+
+  defp all_group_ids(tree) when is_list(tree) do
+    Enum.flat_map(tree, &all_group_ids/1)
+  end
+  defp all_group_ids(%{group: group, children: children}) do
+    [group.id | all_group_ids(children)]
+  end
+
+  def handle_event("start_rename_group", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :editing_group_id, id)}
+  end
+
+  def handle_event("cancel_rename_group", _params, socket) do
+    {:noreply, assign(socket, :editing_group_id, nil)}
+  end
+
+  def handle_event("new_group", params, socket) do
+    name = Map.get(params, "name", "New Group")
+    parent_id = Map.get(params, "parent_id")
+    attrs = %{"name" => name, "database_id" => socket.assigns.database.id, "parent_group_id" => parent_id}
+    case Organizations.create_dashboard_group(attrs) do
+      {:ok, _group} -> {:noreply, refresh_tree(socket)}
+      {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
+    end
+  end
+
+  def handle_event("rename_group", %{"id" => id, "name" => name}, socket) do
+    group = Organizations.get_dashboard_group!(id)
+    case Organizations.update_dashboard_group(group, %{name: name}) do
+      {:ok, _} -> {:noreply, socket |> assign(:editing_group_id, nil) |> refresh_tree()}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not rename group")}
+    end
+  end
+
+  def handle_event("delete_group", %{"id" => id}, socket) do
+    group = Organizations.get_dashboard_group!(id)
+    case Organizations.delete_dashboard_group(group) do
+      {:ok, _} -> {:noreply, refresh_tree(socket)}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not delete group")}
+    end
+  end
+
+  # Reorder events from Sortable
+  def handle_event("reorder_dashboards", %{"ids" => ids, "parent_id" => parent_id, "from_ids" => from_ids, "from_parent_id" => from_parent_id}, socket) do
+    p = normalize_parent(parent_id)
+    fp = normalize_parent(from_parent_id)
+    case Organizations.reorder_dashboards(socket.assigns.database, p, ids, fp, from_ids) do
+      {:ok, _} -> {:noreply, refresh_tree(socket)}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to reorder dashboards")}
+    end
+  end
+
+  def handle_event("reorder_dashboard_groups", %{"ids" => ids, "parent_id" => parent_id, "from_ids" => from_ids, "from_parent_id" => from_parent_id, "moved_id" => moved_id}, socket) do
+    p = normalize_parent(parent_id)
+    fp = normalize_parent(from_parent_id)
+    case Organizations.reorder_dashboard_groups(socket.assigns.database, p, ids, fp, from_ids, moved_id) do
+      {:ok, _} -> {:noreply, refresh_tree(socket)}
+      {:error, :invalid_parent} -> {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to reorder groups")}
+    end
+  end
+
+  defp normalize_parent(""), do: nil
+  defp normalize_parent(nil), do: nil
+  defp normalize_parent(id), do: id
+
+  defp refresh_tree(socket) do
+    database = socket.assigns.database
+    socket
+    |> assign(:dashboards_count, Organizations.list_dashboards_for_database(database) |> length())
+    |> assign(:groups_tree, Organizations.list_dashboard_tree_for_database(database))
+    |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_group(database, nil))
   end
 
   defp gravatar_url(email) do
@@ -159,111 +257,53 @@ defmodule TrifleApp.DatabaseDashboardsLive do
           <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span>Dashboards</span>
-              <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
-                <%= Enum.count(@streams.dashboards) %>
-              </span>
+              <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30"><%= @dashboards_count %></span>
             </div>
-            <.link
-              patch={~p"/app/dbs/#{@database.id}/dashboards/new"}
-              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-            >
-              <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-              </svg>
-              New Dashboard
-            </.link>
+            <div class="flex items-center gap-2">
+              <.link
+                patch={~p"/app/dbs/#{@database.id}/dashboards/new"}
+                class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+              >
+                <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                New Dashboard
+              </.link>
+              <button type="button" phx-click="new_group" class="inline-flex items-center rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="-ml-0.5 mr-1.5 h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                </svg>
+                New Group
+              </button>
+              <button type="button" phx-click="expand_all_groups" class="inline-flex items-center rounded-md bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-slate-500">Expand all</button>
+              <button type="button" phx-click="collapse_all_groups" class="inline-flex items-center rounded-md bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-slate-500">Collapse all</button>
+            </div>
           </div>
 
           <div class="divide-y divide-gray-100 dark:divide-slate-700">
-            <%= if @streams.dashboards.inserts == [] do %>
-              <div class="py-12 text-center">
-                <svg
-                  class="mx-auto h-12 w-12 text-gray-400"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
-                  />
-                </svg>
-                <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No dashboards</h3>
-                <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">Get started by creating a new dashboard.</p>
+            <div class="p-2">
+              <!-- Top-level Groups list -->
+              <div id="dashboard-groups-root" class="space-y-2" phx-hook="DashboardGroupsCollapse" data-db-id={@database.id}>
+                <div id="dashboard-groups-root-list" data-parent-id="" data-group="dashboard-groups" data-event="reorder_dashboard_groups" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col">
+                  <%= for node <- @groups_tree do %>
+                    <%= render_group(%{node: node, level: 0, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
+                  <% end %>
+                </div>
               </div>
-            <% else %>
-              <div id="dashboards" phx-update="stream">
-                <%= for {dom_id, dashboard} <- @streams.dashboards do %>
-                  <div 
-                    id={dom_id} 
-                    class="px-4 py-4 sm:px-6 group border-b border-gray-100 dark:border-slate-700 last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50" 
-                    phx-click="dashboard_clicked"
-                    phx-value-id={dashboard.id}
-                  >
-                    <div class="flex items-center justify-between">
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-3 mb-1">
-                          <!-- User Avatar -->
-                          <%= if dashboard.user do %>
-                            <div class="h-6 w-6 flex-shrink-0" title={"Created by #{dashboard.user.email}"}>
-                              <img src={gravatar_url(dashboard.user.email)} class="h-6 w-6 rounded-full" />
-                            </div>
-                          <% end %>
-                          
-                          <span class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400">
-                            <%= dashboard.name %>
-                          </span>
-                        </div>
-                        <p class="text-xs text-gray-500 dark:text-slate-400">
-                          Key: <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono"><%= dashboard.key %></code>
-                        </p>
-                      </div>
 
-                      <!-- Status Icons -->
-                      <div id="dashboard-status-icons" class="flex items-center gap-2" phx-hook="FastTooltip">
-                        <!-- Visibility Icon -->
-                        <div 
-                          class={[
-                            if(dashboard.visibility, 
-                              do: "text-teal-600 dark:text-teal-400",
-                              else: "text-teal-600 dark:text-teal-400"
-                            )
-                          ]}
-                          data-tooltip={if(dashboard.visibility, do: "Visible to everyone in organization", else: "Private - only creator can see this")}>
-                          <%= if dashboard.visibility do %>
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
-                            </svg>
-                          <% else %>
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-                            </svg>
-                          <% end %>
-                        </div>
-                        
-                        <!-- Public Link Icon -->
-                        <div 
-                          class={[
-                            if(dashboard.access_token, 
-                              do: "text-teal-600 dark:text-teal-400",
-                              else: "text-gray-400 dark:text-gray-500"
-                            )
-                          ]}
-                          data-tooltip={if(dashboard.access_token, do: "Has public link", else: "No public link")}>
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                <% end %>
+              <!-- Top-level Ungrouped Dashboards list -->
+              <div class="mt-4">
+                <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400 px-2 mb-2">
+                  <span>Ungrouped</span>
+                  <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-0.5 text-[10px] font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
+                    <%= length(@ungrouped_dashboards) %>
+                  </span>
+                </div>
+                <div id="dashboards-root-list" data-parent-id="" data-group="dashboards" data-event="reorder_dashboards" data-handle=".drag-handle" phx-hook="Sortable">
+                  <%= for dashboard <- @ungrouped_dashboards do %>
+                    <%= render_dashboard(%{dashboard: dashboard, level: 0}) %>
+                  <% end %>
+                </div>
               </div>
-            <% end %>
+            </div>
           </div>
         </div>
       </div>
@@ -283,6 +323,118 @@ defmodule TrifleApp.DatabaseDashboardsLive do
           />
         </:body>
       </.app_modal>
+    </div>
+    """
+  end
+
+  # Components for nested groups and dashboards
+  attr :node, :map, required: true
+  attr :level, :integer, required: true
+  attr :database, :map, required: true
+  attr :editing_group_id, :string, default: nil
+  attr :collapsed_groups, :any, default: nil
+  defp render_group(assigns) do
+    ~H"""
+    <div data-id={@node.group.id}>
+      <div class="flex items-center justify-between pr-0 py-2 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50" style={"padding-left: #{max(@level, 0) * 12}px"}>
+        <%= if @editing_group_id == @node.group.id do %>
+          <div class="flex items-center gap-2 w-full">
+            <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4" fill="none"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18"/></svg>
+            </div>
+            <.form for={%{}} as={:g} phx-submit="rename_group" class="flex items-center gap-2 w-full">
+              <input type="hidden" name="id" value={@node.group.id} />
+              <input type="text" name="name" value={@node.group.name} class="w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm px-2 py-1" />
+              <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-2 py-1 text-xs font-semibold text-white shadow-sm hover:bg-teal-500">Save</button>
+              <button type="button" phx-click="cancel_rename_group" class="inline-flex items-center rounded-md bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-slate-500">Cancel</button>
+            </.form>
+          </div>
+        <% else %>
+          <div class="flex items-center gap-2">
+            <button type="button" phx-click="toggle_group" phx-value-id={@node.group.id} class="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+              <%= if MapSet.member?((@collapsed_groups || MapSet.new()), @node.group.id) do %>
+                <!-- Chevron Right -->
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+              <% else %>
+                <!-- Chevron Down -->
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+              <% end %>
+            </button>
+            <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4" fill="none"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18"/></svg>
+            </div>
+            <div class="font-medium text-gray-900 dark:text-white"><%= @node.group.name %></div>
+            <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
+              <%= length(@node.children) + length(@node.dashboards) %>
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" phx-click="new_group" phx-value-parent_id={@node.group.id} class="inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+              </svg>
+              New subgroup
+            </button>
+            <button type="button" phx-click="start_rename_group" phx-value-id={@node.group.id} class="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900">Rename</button>
+            <button type="button" phx-click="delete_group" phx-value-id={@node.group.id} data-confirm="Delete this group? Children will move up one level." class="text-xs text-red-600 hover:text-red-800">Delete</button>
+          </div>
+        <% end %>
+      </div>
+      <%= unless MapSet.member?((@collapsed_groups || MapSet.new()), @node.group.id) do %>
+        <div>
+          <!-- Child groups list -->
+          <div id={"group-" <> @node.group.id <> "-groups"} data-parent-id={@node.group.id} data-group="dashboard-groups" data-event="reorder_dashboard_groups" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col">
+            <%= for child <- @node.children do %>
+              <%= render_group(%{node: child, level: @level + 1, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
+            <% end %>
+          </div>
+
+          <!-- Dashboards within this group -->
+          <div id={"group-" <> @node.group.id <> "-dashboards"} data-parent-id={@node.group.id} data-group="dashboards" data-event="reorder_dashboards" data-handle=".drag-handle" phx-hook="Sortable">
+            <%= for dashboard <- @node.dashboards do %>
+              <%= render_dashboard(%{dashboard: dashboard, level: @level}) %>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  attr :dashboard, Trifle.Organizations.Dashboard, required: true
+  attr :level, :integer, default: 0
+  defp render_dashboard(assigns) do
+    ~H"""
+    <div class="pr-0 py-3 group border-b border-gray-100 dark:border-slate-700 last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 flex items-center justify-between" style={"padding-left: #{max(@level, 0) * 12 + 12}px"} data-id={@dashboard.id} phx-click="dashboard_clicked" phx-value-id={@dashboard.id}>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-3 mb-1">
+          <%= if @dashboard.user do %>
+            <div class="h-6 w-6 flex-shrink-0" title={"Created by #{@dashboard.user.email}"}>
+              <img src={gravatar_url(@dashboard.user.email)} class="h-6 w-6 rounded-full" />
+            </div>
+          <% end %>
+          <span class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"><%= @dashboard.name %></span>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-slate-400">Key: <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono"><%= @dashboard.key %></code></p>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Visibility Icon -->
+        <div class="text-teal-600 dark:text-teal-400">
+          <%= if @dashboard.visibility do %>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+          <% else %>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+          <% end %>
+        </div>
+        <!-- Public Link Icon -->
+        <div class={[@dashboard.access_token && "text-teal-600 dark:text-teal-400" || "text-gray-400 dark:text-gray-500"]}>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" /></svg>
+        </div>
+        <!-- Drag handle -->
+        <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+        </div>
+      </div>
     </div>
     """
   end

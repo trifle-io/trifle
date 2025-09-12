@@ -13,9 +13,11 @@ defmodule Trifle.Organizations.Dashboard do
     field :key, :string
     field :default_timeframe, :string
     field :default_granularity, :string
+    field :position, :integer, default: 0
 
     belongs_to :database, Trifle.Organizations.Database
     belongs_to :user, Trifle.Accounts.User
+    belongs_to :group, Trifle.Organizations.DashboardGroup
 
     timestamps()
   end
@@ -32,7 +34,7 @@ defmodule Trifle.Organizations.Dashboard do
       end
     
     dashboard
-    |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key, :default_timeframe, :default_granularity])
+    |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key, :default_timeframe, :default_granularity, :position, :group_id])
     |> validate_required([:database_id, :user_id, :name, :key])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
