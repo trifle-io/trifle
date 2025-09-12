@@ -282,7 +282,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
             <div class="p-2">
               <!-- Top-level Groups list -->
               <div id="dashboard-groups-root" class="space-y-2" phx-hook="DashboardGroupsCollapse" data-db-id={@database.id}>
-                <div id="dashboard-groups-root-list" data-parent-id="" data-group="dashboard-groups" data-event="reorder_dashboard_groups" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col">
+                <div id="dashboard-groups-root-list" data-parent-id="" data-group="dashboard-groups" data-event="reorder_dashboard_groups" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col" style="min-height: 12px;">
                   <%= for node <- @groups_tree do %>
                     <%= render_group(%{node: node, level: 0, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
                   <% end %>
@@ -297,7 +297,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
                     <%= length(@ungrouped_dashboards) %>
                   </span>
                 </div>
-                <div id="dashboards-root-list" data-parent-id="" data-group="dashboards" data-event="reorder_dashboards" data-handle=".drag-handle" phx-hook="Sortable">
+                <div id="dashboards-root-list" data-parent-id="" data-group="dashboards" data-event="reorder_dashboards" data-handle=".drag-handle" phx-hook="Sortable" style="min-height: 12px;">
                   <%= for dashboard <- @ungrouped_dashboards do %>
                     <%= render_dashboard(%{dashboard: dashboard, level: 0}) %>
                   <% end %>
@@ -336,7 +336,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   defp render_group(assigns) do
     ~H"""
     <div data-id={@node.group.id}>
-      <div class="flex items-center justify-between pr-0 py-2 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50" style={"padding-left: #{max(@level, 0) * 12}px"}>
+      <div class="flex items-center justify-between pr-0 py-2 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50" style={"padding-left: #{max(@level, 0) * 12}px"} data-group-header={@node.group.id}>
         <%= if @editing_group_id == @node.group.id do %>
           <div class="flex items-center gap-2 w-full">
             <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
@@ -382,17 +382,17 @@ defmodule TrifleApp.DatabaseDashboardsLive do
       </div>
       <%= unless MapSet.member?((@collapsed_groups || MapSet.new()), @node.group.id) do %>
         <div>
-          <!-- Child groups list -->
-          <div id={"group-" <> @node.group.id <> "-groups"} data-parent-id={@node.group.id} data-group="dashboard-groups" data-event="reorder_dashboard_groups" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col">
-            <%= for child <- @node.children do %>
-              <%= render_group(%{node: child, level: @level + 1, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
+          <!-- Dashboards within this group (top drop zone) -->
+          <div id={"group-" <> @node.group.id <> "-dashboards"} data-parent-id={@node.group.id} data-group="dashboards" data-event="reorder_dashboards" data-handle=".drag-handle" phx-hook="Sortable" style="min-height: 14px;">
+            <%= for dashboard <- @node.dashboards do %>
+              <%= render_dashboard(%{dashboard: dashboard, level: @level}) %>
             <% end %>
           </div>
 
-          <!-- Dashboards within this group -->
-          <div id={"group-" <> @node.group.id <> "-dashboards"} data-parent-id={@node.group.id} data-group="dashboards" data-event="reorder_dashboards" data-handle=".drag-handle" phx-hook="Sortable">
-            <%= for dashboard <- @node.dashboards do %>
-              <%= render_dashboard(%{dashboard: dashboard, level: @level}) %>
+          <!-- Child groups list -->
+          <div id={"group-" <> @node.group.id <> "-groups"} data-parent-id={@node.group.id} data-group="dashboard-groups" data-event="reorder_dashboard_groups" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col" style="min-height: 14px;">
+            <%= for child <- @node.children do %>
+              <%= render_group(%{node: child, level: @level + 1, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
             <% end %>
           </div>
         </div>

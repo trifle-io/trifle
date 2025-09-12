@@ -411,13 +411,45 @@ Hooks.Sortable = {
     const handle = this.el.dataset.handle;
     const eventName = this.el.dataset.event || "reorder_transponders";
     
+    const groupName = group || 'default';
+    // Restrict cross-type moves: only allow within same named group
+    const groupOpt = { name: groupName, pull: [groupName], put: [groupName] };
+
+    this.lastTo = null;
+    this.lastHeader = null;
+
     this.sortable = Sortable.create(this.el, {
-      group: group,
+      group: groupOpt,
       handle: handle,
+      draggable: '[data-id]',
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
       dragClass: 'sortable-drag',
+      emptyInsertThreshold: 5,
+      onMove: (evt, originalEvent) => {
+        try {
+          // Highlight drop container
+          if (this.lastTo && this.lastTo !== evt.to) {
+            this.lastTo.style.backgroundColor = '';
+          }
+          evt.to.style.backgroundColor = 'rgba(20,184,166,0.08)';
+          this.lastTo = evt.to;
+
+          // Highlight corresponding group header if present
+          const pid = evt.to.dataset.parentId;
+          if (pid) {
+            const header = document.querySelector(`[data-group-header="${pid}"]`);
+            if (this.lastHeader && this.lastHeader !== header) {
+              this.lastHeader.style.backgroundColor = '';
+            }
+            if (header) {
+              header.style.backgroundColor = 'rgba(20,184,166,0.10)';
+              this.lastHeader = header;
+            }
+          }
+        } catch (_) {}
+      },
       onEnd: (evt) => {
         // Get all item IDs in the new order
         const ids = Array.from(evt.to.children).map(child => child.dataset.id).filter(Boolean);
@@ -425,9 +457,17 @@ Hooks.Sortable = {
         const parentId = evt.to.dataset.parentId || null;
         const fromParentId = evt.from.dataset.parentId || null;
         const movedId = evt.item && evt.item.dataset ? evt.item.dataset.id : null;
-        
+
         // Send the new order to LiveView
         this.pushEvent(eventName, { ids, parent_id: parentId, from_ids: fromIds, from_parent_id: fromParentId, moved_id: movedId });
+
+        // Clear highlights
+        try {
+          if (this.lastTo) this.lastTo.style.backgroundColor = '';
+          if (this.lastHeader) this.lastHeader.style.backgroundColor = '';
+          this.lastTo = null;
+          this.lastHeader = null;
+        } catch (_) {}
       }
     });
   },
