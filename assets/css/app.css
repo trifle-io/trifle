@@ -5,6 +5,17 @@
 /* GridStack styles (imported from node_modules) */
 @import url("../node_modules/gridstack/dist/gridstack.min.css");
 
+/* Lower GridStack drag/resize z-index so modals overlay correctly */
+.grid-stack .ui-draggable-dragging,
+.grid-stack .ui-resizable-resizing {
+  z-index: 40 !important; /* below modal z-50 */
+}
+
+/* Also reduce the resize handle itself, which may have inline z-index */
+.grid-stack .ui-resizable-handle {
+  z-index: 30 !important;
+}
+
 /* Form element base styles - equivalent to @tailwindcss/forms plugin */
 input[type="text"],
 input[type="email"],
@@ -63,4 +74,3 @@ select[class*="grid"], select[class*="col-"] {
 }
 
 /* This file is for your main application CSS */
-

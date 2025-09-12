@@ -30,7 +30,7 @@ defmodule TrifleApp.DesignSystem.Modal do
     <div
       :if={@show}
       id={@id}
-      class="fixed inset-0 z-50 overflow-y-auto"
+      class="fixed inset-0 z-[11000] overflow-y-auto"
       aria-labelledby={"#{@id}-title"}
       aria-modal="true"
       role="dialog"

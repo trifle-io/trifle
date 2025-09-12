@@ -523,6 +523,12 @@ Hooks.DashboardGrid = {
         const body = item && item.querySelector('.grid-widget-body');
         if (!body) return;
         // KPI display
+        const sizeClass = (() => {
+          const sz = (it.size || 'm');
+          if (sz === 's') return 'text-2xl';
+          if (sz === 'l') return 'text-4xl';
+          return 'text-3xl';
+        })();
         const fmt = (v) => {
           if (v === null || v === undefined || Number.isNaN(v)) return '—';
           const n = Number(v);
@@ -564,13 +570,13 @@ Hooks.DashboardGrid = {
           top.innerHTML = `
             <div class="w-full">
               <div class="flex items-baseline justify-between w-full">
-                <div class="flex items-baseline text-2xl font-bold text-gray-900 dark:text-white">${curr}<span class="ml-2 text-sm font-medium text-gray-500 dark:text-slate-400">from ${prev}</span></div>
+                <div class="flex items-baseline ${sizeClass} font-bold text-gray-900 dark:text-white">${curr}<span class="ml-2 text-sm font-medium text-gray-500 dark:text-slate-400">from ${prev}</span></div>
                 ${diffHtml}
               </div>
             </div>`;
         } else {
           const val = fmt(it.value);
-          top.innerHTML = `<div class="text-3xl font-bold text-gray-900 dark:text-white">${val}</div>`;
+          top.innerHTML = `<div class="${sizeClass} font-bold text-gray-900 dark:text-white">${val}</div>`;
         }
       });
     });
@@ -680,6 +686,9 @@ Hooks.DashboardGrid = {
           const normalized = !!it.normalized;
           const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
           const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+          const legendText = isDarkMode ? '#D1D5DB' : '#374151';
+          const showLegend = !!it.legend;
+          const bottomPadding = showLegend ? 56 : 28;
           const series = (it.series || []).map((s, idx) => {
             const base = {
               name: s.name || `Series ${idx+1}`,
@@ -694,15 +703,16 @@ Hooks.DashboardGrid = {
           });
 
           // Axis formatting
+          const yName = normalized ? (it.y_label || 'Percentage') : (it.y_label || '');
           const yAxis = {
             type: 'value',
             min: 0,
-            name: normalized ? 'Percentage' : 'Value',
+            name: yName,
             nameLocation: 'middle',
             nameGap: 40,
             nameTextStyle: { color: textColor },
             axisLine: { lineStyle: { color: axisLineColor } },
-            axisLabel: { color: textColor },
+            axisLabel: { color: textColor, margin: 8, hideOverlap: true },
           };
           if (normalized) {
             yAxis.max = 100;
@@ -711,17 +721,14 @@ Hooks.DashboardGrid = {
 
           chart.setOption({
             backgroundColor: 'transparent',
-            grid: { top: 12, bottom: 28, left: 48, right: 16 },
+            grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true },
             xAxis: {
               type: 'time',
-              name: 'Time',
-              nameLocation: 'middle',
-              nameGap: 22,
-              nameTextStyle: { color: textColor },
               axisLine: { lineStyle: { color: axisLineColor } },
-              axisLabel: { color: textColor },
+              axisLabel: { color: textColor, margin: 8, hideOverlap: true },
             },
             yAxis,
+            legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false },
             tooltip: {
               trigger: 'axis',
               confine: true,
