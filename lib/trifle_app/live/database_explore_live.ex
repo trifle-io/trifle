@@ -533,15 +533,27 @@ defmodule TrifleApp.DatabaseExploreLive do
   defp reload_current_timeframe(socket) do
     granularity = socket.assigns.granularity
     
-    socket =
-      socket
-      |> assign(loading: true)
-      |> push_patch(
-        to:
-          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
-      )
+    params =
+      if socket.assigns.use_fixed_display do
+        [
+          granularity: granularity,
+          from: format_for_datetime_input(socket.assigns.from),
+          to: format_for_datetime_input(socket.assigns.to),
+          key: socket.assigns[:key] || "",
+          timeframe: socket.assigns[:smart_timeframe_input]
+        ]
+      else
+        [
+          granularity: granularity,
+          key: socket.assigns[:key] || "",
+          timeframe: socket.assigns[:smart_timeframe_input]
+        ]
+      end
 
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(loading: true)
+     |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}?#{params}")}
   end
 
   def determine_granularity_for_timeframe(from, to) do
@@ -819,15 +831,20 @@ defmodule TrifleApp.DatabaseExploreLive do
     end)
     
     # Update URL with new parameters if needed
-    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) do
-      url_params = %{
+    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) do
+      base_params = %{
         timeframe: updated_socket.assigns.smart_timeframe_input,
-        granularity: updated_socket.assigns.granularity,
-        from: if(updated_socket.assigns.from, do: DateTime.to_iso8601(updated_socket.assigns.from), else: nil),
-        to: if(updated_socket.assigns.to, do: DateTime.to_iso8601(updated_socket.assigns.to), else: nil)
+        granularity: updated_socket.assigns.granularity
       }
-      |> Enum.filter(fn {_k, v} -> v != nil end)
-      |> Enum.into(%{})
+      url_params =
+        if updated_socket.assigns.use_fixed_display do
+          Map.merge(base_params, %{
+            from: if(updated_socket.assigns.from, do: DateTime.to_iso8601(updated_socket.assigns.from), else: nil),
+            to: if(updated_socket.assigns.to, do: DateTime.to_iso8601(updated_socket.assigns.to), else: nil)
+          })
+        else
+          base_params
+        end
       
       # Add key parameter if it exists
       url_params = if updated_socket.assigns.key, 
@@ -839,6 +856,23 @@ defmodule TrifleApp.DatabaseExploreLive do
     else
       {:noreply, updated_socket}
     end
+  end
+
+  # Toggle Play/Pause in Explore (defensive handler in parent LiveView)
+  def handle_event("toggle_play_pause", _params, socket) do
+    socket =
+      if socket.assigns.use_fixed_display do
+        tf = socket.assigns.smart_timeframe_input || (socket.assigns.database.default_timeframe || "24h")
+        config = socket.assigns.database_config
+        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+          {:ok, from, to, smart, _} -> assign(socket, from: from, to: to, smart_timeframe_input: smart, use_fixed_display: false)
+          {:error, _} -> assign(socket, use_fixed_display: false)
+        end
+      else
+        assign(socket, use_fixed_display: true)
+      end
+
+    reload_current_timeframe(socket)
   end
 
   # Progress message handling
