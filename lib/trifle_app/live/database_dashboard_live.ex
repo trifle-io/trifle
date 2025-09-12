@@ -90,9 +90,17 @@ defmodule TrifleApp.DatabaseDashboardLive do
   end
 
   defp apply_action(socket, :public, _params) do
-    socket
-    |> assign(:dashboard_changeset, nil)
-    |> assign(:dashboard_form, nil)
+    socket =
+      socket
+      |> assign(:dashboard_changeset, nil)
+      |> assign(:dashboard_form, nil)
+
+    # Load dashboard data for public access too (if key configured)
+    if dashboard_has_key?(socket) do
+      load_dashboard_data(socket)
+    else
+      socket
+    end
   end
 
   defp apply_action(socket, :configure, _params) do
