@@ -451,15 +451,24 @@ Hooks.Sortable = {
         } catch (_) {}
       },
       onEnd: (evt) => {
-        // Get all item IDs in the new order
-        const ids = Array.from(evt.to.children).map(child => child.dataset.id).filter(Boolean);
-        const fromIds = Array.from(evt.from.children).map(child => child.dataset.id).filter(Boolean);
         const parentId = evt.to.dataset.parentId || null;
         const fromParentId = evt.from.dataset.parentId || null;
         const movedId = evt.item && evt.item.dataset ? evt.item.dataset.id : null;
+        const movedType = evt.item && evt.item.dataset ? evt.item.dataset.type : null;
 
-        // Send the new order to LiveView
-        this.pushEvent(eventName, { ids, parent_id: parentId, from_ids: fromIds, from_parent_id: fromParentId, moved_id: movedId });
+        if (eventName === 'reorder_transponders') {
+          const ids = Array.from(evt.to.children).map(child => child.dataset.id).filter(Boolean);
+          this.pushEvent(eventName, { ids });
+        } else {
+          // Mixed nodes payload with type info
+          const items = Array.from(evt.to.children)
+            .map(child => (child.dataset && child.dataset.id) ? { id: child.dataset.id, type: child.dataset.type } : null)
+            .filter(Boolean);
+          const fromItems = Array.from(evt.from.children)
+            .map(child => (child.dataset && child.dataset.id) ? { id: child.dataset.id, type: child.dataset.type } : null)
+            .filter(Boolean);
+          this.pushEvent(eventName, { items, parent_id: parentId, from_items: fromItems, from_parent_id: fromParentId, moved_id: movedId, moved_type: movedType });
+        }
 
         // Clear highlights
         try {

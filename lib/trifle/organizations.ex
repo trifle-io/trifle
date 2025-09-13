@@ -580,6 +580,49 @@ defmodule Trifle.Organizations do
     end
   end
 
+  @doc """
+  Reorders mixed nodes (groups and dashboards) within a container.
+  items: list of maps %{"id" => id, "type" => "group" | "dashboard"}
+  from_items: same for the source container after the move
+  """
+  def reorder_nodes(%Database{} = database, parent_group_id, items, from_parent_id, from_items, moved_id, moved_type) when is_list(items) do
+    # Cycle protection for groups
+    if moved_type == "group" and parent_group_id && group_descendant?(moved_id, parent_group_id) do
+      {:error, :invalid_parent}
+    else
+      Repo.transaction(fn ->
+        # Update target container in order
+        Enum.with_index(items)
+        |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
+          case type do
+            "dashboard" ->
+              from(d in Dashboard, where: d.id == ^id and d.database_id == ^database.id)
+              |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
+            "group" ->
+              from(g in DashboardGroup, where: g.id == ^id and g.database_id == ^database.id)
+              |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
+            _ -> :ok
+          end
+        end)
+
+        # Normalize source container positions if different container
+        if is_list(from_items) and from_parent_id != parent_group_id do
+          Enum.with_index(from_items)
+          |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
+            case type do
+              "dashboard" ->
+                from(d in Dashboard, where: d.id == ^id and d.database_id == ^database.id)
+                |> Repo.update_all(set: [position: idx])
+              "group" ->
+                from(g in DashboardGroup, where: g.id == ^id and g.database_id == ^database.id)
+                |> Repo.update_all(set: [position: idx])
+              _ -> :ok
+            end
+          end)
+        end
+      end)
+    end
+  end
   # Returns true if possible_parent_id is a descendant of group_id
   defp group_descendant?(group_id, possible_parent_id) do
     case Repo.get(DashboardGroup, possible_parent_id) do
