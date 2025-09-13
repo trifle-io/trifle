@@ -92,7 +92,10 @@ defmodule TrifleWeb.Router do
       live "/projects/:id/tokens", ProjectTokensLive, :index
       live "/projects/:id/tokens/new", ProjectTokensLive, :new
       live "/dbs", DatabasesLive, :index
-      live "/dbs/:id", DatabaseExploreLive, :show
+      # Database root redirects to Dashboards (handled by DatabaseRedirectLive)
+      live "/dbs/:id", DatabaseRedirectLive, :index
+      # Explore tab explicit route
+      live "/dbs/:id/explore", DatabaseExploreLive, :show
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
       live "/dbs/:id/transponders/:transponder_id", DatabaseTranspondersLive, :show
