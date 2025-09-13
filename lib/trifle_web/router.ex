@@ -91,7 +91,7 @@ defmodule TrifleWeb.Router do
       live "/projects/:id/settings", ProjectSettingsLive
       live "/projects/:id/tokens", ProjectTokensLive, :index
       live "/projects/:id/tokens/new", ProjectTokensLive, :new
-      live "/dbs", ExploreLive, :index
+      live "/dbs", DatabasesLive, :index
       live "/dbs/:id", DatabaseExploreLive, :show
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new

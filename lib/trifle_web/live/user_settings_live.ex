@@ -217,7 +217,8 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def handle_event("validate_email", params, socket) do
-    %{"current_password" => password, "user" => user_params} = params
+    password = Map.get(params, "current_password", "")
+    user_params = Map.get(params, "user", %{})
 
     email_form =
       socket.assigns.current_user
@@ -249,7 +250,8 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def handle_event("validate_password", params, socket) do
-    %{"current_password" => password, "user" => user_params} = params
+    password = Map.get(params, "current_password", "")
+    user_params = Map.get(params, "user", %{})
 
     password_form =
       socket.assigns.current_user
