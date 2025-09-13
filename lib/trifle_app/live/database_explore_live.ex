@@ -74,20 +74,20 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def format_duration(microseconds) when is_nil(microseconds), do: nil
-  
+
   def format_duration(microseconds) when is_integer(microseconds) do
     cond do
       microseconds < 1_000 ->
         "#{microseconds}μs"
-      
+
       microseconds < 1_000_000 ->
         ms = div(microseconds, 1_000)
         "#{ms}ms"
-      
+
       microseconds < 60_000_000 ->
         seconds = div(microseconds, 1_000_000)
         "#{seconds}s"
-      
+
       true ->
         minutes = div(microseconds, 60_000_000)
         "#{minutes}m"
@@ -228,18 +228,18 @@ defmodule TrifleApp.DatabaseExploreLive do
   defp detect_shorthand_from_range(from, to, config) do
     # Calculate the difference between from and to
     diff_seconds = DateTime.diff(to, from, :second)
-    
+
     # Get current time in database timezone
     now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone)
-    
+
     # Check if 'to' is approximately now (within 60 seconds)
     to_diff_from_now = abs(DateTime.diff(to, now, :second))
-    
+
     if to_diff_from_now <= 60 do
       # This looks like a "last X" timeframe, try to match common patterns
       case diff_seconds do
         300 -> "5m"      # 5 minutes
-        600 -> "10m"     # 10 minutes  
+        600 -> "10m"     # 10 minutes
         900 -> "15m"     # 15 minutes
         1800 -> "30m"    # 30 minutes
         3600 -> "1h"     # 1 hour
@@ -365,13 +365,13 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def handle_event("smart_timeframe_keydown", %{"key" => "Enter", "value" => input}, socket) do
     config = Database.stats_config(socket.assigns.database)
-    
+
     # First try to parse as a direct timeframe range (YYYY-MM-DD HH:MM:SS - YYYY-MM-DD HH:MM:SS)
     case parse_direct_timeframe(input, config) do
       {:ok, from, to, detected_shorthand} ->
         # Direct timeframe parsing succeeded
         granularity = socket.assigns.granularity
-        
+
         socket =
           socket
           |> assign(from: from, to: to)
@@ -388,7 +388,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           )
 
         {:noreply, socket}
-        
+
       {:error, _} ->
         # Fall back to smart timeframe parsing
         short_input =
@@ -493,17 +493,17 @@ defmodule TrifleApp.DatabaseExploreLive do
   defp navigate_timeframe(socket, direction) do
     from = socket.assigns.from
     to = socket.assigns.to
-    
+
     # Calculate the duration between from and to
     duration_seconds = DateTime.diff(to, from, :second)
-    
+
     # Calculate new timeframe based on direction
     {new_from, new_to} = case direction do
       :backward ->
         # Move backwards: TO becomes FROM, FROM = FROM - duration
         new_from = DateTime.add(from, -duration_seconds, :second)
         {new_from, from}
-        
+
       :forward ->
         # Move forwards: FROM becomes TO, TO = TO + duration (clamped to 'now')
         proposed_to = DateTime.add(to, duration_seconds, :second)
@@ -517,10 +517,10 @@ defmodule TrifleApp.DatabaseExploreLive do
           {to, proposed_to}
         end
     end
-    
+
     # Update socket with new timeframe and trigger reload
     granularity = socket.assigns.granularity
-    
+
     socket =
       socket
       |> assign(from: new_from, to: new_to)
@@ -540,7 +540,7 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   defp reload_current_timeframe(socket) do
     granularity = socket.assigns.granularity
-    
+
     params =
       if socket.assigns.use_fixed_display do
         [
@@ -597,7 +597,7 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   @doc """
-  Format granularity to human readable text like "1 minute" or "15 minutes" 
+  Format granularity to human readable text like "1 minute" or "15 minutes"
   """
   def granularity_to_readable(granularity) do
     case granularity do
@@ -687,7 +687,7 @@ defmodule TrifleApp.DatabaseExploreLive do
   def handle_params(params, _session, socket) do
     require Logger
     Logger.info("DatabaseExploreLive.handle_params called with: #{inspect(params)}")
-    
+
     db_default_gran = socket.assigns.database.default_granularity
     granularity = params["granularity"] || db_default_gran || "1h"
     config = Database.stats_config(socket.assigns.database)
@@ -823,21 +823,21 @@ defmodule TrifleApp.DatabaseExploreLive do
     end
     {:noreply, socket}
   end
-  
+
   def handle_info({:hide_timeframe_dropdown, _component_id}, socket) do
     # Handle timeframe dropdown hide from FilterBar component
     {:noreply, socket}
   end
-  
+
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     require Logger
     Logger.info("DatabaseExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
-    
+
     # Handle filter changes from the FilterBar component
     updated_socket = Enum.reduce(changes, socket, fn {key, value}, acc ->
       assign(acc, key, value)
     end)
-    
+
     # Update URL with new parameters if needed
     if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) do
       base_params = %{
@@ -853,12 +853,12 @@ defmodule TrifleApp.DatabaseExploreLive do
         else
           base_params
         end
-      
+
       # Add key parameter if it exists
-      url_params = if updated_socket.assigns.key, 
-        do: Map.put(url_params, :key, updated_socket.assigns.key), 
+      url_params = if updated_socket.assigns.key,
+        do: Map.put(url_params, :key, updated_socket.assigns.key),
         else: url_params
-      
+
       # Just update URL - let handle_params handle the data loading to avoid double loading
       {:noreply, push_patch(updated_socket, to: ~p"/app/dbs/#{updated_socket.assigns.database.id}?#{url_params}")}
     else
@@ -895,7 +895,7 @@ defmodule TrifleApp.DatabaseExploreLive do
   def handle_async(:data_task, {:ok, data}, socket) do
     # Handle both single system stats and dual system+key stats
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
-    
+
     case data do
       %{system: system_stats, key: key_stats, key_transponder_results: key_transponder_results} ->
         # When specific key is selected:
@@ -907,7 +907,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         timeline_data = Jason.encode!(timeline["keys.#{socket.assigns.key}"])
         selected_key_color = get_key_color(keys_sum, socket.assigns.key)
         table_stats = Trifle.Stats.Tabler.tabulize(key_stats.series)
-        
+
         {:noreply,
          socket
          |> assign(loading: false)
@@ -921,14 +921,14 @@ defmodule TrifleApp.DatabaseExploreLive do
          |> assign(selected_key_color: selected_key_color)
          |> assign(key_transponder_results: key_transponder_results)
          |> assign(load_duration_microseconds: load_duration)}
-         
+
       %{system: system_stats} ->
         # When no specific key is selected, use system stats for everything
         keys_sum = reduce_stats(system_stats.series[:values] || [])
         timeline = series_from_all_keys(system_stats.series, keys_sum)
         timeline_data = Jason.encode!(timeline)
         table_stats = Trifle.Stats.Tabler.tabulize(system_stats.series)
-        
+
         {:noreply,
          socket
          |> assign(loading: false)
@@ -941,11 +941,11 @@ defmodule TrifleApp.DatabaseExploreLive do
          |> assign(chart_type: "stacked")
          |> assign(selected_key_color: nil)
          |> assign(load_duration_microseconds: load_duration)}
-         
+
       raw_stats ->
         # Fallback: handle raw stats directly (legacy format)
         keys_sum = reduce_stats(raw_stats[:values] || [])
-        
+
         {timeline_data, chart_type} =
           if socket.assigns.key && socket.assigns.key != "" do
             timeline = series_from(raw_stats, ["keys", socket.assigns.key])
@@ -981,7 +981,7 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def handle_async(:data_task, {:error, error}, socket) do
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
-    
+
     {:noreply,
      socket
      |> assign(loading: false)
@@ -1009,7 +1009,7 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   defp load_data_and_update_socket(socket) do
     # Start timing the data loading process
-    socket = assign(socket, 
+    socket = assign(socket,
       load_start_time: System.monotonic_time(:microsecond),
       loading: true,
       loading_chunks: true,
@@ -1180,10 +1180,10 @@ defmodule TrifleApp.DatabaseExploreLive do
       %{key: key, stats: stats, transponder_info: transponder_info, key_transponder_results: key_transponder_results} when not is_nil(key) and key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
         column_count = if stats[:at], do: length(stats[:at]), else: 0
-        
+
         # Count paths (rows)
         path_count = if stats[:paths], do: length(stats[:paths]), else: 0
-        
+
         # Use actual transponder results from SeriesFetcher
         successful_transponders = length(key_transponder_results.successful)
         failed_transponders = length(key_transponder_results.failed)
@@ -1198,15 +1198,15 @@ defmodule TrifleApp.DatabaseExploreLive do
           failed_transponders: failed_transponders,
           transponder_errors: transponder_errors
         }
-        
+
       %{key: key, stats: stats} when (is_nil(key) or key == "") and not is_nil(stats) ->
         # When no key is selected, show system overview stats (no transponders)
         # Count columns (timeline points)
         column_count = if stats[:at], do: length(stats[:at]), else: 0
-        
+
         # Count paths (rows)
         path_count = if stats[:paths], do: length(stats[:paths]), else: 0
-        
+
         %{
           key: nil,
           column_count: column_count,
@@ -1216,7 +1216,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           failed_transponders: 0,
           transponder_errors: []
         }
-        
+
       _ ->
         nil
     end
@@ -1370,12 +1370,11 @@ defmodule TrifleApp.DatabaseExploreLive do
     <div class="mb-6 border-b border-gray-200 dark:border-slate-700">
       <nav class="-mb-px space-x-8" aria-label="Tabs">
         <.link
-          navigate={~p"/app/dbs/#{@database.id}"}
-          class="border-teal-500 text-teal-600 dark:text-teal-400 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-          aria-current="page"
+          navigate={~p"/app/dbs/#{@database.id}/dashboards"}
+          class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
         >
           <svg
-            class="text-teal-400 group-hover:text-teal-500 -ml-0.5 mr-2 h-5 w-5"
+            class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -1385,10 +1384,10 @@ defmodule TrifleApp.DatabaseExploreLive do
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
-              d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621.504 1.125 1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5"
+              d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
             />
           </svg>
-          <span class="hidden sm:block">Explore</span>
+          <span class="hidden sm:block">Dashboards</span>
         </.link>
         <.link
           navigate={~p"/app/dbs/#{@database.id}/transponders"}
@@ -1410,25 +1409,9 @@ defmodule TrifleApp.DatabaseExploreLive do
           </svg>
           <span class="hidden sm:block">Transponders</span>
         </.link>
-        <.link
-          navigate={~p"/app/dbs/#{@database.id}/dashboards"}
-          class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-        >
-          <svg
-            class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
-            />
-          </svg>
-          <span class="hidden sm:block">Dashboards</span>
+        <.link navigate={~p"/app/dbs/#{@database.id}"} class="border-teal-500 text-teal-600 dark:text-teal-400 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium" aria-current="page">
+          <svg class="text-teal-400 group-hover:text-teal-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621.504 1.125 1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5"/></svg>
+          <span class="hidden sm:block">Explore</span>
         </.link>
         <.link
           navigate={~p"/app/dbs/#{@database.id}/settings"}
@@ -1455,7 +1438,7 @@ defmodule TrifleApp.DatabaseExploreLive do
 
 
     <!-- Filter Bar Component -->
-    <.live_component 
+    <.live_component
       module={TrifleApp.Components.FilterBar}
       id="explore-filter-bar"
       config={@database_config}
@@ -1527,8 +1510,8 @@ defmodule TrifleApp.DatabaseExploreLive do
     <div class="mb-6">
       <.data_table>
         <:header>
-          <.table_header 
-            title="Keys" 
+          <.table_header
+            title="Keys"
             count={length(filter_keys(@keys, @key_search_filter))}
           >
             <:search>
@@ -1549,7 +1532,7 @@ defmodule TrifleApp.DatabaseExploreLive do
             </:search>
           </.table_header>
         </:header>
-        
+
         <:body>
           <div class="h-48 overflow-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
             <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden">
@@ -1706,13 +1689,13 @@ defmodule TrifleApp.DatabaseExploreLive do
                 <% end %>
               </tbody>
             </table>
-            
+
             <!-- Border after last row -->
             <div class="border-t border-gray-200 dark:border-slate-700"></div>
           </div>
-          
+
         </div>
-        
+
         <!-- Sticky Summary Footer -->
         <%= if summary = get_summary_stats(assigns) do %>
           <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
@@ -1752,7 +1735,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                     <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
                   </svg>
                   <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
-                  
+
                   <!-- Success count -->
                   <div class="flex items-center gap-1">
                     <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1760,14 +1743,14 @@ defmodule TrifleApp.DatabaseExploreLive do
                     </svg>
                     <span class="text-gray-900 dark:text-white">{summary.successful_transponders}</span>
                   </div>
-                  
+
                   <!-- Fail count -->
                   <div class="flex items-center gap-1">
                     <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                     </svg>
                     <%= if summary.failed_transponders > 0 do %>
-                      <button 
+                      <button
                         phx-click="show_transponder_errors"
                         class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
                       >
@@ -1778,7 +1761,7 @@ defmodule TrifleApp.DatabaseExploreLive do
                     <% end %>
                   </div>
                 </div>
-                
+
                 <!-- Load Speed -->
                 <%= if @load_duration_microseconds do %>
                   <div class="flex items-center gap-1">
@@ -1802,7 +1785,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         </div>
       <% end %>
     </div>
-    
+
     <!-- Transponder Error Modal -->
     <%= if @show_error_modal do %>
       <% modal_summary = get_summary_stats(assigns) %>
@@ -1810,7 +1793,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
           <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"></div>
-            
+
             <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6" phx-click-away="hide_transponder_errors">
               <div class="sm:flex sm:items-start">
                 <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">

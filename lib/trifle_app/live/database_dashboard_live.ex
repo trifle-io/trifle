@@ -23,7 +23,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
          |> assign(:page_title, ["Database", database.display_name, "Dashboards", dashboard.name])
          |> assign(:breadcrumb_links, [
            {"Database", ~p"/app/dbs"},
-           {database.display_name, ~p"/app/dbs/#{database_id}"},
+           {database.display_name, ~p"/app/dbs/#{database_id}/dashboards"},
            {"Dashboards", ~p"/app/dbs/#{database_id}/dashboards"},
            dashboard.name
          ])}

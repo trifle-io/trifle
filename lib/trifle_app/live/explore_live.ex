@@ -5,7 +5,7 @@ defmodule TrifleApp.ExploreLive do
 
   def mount(_params, _session, socket) do
     databases = list_databases()
-    
+
     # If user has only one database, redirect them directly to it
     case databases do
       [single_database] ->
@@ -31,80 +31,62 @@ defmodule TrifleApp.ExploreLive do
     <div class="px-4 sm:px-6 lg:px-8">
       <div class="sm:flex sm:items-center">
         <div class="sm:flex-auto">
-          <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">Select Database to Explore</h1>
-          <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-            Choose a database connection to explore your Trifle::Stats data.
-          </p>
+          <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">Your Databases</h1>
+          <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">Pick a database to open Dashboards, Transponders, or Explore.</p>
         </div>
       </div>
-      
-      <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+      <div class="mt-6 space-y-3">
         <%= for database <- @databases do %>
           <%= if is_supported_driver?(database.driver) do %>
-            <.link navigate={~p"/app/dbs/#{database.id}"} class="group block">
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 p-6 shadow-sm hover:shadow-md transition-shadow duration-200 hover:border-gray-300 dark:hover:border-gray-600">
-                <div class="flex items-center justify-between">
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400">
+            <div class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
+                 phx-click={JS.navigate(~p"/app/dbs/#{database.id}/dashboards")}>
+              <div class="flex items-center gap-3 pl-3 py-3">
+                <div class={"h-10 w-1.5 rounded " <> driver_accent_class(database.driver)}></div>
+                <div>
+                  <div class="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400">
                     <%= database.display_name %>
-                  </h3>
-                  <svg class="h-5 w-5 text-gray-400 dark:text-gray-500 group-hover:text-teal-500 dark:group-hover:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                  </svg>
-                </div>
-                
-                <div class="mt-4 flex items-center space-x-4">
-                  <.database_label driver={database.driver} />
-                  
-                  <%= if database.host do %>
-                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                  </div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                    <.database_label driver={database.driver} />
+                    <%= if database.host do %>
+                      <span class="mx-2">•</span>
                       <%= database.host %><%= if database.port, do: ":#{database.port}" %>
-                    </span>
-                  <% end %>
-                </div>
-                
-                <div class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                  <%= cond do %>
-                    <% database.driver == "sqlite" -> %>
-                      <%= database.file_path || "No file path configured" %>
-                    <% database.driver == "redis" -> %>
-                      Redis cache database
-                    <% true -> %>
-                      <%= database.database_name || "No database name" %>
-                  <% end %>
+                    <% end %>
+                  </div>
                 </div>
               </div>
-            </.link>
+              <div class="flex items-center gap-3 pr-3">
+                <svg class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                </svg>
+              </div>
+            </div>
           <% else %>
-            <div class="group block opacity-60">
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-700 p-6 shadow-sm">
-                <div class="flex items-center justify-between">
-                  <h3 class="text-lg font-medium text-gray-700 dark:text-gray-300">
+            <div class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/50 opacity-75">
+              <div class="flex items-center gap-3 pl-3 py-3">
+                <div class={"h-10 w-1.5 rounded " <> driver_accent_class(database.driver)}></div>
+                <div>
+                  <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">
                     <%= database.display_name %>
-                  </h3>
-                  <svg class="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-                  </svg>
-                </div>
-                
-                <div class="mt-4 flex items-center space-x-4">
-                  <.database_label driver={database.driver} />
-                  
-                  <%= if database.host do %>
-                    <span class="text-sm text-gray-400 dark:text-gray-500">
+                  </div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                    <.database_label driver={database.driver} />
+                    <%= if database.host do %>
+                      <span class="mx-2">•</span>
                       <%= database.host %><%= if database.port, do: ":#{database.port}" %>
-                    </span>
-                  <% end %>
+                    <% end %>
+                  </div>
                 </div>
-                
-                <div class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                  Driver not yet supported for exploration
-                </div>
+              </div>
+              <div class="flex items-center gap-2 pr-3">
+                <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-600 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-100 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-500/40">Unsupported</span>
               </div>
             </div>
           <% end %>
         <% end %>
       </div>
-      
+
       <%= if Enum.empty?(@databases) do %>
         <div class="text-center py-12">
           <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -123,5 +105,46 @@ defmodule TrifleApp.ExploreLive do
       <% end %>
     </div>
     """
+  end
+
+  # Icon helpers for database cards
+  attr :driver, :string, required: true
+  defp database_icon_svg(assigns) do
+    ~H"""
+    <svg class="h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+      <%= case @driver do %>
+        <% "postgres" -> %>
+          <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z"/>
+        <% "sqlite" -> %>
+          <path d="M6 3.75A2.25 2.25 0 0 1 8.25 1.5h7.5A2.25 2.25 0 0 1 18 3.75v16.5A2.25 2.25 0 0 1 15.75 22.5h-7.5A2.25 2.25 0 0 1 6 20.25V3.75Zm3 1.5h6v1.5H9v-1.5Zm0 3h6v1.5H9v-1.5Zm0 3h6v1.5H9v-1.5Z"/>
+        <% "redis" -> %>
+          <path d="M3.5 8.25 12 5l8.5 3.25L12 11.5 3.5 8.25Zm0 4L12 9l8.5 3.25L12 15.5 3.5 12.25Zm0 4L12 13l8.5 3.25L12 19.5 3.5 16.25Z"/>
+        <% "mongo" -> %>
+          <path d="M12 2c.5 2 3.5 4 3.5 7.5S13 17 12 22c-1-5-3.5-9.5-3.5-12.5S11.5 4 12 2Z"/>
+        <% _ -> %>
+          <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z"/>
+      <% end %>
+    </svg>
+    """
+  end
+
+  defp database_icon_bg_class(driver) do
+    case driver do
+      "postgres" -> "h-9 w-9 rounded-md bg-blue-500/90 flex items-center justify-center shadow-sm"
+      "sqlite" -> "h-9 w-9 rounded-md bg-purple-500/90 flex items-center justify-center shadow-sm"
+      "redis" -> "h-9 w-9 rounded-md bg-red-500/90 flex items-center justify-center shadow-sm"
+      "mongo" -> "h-9 w-9 rounded-md bg-emerald-600/90 flex items-center justify-center shadow-sm"
+      _ -> "h-9 w-9 rounded-md bg-slate-500/90 flex items-center justify-center shadow-sm"
+    end
+  end
+
+  defp driver_accent_class(driver) do
+    case driver do
+      "postgres" -> "bg-blue-500"
+      "sqlite" -> "bg-purple-500"
+      "redis" -> "bg-red-500"
+      "mongo" -> "bg-emerald-600"
+      _ -> "bg-slate-500"
+    end
   end
 end
