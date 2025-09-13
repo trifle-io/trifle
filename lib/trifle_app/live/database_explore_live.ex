@@ -55,6 +55,11 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
       |> assign(load_start_time: nil)
       |> assign(load_duration_microseconds: nil)
+      |> assign(:breadcrumb_links, [
+        {"Database", ~p"/app/dbs"},
+        {database.display_name, ~p"/app/dbs/#{database.id}/dashboards"},
+        "Explore"
+      ])
 
     {:ok, socket}
   end
@@ -303,7 +308,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           |> assign(smart_timeframe_input: nil)
           |> push_patch(
             to:
-              ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
+              ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
           )
 
         {:noreply, socket}
@@ -353,7 +358,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           })
           |> push_patch(
             to:
-              ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
+              ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
           )
 
         {:noreply, socket}
@@ -384,7 +389,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           })
           |> push_patch(
             to:
-              ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
+              ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
           )
 
         {:noreply, socket}
@@ -413,7 +418,7 @@ defmodule TrifleApp.DatabaseExploreLive do
               })
               |> push_patch(
                 to:
-                  ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+                  ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
               )
 
             {:noreply, socket}
@@ -440,7 +445,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(show_granularity_dropdown: false)
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -452,7 +457,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -464,7 +469,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -532,7 +537,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       })
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}?#{[granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
+          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
       )
 
     {:noreply, socket}
@@ -561,7 +566,7 @@ defmodule TrifleApp.DatabaseExploreLive do
     {:noreply,
      socket
      |> assign(loading: true)
-     |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}?#{params}")}
+     |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{params}")}
   end
 
   def determine_granularity_for_timeframe(from, to) do
@@ -790,7 +795,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       # Only add key parameter if it exists
       url_params = if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
 
-      socket = push_patch(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}?#{url_params}")
+      socket = push_patch(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{url_params}")
       {:noreply, socket}
     else
       # Check if we need to keep the current loading state (when coming from event handlers)
@@ -1409,7 +1414,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           </svg>
           <span class="hidden sm:block">Transponders</span>
         </.link>
-        <.link navigate={~p"/app/dbs/#{@database.id}"} class="border-teal-500 text-teal-600 dark:text-teal-400 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium" aria-current="page">
+        <.link navigate={~p"/app/dbs/#{@database.id}/explore"} class="border-teal-500 text-teal-600 dark:text-teal-400 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium" aria-current="page">
           <svg class="text-teal-400 group-hover:text-teal-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621.504 1.125 1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5"/></svg>
           <span class="hidden sm:block">Explore</span>
         </.link>

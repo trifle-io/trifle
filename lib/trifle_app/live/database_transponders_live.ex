@@ -10,6 +10,11 @@ defmodule TrifleApp.DatabaseTranspondersLive do
      socket
      |> assign(:database, database)
      |> assign(:page_title, ["Database", database.display_name, "Transponders"])
+     |> assign(:breadcrumb_links, [
+       {"Database", ~p"/app/dbs"},
+       {database.display_name, ~p"/app/dbs/#{database_id}/dashboards"},
+       "Transponders"
+     ])
      |> stream(:transponders, Organizations.list_transponders_for_database(database))}
   end
 
@@ -86,6 +91,16 @@ defmodule TrifleApp.DatabaseTranspondersLive do
     end
   end
 
+  # Row click navigations and helpers
+  def handle_event("transponder_clicked", %{"id" => id}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}/transponders/#{id}")}
+  end
+
+  # No-op click to prevent row click bubbling
+  def handle_event("noop", _params, socket) do
+    {:noreply, socket}
+  end
+
   def render(assigns) do
     ~H"""
     <div class="flex flex-col dark:bg-slate-900 min-h-screen">
@@ -130,7 +145,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
             <span class="hidden sm:block">Transponders</span>
           </.link>
           <.link
-            navigate={~p"/app/dbs/#{@database.id}"}
+            navigate={~p"/app/dbs/#{@database.id}/explore"}
             class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
           >
             <svg
@@ -217,7 +232,13 @@ defmodule TrifleApp.DatabaseTranspondersLive do
                 data-handle=".drag-handle"
               >
                 <%= for {dom_id, transponder} <- @streams.transponders do %>
-                  <div id={dom_id} class="px-4 py-4 sm:px-6 group border-b border-gray-100 dark:border-slate-700 last:border-b-0" data-id={transponder.id}>
+                  <div
+                    id={dom_id}
+                    class="px-4 py-4 sm:px-6 group border-b border-gray-100 dark:border-slate-700 last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50"
+                    data-id={transponder.id}
+                    phx-click="transponder_clicked"
+                    phx-value-id={transponder.id}
+                  >
                     <div class="flex items-center justify-between">
                       <div class="flex items-center gap-3">
                         <div class="flex-shrink-0 text-gray-400 dark:text-slate-500 text-lg font-medium min-w-[2rem] text-center">
@@ -244,7 +265,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
                         </div>
                       </div>
 
-                      <div class="flex items-center gap-2">
+                      <div class="flex items-center gap-2" phx-click="noop">
                         <!-- Edit -->
                         <.link
                           patch={~p"/app/dbs/#{@database.id}/transponders/#{transponder.id}/edit"}
@@ -292,7 +313,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
                         </button>
 
                         <!-- Reorder (Drag Handle) -->
-                        <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+                        <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300" phx-click="noop">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
                           </svg>

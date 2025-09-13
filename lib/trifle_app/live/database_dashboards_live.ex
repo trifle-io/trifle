@@ -224,7 +224,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
             <span class="hidden sm:block">Transponders</span>
           </.link>
           <.link
-            navigate={~p"/app/dbs/#{@database.id}"}
+            navigate={~p"/app/dbs/#{@database.id}/explore"}
             class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
           >
             <svg
@@ -314,7 +314,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
                 </svg>
                 <h3 class="mt-3 text-base font-semibold text-gray-900 dark:text-white">No dashboards yet</h3>
                 <p class="mt-2 text-sm text-gray-600 dark:text-slate-400">
-                  Ready to build? <.link patch={~p"/app/dbs/#{@database.id}/dashboards/new"} class="text-teal-600 hover:text-teal-500 dark:text-teal-400 underline">Create</.link> your first dashboard or <.link navigate={~p"/app/dbs/#{@database.id}"} class="text-teal-600 hover:text-teal-500 dark:text-teal-400 underline">Explore</.link> your data.
+                  Ready to build? <.link patch={~p"/app/dbs/#{@database.id}/dashboards/new"} class="text-teal-600 hover:text-teal-500 dark:text-teal-400 underline">Create</.link> your first dashboard or <.link navigate={~p"/app/dbs/#{@database.id}/explore"} class="text-teal-600 hover:text-teal-500 dark:text-teal-400 underline">Explore</.link> your data.
                 </p>
               </div>
             <% else %>
