@@ -438,7 +438,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   attr :level, :integer, default: 0
   defp render_dashboard(assigns) do
     ~H"""
-    <div class="pr-0 py-3 group border-b border-gray-100 dark:border-slate-700 last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 grid items-center" style={"padding-left: #{max(@level, 0) * 12 + 12}px; grid-template-columns: minmax(0,1fr) auto auto; column-gap: 1.5rem;"} data-id={@dashboard.id} data-type="dashboard" phx-click="dashboard_clicked" phx-value-id={@dashboard.id}>
+    <div class="pr-0 py-3 group border-b border-gray-100 dark:border-slate-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 grid items-center" style={"padding-left: #{max(@level, 0) * 12 + 12}px; grid-template-columns: minmax(0,1fr) auto auto; column-gap: 1.5rem;"} data-id={@dashboard.id} data-type="dashboard" phx-click="dashboard_clicked" phx-value-id={@dashboard.id}>
       <div class="min-w-0">
         <div class={[
           "flex items-center gap-2",
