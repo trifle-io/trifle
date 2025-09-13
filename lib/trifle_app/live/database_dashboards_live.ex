@@ -54,6 +54,11 @@ defmodule TrifleApp.DatabaseDashboardsLive do
     {:noreply, push_navigate(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{dashboard_id}")}
   end
 
+  # No-op click handler to prevent bubbling to parent row toggle
+  def handle_event("noop", _params, socket) do
+    {:noreply, socket}
+  end
+
   # Group CRUD
   def handle_event("set_collapsed_groups", %{"ids" => ids}, socket) do
     ids = ids || []
@@ -260,7 +265,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
       <!-- Dashboards Index -->
       <div class="mb-6">
         <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
-          <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+          <div id="dashboards-header-controls" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between" phx-hook="FastTooltip">
             <div class="flex items-center gap-2">
               <span>Dashboards</span>
               <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30"><%= @dashboards_count %></span>
@@ -268,39 +273,53 @@ defmodule TrifleApp.DatabaseDashboardsLive do
             <div class="flex items-center gap-2">
               <.link
                 patch={~p"/app/dbs/#{@database.id}/dashboards/new"}
+                aria-label="New Dashboard"
                 class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
               >
                 <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
-                New Dashboard
+                <span class="hidden md:inline">New Dashboard</span>
               </.link>
-              <button type="button" phx-click="new_group" class="inline-flex items-center rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500">
+              <button type="button" phx-click="new_group" aria-label="New Group" class="inline-flex items-center rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="-ml-0.5 mr-1.5 h-5 w-5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
                 </svg>
-                New Group
+                <span class="hidden md:inline">New Group</span>
               </button>
-              <button type="button" phx-click="expand_all_groups" class="inline-flex items-center rounded-md bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-slate-500">Expand all</button>
-              <button type="button" phx-click="collapse_all_groups" class="inline-flex items-center rounded-md bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-slate-500">Collapse all</button>
+              <button type="button" phx-click="expand_all_groups" data-tooltip="Expand All" class="inline-flex items-center rounded-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
+                </svg>
+              </button>
+              <button type="button" phx-click="collapse_all_groups" data-tooltip="Collapse All" class="inline-flex items-center rounded-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                </svg>
+              </button>
             </div>
           </div>
 
           <div class="divide-y divide-gray-100 dark:divide-slate-700">
             <div class="p-2" id="dashboard-root" phx-hook="DashboardGroupsCollapse" data-db-id={@database.id}>
-              <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400 px-2 mb-2" data-group-header="">
-                <span>Ungrouped</span>
-                <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-0.5 text-[10px] font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
-                  <%= length(@ungrouped_dashboards) %>
-                </span>
-              </div>
-              <div id="dashboard-root-nodes" data-parent-id="" data-group="dashboard-nodes" data-event="reorder_nodes" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col" style="min-height: 14px;">
-                <%= for entry <- mixed_root_nodes(@groups_tree, @ungrouped_dashboards) do %>
-                  <%= case entry do %>
-                    <% {:group, node} -> %>
-                      <%= render_group(%{node: node, level: 0, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
-                    <% {:dashboard, dashboard} -> %>
-                      <%= render_dashboard(%{dashboard: dashboard, level: 0}) %>
-                  <% end %>
+              <!-- Top-level Groups -->
+              <div id="dashboard-root-groups" data-parent-id="" data-group="dashboard-nodes" data-event="reorder_nodes" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col" style="min-height: 14px;">
+                <%= for node <- @groups_tree do %>
+                  <%= render_group(%{node: node, level: 0, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
                 <% end %>
+              </div>
+
+              <!-- Ungrouped Dashboards at bottom -->
+              <div class="mt-6 pt-4 border-t border-gray-200 dark:border-slate-700">
+                <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400 px-2 mb-2" data-group-header="">
+                  <span>Ungrouped</span>
+                  <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-0.5 text-[10px] font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
+                    <%= length(@ungrouped_dashboards) %>
+                  </span>
+                </div>
+                <div id="dashboard-root-ungrouped" data-parent-id="" data-group="dashboard-nodes" data-event="reorder_nodes" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col" style="min-height: 14px;">
+                  <%= for dashboard <- @ungrouped_dashboards do %>
+                    <%= render_dashboard(%{dashboard: dashboard, level: 0}) %>
+                  <% end %>
+                </div>
               </div>
             </div>
           </div>
@@ -335,7 +354,13 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   defp render_group(assigns) do
     ~H"""
     <div data-id={@node.group.id} data-type="group">
-      <div class="flex items-center justify-between pr-0 py-2 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50" style={"padding-left: #{max(@level, 0) * 12 + 12}px"} data-group-header={@node.group.id}>
+      <div 
+        class="flex items-center justify-between pr-0 py-2 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 cursor-pointer"
+        style={"padding-left: #{max(@level, 0) * 12 + 12}px"}
+        data-group-header={@node.group.id}
+        phx-click="toggle_group"
+        phx-value-id={@node.group.id}
+      >
         <%= if @editing_group_id == @node.group.id do %>
           <div class="flex items-center gap-2 w-full">
             <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
@@ -350,7 +375,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
           </div>
         <% else %>
           <div class="flex items-center gap-2">
-            <button type="button" phx-click="toggle_group" phx-value-id={@node.group.id} class="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300" title="Toggle">
+            <span class="text-gray-400 dark:text-slate-500" aria-hidden="true">
               <%= if MapSet.member?((@collapsed_groups || MapSet.new()), @node.group.id) do %>
                 <!-- Chevron Right -->
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
@@ -358,13 +383,17 @@ defmodule TrifleApp.DatabaseDashboardsLive do
                 <!-- Chevron Down -->
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
               <% end %>
-            </button>
-            <div class="font-medium text-gray-900 dark:text-white"><%= @node.group.name %></div>
+            </span>
+            <!-- Folder icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4 text-gray-500 dark:text-slate-400">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+            </svg>
+            <div class="font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"><%= @node.group.name %></div>
             <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">
               <%= length(@node.children) + length(@node.dashboards) %>
             </span>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 mr-3" phx-click="noop">
             <button type="button" phx-click="new_group" phx-value-parent_id={@node.group.id} title="New subgroup" class="text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
@@ -409,19 +438,27 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   attr :level, :integer, default: 0
   defp render_dashboard(assigns) do
     ~H"""
-    <div class="pr-0 py-3 group border-b border-gray-100 dark:border-slate-700 last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 flex items-center justify-between" style={"padding-left: #{max(@level, 0) * 12 + 12}px"} data-id={@dashboard.id} data-type="dashboard" phx-click="dashboard_clicked" phx-value-id={@dashboard.id}>
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-3 mb-1">
-          <%= if @dashboard.user do %>
-            <div class="h-6 w-6 flex-shrink-0" title={"Created by #{@dashboard.user.email}"}>
-              <img src={gravatar_url(@dashboard.user.email)} class="h-6 w-6 rounded-full" />
-            </div>
-          <% end %>
-          <span class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"><%= @dashboard.name %></span>
+    <div class="pr-0 py-3 group border-b border-gray-100 dark:border-slate-700 last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 grid items-center" style={"padding-left: #{max(@level, 0) * 12 + 12}px; grid-template-columns: minmax(0,1fr) auto auto; column-gap: 1.5rem;"} data-id={@dashboard.id} data-type="dashboard" phx-click="dashboard_clicked" phx-value-id={@dashboard.id}>
+      <div class="min-w-0">
+        <div class={[
+          "flex items-center gap-2",
+          @level > 0 && "ml-6"
+        ]}>
+          <!-- Dashboard icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4 text-gray-500 dark:text-slate-400">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+          </svg>
+          <span class="text-base font-semibold text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400 truncate"><%= @dashboard.name %></span>
         </div>
-        <p class="text-xs text-gray-500 dark:text-slate-400">Key: <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono"><%= @dashboard.key %></code></p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="justify-self-end mr-6">
+        <%= if @dashboard.user do %>
+          <div class="h-6 w-6" title={"Created by #{@dashboard.user.email}"}>
+            <img src={gravatar_url(@dashboard.user.email)} class="h-6 w-6 rounded-full" />
+          </div>
+        <% end %>
+      </div>
+      <div class="flex items-center gap-2 justify-self-end mr-3">
         <!-- Visibility badge -->
         <span class={[
           "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset",
