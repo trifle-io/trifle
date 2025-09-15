@@ -85,6 +85,6 @@ defmodule TrifleApp.AppLive do
 
   def mount(_params, _session, socket) do
     # {:ok, assign(socket, form: to_form(%{}, as: "user"))}
-    {:ok, assign(socket, page_title: "Dashboard")}
+    {:ok, assign(socket, page_title: "Dashboards")}
   end
 end

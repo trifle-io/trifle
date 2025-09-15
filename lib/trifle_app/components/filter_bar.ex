@@ -10,6 +10,7 @@ defmodule TrifleApp.Components.FilterBar do
   alias Trifle.Organizations.Database
   alias Trifle.Organizations.Project
   alias TrifleApp.TimeframeParsing
+  # Optional: databases and selected_database_id assigns can be passed by parent LiveView
   
   def render(assigns) do
     ~H"""
@@ -17,6 +18,65 @@ defmodule TrifleApp.Components.FilterBar do
       <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
         <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
         
+        <!-- Database Dropdown (optional; only if >1 DB) -->
+        <%= if @databases && length(@databases) > 1 do %>
+          <div class="w-full md:w-64">
+            <div class="relative">
+              <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                Database
+              </div>
+              <button
+                type="button"
+                phx-target={@myself}
+                phx-click="toggle_database_dropdown"
+                class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="truncate">
+                    <%= (
+                      case Enum.find(@databases, fn d -> to_string(d.id) == to_string(@selected_database_id) end) do
+                        nil -> "Select a database"
+                        db -> db.display_name
+                      end
+                    ) %>
+                  </span>
+                </div>
+                <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                  <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </span>
+              </button>
+
+              <%= if @show_database_dropdown do %>
+                <div
+                  phx-click-away="hide_database_dropdown"
+                  phx-target={@myself}
+                  class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-700 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                >
+                  <%= for db <- @databases do %>
+                    <button
+                      type="button"
+                      phx-target={@myself}
+                      phx-click="select_database"
+                      phx-value-id={db.id}
+                      onmousedown="event.preventDefault()"
+                      class={[
+                        "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
+                        to_string(db.id) == to_string(@selected_database_id) && "font-semibold text-teal-600 dark:text-teal-400"
+                      ]}
+                    >
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-900 dark:text-white truncate"><%= db.display_name %></span>
+                      </div>
+                    </button>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
         <!-- Timeframe Input Section -->
         <div class="w-full md:w-full lg:w-[26rem]">
           <div class="relative">
@@ -210,8 +270,13 @@ defmodule TrifleApp.Components.FilterBar do
     socket = 
       socket
       |> assign(assigns)
+      |> assign(databases: Map.get(assigns, :databases, socket.assigns[:databases] || nil))
+      |> assign(selected_database_id: Map.get(assigns, :selected_database_id, socket.assigns[:selected_database_id] || nil))
       |> assign(current_input_value: current_input)
-    
+
+    # Ensure database dropdown visibility flag exists (component manages it internally)
+    socket = if Map.has_key?(socket.assigns, :show_database_dropdown), do: socket, else: assign(socket, show_database_dropdown: false)
+
     {:ok, socket}
   end
   
@@ -283,6 +348,19 @@ defmodule TrifleApp.Components.FilterBar do
   def handle_event("select_granularity", %{"granularity" => granularity}, socket) do
     notify_parent({:filter_changed, %{granularity: granularity}})
     {:noreply, assign(socket, show_granularity_dropdown: false)}
+  end
+
+  def handle_event("toggle_database_dropdown", _params, socket) do
+    {:noreply, assign(socket, show_database_dropdown: !socket.assigns[:show_database_dropdown])}
+  end
+
+  def handle_event("hide_database_dropdown", _params, socket) do
+    {:noreply, assign(socket, show_database_dropdown: false)}
+  end
+
+  def handle_event("select_database", %{"id" => database_id}, socket) do
+    notify_parent({:filter_changed, %{database_id: database_id}})
+    {:noreply, assign(socket, show_database_dropdown: false, selected_database_id: database_id)}
   end
   
   def handle_event("toggle_granularity_dropdown", _params, socket) do

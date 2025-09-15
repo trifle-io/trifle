@@ -12,7 +12,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
      |> assign(:page_title, ["Database", database.display_name, "Transponders"])
      |> assign(:breadcrumb_links, [
        {"Database", ~p"/app/dbs"},
-       {database.display_name, ~p"/app/dbs/#{database_id}/dashboards"},
+       {database.display_name, ~p"/app/dashboards"},
        "Transponders"
      ])
      |> stream(:transponders, Organizations.list_transponders_for_database(database))}
@@ -135,7 +135,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
       <div class="mb-6 border-b border-gray-200 dark:border-slate-700">
         <nav class="-mb-px space-x-8" aria-label="Tabs">
           <.link
-            navigate={~p"/app/dbs/#{@database.id}/dashboards"}
+            navigate={~p"/app/dashboards"}
             class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
           >
             <svg
@@ -172,7 +172,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
             <span class="hidden sm:block">Transponders</span>
           </.link>
           <.link
-            navigate={~p"/app/dbs/#{@database.id}/explore"}
+            navigate={~p"/app/explore?#{[database_id: @database.id]}"}
             class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
           >
             <svg

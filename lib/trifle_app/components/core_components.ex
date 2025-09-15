@@ -650,7 +650,7 @@ defmodule TrifleApp.CoreComponents do
       breadcrumb_links([
         {"Database", ~p"/app/dbs"},
         {"MongoDB", ~p"/app/dbs/123"},
-        {"Dashboards", ~p"/app/dbs/123/dashboards"},
+        {"Dashboards", ~p"/app/dashboards"},
         "Weekly Sales"
       ])
   """

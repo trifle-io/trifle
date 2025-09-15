@@ -9,7 +9,7 @@ defmodule TrifleApp.DatabasesLive do
     # If user has only one database, redirect them directly to it
     case databases do
       [single_database] ->
-        {:ok, push_navigate(socket, to: ~p"/app/dbs/#{single_database.id}/dashboards")}
+        {:ok, push_navigate(socket, to: ~p"/app/dbs/#{single_database.id}/transponders")}
       _ ->
         {:ok, assign(socket, page_title: "Databases", databases: databases)}
     end
@@ -40,7 +40,7 @@ defmodule TrifleApp.DatabasesLive do
         <%= for database <- @databases do %>
           <%= if is_supported_driver?(database.driver) do %>
             <div class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
-                 phx-click={JS.navigate(~p"/app/dbs/#{database.id}/dashboards")}>
+                 phx-click={JS.navigate(~p"/app/dbs/#{database.id}/transponders")}>
               <div class="flex items-center gap-3 pl-3 py-3">
                 <div class={"h-10 w-1.5 rounded " <> driver_accent_class(database.driver)}></div>
                 <div>

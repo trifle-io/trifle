@@ -1,29 +1,24 @@
-defmodule TrifleApp.DatabaseDashboardsLive do
+defmodule TrifleApp.DashboardsLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
-  alias Trifle.Organizations.{Database, Dashboard}
+  alias Trifle.Organizations.Dashboard
 
-  def mount(%{"id" => database_id}, _session, socket) do
-    database = Organizations.get_database!(database_id)
-
+  def mount(_params, _session, socket) do
+    user = socket.assigns.current_user
     {:ok,
      socket
-     |> assign(:database, database)
-     |> assign(:page_title, ["Database", database.display_name, "Dashboards"])
-     |> assign(:breadcrumb_links, [
-       {"Database", ~p"/app/dbs"},
-       {database.display_name, ~p"/app/dbs/#{database_id}/dashboards"},
-       "Dashboards"
-     ])
-     |> assign(:dashboards_count, Organizations.list_dashboards_for_database(database) |> length())
-     |> assign(:groups_tree, Organizations.list_dashboard_tree_for_database(database))
-     |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_group(database, nil))
+     |> assign(:page_title, ["Dashboards"])
+     |> assign(:breadcrumb_links, ["Dashboards"])
+     |> assign(:dashboards_count, Organizations.count_dashboards_for_user_or_visible(user))
+     |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
+     |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
      |> assign(:editing_group_id, nil)
      |> assign(:collapsed_groups, MapSet.new())}
   end
 
   def handle_params(params, _url, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+    socket = apply_action(socket, socket.assigns.live_action, params)
+    {:noreply, refresh_tree(socket)}
   end
 
   defp apply_action(socket, :index, _params) do
@@ -34,11 +29,10 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   defp apply_action(socket, :new, _params) do
     socket
     |> assign(:dashboard, %Dashboard{})
+    |> assign(:databases, Organizations.list_databases())
   end
 
-  def handle_info({TrifleApp.DatabaseDashboardsLive.FormComponent, {:saved, _dashboard}}, socket) do
-    {:noreply, refresh_tree(socket)}
-  end
+  # No modal form events in global-only mode
 
   def handle_event("delete_dashboard", %{"id" => id}, socket) do
     dashboard = Organizations.get_dashboard!(id)
@@ -52,20 +46,19 @@ defmodule TrifleApp.DatabaseDashboardsLive do
 
   def handle_event("duplicate_dashboard", %{"id" => id}, socket) do
     original = Organizations.get_dashboard!(id)
-    database = socket.assigns.database
     current_user = socket.assigns.current_user
 
     attrs = %{
-      "database_id" => database.id,
+      "database_id" => original.database_id,
       "user_id" => current_user && current_user.id,
       "name" => (original.name || "Dashboard") <> " (copy)",
       "key" => original.key || "dashboard",
       "payload" => original.payload || %{},
-      "default_timeframe" => original.default_timeframe || database.default_timeframe || "24h",
-      "default_granularity" => original.default_granularity || database.default_granularity || "1h",
+      "default_timeframe" => original.default_timeframe || original.database.default_timeframe || "24h",
+      "default_granularity" => original.default_granularity || original.database.default_granularity || "1h",
       "visibility" => original.visibility,
       "group_id" => original.group_id,
-      "position" => Organizations.get_next_dashboard_position(database)
+      "position" => Organizations.get_next_dashboard_position_for_group(original.group_id)
     }
 
     case Organizations.create_dashboard(attrs) do
@@ -81,7 +74,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   end
 
   def handle_event("dashboard_clicked", %{"id" => dashboard_id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{dashboard_id}")}
+    {:noreply, push_navigate(socket, to: ~p"/app/dashboards/#{dashboard_id}")}
   end
 
   # No-op click handler to prevent bubbling to parent row toggle
@@ -113,6 +106,45 @@ defmodule TrifleApp.DatabaseDashboardsLive do
     {:noreply, socket}
   end
 
+  def handle_event("create_dashboard", params, socket) do
+    current_user = socket.assigns.current_user
+    name = String.trim(to_string(Map.get(params, "name", "")))
+    db_id = Map.get(params, "database_id") |> to_string()
+    key = String.trim(to_string(Map.get(params, "key", "")))
+
+    cond do
+      name == "" ->
+        {:noreply, put_flash(socket, :error, "Name is required")}
+      db_id in [nil, ""] ->
+        {:noreply, put_flash(socket, :error, "Database is required")}
+      true ->
+        db = Organizations.get_database!(db_id)
+
+        attrs = %{
+          "name" => name,
+          "key" => if(key == "", do: "dashboard", else: key),
+          "database_id" => db.id,
+          "user_id" => current_user.id,
+          "visibility" => false,
+          "group_id" => nil,
+          "default_timeframe" => db.default_timeframe || "24h",
+          "default_granularity" => db.default_granularity || "1h",
+          "position" => Trifle.Organizations.get_next_dashboard_position_for_group(nil)
+        }
+
+        case Trifle.Organizations.create_dashboard(attrs) do
+          {:ok, _dash} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "Dashboard created")
+             |> push_patch(to: ~p"/app/dashboards")}
+
+          {:error, _cs} ->
+            {:noreply, put_flash(socket, :error, "Could not create dashboard")}
+        end
+    end
+  end
+
   defp all_group_ids(tree) when is_list(tree) do
     Enum.flat_map(tree, &all_group_ids/1)
   end
@@ -131,7 +163,8 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   def handle_event("new_group", params, socket) do
     name = Map.get(params, "name", "New Group")
     parent_id = Map.get(params, "parent_id")
-    attrs = %{"name" => name, "database_id" => socket.assigns.database.id, "parent_group_id" => parent_id}
+    pos = Organizations.get_next_dashboard_group_position(parent_id)
+    attrs = %{"name" => name, "parent_group_id" => parent_id, "position" => pos}
     case Organizations.create_dashboard_group(attrs) do
       {:ok, _group} -> {:noreply, refresh_tree(socket)}
       {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
@@ -158,7 +191,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   def handle_event("reorder_nodes", %{"items" => items, "parent_id" => parent_id, "from_items" => from_items, "from_parent_id" => from_parent_id, "moved_id" => moved_id, "moved_type" => moved_type}, socket) do
     p = normalize_parent(parent_id)
     fp = normalize_parent(from_parent_id)
-    case Organizations.reorder_nodes(socket.assigns.database, p, items, fp, from_items, moved_id, moved_type) do
+    case Organizations.reorder_nodes(p, items, fp, from_items, moved_id, moved_type) do
       {:ok, _} -> {:noreply, refresh_tree(socket)}
       {:error, :invalid_parent} -> {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to reorder")}
@@ -170,11 +203,11 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   defp normalize_parent(id), do: id
 
   defp refresh_tree(socket) do
-    database = socket.assigns.database
+    user = socket.assigns.current_user
     socket
-    |> assign(:dashboards_count, Organizations.list_dashboards_for_database(database) |> length())
-    |> assign(:groups_tree, Organizations.list_dashboard_tree_for_database(database))
-    |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_group(database, nil))
+    |> assign(:dashboards_count, Organizations.count_dashboards_for_user_or_visible(user))
+    |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
+    |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
   end
 
   defp gravatar_url(email) do
@@ -209,88 +242,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col dark:bg-slate-900 min-h-screen">
-      <!-- Tab Navigation -->
-      <div class="mb-6 border-b border-gray-200 dark:border-slate-700">
-        <nav class="-mb-px space-x-8" aria-label="Tabs">
-          <.link
-            navigate={~p"/app/dbs/#{@database.id}/dashboards"}
-            class="border-teal-500 text-teal-600 dark:text-teal-400 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-            aria-current="page"
-          >
-            <svg
-              class="text-teal-400 group-hover:text-teal-500 -ml-0.5 mr-2 h-5 w-5"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
-              />
-            </svg>
-            <span class="hidden sm:block">Dashboards</span>
-          </.link>
-          <.link
-            navigate={~p"/app/dbs/#{@database.id}/transponders"}
-            class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-          >
-            <svg
-              class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
-              />
-            </svg>
-            <span class="hidden sm:block">Transponders</span>
-          </.link>
-          <.link
-            navigate={~p"/app/dbs/#{@database.id}/explore"}
-            class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-          >
-            <svg
-              class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621.504 1.125 1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5"/>
-            </svg>
-            <span class="hidden sm:block">Explore</span>
-          </.link>
-          <.link
-            navigate={~p"/app/dbs/#{@database.id}/settings"}
-            class="float-right border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-          >
-            <svg
-              class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z"
-              />
-            </svg>
-            <span class="hidden sm:block">Settings</span>
-          </.link>
-        </nav>
-      </div>
+      <!-- tabs removed in global-only mode -->
 
       <!-- Dashboards Index -->
       <div class="mb-6">
@@ -302,7 +254,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
             </div>
             <div class="flex items-center gap-2">
               <.link
-                patch={~p"/app/dbs/#{@database.id}/dashboards/new"}
+                patch={~p"/app/dashboards/new"}
                 aria-label="New Dashboard"
                 class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
               >
@@ -344,15 +296,15 @@ defmodule TrifleApp.DatabaseDashboardsLive do
                 </svg>
                 <h3 class="mt-3 text-base font-semibold text-gray-900 dark:text-white">No dashboards yet</h3>
                 <p class="mt-2 text-sm text-gray-600 dark:text-slate-400">
-                  Ready to build? <.link patch={~p"/app/dbs/#{@database.id}/dashboards/new"} class="text-teal-600 hover:text-teal-500 dark:text-teal-400 underline">Create</.link> your first dashboard or <.link navigate={~p"/app/dbs/#{@database.id}/explore"} class="text-teal-600 hover:text-teal-500 dark:text-teal-400 underline">Explore</.link> your data.
+                  Ready to build? Open Explore to start analyzing data.
                 </p>
               </div>
             <% else %>
-              <div class="p-2" id="dashboard-root" phx-hook="DashboardGroupsCollapse" data-db-id={@database.id}>
+          <div class="p-2" id="dashboard-root" phx-hook="DashboardGroupsCollapse">
                 <!-- Top-level Groups -->
                 <div id="dashboard-root-groups" data-parent-id="" data-group="dashboard-nodes" data-event="reorder_nodes" data-handle=".drag-handle" phx-hook="Sortable" class="flex flex-col" style="min-height: 14px;">
                   <%= for node <- @groups_tree do %>
-                    <%= render_group(%{node: node, level: 0, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
+                    <%= render_group(%{node: node, level: 0, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
                   <% end %>
                 </div>
 
@@ -376,19 +328,37 @@ defmodule TrifleApp.DatabaseDashboardsLive do
         </div>
       </div>
 
-      <!-- Modals -->
-      <.app_modal :if={@live_action == :new} id="dashboard-modal" show on_cancel={JS.patch(~p"/app/dbs/#{@database.id}/dashboards")}>
+      <!-- New Dashboard Modal -->
+      <.app_modal :if={@live_action == :new} id="dashboard-modal" show on_cancel={JS.patch(~p"/app/dashboards")}> 
         <:title>New Dashboard</:title>
         <:body>
-          <.live_component
-            module={TrifleApp.DatabaseDashboardsLive.FormComponent}
-            id={@dashboard.id || :new}
-            action={@live_action}
-            dashboard={@dashboard}
-            database={@database}
-            current_user={@current_user}
-            patch={~p"/app/dbs/#{@database.id}/dashboards"}
-          />
+          <.form for={%{}} phx-submit="create_dashboard" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Name</label>
+              <input type="text" name="name" required placeholder="e.g., Weekly Sales" class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Database</label>
+              <div class="grid grid-cols-1 sm:max-w-xs">
+                <select name="database_id" required class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                  <%= for db <- @databases || [] do %>
+                    <option value={db.id}><%= db.display_name %></option>
+                  <% end %>
+                </select>
+                <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                  <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Key (optional)</label>
+              <input type="text" name="key" placeholder="e.g., sales.metrics" class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" />
+            </div>
+            <div class="flex items-center justify-end gap-3 pt-2">
+              <button type="button" phx-click={JS.patch(~p"/app/dashboards")} class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">Cancel</button>
+              <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500">Create</button>
+            </div>
+          </.form>
         </:body>
       </.app_modal>
     </div>
@@ -398,7 +368,6 @@ defmodule TrifleApp.DatabaseDashboardsLive do
   # Components for nested groups and dashboards
   attr :node, :map, required: true
   attr :level, :integer, required: true
-  attr :database, :map, required: true
   attr :editing_group_id, :string, default: nil
   attr :collapsed_groups, :any, default: nil
   defp render_group(assigns) do
@@ -475,7 +444,7 @@ defmodule TrifleApp.DatabaseDashboardsLive do
           <%= for entry <- mixed_group_nodes(@node) do %>
             <%= case entry do %>
               <% {:group, child} -> %>
-                <%= render_group(%{node: child, level: @level + 1, database: @database, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
+                <%= render_group(%{node: child, level: @level + 1, editing_group_id: @editing_group_id, collapsed_groups: @collapsed_groups}) %>
               <% {:dashboard, dashboard} -> %>
                 <%= render_dashboard(%{dashboard: dashboard, level: @level + 1}) %>
             <% end %>
