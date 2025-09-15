@@ -1,4 +1,4 @@
-defmodule TrifleApp.DatabaseDashboardLive do
+defmodule TrifleApp.DashboardLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
@@ -10,23 +10,19 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
   def mount(params, _session, socket) do
     case params do
-      %{"id" => database_id, "dashboard_id" => dashboard_id} ->
-        # Authenticated access
-        database = Organizations.get_database!(database_id)
+      %{"id" => dashboard_id} ->
+        # Authenticated access; fetch dashboard and associated database
         dashboard = Organizations.get_dashboard!(dashboard_id)
+        database = dashboard.database
 
-        # Initialize dashboard data state
         socket = initialize_dashboard_state(socket, database, dashboard, false, nil)
 
+        groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
+        breadcrumbs = [{"Dashboards", "/app/dashboards"}] ++ Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [dashboard.name]
         {:ok,
          socket
-         |> assign(:page_title, ["Database", database.display_name, "Dashboards", dashboard.name])
-         |> assign(:breadcrumb_links, [
-           {"Database", ~p"/app/dbs"},
-           {database.display_name, ~p"/app/dbs/#{database_id}/dashboards"},
-           {"Dashboards", ~p"/app/dbs/#{database_id}/dashboards"},
-           dashboard.name
-         ])}
+         |> assign(:page_title, ["Dashboards", dashboard.name])
+         |> assign(:breadcrumb_links, breadcrumbs)}
 
       %{"dashboard_id" => dashboard_id} ->
         # Public access - token will be provided in handle_params
@@ -104,10 +100,13 @@ defmodule TrifleApp.DatabaseDashboardLive do
   end
 
   defp apply_action(socket, :configure, _params) do
+    databases = Organizations.list_databases()
+
     socket
     |> assign(:dashboard_changeset, nil)
     |> assign(:dashboard_form, nil)
     |> assign(:temp_name, socket.assigns.dashboard.name)
+    |> assign(:databases, databases)
   end
 
 
@@ -121,17 +120,9 @@ defmodule TrifleApp.DatabaseDashboardLive do
     case Organizations.update_dashboard(dashboard, %{name: name}) do
       {:ok, updated_dashboard} ->
         # Update breadcrumbs and page title with new dashboard name
-        updated_breadcrumbs = case socket.assigns[:breadcrumb_links] do
-          [db_link, db_name, dashboards_link, _old_dashboard_name] ->
-            [db_link, db_name, dashboards_link, updated_dashboard.name]
-          other -> other
-        end
-
-        updated_page_title = case socket.assigns[:page_title] do
-          ["Database", db_name, "Dashboards", _old_dashboard_name] ->
-            ["Database", db_name, "Dashboards", updated_dashboard.name]
-          other -> other
-        end
+        groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
+        updated_breadcrumbs = [{"Dashboards", "/app/dashboards"}] ++ Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [updated_dashboard.name]
+        updated_page_title = ["Dashboards", updated_dashboard.name]
 
         {:noreply,
          socket
@@ -199,7 +190,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> push_navigate(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards")
+         |> push_navigate(to: ~p"/app/dashboards")
          |> put_flash(:info, "Dashboard deleted successfully")}
 
       {:error, _changeset} ->
@@ -222,7 +213,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
       "default_granularity" => original.default_granularity || database.default_granularity || "1h",
       "visibility" => original.visibility,
       "group_id" => original.group_id,
-      "position" => Organizations.get_next_dashboard_position(database)
+      "position" => Organizations.get_next_dashboard_position_for_group(original.group_id)
     }
 
     case Organizations.create_dashboard(attrs) do
@@ -230,7 +221,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
         {:noreply,
          socket
          |> put_flash(:info, "Dashboard duplicated")
-         |> push_navigate(to: ~p"/app/dbs/#{database.id}/dashboards/#{new_dash.id}")}
+         |> push_navigate(to: ~p"/app/dashboards/#{new_dash.id}")}
 
       {:error, _cs} ->
         {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
@@ -245,7 +236,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
          |> assign(:dashboard, dashboard)
          |> assign(:dashboard_changeset, nil)
          |> assign(:dashboard_form, nil)
-         |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{dashboard.id}")
+         |> push_patch(to: ~p"/app/dashboards/#{dashboard.id}")
          |> put_flash(:info, "Dashboard updated successfully")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -302,7 +293,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
      socket
      |> assign(:dashboard_changeset, nil)
      |> assign(:dashboard_form, nil)
-     |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}")}
+     |> push_patch(to: ~p"/app/dashboards/#{socket.assigns.dashboard.id}")}
   end
 
   # Widget editing modal controls
@@ -638,7 +629,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     path = if socket.assigns.is_public_access do
       ~p"/d/#{socket.assigns.dashboard.id}?#{params}"
     else
-      ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}?#{params}"
+      ~p"/app/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
 
     socket = push_patch(socket, to: path)
@@ -978,26 +969,42 @@ defmodule TrifleApp.DatabaseDashboardLive do
     reload_current_timeframe(socket)
   end
 
-  def handle_event("save_settings", %{"name" => name, "key" => key, "timeframe" => tf, "granularity" => gran}, socket) do
+  def handle_event("save_settings", params, socket) do
     dashboard = socket.assigns.dashboard
+    name = Map.get(params, "name")
+    key = Map.get(params, "key")
+    tf = Map.get(params, "timeframe")
+    gran = Map.get(params, "granularity")
+    new_db_id = Map.get(params, "database_id")
+
     attrs = %{
       name: String.trim(to_string(name || "")),
       key: String.trim(to_string(key || "")),
       default_timeframe: String.trim(to_string(tf || "")),
       default_granularity: String.trim(to_string(gran || ""))
     }
+    attrs = if new_db_id && new_db_id != "", do: Map.put(attrs, :database_id, new_db_id), else: attrs
 
     case Trifle.Organizations.update_dashboard(dashboard, attrs) do
       {:ok, updated_dashboard} ->
+        # If database changed, update assigns and related config
+        socket =
+          if new_db_id && new_db_id != "" && to_string(socket.assigns.database.id) != to_string(new_db_id) do
+            new_db = Organizations.get_database!(new_db_id)
+            new_config = Database.stats_config(new_db)
+            new_grans = new_db.granularities || []
+            socket
+            |> assign(:database, new_db)
+            |> assign(:database_config, new_config)
+            |> assign(:available_granularities, new_grans)
+          else
+            socket
+          end
+
         # Update breadcrumbs and title to reflect new name
-        updated_breadcrumbs = case socket.assigns[:breadcrumb_links] do
-          [dbs, db_name, {"Dashboards", path}, _old_name] -> [dbs, db_name, {"Dashboards", path}, updated_dashboard.name]
-          other -> other || []
-        end
-        updated_page_title = case socket.assigns[:page_title] do
-          ["Database", db_display, "Dashboards", _old_name] -> ["Database", db_display, "Dashboards", updated_dashboard.name]
-          other -> other
-        end
+        groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
+        updated_breadcrumbs = [{"Dashboards", "/app/dashboards"}] ++ Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [updated_dashboard.name]
+        updated_page_title = ["Dashboards", updated_dashboard.name]
 
         {:noreply,
          socket
@@ -1115,7 +1122,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 </button>
               <% else %>
                 <.link
-                  patch={~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}/edit"}
+                  patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
                   class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
                 >
                   <svg class="md:-ml-0.5 md:mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1126,7 +1133,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
                 <!-- Configure Button -->
                 <.link
-                  patch={~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}/configure"}
+                  patch={~p"/app/dashboards/#{@dashboard.id}/configure"}
                   class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
                 >
                   <svg class="md:-ml-0.5 md:mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1304,7 +1311,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
 
       <!-- Configure Modal -->
       <%= if !@is_public_access && @live_action == :configure do %>
-        <.app_modal id="configure-modal" show={true} on_cancel={JS.patch(~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}")}>
+        <.app_modal id="configure-modal" show={true} on_cancel={JS.patch(~p"/app/dashboards/#{@dashboard.id}")}>
           <:title>Configure Dashboard</:title>
       <:body>
         <div class="space-y-6">
@@ -1321,6 +1328,21 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
                 placeholder="Dashboard name"
               />
+            </div>
+
+            <!-- Database (editable) -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Database</label>
+              <div class="grid grid-cols-1 sm:max-w-xs">
+                <select name="database_id" class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                  <%= for db <- @databases || [] do %>
+                    <option value={db.id} selected={to_string(db.id) == to_string(@database.id)}><%= db.display_name %></option>
+                  <% end %>
+                </select>
+                <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                  <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                </svg>
+              </div>
             </div>
 
             <!-- Dashboard Key -->
@@ -1726,7 +1748,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   <%= if !@is_public_access do %>
                     <div class="mt-6">
                       <.link
-                        patch={~p"/app/dbs/#{@database.id}/dashboards/#{@dashboard.id}/edit"}
+                        patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
                         class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
                       >
                         <svg class="-ml-0.5 mr-1.5 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1886,7 +1908,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
     if socket.assigns.is_public_access do
       ~p"/d/#{socket.assigns.dashboard.id}?#{params}&token=#{socket.assigns.public_token}"
     else
-      ~p"/app/dbs/#{socket.assigns.database.id}/dashboards/#{socket.assigns.dashboard.id}?#{params}"
+      ~p"/app/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
   end
 

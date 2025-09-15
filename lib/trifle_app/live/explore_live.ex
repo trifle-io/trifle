@@ -1,4 +1,4 @@
-defmodule TrifleApp.DatabaseExploreLive do
+defmodule TrifleApp.ExploreLive do
   use TrifleApp, :live_view
 
   alias Trifle.Organizations
@@ -8,7 +8,55 @@ defmodule TrifleApp.DatabaseExploreLive do
   alias TrifleApp.TimeframeParsing
 
   def mount(params, _session, socket) do
-    database = Organizations.get_database!(params["id"])
+    # Determine selected database from params or default to first available
+    databases = Organizations.list_databases()
+
+    selected_db_id =
+      cond do
+        Map.has_key?(params, "database_id") and params["database_id"] != nil and params["database_id"] != "" ->
+          params["database_id"]
+        databases != [] ->
+          hd(databases).id
+        true ->
+          nil
+      end
+
+    socket = assign(socket, databases: databases)
+
+    if is_nil(selected_db_id) do
+      # No databases available: show guidance message
+      {:ok,
+       socket
+       |> assign(page_title: ["Explore"])
+       |> assign(no_database: true)
+       |> assign(database: nil)
+       |> assign(database_config: nil)
+       |> assign(available_granularities: [])
+       |> assign(transponder_response_paths: [])
+       |> assign(transponder_info: %{})
+       |> assign(stats: nil)
+       |> assign(timeline: "[]")
+       |> assign(chart_type: "stacked")
+       |> assign(keys: %{})
+       |> assign(selected_key_color: nil)
+       |> assign(smart_timeframe_input: nil)
+       |> assign(key_search_filter: "")
+       |> assign(loading: false)
+       |> assign(loading_chunks: false)
+       |> assign(loading_progress: nil)
+       |> assign(transponding: false)
+       |> assign(show_timeframe_dropdown: false)
+       |> assign(show_sensitivity_dropdown: false)
+       |> assign(show_granularity_dropdown: false)
+       |> assign(transponder_errors: [])
+       |> assign(show_error_modal: false)
+       |> assign(transponder_results: [])
+       |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
+       |> assign(load_start_time: nil)
+       |> assign(load_duration_microseconds: nil)
+      }
+    else
+      database = Organizations.get_database!(selected_db_id)
 
     # Load transponders to identify response paths and their names
     transponders = Organizations.list_transponders_for_database(database)
@@ -29,8 +77,9 @@ defmodule TrifleApp.DatabaseExploreLive do
 
     socket =
       socket
-      |> assign(page_title: ["Database", database.display_name, "Explore"])
+      |> assign(page_title: ["Explore", database.display_name])
       |> assign(database: database)
+      |> assign(no_database: false)
       |> assign(database_config: database_config)
       |> assign(available_granularities: available_granularities)
       |> assign(transponder_response_paths: transponder_response_paths)
@@ -56,13 +105,12 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(load_start_time: nil)
       |> assign(load_duration_microseconds: nil)
       |> assign(:breadcrumb_links, [
-        {"Database", ~p"/app/dbs"},
-        {database.display_name, ~p"/app/dbs/#{database.id}/dashboards"},
-        "Explore"
+        {"Explore", ~p"/app/explore?#{[database_id: database.id]}"}
       ])
 
-    {:ok, socket}
-  end
+      {:ok, socket}
+    end
+    end
 
   def parse_date(date, time_zone) do
     case NaiveDateTime.from_iso8601(date) do
@@ -308,7 +356,7 @@ defmodule TrifleApp.DatabaseExploreLive do
           |> assign(smart_timeframe_input: nil)
           |> push_patch(
             to:
-              ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
+              ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
           )
 
         {:noreply, socket}
@@ -356,10 +404,10 @@ defmodule TrifleApp.DatabaseExploreLive do
           |> push_event("update_smart_timeframe_input", %{
             value: format_smart_timeframe_display(preset, config)
           })
-          |> push_patch(
-            to:
-              ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
-          )
+            |> push_patch(
+              to:
+                ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
+            )
 
         {:noreply, socket}
 
@@ -387,10 +435,10 @@ defmodule TrifleApp.DatabaseExploreLive do
           |> push_event("update_smart_timeframe_input", %{
             value: format_timeframe_display(from, to)
           })
-          |> push_patch(
-            to:
-              ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
-          )
+            |> push_patch(
+              to:
+                ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
+            )
 
         {:noreply, socket}
 
@@ -418,7 +466,7 @@ defmodule TrifleApp.DatabaseExploreLive do
               })
               |> push_patch(
                 to:
-                  ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+                  ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
               )
 
             {:noreply, socket}
@@ -445,7 +493,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(show_granularity_dropdown: false)
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -457,7 +505,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -469,7 +517,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -537,7 +585,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       })
       |> push_patch(
         to:
-          ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{[granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
+          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
       )
 
     {:noreply, socket}
@@ -566,7 +614,7 @@ defmodule TrifleApp.DatabaseExploreLive do
     {:noreply,
      socket
      |> assign(loading: true)
-     |> push_patch(to: ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{params}")}
+     |> push_patch(to: ~p"/app/explore?#{[database_id: socket.assigns.database.id] ++ params}")}
   end
 
   def determine_granularity_for_timeframe(from, to) do
@@ -690,8 +738,31 @@ defmodule TrifleApp.DatabaseExploreLive do
   end
 
   def handle_params(params, _session, socket) do
+    # If no database is available, skip further processing
+    if is_nil(socket.assigns[:database]) do
+      {:noreply, socket}
+    else
     require Logger
-    Logger.info("DatabaseExploreLive.handle_params called with: #{inspect(params)}")
+    Logger.info("ExploreLive.handle_params called with: #{inspect(params)}")
+
+    # If database_id param changed, update database assigns first
+    socket =
+      case params["database_id"] do
+        nil -> socket
+        db_id ->
+          if socket.assigns[:database] && to_string(socket.assigns.database.id) == to_string(db_id) do
+            socket
+          else
+            database = Organizations.get_database!(db_id)
+            database_config = Database.stats_config(database)
+            available_granularities = get_available_granularities(database)
+            assign(socket,
+              database: database,
+              database_config: database_config,
+              available_granularities: available_granularities
+            )
+          end
+      end
 
     db_default_gran = socket.assigns.database.default_granularity
     granularity = params["granularity"] || db_default_gran || "1h"
@@ -795,7 +866,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       # Only add key parameter if it exists
       url_params = if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
 
-      socket = push_patch(socket, to: ~p"/app/dbs/#{socket.assigns.database.id}/explore?#{url_params}")
+      socket = push_patch(socket, to: ~p"/app/explore?#{Map.put(url_params, :database_id, socket.assigns.database.id)}")
       {:noreply, socket}
     else
       # Check if we need to keep the current loading state (when coming from event handlers)
@@ -808,6 +879,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         # First page load or refresh - load data immediately without loading indicator
         load_data_and_update_socket(socket)
       end
+    end
     end
   end
 
@@ -836,15 +908,45 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     require Logger
-    Logger.info("DatabaseExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
+    Logger.info("ExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
 
     # Handle filter changes from the FilterBar component
     updated_socket = Enum.reduce(changes, socket, fn {key, value}, acc ->
       assign(acc, key, value)
     end)
 
+    # If database was changed, update dependent assigns (database record, config, granularities, timeframe)
+    updated_socket =
+      if Map.has_key?(changes, :database_id) do
+        db_id = changes.database_id
+        database = Organizations.get_database!(db_id)
+        database_config = Database.stats_config(database)
+        available_granularities = get_available_granularities(database)
+
+        {from, to, smart_input, use_fixed} =
+          if updated_socket.assigns[:use_fixed_display] do
+            {updated_socket.assigns[:from], updated_socket.assigns[:to], updated_socket.assigns[:smart_timeframe_input], true}
+          else
+            tf = updated_socket.assigns[:smart_timeframe_input] || (database.default_timeframe || "24h")
+            case TimeframeParsing.parse_smart_timeframe(tf, database_config) do
+              {:ok, f, t, si, uf} -> {f, t, si, uf}
+              {:error, _} -> {updated_socket.assigns[:from], updated_socket.assigns[:to], updated_socket.assigns[:smart_timeframe_input], updated_socket.assigns[:use_fixed_display]}
+            end
+          end
+
+        updated_socket
+        |> assign(database: database)
+        |> assign(database_config: database_config)
+        |> assign(available_granularities: available_granularities)
+        |> assign(from: from, to: to)
+        |> assign(smart_timeframe_input: smart_input)
+        |> assign(use_fixed_display: use_fixed)
+      else
+        updated_socket
+      end
+
     # Update URL with new parameters if needed
-    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) do
+    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) or Map.has_key?(changes, :database_id) do
       base_params = %{
         timeframe: updated_socket.assigns.smart_timeframe_input,
         granularity: updated_socket.assigns.granularity
@@ -865,7 +967,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         else: url_params
 
       # Just update URL - let handle_params handle the data loading to avoid double loading
-      {:noreply, push_patch(updated_socket, to: ~p"/app/dbs/#{updated_socket.assigns.database.id}?#{url_params}")}
+      {:noreply, push_patch(updated_socket, to: ~p"/app/explore?#{Map.put(url_params, :database_id, updated_socket.assigns.database.id)}")}
     else
       {:noreply, updated_socket}
     end
@@ -1340,6 +1442,19 @@ defmodule TrifleApp.DatabaseExploreLive do
 
   def render(assigns) do
     ~H"""
+    <%= if @no_database do %>
+      <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
+      <div class="max-w-3xl mx-auto mt-16">
+        <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No databases found</h2>
+          <p class="text-gray-600 dark:text-slate-300">Please add a database first to use Explore.</p>
+          <div class="mt-4">
+            <.link navigate={~p"/app/dbs"} class="inline-flex items-center px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700">Go to Databases</.link>
+          </div>
+        </div>
+      </div>
+      </div>
+    <% else %>
     <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
     <!-- Loading Overlay (covers entire page content; message at 1/3 height) -->
     <%= if (@loading_chunks && @loading_progress) || @transponding do %>
@@ -1371,75 +1486,7 @@ defmodule TrifleApp.DatabaseExploreLive do
         </div>
       </div>
     <% end %>
-    <!-- Tab Navigation -->
-    <div class="mb-6 border-b border-gray-200 dark:border-slate-700">
-      <nav class="-mb-px space-x-8" aria-label="Tabs">
-        <.link
-          navigate={~p"/app/dbs/#{@database.id}/dashboards"}
-          class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-        >
-          <svg
-            class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
-            />
-          </svg>
-          <span class="hidden sm:block">Dashboards</span>
-        </.link>
-        <.link
-          navigate={~p"/app/dbs/#{@database.id}/transponders"}
-          class="border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-        >
-          <svg
-            class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
-            />
-          </svg>
-          <span class="hidden sm:block">Transponders</span>
-        </.link>
-        <.link navigate={~p"/app/dbs/#{@database.id}/explore"} class="border-teal-500 text-teal-600 dark:text-teal-400 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium" aria-current="page">
-          <svg class="text-teal-400 group-hover:text-teal-500 -ml-0.5 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621.504 1.125 1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5"/></svg>
-          <span class="hidden sm:block">Explore</span>
-        </.link>
-        <.link
-          navigate={~p"/app/dbs/#{@database.id}/settings"}
-          class="float-right border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-        >
-          <svg
-            class="text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300 -ml-0.5 mr-2 h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z"
-            />
-          </svg>
-          <span class="hidden sm:block">Settings</span>
-        </.link>
-      </nav>
-    </div>
+    
 
 
     <!-- Filter Bar Component -->
@@ -1456,6 +1503,8 @@ defmodule TrifleApp.DatabaseExploreLive do
       show_timeframe_dropdown={@show_timeframe_dropdown}
       show_granularity_dropdown={@show_granularity_dropdown}
       show_controls={true}
+      databases={@databases}
+      selected_database_id={@database.id}
     />
 
     <!-- Row 2: Activity/Events Chart -->
@@ -1846,6 +1895,7 @@ defmodule TrifleApp.DatabaseExploreLive do
       <% end %>
     <% end %>
     </div>
+    <% end %>
     """
   end
 

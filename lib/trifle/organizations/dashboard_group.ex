@@ -9,7 +9,6 @@ defmodule Trifle.Organizations.DashboardGroup do
     field :name, :string
     field :position, :integer, default: 0
 
-    belongs_to :database, Trifle.Organizations.Database
     belongs_to :parent_group, __MODULE__, foreign_key: :parent_group_id
 
     has_many :children, __MODULE__, foreign_key: :parent_group_id
@@ -20,9 +19,8 @@ defmodule Trifle.Organizations.DashboardGroup do
 
   def changeset(group, attrs) do
     group
-    |> cast(attrs, [:name, :position, :database_id, :parent_group_id])
-    |> validate_required([:name, :database_id])
+    |> cast(attrs, [:name, :position, :parent_group_id])
+    |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)
   end
 end
-

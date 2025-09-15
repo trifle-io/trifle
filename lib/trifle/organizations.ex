@@ -399,13 +399,15 @@ defmodule Trifle.Organizations do
   end
 
   @doc """
-  Returns the next position index for dashboards within a database.
+  Returns the next position index for dashboards within a group (global).
+  Pass nil for top-level (ungrouped).
   """
-  def get_next_dashboard_position(%Database{} = database) do
-    query = from(d in Dashboard,
-      where: d.database_id == ^database.id,
-      select: max(d.position)
-    )
+  def get_next_dashboard_position_for_group(group_id) do
+    base = from(d in Dashboard, select: max(d.position))
+    query = case group_id do
+      nil -> from(d in base, where: is_nil(d.group_id))
+      id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
+    end
 
     case Repo.one(query) do
       nil -> 0
@@ -426,32 +428,44 @@ defmodule Trifle.Organizations do
   end
 
   @doc """
-  Returns the list of dashboard groups for a database under an optional parent.
+  Returns all dashboards across the organization (all databases).
   """
-  def list_dashboard_groups_for_database(%Database{} = database, nil) do
-    from(g in DashboardGroup,
-      where: g.database_id == ^database.id and is_nil(g.parent_group_id),
-      order_by: [asc: g.position]
-    )
+  def list_all_dashboards do
+    from(d in Dashboard, order_by: [asc: d.inserted_at, asc: d.id], preload: [:user, :database])
     |> Repo.all()
   end
 
-  def list_dashboard_groups_for_database(%Database{} = database, parent_group_id) when is_binary(parent_group_id) do
-    from(g in DashboardGroup,
-      where: g.database_id == ^database.id and g.parent_group_id == ^parent_group_id,
-      order_by: [asc: g.position]
-    )
-    |> Repo.all()
-  end
+  # Removed database-scoped dashboard group listing in favor of global groups
 
   @doc """
-  Returns dashboards for a database and optional group_id.
+  Returns dashboard groups at the organization level, optionally under a parent group.
   """
-  def list_dashboards_for_group(%Database{} = database, group_id \\ nil) do
+  def list_dashboard_groups_global(nil) do
+    from(g in DashboardGroup,
+      where: is_nil(g.parent_group_id),
+      order_by: [asc: g.position]
+    )
+    |> Repo.all()
+  end
+
+  def list_dashboard_groups_global(parent_group_id) when is_binary(parent_group_id) do
+    from(g in DashboardGroup,
+      where: g.parent_group_id == ^parent_group_id,
+      order_by: [asc: g.position]
+    )
+    |> Repo.all()
+  end
+
+  # Removed database-scoped dashboard listing in favor of user-or-visible global queries
+
+  @doc """
+  Returns dashboards either created by the given user or visible to everyone, filtered by group.
+  """
+  def list_dashboards_for_user_or_visible(%Trifle.Accounts.User{} = user, group_id \\ nil) do
     base = from(d in Dashboard,
-      where: d.database_id == ^database.id,
+      where: d.user_id == ^user.id or d.visibility == true,
       order_by: [asc: d.position, asc: d.inserted_at],
-      preload: :user
+      preload: [:user, :database]
     )
 
     query =
@@ -464,24 +478,34 @@ defmodule Trifle.Organizations do
   end
 
   @doc """
-  Builds a nested tree of groups and dashboards for a database.
-  Returns a list of maps: %{group: %DashboardGroup{}, children: [...], dashboards: [%Dashboard{}]}
-  for each top-level group, plus a special top-level entry with group: nil for ungrouped dashboards if desired by the caller.
+  Counts dashboards either created by the given user or visible to everyone.
   """
-  def list_dashboard_tree_for_database(%Database{} = database) do
-    top_groups = list_dashboard_groups_for_database(database, nil)
+  def count_dashboards_for_user_or_visible(%Trifle.Accounts.User{} = user) do
+    query = from(d in Dashboard,
+      where: d.user_id == ^user.id or d.visibility == true,
+      select: count(d.id)
+    )
+    Repo.one(query)
+  end
+
+  @doc """
+  Builds a nested tree of groups and dashboards for the entire organization.
+  Includes dashboards owned by user or visible to everyone.
+  """
+  def list_dashboard_tree_global(%Trifle.Accounts.User{} = user) do
+    top_groups = list_dashboard_groups_global(nil)
 
     Enum.map(top_groups, fn g ->
-      build_group_tree(database, g)
+      build_group_tree_global(user, g)
     end)
   end
 
-  defp build_group_tree(%Database{} = database, %DashboardGroup{} = group) do
-    children = list_dashboard_groups_for_database(database, group.id)
+  defp build_group_tree_global(%Trifle.Accounts.User{} = user, %DashboardGroup{} = group) do
+    children = list_dashboard_groups_global(group.id)
     %{
       group: group,
-      children: Enum.map(children, &build_group_tree(database, &1)),
-      dashboards: list_dashboards_for_group(database, group.id)
+      children: Enum.map(children, &build_group_tree_global(user, &1)),
+      dashboards: list_dashboards_for_user_or_visible(user, group.id)
     }
   end
 
@@ -526,81 +550,26 @@ defmodule Trifle.Organizations do
   def get_dashboard_group!(id), do: Repo.get!(DashboardGroup, id)
 
   @doc """
-  Reorders dashboards within a target group, and normalizes the source group ordering.
-  ids: the ordered list of dashboard ids now present in target container.
-  parent_group_id: target group id (nil for top-level)
-  from_ids/from_parent_id: the ordered list of dashboard ids remaining in the source container after the move
+  Returns the next position index for dashboard groups under a parent group (global).
   """
-  def reorder_dashboards(%Database{} = database, parent_group_id, ids, from_parent_id, from_ids) when is_list(ids) do
-    Repo.transaction(fn ->
-      # Update target container
-      Enum.with_index(ids)
-      |> Enum.each(fn {dashboard_id, idx} ->
-        from(d in Dashboard,
-          where: d.id == ^dashboard_id and d.database_id == ^database.id
-        )
-        |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
-      end)
-
-      # Normalize source container positions if provided and different
-      cond do
-        is_list(from_ids) and (from_parent_id != parent_group_id) ->
-          Enum.with_index(from_ids)
-          |> Enum.each(fn {dashboard_id, idx} ->
-            from(d in Dashboard,
-              where: d.id == ^dashboard_id and d.database_id == ^database.id
-            )
-            |> Repo.update_all(set: [position: idx])
-          end)
-        true -> :ok
-      end
-    end)
-  end
-
-  @doc """
-  Reorders groups within a target parent group, with cycle protection.
-  ids: ordered list of group ids in the target container.
-  parent_group_id: target parent group id (nil for top-level)
-  from_ids/from_parent_id: ordered list of ids remaining in source container
-  moved_id: the group id that was moved (for cycle check)
-  """
-  def reorder_dashboard_groups(%Database{} = database, parent_group_id, ids, from_parent_id, from_ids, moved_id) when is_list(ids) do
-    # Prevent moving a group under its own descendant
-    if moved_id && parent_group_id && group_descendant?(moved_id, parent_group_id) do
-      {:error, :invalid_parent}
-    else
-      Repo.transaction(fn ->
-        # Update target container
-        Enum.with_index(ids)
-        |> Enum.each(fn {group_id, idx} ->
-          from(g in DashboardGroup,
-            where: g.id == ^group_id and g.database_id == ^database.id
-          )
-          |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
-        end)
-
-        # Normalize source container positions if provided and different
-        cond do
-          is_list(from_ids) and (from_parent_id != parent_group_id) ->
-            Enum.with_index(from_ids)
-            |> Enum.each(fn {group_id, idx} ->
-              from(g in DashboardGroup,
-                where: g.id == ^group_id and g.database_id == ^database.id
-              )
-              |> Repo.update_all(set: [position: idx])
-            end)
-          true -> :ok
-        end
-      end)
+  def get_next_dashboard_group_position(parent_group_id) do
+    base = from(g in DashboardGroup, select: max(g.position))
+    query = case parent_group_id do
+      nil -> from(g in base, where: is_nil(g.parent_group_id))
+      id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
+    end
+    case Repo.one(query) do
+      nil -> 0
+      max_pos -> max_pos + 1
     end
   end
 
   @doc """
-  Reorders mixed nodes (groups and dashboards) within a container.
+  Reorders mixed nodes (groups and dashboards) within a container (global).
   items: list of maps %{"id" => id, "type" => "group" | "dashboard"}
   from_items: same for the source container after the move
   """
-  def reorder_nodes(%Database{} = database, parent_group_id, items, from_parent_id, from_items, moved_id, moved_type) when is_list(items) do
+  def reorder_nodes(parent_group_id, items, from_parent_id, from_items, moved_id, moved_type) when is_list(items) do
     # Cycle protection for groups
     if moved_type == "group" and parent_group_id && group_descendant?(moved_id, parent_group_id) do
       {:error, :invalid_parent}
@@ -611,10 +580,10 @@ defmodule Trifle.Organizations do
         |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
           case type do
             "dashboard" ->
-              from(d in Dashboard, where: d.id == ^id and d.database_id == ^database.id)
+              from(d in Dashboard, where: d.id == ^id)
               |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
             "group" ->
-              from(g in DashboardGroup, where: g.id == ^id and g.database_id == ^database.id)
+              from(g in DashboardGroup, where: g.id == ^id)
               |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
             _ -> :ok
           end
@@ -626,10 +595,10 @@ defmodule Trifle.Organizations do
           |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
             case type do
               "dashboard" ->
-                from(d in Dashboard, where: d.id == ^id and d.database_id == ^database.id)
+                from(d in Dashboard, where: d.id == ^id)
                 |> Repo.update_all(set: [position: idx])
               "group" ->
-                from(g in DashboardGroup, where: g.id == ^id and g.database_id == ^database.id)
+                from(g in DashboardGroup, where: g.id == ^id)
                 |> Repo.update_all(set: [position: idx])
               _ -> :ok
             end
@@ -654,7 +623,7 @@ defmodule Trifle.Organizations do
   def get_dashboard!(id) do
     Dashboard
     |> Repo.get!(id)
-    |> Repo.preload(:user)
+    |> Repo.preload([:user, :database])
   end
 
   @doc """
@@ -718,6 +687,24 @@ defmodule Trifle.Organizations do
       
       _ ->
         {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Returns the list of DashboardGroup structs from top-level down to the given group_id.
+  If `group_id` is nil, returns an empty list.
+  """
+  def get_dashboard_group_chain(nil), do: []
+  def get_dashboard_group_chain(group_id) when is_binary(group_id) do
+    chain = do_group_chain(group_id, [])
+    Enum.reverse(chain)
+  end
+
+  defp do_group_chain(nil, acc), do: acc
+  defp do_group_chain(group_id, acc) do
+    case Repo.get(DashboardGroup, group_id) do
+      nil -> acc
+      %DashboardGroup{parent_group_id: parent} = g -> do_group_chain(parent, [g | acc])
     end
   end
 end

@@ -1,4 +1,4 @@
-defmodule TrifleApp.DatabaseDashboardsLive.FormComponent do
+defmodule TrifleApp.DashboardsLive.FormComponent do
   use TrifleApp, :live_component
 
   alias Trifle.Organizations

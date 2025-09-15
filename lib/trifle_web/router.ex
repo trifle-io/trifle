@@ -83,7 +83,8 @@ defmodule TrifleWeb.Router do
 
     live_session :app_authenticated,
       on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
-      live "/", AppLive, :dashboard
+      # Redirect /app to /app/dashboards
+      live "/", AppRedirectLive, :index
       live "/projects", ProjectsLive, :index
       live "/projects/new", ProjectsLive, :new
       live "/projects/:id", ProjectLive, :show
@@ -94,17 +95,19 @@ defmodule TrifleWeb.Router do
       live "/dbs", DatabasesLive, :index
       # Database root redirects to Dashboards (handled by DatabaseRedirectLive)
       live "/dbs/:id", DatabaseRedirectLive, :index
-      # Explore tab explicit route
-      live "/dbs/:id/explore", DatabaseExploreLive, :show
+      # Explore (global) – select database via params
+      live "/explore", ExploreLive, :show
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
       live "/dbs/:id/transponders/:transponder_id", DatabaseTranspondersLive, :show
       live "/dbs/:id/transponders/:transponder_id/edit", DatabaseTranspondersLive, :edit
-      live "/dbs/:id/dashboards", DatabaseDashboardsLive, :index
-      live "/dbs/:id/dashboards/new", DatabaseDashboardsLive, :new
-      live "/dbs/:id/dashboards/:dashboard_id", DatabaseDashboardLive, :show
-      live "/dbs/:id/dashboards/:dashboard_id/edit", DatabaseDashboardLive, :edit
-      live "/dbs/:id/dashboards/:dashboard_id/configure", DatabaseDashboardLive, :configure
+      # Global Dashboards index (uses DashboardsLive)
+      live "/dashboards", DashboardsLive, :index
+      live "/dashboards/new", DashboardsLive, :new
+      # Specific dashboard routes (standalone)
+      live "/dashboards/:id", DashboardLive, :show
+      live "/dashboards/:id/edit", DashboardLive, :edit
+      live "/dashboards/:id/configure", DashboardLive, :configure
     end
   end
 
@@ -126,7 +129,7 @@ defmodule TrifleWeb.Router do
 
     live_session :public_dashboard,
       on_mount: [{TrifleWeb.UserAuth, :mount_current_user}] do
-      live "/:dashboard_id", DatabaseDashboardLive, :public
+      live "/:dashboard_id", DashboardLive, :public
     end
   end
 
