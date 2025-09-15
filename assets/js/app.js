@@ -1094,6 +1094,29 @@ Hooks.DashboardGrid = {
   },
 }
 
+// Generic file download handler via pushEvent
+Hooks.FileDownload = {
+  mounted() {
+    this.handleEvent('file_download', ({ content, filename, type }) => {
+      try {
+        const blob = new Blob([content || ''], { type: type || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'download';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }, 0);
+      } catch (e) {
+        console.error('File download failed', e);
+      }
+    });
+  }
+}
+
 
 Hooks.PhantomRows = {
   mounted() {

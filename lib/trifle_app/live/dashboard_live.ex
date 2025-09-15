@@ -701,6 +701,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:transponding, false)
     |> assign(:load_duration_microseconds, nil)
     |> assign(:editing_widget, nil)
+    |> assign(:show_export_dropdown, false)
   end
 
   defp apply_url_params(socket, params) do
@@ -936,6 +937,81 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  # Export helpers
+  defp series_from_assigns(assigns) do
+    s = assigns[:stats]
+    cond do
+      is_map(s) and Map.has_key?(s, :series) -> s.series
+      is_map(s) -> s
+      true -> nil
+    end
+  end
+
+  defp csv_escape(v) when is_binary(v) do
+    escaped = String.replace(v, "\"", "\"\"")
+    "\"" <> escaped <> "\""
+  end
+  defp csv_escape(nil), do: ""
+  defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
+  defp csv_escape(v), do: csv_escape(to_string(v))
+
+  defp dashboard_table_to_csv(assigns) do
+    case series_from_assigns(assigns) do
+      nil -> ""
+      series ->
+        table = Trifle.Stats.Tabler.tabulize(series)
+        at = Enum.reverse(table[:at] || [])
+        paths = table[:paths] || []
+        values_map = table[:values] || %{}
+        header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
+        rows = Enum.map(paths, fn path -> [path | Enum.map(at, fn t -> Map.get(values_map, {path, t}) || 0 end)] end)
+        [header | rows]
+        |> Enum.map(fn cols -> cols |> Enum.map(&csv_escape/1) |> Enum.join(",") end)
+        |> Enum.join("\n")
+    end
+  end
+
+  def handle_event("toggle_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_export_dropdown, !(socket.assigns[:show_export_dropdown] || false))}
+  end
+
+  def handle_event("hide_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_export_dropdown, false)}
+  end
+
+  def handle_event("download_dashboard_csv", _params, socket) do
+    series = series_from_assigns(socket.assigns)
+    if is_nil(series) do
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    else
+      csv = dashboard_table_to_csv(socket.assigns)
+      fname = export_filename("dashboard", socket.assigns, ".csv")
+      {:noreply, push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
+    end
+  end
+
+  def handle_event("download_dashboard_json", _params, socket) do
+    series = series_from_assigns(socket.assigns)
+    if is_nil(series) do
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    else
+      at = (series[:at] || []) |> Enum.map(&DateTime.to_iso8601/1)
+      values = series[:values] || []
+      json = Jason.encode!(%{at: at, values: values})
+      fname = export_filename("dashboard", socket.assigns, ".json")
+      {:noreply, push_event(socket, "file_download", %{content: json, filename: fname, type: "application/json"})}
+    end
+  end
+
+  defp export_filename(prefix, assigns, ext) do
+    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
+    base = [prefix, assigns[:dashboard] && assigns.dashboard.name]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&String.replace(to_string(&1), ~r/[^a-zA-Z0-9_-]+/, "-"))
+      |> Enum.join("-")
+    (if base == "", do: prefix, else: base) <> "-" <> ts <> ext
+  end
+
   def handle_event("show_transponder_errors", _params, socket) do
     {:noreply, assign(socket, show_error_modal: true)}
   end
@@ -1051,7 +1127,7 @@ defmodule TrifleApp.DashboardLive do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
+    <div id="dashboard-page-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
       <!-- Loading Overlay (covers entire page; message at 1/3 height) -->
       <%= if (@loading_chunks && @loading_progress) || @transponding do %>
         <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
@@ -1844,24 +1920,30 @@ defmodule TrifleApp.DashboardLive do
                   <span><%= format_duration(@load_duration_microseconds) %></span>
                 </div>
               <% end %>
+              <!-- Export drop-up (right aligned) -->
+              <div class="ml-auto relative">
+                <button type="button" phx-click="toggle_export_dropdown" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                  <span class="hidden md:inline">Download</span>
+                  <svg class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+                </button>
+                <%= if @show_export_dropdown do %>
+                  <div class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
+                    <button type="button" phx-click="download_dashboard_csv" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
+                      <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
+                      CSV (table)
+                    </button>
+                    <button type="button" phx-click="download_dashboard_json" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
+                      <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
+                      JSON (raw)
+                    </button>
+                  </div>
+                <% end %>
+              </div>
             </div>
           </div>
 
         <% end %>
-        <% end %>
-
-        <!-- Debug Series Data (only show when data is loaded) -->
-        <%= if @stats && !@is_public_access do %>
-          <div class="mt-4 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 px-4 py-3">
-            <details class="text-sm">
-              <summary class="cursor-pointer text-gray-700 dark:text-slate-300 font-medium hover:text-gray-900 dark:hover:text-white">
-                Debug: Series Data (<%= if @stats.series[:paths], do: length(@stats.series[:paths]), else: 0 %> paths, <%= if @stats.series[:at], do: length(@stats.series[:at]), else: 0 %> points)
-              </summary>
-              <div class="mt-3 bg-white dark:bg-slate-800 rounded-lg p-3 border border-gray-200 dark:border-slate-700">
-                <pre class="text-xs text-gray-600 dark:text-slate-400 overflow-x-auto max-h-64 overflow-y-auto"><%= Jason.encode!(@stats.series, pretty: true) %></pre>
-              </div>
-            </details>
-          </div>
         <% end %>
       </div>
     </div>

@@ -54,6 +54,7 @@ defmodule TrifleApp.ExploreLive do
        |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
        |> assign(load_start_time: nil)
        |> assign(load_duration_microseconds: nil)
+       |> assign(show_export_dropdown: false)
       }
     else
       database = Organizations.get_database!(selected_db_id)
@@ -75,8 +76,8 @@ defmodule TrifleApp.ExploreLive do
     database_config = Database.stats_config(database)
     available_granularities = get_available_granularities(database)
 
-    socket =
-      socket
+      socket =
+        socket
       |> assign(page_title: ["Explore", database.display_name])
       |> assign(database: database)
       |> assign(no_database: false)
@@ -100,13 +101,14 @@ defmodule TrifleApp.ExploreLive do
       |> assign(show_granularity_dropdown: false)
       |> assign(transponder_errors: [])
       |> assign(show_error_modal: false)
-      |> assign(transponder_results: [])
-      |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
-      |> assign(load_start_time: nil)
-      |> assign(load_duration_microseconds: nil)
-      |> assign(:breadcrumb_links, [
-        {"Explore", ~p"/app/explore?#{[database_id: database.id]}"}
-      ])
+        |> assign(transponder_results: [])
+        |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
+        |> assign(load_start_time: nil)
+        |> assign(load_duration_microseconds: nil)
+        |> assign(show_export_dropdown: false)
+        |> assign(:breadcrumb_links, [
+          {"Explore", ~p"/app/explore?#{[database_id: database.id]}"}
+        ])
 
       {:ok, socket}
     end
@@ -1022,6 +1024,7 @@ defmodule TrifleApp.ExploreLive do
          |> assign(loading_progress: nil)
          |> assign(transponding: false)
          |> assign(stats: table_stats)
+         |> assign(series_raw: key_stats.series)
          |> assign(keys: keys_sum)
          |> assign(timeline: timeline_data)
          |> assign(chart_type: "single")
@@ -1043,6 +1046,7 @@ defmodule TrifleApp.ExploreLive do
          |> assign(loading_progress: nil)
          |> assign(transponding: false)
          |> assign(stats: table_stats)
+         |> assign(series_raw: system_stats.series)
          |> assign(keys: keys_sum)
          |> assign(timeline: timeline_data)
          |> assign(chart_type: "stacked")
@@ -1078,6 +1082,7 @@ defmodule TrifleApp.ExploreLive do
          |> assign(loading_progress: nil)
          |> assign(transponding: false)
          |> assign(stats: table_stats)
+         |> assign(series_raw: raw_stats)
          |> assign(keys: keys_sum)
          |> assign(timeline: timeline_data)
          |> assign(chart_type: chart_type)
@@ -1186,6 +1191,33 @@ defmodule TrifleApp.ExploreLive do
   def reduce_stats(_values) do
     %{}
   end
+
+  defp csv_escape(v) when is_binary(v) do
+    escaped = String.replace(v, "\"", "\"\"")
+    "\"" <> escaped <> "\""
+  end
+  defp csv_escape(nil), do: ""
+  defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
+  defp csv_escape(v), do: csv_escape(to_string(v))
+
+  defp explore_table_to_csv(%{stats: stats} = assigns) when is_map(stats) do
+    at = Enum.reverse(stats[:at] || [])
+    paths = stats[:paths] || []
+    values = stats[:values] || %{}
+
+    header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
+
+    rows = Enum.map(paths, fn path ->
+      row_values = Enum.map(at, fn t -> Map.get(values, {path, t}) || 0 end)
+      [path | row_values]
+    end)
+
+    lines = [header | rows]
+    lines
+    |> Enum.map(fn cols -> cols |> Enum.map(&csv_escape/1) |> Enum.join(",") end)
+    |> Enum.join("\n")
+  end
+  defp explore_table_to_csv(_), do: ""
 
   def series_from(%{at: at, values: values}, path) when is_list(path) do
     key = Enum.join(path, ".")
@@ -1329,6 +1361,47 @@ defmodule TrifleApp.ExploreLive do
     end
   end
 
+  # Export dropdown handlers
+  def handle_event("toggle_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_export_dropdown, !(socket.assigns[:show_export_dropdown] || false))}
+  end
+
+  def handle_event("hide_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_export_dropdown, false)}
+  end
+
+  def handle_event("download_explore_csv", _params, socket) do
+    if is_nil(socket.assigns[:stats]) do
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    else
+      csv = explore_table_to_csv(socket.assigns)
+      fname = export_filename("explore", socket.assigns, ".csv")
+      {:noreply, push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
+    end
+  end
+
+  def handle_event("download_explore_json", _params, socket) do
+    raw = socket.assigns[:series_raw]
+    if is_nil(raw) do
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    else
+      at = (raw[:at] || []) |> Enum.map(&DateTime.to_iso8601/1)
+      values = raw[:values] || []
+      json = Jason.encode!(%{at: at, values: values})
+      fname = export_filename("explore", socket.assigns, ".json")
+      {:noreply, push_event(socket, "file_download", %{content: json, filename: fname, type: "application/json"})}
+    end
+  end
+
+  defp export_filename(prefix, assigns, ext) do
+    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
+    base = [prefix, assigns[:database] && assigns.database.display_name, assigns[:key]]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&String.replace(to_string(&1), ~r/[^a-zA-Z0-9_-]+/, "-"))
+      |> Enum.join("-")
+    (if base == "", do: prefix, else: base) <> "-" <> ts <> ext
+  end
+
   def format_nested_path(path, all_paths, transponder_info \\ %{}) when is_binary(path) do
     transponder_name = Map.get(transponder_info, path)
 
@@ -1443,7 +1516,7 @@ defmodule TrifleApp.ExploreLive do
   def render(assigns) do
     ~H"""
     <%= if @no_database do %>
-      <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
+      <div id="explore-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
       <div class="max-w-3xl mx-auto mt-16">
         <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No databases found</h2>
@@ -1455,7 +1528,7 @@ defmodule TrifleApp.ExploreLive do
       </div>
       </div>
     <% else %>
-    <div class="flex flex-col dark:bg-slate-900 min-h-screen relative">
+    <div id="explore-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
     <!-- Loading Overlay (covers entire page content; message at 1/3 height) -->
     <%= if (@loading_chunks && @loading_progress) || @transponding do %>
       <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
@@ -1751,7 +1824,7 @@ defmodule TrifleApp.ExploreLive do
         </div>
 
         <!-- Sticky Summary Footer -->
-        <%= if summary = get_summary_stats(assigns) do %>
+      <%= if summary = get_summary_stats(assigns) do %>
           <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
               <div class="flex flex-wrap items-center gap-4 text-xs">
                 <!-- Selected Key (only show if key is selected) -->
@@ -1825,6 +1898,27 @@ defmodule TrifleApp.ExploreLive do
                     <span class="text-gray-900 dark:text-white">{format_duration(@load_duration_microseconds)}</span>
                   </div>
                 <% end %>
+
+                <!-- Export drop-up -->
+                <div class="ml-auto relative">
+                  <button type="button" phx-click="toggle_export_dropdown" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                    <span class="hidden md:inline">Download</span>
+                    <svg class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+                  </button>
+                  <%= if @show_export_dropdown do %>
+                    <div class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
+                      <button type="button" phx-click="download_explore_csv" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
+                        <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
+                        CSV (table)
+                      </button>
+                      <button type="button" phx-click="download_explore_json" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
+                        <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
+                        JSON (raw)
+                      </button>
+                    </div>
+                  <% end %>
+                </div>
               </div>
           </div>
         <% end %>
