@@ -75,6 +75,33 @@ defmodule TrifleApp.DatabaseTranspondersLive do
     {:noreply, stream_insert(socket, :transponders, updated_transponder)}
   end
 
+  def handle_event("duplicate_transponder", %{"id" => id}, socket) do
+    original = Organizations.get_transponder!(id)
+    database = socket.assigns.database
+    next_order = Organizations.get_next_transponder_order(database)
+
+    attrs = %{
+      "database_id" => database.id,
+      "name" => (original.name || original.key) <> " (copy)",
+      "key" => original.key,
+      "type" => original.type,
+      "config" => original.config || %{},
+      "enabled" => false,
+      "order" => next_order
+    }
+
+    case Organizations.create_transponder(attrs) do
+      {:ok, transponder} ->
+        {:noreply,
+         socket
+         |> stream_insert(:transponders, transponder)
+         |> put_flash(:info, "Transponder duplicated")}
+
+      {:error, _cs} ->
+        {:noreply, put_flash(socket, :error, "Could not duplicate transponder")}
+    end
+  end
+
   def handle_event("reorder_transponders", %{"ids" => ids}, socket) do
     case Organizations.update_transponder_order(socket.assigns.database, ids) do
       {:ok, _} ->
@@ -197,10 +224,10 @@ defmodule TrifleApp.DatabaseTranspondersLive do
               patch={~p"/app/dbs/#{@database.id}/transponders/new"}
               class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
             >
-              <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
               </svg>
-              New Transponder
+              <span class="hidden md:inline">New Transponder</span>
             </.link>
           </div>
 
@@ -266,32 +293,47 @@ defmodule TrifleApp.DatabaseTranspondersLive do
                       </div>
 
                       <div class="flex items-center gap-2" phx-click="noop">
-                        <!-- Edit -->
-                        <.link
-                          patch={~p"/app/dbs/#{@database.id}/transponders/#{transponder.id}/edit"}
-                          title="Edit"
-                          aria-label="Edit transponder"
-                          class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                          </svg>
-                        </.link>
+                        <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                          <!-- Duplicate -->
+                          <button
+                            type="button"
+                            phx-click="duplicate_transponder"
+                            phx-value-id={transponder.id}
+                            title="Duplicate"
+                            aria-label="Duplicate transponder"
+                            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                            </svg>
+                          </button>
+                          <!-- Edit -->
+                          <.link
+                            patch={~p"/app/dbs/#{@database.id}/transponders/#{transponder.id}/edit"}
+                            title="Edit"
+                            aria-label="Edit transponder"
+                            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                            </svg>
+                          </.link>
 
-                        <!-- Delete -->
-                        <button
-                          type="button"
-                          phx-click="delete_transponder"
-                          phx-value-id={transponder.id}
-                          data-confirm="Are you sure you want to delete this transponder?"
-                          title="Delete"
-                          aria-label="Delete transponder"
-                          class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                          </svg>
-                        </button>
+                          <!-- Delete -->
+                          <button
+                            type="button"
+                            phx-click="delete_transponder"
+                            phx-value-id={transponder.id}
+                            data-confirm="Are you sure you want to delete this transponder?"
+                            title="Delete"
+                            aria-label="Delete transponder"
+                            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                            </svg>
+                          </button>
+                        </div>
 
                         <!-- Toggle -->
                         <button
