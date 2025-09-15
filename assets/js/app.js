@@ -564,6 +564,18 @@ Hooks.DashboardGrid = {
           if (typeof this.grid.column === 'function') {
             this.grid.column(oneCol ? 1 : this.cols);
           }
+          // Disable reordering/resizing when only 1 column to avoid breaking 12-col layout
+          if (this.editable) {
+            if (typeof this.grid.enableMove === 'function') {
+              this.grid.enableMove(!oneCol);
+              if (typeof this.grid.enableResize === 'function') {
+                this.grid.enableResize(!oneCol);
+              }
+            } else if (typeof this.grid.setStatic === 'function') {
+              // Fallback: set static when oneCol, re-enable when multi-col
+              this.grid.setStatic(oneCol);
+            }
+          }
         } catch (_) {
           // noop
         } finally {
