@@ -207,6 +207,36 @@ defmodule TrifleApp.DatabaseDashboardLive do
     end
   end
 
+  def handle_event("duplicate_dashboard", _params, socket) do
+    original = socket.assigns.dashboard
+    database = socket.assigns.database
+    current_user = socket.assigns.current_user
+
+    attrs = %{
+      "database_id" => database.id,
+      "user_id" => current_user.id,
+      "name" => (original.name || "Dashboard") <> " (copy)",
+      "key" => original.key || "dashboard",
+      "payload" => original.payload || %{},
+      "default_timeframe" => original.default_timeframe || database.default_timeframe || "24h",
+      "default_granularity" => original.default_granularity || database.default_granularity || "1h",
+      "visibility" => original.visibility,
+      "group_id" => original.group_id,
+      "position" => Organizations.get_next_dashboard_position(database)
+    }
+
+    case Organizations.create_dashboard(attrs) do
+      {:ok, new_dash} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Dashboard duplicated")
+         |> push_navigate(to: ~p"/app/dbs/#{database.id}/dashboards/#{new_dash.id}")}
+
+      {:error, _cs} ->
+        {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
+    end
+  end
+
   def handle_event("save_dashboard", %{"dashboard" => dashboard_params}, socket) do
     case Organizations.update_dashboard(socket.assigns.dashboard, dashboard_params) do
       {:ok, dashboard} ->
@@ -948,17 +978,37 @@ defmodule TrifleApp.DatabaseDashboardLive do
     reload_current_timeframe(socket)
   end
 
-  def handle_event("save_defaults", %{"timeframe" => tf, "granularity" => gran}, socket) do
+  def handle_event("save_settings", %{"name" => name, "key" => key, "timeframe" => tf, "granularity" => gran}, socket) do
     dashboard = socket.assigns.dashboard
     attrs = %{
+      name: String.trim(to_string(name || "")),
+      key: String.trim(to_string(key || "")),
       default_timeframe: String.trim(to_string(tf || "")),
       default_granularity: String.trim(to_string(gran || ""))
     }
+
     case Trifle.Organizations.update_dashboard(dashboard, attrs) do
-      {:ok, updated} ->
-        {:noreply, socket |> assign(:dashboard, updated) |> put_flash(:info, "Defaults saved")}
+      {:ok, updated_dashboard} ->
+        # Update breadcrumbs and title to reflect new name
+        updated_breadcrumbs = case socket.assigns[:breadcrumb_links] do
+          [dbs, db_name, {"Dashboards", path}, _old_name] -> [dbs, db_name, {"Dashboards", path}, updated_dashboard.name]
+          other -> other || []
+        end
+        updated_page_title = case socket.assigns[:page_title] do
+          ["Database", db_display, "Dashboards", _old_name] -> ["Database", db_display, "Dashboards", updated_dashboard.name]
+          other -> other
+        end
+
+        {:noreply,
+         socket
+         |> assign(:dashboard, updated_dashboard)
+         |> assign(:temp_name, updated_dashboard.name)
+         |> assign(:breadcrumb_links, updated_breadcrumbs)
+         |> assign(:page_title, updated_page_title)
+         |> put_flash(:info, "Settings saved")}
+
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to save defaults")}
+        {:noreply, put_flash(socket, :error, "Failed to save settings")}
     end
   end
 
@@ -1085,6 +1135,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                   </svg>
                   <span class="hidden md:inline">Configure</span>
                 </.link>
+                
               <% end %>
 
               <!-- Status Icon Badges -->
@@ -1195,28 +1246,6 @@ defmodule TrifleApp.DatabaseDashboardLive do
               class="space-y-4"
             >
               <div>
-                <label for="dashboard_key" class="block text-sm font-medium text-gray-700 dark:text-slate-300">Key</label>
-                <textarea
-                  name="dashboard[key]"
-                  id="dashboard_key"
-                  rows="3"
-                  class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                  placeholder="e.g., sales.metrics"
-                  required
-                ><%= Phoenix.HTML.Form.input_value(@dashboard_form, :key) %></textarea>
-                <%= if @dashboard_changeset && @dashboard_changeset.errors[:key] do %>
-                  <p class="mt-1 text-sm text-red-600 dark:text-red-400">
-                    <%= case @dashboard_changeset.errors[:key] do
-                      [{message, _}] -> message
-                      [{message, _} | _] -> message
-                      message when is_binary(message) -> message
-                      _ -> "Invalid key format"
-                    end %>
-                  </p>
-                <% end %>
-              </div>
-
-              <div>
                 <label for="dashboard_payload" class="block text-sm font-medium text-gray-700 dark:text-slate-300">Payload</label>
                 <textarea
                   name="dashboard[payload]"
@@ -1279,32 +1308,91 @@ defmodule TrifleApp.DatabaseDashboardLive do
           <:title>Configure Dashboard</:title>
       <:body>
         <div class="space-y-6">
-          <!-- Dashboard Name -->
-          <div>
-                <label for="configure_name" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dashboard Name</label>
-                <div class="flex gap-2">
-                  <input
-                    type="text"
-                    id="configure_name"
-                    name="name"
-                    value={@temp_name || @dashboard.name}
-                    phx-keyup="update_temp_name"
-                    class="flex-1 block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                    placeholder="Dashboard name"
-                  />
+          <.form for={%{}} phx-submit="save_settings" class="space-y-6">
+            <!-- Dashboard Name -->
+            <div>
+              <label for="configure_name" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dashboard Name</label>
+              <input
+                type="text"
+                id="configure_name"
+                name="name"
+                value={@temp_name || @dashboard.name}
+                phx-keyup="update_temp_name"
+                class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                placeholder="Dashboard name"
+              />
+            </div>
+
+            <!-- Dashboard Key -->
+            <div>
+              <label for="configure_key" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Key</label>
+              <input
+                type="text"
+                id="configure_key"
+                name="key"
+                value={@dashboard.key || ""}
+                class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                placeholder="e.g., sales.metrics"
+                required
+              />
+            </div>
+
+              <!-- Defaults -->
+              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                <div class="mb-4">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Defaults</h3>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                    These values are used as the initial timeframe and granularity when opening this dashboard.
+                    Timeframe accepts smart inputs like 24h, 2d, 1w, 1mo. You can override database defaults here.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Timeframe</label>
+                    <input type="text" name="timeframe" value={@dashboard.default_timeframe || @database.default_timeframe || "24h"} class="mt-2 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. 24h, 2d, 1w, 1mo, 1y" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Granularity</label>
+                    <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                      <select name="granularity" class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
+                        <%= for g <- @available_granularities do %>
+                          <option value={g} selected={g == (@dashboard.default_granularity || @database.default_granularity || "1h") }><%= g %></option>
+                        <% end %>
+                      </select>
+                      <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
+                        <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="sm:col-span-2 flex justify-end">
+                    <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500">Save</button>
+                  </div>
+                </div>
+              </div>
+            </.form>
+              <!-- Actions -->
+              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                <div class="flex items-center justify-between mb-2">
+                  <div>
+                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Actions</span>
+                    <p class="text-xs text-gray-500 dark:text-slate-400">Make a copy of this dashboard.</p>
+                  </div>
                   <button
                     type="button"
-                    phx-click="save_name"
-                    phx-value-name={@temp_name || @dashboard.name}
-                    class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+                    phx-click="duplicate_dashboard"
+                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                    title="Duplicate dashboard"
                   >
-                    Save
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="md:-ml-0.5 md:mr-1.5 h-4 w-4">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                    </svg>
+                    <span class="hidden md:inline">Duplicate</span>
                   </button>
                 </div>
               </div>
 
-          <!-- Visibility Toggle -->
-          <div class="flex items-center justify-between">
+              <!-- Visibility Toggle (moved below Actions) -->
+              <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
                 <div>
                   <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Visibility</span>
                   <p class="text-xs text-gray-500 dark:text-slate-400">Make this dashboard visible to everyone in the organization</p>
@@ -1393,38 +1481,7 @@ defmodule TrifleApp.DatabaseDashboardLive do
                 <% end %>
               </div>
 
-              <!-- Defaults -->
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                <div class="mb-4">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Defaults</h3>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    These values are used as the initial timeframe and granularity when opening this dashboard.
-                    Timeframe accepts smart inputs like 24h, 2d, 1w, 1mo. You can override database defaults here.
-                  </p>
-                </div>
-                <.form for={%{}} phx-submit="save_defaults" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Timeframe</label>
-                    <input type="text" name="timeframe" value={@dashboard.default_timeframe || @database.default_timeframe || "24h"} class="mt-2 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. 24h, 2d, 1w, 1mo, 1y" />
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Granularity</label>
-                    <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                      <select name="granularity" class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                        <%= for g <- @available_granularities do %>
-                          <option value={g} selected={g == (@dashboard.default_granularity || @database.default_granularity || "1h") }><%= g %></option>
-                        <% end %>
-                      </select>
-                      <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                        <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div class="sm:col-span-2 flex justify-end">
-                    <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500">Save Defaults</button>
-                  </div>
-                </.form>
-              </div>
+              
 
               <!-- Danger Zone -->
               <div class="border-t border-red-200 dark:border-red-800 pt-6">

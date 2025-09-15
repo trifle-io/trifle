@@ -399,6 +399,21 @@ defmodule Trifle.Organizations do
   end
 
   @doc """
+  Returns the next position index for dashboards within a database.
+  """
+  def get_next_dashboard_position(%Database{} = database) do
+    query = from(d in Dashboard,
+      where: d.database_id == ^database.id,
+      select: max(d.position)
+    )
+
+    case Repo.one(query) do
+      nil -> 0
+      max_pos -> max_pos + 1
+    end
+  end
+
+  @doc """
   Returns the list of dashboards for a database.
   """
   def list_dashboards_for_database(%Database{} = database) do
