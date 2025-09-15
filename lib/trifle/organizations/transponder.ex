@@ -79,8 +79,9 @@ defmodule Trifle.Organizations.Transponder do
         ]
       "Trifle.Stats.Transponder.StandardDeviation" ->
         [
-          %{name: "path", type: "string", label: "Array Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
+          %{name: "left", type: "string", label: "First Path", required: true},
+          %{name: "right", type: "string", label: "Second Path", required: true},
+          %{name: "square", type: "string", label: "Third Path", required: true}
         ]
       "Trifle.Stats.Transponder.Min" ->
         [
