@@ -537,6 +537,9 @@ Hooks.DashboardGrid = {
       } catch (_) {}
     };
     window.addEventListener('resize', this._onWindowResize);
+    // Avoid persisting transient responsive changes when navigating away
+    this._onPageLoadingStart = () => { this._suppressSave = true; };
+    window.addEventListener('phx:page-loading-start', this._onPageLoadingStart);
     this._sparkTimers = {};
     const editableAttr = this.el.dataset.editable;
     this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
@@ -956,6 +959,10 @@ Hooks.DashboardGrid = {
       window.removeEventListener('resize', this._onWindowResize);
       this._onWindowResize = null;
     }
+    if (this._onPageLoadingStart) {
+      window.removeEventListener('phx:page-loading-start', this._onPageLoadingStart);
+      this._onPageLoadingStart = null;
+    }
     if (this._sparklines) {
       Object.values(this._sparklines).forEach((c) => {
         if (c && !c.isDisposed()) c.dispose();
@@ -1010,9 +1017,9 @@ Hooks.DashboardGrid = {
         Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
       }
     };
-    this.grid.on('change', () => { if (!this._suppressSave) save(); resizeCharts(); });
-    this.grid.on('added', () => { save(); resizeCharts(); });
-    this.grid.on('removed', () => { save(); resizeCharts(); });
+    this.grid.on('change', () => { if (!this._suppressSave && !this._isOneCol && document.visibilityState !== 'hidden') save(); resizeCharts(); });
+    this.grid.on('added', () => { if (!this._isOneCol) save(); resizeCharts(); });
+    this.grid.on('removed', () => { if (!this._isOneCol) save(); resizeCharts(); });
 
     // No direct button binding needed; delegated handler set in mounted
   },
@@ -1097,9 +1104,16 @@ Hooks.DashboardGrid = {
 // Generic file download handler via pushEvent
 Hooks.FileDownload = {
   mounted() {
-    this.handleEvent('file_download', ({ content, filename, type }) => {
+    this.handleEvent('file_download', ({ content, content_base64, base64, filename, type }) => {
       try {
-        const blob = new Blob([content || ''], { type: type || 'application/octet-stream' });
+        let blob;
+        if (base64 || content_base64) {
+          const b64 = content_base64 || content || '';
+          const bytes = this._b64ToUint8Array(b64);
+          blob = new Blob([bytes], { type: type || 'application/octet-stream' });
+        } else {
+          blob = new Blob([content || ''], { type: type || 'application/octet-stream' });
+        }
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -1114,6 +1128,68 @@ Hooks.FileDownload = {
         console.error('File download failed', e);
       }
     });
+
+    this.handleEvent('file_download_url', ({ url, filename, target }) => {
+      try {
+        if (!url) throw new Error('Missing url');
+        // Prefer hidden iframe to avoid interfering with LiveView navigation
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = url;
+        document.body.appendChild(iframe);
+        // Safety cleanup
+        setTimeout(() => { try { document.body.removeChild(iframe); } catch (_) {} }, 60000);
+        // Note: Avoid forcing navigation to keep LiveView intact
+      } catch (e) {
+        console.error('File download url failed', e);
+      }
+    });
+
+    this.handleEvent('export_dashboard_pdf', ({ title, timeframe, granularity }) => {
+      try {
+        const root = document.documentElement;
+        const wasDark = root.classList.contains('dark');
+        if (wasDark) root.classList.remove('dark');
+
+        const header = document.createElement('div');
+        header.id = 'dashboard-print-header';
+        header.style.background = '#ffffff';
+        header.style.color = '#0f172a';
+        header.style.padding = '16px 24px';
+        header.style.borderBottom = '1px solid #e5e7eb';
+        header.style.fontFamily = 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial';
+        header.innerHTML = `
+          <div style="max-width: 1024px; margin: 0 auto;">
+            <div style="font-size: 18px; font-weight: 600;">${this.escapeHtml(title || 'Dashboard')}</div>
+            <div style="margin-top: 6px; font-size: 12px; color: #475569;">
+              ${timeframe ? this.escapeHtml(timeframe) + ' • ' : ''}Granularity: ${this.escapeHtml(granularity || '')}
+            </div>
+          </div>
+        `;
+        document.body.prepend(header);
+
+        const cleanup = () => {
+          try { header.remove(); } catch (_) {}
+          if (wasDark) root.classList.add('dark');
+          window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
+        setTimeout(() => window.print(), 50);
+      } catch (e) {
+        console.error('PDF export failed', e);
+      }
+    });
+  },
+
+  escapeHtml(str) { return String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s])); },
+
+  _b64ToUint8Array(b64) {
+    const binary = atob(b64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
   }
 }
 

@@ -111,6 +111,14 @@ defmodule TrifleWeb.Router do
     end
   end
 
+  # Export downloads (controller) under authenticated app scope
+  scope "/app", TrifleWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    get "/export/dashboards/:id/pdf", ExportController, :dashboard_pdf
+    get "/export/dashboards/:id/png", ExportController, :dashboard_png
+  end
+
   scope "/", TrifleWeb do
     pipe_through [:browser]
 

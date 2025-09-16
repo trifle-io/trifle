@@ -1012,6 +1012,19 @@ defmodule TrifleApp.DashboardLive do
     (if base == "", do: prefix, else: base) <> "-" <> ts <> ext
   end
 
+  def handle_event("download_dashboard_pdf", _params, socket) do
+    # Prefer direct download via controller route to avoid large payloads over LiveView socket
+    fname = export_filename("dashboard", socket.assigns, ".pdf")
+    url = ~p"/app/export/dashboards/#{socket.assigns.dashboard.id}/pdf?filename=#{fname}"
+    {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
+  end
+
+  def handle_event("download_dashboard_png", _params, socket) do
+    fname = export_filename("dashboard", socket.assigns, ".png")
+    url = ~p"/app/export/dashboards/#{socket.assigns.dashboard.id}/png?filename=#{fname}"
+    {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
+  end
+
   def handle_event("show_transponder_errors", _params, socket) do
     {:noreply, assign(socket, show_error_modal: true)}
   end
@@ -1128,6 +1141,8 @@ defmodule TrifleApp.DashboardLive do
   def render(assigns) do
     ~H"""
     <div id="dashboard-page-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
+      <!-- Hidden iframe target for downloads to avoid navigating away from LiveView -->
+      <iframe name="download_iframe" style="display:none" aria-hidden="true"></iframe>
       <!-- Loading Overlay (covers entire page; message at 1/3 height) -->
       <%= if (@loading_chunks && @loading_progress) || @transponding do %>
         <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
@@ -1937,6 +1952,18 @@ defmodule TrifleApp.DashboardLive do
                       <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
                       JSON (raw)
                     </button>
+                    <a href={~p"/app/export/dashboards/#{@dashboard.id}/pdf"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                      <span class="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                        PDF (print)
+                      </span>
+                    </a>
+                    <a href={~p"/app/export/dashboards/#{@dashboard.id}/png"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                      <span class="flex items-center">
+                        <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                        PNG (image)
+                      </span>
+                    </a>
                   </div>
                 <% end %>
               </div>
