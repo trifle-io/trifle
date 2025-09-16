@@ -178,13 +178,15 @@ defmodule TrifleApp.Components.FilterBar do
           <% end %>
           
           <!-- Granularity Section -->
-          <!-- Button Group for large screens -->
-          <div class="hidden md:block" id="granularity-container" phx-hook="FastTooltip">
-            <%= render_granularity_button_group(assigns) %>
-          </div>
-          
-          <!-- Dropdown for small screens -->
-          <div class="block md:hidden">
+          <!-- Button Group (suppressed when dropdown explicitly requested or forced) -->
+          <%= if !(@force_granularity_dropdown || @show_granularity_dropdown) do %>
+            <div class="hidden md:block" id="granularity-container" phx-hook="FastTooltip">
+              <%= render_granularity_button_group(assigns) %>
+            </div>
+          <% end %>
+
+          <!-- Dropdown (visible on small screens or when forced by parent) -->
+          <div class={((@force_granularity_dropdown || @show_granularity_dropdown) && "block") || "block md:hidden"}>
             <div class="relative">
               <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
                 Granularity

@@ -554,6 +554,17 @@ Hooks.DashboardGrid = {
 
     this.initGrid();
 
+    // Ensure multi-column layout during export (print mode)
+    try {
+      const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
+      if (printMode && this.grid && typeof this.grid.column === 'function') {
+        this._suppressSave = true;
+        this.grid.column(this.cols);
+        // Disable responsive one-column toggling for print
+        this._applyResponsiveGrid = () => {};
+      }
+    } catch (_) { /* noop */ }
+
     // Toggle to one column on MD and smaller screens
     // Tailwind defaults: md=768px, lg=1024px; we want < lg (i.e., MD and below)
     this._applyResponsiveGrid = () => {
@@ -589,6 +600,34 @@ Hooks.DashboardGrid = {
     // Apply once on mount
     this._applyResponsiveGrid();
 
+    // If server precomputed items for print mode, render immediately
+    try { this.initialKpiValues = this.el.dataset.initialKpiValues ? JSON.parse(this.el.dataset.initialKpiValues) : []; } catch (_) { this.initialKpiValues = []; }
+    try { this.initialKpiSpark = this.el.dataset.initialKpiSpark ? JSON.parse(this.el.dataset.initialKpiSpark) : []; } catch (_) { this.initialKpiSpark = []; }
+    try { this.initialTimeseries = this.el.dataset.initialTimeseries ? JSON.parse(this.el.dataset.initialTimeseries) : []; } catch (_) { this.initialTimeseries = []; }
+    try { this.initialCategory = this.el.dataset.initialCategory ? JSON.parse(this.el.dataset.initialCategory) : []; } catch (_) { this.initialCategory = []; }
+    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiSpark && this.initialKpiSpark.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length)) {
+      setTimeout(() => {
+        try {
+          if (this.initialKpiValues && this.initialKpiValues.length) this._render_kpi_values(this.initialKpiValues);
+          if (this.initialKpiSpark && this.initialKpiSpark.length) this._render_kpi_sparkline(this.initialKpiSpark);
+          if (this.initialTimeseries && this.initialTimeseries.length) this._render_timeseries(this.initialTimeseries);
+          if (this.initialCategory && this.initialCategory.length) this._render_category(this.initialCategory);
+        } catch (e) { console.error('initial print render failed', e); }
+      }, 0);
+    }
+
+    // Ready signaling for export capture
+    this._seen = { kpi_values: false, kpi_spark: false, timeseries: false, category: false };
+    this._markedReady = false;
+    this._scheduleReadyMark = () => {
+      if (this._readyTimer) clearTimeout(this._readyTimer);
+      this._readyTimer = setTimeout(() => {
+        if (this._markedReady) return;
+        const ready = this._seen.timeseries || this._seen.category || (this._seen.kpi_values && this._seen.kpi_spark);
+        if (ready) { this._markedReady = true; try { window.TRIFLE_READY = true; } catch (_) {} }
+      }, 200);
+    };
+
     // Delegate click for Add Widget button to survive DOM patches
     if (this.editable && this.addBtnId) {
       this._docClick = (e) => {
@@ -611,6 +650,22 @@ Hooks.DashboardGrid = {
       }
     };
     this.el.addEventListener('click', this._gridClick, true);
+
+    // Ready signaling helpers for export (used by CDP waiter)
+    try {
+      window.TRIFLE_READY = false;
+      this._scheduleReadyMark = () => {
+        if (this._readyTimer) clearTimeout(this._readyTimer);
+        this._readyTimer = setTimeout(() => {
+          try {
+            const charts = document.querySelectorAll('.ts-chart, .cat-chart, .kpi-spark');
+            if (charts.length === 0) return;
+            const allReady = Array.prototype.every.call(charts, el => el && el.dataset && el.dataset.echartsReady === '1');
+            if (allReady) requestAnimationFrame(() => requestAnimationFrame(() => { window.TRIFLE_READY = true; }));
+          } catch (_) {}
+        }, 100);
+      };
+    } catch (_) {}
 
     // LiveView -> Hook updates for widget edits/deletes
     this.handleEvent('dashboard_grid_widget_updated', ({ id, title }) => {
@@ -676,9 +731,9 @@ Hooks.DashboardGrid = {
             const pctText = `${Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 2 : 1)}%`;
             const clrWrap = up ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
             const arrow = up
-              ? '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mr-0.5 -ml-1 size-4 shrink-0 self-center text-green-500"><path d="M10 17a.75.75 0 0 1-.75-.75V5.612L5.29 9.77a.75.75 0 0 1-1.08-1.04l5.25-5.5a.75.75 0 0 1 1.08 0l5.25 5.5a.75.75 0 1 1-1.08 1.04l-3.96-4.158V16.25A.75.75 0 0 1 10 17Z" clip-rule="evenodd" fill-rule="evenodd"/></svg>'
-              : '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="mr-0.5 -ml-1 size-4 shrink-0 self-center text-red-500"><path d="M10 3a.75.75 0 0 1 .75.75v10.638l3.96-4.158a.75.75 0 1 1 1.08 1.04l-5.25 5.5a.75.75 0 0 1-1.08 0l-5.25-5.5a.75.75 0 1 1 1.08-1.04l3.96 4.158V3.75A.75.75 0 0 1 10 3Z" clip-rule="evenodd" fill-rule="evenodd"/></svg>';
-            diffHtml = `<div class="inline-flex items-baseline rounded-full px-2.5 py-0.5 text-sm font-medium ${clrWrap}">${arrow}<span class="sr-only"> ${up ? 'Increased' : 'Decreased'} by </span>${pctText}</div>`;
+              ? '<span class="inline-block align-middle" style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:6px solid currentColor;line-height:0"></span>'
+              : '<span class="inline-block align-middle" style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid currentColor;line-height:0"></span>';
+            diffHtml = `<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium leading-none whitespace-nowrap ${clrWrap}">${arrow}<span class="sr-only"> ${up ? 'Increased' : 'Decreased'} by </span><span>${pctText}</span></span>`;
           }
           top.innerHTML = `
             <div class="w-full">
@@ -692,6 +747,7 @@ Hooks.DashboardGrid = {
           top.innerHTML = `<div class="${sizeClass} font-bold text-gray-900 dark:text-white">${val}</div>`;
         }
       });
+      this._seen.kpi_values = true; this._scheduleReadyMark();
     });
 
     // Draw/update sparkline charts for KPI widgets
@@ -740,8 +796,10 @@ Hooks.DashboardGrid = {
               showSymbol: false,
               lineStyle: { width: 1, color },
               areaStyle: { color, opacity: 0.08 },
-            }]
+            }],
+            animation: false
           }, true);
+          try { chart.off('finished'); chart.on('finished', () => { try { spark.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch(_){} }); } catch(_){}
           chart.resize();
           if (!this._sparkResize) {
             this._sparkResize = () => {
@@ -753,11 +811,12 @@ Hooks.DashboardGrid = {
         // Defer one frame to allow DOM layout
         setTimeout(render, 0);
       });
+      this._seen.kpi_spark = true; this._scheduleReadyMark();
     });
 
     // Draw/update per-widget timeseries charts
     this.handleEvent('dashboard_grid_timeseries', ({ items }) => {
-      try { console.debug('dashboard_grid_timeseries', items && items.slice ? items.slice(0,2) : items); } catch (_) {}
+      // Render timeseries charts
       if (!Array.isArray(items)) return;
       const isDarkMode = document.documentElement.classList.contains('dark');
       const colors = this.colors || [];
@@ -848,16 +907,19 @@ Hooks.DashboardGrid = {
               valueFormatter: (v) => v == null ? '-' : (normalized ? `${Number(v).toFixed(2)}%` : `${v}`),
             },
             series,
+            animation: false
           }, true);
+          try { chart.off('finished'); chart.on('finished', () => { try { container.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch(_){} }); } catch(_){}
           chart.resize();
         };
         setTimeout(ensureInit, 0);
       });
+      this._seen.timeseries = true; this._scheduleReadyMark();
     });
 
     // Draw/update per-widget category charts
     this.handleEvent('dashboard_grid_category', ({ items }) => {
-      try { console.debug('dashboard_grid_category', items && items.slice ? items.slice(0,2) : items); } catch (_) {}
+      // Render category charts
       if (!Array.isArray(items)) return;
       const isDarkMode = document.documentElement.classList.contains('dark');
       const colors = this.colors || [];
@@ -911,7 +973,8 @@ Hooks.DashboardGrid = {
                     ? colors[params.dataIndex % colors.length]
                     : params.color
                 }
-              }]
+              }],
+              animation: false
             };
           } else {
             // bar chart
@@ -928,14 +991,17 @@ Hooks.DashboardGrid = {
                 type: 'bar',
                 data: data.map(d => d.value),
                 itemStyle: { color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6' }
-              }]
+              }],
+              animation: false
             };
           }
           chart.setOption(option, true);
+          try { chart.off('finished'); chart.on('finished', () => { try { container.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch(_){} }); } catch(_){}
           chart.resize();
         };
         setTimeout(ensureInit, 0);
       });
+      this._seen.category = true; this._scheduleReadyMark();
     });
   },
 
@@ -1022,6 +1088,206 @@ Hooks.DashboardGrid = {
     this.grid.on('removed', () => { if (!this._isOneCol) save(); resizeCharts(); });
 
     // No direct button binding needed; delegated handler set in mounted
+  },
+
+  // Reusable renderers (used by LiveView events and initial print rendering)
+  _render_kpi_values(items) {
+    if (!Array.isArray(items)) return;
+    items.forEach((it) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+      const body = item && item.querySelector('.grid-widget-body');
+      if (!body) return;
+      const sizeClass = (() => {
+        const sz = (it.size || 'm');
+        if (sz === 's') return 'text-2xl';
+        if (sz === 'l') return 'text-4xl';
+        return 'text-3xl';
+      })();
+      const fmt = (v) => {
+        if (v === null || v === undefined || Number.isNaN(v)) return '—';
+        const n = Number(v);
+        if (!Number.isFinite(n)) return String(v);
+        if (Math.abs(n) >= 1000) {
+          const units = ['','K','M','B','T'];
+          let u = 0; let num = Math.abs(n);
+          while (num >= 1000 && u < units.length-1) { num /= 1000; u++; }
+          const sign = n < 0 ? '-' : '';
+          return `${sign}${num.toFixed(num < 10 ? 2 : 1)}${units[u]}`;
+        }
+        return n.toFixed(2).replace(/\.00$/, '');
+      };
+      let wrap = body.querySelector('.kpi-wrap');
+      if (!wrap) {
+        body.innerHTML = `<div class="kpi-wrap w-full flex flex-col justify-center"><div class="kpi-top"></div><div class="kpi-spark mt-2" style="height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -36px;"></div></div>`;
+        wrap = body.querySelector('.kpi-wrap');
+      }
+      let top = wrap.querySelector('.kpi-top');
+      if (it.split) {
+        const prevNum = (it.previous == null ? null : Number(it.previous));
+        const currNum = (it.current == null ? null : Number(it.current));
+        const prev = fmt(it.previous);
+        const curr = fmt(it.current);
+        let diffHtml = '';
+          if (it.diff && prevNum != null && currNum != null && isFinite(prevNum) && prevNum !== 0) {
+            const delta = currNum - prevNum;
+            const pct = (delta / Math.abs(prevNum)) * 100;
+            const up = delta >= 0;
+            const pctText = `${Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 2 : 1)}%`;
+            const clrWrap = up ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+            const arrow = up
+              ? '<span class="inline-block align-middle" style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:6px solid currentColor;line-height:0"></span>'
+              : '<span class="inline-block align-middle" style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid currentColor;line-height:0"></span>';
+            diffHtml = `<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium leading-none whitespace-nowrap ${clrWrap}">${arrow}<span class="sr-only"> ${up ? 'Increased' : 'Decreased'} by </span><span>${pctText}</span></span>`;
+          }
+        top.innerHTML = `
+          <div class="w-full">
+            <div class="flex items-baseline justify-between w-full">
+              <div class="flex items-baseline ${sizeClass} font-bold text-gray-900 dark:text-white">${curr}<span class="ml-2 text-sm font-medium text-gray-500 dark:text-slate-400">from ${prev}</span></div>
+              ${diffHtml}
+            </div>
+          </div>`;
+      } else {
+        const val = fmt(it.value);
+        top.innerHTML = `<div class="${sizeClass} font-bold text-gray-900 dark:text-white">${val}</div>`;
+      }
+    });
+  },
+
+  _render_kpi_sparkline(items) {
+    if (!Array.isArray(items)) return;
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const color = (this.colors && this.colors[0]) || '#14b8a6';
+    items.forEach((it) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+      const body = item && item.querySelector('.grid-widget-body');
+      if (!body) return;
+      let spark = body.querySelector('.kpi-spark');
+      if (!spark) {
+        spark = document.createElement('div');
+        spark.className = 'kpi-spark mt-2';
+        spark.style.height = '40px';
+        spark.style.width = 'calc(100% + 24px)';
+        spark.style.marginLeft = '-12px';
+        spark.style.marginRight = '-12px';
+        spark.style.marginBottom = '-36px';
+        body.appendChild(spark);
+      }
+      const render = () => {
+        let chart = this._sparklines[it.id];
+        const theme = isDarkMode ? 'dark' : undefined;
+        if (!chart) {
+          if (spark.clientWidth === 0 || spark.clientHeight === 0) {
+            setTimeout(render, 80);
+            return;
+          }
+          chart = echarts.init(spark, theme, { height: 40 });
+          this._sparklines[it.id] = chart;
+        }
+        const data = it.data || [];
+        chart.setOption({
+          backgroundColor: 'transparent',
+          grid: { top: 0, bottom: 0, left: 0, right: 0 },
+          xAxis: { type: 'time', show: false },
+          yAxis: { type: 'value', show: false },
+          tooltip: { show: false },
+          series: [{ type: 'line', data, smooth: true, showSymbol: false, lineStyle: { width: 1, color }, areaStyle: { color, opacity: 0.08 } }]
+        }, true);
+        chart.resize();
+      };
+      setTimeout(render, 0);
+    });
+  },
+
+  _render_timeseries(items) {
+    if (!Array.isArray(items)) return;
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const colors = this.colors || [];
+    items.forEach((it) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+      const body = item && item.querySelector('.grid-widget-body');
+      if (!body) return;
+      let container = body.querySelector('.ts-chart');
+      if (!container) {
+        body.innerHTML = '';
+        body.classList.remove('items-center','justify-center','text-sm','text-gray-500','dark:text-slate-400');
+        container = document.createElement('div');
+        container.className = 'ts-chart';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        body.appendChild(container);
+      }
+      let chart = this._tsCharts[it.id];
+      const theme = isDarkMode ? 'dark' : undefined;
+      const ensureInit = () => {
+        if (!chart) {
+          if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
+          chart = echarts.init(container, theme);
+          this._tsCharts[it.id] = chart;
+        }
+        const type = (it.chart_type || 'line');
+        const stacked = !!it.stacked;
+        const normalized = !!it.normalized;
+        const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
+        const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+        const legendText = isDarkMode ? '#D1D5DB' : '#374151';
+        const showLegend = !!it.legend;
+        const bottomPadding = showLegend ? 56 : 28;
+        const series = (it.series || []).map((s, idx) => {
+          const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
+          if (stacked) base.stack = 'total';
+          if (type === 'area') base.areaStyle = { opacity: 0.1 };
+          if (colors.length) base.itemStyle = { color: colors[idx % colors.length] };
+          return base;
+        });
+        const yName = normalized ? (it.y_label || 'Percentage') : (it.y_label || '');
+        const yAxis = { type: 'value', min: 0, name: yName, nameLocation: 'middle', nameGap: 40, nameTextStyle: { color: textColor }, axisLine: { lineStyle: { color: axisLineColor } }, axisLabel: { color: textColor, margin: 8, hideOverlap: true } };
+        if (normalized) { yAxis.max = 100; yAxis.axisLabel = { formatter: (v) => `${v}%` }; }
+        chart.setOption({ backgroundColor: 'transparent', grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true }, xAxis: { type: 'time', axisLine: { lineStyle: { color: axisLineColor } }, axisLabel: { color: textColor, margin: 8, hideOverlap: true } }, yAxis, legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false }, tooltip: { trigger: 'axis', confine: true, valueFormatter: (v) => v == null ? '-' : (normalized ? `${Number(v).toFixed(2)}%` : `${v}`) }, series }, true);
+        chart.resize();
+      };
+      setTimeout(ensureInit, 0);
+    });
+  },
+
+  _render_category(items) {
+    if (!Array.isArray(items)) return;
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const colors = this.colors || [];
+    items.forEach((it) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+      const body = item && item.querySelector('.grid-widget-body');
+      if (!body) return;
+      let container = body.querySelector('.cat-chart');
+      if (!container) {
+        body.innerHTML = '';
+        body.classList.remove('items-center','justify-center','text-sm','text-gray-500','dark:text-slate-400');
+        container = document.createElement('div');
+        container.className = 'cat-chart';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        body.appendChild(container);
+      }
+      let chart = this._catCharts[it.id];
+      const theme = isDarkMode ? 'dark' : undefined;
+      const ensureInit = () => {
+        if (!chart) {
+          if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
+          chart = echarts.init(container, theme);
+          this._catCharts[it.id] = chart;
+        }
+        const data = it.data || [];
+        const type = (it.chart_type || 'bar');
+        let option;
+        if (type === 'pie' || type === 'donut') {
+          option = { backgroundColor: 'transparent', tooltip: { trigger: 'item' }, color: (colors && colors.length ? colors : undefined), series: [{ type: 'pie', radius: (type === 'donut') ? ['50%','70%'] : '70%', avoidLabelOverlap: true, data, itemStyle: { color: (params) => (colors && colors.length) ? colors[params.dataIndex % colors.length] : params.color } }] };
+        } else {
+          option = { backgroundColor: 'transparent', grid: { top: 12, bottom: 28, left: 48, right: 16 }, xAxis: { type: 'category', data: data.map(d => d.name) }, yAxis: { type: 'value', min: 0 }, tooltip: { trigger: 'axis' }, series: [{ type: 'bar', data: data.map(d => d.value), itemStyle: { color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6' } }] };
+        }
+        chart.setOption(option, true);
+        chart.resize();
+      };
+      setTimeout(ensureInit, 0);
+    });
   },
 
   addGridItemEl(item) {

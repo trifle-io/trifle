@@ -14,14 +14,23 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   require Logger
 
   @default_window_size {1366, 900}
-  # Give charts and LiveView more time to render before printing
-  @default_budget_ms 12000
+  @default_pdf_window_size {1920, 1080}
+  @default_budget_ms 10000
 
   @doc """
   Export the dashboard to a PDF. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_pdf(dashboard_id, opts \\ []) do
     with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
+         # Prefer CDP (wait-for-ready) exporter for determinism
+         {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts) do
+      cleanup.()
+      {:ok, bin}
+    else
+      {:error, reason} ->
+        Logger.warn("ChromeExporter CDP PDF failed: #{inspect(reason)} — falling back to CLI")
+        # Fallback to CLI flags
+        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
          {:ok, chrome} <- find_chrome_binary(),
          {:ok, tmpfile} <- tmp_path(".pdf"),
          _ = Logger.debug("ChromeExporter PDF start url=#{url} out=#{tmpfile}"),
@@ -35,6 +44,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       {:error, reason} = err -> err
       other -> {:error, other}
     end
+    end
   end
 
   @doc """
@@ -42,17 +52,25 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   """
   def export_dashboard_png(dashboard_id, opts \\ []) do
     with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
-         {:ok, chrome} <- find_chrome_binary(),
-         {:ok, tmpfile} <- tmp_path(".png"),
-         _ = Logger.debug("ChromeExporter PNG start url=#{url} out=#{tmpfile}"),
-         {:ok, _} <- run_chrome(chrome, :png, url, tmpfile, opts),
-         {:ok, bin} <- File.read(tmpfile) do
-      File.rm(tmpfile)
+         {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_png(url, opts) do
       cleanup.()
       {:ok, bin}
     else
-      {:error, reason} = err -> err
-      other -> {:error, other}
+      {:error, reason} ->
+        Logger.warn("ChromeExporter CDP PNG failed: #{inspect(reason)} — falling back to CLI")
+        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
+             {:ok, chrome} <- find_chrome_binary(),
+             {:ok, tmpfile} <- tmp_path(".png"),
+             _ = Logger.debug("ChromeExporter PNG start url=#{url} out=#{tmpfile}"),
+             {:ok, _} <- run_chrome(chrome, :png, url, tmpfile, opts),
+             {:ok, bin} <- File.read(tmpfile) do
+          File.rm(tmpfile)
+          cleanup.()
+          {:ok, bin}
+        else
+          {:error, reason} = err -> err
+          other -> {:error, other}
+        end
     end
   end
 
@@ -130,7 +148,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
     |> binary_part(0, 12)
   end
 
-  defp find_chrome_binary do
+  def find_chrome_binary do
     candidates = [
       System.get_env("CHROME_PATH"),
       "google-chrome-stable",
@@ -153,13 +171,17 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   def public_dashboard_url(dashboard_id, opts \\ []), do: public_url_for_dashboard(dashboard_id, opts)
 
   defp run_chrome(chrome_bin, :pdf, url, out_path, opts) do
-    {w, h} = Keyword.get(opts, :window_size, @default_window_size)
+    {w, h} = Keyword.get(opts, :window_size, @default_pdf_window_size)
+    budget = Keyword.get(opts, :virtual_time_budget, @default_budget_ms)
 
     # Minimal, proven-stable flags first
     args_min = [
       "--headless=new",
       "--disable-gpu",
+      "--no-sandbox",
+      "--hide-scrollbars",
       "--window-size=#{w},#{h}",
+      "--virtual-time-budget=#{budget}",
       "--print-to-pdf=#{out_path}",
       "--print-to-pdf-no-header",
       url
@@ -190,11 +212,15 @@ defmodule TrifleApp.Exporters.ChromeExporter do
 
   defp run_chrome(chrome_bin, :png, url, out_path, opts) do
     {w, h} = Keyword.get(opts, :window_size, @default_window_size)
+    budget = Keyword.get(opts, :virtual_time_budget, @default_budget_ms)
 
     args_min = [
       "--headless=new",
       "--disable-gpu",
+      "--no-sandbox",
+      "--hide-scrollbars",
       "--window-size=#{w},#{h}",
+      "--virtual-time-budget=#{budget}",
       "--screenshot=#{out_path}",
       url
     ]
@@ -233,14 +259,6 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       {:ok, %File.Stat{size: size}} when size > 0 -> :ok
       {:ok, %File.Stat{size: 0}} -> {:empty_file, out}
       {:error, _} -> {:empty_file, out}
-    end
-  end
-
-  defp tmp_profile_dir do
-    dir = Path.join(System.tmp_dir!(), unique("trifle_chrome_profile"))
-    case File.mkdir_p(dir) do
-      :ok -> {:ok, dir}
-      {:error, reason} -> {:error, reason}
     end
   end
 

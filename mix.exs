@@ -9,6 +9,7 @@ defmodule Trifle.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
+      listeners: [Phoenix.CodeReloader],
       deps: deps()
     ]
   end
@@ -62,7 +63,8 @@ defmodule Trifle.MixProject do
       {:myxql, "~> 0.7.0"},
       {:redix, "~> 1.3.0"},
       {:exqlite, "~> 0.20"},
-      {:honeybadger, "~> 0.22"}
+      {:honeybadger, "~> 0.22"},
+      {:mint_web_socket, "~> 1.0"}
     ]
   end
 

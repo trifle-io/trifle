@@ -47,11 +47,13 @@ defmodule TrifleApp.DashboardLive do
 
           socket = apply_url_params(socket, params)
 
-          {:noreply,
-           socket
-           |> assign(:page_title, nil)
-           |> assign(:breadcrumb_links, [])
-           |> then(fn s -> apply_action(s, socket.assigns.live_action, params) end)}
+          socket =
+            socket
+            |> assign(:page_title, nil)
+            |> assign(:breadcrumb_links, [])
+            |> assign(:print_mode, params["print"] in ["1", "true", "yes"]) 
+            |> then(fn s -> apply_action(s, socket.assigns.live_action, params) end)
+          {:noreply, socket}
 
         {:error, :not_found} ->
           {:noreply,
@@ -61,7 +63,11 @@ defmodule TrifleApp.DashboardLive do
       end
     else
       socket = apply_url_params(socket, params)
-      {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+      socket =
+        socket
+        |> assign(:print_mode, params["print"] in ["1", "true", "yes"]) 
+        |> apply_action(socket.assigns.live_action, params)
+      {:noreply, socket}
     end
   end
 
@@ -1141,6 +1147,23 @@ defmodule TrifleApp.DashboardLive do
   def render(assigns) do
     ~H"""
     <div id="dashboard-page-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
+      <%= if @print_mode do %>
+        <style>
+          @media print {
+            @page { size: A3; margin: 8mm; }
+            /* Force white page background and avoid printing element backgrounds */
+            html, body { background: #ffffff !important; -webkit-print-color-adjust: economy !important; print-color-adjust: economy !important; }
+            .dark, .dark body { background: #ffffff !important; }
+            /* Remove any focus rings, outlines, and shadows that can appear thicker in print */
+            *, *::before, *::after { box-shadow: none !important; text-shadow: none !important; outline: none !important; }
+            /* Common content containers */
+            .grid-stack-item-content { box-shadow: none !important; }
+            .container { max-width: 100% !important; width: 100% !important; }
+            .grid-stack { max-width: 100% !important; width: 100% !important; }
+            #phx-topbar { display: none !important; }
+          }
+        </style>
+      <% end %>
       <!-- Hidden iframe target for downloads to avoid navigating away from LiveView -->
       <iframe name="download_iframe" style="display:none" aria-hidden="true"></iframe>
       <!-- Loading Overlay (covers entire page; message at 1/3 height) -->
@@ -1184,7 +1207,7 @@ defmodule TrifleApp.DashboardLive do
               </h1>
             </div>
 
-          <%= if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
+          <%= if !@print_mode && !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
             <!-- Dashboard owner controls -->
             <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
               <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
@@ -1326,9 +1349,10 @@ defmodule TrifleApp.DashboardLive do
           smart_timeframe_input={@smart_timeframe_input}
           use_fixed_display={@use_fixed_display}
           available_granularities={@available_granularities}
-          show_controls={true}
+          show_controls={!@print_mode}
           show_timeframe_dropdown={false}
           show_granularity_dropdown={false}
+          force_granularity_dropdown={@print_mode}
         />
       <% end %>
 
@@ -1391,12 +1415,15 @@ defmodule TrifleApp.DashboardLive do
              class="grid-stack"
              phx-update="ignore"
              phx-hook="DashboardGrid"
+             data-print-mode={if @print_mode, do: "true", else: "false"}
              data-editable={if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id, do: "true", else: "false"}
              data-cols="12"
              data-min-rows="8"
              data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
              data-colors={ChartColors.json_palette()}
-             data-initial-grid={Jason.encode!(@dashboard.payload["grid"] || [])}>
+             data-initial-grid={Jason.encode!(@dashboard.payload["grid"] || [])}
+             data-dashboard-id={@dashboard.id}
+             data-public-token={@public_token}>
         </div>
       </div>
 
