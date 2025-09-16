@@ -73,7 +73,8 @@ defmodule TrifleApp.Exporters.ChromeCDP do
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
          _ = (theme == :dark && set_dark_theme(page_ws) || normalize_background(page_ws)),
-         {:ok, png_b64} <- page_capture_screenshot(page_ws) do
+         clip <- expand_viewport_to_content(page_ws),
+         {:ok, png_b64} <- page_capture_screenshot(page_ws, clip) do
       _ = close(page_ws)
       _ = kill_chrome(state)
       Logger.debug("CDP PNG captured (bytes)=#{div(byte_size(png_b64) * 3, 4)}")
@@ -200,12 +201,20 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
-  defp page_capture_screenshot(page_ws) do
-    case __MODULE__.WS.call(page_ws, "Page.captureScreenshot", %{format: "png"}) do
+  defp page_capture_screenshot(page_ws, clip) do
+    params = %{format: "png", captureBeyondViewport: true} |> maybe_put_clip(clip)
+
+    case __MODULE__.WS.call(page_ws, "Page.captureScreenshot", params) do
       {:ok, %{"data" => b64}} -> {:ok, b64}
       other -> {:error, {:cdp_screenshot_failed, other}}
     end
   end
+
+  defp maybe_put_clip(params, {width, height}) when is_integer(width) and is_integer(height) do
+    clip = %{x: 0, y: 0, width: width * 1.0, height: height * 1.0, scale: 1}
+    Map.put(params, :clip, clip)
+  end
+  defp maybe_put_clip(params, _), do: params
 
   defp normalize_background(page_ws) do
     js = "(function(){\ntry{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff';}}catch(e){}\ntry{var s=document.createElement('style');\n s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';\n document.head.appendChild(s);}catch(e){}\nreturn true;})()"
@@ -238,6 +247,25 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     _ = File.rm_rf(profile_dir)
     :ok
   end
+
+  defp expand_viewport_to_content(page_ws) do
+    case __MODULE__.WS.call(page_ws, "Page.getLayoutMetrics", %{}) do
+      {:ok, %{"contentSize" => %{"width" => width, "height" => height}}} when is_number(width) and is_number(height) ->
+        max_dim = 16_384
+        w = width |> ceil_to_int() |> min(max_dim) |> max(1)
+        h = height |> ceil_to_int() |> min(max_dim) |> max(1)
+        device_metrics = %{width: w, height: h, deviceScaleFactor: 1, mobile: false, scale: 1}
+        _ = __MODULE__.WS.call(page_ws, "Emulation.setDeviceMetricsOverride", device_metrics)
+        _ = __MODULE__.WS.call(page_ws, "Emulation.setVisibleSize", %{width: w, height: h})
+        {w, h}
+      other ->
+        Logger.debug("CDP expand_viewport_to_content skipped: #{inspect(other)}")
+        nil
+    end
+  end
+
+  defp ceil_to_int(value) when is_integer(value), do: value
+  defp ceil_to_int(value) when is_float(value), do: Float.ceil(value) |> trunc
 
   defp unique(prefix) do
     {m, s, us} = :os.timestamp()
