@@ -93,7 +93,7 @@ jobs:
           WORKDIR /app
           
           # Copy mix files and install dependencies
-          COPY mix.exs mix.lock ./
+          COPY mix.exs mix.lock VERSION ./
           RUN mix deps.get --only prod
           
           # Copy application source code (with pre-built assets)
