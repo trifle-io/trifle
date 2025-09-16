@@ -26,6 +26,8 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   @default_viewport {1366, 900}
   @default_pdf_viewport {1920, 1080}
   @default_timeout_ms 30000
+  @png_max_dimension 16_384
+  @png_capture_scale 2.0
 
   def export_pdf(url, opts \\ []) do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
@@ -214,9 +216,13 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
-  defp maybe_put_clip(params, {width, height}) when is_integer(width) and is_integer(height) do
-    clip = %{x: 0, y: 0, width: width * 1.0, height: height * 1.0, scale: 1}
+  defp maybe_put_clip(params, %{width: width, height: height, scale: scale})
+       when is_integer(width) and is_integer(height) and is_number(scale) do
+    clip = %{x: 0, y: 0, width: width * 1.0, height: height * 1.0, scale: scale}
     Map.put(params, :clip, clip)
+  end
+  defp maybe_put_clip(params, {width, height}) when is_integer(width) and is_integer(height) do
+    maybe_put_clip(params, %{width: width, height: height, scale: 1.0})
   end
   defp maybe_put_clip(params, _), do: params
 
@@ -254,17 +260,28 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp expand_viewport_to_content(page_ws) do
     case __MODULE__.WS.call(page_ws, "Page.getLayoutMetrics", %{}) do
-      {:ok, %{"contentSize" => %{"width" => width, "height" => height}}} when is_number(width) and is_number(height) ->
-        max_dim = 16_384
-        w = width |> ceil_to_int() |> min(max_dim) |> max(1)
-        h = height |> ceil_to_int() |> min(max_dim) |> max(1)
+      {:ok, %{"contentSize" => %{"width" => width, "height" => height}}}
+      when is_number(width) and is_number(height) and width > 0 and height > 0 ->
+        w = width |> ceil_to_int() |> min(@png_max_dimension) |> max(1)
+        h = height |> ceil_to_int() |> min(@png_max_dimension) |> max(1)
         device_metrics = %{width: w, height: h, deviceScaleFactor: 1, mobile: false, scale: 1}
         _ = __MODULE__.WS.call(page_ws, "Emulation.setDeviceMetricsOverride", device_metrics)
         _ = __MODULE__.WS.call(page_ws, "Emulation.setVisibleSize", %{width: w, height: h})
-        {w, h}
+        %{width: w, height: h, scale: png_capture_scale(w, h)}
       other ->
         Logger.debug("CDP expand_viewport_to_content skipped: #{inspect(other)}")
         nil
+    end
+  end
+
+  defp png_capture_scale(width, height) do
+    max_side = max(width, height)
+    cond do
+      max_side <= 0 -> 1.0
+      true ->
+        max_scale = @png_max_dimension / max_side
+        scale = min(@png_capture_scale, max_scale)
+        if scale < 1.0, do: 1.0, else: scale
     end
   end
 
