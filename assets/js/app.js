@@ -1523,12 +1523,14 @@ Hooks.DownloadMenu = {
       const btn = e.target.closest('button[data-export-trigger]');
       if (!this.el.contains(e.target)) return; // Only handle clicks within this menu
       if (a) {
-        // Inline handler manages tokens/loading for anchor-based downloads
+        this.startLoading();
         setTimeout(() => this.pushEvent('hide_export_dropdown', {}), 0);
         return;
       }
       if (!btn) return;
-      this.startLoading();
+      // Separate loading instance for button-triggered exports
+      this.loading = true;
+      this.applyLoadingState();
       // Generate token so iframe poller knows when to reset for button-trigger downloads
       const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       this._downloadToken = token;
