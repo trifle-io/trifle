@@ -21,7 +21,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   Export the dashboard to a PDF. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_pdf(dashboard_id, opts \\ []) do
-    with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
+    with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
          # Prefer CDP (wait-for-ready) exporter for determinism
          {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts) do
       cleanup.()
@@ -30,8 +30,8 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       {:error, reason} ->
         Logger.warn("ChromeExporter CDP PDF failed: #{inspect(reason)} — falling back to CLI")
         # Fallback to CLI flags
-        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
-         {:ok, chrome} <- find_chrome_binary(),
+        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+          {:ok, chrome} <- find_chrome_binary(),
          {:ok, tmpfile} <- tmp_path(".pdf"),
          _ = Logger.debug("ChromeExporter PDF start url=#{url} out=#{tmpfile}"),
          {:ok, _} <- run_chrome(chrome, :pdf, url, tmpfile, opts),
@@ -51,15 +51,15 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   Export the dashboard to a PNG screenshot. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_png(dashboard_id, opts \\ []) do
-    with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
+    with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
          {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_png(url, opts) do
       cleanup.()
       {:ok, bin}
     else
       {:error, reason} ->
         Logger.warn("ChromeExporter CDP PNG failed: #{inspect(reason)} — falling back to CLI")
-        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, print: true),
-             {:ok, chrome} <- find_chrome_binary(),
+        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+          {:ok, chrome} <- find_chrome_binary(),
              {:ok, tmpfile} <- tmp_path(".png"),
              _ = Logger.debug("ChromeExporter PNG start url=#{url} out=#{tmpfile}"),
              {:ok, _} <- run_chrome(chrome, :png, url, tmpfile, opts),
@@ -87,10 +87,14 @@ defmodule TrifleApp.Exporters.ChromeExporter do
 
     base = base_url()
     # Use the public route so no auth is required for headless export
-    query = URI.encode_query(%{
-      token: dashboard.access_token,
-      print: if(opts[:print], do: "1", else: nil)
-    } |> Enum.reject(fn {_k, v} -> is_nil(v) end))
+    base_params = %{
+      "token" => dashboard.access_token,
+      "print" => if(opts[:print], do: "1", else: nil)
+    }
+    extra_params = (opts[:params] || %{})
+                   |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+    query_map = Map.merge(base_params, extra_params) |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    query = URI.encode_query(query_map)
     url = base <> "/d/" <> dashboard.id <> if(query == "", do: "", else: "?" <> query)
 
     cleanup = fn ->
