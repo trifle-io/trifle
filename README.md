@@ -314,6 +314,13 @@ The palette is used throughout the analytics dashboard for:
 
 ## Deployment
 
+### Versioning & Docker images
+
+- The application version is defined in the root `VERSION` file and consumed by `mix.exs`.
+- GitHub Actions reads this version and tags the Docker image as both `latest` (for `main`) and `<VERSION>`.
+- Helm charts default to using the chart `appVersion` when `image.tag` is left blank (see `.devops/kubernetes/helm/trifle/values.yaml`).
+- When bumping the version, update `VERSION` and `Chart.yaml`'s `version`/`appVersion`, then commit the change before triggering CI.
+
 ### Docker Compose (Production)
 
 For production deployment using Docker Compose:
