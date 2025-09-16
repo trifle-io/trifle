@@ -24,9 +24,13 @@ defmodule TrifleWeb.ExportController do
 
   def dashboard_png(conn, %{"id" => id} = params) do
     _ = Organizations.get_dashboard!(id)
-    case ChromeExporter.export_dashboard_png(id) do
+    theme = case params["theme"] do
+      "dark" -> :dark
+      _ -> :light
+    end
+    case ChromeExporter.export_dashboard_png(id, theme: theme) do
       {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
-        filename = params["filename"] || default_filename("dashboard", id, ".png")
+        filename = params["filename"] || default_filename("dashboard-" <> (theme == :dark && "dark" || "light"), id, ".png")
         send_download(conn, {:binary, bin}, filename: filename, content_type: "image/png")
       {:ok, _} ->
         send_resp(conn, 500, "Empty PNG output")
@@ -44,4 +48,3 @@ defmodule TrifleWeb.ExportController do
     "#{prefix}-#{id}-#{ts}#{ext}"
   end
 end
-

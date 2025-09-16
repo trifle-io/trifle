@@ -65,13 +65,14 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   def export_png(url, opts \\ []) do
     {w, h} = Keyword.get(opts, :window_size, @default_viewport)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
+    theme = Keyword.get(opts, :theme, :light)
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_png launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
          {:ok, page_ws} <- open_page_ws(state, url),
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         _ = normalize_background(page_ws),
+         _ = (theme == :dark && set_dark_theme(page_ws) || normalize_background(page_ws)),
          {:ok, png_b64} <- page_capture_screenshot(page_ws) do
       _ = close(page_ws)
       _ = kill_chrome(state)
@@ -208,6 +209,12 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp normalize_background(page_ws) do
     js = "(function(){\ntry{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff';}}catch(e){}\ntry{var s=document.createElement('style');\n s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';\n document.head.appendChild(s);}catch(e){}\nreturn true;})()"
+    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
+    :ok
+  end
+
+  defp set_dark_theme(page_ws) do
+    js = "(function(){\ntry{document.documentElement && document.documentElement.classList.add('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#0f172a';}}catch(e){}\nreturn true;})()"
     _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
     :ok
   end
