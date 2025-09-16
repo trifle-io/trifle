@@ -67,5 +67,9 @@ defmodule Trifle.Release do
 
   defp load_app do
     Application.load(@app)
+    Enum.each([:crypto, :ssl, :public_key, :inets], fn app ->
+      {:ok, _} = Application.ensure_all_started(app)
+    end)
+    {:ok, _} = Application.ensure_all_started(@app)
   end
 end
