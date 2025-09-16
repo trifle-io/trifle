@@ -552,11 +552,21 @@ Hooks.DashboardGrid = {
       this.initialItems = [];
     }
 
+    // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
+    const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
+    this._echartsRenderer = printMode ? 'svg' : undefined;
+    this._echartsDevicePixelRatio = printMode ? 2 : (window.devicePixelRatio || 1);
+    this._chartInitOpts = (extra = {}) => {
+      const opts = Object.assign({}, extra);
+      if (this._echartsRenderer) opts.renderer = this._echartsRenderer;
+      if (this._echartsDevicePixelRatio) opts.devicePixelRatio = this._echartsDevicePixelRatio;
+      return opts;
+    };
+
     this.initGrid();
 
     // Ensure multi-column layout during export (print mode)
     try {
-      const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
       if (printMode && this.grid && typeof this.grid.column === 'function') {
         this._suppressSave = true;
         this.grid.column(this.cols);
@@ -780,7 +790,7 @@ Hooks.DashboardGrid = {
               this._sparkTimers[it.id] = setTimeout(render, 80);
               return;
             }
-            chart = echarts.init(spark, theme, { height: 40 });
+            chart = echarts.init(spark, theme, this._chartInitOpts({ height: 40 }));
             this._sparklines[it.id] = chart;
           }
           chart.setOption({
@@ -848,7 +858,7 @@ Hooks.DashboardGrid = {
               setTimeout(ensureInit, 80);
               return;
             }
-            chart = echarts.init(container, theme);
+            chart = echarts.init(container, theme, this._chartInitOpts());
             this._tsCharts[it.id] = chart;
           }
 
@@ -949,7 +959,7 @@ Hooks.DashboardGrid = {
               setTimeout(ensureInit, 80);
               return;
             }
-            chart = echarts.init(container, theme);
+            chart = echarts.init(container, theme, this._chartInitOpts());
             this._catCharts[it.id] = chart;
           }
 
@@ -1461,8 +1471,7 @@ Hooks.FileDownload = {
     for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
   }
-  }
-}
+};
 
 // Download menu: close on click, show loading state until iframe loads
 Hooks.DownloadMenu = {
@@ -1512,26 +1521,23 @@ Hooks.DownloadMenu = {
     this._onClickCapture = (e) => {
       const a = e.target.closest('a[data-export-link]');
       const btn = e.target.closest('button[data-export-trigger]');
-      if (!a && !btn) return;
       if (!this.el.contains(e.target)) return; // Only handle clicks within this menu
+      if (a) {
+        // Inline handler manages tokens/loading for anchor-based downloads
+        setTimeout(() => this.pushEvent('hide_export_dropdown', {}), 0);
+        return;
+      }
+      if (!btn) return;
       this.startLoading();
-      // Append a unique download token so the server can set a cookie we can observe
+      // Generate token so iframe poller knows when to reset for button-trigger downloads
       const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       this._downloadToken = token;
-      if (a) {
-        try {
-          const u = new URL(a.href, window.location.origin);
-          u.searchParams.set('download_token', token);
-          a.href = u.toString();
-        } catch (_) {}
-      }
-      // Close the dropdown immediately and notify LiveView
+      try { window.__downloadToken = token; } catch (_) {}
       this.pushEvent('hide_export_dropdown', {});
       // Start polling for the cookie to flip back UI when done
       this.startCookiePolling();
     };
     // Use capture phase to run before LiveView's phx-click-away handler
-    document.addEventListener('pointerdown', this._onClickCapture, true);
     document.addEventListener('click', this._onClickCapture, true);
   },
 
@@ -1548,9 +1554,6 @@ Hooks.DownloadMenu = {
     if (this.loading) return;
     this.loading = true;
     this.applyLoadingState();
-    // Hide dropdown immediately for snappier UX
-    const dropdown = this.el.querySelector('[data-role="download-dropdown"]');
-    if (dropdown) dropdown.style.display = 'none';
   },
 
   stopLoading() {
