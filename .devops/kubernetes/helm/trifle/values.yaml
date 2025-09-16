@@ -4,7 +4,8 @@ replicaCount: 2
 image:
   repository: trifle/app
   pullPolicy: IfNotPresent
-  tag: "latest"
+  # Leave blank to use the chart appVersion; override to pin a specific image tag
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""

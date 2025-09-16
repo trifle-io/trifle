@@ -4,7 +4,7 @@ defmodule Trifle.MixProject do
   def project do
     [
       app: :trifle,
-      version: "0.1.0",
+      version: project_version(),
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -101,5 +101,12 @@ defmodule Trifle.MixProject do
         "phx.digest"
       ]
     ]
+  end
+
+  defp project_version do
+    "VERSION"
+    |> Path.expand(__DIR__)
+    |> File.read!()
+    |> String.trim()
   end
 end
