@@ -101,16 +101,22 @@ jobs:
           RUN mix release
           
           # Production stage
-          FROM debian:latest AS runtime
+          FROM debian:bookworm AS runtime
           
-          # Install runtime dependencies
+          # Install runtime dependencies including Chromium for server-side export
           RUN apt-get update -y && \
-              apt-get install -y \
-              libstdc++6 \
-              openssl \
-              libncurses6 \
-              ca-certificates \
-              curl \
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                libstdc++6 \
+                openssl \
+                libncurses6 \
+                ca-certificates \
+                curl \
+                chromium \
+                libgbm1 \
+                libnss3 \
+                fonts-liberation \
+                fonts-noto \
+                fonts-noto-color-emoji \
               && apt-get clean && \
               rm -rf /var/lib/apt/lists/*
           
@@ -128,6 +134,8 @@ jobs:
           ENV LANG=en_US.UTF-8
           ENV LC_ALL=en_US.UTF-8
           ENV ELIXIR_ERL_OPTIONS=+fnu
+          # Explicitly set Chromium path for exporter
+          ENV CHROME_PATH=/usr/bin/chromium
           
           # Health check
           HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
