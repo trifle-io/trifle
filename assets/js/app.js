@@ -1390,6 +1390,8 @@ Hooks.FileDownload = {
           URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 0);
+        // Notify any listeners that a download was initiated
+        window.dispatchEvent(new CustomEvent('download:complete'));
       } catch (e) {
         console.error('File download failed', e);
       }
@@ -1402,6 +1404,9 @@ Hooks.FileDownload = {
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
         iframe.src = url;
+        iframe.addEventListener('load', () => {
+          window.dispatchEvent(new CustomEvent('download:complete'));
+        });
         document.body.appendChild(iframe);
         // Safety cleanup
         setTimeout(() => { try { document.body.removeChild(iframe); } catch (_) {} }, 60000);
@@ -1456,6 +1461,163 @@ Hooks.FileDownload = {
     for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
   }
+  }
+}
+
+// Download menu: close on click, show loading state until iframe loads
+Hooks.DownloadMenu = {
+  mounted() {
+    this.loading = false;
+    this.button = this.el.querySelector('[data-role="download-button"]');
+    this.label = this.el.querySelector('[data-role="download-text"]');
+    const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
+    this.originalLabel = datasetLabel || (this.label ? this.label.textContent : '');
+    this.iframe = document.querySelector('iframe[name="download_iframe"]');
+
+    this.bindAnchors();
+    this.bindIframe();
+
+    // Global completion signal (for blob-based downloads or alternate flows)
+    this._onDownloadComplete = () => this.stopLoading();
+    window.addEventListener('download:complete', this._onDownloadComplete);
+  },
+
+  updated() {
+    // Rebind anchors when dropdown content re-renders and reselect elements that may have been replaced
+    this.button = this.el.querySelector('[data-role="download-button"]');
+    this.label = this.el.querySelector('[data-role="download-text"]');
+    const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
+    if (datasetLabel) {
+      this.originalLabel = datasetLabel;
+    } else if (!this.originalLabel && this.label) {
+      this.originalLabel = this.label.textContent;
+    }
+    this.bindAnchors();
+    // Rebind iframe in case it was re-rendered
+    const newIframe = document.querySelector('iframe[name="download_iframe"]');
+    if (newIframe !== this.iframe) {
+      this.iframe = newIframe;
+      this._iframeBound = false;
+      this.bindIframe();
+    }
+    // If still loading, re-apply loading UI state after LV patch
+    if (this.loading) this.applyLoadingState();
+  },
+
+  bindAnchors() {
+    if (this._bound) {
+      return;
+    }
+    this._bound = true;
+    this._onClickCapture = (e) => {
+      const a = e.target.closest('a[data-export-link]');
+      const btn = e.target.closest('button[data-export-trigger]');
+      if (!a && !btn) return;
+      if (!this.el.contains(e.target)) return; // Only handle clicks within this menu
+      this.startLoading();
+      // Append a unique download token so the server can set a cookie we can observe
+      const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      this._downloadToken = token;
+      if (a) {
+        try {
+          const u = new URL(a.href, window.location.origin);
+          u.searchParams.set('download_token', token);
+          a.href = u.toString();
+        } catch (_) {}
+      }
+      // Close the dropdown immediately and notify LiveView
+      this.pushEvent('hide_export_dropdown', {});
+      // Start polling for the cookie to flip back UI when done
+      this.startCookiePolling();
+    };
+    // Use capture phase to run before LiveView's phx-click-away handler
+    document.addEventListener('pointerdown', this._onClickCapture, true);
+    document.addEventListener('click', this._onClickCapture, true);
+  },
+
+  bindIframe() {
+    if (!this.iframe || this._iframeBound) return;
+    this._iframeBound = true;
+    this.iframe.addEventListener('load', () => {
+      // Any load in the download iframe marks completion
+      this.stopLoading();
+    });
+  },
+
+  startLoading() {
+    if (this.loading) return;
+    this.loading = true;
+    this.applyLoadingState();
+    // Hide dropdown immediately for snappier UX
+    const dropdown = this.el.querySelector('[data-role="download-dropdown"]');
+    if (dropdown) dropdown.style.display = 'none';
+  },
+
+  stopLoading() {
+    if (!this.loading) return;
+    this.loading = false;
+    this.stopCookiePolling();
+    if (this.button) {
+      this.button.removeAttribute('aria-busy');
+      this.button.classList.remove('opacity-70', 'cursor-wait');
+      this.button.disabled = false;
+    }
+    const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
+    if (this.label) this.label.textContent = this.originalLabel || datasetLabel || 'Download';
+  },
+
+  applyLoadingState() {
+    if (this.button) {
+      this.button.setAttribute('aria-busy', 'true');
+      this.button.classList.add('opacity-70', 'cursor-wait');
+      this.button.disabled = true;
+    }
+    if (this.label) this.label.textContent = 'Generating...';
+  },
+
+  startCookiePolling() {
+    this.stopCookiePolling();
+    const token = this._downloadToken;
+    if (!token) return;
+    const deadline = Date.now() + 60000; // 60s timeout
+    this._cookieTimer = setInterval(() => {
+      try {
+        const cookieEntry = document.cookie.split('; ').find((c) => c.startsWith('download_token='));
+        if (cookieEntry) {
+          const val = decodeURIComponent(cookieEntry.split('=')[1] || '');
+          const expected = token || (window.__downloadToken || '');
+          if (!expected || val === expected) {
+            // Clear cookie and stop loading
+            document.cookie = 'download_token=; Max-Age=0; path=/';
+            this.stopLoading();
+          }
+        }
+        if (Date.now() > deadline) {
+          // Fallback timeout
+          this.stopLoading();
+        }
+      } catch (_) {
+        // ignore
+      }
+    }, 500);
+  },
+
+  stopCookiePolling() {
+    if (this._cookieTimer) {
+      clearInterval(this._cookieTimer);
+      this._cookieTimer = null;
+    }
+  },
+
+  destroyed() {
+    if (this._onClickCapture) {
+      document.removeEventListener('pointerdown', this._onClickCapture, true);
+      document.removeEventListener('click', this._onClickCapture, true);
+    }
+    if (this._onDownloadComplete) {
+      window.removeEventListener('download:complete', this._onDownloadComplete);
+    }
+    this.stopCookiePolling();
   }
 }
 

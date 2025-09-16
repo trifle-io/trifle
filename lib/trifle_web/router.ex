@@ -117,6 +117,8 @@ defmodule TrifleWeb.Router do
 
     get "/export/dashboards/:id/pdf", ExportController, :dashboard_pdf
     get "/export/dashboards/:id/png", ExportController, :dashboard_png
+    get "/export/dashboards/:id/csv", ExportController, :dashboard_csv
+    get "/export/dashboards/:id/json", ExportController, :dashboard_json
   end
 
   scope "/", TrifleWeb do

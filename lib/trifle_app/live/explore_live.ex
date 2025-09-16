@@ -1578,6 +1578,7 @@ defmodule TrifleApp.ExploreLive do
       show_controls={true}
       databases={@databases}
       selected_database_id={@database.id}
+      force_granularity_dropdown={false}
     />
 
     <!-- Row 2: Activity/Events Chart -->
@@ -1900,19 +1901,19 @@ defmodule TrifleApp.ExploreLive do
                 <% end %>
 
                 <!-- Export drop-up -->
-                <div class="ml-auto relative">
-                  <button type="button" phx-click="toggle_export_dropdown" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
+                <div id="explore-download-menu" class="ml-auto relative" data-default-label="Export" phx-hook="DownloadMenu">
+                  <button type="button" phx-click="toggle_export_dropdown" data-role="download-button" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                    <span class="hidden md:inline">Download</span>
+                    <span class="inline" data-role="download-text">Export</span>
                     <svg class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
                   </button>
                   <%= if @show_export_dropdown do %>
-                    <div class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
-                      <button type="button" phx-click="download_explore_csv" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
+                    <div data-role="download-dropdown" class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
+                      <button type="button" phx-click="download_explore_csv" data-export-trigger class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
                         <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
                         CSV (table)
                       </button>
-                      <button type="button" phx-click="download_explore_json" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
+                      <button type="button" phx-click="download_explore_json" data-export-trigger class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
                         <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
                         JSON (raw)
                       </button>

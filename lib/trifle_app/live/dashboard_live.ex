@@ -816,15 +816,18 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp build_url_params(socket) do
-    base = %{
-      "granularity" => socket.assigns.granularity,
-      "timeframe" => socket.assigns.smart_timeframe_input || "24h"
-    }
-    if socket.assigns.use_fixed_display do
+  defp build_url_params(%Phoenix.LiveView.Socket{} = socket), do: build_url_params(socket.assigns)
+  defp build_url_params(data) when is_map(data) do
+    gran = Map.get(data, :granularity) || Map.get(data, "granularity") || "1h"
+    timeframe = Map.get(data, :smart_timeframe_input) || Map.get(data, "smart_timeframe_input") || Map.get(data, "timeframe") || "24h"
+    use_fixed = Map.get(data, :use_fixed_display) || Map.get(data, "use_fixed_display") || false
+    base = %{"granularity" => gran, "timeframe" => timeframe}
+    if use_fixed do
+      from = Map.get(data, :from) || Map.get(data, "from")
+      to   = Map.get(data, :to) || Map.get(data, "to")
       Map.merge(base, %{
-        "from" => TimeframeParsing.format_for_datetime_input(socket.assigns.from),
-        "to" => TimeframeParsing.format_for_datetime_input(socket.assigns.to)
+        "from" => TimeframeParsing.format_for_datetime_input(from),
+        "to" => TimeframeParsing.format_for_datetime_input(to)
       })
     else
       base
@@ -1165,7 +1168,26 @@ defmodule TrifleApp.DashboardLive do
         </style>
       <% end %>
       <!-- Hidden iframe target for downloads to avoid navigating away from LiveView -->
-      <iframe name="download_iframe" style="display:none" aria-hidden="true"></iframe>
+      <iframe name="download_iframe" style="display:none" aria-hidden="true" onload="(function(){['dashboard-download-menu','explore-download-menu'].forEach(function(id){var m=document.getElementById(id); if(!m) return; var b=m.querySelector('[data-role=download-button]'); var t=m.querySelector('[data-role=download-text]'); var d=(m.dataset&&m.dataset.defaultLabel)||'Download'; if(b){b.disabled=false; b.classList.remove('opacity-70','cursor-wait');} if(t){t.textContent=d;}})})()"></iframe>
+      <script>
+        window.__downloadPoller = window.__downloadPoller || setInterval(function(){
+          try {
+            var m = document.cookie.match(/(?:^|; )download_token=([^;]+)/);
+            if (m) {
+              // Clear cookie and reset UI
+              document.cookie = 'download_token=; Max-Age=0; path=/';
+              ['dashboard-download-menu','explore-download-menu'].forEach(function(id){
+                var menu=document.getElementById(id); if(!menu) return;
+                var btn=menu.querySelector('[data-role=download-button]');
+                var txt=menu.querySelector('[data-role=download-text]');
+                var defaultLabel=(menu.dataset&&menu.dataset.defaultLabel)||'Download';
+                if(btn){btn.disabled=false; btn.classList.remove('opacity-70','cursor-wait');}
+                if(txt){txt.textContent=defaultLabel;}
+              });
+            }
+          } catch (e) {}
+        }, 500);
+      </script>
       <!-- Loading Overlay (covers entire page; message at 1/3 height) -->
       <%= if (@loading_chunks && @loading_progress) || @transponding do %>
         <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
@@ -1963,40 +1985,45 @@ defmodule TrifleApp.DashboardLive do
                 </div>
               <% end %>
               <!-- Export drop-up (right aligned) -->
-              <div class="ml-auto relative">
-                <button type="button" phx-click="toggle_export_dropdown" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
+              <div id="dashboard-download-menu" class="ml-auto relative" data-default-label="Export" phx-hook="DownloadMenu">
+                <button type="button" phx-click="toggle_export_dropdown" data-role="download-button" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                  <span class="hidden md:inline">Download</span>
+                  <span class="inline" data-role="download-text">Export</span>
                   <svg class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
                 </button>
-                <%= if @show_export_dropdown do %>
-                  <div class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
-                    <button type="button" phx-click="download_dashboard_csv" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
-                      <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                      CSV (table)
-                    </button>
-                    <button type="button" phx-click="download_dashboard_json" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
-                      <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                      JSON (raw)
-                    </button>
-                    <a href={~p"/app/export/dashboards/#{@dashboard.id}/pdf"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                      <span class="flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                        PDF (print)
-                      </span>
-                    </a>
-                    <a href={~p"/app/export/dashboards/#{@dashboard.id}/png?theme=light"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                      <span class="flex items-center">
-                        <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                        PNG (light)
-                      </span>
-                    </a>
-                    <a href={~p"/app/export/dashboards/#{@dashboard.id}/png?theme=dark"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                      <span class="flex items-center">
-                        <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                        PNG (dark)
-                      </span>
-                    </a>
+                 <%= if @show_export_dropdown do %>
+                   <div data-role="download-dropdown" class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
+                    <% export_params = build_url_params(%{granularity: @granularity, smart_timeframe_input: @smart_timeframe_input, use_fixed_display: @use_fixed_display, from: @from, to: @to}) %>
+                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/csv?#{export_params}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                       <span class="flex items-center">
+                         <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                         CSV (table)
+                       </span>
+                     </a>
+                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/json?#{export_params}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                       <span class="flex items-center">
+                         <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                         JSON (raw)
+                       </span>
+                     </a>
+                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/pdf?#{export_params}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                       <span class="flex items-center">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                         PDF (print)
+                       </span>
+                     </a>
+                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "light")}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                       <span class="flex items-center">
+                         <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                         PNG (light)
+                       </span>
+                     </a>
+                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "dark")}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        <span class="flex items-center">
+                          <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                          PNG (dark)
+                        </span>
+                      </a>
                   </div>
                 <% end %>
               </div>
