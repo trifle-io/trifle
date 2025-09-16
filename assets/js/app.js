@@ -27,6 +27,10 @@ import { GridStack } from "gridstack"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
+const ECHARTS_RENDERER = 'svg';
+const ECHARTS_DEVICE_PIXEL_RATIO = Math.max(1, window.devicePixelRatio || 1);
+const withChartOpts = (opts = {}) => Object.assign({ renderer: ECHARTS_RENDERER, devicePixelRatio: ECHARTS_DEVICE_PIXEL_RATIO }, opts);
+
 let Hooks = {}
 
 Hooks.SmartTimeframeInput = {
@@ -83,7 +87,7 @@ Hooks.DatabaseExploreChart = {
     
     // Set theme based on dark mode
     const theme = isDarkMode ? 'dark' : undefined;
-    this.chart = echarts.init(container, theme, { height: 120 });
+    this.chart = echarts.init(container, theme, withChartOpts({ height: 120 }));
     
     // Configure options based on chart type
     const isStacked = chartType === 'stacked';
@@ -554,13 +558,9 @@ Hooks.DashboardGrid = {
 
     // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
     const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
-    this._echartsRenderer = printMode ? 'svg' : undefined;
-    this._echartsDevicePixelRatio = printMode ? 2 : (window.devicePixelRatio || 1);
     this._chartInitOpts = (extra = {}) => {
-      const opts = Object.assign({}, extra);
-      if (this._echartsRenderer) opts.renderer = this._echartsRenderer;
-      if (this._echartsDevicePixelRatio) opts.devicePixelRatio = this._echartsDevicePixelRatio;
-      return opts;
+      const base = printMode ? { devicePixelRatio: Math.max(2, ECHARTS_DEVICE_PIXEL_RATIO) } : {};
+      return withChartOpts(Object.assign({}, base, extra));
     };
 
     this.initGrid();
@@ -1190,7 +1190,7 @@ Hooks.DashboardGrid = {
             setTimeout(render, 80);
             return;
           }
-          chart = echarts.init(spark, theme, { height: 40 });
+          chart = echarts.init(spark, theme, withChartOpts({ height: 40 }));
           this._sparklines[it.id] = chart;
         }
         const data = it.data || [];
@@ -1231,7 +1231,7 @@ Hooks.DashboardGrid = {
       const ensureInit = () => {
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
-          chart = echarts.init(container, theme);
+          chart = echarts.init(container, theme, withChartOpts());
           this._tsCharts[it.id] = chart;
         }
         const type = (it.chart_type || 'line');
@@ -1282,7 +1282,7 @@ Hooks.DashboardGrid = {
       const ensureInit = () => {
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
-          chart = echarts.init(container, theme);
+          chart = echarts.init(container, theme, withChartOpts());
           this._catCharts[it.id] = chart;
         }
         const data = it.data || [];
