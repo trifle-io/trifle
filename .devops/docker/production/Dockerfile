@@ -21,7 +21,7 @@ RUN mix release
 
 # Production stage
 # Use Debian sid (unstable) for GLIBC >= 2.38 which Erlang/OTP 28 requires
-FROM debian:sid-slim AS runtime
+FROM debian:latest AS runtime
 
 # Install runtime dependencies
 RUN apt-get update -y && \
