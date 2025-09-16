@@ -20,8 +20,8 @@ RUN mix compile
 RUN mix release
 
 # Production stage
-# Use Debian testing (trixie) for GLIBC >= 2.38 which Erlang/OTP 28 requires
-FROM debian:trixie-slim AS runtime
+# Use Debian sid (unstable) for GLIBC >= 2.38 which Erlang/OTP 28 requires
+FROM debian:sid-slim AS runtime
 
 # Install runtime dependencies
 RUN apt-get update -y && \
