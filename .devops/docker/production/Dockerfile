@@ -20,14 +20,15 @@ RUN mix compile
 RUN mix release
 
 # Production stage
-FROM debian:latest AS runtime
+# Use Debian testing (trixie) for GLIBC >= 2.38 which Erlang/OTP 28 requires
+FROM debian:trixie-slim AS runtime
 
 # Install runtime dependencies
 RUN apt-get update -y && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
     libstdc++6 \
     openssl \
-    libncurses5 \
+    libncurses6 \
     ca-certificates \
     curl \
     && apt-get clean && \
