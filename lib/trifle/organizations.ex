@@ -679,6 +679,10 @@ defmodule Trifle.Organizations do
   @doc """
   Gets a dashboard by public access token for unauthenticated access.
   """
+  def get_dashboard_by_token(_dashboard_id, token) when token in [nil, ""] do
+    {:error, :invalid_token}
+  end
+
   def get_dashboard_by_token(dashboard_id, token) when is_binary(dashboard_id) and is_binary(token) do
     case Repo.get(Dashboard, dashboard_id) do
       %Dashboard{access_token: ^token} = dashboard when not is_nil(token) ->
