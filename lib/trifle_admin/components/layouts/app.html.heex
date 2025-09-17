@@ -17,9 +17,9 @@
             </div>
             <div class="hidden md:block">
               <div class="ml-10 flex items-baseline space-x-4">
-                <.link navigate={~p"/admin"} class="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</.link>
-                <.link navigate={~p"/admin/users"} class="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md text-sm font-medium">Users</.link>
-                <.link navigate={~p"/admin/databases"} class="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md text-sm font-medium">Databases</.link>
+                <%= live_active_link @socket, :dashboard, "Dashboard", to: ~p"/admin" %>
+                <%= live_active_link @socket, :users, "Users", to: ~p"/admin/users" %>
+                <%= live_active_link @socket, :databases, "Databases", to: ~p"/admin/databases" %>
               </div>
             </div>
           </div>
@@ -75,9 +75,9 @@
       <!-- Mobile menu, show/hide based on menu state. -->
       <div class="md:hidden" id="mobile-menu" x-show="isMobileOpened" x-transition:enter="transition duration-150 ease-out", x-transition:enter-start="opacity-0 transform scale-95", x-transition:enter-end="opacity-100 transform scale-100", x-transition:leave="transition duration-100 ease-in", x-transition:leave-start="opacity-100 transform scale-100", x-transition:leave-end="opacity-0 transform scale-95">
         <div class="space-y-1 px-2 pt-2 pb-3 sm:px-3">
-          <.link navigate={~p"/admin"} class="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white block px-3 py-2 rounded-md text-base font-medium">Dashboard</.link>
-          <.link navigate={~p"/admin/users"} class="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white block px-3 py-2 rounded-md text-base font-medium">Users</.link>
-          <.link navigate={~p"/admin/databases"} class="text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white block px-3 py-2 rounded-md text-base font-medium">Databases</.link>
+          <%= live_active_link @socket, :dashboard, "Dashboard", to: ~p"/admin", variant: :mobile %>
+          <%= live_active_link @socket, :users, "Users", to: ~p"/admin/users", variant: :mobile %>
+          <%= live_active_link @socket, :databases, "Databases", to: ~p"/admin/databases", variant: :mobile %>
         </div>
         <div class="border-t border-gray-200 dark:border-slate-600 pt-2 pb-3">
           <div class="space-y-1 px-2">

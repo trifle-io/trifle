@@ -17,16 +17,16 @@
             </div>
             <div class="hidden md:block">
               <div class="ml-10 flex items-baseline space-x-4">
-                <.link navigate={~p"/app"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboards</.link>
-                <.link navigate={~p"/app/explore"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Explore</.link>
-                <.link navigate={~p"/app/dbs"} class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Databases</.link>
+                <%= live_active_link @socket, :dashboards, "Dashboards", to: ~p"/app" %>
+                <%= live_active_link @socket, :explore, "Explore", to: ~p"/app/explore" %>
+                <%= live_active_link @socket, :databases, "Databases", to: ~p"/app/dbs" %>
               </div>
             </div>
           </div>
           <div class="hidden md:block">
             <div class="ml-4 flex items-center md:ml-6">
               <%= if @current_user.is_admin do %>
-                <.link navigate={~p"/admin"} class="text-blue-300 hover:bg-gray-700 hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium mr-4">Admin</.link>
+                <.link navigate={~p"/admin"} class="text-teal-400 hover:text-teal-300 hover:border-b-2 hover:border-teal-400 px-3 py-2 text-sm font-medium mr-4 border-b-2 border-transparent">Admin</.link>
               <% end %>
               <button type="button" class="rounded-full bg-gray-800 p-1 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800">
                 <span class="sr-only">View notifications</span>
@@ -77,9 +77,9 @@
       <!-- Mobile menu, show/hide based on menu state. -->
       <div class="md:hidden" id="mobile-menu" x-show="isMobileOpened" x-transition:enter="transition duration-150 ease-out", x-transition:enter-start="opacity-0 transform scale-95", x-transition:enter-end="opacity-100 transform scale-100", x-transition:leave="transition duration-100 ease-in", x-transition:leave-start="opacity-100 transform scale-100", x-transition:leave-end="opacity-0 transform scale-95">
         <div class="space-y-1 px-2 pt-2 pb-3 sm:px-3">
-          <.link navigate={~p"/app"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Dashboard</.link>
-          <.link navigate={~p"/app/projects"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Projects</.link>
-          <.link navigate={~p"/app/dbs"} class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Databases</.link>
+          <%= live_active_link @socket, :dashboards, "Dashboards", to: ~p"/app", variant: :mobile %>
+          <%= live_active_link @socket, :explore, "Explore", to: ~p"/app/explore", variant: :mobile %>
+          <%= live_active_link @socket, :databases, "Databases", to: ~p"/app/dbs", variant: :mobile %>
         </div>
         <%= if @current_user.is_admin do %>
           <div class="border-t border-gray-700 pt-2 pb-3">
