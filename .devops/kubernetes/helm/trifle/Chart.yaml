@@ -15,8 +15,3 @@ sources:
 maintainers:
   - name: Trifle Team
     email: team@trifle.dev
-dependencies:
-  - name: postgresql
-    version: 12.x.x
-    repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled

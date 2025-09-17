@@ -84,25 +84,32 @@ persistence:
 # PostgreSQL production configuration
 postgresql:
   enabled: true
+  image:
+    repository: postgres
+    tag: latest
+    pullPolicy: IfNotPresent
   auth:
     username: trifle
     # IMPORTANT: Set secure password in production
     password: "CHANGE_ME_IN_PRODUCTION"
     database: trifle_prod
-  primary:
-    persistence:
-      enabled: true
-      storageClass: "fast-ssd"  # Adjust based on your cluster
-      size: 100Gi
-    resources:
-      limits:
-        cpu: 1000m
-        memory: 2Gi
-      requests:
-        cpu: 500m
-        memory: 1Gi
-  metrics:
+    existingSecret: ""
+    existingSecretPasswordKey: "postgres-password"
+  service:
+    port: 5432
+  persistence:
     enabled: true
+    storageClass: "fast-ssd"  # Adjust based on your cluster
+    size: 100Gi
+    accessModes:
+      - ReadWriteOnce
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
 
 
 # Node affinity for better distribution

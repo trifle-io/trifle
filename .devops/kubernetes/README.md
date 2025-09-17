@@ -21,19 +21,7 @@ This directory contains Kubernetes deployment configurations for Trifle using He
    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
    ```
 
-2. Add required Helm repositories:
-   ```bash
-   helm repo add bitnami https://charts.bitnami.com/bitnami
-   helm repo update
-   ```
-
-3. Build chart dependencies:
-   ```bash
-   cd .devops/kubernetes/helm/trifle
-   helm dependency build
-   ```
-
-4. Install Trifle with default values (uses internal PostgreSQL):
+2. Install Trifle with default values (uses the bundled PostgreSQL StatefulSet):
    ```bash
    helm install trifle ./helm/trifle \
      --set app.secretKeyBase="$(openssl rand -base64 48)" \
@@ -41,7 +29,7 @@ This directory contains Kubernetes deployment configurations for Trifle using He
      --set initialUser.email="admin@example.com"
    ```
 
-5. Check the installation:
+3. Check the installation:
    ```bash
    kubectl get pods -l app.kubernetes.io/name=trifle
    ```
@@ -105,11 +93,6 @@ postgresql:
 
 Install with your configuration:
 ```bash
-# First, build dependencies (if not done already)
-cd .devops/kubernetes/helm/trifle
-helm dependency build
-
-# Then install
 helm install trifle ./helm/trifle -f values-prod.yaml
 ```
 
@@ -205,9 +188,8 @@ kubectl exec -it trifle-postgresql-0 -- pg_dump -U trifle trifle_prod > backup.s
 
 ### Monitoring
 
-The chart includes Prometheus metrics endpoints. Configure your monitoring to scrape:
-- Application metrics: `/metrics` 
-- PostgreSQL metrics: port 9187
+The chart exposes application Prometheus metrics at `/metrics`. Deploy a PostgreSQL
+exporter (for example, prometheus-postgres-exporter) if you need database-level metrics.
 
 ### SSL Certificate Management
 

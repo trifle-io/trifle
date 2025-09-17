@@ -122,17 +122,28 @@ persistence:
 # PostgreSQL configuration
 postgresql:
   enabled: true
+  image:
+    repository: postgres
+    tag: latest
+    pullPolicy: IfNotPresent
   auth:
     username: trifle
-    password: ""
+    password: changeme
     database: trifle_prod
-  primary:
-    persistence:
-      enabled: true
-      storageClass: ""
-      size: 20Gi
-  metrics:
+    existingSecret: ""
+    existingSecretPasswordKey: "postgres-password"
+  service:
+    port: 5432
+  persistence:
     enabled: true
+    storageClass: ""
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # External database configuration (when internal DB is disabled)
 externalPostgresql:
