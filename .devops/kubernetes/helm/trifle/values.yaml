@@ -77,6 +77,13 @@ app:
   # Third-party integrations
   honeybadger:
     apiKey: ""  # Set in production values
+
+  appsignal:
+    enabled: false
+    otpApp: "trifle"
+    appName: "Trifle App"
+    appEnv: "prod"
+    pushApiKey: ""
   
   # User registration settings
   registration:
