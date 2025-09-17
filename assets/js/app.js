@@ -893,7 +893,7 @@ Hooks.DashboardGrid = {
       const hasVisual = !!it.has_visual;
       const visualType = hasVisual && it.visual_type ? String(it.visual_type).toLowerCase() : null;
 
-      wrap.style.gap = (subtype === 'goal' && hasVisual && visualType === 'progress') ? '10px' : '12px';
+      wrap.style.gap = (subtype === 'goal' && hasVisual && visualType === 'progress') ? '6px' : '12px';
 
       if (meta) {
         meta.innerHTML = '';
@@ -965,8 +965,13 @@ Hooks.DashboardGrid = {
         const valueLabel = formatNumber(it.value);
         const targetLabel = formatNumber(it.target);
         const ratio = toNumber(it.progress_ratio != null ? it.progress_ratio : it.ratio);
-        const badge = targetLabel && targetLabel !== '—'
-          ? '<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium leading-none whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-800/70 dark:text-slate-200">Goal</span>'
+        const showProgress = hasVisual && visualType === 'progress';
+        const goalValue = targetLabel && targetLabel !== '—' ? targetLabel : '';
+        const badge = goalValue
+          ? `<div class="flex flex-col items-end gap-1 text-right">
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium leading-none whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-800/70 dark:text-slate-200">Goal</span>
+              ${showProgress ? '' : `<span class="text-sm font-medium text-gray-500 dark:text-slate-400">${goalValue}</span>`}
+            </div>`
           : '';
 
         top.innerHTML = `
@@ -974,24 +979,29 @@ Hooks.DashboardGrid = {
             <div class="flex items-baseline justify-between w-full">
               <div class="flex flex-wrap items-baseline gap-x-2 ${sizeClass} font-bold text-gray-900 dark:text-white">
                 <span>${valueLabel}</span>
-                ${targetLabel && targetLabel !== '—' ? `<span class="text-sm font-medium text-gray-500 dark:text-slate-400">Goal ${targetLabel}</span>` : ''}
               </div>
               ${badge}
             </div>
           </div>`;
 
-        if (meta && hasVisual && (visualType === 'progress')) {
+        if (meta && showProgress) {
           const pctText = formatPercent(ratio);
-          const goalText = targetLabel && targetLabel !== '—' ? `Goal ${targetLabel}` : '';
+          const goalText = goalValue || '';
           meta.style.display = 'flex';
           meta.style.alignItems = 'baseline';
           meta.style.justifyContent = 'space-between';
           meta.style.gap = '8px';
-          meta.style.marginTop = '-4px';
-          meta.style.marginBottom = '-2px';
+          meta.style.marginTop = 'auto';
+          meta.style.marginBottom = '-8px';
+          const goalMarkup = goalText
+            ? `<span class="text-sm font-medium text-gray-500 dark:text-slate-400">${goalText}</span>`
+            : '';
           meta.innerHTML = `
             <span class="text-sm font-semibold text-gray-700 dark:text-slate-200">${pctText}</span>
-            <span class="text-sm font-medium text-gray-500 dark:text-slate-400">${goalText}</span>`;
+            ${goalMarkup}`;
+          if (visual && visual.dataset.visualType === 'progress') {
+            visual.style.marginTop = '-10px';
+          }
         }
       } else {
         const val = formatNumber(it.value);
@@ -1026,7 +1036,7 @@ Hooks.DashboardGrid = {
       const ensureClass = (mode) => {
         visual.className = `kpi-visual ${mode === 'progress' ? 'kpi-progress' : 'kpi-spark'}`;
         if (mode === 'progress') {
-          visual.style.marginTop = '6px';
+          visual.style.marginTop = '4px';
           visual.style.height = '20px';
           visual.style.width = '100%';
           visual.style.marginLeft = '0';
