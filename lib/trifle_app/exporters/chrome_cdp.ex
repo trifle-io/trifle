@@ -15,8 +15,10 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     landscape: false,
     printBackground: false,
     # Explicit A3 portrait sizing to preserve grid layout
-    paperWidth: 11.69,   # inches
-    paperHeight: 16.54,  # inches
+    # inches
+    paperWidth: 11.69,
+    # inches
+    paperHeight: 16.54,
     # ~8mm margins
     marginTop: 0.33,
     marginBottom: 0.33,
@@ -43,6 +45,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     printable_h_in = max(ph - mt - mb, 1.0)
     w = trunc(printable_w_in * 96.0)
     h = max(trunc(printable_h_in * 96.0), 800)
+
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_pdf launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
@@ -68,13 +71,15 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     {w, h} = Keyword.get(opts, :window_size, @default_viewport)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     theme = Keyword.get(opts, :theme, :light)
+
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_png launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
          {:ok, page_ws} <- open_page_ws(state, url),
+         _ = (theme == :dark && set_dark_theme(page_ws)) || :ok,
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         _ = (theme == :dark && set_dark_theme(page_ws) || normalize_background(page_ws)),
+         _ = (theme == :dark && set_dark_theme(page_ws)) || normalize_background(page_ws),
          clip <- expand_viewport_to_content(page_ws),
          {:ok, png_b64} <- page_capture_screenshot(page_ws, clip) do
       _ = close(page_ws)
@@ -93,6 +98,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   defp launch_chrome(chrome_bin, w, h) do
     profile_dir = Path.join(System.tmp_dir!(), unique("trifle_cdp_profile"))
     File.mkdir_p!(profile_dir)
+
     args = [
       "--headless=new",
       "--disable-gpu",
@@ -109,22 +115,32 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     ]
 
     # Start chrome detached; we won't read stdout, we will poll the /json endpoints
-    port_ref = Port.open({:spawn_executable, chrome_bin}, [
-      :binary,
-      {:line, 4096},
-      :exit_status,
-      args: args
-    ])
+    port_ref =
+      Port.open({:spawn_executable, chrome_bin}, [
+        :binary,
+        {:line, 4096},
+        :exit_status,
+        args: args
+      ])
 
     # Discover dynamically chosen devtools port via DevToolsActivePort file
     case wait_for_devtools_port(profile_dir, 100) do
       {:ok, port} ->
         case wait_for_ws_browser(port, 50) do
-          {:ok, browser_ws_url} -> {:ok, %{port_ref: port_ref, browser_ws: browser_ws_url, http_port: port, profile_dir: profile_dir}}
+          {:ok, browser_ws_url} ->
+            {:ok,
+             %{
+               port_ref: port_ref,
+               browser_ws: browser_ws_url,
+               http_port: port,
+               profile_dir: profile_dir
+             }}
+
           {:error, reason} ->
             _ = File.rm_rf(profile_dir)
             {:error, reason}
         end
+
       {:error, reason} ->
         _ = File.rm_rf(profile_dir)
         {:error, reason}
@@ -133,35 +149,54 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp wait_for_devtools_port(profile_dir, tries) when tries > 0 do
     file = Path.join(profile_dir, "DevToolsActivePort")
+
     case File.read(file) do
       {:ok, contents} ->
         [port_line | _] = String.split(contents, "\n", trim: true)
+
         case Integer.parse(port_line) do
-          {port, _} -> {:ok, port}
-          :error -> :timer.sleep(100); wait_for_devtools_port(profile_dir, tries - 1)
+          {port, _} ->
+            {:ok, port}
+
+          :error ->
+            :timer.sleep(100)
+            wait_for_devtools_port(profile_dir, tries - 1)
         end
-      {:error, _} -> :timer.sleep(100); wait_for_devtools_port(profile_dir, tries - 1)
+
+      {:error, _} ->
+        :timer.sleep(100)
+        wait_for_devtools_port(profile_dir, tries - 1)
     end
   end
+
   defp wait_for_devtools_port(_profile_dir, _tries), do: {:error, :devtools_port_not_found}
 
   defp wait_for_ws_browser(port, tries) when tries > 0 do
     case http_get("http://127.0.0.1:#{port}/json/version") do
       {:ok, 200, body} ->
         case Jason.decode(body) do
-          {:ok, %{"webSocketDebuggerUrl" => url}} -> {:ok, url}
-          _ -> :timer.sleep(100); wait_for_ws_browser(port, tries - 1)
+          {:ok, %{"webSocketDebuggerUrl" => url}} ->
+            {:ok, url}
+
+          _ ->
+            :timer.sleep(100)
+            wait_for_ws_browser(port, tries - 1)
         end
-      _ -> :timer.sleep(100); wait_for_ws_browser(port, tries - 1)
+
+      _ ->
+        :timer.sleep(100)
+        wait_for_ws_browser(port, tries - 1)
     end
   end
+
   defp wait_for_ws_browser(_port, _tries), do: {:error, :chrome_debug_not_ready}
 
   defp http_get(url) do
     :inets.start()
     :ssl.start()
     request = {String.to_charlist(url), []}
-    case :httpc.request(:get, request, [], [body_format: :binary]) do
+
+    case :httpc.request(:get, request, [], body_format: :binary) do
       {:ok, {{_, status, _}, _headers, body}} -> {:ok, status, body}
       other -> other
     end
@@ -171,7 +206,10 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     # Prefer connecting to existing page target and navigating it
     with {:ok, 200, body} <- http_get("http://127.0.0.1:#{port}/json/list"),
          {:ok, list} <- Jason.decode(body),
-         %{"type" => "page", "webSocketDebuggerUrl" => ws_url} <- Enum.find(list, fn m -> m["type"] == "page" and is_binary(m["webSocketDebuggerUrl"]) end),
+         %{"type" => "page", "webSocketDebuggerUrl" => ws_url} <-
+           Enum.find(list, fn m ->
+             m["type"] == "page" and is_binary(m["webSocketDebuggerUrl"])
+           end),
          {:ok, page_ws} <- __MODULE__.WS.open(ws_url),
          _ <- __MODULE__.WS.call(page_ws, "Page.enable", %{}),
          _ <- __MODULE__.WS.call(page_ws, "Runtime.enable", %{}),
@@ -186,16 +224,31 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   defp wait_until_ready(page_ws, timeout_ms) do
     # Hide topbar early to avoid capturing it in PNG as well
     _ = inject_css(page_ws, "#phx-topbar{display:none!important}")
-    js = "(function(){return new Promise(function(res){(function check(){var ready = Boolean(window.TRIFLE_READY) || document.querySelector('.grid-stack .grid-widget-body .ts-chart, .grid-stack .grid-widget-body .cat-chart, .grid-stack .grid-widget-body .kpi-wrap'); if(ready){res(true);} else {setTimeout(check, 200);} })();});})()"
-    case __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true, awaitPromise: true}, timeout_ms) do
+
+    js =
+      "(function(){return new Promise(function(res){(function check(){var ready = Boolean(window.TRIFLE_READY) || document.querySelector('.grid-stack .grid-widget-body .ts-chart, .grid-stack .grid-widget-body .cat-chart, .grid-stack .grid-widget-body .kpi-wrap'); if(ready){res(true);} else {setTimeout(check, 200);} })();});})()"
+
+    case __MODULE__.WS.call(
+           page_ws,
+           "Runtime.evaluate",
+           %{expression: js, returnByValue: true, awaitPromise: true},
+           timeout_ms
+         ) do
       {:ok, %{"result" => _}} -> :ok
-      {:ok, {:error, _}=err} -> {:error, err}
+      {:ok, {:error, _} = err} -> {:error, err}
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp inject_css(page_ws, css) do
-    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: "(function(){var s=document.createElement('style');s.textContent=`" <> css <> "`;document.head.appendChild(s);})();", returnByValue: false})
+    _ =
+      __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{
+        expression:
+          "(function(){var s=document.createElement('style');s.textContent=`" <>
+            css <> "`;document.head.appendChild(s);})();",
+        returnByValue: false
+      })
+
     :ok
   end
 
@@ -221,19 +274,25 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     clip = %{x: 0, y: 0, width: width * 1.0, height: height * 1.0, scale: scale}
     Map.put(params, :clip, clip)
   end
+
   defp maybe_put_clip(params, {width, height}) when is_integer(width) and is_integer(height) do
     maybe_put_clip(params, %{width: width, height: height, scale: 1.0})
   end
+
   defp maybe_put_clip(params, _), do: params
 
   defp normalize_background(page_ws) do
-    js = "(function(){\ntry{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff';}}catch(e){}\ntry{var s=document.createElement('style');\n s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';\n document.head.appendChild(s);}catch(e){}\nreturn true;})()"
+    js =
+      "(function(){\ntry{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}\ntry{document.body && document.body.classList && document.body.classList.remove('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff'; document.body.setAttribute('data-theme','light');}}catch(e){}\ntry{var s=document.createElement('style');\n s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';\n document.head.appendChild(s);}catch(e){}\ntry{if(window.TRIFLE_EXPORT && window.TRIFLE_EXPORT.rerenderCharts){window.TRIFLE_EXPORT.rerenderCharts('light');}}catch(e){}\nreturn true;})()"
+
     _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
     :ok
   end
 
   defp set_dark_theme(page_ws) do
-    js = "(function(){\ntry{document.documentElement && document.documentElement.classList.add('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#0f172a';}}catch(e){}\nreturn true;})()"
+    js =
+      "(function(){\ntry{document.documentElement && document.documentElement.classList.add('dark');}catch(e){}\ntry{document.body && document.body.classList && document.body.classList.add('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#0f172a'; document.body.setAttribute('data-theme','dark');}}catch(e){}\ntry{if(window.TRIFLE_EXPORT && window.TRIFLE_EXPORT.rerenderCharts){window.TRIFLE_EXPORT.rerenderCharts('dark');}}catch(e){}\nreturn true;})()"
+
     _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
     :ok
   end
@@ -244,6 +303,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     rescue
       _ -> :ok
     end
+
     :ok
   end
 
@@ -253,6 +313,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     rescue
       _ -> :ok
     end
+
     # Best-effort cleanup of profile dir
     _ = File.rm_rf(profile_dir)
     :ok
@@ -268,6 +329,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
         _ = __MODULE__.WS.call(page_ws, "Emulation.setDeviceMetricsOverride", device_metrics)
         _ = __MODULE__.WS.call(page_ws, "Emulation.setVisibleSize", %{width: w, height: h})
         %{width: w, height: h, scale: png_capture_scale(w, h)}
+
       other ->
         Logger.debug("CDP expand_viewport_to_content skipped: #{inspect(other)}")
         nil
@@ -276,8 +338,11 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp png_capture_scale(width, height) do
     max_side = max(width, height)
+
     cond do
-      max_side <= 0 -> 1.0
+      max_side <= 0 ->
+        1.0
+
       true ->
         max_scale = @png_max_dimension / max_side
         scale = min(@png_capture_scale, max_scale)
@@ -290,7 +355,8 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp unique(prefix) do
     {m, s, us} = :os.timestamp()
-    :crypto.hash(:sha256, "#{prefix}-#{m}-#{s}-#{us}-#{:rand.uniform()}" )
+
+    :crypto.hash(:sha256, "#{prefix}-#{m}-#{s}-#{us}-#{:rand.uniform()}")
     |> Base.url_encode64(padding: false)
     |> binary_part(0, 12)
   end
@@ -302,16 +368,28 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     def open(url) do
       uri = URI.parse(url)
       secure = uri.scheme == "wss"
-      port = uri.port || (secure && 443 || 80)
-      path = uri.path <> (if uri.query, do: "?" <> uri.query, else: "")
+      port = uri.port || ((secure && 443) || 80)
+      path = uri.path <> if uri.query, do: "?" <> uri.query, else: ""
       host = uri.host
       scheme = if secure, do: :wss, else: :ws
       host_header = if port in [80, 443], do: host, else: "#{host}:#{port}"
-      with {:ok, conn} <- Mint.HTTP.connect(secure && :https || :http, host, port, []),
-           {:ok, conn, ref} <- Mint.WebSocket.upgrade(scheme, conn, path, [{"host", host_header}], []),
-           {:ok, conn, {status, resp_headers}} <- await_upgrade(conn, ref) ,
+
+      with {:ok, conn} <- Mint.HTTP.connect((secure && :https) || :http, host, port, []),
+           {:ok, conn, ref} <-
+             Mint.WebSocket.upgrade(scheme, conn, path, [{"host", host_header}], []),
+           {:ok, conn, {status, resp_headers}} <- await_upgrade(conn, ref),
            {:ok, conn, ws} <- Mint.WebSocket.new(conn, ref, status, resp_headers) do
-        {:ok, %__MODULE__{conn: conn, ws: ws, ref: ref, host: host, port: port, path: path, secure: secure, next_id: 1}}
+        {:ok,
+         %__MODULE__{
+           conn: conn,
+           ws: ws,
+           ref: ref,
+           host: host,
+           port: port,
+           path: path,
+           secure: secure,
+           next_id: 1
+         }}
       else
         other -> other
       end
@@ -323,14 +401,18 @@ defmodule TrifleApp.Exporters.ChromeCDP do
           case Mint.WebSocket.stream(conn, msg) do
             {:ok, conn, responses} ->
               {status, headers, done} = collect_upgrade(responses, ref, acc_status, acc_headers)
+
               if done and status != nil and headers != nil do
                 {:ok, conn, {status, headers}}
               else
                 await_upgrade(conn, ref, status, headers)
               end
-            {:error, conn, reason, _responses} -> {:error, reason}
+
+            {:error, conn, reason, _responses} ->
+              {:error, reason}
           end
-      after 5000 -> {:error, :timeout}
+      after
+        5000 -> {:error, :timeout}
       end
     end
 
@@ -366,7 +448,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
             {:ok, conn} -> {:ok, %{s | conn: conn, ws: ws, next_id: s.next_id + 1}}
             other -> other
           end
-        other -> other
+
+        other ->
+          other
       end
     end
 
@@ -381,11 +465,16 @@ defmodule TrifleApp.Exporters.ChromeCDP do
                     {:ok, result} -> {:ok, result}
                     :not_found -> await_response(%{s | conn: conn, ws: ws}, id, timeout_ms)
                   end
-                {:error, reason} -> {:error, reason}
+
+                {:error, reason} ->
+                  {:error, reason}
               end
-            {:error, _conn, reason, _responses} -> {:error, reason}
+
+            {:error, _conn, reason, _responses} ->
+              {:error, reason}
           end
-      after timeout_ms -> {:error, :timeout}
+      after
+        timeout_ms -> {:error, :timeout}
       end
     end
 
@@ -397,7 +486,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
               {:ok, ws, frames} -> {:cont, {:ok, ws, acc ++ frames}}
               {:error, _ws, reason} -> {:halt, {:error, reason}}
             end
-          _ -> {:cont, {:ok, ws, acc}}
+
+          _ ->
+            {:cont, {:ok, ws, acc}}
         end
       end)
     end
@@ -411,7 +502,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
               {:ok, %{"id" => ^id, "error" => error}} -> {:ok, {:error, error}}
               _ -> false
             end
-          _ -> false
+
+          _ ->
+            false
         end
       end)
     end
@@ -423,7 +516,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
             {:ok, conn, _} -> read_until_closed(conn)
             {:error, _conn, _reason, _} -> :ok
           end
-      after 500 -> :ok end
+      after
+        500 -> :ok
+      end
     end
   end
 end
