@@ -700,6 +700,9 @@ Hooks.DashboardGrid = {
         const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
         const body = item && item.querySelector('.grid-widget-body');
         if (!body) return;
+
+        body.classList.remove('items-center', 'justify-center', 'text-sm', 'text-gray-500', 'dark:text-slate-400');
+        body.classList.add('flex-col', 'items-stretch');
         // KPI display
         const sizeClass = (() => {
           const sz = (it.size || 'm');
@@ -724,8 +727,25 @@ Hooks.DashboardGrid = {
         // Ensure persistent containers for top value + sparkline; stack vertically
         let wrap = body.querySelector('.kpi-wrap');
         if (!wrap) {
-          body.innerHTML = `<div class="kpi-wrap w-full flex flex-col justify-center"><div class="kpi-top"></div><div class="kpi-spark mt-2" style="height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -36px;"></div></div>`;
+          body.innerHTML = `<div class="kpi-wrap w-full flex flex-col flex-1 grow" style="min-height: 0; gap: 12px;"><div class="kpi-top"></div><div class="kpi-spark" style="margin-top: auto; height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -12px;"></div></div>`;
           wrap = body.querySelector('.kpi-wrap');
+        }
+        if (wrap) {
+          wrap.classList.add('flex', 'flex-col', 'flex-1');
+          wrap.classList.remove('justify-center');
+          wrap.classList.add('grow');
+          wrap.style.minHeight = '0';
+          wrap.style.gap = '12px';
+          const existingSpark = wrap.querySelector('.kpi-spark');
+          if (existingSpark) {
+            existingSpark.classList.remove('mt-2');
+            existingSpark.style.marginTop = 'auto';
+            existingSpark.style.height = '40px';
+            existingSpark.style.width = 'calc(100% + 24px)';
+            existingSpark.style.marginLeft = '-12px';
+            existingSpark.style.marginRight = '-12px';
+            existingSpark.style.marginBottom = '-12px';
+          }
         }
         let top = wrap.querySelector('.kpi-top');
         if (it.split) {
@@ -769,16 +789,39 @@ Hooks.DashboardGrid = {
         const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
         const body = item && item.querySelector('.grid-widget-body');
         if (!body) return;
+        body.classList.remove('items-center', 'justify-center', 'text-sm', 'text-gray-500', 'dark:text-slate-400');
+        body.classList.add('flex-col', 'items-stretch');
+        const wrap = body.querySelector('.kpi-wrap');
+        if (wrap) {
+          wrap.classList.add('flex', 'flex-col', 'flex-1');
+          wrap.classList.remove('justify-center');
+          wrap.classList.add('grow');
+          wrap.style.minHeight = '0';
+          wrap.style.gap = '12px';
+        }
         let spark = body.querySelector('.kpi-spark');
         if (!spark) {
           spark = document.createElement('div');
-          spark.className = 'kpi-spark mt-2';
+          spark.className = 'kpi-spark';
           spark.style.height = '40px';
           spark.style.width = 'calc(100% + 24px)';
           spark.style.marginLeft = '-12px';
           spark.style.marginRight = '-12px';
-          spark.style.marginBottom = '-36px';
-          body.appendChild(spark);
+          spark.style.marginBottom = '-12px';
+          spark.style.marginTop = 'auto';
+          if (wrap) {
+            wrap.appendChild(spark);
+          } else {
+            body.appendChild(spark);
+          }
+        } else {
+          spark.classList.remove('mt-2');
+          spark.style.height = '40px';
+          spark.style.width = 'calc(100% + 24px)';
+          spark.style.marginLeft = '-12px';
+          spark.style.marginRight = '-12px';
+          spark.style.marginBottom = '-12px';
+          spark.style.marginTop = 'auto';
         }
         const render = () => {
           let chart = this._sparklines[it.id];
@@ -1107,6 +1150,8 @@ Hooks.DashboardGrid = {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');
       if (!body) return;
+      body.classList.remove('items-center', 'justify-center', 'text-sm', 'text-gray-500', 'dark:text-slate-400');
+      body.classList.add('flex-col', 'items-stretch');
       const sizeClass = (() => {
         const sz = (it.size || 'm');
         if (sz === 's') return 'text-2xl';
@@ -1128,8 +1173,25 @@ Hooks.DashboardGrid = {
       };
       let wrap = body.querySelector('.kpi-wrap');
       if (!wrap) {
-        body.innerHTML = `<div class="kpi-wrap w-full flex flex-col justify-center"><div class="kpi-top"></div><div class="kpi-spark mt-2" style="height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -36px;"></div></div>`;
+        body.innerHTML = `<div class="kpi-wrap w-full flex flex-col flex-1 grow" style="min-height: 0; gap: 12px;"><div class="kpi-top"></div><div class="kpi-spark" style="margin-top: auto; height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -12px;"></div></div>`;
         wrap = body.querySelector('.kpi-wrap');
+      }
+      if (wrap) {
+        wrap.classList.add('flex', 'flex-col', 'flex-1');
+        wrap.classList.remove('justify-center');
+        wrap.classList.add('grow');
+        wrap.style.minHeight = '0';
+        wrap.style.gap = '12px';
+        const existingSpark = wrap.querySelector('.kpi-spark');
+        if (existingSpark) {
+          existingSpark.classList.remove('mt-2');
+          existingSpark.style.marginTop = 'auto';
+          existingSpark.style.height = '40px';
+          existingSpark.style.width = 'calc(100% + 24px)';
+          existingSpark.style.marginLeft = '-12px';
+          existingSpark.style.marginRight = '-12px';
+          existingSpark.style.marginBottom = '-12px';
+        }
       }
       let top = wrap.querySelector('.kpi-top');
       if (it.split) {
@@ -1171,16 +1233,39 @@ Hooks.DashboardGrid = {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');
       if (!body) return;
+      body.classList.remove('items-center', 'justify-center', 'text-sm', 'text-gray-500', 'dark:text-slate-400');
+      body.classList.add('flex-col', 'items-stretch');
+      const wrap = body.querySelector('.kpi-wrap');
+      if (wrap) {
+        wrap.classList.add('flex', 'flex-col', 'flex-1');
+        wrap.classList.remove('justify-center');
+        wrap.classList.add('grow');
+        wrap.style.minHeight = '0';
+        wrap.style.gap = '12px';
+      }
       let spark = body.querySelector('.kpi-spark');
       if (!spark) {
         spark = document.createElement('div');
-        spark.className = 'kpi-spark mt-2';
+        spark.className = 'kpi-spark';
         spark.style.height = '40px';
         spark.style.width = 'calc(100% + 24px)';
         spark.style.marginLeft = '-12px';
         spark.style.marginRight = '-12px';
-        spark.style.marginBottom = '-36px';
-        body.appendChild(spark);
+        spark.style.marginBottom = '-12px';
+        spark.style.marginTop = 'auto';
+        if (wrap) {
+          wrap.appendChild(spark);
+        } else {
+          body.appendChild(spark);
+        }
+      } else {
+        spark.classList.remove('mt-2');
+        spark.style.height = '40px';
+        spark.style.width = 'calc(100% + 24px)';
+        spark.style.marginLeft = '-12px';
+        spark.style.marginRight = '-12px';
+        spark.style.marginBottom = '-12px';
+        spark.style.marginTop = 'auto';
       }
       const render = () => {
         let chart = this._sparklines[it.id];
