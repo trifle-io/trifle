@@ -321,6 +321,12 @@ The palette is used throughout the analytics dashboard for:
 - Helm charts default to using the chart `appVersion` when `image.tag` is left blank (see `.devops/kubernetes/helm/trifle/values.yaml`).
 - When bumping the version, update `VERSION` and `Chart.yaml`'s `version`/`appVersion`, then commit the change before triggering CI.
 
+### Monitoring & error reporting
+
+- Honeybadger support remains available via `app.honeybadger.apiKey` in your values file.
+- AppSignal can be enabled by setting `app.appsignal.enabled: true` and providing the relevant values (OTP app, name, env, and `pushApiKey`).
+- When AppSignal is enabled, the Helm chart injects the following environment variables: `APPSIGNAL_OTP_APP`, `APPSIGNAL_APP_NAME`, `APPSIGNAL_APP_ENV`, and `APPSIGNAL_PUSH_API_KEY`.
+
 ### Docker Compose (Production)
 
 For production deployment using Docker Compose:

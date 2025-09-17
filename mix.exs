@@ -64,6 +64,7 @@ defmodule Trifle.MixProject do
       {:redix, "~> 1.3.0"},
       {:exqlite, "~> 0.20"},
       {:honeybadger, "~> 0.22"},
+      {:appsignal_phoenix, "~> 2.0"},
       {:mint_web_socket, "~> 1.0"}
     ]
   end

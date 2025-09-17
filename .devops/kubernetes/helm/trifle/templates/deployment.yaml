@@ -59,6 +59,21 @@ spec:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: honeybadger-api-key
             {{- end }}
+            {{- if .Values.app.appsignal.enabled }}
+            - name: APPSIGNAL_OTP_APP
+              value: {{ .Values.app.appsignal.otpApp | quote }}
+            - name: APPSIGNAL_APP_NAME
+              value: {{ .Values.app.appsignal.appName | quote }}
+            - name: APPSIGNAL_APP_ENV
+              value: {{ .Values.app.appsignal.appEnv | quote }}
+            {{- if .Values.app.appsignal.pushApiKey }}
+            - name: APPSIGNAL_PUSH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" . }}-secret
+                  key: appsignal-push-api-key
+            {{- end }}
+            {{- end }}
             - name: REGISTRATION_ENABLED
               value: {{ .Values.app.registration.enabled | quote }}
             - name: PHX_HOST
