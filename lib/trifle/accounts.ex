@@ -403,15 +403,16 @@ defmodule Trifle.Accounts do
       {:error, %Ecto.Changeset{}}
 
   """
-  def update_user_admin_status(user_id, is_admin) when is_binary(user_id) do
-    user_id
-    |> String.to_integer()
-    |> update_user_admin_status(is_admin)
-  end
+  def update_user_admin_status(user_id, is_admin) do
+    user =
+      cond do
+        is_binary(user_id) -> Repo.get!(User, user_id)
+        is_integer(user_id) -> Repo.get!(User, user_id)
+        true -> raise ArgumentError, "invalid user id type"
+      end
 
-  def update_user_admin_status(user_id, is_admin) when is_integer(user_id) do
-    user = Repo.get!(User, user_id)
-    changeset = Ecto.Changeset.change(user, is_admin: is_admin)
-    Repo.update(changeset)
+    user
+    |> Ecto.Changeset.change(is_admin: is_admin)
+    |> Repo.update()
   end
 end
