@@ -632,13 +632,7 @@ defmodule TrifleApp.DashboardLive do
 
     # Update URL with new parameters
     params = build_url_params(socket)
-    path = if socket.assigns.is_public_access do
-      ~p"/d/#{socket.assigns.dashboard.id}?#{params}"
-    else
-      ~p"/app/dashboards/#{socket.assigns.dashboard.id}?#{params}"
-    end
-
-    socket = push_patch(socket, to: path)
+    socket = push_patch(socket, to: build_dashboard_url(socket, params))
 
     # Reload dashboard data
     socket = if dashboard_has_key?(socket) do
@@ -2074,10 +2068,18 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp build_dashboard_url(socket, params) do
-    if socket.assigns.is_public_access do
-      ~p"/d/#{socket.assigns.dashboard.id}?#{params}&token=#{socket.assigns.public_token}"
-    else
-      ~p"/app/dashboards/#{socket.assigns.dashboard.id}?#{params}"
+    cond do
+      socket.assigns.is_public_access ->
+        query =
+          case socket.assigns.public_token do
+            token when is_binary(token) and token != "" -> Map.put(params, "token", token)
+            _ -> params
+          end
+
+        ~p"/d/#{socket.assigns.dashboard.id}?#{query}"
+
+      true ->
+        ~p"/app/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
   end
 
