@@ -1154,6 +1154,7 @@ Hooks.DashboardGrid = {
         const normalized = !!it.normalized;
         const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
         const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+        const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
         const legendText = isDarkMode ? '#D1D5DB' : '#374151';
         const showLegend = !!it.legend;
         const bottomPadding = showLegend ? 56 : 28;
@@ -1165,9 +1166,35 @@ Hooks.DashboardGrid = {
           return base;
         });
         const yName = normalized ? (it.y_label || 'Percentage') : (it.y_label || '');
-        const yAxis = { type: 'value', min: 0, name: yName, nameLocation: 'middle', nameGap: 40, nameTextStyle: { color: textColor }, axisLine: { lineStyle: { color: axisLineColor } }, axisLabel: { color: textColor, margin: 8, hideOverlap: true } };
-        if (normalized) { yAxis.max = 100; yAxis.axisLabel = { formatter: (v) => `${v}%` }; }
-        chart.setOption({ backgroundColor: 'transparent', grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true }, xAxis: { type: 'time', axisLine: { lineStyle: { color: axisLineColor } }, axisLabel: { color: textColor, margin: 8, hideOverlap: true } }, yAxis, legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false }, tooltip: { trigger: 'axis', confine: true, valueFormatter: (v) => v == null ? '-' : (normalized ? `${Number(v).toFixed(2)}%` : `${v}`) }, series }, true);
+        const yAxis = {
+          type: 'value',
+          min: 0,
+          name: yName,
+          nameLocation: 'middle',
+          nameGap: 40,
+          nameTextStyle: { color: textColor },
+          axisLine: { lineStyle: { color: axisLineColor } },
+          axisLabel: { color: textColor, margin: 8, hideOverlap: true },
+          splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
+        };
+        if (normalized) {
+          yAxis.max = 100;
+          yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, { formatter: (v) => `${v}%` });
+        }
+        chart.setOption({
+          backgroundColor: 'transparent',
+          grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true },
+          xAxis: {
+            type: 'time',
+            axisLine: { lineStyle: { color: axisLineColor } },
+            axisLabel: { color: textColor, margin: 8, hideOverlap: true },
+            splitLine: { show: false }
+          },
+          yAxis,
+          legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false },
+          tooltip: { trigger: 'axis', confine: true, valueFormatter: (v) => v == null ? '-' : (normalized ? `${Number(v).toFixed(2)}%` : `${v}`) },
+          series
+        }, true);
         try {
           chart.off('finished');
           chart.on('finished', () => {
@@ -1213,7 +1240,31 @@ Hooks.DashboardGrid = {
         const type = (it.chart_type || 'bar');
         let option;
         if (type === 'pie' || type === 'donut') {
-          option = { backgroundColor: 'transparent', tooltip: { trigger: 'item' }, color: (colors && colors.length ? colors : undefined), series: [{ type: 'pie', radius: (type === 'donut') ? ['50%','70%'] : '70%', avoidLabelOverlap: true, data, itemStyle: { color: (params) => (colors && colors.length) ? colors[params.dataIndex % colors.length] : params.color } }] };
+          const labelColor = isDarkMode ? '#E5E7EB' : '#374151';
+          const labelLineColor = isDarkMode ? '#475569' : '#9CA3AF';
+          option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+              trigger: 'item',
+              textStyle: { color: isDarkMode ? '#F3F4F6' : '#1F2937' },
+              backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+              borderColor: isDarkMode ? '#4B5563' : '#E5E7EB'
+            },
+            color: (colors && colors.length ? colors : undefined),
+            series: [{
+              type: 'pie',
+              radius: (type === 'donut') ? ['50%', '70%'] : '70%',
+              avoidLabelOverlap: true,
+              data,
+              label: { color: labelColor },
+              labelLine: { lineStyle: { color: labelLineColor } },
+              itemStyle: {
+                color: (params) => (colors && colors.length)
+                  ? colors[params.dataIndex % colors.length]
+                  : params.color
+              }
+            }]
+          };
         } else {
           option = { backgroundColor: 'transparent', grid: { top: 12, bottom: 28, left: 48, right: 16 }, xAxis: { type: 'category', data: data.map(d => d.name) }, yAxis: { type: 'value', min: 0 }, tooltip: { trigger: 'axis' }, series: [{ type: 'bar', data: data.map(d => d.value), itemStyle: { color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6' } }] };
         }
@@ -1893,7 +1944,9 @@ class ThemeManager {
     const body = document.body;
     const currentTheme = themePreference || body.getAttribute('data-theme') || 'system';
     const shouldUseDark = this.shouldUseDarkTheme(themePreference);
-    
+    const resolvedTheme = shouldUseDark ? 'dark' : 'light';
+    const previousTheme = this._resolvedTheme;
+
     // Update data-theme attribute if preference was provided
     if (themePreference) {
       body.setAttribute('data-theme', themePreference);
@@ -1902,11 +1955,18 @@ class ThemeManager {
     // Remove existing theme classes
     body.classList.remove('dark');
     document.documentElement.classList.remove('dark');
-    
+
     // Apply theme classes based on user preference
     if (shouldUseDark) {
       body.classList.add('dark');
       document.documentElement.classList.add('dark');
+    }
+
+    this._resolvedTheme = resolvedTheme;
+    if (previousTheme !== resolvedTheme) {
+      try {
+        window.dispatchEvent(new CustomEvent('trifle:theme-changed', { detail: { theme: resolvedTheme } }));
+      } catch (_) {}
     }
   }
 
