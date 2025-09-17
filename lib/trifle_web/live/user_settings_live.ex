@@ -198,7 +198,7 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def mount(_params, _session, socket) do
-    user = socket.assigns.current_user
+    user = Accounts.get_user!(socket.assigns.current_user.id)
     email_changeset = Accounts.change_user_email(user)
     password_changeset = Accounts.change_user_password(user)
     theme_changeset = Accounts.change_user_theme(user)
@@ -217,8 +217,8 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def handle_event("validate_email", params, socket) do
-    password = Map.get(params, "current_password", "")
     user_params = Map.get(params, "user", %{})
+    password = Map.get(params, "current_password", Map.get(user_params, "current_password", ""))
 
     email_form =
       socket.assigns.current_user
@@ -230,8 +230,9 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def handle_event("update_email", params, socket) do
-    %{"current_password" => password, "user" => user_params} = params
-    user = socket.assigns.current_user
+    user_params = Map.get(params, "user", %{})
+    password = Map.get(params, "current_password", Map.get(user_params, "current_password", ""))
+    user = Accounts.get_user!(socket.assigns.current_user.id)
 
     case Accounts.apply_user_email(user, password, user_params) do
       {:ok, applied_user} ->
@@ -250,8 +251,8 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def handle_event("validate_password", params, socket) do
-    password = Map.get(params, "current_password", "")
     user_params = Map.get(params, "user", %{})
+    password = Map.get(params, "current_password", Map.get(user_params, "current_password", ""))
 
     password_form =
       socket.assigns.current_user
@@ -263,8 +264,10 @@ defmodule TrifleWeb.UserSettingsLive do
   end
 
   def handle_event("update_password", params, socket) do
-    %{"current_password" => password, "user" => user_params} = params
-    user = socket.assigns.current_user
+    user_params = Map.get(params, "user", %{})
+    password = Map.get(params, "current_password", Map.get(user_params, "current_password", ""))
+    user_params = Map.delete(user_params, "current_password")
+    user = Accounts.get_user!(socket.assigns.current_user.id)
 
     case Accounts.update_user_password(user, password, user_params) do
       {:ok, user} ->

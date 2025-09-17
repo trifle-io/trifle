@@ -29,36 +29,55 @@ defmodule Trifle.Release do
       {:ok, _, _} = Ecto.Migrator.with_repo(List.first(repos()), fn _repo ->
         case Trifle.Accounts.get_user_by_email(email) do
           nil ->
-            user_attrs = %{
-              email: email,
-              password: password
-            }
-
-            case Trifle.Accounts.register_user(user_attrs) do
-              {:ok, user} ->
-                # Confirm the user automatically
-                confirmed_user = user
-                |> Ecto.Changeset.change(%{confirmed_at: NaiveDateTime.utc_now()})
-                |> Trifle.Repo.update!()
-
-                # Set admin status if required
-                if admin do
-                  Trifle.Accounts.update_user_admin_status(confirmed_user.id, true)
-                end
-
-                IO.puts("✅ Created initial user: #{email} (admin: #{admin})")
-
-              {:error, changeset} ->
-                IO.puts("❌ Failed to create initial user: #{inspect(changeset.errors)}")
-            end
-
-          _user ->
-            IO.puts("ℹ️ User #{email} already exists, skipping creation")
+            create_user(email, password, admin)
+          user ->
+            reset_user(email, user, password, admin)
         end
       end)
     else
       IO.puts("ℹ️ No initial user email provided, skipping user creation")
     end
+  end
+
+  defp create_user(email, password, admin) do
+    user_attrs = %{email: email, password: password}
+
+    case Trifle.Accounts.register_user(user_attrs) do
+      {:ok, user} ->
+        timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+        confirmed_user =
+          user
+          |> Ecto.Changeset.change(%{confirmed_at: timestamp})
+          |> Trifle.Repo.update!()
+
+        if admin do
+          Trifle.Accounts.update_user_admin_status(confirmed_user.id, true)
+        end
+
+        IO.puts("✅ Created initial user: #{email} (admin: #{admin})")
+
+      {:error, changeset} ->
+        IO.puts("❌ Failed to create initial user: #{inspect(changeset.errors)}")
+    end
+  end
+
+  defp reset_user(email, user, password, admin) do
+    {:ok, _user} =
+      Trifle.Accounts.reset_user_password(user, %{
+        password: password,
+        password_confirmation: password
+      })
+
+    timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    user
+    |> Ecto.Changeset.change(%{confirmed_at: timestamp})
+    |> Trifle.Repo.update!()
+
+    Trifle.Accounts.update_user_admin_status(user.id, admin)
+
+    IO.puts("🔐 Reset user credentials: #{email} (admin: #{admin})")
   end
 
   defp repos do
