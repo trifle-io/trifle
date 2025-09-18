@@ -1803,8 +1803,15 @@ defmodule TrifleApp.DashboardLive do
         </div>
       <% end %>
 
+      <% raw_grid_items = (@dashboard.payload || %{})["grid"] %>
+      <% grid_items = if is_list(raw_grid_items), do: raw_grid_items, else: [] %>
+      <% has_grid_items = grid_items != [] %>
+
       <!-- Grid Layout -->
-      <div class="mb-6">
+      <div class={[
+        "mb-6",
+        if(has_grid_items, do: nil, else: "hidden")
+      ]}>
         <div id="dashboard-grid"
              class="grid-stack"
              phx-update="ignore"
@@ -1815,7 +1822,7 @@ defmodule TrifleApp.DashboardLive do
              data-min-rows="8"
              data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
              data-colors={ChartColors.json_palette()}
-             data-initial-grid={Jason.encode!(@dashboard.payload["grid"] || [])}
+             data-initial-grid={Jason.encode!(grid_items)}
              data-dashboard-id={@dashboard.id}
              data-public-token={@public_token}>
         </div>
@@ -2271,7 +2278,7 @@ defmodule TrifleApp.DashboardLive do
         <!-- Dashboard Content -->
         <div class="flex-1 relative">
 
-          <%= if !( @dashboard.payload && map_size(@dashboard.payload) > 0 ) do %>
+          <%= if !has_grid_items do %>
             <!-- Empty state in white panel -->
             <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
               <div class="p-6">
