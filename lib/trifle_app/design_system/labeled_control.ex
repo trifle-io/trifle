@@ -3,9 +3,9 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
 
   @doc """
   Renders a labeled control container with consistent styling.
-  
+
   ## Examples
-  
+
       <.labeled_control label="Timeframe">
         <input type="text" ... />
       </.labeled_control>
@@ -18,7 +18,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
   """
   attr :label, :string, required: true
   attr :class, :string, default: ""
-  
+
   slot :inner_block, required: true
 
   def labeled_control(assigns) do
@@ -27,7 +27,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
       <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-20">
         {@label}
       </label>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </div>
     """
   end
@@ -43,14 +43,14 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
   attr :type, :string, default: "text"
   attr :class, :string, default: ""
   attr :rest, :global, include: ~w(phx-change phx-keydown phx-key phx-focus phx-blur phx-hook)
-  
+
   slot :suffix
   slot :badge
 
   def labeled_input(assigns) do
     ~H"""
     <div class={["relative", @class]}>
-      <label 
+      <label
         for={@id}
         class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-20"
       >
@@ -64,21 +64,21 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
           value={@value}
           placeholder={@placeholder}
           class={[
-            "block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
+            "block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
             if(@badge != [] || @suffix != [], do: "pr-20", else: "")
           ]}
           {@rest}
         />
-        
+
         <%= if @badge != [] do %>
           <div class="absolute inset-y-0 right-8 flex items-center">
-            <%= render_slot(@badge) %>
+            {render_slot(@badge)}
           </div>
         <% end %>
 
         <%= if @suffix != [] do %>
           <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-            <%= render_slot(@suffix) %>
+            {render_slot(@suffix)}
           </div>
         <% end %>
       </div>

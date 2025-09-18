@@ -1563,7 +1563,7 @@ defmodule TrifleApp.DashboardLive do
           </div>
         </div>
       <% end %>
-      <div class="w-full">
+      <main class="flex-1 w-full">
         <!-- Header -->
         <div class={if(@is_public_access, do: "mb-2", else: "mb-6")}>
           <div class="flex items-center justify-between">
@@ -2722,12 +2722,14 @@ defmodule TrifleApp.DashboardLive do
                     Dashboard is empty
                   </h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                    This dashboard doesn't have any visualization data yet. Edit the dashboard to add charts and metrics.
+                    This dashboard doesn't have any visualization data yet. Hit the Add Widget button and give it something to show off.
                   </p>
                   <%= if !@is_public_access do %>
+                    <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
                     <div class="mt-6">
-                      <.link
-                        patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
+                      <button
+                        type="button"
+                        phx-click={JS.dispatch("click", to: "##{add_btn_id}")}
                         class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
                       >
                         <svg
@@ -2738,14 +2740,10 @@ defmodule TrifleApp.DashboardLive do
                           stroke-width="1.5"
                           stroke="currentColor"
                         >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                          />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6" />
                         </svg>
-                        Edit Dashboard
-                      </.link>
+                        Add Widget
+                      </button>
                     </div>
                   <% end %>
                 </div>
@@ -2753,28 +2751,29 @@ defmodule TrifleApp.DashboardLive do
             </div>
           <% end %>
         </div>
-        
+      </main>
+      
     <!-- Sticky Summary Footer (only for authenticated users) -->
-        <%= if !@is_public_access do %>
-          <%= if summary = get_summary_stats(assigns) do %>
-            <.dashboard_footer
-              summary={summary}
-              load_duration_microseconds={@load_duration_microseconds}
-              show_export_dropdown={@show_export_dropdown}
-              dashboard={@dashboard}
-              export_params={
-                build_url_params(%{
-                  granularity: @granularity,
-                  smart_timeframe_input: @smart_timeframe_input,
-                  use_fixed_display: @use_fixed_display,
-                  from: @from,
-                  to: @to
-                })
-              }
-            />
-          <% end %>
+      <%= if !@is_public_access do %>
+        <%= if summary = get_summary_stats(assigns) do %>
+          <.dashboard_footer
+            class="mt-auto"
+            summary={summary}
+            load_duration_microseconds={@load_duration_microseconds}
+            show_export_dropdown={@show_export_dropdown}
+            dashboard={@dashboard}
+            export_params={
+              build_url_params(%{
+                granularity: @granularity,
+                smart_timeframe_input: @smart_timeframe_input,
+                use_fixed_display: @use_fixed_display,
+                from: @from,
+                to: @to
+              })
+            }
+          />
         <% end %>
-      </div>
+      <% end %>
     </div>
     """
   end
