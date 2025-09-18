@@ -6,6 +6,7 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
+  import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
   require Logger
 
   def mount(params, _session, socket) do
@@ -1481,7 +1482,11 @@ defmodule TrifleApp.DashboardLive do
 
   def render(assigns) do
     ~H"""
-    <div id="dashboard-page-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
+    <div
+      id="dashboard-page-root"
+      class="flex flex-col dark:bg-slate-900 min-h-screen relative"
+      phx-hook="FileDownload"
+    >
       <%= if @print_mode do %>
         <style>
           @media print {
@@ -1500,7 +1505,13 @@ defmodule TrifleApp.DashboardLive do
         </style>
       <% end %>
       <!-- Hidden iframe target for downloads to avoid navigating away from LiveView -->
-      <iframe name="download_iframe" style="display:none" aria-hidden="true" onload="(function(){['dashboard-download-menu','explore-download-menu'].forEach(function(id){var m=document.getElementById(id); if(!m) return; var b=m.querySelector('[data-role=download-button]'); var t=m.querySelector('[data-role=download-text]'); var d=(m.dataset&&m.dataset.defaultLabel)||'Download'; if(b){b.disabled=false; b.classList.remove('opacity-70','cursor-wait');} if(t){t.textContent=d;}})})()"></iframe>
+      <iframe
+        name="download_iframe"
+        style="display:none"
+        aria-hidden="true"
+        onload="(function(){['dashboard-download-menu','explore-download-menu'].forEach(function(id){var m=document.getElementById(id); if(!m) return; var b=m.querySelector('[data-role=download-button]'); var t=m.querySelector('[data-role=download-text]'); var d=(m.dataset&&m.dataset.defaultLabel)||'Download'; if(b){b.disabled=false; b.classList.remove('opacity-70','cursor-wait');} if(t){t.textContent=d;}})})()"
+      >
+      </iframe>
       <script>
         window.__downloadPoller = window.__downloadPoller || setInterval(function(){
           try {
@@ -1526,12 +1537,13 @@ defmodule TrifleApp.DashboardLive do
           <div class="absolute left-1/2 -translate-x-1/2" style="top: 33%;">
             <div class="flex flex-col items-center space-y-3">
               <div class="flex items-center space-x-2">
-                <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
+                <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500">
+                </div>
                 <span class="text-sm text-gray-600 dark:text-white">
                   <%= if @transponding do %>
                     Transponding data...
                   <% else %>
-                    Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
+                    Scientificating piece {@loading_progress.current} of {@loading_progress.total}...
                   <% end %>
                 </span>
               </div>
@@ -1542,7 +1554,8 @@ defmodule TrifleApp.DashboardLive do
                     <div
                       class="bg-teal-500 h-2 rounded-full transition-all duration-300"
                       style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                    ></div>
+                    >
+                    </div>
                   </div>
                 <% end %>
               </div>
@@ -1557,727 +1570,1133 @@ defmodule TrifleApp.DashboardLive do
             <!-- Left: Title only -->
             <div class="min-w-0">
               <h1 class="text-2xl font-bold text-gray-900 dark:text-white truncate">
-                <%= @dashboard.name %>
+                {@dashboard.name}
               </h1>
             </div>
 
-          <%= if !@print_mode && !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
-            <!-- Dashboard owner controls -->
-            <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
-              <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
-              <!-- Add Widget Button -->
-              <button id={add_btn_id}
-                type="button"
-                class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-                title="Add widget"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="-ml-0.5 md:mr-1.5 h-4 w-4">
-                  <path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
-                </svg>
-                <span class="hidden md:inline">Add Widget</span>
-              </button>
-              <!-- Edit Button -->
-              <%= if @live_action == :edit do %>
+            <%= if !@print_mode && !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
+              <!-- Dashboard owner controls -->
+              <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
+                <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
+                <!-- Add Widget Button -->
                 <button
+                  id={add_btn_id}
                   type="button"
-                  phx-click="cancel_edit"
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                  class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+                  title="Add widget"
                 >
-                  <svg class="-ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
+                      clip-rule="evenodd"
+                    />
                   </svg>
-                  Cancel
+                  <span class="hidden md:inline">Add Widget</span>
                 </button>
-              <% else %>
-                <.link
-                  patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                >
-                  <svg class="md:-ml-0.5 md:mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                  </svg>
-                  <span class="hidden md:inline">Edit</span>
-                </.link>
-
-                <!-- Configure Button -->
-                <.link
-                  patch={~p"/app/dashboards/#{@dashboard.id}/configure"}
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                >
-                  <svg class="md:-ml-0.5 md:mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span class="hidden md:inline">Configure</span>
-                </.link>
-                
-              <% end %>
-
-              <!-- Status Icon Badges -->
-              <div id="status-badges" class="flex items-center gap-2" phx-hook="FastTooltip">
-                <!-- Public link -->
-                <%= if @dashboard.access_token do %>
-                  <!-- Hidden element with the URL to copy -->
-                  <span id="dashboard-public-url" class="hidden"><%= url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}") %></span>
-
-                  <!-- Has token: white/plain button with visual feedback - hidden on XS screens -->
+                <!-- Edit Button -->
+                <%= if @live_action == :edit do %>
                   <button
                     type="button"
-                    phx-click={
-                      JS.dispatch("phx:copy", to: "#dashboard-public-url")
-                      |> JS.hide(to: "#header-link-icon")
-                      |> JS.show(to: "#header-check-icon")
-                      |> JS.hide(to: "#header-check-icon", transition: {"", "", ""}, time: 2000)
-                      |> JS.show(to: "#header-link-icon", transition: {"", "", ""}, time: 2000)
-                    }
-                    class="cursor-pointer hidden sm:inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-xs font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                    data-tooltip="Copy public dashboard link"
-                  >
-                    <!-- Link Icon (default) -->
-                    <svg id="header-link-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" />
-                    </svg>
-
-                    <!-- Check Icon (shown temporarily when copied) -->
-                    <svg id="header-check-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5 text-green-600 hidden">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
-                <% else %>
-                  <!-- No token: icon-only (no wrapper), hidden on XS -->
-                  <div
-                    class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                    data-tooltip="No public link available"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                      class="h-5 w-5 text-gray-400 dark:text-slate-500"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
-                      />
-                    </svg>
-                  </div>
-                <% end %>
-
-                <!-- Visibility badge -->
-                <%= if @dashboard.visibility do %>
-                  <div
-                    class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                    data-tooltip="Visible to everyone in organization"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                      class="h-5 w-5 text-teal-600 dark:text-teal-400"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
-                      />
-                    </svg>
-                  </div>
-                <% else %>
-                  <div
-                    class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                    data-tooltip="Private - only you can see this"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                      class="h-5 w-5 text-gray-400 dark:text-slate-500"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
-                      />
-                    </svg>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          <% else %>
-            <!-- Non-owner or public access view -->
-            <%= if !@is_public_access do %>
-              <div class="flex items-center gap-2 w-64 justify-end">
-                <span class={[
-                  "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
-                  if(@dashboard.visibility,
-                    do: "bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-600/20 dark:ring-blue-500/30",
-                    else: "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-600/20 dark:ring-gray-500/30"
-                  )
-                ]}>
-                  <%= Trifle.Organizations.Dashboard.visibility_display(@dashboard.visibility) %>
-                </span>
-              </div>
-            <% else %>
-              <div class="w-64"></div>
-            <% end %>
-          <% end %>
-          </div>
-        </div>
-
-        <!-- Filter Bar (only show if dashboard has a key) -->
-      <%= if dashboard_has_key?(assigns) do %>
-        <.live_component
-          module={TrifleApp.Components.FilterBar}
-          id="dashboard_filter_bar"
-          config={@database_config}
-          from={@from}
-          to={@to}
-          granularity={@granularity}
-          smart_timeframe_input={@smart_timeframe_input}
-          use_fixed_display={@use_fixed_display}
-          available_granularities={@available_granularities}
-          show_controls={!@print_mode}
-          show_timeframe_dropdown={false}
-          show_granularity_dropdown={false}
-          force_granularity_dropdown={@print_mode}
-        />
-      <% end %>
-
-      <!-- Edit Form (only shown in edit mode for authenticated users) -->
-      <%= if !@is_public_access && @live_action == :edit && @dashboard_form do %>
-        <div class="mb-6">
-          <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Edit Dashboard</h2>
-
-            <.form
-              for={@dashboard_form}
-              phx-submit="save_dashboard"
-              class="space-y-4"
-            >
-              <div>
-                <label for="dashboard_payload" class="block text-sm font-medium text-gray-700 dark:text-slate-300">Payload</label>
-                <textarea
-                  name="dashboard[payload]"
-                  id="dashboard_payload"
-                  rows="10"
-                  class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
-                  placeholder="JSON configuration for dashboard visualization"
-                ><%= if @dashboard.payload, do: Jason.encode!(@dashboard.payload, pretty: true), else: "" %></textarea>
-                <%= if @dashboard_changeset && @dashboard_changeset.errors[:payload] do %>
-                  <p class="mt-1 text-sm text-red-600 dark:text-red-400">
-                    <%= case @dashboard_changeset.errors[:payload] do
-                      [{message, _}] -> message
-                      [{message, _} | _] -> message
-                      message when is_binary(message) -> message
-                      _ -> "Invalid payload format"
-                    end %>
-                  </p>
-                <% end %>
-                <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">Enter valid JSON configuration for the dashboard visualization</p>
-              </div>
-
-              <div class="flex items-center justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  phx-click="cancel_edit"
-                  class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </.form>
-          </div>
-        </div>
-      <% end %>
-
-      <% raw_grid_items = (@dashboard.payload || %{})["grid"] %>
-      <% grid_items = if is_list(raw_grid_items), do: raw_grid_items, else: [] %>
-      <% has_grid_items = grid_items != [] %>
-
-      <!-- Grid Layout -->
-      <div class={[
-        "mb-6",
-        if(has_grid_items, do: nil, else: "hidden")
-      ]}>
-        <div id="dashboard-grid"
-             class="grid-stack"
-             phx-update="ignore"
-             phx-hook="DashboardGrid"
-             data-print-mode={if @print_mode, do: "true", else: "false"}
-             data-editable={if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id, do: "true", else: "false"}
-             data-cols="12"
-             data-min-rows="8"
-             data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
-             data-colors={ChartColors.json_palette()}
-             data-initial-grid={Jason.encode!(grid_items)}
-             data-dashboard-id={@dashboard.id}
-             data-public-token={@public_token}>
-        </div>
-      </div>
-
-      <!-- Configure Modal -->
-      <%= if !@is_public_access && @live_action == :configure do %>
-        <.app_modal id="configure-modal" show={true} on_cancel={JS.patch(~p"/app/dashboards/#{@dashboard.id}")}>
-          <:title>Configure Dashboard</:title>
-      <:body>
-        <div class="space-y-6">
-          <.form for={%{}} phx-submit="save_settings" class="space-y-6">
-            <!-- Dashboard Name -->
-            <div>
-              <label for="configure_name" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dashboard Name</label>
-              <input
-                type="text"
-                id="configure_name"
-                name="name"
-                value={@temp_name || @dashboard.name}
-                phx-keyup="update_temp_name"
-                class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                placeholder="Dashboard name"
-              />
-            </div>
-
-            <!-- Database (editable) -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Database</label>
-              <div class="grid grid-cols-1 sm:max-w-xs">
-                <select name="database_id" class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                  <%= for db <- @databases || [] do %>
-                    <option value={db.id} selected={to_string(db.id) == to_string(@database.id)}><%= db.display_name %></option>
-                  <% end %>
-                </select>
-                <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                  <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                </svg>
-              </div>
-            </div>
-
-            <!-- Dashboard Key -->
-            <div>
-              <label for="configure_key" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Key</label>
-              <input
-                type="text"
-                id="configure_key"
-                name="key"
-                value={@dashboard.key || ""}
-                class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                placeholder="e.g., sales.metrics"
-                required
-              />
-            </div>
-
-              <!-- Defaults -->
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                <div class="mb-4">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Defaults</h3>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    These values are used as the initial timeframe and granularity when opening this dashboard.
-                    Timeframe accepts smart inputs like 24h, 2d, 1w, 1mo. You can override database defaults here.
-                  </p>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Timeframe</label>
-                    <input type="text" name="timeframe" value={@dashboard.default_timeframe || @database.default_timeframe || "24h"} class="mt-2 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. 24h, 2d, 1w, 1mo, 1y" />
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Granularity</label>
-                    <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                      <select name="granularity" class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                        <%= for g <- @available_granularities do %>
-                          <option value={g} selected={g == (@dashboard.default_granularity || @database.default_granularity || "1h") }><%= g %></option>
-                        <% end %>
-                      </select>
-                      <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                        <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div class="sm:col-span-2 flex justify-end">
-                    <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500">Save</button>
-                  </div>
-                </div>
-              </div>
-            </.form>
-              <!-- Actions -->
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                <div class="flex items-center justify-between mb-2">
-                  <div>
-                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Actions</span>
-                    <p class="text-xs text-gray-500 dark:text-slate-400">Make a copy of this dashboard.</p>
-                  </div>
-                  <button
-                    type="button"
-                    phx-click="duplicate_dashboard"
+                    phx-click="cancel_edit"
                     class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                    title="Duplicate dashboard"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="md:-ml-0.5 md:mr-1.5 h-4 w-4">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
-                    </svg>
-                    <span class="hidden md:inline">Duplicate</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Visibility Toggle (moved below Actions) -->
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-                <div>
-                  <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Visibility</span>
-                  <p class="text-xs text-gray-500 dark:text-slate-400">Make this dashboard visible to everyone in the organization</p>
-                </div>
-                <button
-                  type="button"
-                  phx-click="toggle_visibility"
-                  class={[
-                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                    if(@dashboard.visibility, do: "bg-teal-600", else: "bg-gray-200 dark:bg-gray-700")
-                  ]}
-                >
-                  <span class={[
-                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                    if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
-                  ]}></span>
-                </button>
-              </div>
-
-              <!-- Public Link Management -->
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                <div class="flex items-center justify-between mb-4">
-                  <div>
-                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Public Link</span>
-                    <p class="text-xs text-gray-500 dark:text-slate-400">Allow unauthenticated Read-only access to this dashboard</p>
-                  </div>
-                </div>
-
-                <%= if @dashboard.access_token do %>
-                  <!-- Hidden element with the URL to copy -->
-                  <span id="modal-dashboard-public-url" class="hidden"><%= url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}") %></span>
-
-                  <div class="flex items-center gap-3">
-                    <!-- Copy Link Button -->
-                    <span
-                      id="modal-copy-dashboard-link"
-                      x-data="{ copied: false }"
-                      phx-click={JS.dispatch("phx:copy", to: "#modal-dashboard-public-url")}
-                      x-on:click="copied = true; setTimeout(() => copied = false, 3000)"
-                      class="flex-1 cursor-pointer inline-flex items-center justify-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                      title="Copy public link to clipboard"
-                      phx-update="ignore"
+                    <svg
+                      class="-ml-0.5 mr-1.5 h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
                     >
-                      <!-- Copy Icon (show when not copied) -->
-                      <svg x-show="!copied" class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
-                      </svg>
-
-                      <!-- Check Icon (show when copied) -->
-                      <svg x-show="copied" class="-ml-0.5 mr-2 h-4 w-4 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-
-                      <!-- Text -->
-                      <span x-show="!copied">Copy Public Link</span>
-                      <span x-show="copied" class="text-green-600">Copied!</span>
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Cancel
+                  </button>
+                <% else %>
+                  <.link
+                    patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
+                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                  >
+                    <svg
+                      class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                      />
+                    </svg>
+                    <span class="hidden md:inline">Edit</span>
+                  </.link>
+                  
+    <!-- Configure Button -->
+                  <.link
+                    patch={~p"/app/dashboards/#{@dashboard.id}/configure"}
+                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                  >
+                    <svg
+                      class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                    <span class="hidden md:inline">Configure</span>
+                  </.link>
+                <% end %>
+                
+    <!-- Status Icon Badges -->
+                <div id="status-badges" class="flex items-center gap-2" phx-hook="FastTooltip">
+                  <!-- Public link -->
+                  <%= if @dashboard.access_token do %>
+                    <!-- Hidden element with the URL to copy -->
+                    <span id="dashboard-public-url" class="hidden">
+                      {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
                     </span>
-
-                    <!-- Remove Button -->
+                    
+    <!-- Has token: white/plain button with visual feedback - hidden on XS screens -->
                     <button
                       type="button"
-                      phx-click="remove_public_token"
-                      data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
-                      class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                      title="Remove public link"
+                      phx-click={
+                        JS.dispatch("phx:copy", to: "#dashboard-public-url")
+                        |> JS.hide(to: "#header-link-icon")
+                        |> JS.show(to: "#header-check-icon")
+                        |> JS.hide(to: "#header-check-icon", transition: {"", "", ""}, time: 2000)
+                        |> JS.show(to: "#header-link-icon", transition: {"", "", ""}, time: 2000)
+                      }
+                      class="cursor-pointer hidden sm:inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-xs font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                      data-tooltip="Copy public dashboard link"
                     >
-                      <svg class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                      <!-- Link Icon (default) -->
+                      <svg
+                        id="header-link-icon"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-5 w-5"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
+                        />
                       </svg>
-                      Remove Link
+                      
+    <!-- Check Icon (shown temporarily when copied) -->
+                      <svg
+                        id="header-check-icon"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-5 w-5 text-green-600 hidden"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </button>
+                  <% else %>
+                    <!-- No token: icon-only (no wrapper), hidden on XS -->
+                    <div
+                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                      data-tooltip="No public link available"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-5 w-5 text-gray-400 dark:text-slate-500"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
+                        />
+                      </svg>
+                    </div>
+                  <% end %>
+                  
+    <!-- Visibility badge -->
+                  <%= if @dashboard.visibility do %>
+                    <div
+                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                      data-tooltip="Visible to everyone in organization"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-5 w-5 text-teal-600 dark:text-teal-400"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
+                        />
+                      </svg>
+                    </div>
+                  <% else %>
+                    <div
+                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                      data-tooltip="Private - only you can see this"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-5 w-5 text-gray-400 dark:text-slate-500"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+                        />
+                      </svg>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            <% else %>
+              <!-- Non-owner or public access view -->
+              <%= if !@is_public_access do %>
+                <div class="flex items-center gap-2 w-64 justify-end">
+                  <span class={[
+                    "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
+                    if(@dashboard.visibility,
+                      do:
+                        "bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-600/20 dark:ring-blue-500/30",
+                      else:
+                        "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-600/20 dark:ring-gray-500/30"
+                    )
+                  ]}>
+                    {Trifle.Organizations.Dashboard.visibility_display(@dashboard.visibility)}
+                  </span>
+                </div>
+              <% else %>
+                <div class="w-64"></div>
+              <% end %>
+            <% end %>
+          </div>
+        </div>
+        
+    <!-- Filter Bar (only show if dashboard has a key) -->
+        <%= if dashboard_has_key?(assigns) do %>
+          <.live_component
+            module={TrifleApp.Components.FilterBar}
+            id="dashboard_filter_bar"
+            config={@database_config}
+            from={@from}
+            to={@to}
+            granularity={@granularity}
+            smart_timeframe_input={@smart_timeframe_input}
+            use_fixed_display={@use_fixed_display}
+            available_granularities={@available_granularities}
+            show_controls={!@print_mode}
+            show_timeframe_dropdown={false}
+            show_granularity_dropdown={false}
+            force_granularity_dropdown={@print_mode}
+          />
+        <% end %>
+        
+    <!-- Edit Form (only shown in edit mode for authenticated users) -->
+        <%= if !@is_public_access && @live_action == :edit && @dashboard_form do %>
+          <div class="mb-6">
+            <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Edit Dashboard</h2>
+
+              <.form for={@dashboard_form} phx-submit="save_dashboard" class="space-y-4">
+                <div>
+                  <label
+                    for="dashboard_payload"
+                    class="block text-sm font-medium text-gray-700 dark:text-slate-300"
+                  >
+                    Payload
+                  </label>
+                  <textarea
+                    name="dashboard[payload]"
+                    id="dashboard_payload"
+                    rows="10"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
+                    placeholder="JSON configuration for dashboard visualization"
+                  ><%= if @dashboard.payload, do: Jason.encode!(@dashboard.payload, pretty: true), else: "" %></textarea>
+                  <%= if @dashboard_changeset && @dashboard_changeset.errors[:payload] do %>
+                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">
+                      {case @dashboard_changeset.errors[:payload] do
+                        [{message, _}] -> message
+                        [{message, _} | _] -> message
+                        message when is_binary(message) -> message
+                        _ -> "Invalid payload format"
+                      end}
+                    </p>
+                  <% end %>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                    Enter valid JSON configuration for the dashboard visualization
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    phx-click="cancel_edit"
+                    class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </.form>
+            </div>
+          </div>
+        <% end %>
+
+        <% raw_grid_items = (@dashboard.payload || %{})["grid"] %>
+        <% grid_items = if is_list(raw_grid_items), do: raw_grid_items, else: [] %>
+        <% has_grid_items = grid_items != [] %>
+        
+    <!-- Grid Layout -->
+        <div class={[
+          "mb-6",
+          if(has_grid_items, do: nil, else: "hidden")
+        ]}>
+          <div
+            id="dashboard-grid"
+            class="grid-stack"
+            phx-update="ignore"
+            phx-hook="DashboardGrid"
+            data-print-mode={if @print_mode, do: "true", else: "false"}
+            data-editable={
+              if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id,
+                do: "true",
+                else: "false"
+            }
+            data-cols="12"
+            data-min-rows="8"
+            data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
+            data-colors={ChartColors.json_palette()}
+            data-initial-grid={Jason.encode!(grid_items)}
+            data-dashboard-id={@dashboard.id}
+            data-public-token={@public_token}
+          >
+          </div>
+        </div>
+        
+    <!-- Configure Modal -->
+        <%= if !@is_public_access && @live_action == :configure do %>
+          <.app_modal
+            id="configure-modal"
+            show={true}
+            on_cancel={JS.patch(~p"/app/dashboards/#{@dashboard.id}")}
+          >
+            <:title>Configure Dashboard</:title>
+            <:body>
+              <div class="space-y-6">
+                <.form for={%{}} phx-submit="save_settings" class="space-y-6">
+                  <!-- Dashboard Name -->
+                  <div>
+                    <label
+                      for="configure_name"
+                      class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+                    >
+                      Dashboard Name
+                    </label>
+                    <input
+                      type="text"
+                      id="configure_name"
+                      name="name"
+                      value={@temp_name || @dashboard.name}
+                      phx-keyup="update_temp_name"
+                      class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                      placeholder="Dashboard name"
+                    />
+                  </div>
+                  
+    <!-- Database (editable) -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+                      Database
+                    </label>
+                    <div class="grid grid-cols-1 sm:max-w-xs">
+                      <select
+                        name="database_id"
+                        class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                      >
+                        <%= for db <- @databases || [] do %>
+                          <option value={db.id} selected={to_string(db.id) == to_string(@database.id)}>
+                            {db.display_name}
+                          </option>
+                        <% end %>
+                      </select>
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        data-slot="icon"
+                        aria-hidden="true"
+                        class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                      >
+                        <path
+                          d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                          clip-rule="evenodd"
+                          fill-rule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  
+    <!-- Dashboard Key -->
+                  <div>
+                    <label
+                      for="configure_key"
+                      class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+                    >
+                      Key
+                    </label>
+                    <input
+                      type="text"
+                      id="configure_key"
+                      name="key"
+                      value={@dashboard.key || ""}
+                      class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                      placeholder="e.g., sales.metrics"
+                      required
+                    />
+                  </div>
+                  
+    <!-- Defaults -->
+                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                    <div class="mb-4">
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Defaults</h3>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                        These values are used as the initial timeframe and granularity when opening this dashboard.
+                        Timeframe accepts smart inputs like 24h, 2d, 1w, 1mo. You can override database defaults here.
+                      </p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                          Timeframe
+                        </label>
+                        <input
+                          type="text"
+                          name="timeframe"
+                          value={@dashboard.default_timeframe || @database.default_timeframe || "24h"}
+                          class="mt-2 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                          placeholder="e.g. 24h, 2d, 1w, 1mo, 1y"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                          Granularity
+                        </label>
+                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                          <select
+                            name="granularity"
+                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                          >
+                            <%= for g <- @available_granularities do %>
+                              <option
+                                value={g}
+                                selected={
+                                  g ==
+                                    (@dashboard.default_granularity || @database.default_granularity ||
+                                       "1h")
+                                }
+                              >
+                                {g}
+                              </option>
+                            <% end %>
+                          </select>
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                            data-slot="icon"
+                            aria-hidden="true"
+                            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                          >
+                            <path
+                              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                              clip-rule="evenodd"
+                              fill-rule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="sm:col-span-2 flex justify-end">
+                        <button
+                          type="submit"
+                          class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </.form>
+                <!-- Actions -->
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                        Actions
+                      </span>
+                      <p class="text-xs text-gray-500 dark:text-slate-400">
+                        Make a copy of this dashboard.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      phx-click="duplicate_dashboard"
+                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                      title="Duplicate dashboard"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                        />
+                      </svg>
+                      <span class="hidden md:inline">Duplicate</span>
                     </button>
                   </div>
-                <% else %>
-                  <!-- No token: show generate -->
+                </div>
+                
+    <!-- Visibility Toggle (moved below Actions) -->
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
+                  <div>
+                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                      Visibility
+                    </span>
+                    <p class="text-xs text-gray-500 dark:text-slate-400">
+                      Make this dashboard visible to everyone in the organization
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    phx-click="generate_public_token"
-                    class="w-full inline-flex items-center justify-center rounded-md bg-teal-50 dark:bg-teal-900 px-3 py-2 text-sm font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30 hover:bg-teal-100 dark:hover:bg-teal-800"
-                    title="Generate public link for unauthenticated access"
+                    phx-click="toggle_visibility"
+                    class={[
+                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                      if(@dashboard.visibility,
+                        do: "bg-teal-600",
+                        else: "bg-gray-200 dark:bg-gray-700"
+                      )
+                    ]}
                   >
-                    <svg class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-                    </svg>
-                    Generate Public Link
+                    <span class={[
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
+                    ]}>
+                    </span>
                   </button>
-                <% end %>
-              </div>
-
-              
-
-              <!-- Danger Zone -->
-              <div class="border-t border-red-200 dark:border-red-800 pt-6">
-                <div class="mb-4">
-                  <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger Zone</span>
-                  <p class="text-xs text-red-600 dark:text-red-400">This action cannot be undone</p>
                 </div>
-
-                <button
-                  type="button"
-                  phx-click="delete_dashboard"
-                  data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
-                  class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                  title="Delete this dashboard"
-                >
-                  <svg class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                  </svg>
-                  Delete Dashboard
-                </button>
-              </div>
-            </div>
-          </:body>
-        </.app_modal>
-      <% end %>
-
-      <!-- Widget Edit Modal -->
-      <%= if !@is_public_access && @editing_widget do %>
-        <.app_modal id="widget-modal" show={true} on_cancel={JS.push("close_widget_editor")}>
-          <:title>Edit Widget</:title>
-          <:body>
-            <div class="space-y-6">
-              <!-- Widget Type (change updates the modal content) -->
-              <.form for={%{}} phx-change="change_widget_type" class="space-y-3">
-                <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
-                <div>
-                  <label for="widget_type" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Widget Type</label>
-                  <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                    <select id="widget_type" name="widget_type"
-                      class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                      <% sel = (@editing_widget["type"] || "kpi") %>
-                      <option value="kpi" selected={sel == "kpi"}>KPI</option>
-                      <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
-                      <option value="category" selected={sel == "category"}>Category</option>
-                    </select>
-                    <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                      <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                    </svg>
-                  </div>
-                </div>
-              </.form>
-
-              <!-- Widget Title and Options -->
-              <.form for={%{}} phx-submit="save_widget" class="space-y-4">
-                <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
-                <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
-                <div>
-                  <label for="widget_title" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Title</label>
-                  <input type="text" id="widget_title" name="widget_title" value={@editing_widget["title"] || ""} class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="Widget title" />
-                </div>
-
-                <%= case (@editing_widget["type"] || "kpi") do %>
-                  <% "kpi" -> %>
-                    <% subtype = normalize_kpi_subtype(@editing_widget["subtype"], @editing_widget) %>
-                    <% fnv = @editing_widget["function"] || "mean" %>
-                    <% fnv = if fnv == "avg", do: "mean", else: fnv %>
-                    <% sz = @editing_widget["size"] || "m" %>
-                    <% diff_checked = !!@editing_widget["diff"] %>
-                    <% timeseries_checked = !!@editing_widget["timeseries"] %>
-                    <% goal_progress_checked = !!@editing_widget["goal_progress"] %>
-                    <input type="hidden" name="kpi_subtype" value={subtype} />
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div class="sm:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Path</label>
-                        <input type="text" name="kpi_path" value={@editing_widget["path"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. sales.total" />
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Function</label>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select name="kpi_function"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                            <option value="max" selected={fnv == "max"}>max</option>
-                            <option value="min" selected={fnv == "min"}>min</option>
-                            <option value="mean" selected={fnv == "mean"}>mean</option>
-                            <option value="sum" selected={fnv == "sum"}>sum</option>
-                          </select>
-                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                          </svg>
-                        </div>
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Size</label>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select name="kpi_size"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                            <option value="s" selected={sz == "s"}>Small</option>
-                            <option value="m" selected={sz == "m"}>Medium</option>
-                            <option value="l" selected={sz == "l"}>Large</option>
-                          </select>
-                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                          </svg>
-                        </div>
-                      </div>
-                      <div>
-                        <label for="kpi_subtype" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">KPI Type</label>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select id="kpi_subtype" name="kpi_subtype"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                            phx-change="change_kpi_subtype"
-                            phx-value-widget-id={@editing_widget["id"]}>
-                            <option value="number" selected={subtype == "number"}>Number</option>
-                            <option value="split" selected={subtype == "split"}>Split</option>
-                            <option value="goal" selected={subtype == "goal"}>Goal</option>
-                          </select>
-                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                          </svg>
-                        </div>
-                      </div>
-                      <%= if subtype == "goal" do %>
-                        <div class="sm:col-span-2">
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Target value</label>
-                          <input type="text" name="kpi_goal_target" value={@editing_widget["goal_target"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g. 1200" />
-                        </div>
-                      <% end %>
+                
+    <!-- Public Link Management -->
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                  <div class="flex items-center justify-between mb-4">
+                    <div>
+                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                        Public Link
+                      </span>
+                      <p class="text-xs text-gray-500 dark:text-slate-400">
+                        Allow unauthenticated Read-only access to this dashboard
+                      </p>
                     </div>
-                    <%= case subtype do %>
-                      <% "split" -> %>
-                        <div class="space-y-2">
-                          <p class="text-sm text-gray-700 dark:text-slate-300">Split timeframe by half is enabled for this subtype.</p>
-                          <div class="flex flex-wrap items-center gap-4">
-                            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                              <input type="checkbox" name="kpi_diff" checked={diff_checked} /> Difference between splits
+                  </div>
+
+                  <%= if @dashboard.access_token do %>
+                    <!-- Hidden element with the URL to copy -->
+                    <span id="modal-dashboard-public-url" class="hidden">
+                      {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
+                    </span>
+
+                    <div class="flex items-center gap-3">
+                      <!-- Copy Link Button -->
+                      <span
+                        id="modal-copy-dashboard-link"
+                        x-data="{ copied: false }"
+                        phx-click={JS.dispatch("phx:copy", to: "#modal-dashboard-public-url")}
+                        x-on:click="copied = true; setTimeout(() => copied = false, 3000)"
+                        class="flex-1 cursor-pointer inline-flex items-center justify-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                        title="Copy public link to clipboard"
+                        phx-update="ignore"
+                      >
+                        <!-- Copy Icon (show when not copied) -->
+                        <svg
+                          x-show="!copied"
+                          class="-ml-0.5 mr-2 h-4 w-4"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"
+                          />
+                        </svg>
+                        
+    <!-- Check Icon (show when copied) -->
+                        <svg
+                          x-show="copied"
+                          class="-ml-0.5 mr-2 h-4 w-4 text-green-600"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        
+    <!-- Text -->
+                        <span x-show="!copied">Copy Public Link</span>
+                        <span x-show="copied" class="text-green-600">Copied!</span>
+                      </span>
+                      
+    <!-- Remove Button -->
+                      <button
+                        type="button"
+                        phx-click="remove_public_token"
+                        data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
+                        class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                        title="Remove public link"
+                      >
+                        <svg
+                          class="-ml-0.5 mr-2 h-4 w-4"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                          />
+                        </svg>
+                        Remove Link
+                      </button>
+                    </div>
+                  <% else %>
+                    <!-- No token: show generate -->
+                    <button
+                      type="button"
+                      phx-click="generate_public_token"
+                      class="w-full inline-flex items-center justify-center rounded-md bg-teal-50 dark:bg-teal-900 px-3 py-2 text-sm font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30 hover:bg-teal-100 dark:hover:bg-teal-800"
+                      title="Generate public link for unauthenticated access"
+                    >
+                      <svg
+                        class="-ml-0.5 mr-2 h-4 w-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                        />
+                      </svg>
+                      Generate Public Link
+                    </button>
+                  <% end %>
+                </div>
+                
+    <!-- Danger Zone -->
+                <div class="border-t border-red-200 dark:border-red-800 pt-6">
+                  <div class="mb-4">
+                    <span class="text-sm font-medium text-red-700 dark:text-red-400">
+                      Danger Zone
+                    </span>
+                    <p class="text-xs text-red-600 dark:text-red-400">This action cannot be undone</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    phx-click="delete_dashboard"
+                    data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
+                    class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                    title="Delete this dashboard"
+                  >
+                    <svg
+                      class="-ml-0.5 mr-2 h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                      />
+                    </svg>
+                    Delete Dashboard
+                  </button>
+                </div>
+              </div>
+            </:body>
+          </.app_modal>
+        <% end %>
+        
+    <!-- Widget Edit Modal -->
+        <%= if !@is_public_access && @editing_widget do %>
+          <.app_modal id="widget-modal" show={true} on_cancel={JS.push("close_widget_editor")}>
+            <:title>Edit Widget</:title>
+            <:body>
+              <div class="space-y-6">
+                <!-- Widget Type (change updates the modal content) -->
+                <.form for={%{}} phx-change="change_widget_type" class="space-y-3">
+                  <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
+                  <div>
+                    <label
+                      for="widget_type"
+                      class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+                    >
+                      Widget Type
+                    </label>
+                    <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                      <select
+                        id="widget_type"
+                        name="widget_type"
+                        class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                      >
+                        <% sel = @editing_widget["type"] || "kpi" %>
+                        <option value="kpi" selected={sel == "kpi"}>KPI</option>
+                        <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
+                        <option value="category" selected={sel == "category"}>Category</option>
+                      </select>
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        data-slot="icon"
+                        aria-hidden="true"
+                        class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                      >
+                        <path
+                          d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                          clip-rule="evenodd"
+                          fill-rule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </.form>
+                
+    <!-- Widget Title and Options -->
+                <.form for={%{}} phx-submit="save_widget" class="space-y-4">
+                  <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
+                  <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
+                  <div>
+                    <label
+                      for="widget_title"
+                      class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+                    >
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      id="widget_title"
+                      name="widget_title"
+                      value={@editing_widget["title"] || ""}
+                      class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                      placeholder="Widget title"
+                    />
+                  </div>
+
+                  <%= case (@editing_widget["type"] || "kpi") do %>
+                    <% "kpi" -> %>
+                      <% subtype = normalize_kpi_subtype(@editing_widget["subtype"], @editing_widget) %>
+                      <% fnv = @editing_widget["function"] || "mean" %>
+                      <% fnv = if fnv == "avg", do: "mean", else: fnv %>
+                      <% sz = @editing_widget["size"] || "m" %>
+                      <% diff_checked = !!@editing_widget["diff"] %>
+                      <% timeseries_checked = !!@editing_widget["timeseries"] %>
+                      <% goal_progress_checked = !!@editing_widget["goal_progress"] %>
+                      <input type="hidden" name="kpi_subtype" value={subtype} />
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Path
+                          </label>
+                          <input
+                            type="text"
+                            name="kpi_path"
+                            value={@editing_widget["path"] || ""}
+                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                            placeholder="e.g. sales.total"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Function
+                          </label>
+                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                            <select
+                              name="kpi_function"
+                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                            >
+                              <option value="max" selected={fnv == "max"}>max</option>
+                              <option value="min" selected={fnv == "min"}>min</option>
+                              <option value="mean" selected={fnv == "mean"}>mean</option>
+                              <option value="sum" selected={fnv == "sum"}>sum</option>
+                            </select>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              data-slot="icon"
+                              aria-hidden="true"
+                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                            >
+                              <path
+                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                clip-rule="evenodd"
+                                fill-rule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Size
+                          </label>
+                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                            <select
+                              name="kpi_size"
+                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                            >
+                              <option value="s" selected={sz == "s"}>Small</option>
+                              <option value="m" selected={sz == "m"}>Medium</option>
+                              <option value="l" selected={sz == "l"}>Large</option>
+                            </select>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              data-slot="icon"
+                              aria-hidden="true"
+                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                            >
+                              <path
+                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                clip-rule="evenodd"
+                                fill-rule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        <div>
+                          <label
+                            for="kpi_subtype"
+                            class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1"
+                          >
+                            KPI Type
+                          </label>
+                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                            <select
+                              id="kpi_subtype"
+                              name="kpi_subtype"
+                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                              phx-change="change_kpi_subtype"
+                              phx-value-widget-id={@editing_widget["id"]}
+                            >
+                              <option value="number" selected={subtype == "number"}>Number</option>
+                              <option value="split" selected={subtype == "split"}>Split</option>
+                              <option value="goal" selected={subtype == "goal"}>Goal</option>
+                            </select>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              data-slot="icon"
+                              aria-hidden="true"
+                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                            >
+                              <path
+                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                clip-rule="evenodd"
+                                fill-rule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        <%= if subtype == "goal" do %>
+                          <div class="sm:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                              Target value
                             </label>
+                            <input
+                              type="text"
+                              name="kpi_goal_target"
+                              value={@editing_widget["goal_target"] || ""}
+                              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                              placeholder="e.g. 1200"
+                            />
+                          </div>
+                        <% end %>
+                      </div>
+                      <%= case subtype do %>
+                        <% "split" -> %>
+                          <div class="space-y-2">
+                            <p class="text-sm text-gray-700 dark:text-slate-300">
+                              Split timeframe by half is enabled for this subtype.
+                            </p>
+                            <div class="flex flex-wrap items-center gap-4">
+                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                                <input type="checkbox" name="kpi_diff" checked={diff_checked} />
+                                Difference between splits
+                              </label>
+                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  name="kpi_timeseries"
+                                  checked={timeseries_checked}
+                                /> Show timeseries
+                              </label>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-slate-400">
+                              Shows percent change between halves: (Now − Prev) / |Prev| × 100. Hidden when Prev is missing or zero.
+                            </p>
+                          </div>
+                        <% "goal" -> %>
+                          <div class="space-y-2">
+                            <div class="flex flex-wrap items-center gap-4">
+                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  name="kpi_goal_progress"
+                                  checked={goal_progress_checked}
+                                /> Show progress bar
+                              </label>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-slate-400">
+                              Progress bar illustrates progress toward the target.
+                            </p>
+                          </div>
+                        <% _ -> %>
+                          <div class="flex items-center gap-4">
                             <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                              <input type="checkbox" name="kpi_timeseries" checked={timeseries_checked} /> Show timeseries
+                              <input
+                                type="checkbox"
+                                name="kpi_timeseries"
+                                checked={timeseries_checked}
+                              /> Show timeseries
                             </label>
                           </div>
-                          <p class="text-xs text-gray-500 dark:text-slate-400">Shows percent change between halves: (Now − Prev) / |Prev| × 100. Hidden when Prev is missing or zero.</p>
+                      <% end %>
+                    <% "timeseries" -> %>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Paths (one per line)
+                          </label>
+                          <% paths = (@editing_widget["paths"] || []) |> Enum.join("\n") %>
+                          <textarea
+                            name="ts_paths"
+                            rows="4"
+                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                            placeholder="metrics.sales\nmetrics.orders"
+                          ><%= paths %></textarea>
                         </div>
-                      <% "goal" -> %>
-                        <div class="space-y-2">
-                          <div class="flex flex-wrap items-center gap-4">
-                            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                              <input type="checkbox" name="kpi_goal_progress" checked={goal_progress_checked} /> Show progress bar
-                            </label>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Y-axis label
+                          </label>
+                          <input
+                            type="text"
+                            name="ts_y_label"
+                            value={@editing_widget["y_label"] || ""}
+                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                            placeholder="e.g., Revenue ($), Orders, Errors (%)"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Chart Type
+                          </label>
+                          <% ctype = @editing_widget["chart_type"] || "line" %>
+                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                            <select
+                              name="ts_chart_type"
+                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                            >
+                              <option value="line" selected={ctype == "line"}>Line</option>
+                              <option value="area" selected={ctype == "area"}>Area</option>
+                              <option value="bar" selected={ctype == "bar"}>Bar</option>
+                            </select>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              data-slot="icon"
+                              aria-hidden="true"
+                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                            >
+                              <path
+                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                clip-rule="evenodd"
+                                fill-rule="evenodd"
+                              />
+                            </svg>
                           </div>
-                          <p class="text-xs text-gray-500 dark:text-slate-400">Progress bar illustrates progress toward the target.</p>
                         </div>
-                      <% _ -> %>
-                        <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-4 sm:col-span-2">
+                          <% stacked = @editing_widget["stacked"] || false %>
+                          <% normalized = @editing_widget["normalized"] || false %>
+                          <% legend = @editing_widget["legend"] || false %>
                           <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                            <input type="checkbox" name="kpi_timeseries" checked={timeseries_checked} /> Show timeseries
+                            <input type="checkbox" name="ts_stacked" checked={stacked} /> Stacked
+                          </label>
+                          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                            <input type="checkbox" name="ts_normalized" checked={normalized} />
+                            Normalized
+                          </label>
+                          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                            <input type="checkbox" name="ts_legend" checked={legend} /> Show legend
                           </label>
                         </div>
-                    <% end %>
-
-                  <% "timeseries" -> %>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div class="sm:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Paths (one per line)</label>
-                        <% paths = (@editing_widget["paths"] || []) |> Enum.join("\n") %>
-                        <textarea name="ts_paths" rows="4" class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="metrics.sales\nmetrics.orders"><%= paths %></textarea>
                       </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Y-axis label</label>
-                        <input type="text" name="ts_y_label" value={@editing_widget["y_label"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="e.g., Revenue ($), Orders, Errors (%)" />
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Chart Type</label>
-                        <% ctype = @editing_widget["chart_type"] || "line" %>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select name="ts_chart_type"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                            <option value="line" selected={ctype == "line"}>Line</option>
-                            <option value="area" selected={ctype == "area"}>Area</option>
-                            <option value="bar" selected={ctype == "bar"}>Bar</option>
-                          </select>
-                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                          </svg>
+                    <% "category" -> %>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Path
+                          </label>
+                          <input
+                            type="text"
+                            name="cat_path"
+                            value={@editing_widget["path"] || ""}
+                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                            placeholder="metrics.category"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Chart Type
+                          </label>
+                          <% ctype = @editing_widget["chart_type"] || "bar" %>
+                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                            <select
+                              name="cat_chart_type"
+                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                            >
+                              <option value="bar" selected={ctype == "bar"}>Bar</option>
+                              <option value="pie" selected={ctype == "pie"}>Pie</option>
+                              <option value="donut" selected={ctype == "donut"}>Donut</option>
+                            </select>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              data-slot="icon"
+                              aria-hidden="true"
+                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                            >
+                              <path
+                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                clip-rule="evenodd"
+                                fill-rule="evenodd"
+                              />
+                            </svg>
+                          </div>
                         </div>
                       </div>
-                      <div class="flex items-center gap-4 sm:col-span-2">
-                        <% stacked = @editing_widget["stacked"] || false %>
-                        <% normalized = @editing_widget["normalized"] || false %>
-                        <% legend = @editing_widget["legend"] || false %>
-                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                          <input type="checkbox" name="ts_stacked" checked={stacked} /> Stacked
-                        </label>
-                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                          <input type="checkbox" name="ts_normalized" checked={normalized} /> Normalized
-                        </label>
-                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                          <input type="checkbox" name="ts_legend" checked={legend} /> Show legend
-                        </label>
-                      </div>
-                    </div>
+                  <% end %>
 
-                  <% "category" -> %>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div class="sm:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Path</label>
-                        <input type="text" name="cat_path" value={@editing_widget["path"] || ""} class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm" placeholder="metrics.category" />
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Chart Type</label>
-                        <% ctype = @editing_widget["chart_type"] || "bar" %>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select name="cat_chart_type"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6">
-                            <option value="bar" selected={ctype == "bar"}>Bar</option>
-                            <option value="pie" selected={ctype == "pie"}>Pie</option>
-                            <option value="donut" selected={ctype == "donut"}>Donut</option>
-                          </select>
-                          <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-                            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                <% end %>
-
-                <div class="flex items-center justify-end gap-3 pt-2">
-                  <button type="button" phx-click="close_widget_editor" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">Cancel</button>
-                  <button type="submit" class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">Save</button>
-                </div>
-              </.form>
-
-              <!-- Danger Zone -->
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
-                <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
-                <p class="text-xs text-gray-500 dark:text-slate-400">Delete this widget permanently from the dashboard.</p>
-                <div class="mt-3">
-                  <button
-                    type="button"
-                    phx-click="delete_widget"
-                    phx-value-id={@editing_widget["id"]}
-                    data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
-                    class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                  >
-                    Delete Widget
-                  </button>
+                  <div class="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      phx-click="close_widget_editor"
+                      class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </.form>
+                
+    <!-- Danger Zone -->
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
+                  <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
+                  <p class="text-xs text-gray-500 dark:text-slate-400">
+                    Delete this widget permanently from the dashboard.
+                  </p>
+                  <div class="mt-3">
+                    <button
+                      type="button"
+                      phx-click="delete_widget"
+                      phx-value-id={@editing_widget["id"]}
+                      data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
+                      class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                    >
+                      Delete Widget
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </:body>
-        </.app_modal>
-      <% end %>
-
-        <!-- Dashboard Content -->
+            </:body>
+          </.app_modal>
+        <% end %>
+        
+    <!-- Dashboard Content -->
         <div class="flex-1 relative">
-
           <%= if !has_grid_items do %>
             <!-- Empty state in white panel -->
             <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
@@ -2299,7 +2718,9 @@ defmodule TrifleApp.DashboardLive do
                       d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6"
                     />
                   </svg>
-                  <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Dashboard is empty</h3>
+                  <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                    Dashboard is empty
+                  </h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
                     This dashboard doesn't have any visualization data yet. Edit the dashboard to add charts and metrics.
                   </p>
@@ -2309,8 +2730,19 @@ defmodule TrifleApp.DashboardLive do
                         patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
                         class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
                       >
-                        <svg class="-ml-0.5 mr-1.5 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                        <svg
+                          class="-ml-0.5 mr-1.5 h-5 w-5"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                          />
                         </svg>
                         Edit Dashboard
                       </.link>
@@ -2321,134 +2753,26 @@ defmodule TrifleApp.DashboardLive do
             </div>
           <% end %>
         </div>
-
-        <!-- Sticky Summary Footer (only for authenticated users) -->
+        
+    <!-- Sticky Summary Footer (only for authenticated users) -->
         <%= if !@is_public_access do %>
           <%= if summary = get_summary_stats(assigns) do %>
-          <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
-            <div class="flex flex-wrap items-center gap-4 text-xs">
-
-              <!-- Selected Key -->
-              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-                </svg>
-                <span class="font-medium">Key:</span>
-                <span class="truncate max-w-32" title={summary.key}><%= summary.key %></span>
-              </div>
-
-              <!-- Points -->
-              <%= if summary.column_count > 0 do %>
-                <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                  <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
-                  </svg>
-                  <span class="font-medium">Points:</span>
-                  <span><%= summary.column_count %></span>
-                </div>
-              <% end %>
-
-              <!-- Paths -->
-              <%= if summary.path_count > 0 do %>
-                <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                  <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                  </svg>
-                  <span class="font-medium">Paths:</span>
-                  <span><%= summary.path_count %></span>
-                </div>
-              <% end %>
-
-              <!-- Transponders -->
-              <div class="flex items-center gap-1">
-                <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
-                </svg>
-                <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
-
-                <!-- Success count -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                  </svg>
-                  <span class="text-gray-900 dark:text-white"><%= summary.successful_transponders %></span>
-                </div>
-
-                <!-- Fail count -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                  </svg>
-                  <%= if summary.failed_transponders > 0 do %>
-                    <button
-                      phx-click="show_transponder_errors"
-                      class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
-                    >
-                      <%= summary.failed_transponders %>
-                    </button>
-                  <% else %>
-                    <span class="text-gray-900 dark:text-white">0</span>
-                  <% end %>
-                </div>
-              </div>
-
-              <!-- Load Duration -->
-              <%= if @load_duration_microseconds do %>
-                <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                  <svg class="h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
-                  </svg>
-                  <span class="font-medium">Load:</span>
-                  <span><%= format_duration(@load_duration_microseconds) %></span>
-                </div>
-              <% end %>
-              <!-- Export drop-up (right aligned) -->
-              <div id="dashboard-download-menu" class="ml-auto relative" data-default-label="Export" phx-hook="DownloadMenu">
-                <button type="button" phx-click="toggle_export_dropdown" data-role="download-button" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                  <span class="inline" data-role="download-text">Export</span>
-                  <svg class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
-                </button>
-                 <%= if @show_export_dropdown do %>
-                   <div data-role="download-dropdown" class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
-                    <% export_params = build_url_params(%{granularity: @granularity, smart_timeframe_input: @smart_timeframe_input, use_fixed_display: @use_fixed_display, from: @from, to: @to}) %>
-                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/csv?#{export_params}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                       <span class="flex items-center">
-                         <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                         CSV (table)
-                       </span>
-                     </a>
-                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/json?#{export_params}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                       <span class="flex items-center">
-                         <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                         JSON (raw)
-                       </span>
-                     </a>
-                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/pdf?#{export_params}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                       <span class="flex items-center">
-                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                         PDF (print)
-                       </span>
-                     </a>
-                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "light")}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                       <span class="flex items-center">
-                         <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                         PNG (light)
-                       </span>
-                     </a>
-                    <a data-export-link onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)" href={~p"/app/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "dark")}"} target="download_iframe" class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700">
-                        <span class="flex items-center">
-                          <svg class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                          PNG (dark)
-                        </span>
-                      </a>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          </div>
-
-        <% end %>
+            <.dashboard_footer
+              summary={summary}
+              load_duration_microseconds={@load_duration_microseconds}
+              show_export_dropdown={@show_export_dropdown}
+              dashboard={@dashboard}
+              export_params={
+                build_url_params(%{
+                  granularity: @granularity,
+                  smart_timeframe_input: @smart_timeframe_input,
+                  use_fixed_display: @use_fixed_display,
+                  from: @from,
+                  to: @to
+                })
+              }
+            />
+          <% end %>
         <% end %>
       </div>
     </div>
