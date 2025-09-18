@@ -526,6 +526,7 @@ Hooks.DashboardGrid = {
     this._lastKpiVisuals = [];
     this._lastTimeseries = [];
     this._lastCategory = [];
+    this._lastText = [];
 
     // Global window resize handler to resize all charts
     this._onWindowResize = () => {
@@ -628,25 +629,27 @@ Hooks.DashboardGrid = {
     } catch (_) { this.initialKpiVisual = []; }
     try { this.initialTimeseries = this.el.dataset.initialTimeseries ? JSON.parse(this.el.dataset.initialTimeseries) : []; } catch (_) { this.initialTimeseries = []; }
     try { this.initialCategory = this.el.dataset.initialCategory ? JSON.parse(this.el.dataset.initialCategory) : []; } catch (_) { this.initialCategory = []; }
-    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiVisual && this.initialKpiVisual.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length)) {
+    try { this.initialText = this.el.dataset.initialText ? JSON.parse(this.el.dataset.initialText) : []; } catch (_) { this.initialText = []; }
+    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiVisual && this.initialKpiVisual.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length) || (this.initialText && this.initialText.length)) {
       setTimeout(() => {
         try {
           if (this.initialKpiValues && this.initialKpiValues.length) this._render_kpi_values(this.initialKpiValues);
           if (this.initialKpiVisual && this.initialKpiVisual.length) this._render_kpi_visuals(this.initialKpiVisual);
           if (this.initialTimeseries && this.initialTimeseries.length) this._render_timeseries(this.initialTimeseries);
           if (this.initialCategory && this.initialCategory.length) this._render_category(this.initialCategory);
+          if (this.initialText && this.initialText.length) this._render_text(this.initialText);
         } catch (e) { console.error('initial print render failed', e); }
       }, 0);
     }
 
     // Ready signaling for export capture
-    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false };
+    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false };
     this._markedReady = false;
     this._scheduleReadyMark = () => {
       if (this._readyTimer) clearTimeout(this._readyTimer);
       this._readyTimer = setTimeout(() => {
         if (this._markedReady) return;
-        const ready = this._seen.timeseries || this._seen.category || (this._seen.kpi_values && this._seen.kpi_visual);
+        const ready = this._seen.timeseries || this._seen.category || this._seen.text || (this._seen.kpi_values && this._seen.kpi_visual);
         if (ready) { this._markedReady = true; try { window.TRIFLE_READY = true; } catch (_) {} }
       }, 200);
     };
@@ -701,8 +704,28 @@ Hooks.DashboardGrid = {
     // LiveView -> Hook updates for widget edits/deletes
     this.handleEvent('dashboard_grid_widget_updated', ({ id, title }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+      const content = item && item.querySelector('.grid-stack-item-content');
       const titleEl = item && item.querySelector('.grid-widget-title');
-      if (titleEl) titleEl.textContent = title;
+      const isTextWidget = content && content.dataset.textWidget === '1';
+
+      if (titleEl) {
+        if (isTextWidget) {
+          const rawTitle = title || '';
+          content.dataset.widgetTitle = rawTitle;
+          titleEl.dataset.originalTitle = rawTitle;
+          titleEl.textContent = '';
+          titleEl.setAttribute('aria-hidden', 'true');
+          titleEl.style.opacity = '0';
+          titleEl.style.pointerEvents = 'none';
+        } else {
+          if (content) delete content.dataset.widgetTitle;
+          titleEl.removeAttribute('aria-hidden');
+          titleEl.style.opacity = '';
+          titleEl.style.pointerEvents = '';
+          titleEl.textContent = title;
+        }
+      }
+
       // ensure layout save reflects new title
       this.saveLayout();
     });
@@ -734,6 +757,11 @@ Hooks.DashboardGrid = {
     // Draw/update per-widget category charts
     this.handleEvent('dashboard_grid_category', ({ items }) => {
       this._render_category(items);
+    });
+    this.handleEvent('dashboard_grid_text', ({ items }) => {
+      this._render_text(items);
+      this._seen.text = true;
+      this._scheduleReadyMark();
     });
   },
 
@@ -1294,6 +1322,155 @@ Hooks.DashboardGrid = {
     this._lastCategory = this._deepClone(items);
   },
 
+  _render_text(items) {
+    if (!Array.isArray(items)) return;
+    const cloned = this._deepClone(items);
+    this._lastText = cloned;
+
+    const activeIds = new Set(cloned.map((it) => String(it.id)));
+
+    this.el.querySelectorAll('.grid-stack-item-content[data-text-widget="1"]').forEach((content) => {
+      const parent = content.closest('.grid-stack-item');
+      const id = parent && parent.getAttribute('gs-id');
+      if (!activeIds.has(id)) {
+        this._resetTextWidget(content);
+      }
+    });
+
+    cloned.forEach((it) => {
+      const id = String(it.id);
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+      if (!item) return;
+
+      const content = item.querySelector('.grid-stack-item-content');
+      const body = item.querySelector('.grid-widget-body');
+      if (!content || !body) return;
+
+      content.dataset.textWidget = '1';
+      content.dataset.widgetTitle = it.title || '';
+      content.style.paddingTop = '';
+
+      const bg = typeof it.background_color === 'string' ? it.background_color : '';
+      const fg = typeof it.text_color === 'string' ? it.text_color : '';
+      content.style.backgroundColor = bg || '';
+      content.style.color = fg || '';
+
+      const isDark = this._isColorDark(bg);
+      content.style.borderColor = bg ? (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)') : '';
+
+      const header = content.querySelector('.grid-widget-header');
+      if (header) {
+        header.classList.add('text-widget-header');
+        header.style.borderColor = 'transparent';
+        header.style.marginBottom = '0';
+        header.style.paddingBottom = '0';
+      }
+
+      const titleBar = content.querySelector('.grid-widget-title');
+      if (titleBar) {
+        titleBar.textContent = '';
+        titleBar.setAttribute('aria-hidden', 'true');
+        titleBar.style.opacity = '0';
+        titleBar.style.pointerEvents = 'none';
+        titleBar.dataset.originalTitle = it.title || '';
+      }
+
+      body.className = 'grid-widget-body flex-1 flex text-widget-body flex-col gap-2 px-4 pt-0 pb-4';
+      body.dataset.textSubtype = it.subtype || 'header';
+      body.style.justifyContent = 'center';
+      body.style.alignItems = 'center';
+      body.style.textAlign = 'center';
+      body.style.overflowY = 'visible';
+      body.style.paddingTop = '';
+      body.style.paddingBottom = '';
+
+      if ((it.subtype || 'header') === 'html') {
+        body.style.justifyContent = 'flex-start';
+        body.style.alignItems = 'stretch';
+        body.style.textAlign = 'left';
+        body.style.overflowY = 'auto';
+
+        const raw = typeof it.payload === 'string' ? it.payload : '';
+        const finalHtml = raw && raw.trim().length ? raw : '<div class="text-xs opacity-60 italic">No HTML content</div>';
+        body.innerHTML = `<div class="text-widget-html w-full leading-relaxed">${finalHtml}</div>`;
+      } else {
+        const align = (it.alignment || 'center').toLowerCase();
+        const alignItems = align === 'left' ? 'flex-start' : (align === 'right' ? 'flex-end' : 'center');
+        const textAlign = align === 'left' ? 'left' : (align === 'right' ? 'right' : 'center');
+        body.style.alignItems = alignItems;
+        body.style.textAlign = textAlign;
+
+        const sizeClass = (() => {
+          switch (it.title_size) {
+            case 'small': return 'text-2xl';
+            case 'medium': return 'text-3xl';
+            default: return 'text-4xl';
+          }
+        })();
+
+        const title = this.escapeHtml(it.title || '');
+        const subtitleRaw = typeof it.subtitle === 'string' ? it.subtitle.trim() : '';
+        const subtitle = subtitleRaw ? `<div class="text-widget-subtitle text-base leading-relaxed opacity-80">${this.escapeHtml(subtitleRaw).replace(/\r?\n/g, '<br />')}</div>` : '';
+
+        body.innerHTML = `<div class="text-widget-header-content w-full flex flex-col gap-2"><div class="text-widget-title font-semibold ${sizeClass} leading-tight">${title || '&nbsp;'}</div>${subtitle}</div>`;
+      }
+    });
+
+    if (this._seen) this._seen.text = true;
+    if (typeof this._scheduleReadyMark === 'function') this._scheduleReadyMark();
+  },
+
+  _resetTextWidget(content) {
+    if (!content) return;
+    delete content.dataset.textWidget;
+    delete content.dataset.widgetTitle;
+    content.style.paddingTop = '';
+    content.style.backgroundColor = '';
+    content.style.color = '';
+    content.style.borderColor = '';
+
+    const header = content.querySelector('.grid-widget-header');
+    if (header) {
+      header.classList.remove('text-widget-header');
+      header.style.borderColor = '';
+      header.style.marginBottom = '';
+      header.style.paddingBottom = '';
+    }
+
+    const titleBar = content.querySelector('.grid-widget-title');
+    if (titleBar) {
+      delete titleBar.dataset.originalTitle;
+      titleBar.removeAttribute('aria-hidden');
+      titleBar.style.opacity = '';
+      titleBar.style.pointerEvents = '';
+    }
+
+    const body = content.querySelector('.grid-widget-body');
+    if (body) {
+      delete body.dataset.textSubtype;
+      body.className = 'grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400';
+      body.style.textAlign = '';
+      body.style.alignItems = '';
+      body.style.justifyContent = '';
+      body.style.overflowY = '';
+      body.style.paddingTop = '';
+      body.style.paddingBottom = '';
+      body.innerHTML = 'Chart is coming soon';
+    }
+  },
+
+  _isColorDark(color) {
+    if (!color || typeof color !== 'string') return false;
+    const hexMatch = color.trim().match(/^#?([0-9a-f]{6})$/i);
+    if (!hexMatch) return false;
+    const hex = hexMatch[1];
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return Number.isFinite(luminance) ? luminance < 0.5 : false;
+  },
+
   addGridItemEl(item) {
     const el = document.createElement('div');
     el.className = 'grid-stack-item';
@@ -1355,14 +1532,22 @@ Hooks.DashboardGrid = {
 
   saveLayout() {
     if (!this.editable) return;
-    const items = Array.from(this.el.querySelectorAll('.grid-stack-item')).map((el) => ({
-      x: parseInt(el.getAttribute('gs-x') || '0', 10),
-      y: parseInt(el.getAttribute('gs-y') || '0', 10),
-      w: parseInt(el.getAttribute('gs-w') || '1', 10),
-      h: parseInt(el.getAttribute('gs-h') || '1', 10),
-      id: el.getAttribute('gs-id') || this.genId(),
-      title: (el.querySelector('.grid-widget-title')?.textContent || '').trim(),
-    }));
+    const items = Array.from(this.el.querySelectorAll('.grid-stack-item')).map((el) => {
+      const content = el.querySelector('.grid-stack-item-content');
+      const titleEl = el.querySelector('.grid-widget-title');
+      const storedTitle = (content && content.dataset.widgetTitle) || (titleEl && titleEl.dataset.originalTitle);
+      const textTitle = (titleEl && titleEl.textContent ? titleEl.textContent.trim() : '') || '';
+      const title = (storedTitle !== undefined && storedTitle !== null ? storedTitle : textTitle).trim();
+
+      return {
+        x: parseInt(el.getAttribute('gs-x') || '0', 10),
+        y: parseInt(el.getAttribute('gs-y') || '0', 10),
+        w: parseInt(el.getAttribute('gs-w') || '1', 10),
+        h: parseInt(el.getAttribute('gs-h') || '1', 10),
+        id: el.getAttribute('gs-id') || this.genId(),
+        title,
+      };
+    });
     this.pushEvent('dashboard_grid_changed', { items });
   },
 
@@ -1373,6 +1558,7 @@ Hooks.DashboardGrid = {
     const kpiVisuals = Array.isArray(this._lastKpiVisuals) ? this._deepClone(this._lastKpiVisuals) : null;
     const timeseries = Array.isArray(this._lastTimeseries) ? this._deepClone(this._lastTimeseries) : null;
     const categories = Array.isArray(this._lastCategory) ? this._deepClone(this._lastCategory) : null;
+    const textWidgets = Array.isArray(this._lastText) ? this._deepClone(this._lastText) : null;
 
     const disposeMap = (map) => {
       if (!map) return;
@@ -1408,6 +1594,7 @@ Hooks.DashboardGrid = {
       this._seen.kpi_visual = false;
       this._seen.timeseries = false;
       this._seen.category = false;
+      this._seen.text = false;
     }
 
     const markPending = (selector) => {
@@ -1425,6 +1612,7 @@ Hooks.DashboardGrid = {
       if (kpiVisuals && kpiVisuals.length) this._render_kpi_visuals(kpiVisuals);
       if (timeseries && timeseries.length) this._render_timeseries(timeseries);
       if (categories && categories.length) this._render_category(categories);
+      if (Array.isArray(textWidgets)) this._render_text(textWidgets);
     };
 
     // Ensure DOM settles before re-rendering charts to avoid zero-size init
