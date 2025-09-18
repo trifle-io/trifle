@@ -9,6 +9,15 @@ defmodule TrifleApp.DashboardLive do
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
   require Logger
 
+  @text_widget_colors [
+    %{id: "default", label: "Default (white)", background: "#ffffff", text: "#0f172a"},
+    %{id: "slate", label: "Slate", background: "#0f172a", text: "#f8fafc"},
+    %{id: "teal", label: "Teal", background: "#0f766e", text: "#ecfdf5"},
+    %{id: "amber", label: "Amber", background: "#f59e0b", text: "#1f2937"},
+    %{id: "emerald", label: "Emerald", background: "#10b981", text: "#064e3b"},
+    %{id: "rose", label: "Rose", background: "#f43f5e", text: "#fff1f2"}
+  ]
+
   def mount(params, _session, socket) do
     case params do
       %{"id" => dashboard_id} ->
@@ -297,9 +306,10 @@ defmodule TrifleApp.DashboardLive do
             # If stats are loaded, recompute KPI values (in case new widgets were added)
             socket = assign(socket, :dashboard, updated_dashboard)
 
+            items = updated_dashboard.payload["grid"] || []
+
             socket =
               if socket.assigns[:stats] do
-                items = updated_dashboard.payload["grid"] || []
                 {kpi_items, kpi_visuals} = compute_kpi_datasets(socket.assigns.stats, items)
                 ts_items = compute_timeseries_widgets(socket.assigns.stats, items)
                 cat_items = compute_category_widgets(socket.assigns.stats, items)
@@ -312,6 +322,9 @@ defmodule TrifleApp.DashboardLive do
               else
                 socket
               end
+
+            text_items = compute_text_widgets(items)
+            socket = push_event(socket, "dashboard_grid_text", %{items: text_items})
 
             {:noreply, socket}
 
@@ -437,6 +450,63 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("path", Map.get(params, "cat_path", ""))
                   |> Map.put("chart_type", Map.get(params, "cat_chart_type", "bar"))
 
+                "text" ->
+                  subtype =
+                    Map.get(params, "text_subtype", i["subtype"] || "header")
+                    |> normalize_text_subtype()
+
+                  color_id =
+                    Map.get(params, "text_color", i["color"]) |> normalize_text_color_id()
+
+                  base =
+                    base
+                    |> Map.put("type", "text")
+                    |> Map.put("subtype", subtype)
+                    |> Map.put("color", color_id)
+                    |> Map.delete("path")
+                    |> Map.delete("function")
+                    |> Map.delete("size")
+                    |> Map.delete("split")
+                    |> Map.delete("diff")
+                    |> Map.delete("timeseries")
+                    |> Map.delete("goal_target")
+                    |> Map.delete("goal_progress")
+                    |> Map.delete("paths")
+                    |> Map.delete("chart_type")
+                    |> Map.delete("stacked")
+                    |> Map.delete("normalized")
+                    |> Map.delete("legend")
+                    |> Map.delete("y_label")
+
+                  case subtype do
+                    "html" ->
+                      base
+                      |> Map.put("payload", Map.get(params, "text_payload", "") |> to_string())
+                      |> Map.delete("subtitle")
+                      |> Map.delete("alignment")
+                      |> Map.delete("title_size")
+
+                    _ ->
+                      base
+                      |> Map.put(
+                        "title_size",
+                        Map.get(params, "text_title_size", i["title_size"] || "large")
+                        |> normalize_text_title_size()
+                      )
+                      |> Map.put(
+                        "alignment",
+                        Map.get(params, "text_alignment", i["alignment"] || "center")
+                        |> normalize_text_alignment()
+                      )
+                      |> Map.put(
+                        "subtitle",
+                        Map.get(params, "text_subtitle", i["subtitle"] || "")
+                        |> to_string()
+                        |> String.trim()
+                      )
+                      |> Map.delete("payload")
+                  end
+
                 _ ->
                   base
               end
@@ -480,7 +550,70 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("change_widget_type", %{"widget_id" => id, "widget_type" => type}, socket) do
     w = socket.assigns.editing_widget || %{"id" => id}
-    {:noreply, assign(socket, :editing_widget, Map.put(w, "type", String.downcase(type)))}
+    normalized = String.downcase(to_string(type))
+
+    w = Map.put(w, "type", normalized)
+
+    w =
+      case normalized do
+        "text" ->
+          w
+          |> Map.put_new("subtype", "header")
+          |> Map.put_new("color", "default")
+
+        _ ->
+          w
+      end
+
+    {:noreply, assign(socket, :editing_widget, w)}
+  end
+
+  def handle_event("change_text_subtype", %{"widget_id" => id, "text_subtype" => subtype}, socket) do
+    w = socket.assigns.editing_widget || %{"id" => id}
+    normalized = normalize_text_subtype(subtype)
+    w =
+      w
+      |> Map.put("subtype", normalized)
+      |> Map.put_new("color", "default")
+
+    {:noreply, assign(socket, :editing_widget, w)}
+  end
+
+  def handle_event("change_text_subtype", %{"text_subtype" => subtype} = params, socket) do
+    id =
+      Map.get(params, "widget_id") ||
+        Map.get(params, "widget-id") ||
+        (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
+
+    w = socket.assigns.editing_widget || %{"id" => id}
+    normalized = normalize_text_subtype(subtype)
+    w =
+      w
+      |> Map.put("subtype", normalized)
+      |> Map.put_new("color", "default")
+
+    {:noreply, assign(socket, :editing_widget, w)}
+  end
+
+  def handle_event("change_text_color", %{"widget_id" => id, "color" => color_id}, socket) do
+    w = socket.assigns.editing_widget || %{"id" => id}
+    normalized = normalize_text_color_id(color_id)
+    w = Map.put(w, "color", normalized)
+
+    {:noreply, assign(socket, :editing_widget, w)}
+  end
+
+  def handle_event("change_text_color", %{"color" => color_id} = params, socket) do
+    id =
+      Map.get(params, "widget_id") ||
+        Map.get(params, "widget-id") ||
+        (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
+
+    w = socket.assigns.editing_widget || %{"id" => id}
+    normalized = normalize_text_color_id(color_id)
+    w = Map.put(w, "color", normalized)
+
+    {:noreply, assign(socket, :editing_widget, w)}
   end
 
   def handle_event("change_kpi_subtype", %{"widget_id" => id, "kpi_subtype" => subtype}, socket) do
@@ -544,6 +677,64 @@ defmodule TrifleApp.DashboardLive do
       !!item["split"] -> "split"
       true -> "number"
     end
+  end
+
+  defp text_widget_color_options, do: @text_widget_colors
+
+  defp default_text_widget_color do
+    @text_widget_colors |> List.first()
+  end
+
+  defp resolve_text_widget_color(color_id) do
+    id =
+      case color_id do
+        nil -> ""
+        v -> to_string(v)
+      end
+      |> String.downcase()
+
+    Enum.find(@text_widget_colors, &(&1.id == id)) || default_text_widget_color()
+  end
+
+  defp normalize_text_subtype(value) do
+    value
+    |> to_string()
+    |> String.downcase()
+    |> case do
+      "html" -> "html"
+      "header" -> "header"
+      _ -> "header"
+    end
+  end
+
+  defp normalize_text_alignment(value) do
+    value
+    |> to_string()
+    |> String.downcase()
+    |> case do
+      "left" -> "left"
+      "right" -> "right"
+      _ -> "center"
+    end
+  end
+
+  defp normalize_text_title_size(value) do
+    value
+    |> to_string()
+    |> String.downcase()
+    |> case do
+      "small" -> "small"
+      "medium" -> "medium"
+      "large" -> "large"
+      "s" -> "small"
+      "m" -> "medium"
+      "l" -> "large"
+      _ -> "large"
+    end
+  end
+
+  defp normalize_text_color_id(value) do
+    resolve_text_widget_color(value).id
   end
 
   defp compute_kpi_values(series_struct, grid_items) do
@@ -865,6 +1056,36 @@ defmodule TrifleApp.DashboardLive do
     items
   end
 
+  defp compute_text_widgets(grid_items) do
+    grid_items
+    |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "text" end)
+    |> Enum.map(fn item ->
+      id = to_string(item["id"])
+      subtype = normalize_text_subtype(item["subtype"])
+      color = resolve_text_widget_color(item["color"])
+
+      base = %{
+        id: id,
+        subtype: subtype,
+        title: to_string(item["title"] || ""),
+        color_id: color.id,
+        background_color: color.background,
+        text_color: color.text
+      }
+
+      case subtype do
+        "html" ->
+          Map.put(base, :payload, to_string(item["payload"] || ""))
+
+        _ ->
+          base
+          |> Map.put(:title_size, normalize_text_title_size(item["title_size"]))
+          |> Map.put(:alignment, normalize_text_alignment(item["alignment"]))
+          |> Map.put(:subtitle, item["subtitle"] |> to_string() |> String.trim())
+      end
+    end)
+  end
+
   defp normalize_number(%Decimal{} = d), do: Decimal.to_float(d)
   defp normalize_number(v) when is_number(v), do: v * 1.0
   defp normalize_number(_), do: 0.0
@@ -1130,6 +1351,7 @@ defmodule TrifleApp.DashboardLive do
     {kpi_items, kpi_visuals} = compute_kpi_datasets(result.series, grid_items)
     ts_items = compute_timeseries_widgets(result.series, grid_items)
     cat_items = compute_category_widgets(result.series, grid_items)
+    text_items = compute_text_widgets(grid_items)
 
     {:noreply,
      socket
@@ -1143,7 +1365,8 @@ defmodule TrifleApp.DashboardLive do
      |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
      |> push_event("dashboard_grid_kpi_visual", %{items: kpi_visuals})
      |> push_event("dashboard_grid_timeseries", %{items: ts_items})
-     |> push_event("dashboard_grid_category", %{items: cat_items})}
+     |> push_event("dashboard_grid_category", %{items: cat_items})
+     |> push_event("dashboard_grid_text", %{items: text_items})}
   end
 
   def handle_async(:dashboard_data_task, {:error, error}, socket) do
@@ -1892,6 +2115,7 @@ defmodule TrifleApp.DashboardLive do
         <% raw_grid_items = (@dashboard.payload || %{})["grid"] %>
         <% grid_items = if is_list(raw_grid_items), do: raw_grid_items, else: [] %>
         <% has_grid_items = grid_items != [] %>
+        <% text_items = compute_text_widgets(grid_items) %>
         
     <!-- Grid Layout -->
         <div class={[
@@ -1914,6 +2138,7 @@ defmodule TrifleApp.DashboardLive do
             data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
             data-colors={ChartColors.json_palette()}
             data-initial-grid={Jason.encode!(grid_items)}
+            data-initial-text={Jason.encode!(text_items)}
             data-dashboard-id={@dashboard.id}
             data-public-token={@public_token}
           >
@@ -2321,6 +2546,7 @@ defmodule TrifleApp.DashboardLive do
                         <option value="kpi" selected={sel == "kpi"}>KPI</option>
                         <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
                         <option value="category" selected={sel == "category"}>Category</option>
+                        <option value="text" selected={sel == "text"}>Text</option>
                       </select>
                       <svg
                         viewBox="0 0 16 16"
@@ -2609,6 +2835,204 @@ defmodule TrifleApp.DashboardLive do
                           </label>
                         </div>
                       </div>
+                    <% "text" -> %>
+                      <% subtype = normalize_text_subtype(@editing_widget["subtype"]) %>
+                      <% color_id = normalize_text_color_id(@editing_widget["color"]) %>
+                      <% size = normalize_text_title_size(@editing_widget["title_size"]) %>
+                      <% alignment = normalize_text_alignment(@editing_widget["alignment"]) %>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Content Type
+                          </label>
+                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                            <select
+                              name="text_subtype"
+                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                              phx-change="change_text_subtype"
+                              phx-value-widget-id={@editing_widget["id"]}
+                            >
+                              <option value="header" selected={subtype == "header"}>Header</option>
+                              <option value="html" selected={subtype == "html"}>HTML</option>
+                            </select>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              data-slot="icon"
+                              aria-hidden="true"
+                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                            >
+                              <path
+                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                clip-rule="evenodd"
+                                fill-rule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            Background color
+                          </label>
+                          <% selected_color = resolve_text_widget_color(color_id) %>
+                          <div x-data="{ open: false }" class="relative mt-2 sm:max-w-xs" x-cloak>
+                            <input type="hidden" name="text_color" value={color_id} />
+                            <button
+                              type="button"
+                              class="w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                              x-on:click="open = !open"
+                              x-bind:aria-expanded="open"
+                              aria-haspopup="listbox"
+                            >
+                              <div class="flex items-center justify-between">
+                                <span>{selected_color.label}</span>
+                                <span class="inline-flex items-center gap-2">
+                                  <span
+                                    class="inline-block h-5 w-5 rounded-md border border-white/80 shadow-sm"
+                                    style={"background-color: #{selected_color.background};"}
+                                    aria-hidden="true"
+                                  >
+                                  </span>
+                                </span>
+                              </div>
+                              <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                <svg
+                                  class="h-5 w-5 text-gray-400"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </span>
+                            </button>
+
+                            <div
+                              x-show="open"
+                              x-on:click.away="open = false"
+                              class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                              role="listbox"
+                            >
+                              <%= for color <- text_widget_color_options() do %>
+                                <button
+                                  type="button"
+                                  phx-click="change_text_color"
+                                  phx-value-widget-id={@editing_widget["id"]}
+                                  phx-value-color={color.id}
+                                  x-on:click="open = false"
+                                  class={[
+                                    "w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
+                                    if(color_id == color.id, do: "bg-gray-100 dark:bg-slate-700")
+                                  ]}
+                                  role="option"
+                                  aria-selected={color_id == color.id}
+                                >
+                                  <div class="flex items-center justify-between">
+                                    <span class="text-sm text-gray-900 dark:text-white">
+                                      {color.label}
+                                    </span>
+                                    <span class="inline-flex items-center">
+                                      <span
+                                        class="inline-block h-5 w-5 rounded-md border border-white/80 shadow-sm"
+                                        style={"background-color: #{color.background};"}
+                                        aria-hidden="true"
+                                      >
+                                      </span>
+                                    </span>
+                                  </div>
+                                </button>
+                              <% end %>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <%= if subtype == "html" do %>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                            HTML Content
+                          </label>
+                          <textarea
+                            name="text_payload"
+                            rows="6"
+                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                            placeholder="<h2>Hello world</h2>"
+                          ><%= @editing_widget["payload"] || "" %></textarea>
+                          <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                            Raw HTML is inserted as-is. Make sure it comes from a trusted source.
+                          </p>
+                        </div>
+                      <% else %>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                              Title Size
+                            </label>
+                            <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                              <select
+                                name="text_title_size"
+                                class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                              >
+                                <option value="large" selected={size == "large"}>Large</option>
+                                <option value="medium" selected={size == "medium"}>Medium</option>
+                                <option value="small" selected={size == "small"}>Small</option>
+                              </select>
+                              <svg
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                                data-slot="icon"
+                                aria-hidden="true"
+                                class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                              >
+                                <path
+                                  d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                  clip-rule="evenodd"
+                                  fill-rule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                          <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                              Alignment
+                            </label>
+                            <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+                              <select
+                                name="text_alignment"
+                                class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                              >
+                                <option value="left" selected={alignment == "left"}>Left</option>
+                                <option value="center" selected={alignment == "center"}>Center</option>
+                                <option value="right" selected={alignment == "right"}>Right</option>
+                              </select>
+                              <svg
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                                data-slot="icon"
+                                aria-hidden="true"
+                                class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                              >
+                                <path
+                                  d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                  clip-rule="evenodd"
+                                  fill-rule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                          <div class="sm:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                              Subtitle
+                            </label>
+                            <textarea
+                              name="text_subtitle"
+                              rows="3"
+                              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                              placeholder="Optional supporting text"
+                            ><%= @editing_widget["subtitle"] || "" %></textarea>
+                          </div>
+                        </div>
+                      <% end %>
                     <% "category" -> %>
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="sm:col-span-2">
