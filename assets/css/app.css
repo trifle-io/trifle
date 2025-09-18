@@ -31,17 +31,17 @@ input[type="time"],
 input[type="week"],
 select,
 textarea {
-  @apply border border-gray-300 dark:border-slate-600 rounded-md px-3 py-2 bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm;
+  @apply border border-gray-300 dark:border-slate-600 rounded-md px-3 py-2 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm;
   @apply focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500;
 }
 
 input[type="checkbox"] {
-  @apply w-4 h-4 text-teal-600 bg-white dark:bg-slate-700 border-gray-300 dark:border-slate-600 rounded focus:ring-teal-500;
+  @apply w-4 h-4 text-teal-600 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 rounded focus:ring-teal-500;
 }
 
 /* Only add dropdown arrow to selects that don't have custom icons */
 select:not([class*="grid"]):not([class*="col-"]) {
-  @apply bg-white dark:bg-slate-700 bg-no-repeat;
+  @apply bg-white dark:bg-slate-800 bg-no-repeat;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 0.5rem center;
   background-size: 1em 1em;
@@ -50,7 +50,7 @@ select:not([class*="grid"]):not([class*="col-"]) {
 
 /* For admin form selects with custom icons, just ensure proper styling without background image */
 select[class*="grid"], select[class*="col-"] {
-  @apply bg-white dark:bg-slate-700;
+  @apply bg-white dark:bg-slate-800;
 }
 
 /* Fix for custom admin form dropdowns with SVG icons */
