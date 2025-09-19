@@ -419,6 +419,7 @@ defmodule TrifleApp.DashboardLive do
                         Map.get(params, "kpi_goal_target", "") |> String.trim()
                       )
                       |> Map.put("goal_progress", Map.has_key?(params, "kpi_goal_progress"))
+                      |> Map.put("goal_invert", Map.has_key?(params, "kpi_goal_invert"))
 
                     _ ->
                       base
@@ -427,6 +428,7 @@ defmodule TrifleApp.DashboardLive do
                       |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
                       |> Map.delete("goal_target")
                       |> Map.delete("goal_progress")
+                      |> Map.delete("goal_invert")
                   end
 
                 "timeseries" ->
@@ -471,6 +473,7 @@ defmodule TrifleApp.DashboardLive do
                     |> Map.delete("timeseries")
                     |> Map.delete("goal_target")
                     |> Map.delete("goal_progress")
+                    |> Map.delete("goal_invert")
                     |> Map.delete("paths")
                     |> Map.delete("chart_type")
                     |> Map.delete("stacked")
@@ -804,6 +807,7 @@ defmodule TrifleApp.DashboardLive do
         target = to_number(item["goal_target"])
 
         progress_enabled = !!item["goal_progress"]
+        invert_goal = !!item["goal_invert"]
 
         ratio =
           if is_number(value) and is_number(target) and target != 0, do: value / target, else: nil
@@ -818,13 +822,14 @@ defmodule TrifleApp.DashboardLive do
           target: target,
           progress_enabled: progress_enabled,
           progress_ratio: ratio,
+          invert: invert_goal,
           has_visual: has_visual,
           visual_type: if(has_visual, do: "progress", else: nil)
         }
 
         visual_map =
           if has_visual do
-            %{id: id, type: "progress", current: value || 0.0, target: target, ratio: ratio}
+            %{id: id, type: "progress", current: value || 0.0, target: target, ratio: ratio, invert: invert_goal}
           end
 
         {value_map, visual_map}
@@ -2607,6 +2612,7 @@ defmodule TrifleApp.DashboardLive do
                       <% diff_checked = !!@editing_widget["diff"] %>
                       <% timeseries_checked = !!@editing_widget["timeseries"] %>
                       <% goal_progress_checked = !!@editing_widget["goal_progress"] %>
+                      <% goal_invert_checked = !!@editing_widget["goal_invert"] %>
                       <input type="hidden" name="kpi_subtype" value={subtype} />
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="sm:col-span-2">
@@ -2760,9 +2766,19 @@ defmodule TrifleApp.DashboardLive do
                                   checked={goal_progress_checked}
                                 /> Show progress bar
                               </label>
+                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  name="kpi_goal_invert"
+                                  checked={goal_invert_checked}
+                                /> Invert goal (lower is better)
+                              </label>
                             </div>
                             <p class="text-xs text-gray-500 dark:text-slate-400">
                               Progress bar illustrates progress toward the target.
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-slate-400">
+                              When inverted, staying at or below the target is considered success; exceeding it turns the progress indicator red.
                             </p>
                           </div>
                         <% _ -> %>

@@ -924,7 +924,6 @@ Hooks.DashboardGrid = {
       const subtype = String(it.subtype || 'number').toLowerCase();
       const hasVisual = !!it.has_visual;
       const visualType = hasVisual && it.visual_type ? String(it.visual_type).toLowerCase() : null;
-
       wrap.style.gap = (subtype === 'goal' && hasVisual && visualType === 'progress') ? '6px' : '12px';
 
       if (meta) {
@@ -997,6 +996,7 @@ Hooks.DashboardGrid = {
         const valueLabel = formatNumber(it.value);
         const targetLabel = formatNumber(it.target);
         const ratio = toNumber(it.progress_ratio != null ? it.progress_ratio : it.ratio);
+        const invertGoal = !!it.invert;
         const showProgress = hasVisual && visualType === 'progress';
         const goalValue = targetLabel && targetLabel !== '—' ? targetLabel : '';
         const badge = goalValue
@@ -1028,8 +1028,16 @@ Hooks.DashboardGrid = {
           const goalMarkup = goalText
             ? `<span class="text-sm font-medium text-gray-500 dark:text-slate-400">${goalText}</span>`
             : '';
+          let statusClass;
+          if (ratio == null) {
+            statusClass = 'text-gray-700 dark:text-slate-200';
+          } else if (invertGoal) {
+            statusClass = ratio <= 1 ? 'text-teal-600 dark:text-teal-300' : 'text-red-600 dark:text-red-300';
+          } else {
+            statusClass = ratio >= 1 ? 'text-green-600 dark:text-green-300' : 'text-teal-600 dark:text-teal-300';
+          }
           meta.innerHTML = `
-            <span class="text-sm font-semibold text-gray-700 dark:text-slate-200">${pctText}</span>
+            <span class="text-sm font-semibold ${statusClass}">${pctText}</span>
             ${goalMarkup}`;
           if (visual && visual.dataset.visualType === 'progress') {
             visual.style.marginTop = '-10px';
@@ -1111,7 +1119,15 @@ Hooks.DashboardGrid = {
           const axisMax = Math.max(targetNum ?? 0, currentNum, 1);
           const baseValue = targetNum == null || targetNum === 0 ? axisMax : targetNum;
           const ratio = Number.isFinite(Number(it.ratio)) ? Number(it.ratio) : (targetNum && targetNum !== 0 ? currentNum / targetNum : null);
-          const progressColor = ratio != null && ratio >= 1 ? '#22c55e' : lineColor;
+          const invertGoal = !!it.invert;
+          let progressColor;
+          if (ratio == null) {
+            progressColor = lineColor;
+          } else if (invertGoal) {
+            progressColor = ratio <= 1 ? lineColor : '#ef4444';
+          } else {
+            progressColor = ratio >= 1 ? '#22c55e' : lineColor;
+          }
           const background = isDarkMode ? '#1f2937' : '#E5E7EB';
           chart.setOption({
             backgroundColor: 'transparent',
