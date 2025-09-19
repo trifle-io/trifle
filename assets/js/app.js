@@ -1348,15 +1348,27 @@ Hooks.DashboardGrid = {
 
       content.dataset.textWidget = '1';
       content.dataset.widgetTitle = it.title || '';
+      content.dataset.textWidgetColor = (it.color_id || 'default');
       content.style.paddingTop = '';
 
       const bg = typeof it.background_color === 'string' ? it.background_color : '';
       const fg = typeof it.text_color === 'string' ? it.text_color : '';
-      content.style.backgroundColor = bg || '';
-      content.style.color = fg || '';
 
-      const isDark = this._isColorDark(bg);
-      content.style.borderColor = bg ? (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)') : '';
+      const colorId = (it.color_id || 'default').toLowerCase();
+      const hasCustomColor = colorId !== 'default' && bg && this._isHexColor(bg);
+
+      if (hasCustomColor) {
+        content.style.backgroundColor = bg;
+        content.style.color = fg || '';
+        const isDark = this._isColorDark(bg);
+        content.style.borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)';
+        content.dataset.customBg = '1';
+      } else {
+        content.style.backgroundColor = '';
+        content.style.color = '';
+        content.style.borderColor = '';
+        delete content.dataset.customBg;
+      }
 
       const header = content.querySelector('.grid-widget-header');
       if (header) {
@@ -1424,10 +1436,12 @@ Hooks.DashboardGrid = {
     if (!content) return;
     delete content.dataset.textWidget;
     delete content.dataset.widgetTitle;
+    delete content.dataset.textWidgetColor;
     content.style.paddingTop = '';
     content.style.backgroundColor = '';
     content.style.color = '';
     content.style.borderColor = '';
+    delete content.dataset.customBg;
 
     const header = content.querySelector('.grid-widget-header');
     if (header) {
@@ -1469,6 +1483,11 @@ Hooks.DashboardGrid = {
     const b = parseInt(hex.slice(4, 6), 16);
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     return Number.isFinite(luminance) ? luminance < 0.5 : false;
+  },
+
+  _isHexColor(color) {
+    if (!color || typeof color !== 'string') return false;
+    return /^#?[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color.trim());
   },
 
   addGridItemEl(item) {
