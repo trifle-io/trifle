@@ -26,7 +26,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     marginRight: 0.33
   }
   @default_viewport {1366, 900}
-  @default_pdf_viewport {1920, 1080}
+  # @default_pdf_viewport {1920, 1080} # Currently unused
   @default_timeout_ms 30000
   @png_max_dimension 16_384
   @png_capture_scale 2.0
@@ -49,10 +49,10 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_pdf launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
-         {:ok, page_ws} <- open_page_ws(state, url),
+         {:ok, page_ws} <- open_page_ws_with_theme(state, url, :light), # Always use light theme for PDF
+         _ = normalize_background(page_ws), # Apply normalization early
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         _ = normalize_background(page_ws),
          {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base) do
       _ = close(page_ws)
       _ = kill_chrome(state)
@@ -60,7 +60,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       {:ok, Base.decode64!(pdf_b64)}
     else
       {:error, reason} = err ->
-        Logger.warn("CDP export_pdf failed: #{inspect(reason)}")
+        Logger.warning("CDP export_pdf failed: #{inspect(reason)}")
         err
     end
   end
@@ -75,11 +75,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_png launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
-         {:ok, page_ws} <- open_page_ws(state, url),
-         _ = apply_theme(page_ws, theme),
+         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme),
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         _ = apply_theme(page_ws, theme),
          clip <- expand_viewport_to_content(page_ws),
          {:ok, png_b64} <- page_capture_screenshot(page_ws, clip) do
       _ = close(page_ws)
@@ -88,7 +86,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       {:ok, Base.decode64!(png_b64)}
     else
       {:error, reason} = err ->
-        Logger.warn("CDP export_png failed: #{inspect(reason)}")
+        Logger.warning("CDP export_png failed: #{inspect(reason)}")
         err
     end
   end
@@ -220,23 +218,93 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
+  defp open_page_ws_with_theme(state, url, theme) do
+    with {:ok, page_ws} <- open_page_ws(state, url),
+         # Apply theme immediately after opening page but before navigation
+         _ = apply_theme_before_load(page_ws, theme),
+         # Re-navigate to ensure theme is applied
+         {:ok, _} <- __MODULE__.WS.call(page_ws, "Page.navigate", %{url: url}, 15_000) do
+      {:ok, page_ws}
+    else
+      error -> error
+    end
+  end
+
   # --- Wait logic ---
   defp wait_until_ready(page_ws, timeout_ms) do
     # Hide topbar early to avoid capturing it in PNG as well
     _ = inject_css(page_ws, "#phx-topbar{display:none!important}")
 
-    js =
-      "(function(){return new Promise(function(res){(function check(){var ready = Boolean(window.TRIFLE_READY) || document.querySelector('.grid-stack .grid-widget-body .ts-chart, .grid-stack .grid-widget-body .cat-chart, .grid-stack .grid-widget-body .kpi-wrap'); if(ready){res(true);} else {setTimeout(check, 200);} })();});})()"
+    # Enhanced JS that waits for both DOM and chart rendering
+    js = """
+    (function(){
+      return new Promise(function(resolve) {
+        let checkCount = 0;
+        const maxChecks = #{div(timeout_ms, 200)}; // timeout_ms with 200ms intervals
+        
+        function checkReady() {
+          checkCount++;
+          
+          // Check for TRIFLE_READY flag
+          if (window.TRIFLE_READY) {
+            // Additional delay to ensure charts are rendered
+            setTimeout(() => resolve(true), 500);
+            return;
+          }
+          
+          // Check for chart elements
+          const charts = document.querySelectorAll('.grid-stack .grid-widget-body .ts-chart, .grid-stack .grid-widget-body .cat-chart, .grid-stack .grid-widget-body .kpi-wrap');
+          
+          if (charts.length > 0) {
+            // Check if chart canvases are ready (for ECharts)
+            let allChartsReady = true;
+            charts.forEach(chart => {
+              const canvas = chart.querySelector('canvas');
+              if (!canvas || canvas.width === 0 || canvas.height === 0) {
+                allChartsReady = false;
+              }
+              // Also check for SVG charts
+              const svg = chart.querySelector('svg');
+              if (!canvas && (!svg || svg.getBBox().width === 0)) {
+                allChartsReady = false;
+              }
+            });
+            
+            if (allChartsReady) {
+              // Wait a bit more for any final rendering
+              setTimeout(() => resolve(true), 1000);
+              return;
+            }
+          }
+          
+          if (checkCount < maxChecks) {
+            setTimeout(checkReady, 200);
+          } else {
+            resolve(false); // Timeout
+          }
+        }
+        
+        checkReady();
+      });
+    })()
+    """
 
     case __MODULE__.WS.call(
            page_ws,
            "Runtime.evaluate",
            %{expression: js, returnByValue: true, awaitPromise: true},
-           timeout_ms
+           timeout_ms + 2000 # Add buffer for internal delays
          ) do
-      {:ok, %{"result" => _}} -> :ok
-      {:ok, {:error, _} = err} -> {:error, err}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{"result" => %{"value" => true}}} -> 
+        # Add stabilization check after initial readiness
+        wait_for_stable_rendering(page_ws)
+      {:ok, %{"result" => %{"value" => false}}} -> 
+        {:error, :charts_not_ready_timeout}
+      {:ok, %{"result" => result}} -> 
+        Logger.warning("Unexpected readiness result: #{inspect(result)}")
+        :ok
+      other -> 
+        {:error, {:evaluation_failed, other}}
     end
   end
 
@@ -250,6 +318,57 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       })
 
     :ok
+  end
+
+  defp wait_for_stable_rendering(page_ws, stability_duration_ms \\ 300) do
+    js = """
+    (function() {
+      return new Promise((resolve) => {
+        let lastChangeTime = Date.now();
+        const observer = new MutationObserver(() => {
+          lastChangeTime = Date.now();
+        });
+        
+        // Observe chart containers
+        const chartContainers = document.querySelectorAll('.ts-chart, .cat-chart, .kpi-wrap');
+        chartContainers.forEach(container => {
+          observer.observe(container, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style', 'class', 'width', 'height']
+          });
+        });
+        
+        // Check for stability
+        const checkStability = setInterval(() => {
+          if (Date.now() - lastChangeTime > #{stability_duration_ms}) {
+            clearInterval(checkStability);
+            observer.disconnect();
+            resolve(true);
+          }
+        }, 100);
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          clearInterval(checkStability);
+          observer.disconnect();
+          resolve(true);
+        }, 5000);
+      });
+    })()
+    """
+    
+    case __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{
+      expression: js,
+      returnByValue: true,
+      awaitPromise: true
+    }, 10_000) do
+      {:ok, _} -> :ok
+      {:error, reason} -> 
+        Logger.warning("Stability check failed: #{inspect(reason)}")
+        :ok # Continue anyway
+    end
   end
 
   # --- Capture ---
@@ -282,31 +401,69 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   defp maybe_put_clip(params, _), do: params
 
   defp normalize_background(page_ws) do
-    js =
-      "(function(){\ntry{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}\ntry{document.body && document.body.classList && document.body.classList.remove('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff'; document.body.setAttribute('data-theme','light');}}catch(e){}\ntry{var s=document.createElement('style');\n s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';\n document.head.appendChild(s);}catch(e){}\ntry{window.dispatchEvent(new CustomEvent('trifle:theme-changed',{detail:{theme:'light'}}));}catch(e){}\nreturn true;})()"
+    js = """
+    (function(){
+      return new Promise((resolve) => {
+        try{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}
+        try{document.body && document.body.classList && document.body.classList.remove('dark');}catch(e){}
+        try{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff'; document.body.setAttribute('data-theme','light');}}catch(e){}
+        try{
+          var s=document.createElement('style');
+          s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';
+          document.head.appendChild(s);
+        }catch(e){}
+        try{window.dispatchEvent(new CustomEvent('trifle:theme-changed',{detail:{theme:'light'}}));}catch(e){}
+        
+        // Wait a bit for styles to apply
+        setTimeout(() => resolve(true), 100);
+      });
+    })()
+    """
 
-    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
+    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{
+      expression: js, 
+      returnByValue: true,
+      awaitPromise: true
+    }, 5000)
     :ok
   end
 
-  defp set_light_theme(page_ws) do
-    js =
-      "(function(){\ntry{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}\ntry{document.body && document.body.classList && document.body.classList.remove('dark');}catch(e){}\ntry{if(document.body){document.body.style.background='#ffffff'; document.body.setAttribute('data-theme','light');}}catch(e){}\ntry{window.dispatchEvent(new CustomEvent('trifle:theme-changed',{detail:{theme:'light'}}));}catch(e){}\nreturn true;})()"
 
-    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
+  defp apply_theme_before_load(page_ws, theme) do
+    # Inject a script that will apply theme immediately on page load
+    js = case theme do
+      :dark -> """
+        (function() {
+          // Apply dark theme via localStorage and DOM manipulation
+          localStorage.setItem('theme', 'dark');
+          document.addEventListener('DOMContentLoaded', function() {
+            document.documentElement.classList.add('dark');
+            document.body.classList.add('dark');
+            document.body.style.background = '#0f172a';
+            document.body.setAttribute('data-theme', 'dark');
+          });
+        })();
+      """
+      _ -> """
+        (function() {
+          // Apply light theme via localStorage and DOM manipulation
+          localStorage.setItem('theme', 'light');
+          document.addEventListener('DOMContentLoaded', function() {
+            document.documentElement.classList.remove('dark');
+            document.body.classList.remove('dark');
+            document.body.style.background = '#ffffff';
+            document.body.setAttribute('data-theme', 'light');
+          });
+        })();
+      """
+    end
+    
+    _ = __MODULE__.WS.call(page_ws, "Page.addScriptToEvaluateOnNewDocument", %{
+      source: js
+    })
+    
     :ok
   end
-
-  defp set_dark_theme(page_ws) do
-    js =
-      "(function(){\ntry{document.documentElement && document.documentElement.classList.add('dark');}catch(e){}\ntry{document.body && document.body.classList && document.body.classList.add('dark');}catch(e){}\ntry{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#0f172a'; document.body.setAttribute('data-theme','dark');}}catch(e){}\ntry{window.dispatchEvent(new CustomEvent('trifle:theme-changed',{detail:{theme:'dark'}}));}catch(e){}\nreturn true;})()"
-
-    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: js, returnByValue: true})
-    :ok
-  end
-
-  defp apply_theme(page_ws, :dark), do: set_dark_theme(page_ws)
-  defp apply_theme(page_ws, _), do: set_light_theme(page_ws)
 
   defp close(page_ws) do
     try do
@@ -419,7 +576,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
                 await_upgrade(conn, ref, status, headers)
               end
 
-            {:error, conn, reason, _responses} ->
+            {:error, _conn, reason, _responses} ->
               {:error, reason}
           end
       after
@@ -446,7 +603,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
 
     def close(%__MODULE__{} = s) do
-      {:ok, conn, ws, data} = Mint.WebSocket.encode(s.ws, {:close, 1000, ""})
+      {:ok, _conn, _ws, data} = Mint.WebSocket.encode(s.ws, {:close, 1000, ""})
       {:ok, conn} = Mint.WebSocket.stream_request_body(s.conn, s.ref, data)
       _ = read_until_closed(conn)
       :ok
