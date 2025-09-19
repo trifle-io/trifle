@@ -1196,6 +1196,27 @@ Hooks.DashboardGrid = {
         const legendText = isDarkMode ? '#D1D5DB' : '#374151';
         const showLegend = !!it.legend;
         const bottomPadding = showLegend ? 56 : 28;
+        const formatCompactNumber = (value) => {
+          if (value === null || value === undefined || value === '') return '0';
+          const n = Number(value);
+          if (!Number.isFinite(n)) return String(value);
+          const abs = Math.abs(n);
+          if (abs >= 1_000) {
+            const units = ['', 'K', 'M', 'B', 'T'];
+            let unitIndex = 0;
+            let scaled = abs;
+            while (scaled >= 1000 && unitIndex < units.length - 1) {
+              scaled /= 1000;
+              unitIndex += 1;
+            }
+            const decimals = scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
+            const formatted = scaled.toFixed(decimals).replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
+            return `${n < 0 ? '-' : ''}${formatted}${units[unitIndex]}`;
+          }
+
+          const decimals = abs < 1 ? 2 : (Number.isInteger(n) ? 0 : abs < 10 ? 2 : 1);
+          return n.toFixed(decimals).replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
+        };
         const series = (it.series || []).map((s, idx) => {
           const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
           if (stacked) base.stack = 'total';
@@ -1218,6 +1239,10 @@ Hooks.DashboardGrid = {
         if (normalized) {
           yAxis.max = 100;
           yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, { formatter: (v) => `${v}%` });
+        } else {
+          yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, {
+            formatter: (v) => formatCompactNumber(v)
+          });
         }
         chart.setOption({
           backgroundColor: 'transparent',
@@ -1230,7 +1255,18 @@ Hooks.DashboardGrid = {
           },
           yAxis,
           legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false },
-          tooltip: { trigger: 'axis', confine: true, valueFormatter: (v) => v == null ? '-' : (normalized ? `${Number(v).toFixed(2)}%` : `${v}`) },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            valueFormatter: (v) => {
+              if (v == null) return '-';
+              if (normalized) {
+                const pct = Number(v);
+                return Number.isFinite(pct) ? `${pct.toFixed(2)}%` : '-';
+              }
+              return formatCompactNumber(v);
+            }
+          },
           series
         }, true);
         try {
@@ -1348,7 +1384,6 @@ Hooks.DashboardGrid = {
 
       content.dataset.textWidget = '1';
       content.dataset.widgetTitle = it.title || '';
-      content.dataset.textWidgetColor = (it.color_id || 'default');
       content.style.paddingTop = '';
 
       const bg = typeof it.background_color === 'string' ? it.background_color : '';
@@ -1436,7 +1471,6 @@ Hooks.DashboardGrid = {
     if (!content) return;
     delete content.dataset.textWidget;
     delete content.dataset.widgetTitle;
-    delete content.dataset.textWidgetColor;
     content.style.paddingTop = '';
     content.style.backgroundColor = '';
     content.style.color = '';
