@@ -807,6 +807,10 @@ Hooks.DashboardGrid = {
       });
       this._catCharts = {};
     }
+    if (this._onThemeChange) {
+      window.removeEventListener('trifle:theme-changed', this._onThemeChange);
+      this._onThemeChange = null;
+    }
   },
 
   initGrid() {
@@ -1684,13 +1688,6 @@ Hooks.DashboardGrid = {
       if (typeof value === 'object') return Object.assign({}, value);
       return value;
     }
-  },
-
-  destroyed() {
-    if (this._onWindowResize) window.removeEventListener('resize', this._onWindowResize);
-    if (this._onPageLoadingStart) window.removeEventListener('phx:page-loading-start', this._onPageLoadingStart);
-    if (this._onThemeChange) window.removeEventListener('trifle:theme-changed', this._onThemeChange);
-    if (this._sparkResize) window.removeEventListener('resize', this._sparkResize);
   },
 
   escapeHtml(str) {

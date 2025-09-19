@@ -1016,9 +1016,21 @@ defmodule TrifleApp.DashboardLive do
         path = to_string(item["path"] || "")
         chart_type = String.downcase(to_string(item["chart_type"] || "bar"))
 
+        slice_count =
+          series_struct
+          |> Map.get(:series, %{})
+          |> case do
+            series_map when is_map(series_map) ->
+              values = Map.get(series_map, :values) || Map.get(series_map, "values") || []
+              if is_list(values) and length(values) > 1, do: 2, else: 1
+
+            _ ->
+              1
+          end
+
         # Use format_category to aggregate across timeframe. With slices=2 we avoid the single-slice
         # timeline return and get maps we can merge into a single total category map.
-        formatted = Trifle.Stats.Series.format_category(series_struct, path, 2)
+        formatted = Trifle.Stats.Series.format_category(series_struct, path, slice_count)
 
         merged_map =
           cond do
