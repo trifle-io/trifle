@@ -10,10 +10,11 @@ defmodule TrifleApp.DashboardsLive do
      |> assign(:page_title, ["Dashboards"])
      |> assign(:breadcrumb_links, ["Dashboards"])
      |> assign(:dashboards_count, Organizations.count_dashboards_for_user_or_visible(user))
-     |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
-     |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
-     |> assign(:editing_group_id, nil)
-     |> assign(:collapsed_groups, MapSet.new())}
+      |> assign(:dashboard_groups_count, Organizations.count_dashboard_groups_global())
+      |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
+      |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
+      |> assign(:editing_group_id, nil)
+      |> assign(:collapsed_groups, MapSet.new())}
   end
 
   def handle_params(params, _url, socket) do
@@ -206,6 +207,7 @@ defmodule TrifleApp.DashboardsLive do
     user = socket.assigns.current_user
     socket
     |> assign(:dashboards_count, Organizations.count_dashboards_for_user_or_visible(user))
+    |> assign(:dashboard_groups_count, Organizations.count_dashboard_groups_global())
     |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
     |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
   end
@@ -281,7 +283,7 @@ defmodule TrifleApp.DashboardsLive do
           </div>
 
           <div class="divide-y divide-gray-100 dark:divide-slate-700">
-            <%= if @dashboards_count == 0 do %>
+            <%= if @dashboards_count == 0 and @dashboard_groups_count == 0 do %>
               <div class="py-16 text-center">
                 <svg
                   class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
