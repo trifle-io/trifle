@@ -489,6 +489,13 @@ defmodule Trifle.Organizations do
   end
 
   @doc """
+  Counts total dashboard groups in the organization.
+  """
+  def count_dashboard_groups_global do
+    Repo.one(from(g in DashboardGroup, select: count(g.id)))
+  end
+
+  @doc """
   Builds a nested tree of groups and dashboards for the entire organization.
   Includes dashboards owned by user or visible to everyone.
   """
