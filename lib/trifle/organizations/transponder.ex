@@ -79,10 +79,10 @@ defmodule Trifle.Organizations.Transponder do
         ]
       "Trifle.Stats.Transponder.StandardDeviation" ->
         [
-          %{name: "left", type: "string", label: "First Path", required: true},
-          %{name: "right", type: "string", label: "Second Path", required: true},
-          %{name: "square", type: "string", label: "Third Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: true}
+          %{name: "left", type: "string", label: "Sum Path", required: true, help: "Path to the sum of values"},
+          %{name: "right", type: "string", label: "Count Path", required: true, help: "Path to the count of values"},
+          %{name: "square", type: "string", label: "Sum of Squares Path", required: true, help: "Path to the sum of squares"},
+          %{name: "response_path", type: "string", label: "Response Path", required: true, help: "Path where standard deviation will be stored"}
         ]
       "Trifle.Stats.Transponder.Min" ->
         [
