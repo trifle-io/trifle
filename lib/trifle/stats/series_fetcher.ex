@@ -315,9 +315,9 @@ defmodule Trifle.Stats.SeriesFetcher do
             
         "Trifle.Stats.Transponder.StandardDeviation" -> 
           {:ok, Trifle.Stats.Series.transform_stddev(series, 
-            config["sum_path"] || "", 
-            config["count_path"] || "", 
-            config["square_path"] || "",
+            config["left"] || "", 
+            config["right"] || "", 
+            config["square"] || "",
             config["response_path"] || "")}
             
         _ ->
