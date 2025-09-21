@@ -47,7 +47,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
         {@label}
       </label>
       <div
-        class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500"
+        class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600"
         role="group"
       >
         <%= for {button, index} <- Enum.with_index(@button) do %>
@@ -91,7 +91,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
 
   defp button_classes(button, position) do
     base_classes =
-      "relative inline-flex items-center px-3 py-2 text-sm font-medium focus:z-10 focus:outline-none h-9 transition-colors"
+      "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus:outline-none focus-visible:outline-none focus:bg-white dark:focus:bg-slate-800 active:bg-white dark:active:bg-slate-800"
 
     position_classes =
       case position do
