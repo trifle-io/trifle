@@ -64,7 +64,9 @@ defmodule Trifle.Organizations.OrganizationInvitation do
   end
 
   def default_expiration do
-    DateTime.utc_now() |> DateTime.add(3 * 24 * 60 * 60, :second)
+    DateTime.utc_now()
+    |> DateTime.add(3 * 24 * 60 * 60, :second)
+    |> DateTime.truncate(:second)
   end
 
   def generate_token do

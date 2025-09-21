@@ -458,11 +458,18 @@ defmodule TrifleApp.OrganizationLive do
 
   def handle_event(
         "invite_member",
-        %{"invitation" => params},
+        %{"invitation" => invitation_params} = payload,
         %{assigns: %{organization: %Organization{} = organization, current_user: user}} = socket
       ) do
-    role = Map.get(params, "role", "member")
-    params = Map.put(params, "role", role)
+    form_params = Map.get(payload, "organization_invitation", %{})
+
+    params =
+      form_params
+      |> Map.merge(invitation_params)
+      |> Map.put_new("role", "member")
+      |> Map.update("email", nil, fn value ->
+        if is_binary(value), do: String.trim(value), else: value
+      end)
 
     case Organizations.create_invitation(organization, params, user) do
       {:ok, _invitation} ->
