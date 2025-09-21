@@ -349,6 +349,8 @@ helm install trifle .devops/kubernetes/helm/trifle \
   --set initialUser.email="admin@example.com"
 ```
 
+Self-hosted mode is enabled by default (`app.deploymentMode=self_hosted`). If you’re operating the multi-tenant SaaS instance, override with `--set app.deploymentMode=saas`.
+
 See detailed deployment documentation in `.devops/` directory.
 
 ## Phoenix Framework

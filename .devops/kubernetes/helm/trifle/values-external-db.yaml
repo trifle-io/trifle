@@ -23,6 +23,7 @@ externalPostgresql:
 app:
   secretKeyBase: "your-64-character-secret-key-base-here"
   host: "trifle.yourdomain.com"
+  deploymentMode: "self_hosted"
 
 # Initial user creation (runs during installation)
 initialUser:
