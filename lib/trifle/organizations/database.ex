@@ -26,6 +26,8 @@ defmodule Trifle.Organizations.Database do
     field :last_check_status, :string, default: "pending"
     field :last_error, :string
 
+    belongs_to :organization, Trifle.Organizations.Organization
+
     timestamps()
   end
 
@@ -102,8 +104,8 @@ defmodule Trifle.Organizations.Database do
   @doc false
   def changeset(database, attrs) do
     database
-    |> cast(attrs, [:display_name, :driver, :host, :port, :database_name, :file_path, :username, :password, :auth_database, :config, :time_zone, :last_check_at, :last_check_status, :last_error, :default_timeframe, :default_granularity])
-    |> validate_required([:display_name, :driver])
+    |> cast(attrs, [:display_name, :driver, :host, :port, :database_name, :file_path, :username, :password, :auth_database, :config, :time_zone, :last_check_at, :last_check_status, :last_error, :default_timeframe, :default_granularity, :organization_id])
+    |> validate_required([:display_name, :driver, :organization_id])
     |> validate_inclusion(:driver, @drivers)
     |> validate_conditional_fields()
     |> validate_length(:display_name, min: 1, max: 255)

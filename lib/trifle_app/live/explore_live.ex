@@ -7,9 +7,13 @@ defmodule TrifleApp.ExploreLive do
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
 
-  def mount(params, _session, socket) do
+  def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
+    {:ok, redirect(socket, to: ~p"/app/organization")}
+  end
+
+  def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do
     # Determine selected database from params or default to first available
-    databases = Organizations.list_databases()
+    databases = Organizations.list_databases_for_org(membership.organization_id)
 
     selected_db_id =
       cond do
@@ -57,7 +61,7 @@ defmodule TrifleApp.ExploreLive do
        |> assign(show_export_dropdown: false)
       }
     else
-      database = Organizations.get_database!(selected_db_id)
+      database = Organizations.get_database_for_org!(membership.organization_id, selected_db_id)
 
     # Load transponders to identify response paths and their names
     transponders = Organizations.list_transponders_for_database(database)
@@ -755,7 +759,8 @@ defmodule TrifleApp.ExploreLive do
           if socket.assigns[:database] && to_string(socket.assigns.database.id) == to_string(db_id) do
             socket
           else
-            database = Organizations.get_database!(db_id)
+            membership = socket.assigns.current_membership
+            database = Organizations.get_database_for_org!(membership.organization_id, db_id)
             database_config = Database.stats_config(database)
             available_granularities = get_available_granularities(database)
             assign(socket,
@@ -921,7 +926,8 @@ defmodule TrifleApp.ExploreLive do
     updated_socket =
       if Map.has_key?(changes, :database_id) do
         db_id = changes.database_id
-        database = Organizations.get_database!(db_id)
+        membership = socket.assigns.current_membership
+        database = Organizations.get_database_for_org!(membership.organization_id, db_id)
         database_config = Database.stats_config(database)
         available_granularities = get_available_granularities(database)
 

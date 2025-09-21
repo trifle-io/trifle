@@ -13,6 +13,7 @@ defmodule Trifle.Organizations.Transponder do
     field :enabled, :boolean, default: true
     field :order, :integer, default: 0
 
+    belongs_to :organization, Trifle.Organizations.Organization
     belongs_to :database, Trifle.Organizations.Database
 
     timestamps()
@@ -20,8 +21,8 @@ defmodule Trifle.Organizations.Transponder do
 
   def changeset(transponder, attrs) do
     transponder
-    |> cast(attrs, [:database_id, :name, :key, :type, :config, :enabled, :order])
-    |> validate_required([:database_id, :name, :key, :type])
+    |> cast(attrs, [:database_id, :name, :key, :type, :config, :enabled, :order, :organization_id])
+    |> validate_required([:database_id, :name, :key, :type, :organization_id])
     |> validate_transponder_type()
     |> validate_transponder_config()
   end

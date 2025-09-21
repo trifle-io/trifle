@@ -10,6 +10,8 @@ import Config
 config :trifle,
   ecto_repos: [Trifle.Repo]
 
+config :trifle, :deployment_mode, :saas
+
 # Configures the endpoint
 config :trifle, TrifleWeb.Endpoint,
   url: [host: "0.0.0.0"],

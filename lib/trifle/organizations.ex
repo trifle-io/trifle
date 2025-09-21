@@ -4,9 +4,468 @@ defmodule Trifle.Organizations do
   """
 
   import Ecto.Query, warn: false
+  alias Ecto.Multi
   alias Trifle.Repo
 
-  alias Trifle.Organizations.{Project, Database, Dashboard, Transponder, DashboardGroup}
+  alias Trifle.Accounts.User
+
+  alias Trifle.Organizations.{
+    Project,
+    ProjectToken,
+    Organization,
+    OrganizationMembership,
+    OrganizationInvitation,
+    Database,
+    Dashboard,
+    Transponder,
+    DashboardGroup
+  }
+
+  ## Organizations
+
+  def list_organizations do
+    Repo.all(Organization)
+  end
+
+  def list_user_organizations(%User{} = user) do
+    from(m in OrganizationMembership,
+      where: m.user_id == ^user.id,
+      join: o in assoc(m, :organization),
+      preload: [organization: o],
+      order_by: [asc: o.name]
+    )
+    |> Repo.all()
+    |> Enum.map(& &1.organization)
+  end
+
+  def get_organization!(id) when is_binary(id), do: Repo.get!(Organization, id)
+  def get_organization(id) when is_binary(id), do: Repo.get(Organization, id)
+
+  def get_organization_by_slug!(slug) when is_binary(slug), do: Repo.get_by!(Organization, slug: slug)
+  def get_organization_by_slug(slug) when is_binary(slug), do: Repo.get_by(Organization, slug: slug)
+
+  def create_organization(attrs \\ %{}) do
+    %Organization{}
+    |> Organization.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def create_organization_with_owner(attrs, %User{} = user) do
+    if get_membership_for_user(user) do
+      {:error, :already_member}
+    else
+      Repo.transaction(fn ->
+        with {:ok, organization} <- create_organization(attrs),
+             {:ok, membership} <- create_membership(organization, user, "owner") do
+          %{organization: organization, membership: membership}
+        else
+          {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback({:error, changeset})
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+      |> case do
+        {:ok, %{organization: organization, membership: membership}} ->
+          {:ok, organization, membership}
+
+        {:error, {:error, %Ecto.Changeset{} = changeset}} ->
+          {:error, changeset}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  def update_organization(%Organization{} = organization, attrs) do
+    organization
+    |> Organization.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def change_organization(%Organization{} = organization, attrs \\ %{}) do
+    Organization.changeset(organization, attrs)
+  end
+
+  ## Organization memberships
+
+  def membership_roles, do: OrganizationMembership.roles()
+
+  def get_membership!(id) when is_binary(id) do
+    OrganizationMembership
+    |> Repo.get!(id)
+    |> Repo.preload([:organization, :user, :invited_by])
+  end
+
+  def get_membership(id) when is_binary(id) do
+    OrganizationMembership
+    |> Repo.get(id)
+    |> case do
+      nil -> nil
+      membership -> Repo.preload(membership, [:organization, :user, :invited_by])
+    end
+  end
+
+  def get_membership_for_user(%User{} = user) do
+    from(m in OrganizationMembership,
+      where: m.user_id == ^user.id,
+      preload: [:organization, :user, :invited_by]
+    )
+    |> Repo.one()
+  end
+
+  def fetch_active_membership!(%User{} = user) do
+    from(m in OrganizationMembership,
+      where: m.user_id == ^user.id,
+      preload: [:organization, :user, :invited_by]
+    )
+    |> Repo.one!()
+  end
+
+  def get_active_organization(%User{} = user) do
+    case get_membership_for_user(user) do
+      nil -> nil
+      membership -> membership.organization
+    end
+  end
+
+  def get_membership_for_org(%Organization{} = organization, %User{} = user) do
+    from(m in OrganizationMembership,
+      where: m.organization_id == ^organization.id and m.user_id == ^user.id,
+      preload: [:organization, :user, :invited_by]
+    )
+    |> Repo.one()
+  end
+
+  def list_members(%Organization{} = organization) do
+    from(m in OrganizationMembership,
+      where: m.organization_id == ^organization.id,
+      join: u in assoc(m, :user),
+      left_join: inviter in assoc(m, :invited_by),
+      preload: [:organization, user: u, invited_by: inviter],
+      order_by: [asc: u.email]
+    )
+    |> Repo.all()
+  end
+
+  def create_membership(%Organization{} = organization, %User{} = user, role \\ "member", invited_by \\ nil) do
+    attrs = %{
+      organization_id: organization.id,
+      user_id: user.id,
+      role: role,
+      invited_by_user_id: invited_by && invited_by.id
+    }
+
+    %OrganizationMembership{}
+    |> OrganizationMembership.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_membership(%OrganizationMembership{} = membership, attrs) do
+    membership
+    |> OrganizationMembership.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def update_membership_role(%OrganizationMembership{} = membership, role) do
+    update_membership(membership, %{role: role})
+  end
+
+  def remove_member(%OrganizationMembership{} = membership) do
+    Repo.delete(membership)
+  end
+
+  def remove_member(%Organization{} = organization, %User{} = user) do
+    with %OrganizationMembership{} = membership <- get_membership_for_org(organization, user) do
+      remove_member(membership)
+    else
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def touch_membership_last_active(%OrganizationMembership{} = membership) do
+    membership
+    |> OrganizationMembership.changeset(%{last_active_at: DateTime.utc_now()})
+    |> Repo.update()
+  end
+
+  def membership_admin?(%OrganizationMembership{} = membership) do
+    membership.role in ["owner", "admin"]
+  end
+
+  ## Organization invitations
+
+  def list_invitations(%Organization{} = organization) do
+    now = DateTime.utc_now()
+
+    from(i in OrganizationInvitation,
+      where: i.organization_id == ^organization.id,
+      left_join: inviter in assoc(i, :invited_by),
+      left_join: accepted in assoc(i, :accepted_user),
+      preload: [:organization, invited_by: inviter, accepted_user: accepted],
+      order_by: [desc: i.inserted_at]
+    )
+    |> Repo.all()
+    |> Enum.map(&maybe_mark_invitation_expired(&1, now))
+  end
+
+  def get_invitation!(id) when is_binary(id) do
+    OrganizationInvitation
+    |> Repo.get!(id)
+    |> Repo.preload([:organization, :invited_by, :accepted_user])
+    |> maybe_mark_invitation_expired()
+  end
+
+  def get_invitation(id) when is_binary(id) do
+    OrganizationInvitation
+    |> Repo.get(id)
+    |> case do
+      nil -> nil
+      invitation -> invitation |> Repo.preload([:organization, :invited_by, :accepted_user]) |> maybe_mark_invitation_expired()
+    end
+  end
+
+  def get_invitation_by_token(token) when is_binary(token) do
+    OrganizationInvitation
+    |> Repo.get_by(token: token)
+    |> case do
+      nil -> nil
+      invitation -> invitation |> Repo.preload([:organization, :invited_by, :accepted_user]) |> maybe_mark_invitation_expired()
+    end
+  end
+
+  def get_invitation_by_token!(token) when is_binary(token) do
+    OrganizationInvitation
+    |> Repo.get_by!(token: token)
+    |> Repo.preload([:organization, :invited_by, :accepted_user])
+    |> maybe_mark_invitation_expired()
+  end
+
+  def create_invitation(%Organization{} = organization, attrs \\ %{}, invited_by \\ nil) do
+    attrs =
+      attrs
+      |> Map.put(:organization_id, organization.id)
+      |> Map.put(:invited_by_user_id, invited_by && invited_by.id)
+
+    %OrganizationInvitation{}
+    |> OrganizationInvitation.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def refresh_invitation(%OrganizationInvitation{status: status} = invitation) when status in ["pending", "expired"] do
+    invitation
+    |> OrganizationInvitation.changeset(%{token: nil, expires_at: nil, status: "pending"})
+    |> Repo.update()
+  end
+  def refresh_invitation(%OrganizationInvitation{}), do: {:error, :invalid_status}
+
+  def cancel_invitation(%OrganizationInvitation{} = invitation) do
+    invitation
+    |> OrganizationInvitation.changeset(%{status: "cancelled"})
+    |> Repo.update()
+  end
+
+  def invitation_expired?(%OrganizationInvitation{expires_at: expires_at, status: "pending"}) do
+    DateTime.compare(expires_at, DateTime.utc_now()) == :lt
+  end
+  def invitation_expired?(%OrganizationInvitation{status: status}) when status in ["expired", "accepted", "cancelled"], do: status == "expired"
+  def invitation_expired?(_), do: false
+
+  def accept_invitation(%OrganizationInvitation{} = invitation, %User{} = user) do
+    invitation = Repo.preload(invitation, [:organization, :invited_by])
+
+    with {:ok, existing_membership} <- ensure_invitation_acceptance_allowed(invitation, user) do
+      multi =
+        Multi.new()
+        |> Multi.run(:membership, fn _repo, _changes ->
+          case existing_membership do
+            nil -> create_membership(invitation.organization, user, invitation.role, invitation.invited_by)
+            %OrganizationMembership{} = membership -> {:ok, membership}
+          end
+        end)
+        |> Multi.update(:invitation, OrganizationInvitation.changeset(invitation, %{status: "accepted", accepted_user_id: user.id}))
+
+      case Repo.transaction(multi) do
+        {:ok, %{membership: membership}} -> {:ok, membership}
+        {:error, :membership, %Ecto.Changeset{} = changeset, _} -> {:error, changeset}
+        {:error, _step, reason, _} -> {:error, reason}
+      end
+    end
+  end
+
+  defp ensure_invitation_acceptance_allowed(%OrganizationInvitation{} = invitation, %User{} = user) do
+    cond do
+      invitation.status != "pending" -> {:error, :invalid_status}
+      invitation_expired?(invitation) -> {:error, :expired}
+      true ->
+        case get_membership_for_user(user) do
+          nil -> {:ok, nil}
+          %OrganizationMembership{organization_id: org_id} = membership when org_id == invitation.organization_id ->
+            {:ok, membership}
+          _ -> {:error, :belongs_to_another_organization}
+        end
+    end
+  end
+
+  defp maybe_mark_invitation_expired(%OrganizationInvitation{} = invitation, now \\ DateTime.utc_now()) do
+    if invitation.status == "pending" and DateTime.compare(invitation.expires_at, now) == :lt do
+      {:ok, updated} =
+        invitation
+        |> OrganizationInvitation.changeset(%{status: "expired"})
+        |> Repo.update()
+
+      updated
+    else
+      invitation
+    end
+  end
+
+  defp assign_org_id(attrs, %Organization{} = organization) do
+    assign_org_id(attrs, organization.id)
+  end
+
+  defp assign_org_id(attrs, organization_id) when is_binary(organization_id) do
+    attrs
+    |> Map.put("organization_id", organization_id)
+    |> Map.delete(:organization_id)
+  end
+
+  defp ensure_transponder_org(attrs) do
+    case Map.get(attrs, :organization_id) || Map.get(attrs, "organization_id") do
+      nil ->
+        case Map.get(attrs, :database_id) || Map.get(attrs, "database_id") do
+          nil -> attrs
+          database_id ->
+            case Repo.get(Database, database_id) do
+              nil -> attrs
+              %Database{} = database -> assign_org_id(attrs, database.organization_id)
+            end
+        end
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp ensure_dashboard_database_within_org(attrs, %OrganizationMembership{} = membership) do
+    value = Map.get(attrs, "database_id") || Map.get(attrs, :database_id)
+
+    cond do
+      is_nil(value) ->
+        attrs
+
+      match?(%Database{}, value) ->
+        id = value.id
+        _ = get_database_for_org!(membership.organization_id, id)
+        attrs
+        |> Map.put("database_id", id)
+        |> Map.delete(:database_id)
+
+      is_binary(value) ->
+        _ = get_database_for_org!(membership.organization_id, value)
+        attrs
+        |> Map.put("database_id", value)
+        |> Map.delete(:database_id)
+
+      true ->
+        database_id = to_string(value)
+        _ = get_database_for_org!(membership.organization_id, database_id)
+        attrs
+        |> Map.put("database_id", database_id)
+        |> Map.delete(:database_id)
+    end
+  end
+
+  defp ensure_parent_group_within_org(attrs, %OrganizationMembership{} = membership) do
+    value = Map.get(attrs, "parent_group_id") || Map.get(attrs, :parent_group_id)
+
+    cond do
+      value in [nil, ""] ->
+        attrs
+        |> Map.delete(:parent_group_id)
+        |> Map.delete("parent_group_id")
+
+      match?(%DashboardGroup{}, value) ->
+        id = value.id
+        ensure_parent_group_exists(id, membership)
+        attrs
+        |> Map.put("parent_group_id", id)
+        |> Map.delete(:parent_group_id)
+
+      is_binary(value) ->
+        ensure_parent_group_exists(value, membership)
+        attrs
+        |> Map.put("parent_group_id", value)
+        |> Map.delete(:parent_group_id)
+
+      true ->
+        parent_id = to_string(value)
+        ensure_parent_group_exists(parent_id, membership)
+        attrs
+        |> Map.put("parent_group_id", parent_id)
+        |> Map.delete(:parent_group_id)
+    end
+  end
+
+  defp ensure_parent_group_exists(parent_id, %OrganizationMembership{} = membership) do
+    case Repo.get_by(DashboardGroup, id: parent_id, organization_id: membership.organization_id) do
+      nil -> raise Ecto.NoResultsError, queryable: DashboardGroup, message: "Dashboard group not found"
+      _group -> :ok
+    end
+  end
+
+  defp ensure_dashboard_group_within_org(attrs, %OrganizationMembership{} = membership) do
+    value = Map.get(attrs, "group_id") || Map.get(attrs, :group_id)
+
+    cond do
+      value in [nil, ""] ->
+        attrs
+        |> Map.delete(:group_id)
+        |> Map.delete("group_id")
+
+      match?(%DashboardGroup{}, value) ->
+        id = value.id
+        _ = get_dashboard_group_for_membership!(membership, id)
+        attrs
+        |> Map.put("group_id", id)
+        |> Map.delete(:group_id)
+
+      is_binary(value) ->
+        _ = get_dashboard_group_for_membership!(membership, value)
+        attrs
+        |> Map.put("group_id", value)
+        |> Map.delete(:group_id)
+
+      true ->
+        group_id = to_string(value)
+        _ = get_dashboard_group_for_membership!(membership, group_id)
+        attrs
+        |> Map.put("group_id", group_id)
+        |> Map.delete(:group_id)
+    end
+  end
+
+  defp atomize_keys(attrs) when is_map(attrs) do
+    Enum.reduce(attrs, %{}, fn {key, value}, acc ->
+      cond do
+        is_atom(key) -> Map.put(acc, key, value)
+        is_binary(key) ->
+          atom_key =
+            try do
+              String.to_existing_atom(key)
+            rescue
+              ArgumentError -> nil
+            end
+
+          if atom_key do
+            Map.put(acc, atom_key, value)
+          else
+            Map.put(acc, key, value)
+          end
+
+        true -> Map.put(acc, key, value)
+      end
+    end)
+  end
 
   @doc """
   Returns the list of projects.
@@ -119,8 +578,6 @@ defmodule Trifle.Organizations do
   def change_project(%Project{} = project, attrs \\ %{}) do
     Project.changeset(project, attrs)
   end
-
-  alias Trifle.Organizations.ProjectToken
 
   @doc """
   Returns the list of project_tokens.
@@ -247,23 +704,67 @@ defmodule Trifle.Organizations do
   ## Database functions
 
   @doc """
-  Returns the list of databases.
+  Returns the list of databases for an organization.
   """
+  def list_databases_for_org(%Organization{} = organization) do
+    list_databases_for_org(organization.id)
+  end
+
+  def list_databases_for_org(organization_id) when is_binary(organization_id) do
+    from(d in Database,
+      where: d.organization_id == ^organization_id,
+      order_by: [asc: d.inserted_at, asc: d.id]
+    )
+    |> Repo.all()
+  end
+
+  def list_databases_for_user(%User{} = user) do
+    case get_membership_for_user(user) do
+      nil -> []
+      %OrganizationMembership{} = membership -> list_databases_for_org(membership.organization_id)
+    end
+  end
+
+  @deprecated "Use list_databases_for_org/1 or list_databases_for_user/1"
   def list_databases do
     from(d in Database, order_by: [asc: d.inserted_at, asc: d.id])
     |> Repo.all()
   end
 
   @doc """
-  Gets a single database.
+  Gets a single database for an organization.
 
   Raises `Ecto.NoResultsError` if the Database does not exist.
   """
+  def get_database_for_org!(%Organization{} = organization, id) when is_binary(id) do
+    Repo.get_by!(Database, id: id, organization_id: organization.id)
+  end
+
+  def get_database_for_org!(organization_id, id) when is_binary(organization_id) and is_binary(id) do
+    Repo.get_by!(Database, id: id, organization_id: organization_id)
+  end
+
+  def get_database_for_user!(%User{} = user, id) when is_binary(id) do
+    membership = fetch_active_membership!(user)
+    get_database_for_org!(membership.organization_id, id)
+  end
+
   def get_database!(id), do: Repo.get!(Database, id)
 
   @doc """
-  Creates a database.
+  Creates a database within an organization.
   """
+  def create_database_for_org(%Organization{} = organization, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> assign_org_id(organization)
+      |> atomize_keys()
+
+    %Database{}
+    |> Database.changeset(attrs)
+    |> Repo.insert()
+  end
+
   def create_database(attrs \\ %{}) do
     %Database{}
     |> Database.changeset(attrs)
@@ -329,18 +830,49 @@ defmodule Trifle.Organizations do
   Returns the list of transponders for a database.
   """
   def list_transponders_for_database(%Database{} = database) do
-    Repo.all(from t in Transponder, where: t.database_id == ^database.id, order_by: [asc: t.order, asc: t.key])
+    Repo.all(
+      from t in Transponder,
+        where: t.database_id == ^database.id and t.organization_id == ^database.organization_id,
+        order_by: [asc: t.order, asc: t.key]
+    )
   end
 
   @doc """
   Gets a single transponder.
   """
+  def get_transponder_for_org!(%Organization{} = organization, id) when is_binary(id) do
+    Repo.get_by!(Transponder, id: id, organization_id: organization.id)
+  end
+
+  def get_transponder_for_org!(organization_id, id) when is_binary(organization_id) and is_binary(id) do
+    Repo.get_by!(Transponder, id: id, organization_id: organization_id)
+  end
+
   def get_transponder!(id), do: Repo.get!(Transponder, id)
+
+  @doc """
+  Creates a transponder bound to a database.
+  """
+  def create_transponder_for_database(%Database{} = database, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Map.put("database_id", database.id)
+      |> Map.delete(:database_id)
+      |> assign_org_id(database.organization_id)
+      |> atomize_keys()
+
+    create_transponder(attrs)
+  end
 
   @doc """
   Creates a transponder.
   """
   def create_transponder(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> ensure_transponder_org()
+      |> atomize_keys()
+
     %Transponder{}
     |> Transponder.changeset(attrs)
     |> Repo.insert()
@@ -412,6 +944,204 @@ defmodule Trifle.Organizations do
     case Repo.one(query) do
       nil -> 0
       max_pos -> max_pos + 1
+    end
+  end
+
+  def get_next_dashboard_position_for_membership(%OrganizationMembership{} = membership, group_id) do
+    base =
+      from(d in Dashboard,
+        where: d.organization_id == ^membership.organization_id,
+        select: max(d.position)
+      )
+
+    query =
+      case group_id do
+        nil -> from(d in base, where: is_nil(d.group_id))
+        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
+      end
+
+    case Repo.one(query) do
+      nil -> 0
+      max_pos -> max_pos + 1
+    end
+  end
+
+  def list_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership, group_id \\ nil) do
+    base =
+      from(d in Dashboard,
+        where: d.organization_id == ^membership.organization_id and (d.user_id == ^user.id or d.visibility == true),
+        order_by: [asc: d.position, asc: d.inserted_at],
+        preload: [:user, :database]
+      )
+
+    query =
+      case group_id do
+        nil -> from(d in base, where: is_nil(d.group_id))
+        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
+      end
+
+    Repo.all(query)
+  end
+
+  def count_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
+    Repo.one(
+      from(d in Dashboard,
+        where: d.organization_id == ^membership.organization_id and (d.user_id == ^user.id or d.visibility == true),
+        select: count(d.id)
+      )
+    )
+  end
+
+  def count_dashboard_groups_for_membership(%OrganizationMembership{} = membership) do
+    Repo.one(
+      from(g in DashboardGroup,
+        where: g.organization_id == ^membership.organization_id,
+        select: count(g.id)
+      )
+    )
+  end
+
+  def list_dashboard_groups_for_membership(%OrganizationMembership{} = membership, parent_group_id \\ nil) do
+    base =
+      from(g in DashboardGroup,
+        where: g.organization_id == ^membership.organization_id,
+        order_by: [asc: g.position]
+      )
+
+    query =
+      case parent_group_id do
+        nil -> from(g in base, where: is_nil(g.parent_group_id))
+        id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
+      end
+
+    Repo.all(query)
+  end
+
+  def list_dashboard_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
+    top_groups = list_dashboard_groups_for_membership(membership, nil)
+
+    Enum.map(top_groups, fn group ->
+      build_group_tree_for_membership(user, membership, group)
+    end)
+  end
+
+  defp build_group_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership, %DashboardGroup{} = group) do
+    children = list_dashboard_groups_for_membership(membership, group.id)
+
+    %{
+      group: group,
+      children: Enum.map(children, &build_group_tree_for_membership(user, membership, &1)),
+      dashboards: list_dashboards_for_membership(user, membership, group.id)
+    }
+  end
+
+  def get_dashboard_for_membership!(%OrganizationMembership{} = membership, id) when is_binary(id) do
+    Dashboard
+    |> Repo.get_by!(id: id, organization_id: membership.organization_id)
+    |> Repo.preload([:user, :database, :group])
+  end
+
+  def create_dashboard_for_membership(%User{} = user, %OrganizationMembership{} = membership, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Map.put("user_id", user.id)
+      |> Map.delete(:user_id)
+      |> ensure_dashboard_group_within_org(membership)
+      |> ensure_dashboard_database_within_org(membership)
+      |> assign_org_id(membership.organization_id)
+      |> atomize_keys()
+
+    %Dashboard{}
+    |> Dashboard.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def create_dashboard_group_for_membership(%OrganizationMembership{} = membership, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> ensure_parent_group_within_org(membership)
+      |> assign_org_id(membership.organization_id)
+      |> atomize_keys()
+
+    %DashboardGroup{}
+    |> DashboardGroup.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def get_dashboard_group_for_membership!(%OrganizationMembership{} = membership, id) when is_binary(id) do
+    Repo.get_by!(DashboardGroup, id: id, organization_id: membership.organization_id)
+  end
+
+  def update_dashboard_for_membership(%Dashboard{} = dashboard, %OrganizationMembership{} = membership, attrs) do
+    if dashboard.organization_id != membership.organization_id do
+      {:error, :unauthorized}
+    else
+      attrs =
+        attrs
+        |> ensure_dashboard_group_within_org(membership)
+        |> ensure_dashboard_database_within_org(membership)
+
+      dashboard
+      |> Dashboard.changeset(assign_org_id(attrs, membership.organization_id) |> atomize_keys())
+      |> Repo.update()
+    end
+  end
+
+  def delete_dashboard_for_membership(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
+    if dashboard.organization_id != membership.organization_id do
+      {:error, :unauthorized}
+    else
+      delete_dashboard(dashboard)
+    end
+  end
+
+  def reorder_nodes_for_membership(%OrganizationMembership{} = membership, parent_group_id, items, from_parent_id, from_items, moved_id, moved_type)
+      when is_list(items) do
+    if moved_type == "group" and parent_group_id &&
+         group_descendant_for_membership?(membership, moved_id, parent_group_id) do
+      {:error, :invalid_parent}
+    else
+      Repo.transaction(fn ->
+        Enum.with_index(items)
+        |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
+          case type do
+            "dashboard" ->
+              from(d in Dashboard,
+                where: d.id == ^id and d.organization_id == ^membership.organization_id
+              )
+              |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
+
+            "group" ->
+              from(g in DashboardGroup,
+                where: g.id == ^id and g.organization_id == ^membership.organization_id
+              )
+              |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
+
+            _ -> :ok
+          end
+        end)
+
+        if is_list(from_items) and from_parent_id != parent_group_id do
+          Enum.with_index(from_items)
+          |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
+            case type do
+              "dashboard" ->
+                from(d in Dashboard,
+                  where: d.id == ^id and d.organization_id == ^membership.organization_id
+                )
+                |> Repo.update_all(set: [position: idx])
+
+              "group" ->
+                from(g in DashboardGroup,
+                  where: g.id == ^id and g.organization_id == ^membership.organization_id
+                )
+                |> Repo.update_all(set: [position: idx])
+
+              _ -> :ok
+            end
+          end)
+        end
+      end)
     end
   end
 
@@ -571,6 +1301,25 @@ defmodule Trifle.Organizations do
     end
   end
 
+  def get_next_dashboard_group_position_for_membership(%OrganizationMembership{} = membership, parent_group_id) do
+    base =
+      from(g in DashboardGroup,
+        where: g.organization_id == ^membership.organization_id,
+        select: max(g.position)
+      )
+
+    query =
+      case parent_group_id do
+        nil -> from(g in base, where: is_nil(g.parent_group_id))
+        id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
+      end
+
+    case Repo.one(query) do
+      nil -> 0
+      max_pos -> max_pos + 1
+    end
+  end
+
   @doc """
   Reorders mixed nodes (groups and dashboards) within a container (global).
   items: list of maps %{"id" => id, "type" => "group" | "dashboard"}
@@ -614,6 +1363,15 @@ defmodule Trifle.Organizations do
       end)
     end
   end
+  defp group_descendant_for_membership?(%OrganizationMembership{} = membership, group_id, possible_parent_id) do
+    case Repo.get_by(DashboardGroup, id: possible_parent_id, organization_id: membership.organization_id) do
+      nil -> false
+      %DashboardGroup{parent_group_id: nil} -> group_id == possible_parent_id
+      %DashboardGroup{parent_group_id: parent_id} = group ->
+        group_id == group.id or group_descendant_for_membership?(membership, group_id, parent_id)
+    end
+  end
+
   # Returns true if possible_parent_id is a descendant of group_id
   defp group_descendant?(group_id, possible_parent_id) do
     case Repo.get(DashboardGroup, possible_parent_id) do

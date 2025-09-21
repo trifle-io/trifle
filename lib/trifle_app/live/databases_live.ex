@@ -3,20 +3,20 @@ defmodule TrifleApp.DatabasesLive do
 
   alias Trifle.Organizations
 
-  def mount(_params, _session, socket) do
-    databases = list_databases()
+  def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
+    {:ok, redirect(socket, to: ~p"/app/organization")}
+  end
 
-    # If user has only one database, redirect them directly to it
+  def mount(_params, _session, %{assigns: %{current_membership: membership}} = socket) do
+    databases = Organizations.list_databases_for_org(membership.organization_id)
+
     case databases do
       [single_database] ->
         {:ok, push_navigate(socket, to: ~p"/app/dbs/#{single_database.id}/transponders")}
+
       _ ->
         {:ok, assign(socket, page_title: "Databases", databases: databases)}
     end
-  end
-
-  defp list_databases do
-    Organizations.list_databases()
   end
 
 

@@ -51,6 +51,11 @@
                   <.link navigate={~p"/users/settings"} class="block px-4 py-2 text-sm text-gray-700">
                     Settings
                   </.link>
+                  <%= if @current_membership do %>
+                    <.link navigate={~p"/app/organization"} class="block px-4 py-2 text-sm text-gray-700">
+                      Organization
+                    </.link>
+                  <% end %>
 
                   <.link href={~p"/users/log_out"} method="delete" class="block px-4 py-2 text-sm text-gray-700">
                     Log out
@@ -112,6 +117,11 @@
             <.link navigate={~p"/users/settings"} class="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white">
               Settings
             </.link>
+            <%= if @current_membership do %>
+              <.link navigate={~p"/app/organization"} class="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white">
+                Organization
+              </.link>
+            <% end %>
 
             <.link href={~p"/users/log_out"} method="delete" class="block px-4 py-2 text-sm text-gray-700">
               Log out

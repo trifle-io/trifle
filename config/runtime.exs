@@ -20,6 +20,15 @@ if System.get_env("PHX_SERVER") do
   config :trifle, TrifleWeb.Endpoint, server: true
 end
 
+deployment_mode =
+  case System.get_env("TRIFLE_DEPLOYMENT_MODE") do
+    mode when mode in ["self_hosted", "self-hosted", "selfhosted"] -> :self_hosted
+    mode when mode in ["saas", "SaaS"] -> :saas
+    _ -> Application.get_env(:trifle, :deployment_mode, :saas)
+  end
+
+config :trifle, :deployment_mode, deployment_mode
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
