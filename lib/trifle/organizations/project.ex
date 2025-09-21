@@ -21,7 +21,7 @@ defmodule Trifle.Organizations.Project do
   def changeset(project, attrs) do
     project
     |> cast(attrs, [:name, :slug, :time_zone, :beginning_of_week])
-    |> put_assoc(:user,  attrs["user"])
+    |> put_assoc(:user, attrs["user"])
     |> slugify(:name)
     |> validate_required([:user, :name, :slug, :time_zone, :beginning_of_week])
   end
@@ -42,8 +42,11 @@ defmodule Trifle.Organizations.Project do
   defp get_mongo_connection do
     case Process.whereis(:trifle_mongo) do
       nil ->
-        {:ok, conn} = Mongo.start_link(url: "mongodb://localhost:27017/trifle", name: :trifle_mongo)
+        {:ok, conn} =
+          Mongo.start_link(url: "mongodb://localhost:27017/trifle", name: :trifle_mongo)
+
         conn
+
       pid ->
         pid
     end

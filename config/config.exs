@@ -61,7 +61,8 @@ config :logger, :console,
 # Configure Honeybadger
 config :honeybadger,
   environment_name: config_env(),
-  insights_enabled: true # Enable logging and performance insights
+  # Enable logging and performance insights
+  insights_enabled: true
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

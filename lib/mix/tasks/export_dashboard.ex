@@ -20,9 +20,17 @@ defmodule Mix.Tasks.Export.Dashboard do
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, _, _} = OptionParser.parse(args,
-      switches: [id: :string, format: :string, out: :string, headful: :boolean, devtools: :boolean], aliases: []
-    )
+    {opts, _, _} =
+      OptionParser.parse(args,
+        switches: [
+          id: :string,
+          format: :string,
+          out: :string,
+          headful: :boolean,
+          devtools: :boolean
+        ],
+        aliases: []
+      )
 
     id = opts[:id] || abort!("--id is required")
     format = (opts[:format] || "pdf") |> String.downcase()
@@ -36,6 +44,7 @@ defmodule Mix.Tasks.Export.Dashboard do
           case exporter.chrome_path() do
             {:ok, chrome} ->
               profile = tmp_profile_dir()
+
               args = [
                 "--no-first-run",
                 "--no-default-browser-check",
@@ -44,6 +53,7 @@ defmodule Mix.Tasks.Export.Dashboard do
                 "--new-window",
                 "--user-data-dir=#{profile}"
               ]
+
               args = if opts[:devtools], do: args ++ ["--auto-open-devtools-for-tabs"], else: args
               args = args ++ [url]
               Mix.shell().info("Launching Chrome headful for #{url} ... (close Chrome to finish)")
@@ -51,15 +61,21 @@ defmodule Mix.Tasks.Export.Dashboard do
               File.rm_rf(profile)
               cleanup.()
               Mix.shell().info("Chrome exited with status #{status}")
+
               if String.trim(out) != "" do
                 Mix.shell().info(String.slice(out, 0, 2000))
               end
-            {:error, _} -> abort!("Chrome binary not found. Set CHROME_PATH or install Chromium/Chrome")
+
+            {:error, _} ->
+              abort!("Chrome binary not found. Set CHROME_PATH or install Chromium/Chrome")
           end
-        {:error, reason} -> abort!("Failed to build public URL: #{inspect(reason)}")
+
+        {:error, reason} ->
+          abort!("Failed to build public URL: #{inspect(reason)}")
       end
     else
       Mix.shell().info("Exporting dashboard #{id} as #{format} -> #{out}")
+
       res =
         case format do
           "pdf" -> exporter.export_dashboard_pdf(id)
@@ -71,8 +87,10 @@ defmodule Mix.Tasks.Export.Dashboard do
         {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
           File.write!(out, bin)
           Mix.shell().info("OK: wrote #{byte_size(bin)} bytes to #{out}")
+
         {:ok, _} ->
           Mix.shell().error("ERROR: exporter returned empty binary")
+
         {:error, reason} ->
           Mix.shell().error("ERROR: #{inspect(reason)}")
       end
@@ -80,12 +98,21 @@ defmodule Mix.Tasks.Export.Dashboard do
   end
 
   defp default_out_path(id, format) do
-    ext = (format == "png") && ".png" || ".pdf"
-    Path.join(System.tmp_dir!(), "trifle_export_" <> String.replace(id, ~r/[^a-zA-Z0-9_-]+/, "_") <> ext)
+    ext = (format == "png" && ".png") || ".pdf"
+
+    Path.join(
+      System.tmp_dir!(),
+      "trifle_export_" <> String.replace(id, ~r/[^a-zA-Z0-9_-]+/, "_") <> ext
+    )
   end
 
   defp tmp_profile_dir do
-    dir = Path.join(System.tmp_dir!(), "trifle_chrome_debug_" <> Integer.to_string(System.system_time(:millisecond)))
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "trifle_chrome_debug_" <> Integer.to_string(System.system_time(:millisecond))
+      )
+
     File.mkdir_p!(dir)
     dir
   end

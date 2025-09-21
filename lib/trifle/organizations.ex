@@ -41,8 +41,11 @@ defmodule Trifle.Organizations do
   def get_organization!(id) when is_binary(id), do: Repo.get!(Organization, id)
   def get_organization(id) when is_binary(id), do: Repo.get(Organization, id)
 
-  def get_organization_by_slug!(slug) when is_binary(slug), do: Repo.get_by!(Organization, slug: slug)
-  def get_organization_by_slug(slug) when is_binary(slug), do: Repo.get_by(Organization, slug: slug)
+  def get_organization_by_slug!(slug) when is_binary(slug),
+    do: Repo.get_by!(Organization, slug: slug)
+
+  def get_organization_by_slug(slug) when is_binary(slug),
+    do: Repo.get_by(Organization, slug: slug)
 
   def create_organization(attrs \\ %{}) do
     %Organization{}
@@ -147,7 +150,12 @@ defmodule Trifle.Organizations do
     |> Repo.all()
   end
 
-  def create_membership(%Organization{} = organization, %User{} = user, role \\ "member", invited_by \\ nil) do
+  def create_membership(
+        %Organization{} = organization,
+        %User{} = user,
+        role \\ "member",
+        invited_by \\ nil
+      ) do
     attrs = %{
       organization_id: organization.id,
       user_id: user.id,
@@ -219,8 +227,13 @@ defmodule Trifle.Organizations do
     OrganizationInvitation
     |> Repo.get(id)
     |> case do
-      nil -> nil
-      invitation -> invitation |> Repo.preload([:organization, :invited_by, :accepted_user]) |> maybe_mark_invitation_expired()
+      nil ->
+        nil
+
+      invitation ->
+        invitation
+        |> Repo.preload([:organization, :invited_by, :accepted_user])
+        |> maybe_mark_invitation_expired()
     end
   end
 
@@ -228,8 +241,13 @@ defmodule Trifle.Organizations do
     OrganizationInvitation
     |> Repo.get_by(token: token)
     |> case do
-      nil -> nil
-      invitation -> invitation |> Repo.preload([:organization, :invited_by, :accepted_user]) |> maybe_mark_invitation_expired()
+      nil ->
+        nil
+
+      invitation ->
+        invitation
+        |> Repo.preload([:organization, :invited_by, :accepted_user])
+        |> maybe_mark_invitation_expired()
     end
   end
 
@@ -251,11 +269,13 @@ defmodule Trifle.Organizations do
     |> Repo.insert()
   end
 
-  def refresh_invitation(%OrganizationInvitation{status: status} = invitation) when status in ["pending", "expired"] do
+  def refresh_invitation(%OrganizationInvitation{status: status} = invitation)
+      when status in ["pending", "expired"] do
     invitation
     |> OrganizationInvitation.changeset(%{token: nil, expires_at: nil, status: "pending"})
     |> Repo.update()
   end
+
   def refresh_invitation(%OrganizationInvitation{}), do: {:error, :invalid_status}
 
   def cancel_invitation(%OrganizationInvitation{} = invitation) do
@@ -267,7 +287,11 @@ defmodule Trifle.Organizations do
   def invitation_expired?(%OrganizationInvitation{expires_at: expires_at, status: "pending"}) do
     DateTime.compare(expires_at, DateTime.utc_now()) == :lt
   end
-  def invitation_expired?(%OrganizationInvitation{status: status}) when status in ["expired", "accepted", "cancelled"], do: status == "expired"
+
+  def invitation_expired?(%OrganizationInvitation{status: status})
+      when status in ["expired", "accepted", "cancelled"],
+      do: status == "expired"
+
   def invitation_expired?(_), do: false
 
   def accept_invitation(%OrganizationInvitation{} = invitation, %User{} = user) do
@@ -278,11 +302,25 @@ defmodule Trifle.Organizations do
         Multi.new()
         |> Multi.run(:membership, fn _repo, _changes ->
           case existing_membership do
-            nil -> create_membership(invitation.organization, user, invitation.role, invitation.invited_by)
-            %OrganizationMembership{} = membership -> {:ok, membership}
+            nil ->
+              create_membership(
+                invitation.organization,
+                user,
+                invitation.role,
+                invitation.invited_by
+              )
+
+            %OrganizationMembership{} = membership ->
+              {:ok, membership}
           end
         end)
-        |> Multi.update(:invitation, OrganizationInvitation.changeset(invitation, %{status: "accepted", accepted_user_id: user.id}))
+        |> Multi.update(
+          :invitation,
+          OrganizationInvitation.changeset(invitation, %{
+            status: "accepted",
+            accepted_user_id: user.id
+          })
+        )
 
       case Repo.transaction(multi) do
         {:ok, %{membership: membership}} -> {:ok, membership}
@@ -292,21 +330,36 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp ensure_invitation_acceptance_allowed(%OrganizationInvitation{} = invitation, %User{} = user) do
+  defp ensure_invitation_acceptance_allowed(
+         %OrganizationInvitation{} = invitation,
+         %User{} = user
+       ) do
     cond do
-      invitation.status != "pending" -> {:error, :invalid_status}
-      invitation_expired?(invitation) -> {:error, :expired}
+      invitation.status != "pending" ->
+        {:error, :invalid_status}
+
+      invitation_expired?(invitation) ->
+        {:error, :expired}
+
       true ->
         case get_membership_for_user(user) do
-          nil -> {:ok, nil}
-          %OrganizationMembership{organization_id: org_id} = membership when org_id == invitation.organization_id ->
+          nil ->
+            {:ok, nil}
+
+          %OrganizationMembership{organization_id: org_id} = membership
+          when org_id == invitation.organization_id ->
             {:ok, membership}
-          _ -> {:error, :belongs_to_another_organization}
+
+          _ ->
+            {:error, :belongs_to_another_organization}
         end
     end
   end
 
-  defp maybe_mark_invitation_expired(%OrganizationInvitation{} = invitation, now \\ DateTime.utc_now()) do
+  defp maybe_mark_invitation_expired(
+         %OrganizationInvitation{} = invitation,
+         now \\ DateTime.utc_now()
+       ) do
     if invitation.status == "pending" and DateTime.compare(invitation.expires_at, now) == :lt do
       {:ok, updated} =
         invitation
@@ -333,7 +386,9 @@ defmodule Trifle.Organizations do
     case Map.get(attrs, :organization_id) || Map.get(attrs, "organization_id") do
       nil ->
         case Map.get(attrs, :database_id) || Map.get(attrs, "database_id") do
-          nil -> attrs
+          nil ->
+            attrs
+
           database_id ->
             case Repo.get(Database, database_id) do
               nil -> attrs
@@ -356,12 +411,14 @@ defmodule Trifle.Organizations do
       match?(%Database{}, value) ->
         id = value.id
         _ = get_database_for_org!(membership.organization_id, id)
+
         attrs
         |> Map.put("database_id", id)
         |> Map.delete(:database_id)
 
       is_binary(value) ->
         _ = get_database_for_org!(membership.organization_id, value)
+
         attrs
         |> Map.put("database_id", value)
         |> Map.delete(:database_id)
@@ -369,6 +426,7 @@ defmodule Trifle.Organizations do
       true ->
         database_id = to_string(value)
         _ = get_database_for_org!(membership.organization_id, database_id)
+
         attrs
         |> Map.put("database_id", database_id)
         |> Map.delete(:database_id)
@@ -387,12 +445,14 @@ defmodule Trifle.Organizations do
       match?(%DashboardGroup{}, value) ->
         id = value.id
         ensure_parent_group_exists(id, membership)
+
         attrs
         |> Map.put("parent_group_id", id)
         |> Map.delete(:parent_group_id)
 
       is_binary(value) ->
         ensure_parent_group_exists(value, membership)
+
         attrs
         |> Map.put("parent_group_id", value)
         |> Map.delete(:parent_group_id)
@@ -400,6 +460,7 @@ defmodule Trifle.Organizations do
       true ->
         parent_id = to_string(value)
         ensure_parent_group_exists(parent_id, membership)
+
         attrs
         |> Map.put("parent_group_id", parent_id)
         |> Map.delete(:parent_group_id)
@@ -408,8 +469,11 @@ defmodule Trifle.Organizations do
 
   defp ensure_parent_group_exists(parent_id, %OrganizationMembership{} = membership) do
     case Repo.get_by(DashboardGroup, id: parent_id, organization_id: membership.organization_id) do
-      nil -> raise Ecto.NoResultsError, queryable: DashboardGroup, message: "Dashboard group not found"
-      _group -> :ok
+      nil ->
+        raise Ecto.NoResultsError, queryable: DashboardGroup, message: "Dashboard group not found"
+
+      _group ->
+        :ok
     end
   end
 
@@ -425,12 +489,14 @@ defmodule Trifle.Organizations do
       match?(%DashboardGroup{}, value) ->
         id = value.id
         _ = get_dashboard_group_for_membership!(membership, id)
+
         attrs
         |> Map.put("group_id", id)
         |> Map.delete(:group_id)
 
       is_binary(value) ->
         _ = get_dashboard_group_for_membership!(membership, value)
+
         attrs
         |> Map.put("group_id", value)
         |> Map.delete(:group_id)
@@ -438,6 +504,7 @@ defmodule Trifle.Organizations do
       true ->
         group_id = to_string(value)
         _ = get_dashboard_group_for_membership!(membership, group_id)
+
         attrs
         |> Map.put("group_id", group_id)
         |> Map.delete(:group_id)
@@ -447,7 +514,9 @@ defmodule Trifle.Organizations do
   defp atomize_keys(attrs) when is_map(attrs) do
     Enum.reduce(attrs, %{}, fn {key, value}, acc ->
       cond do
-        is_atom(key) -> Map.put(acc, key, value)
+        is_atom(key) ->
+          Map.put(acc, key, value)
+
         is_binary(key) ->
           atom_key =
             try do
@@ -462,7 +531,8 @@ defmodule Trifle.Organizations do
             Map.put(acc, key, value)
           end
 
-        true -> Map.put(acc, key, value)
+        true ->
+          Map.put(acc, key, value)
       end
     end)
   end
@@ -619,8 +689,12 @@ defmodule Trifle.Organizations do
   def get_project_token!(id), do: Repo.get!(ProjectToken, id)
 
   def get_project_by_token(token) when is_binary(token) do
-    with token when not is_nil(token) <- Repo.get_by(ProjectToken, token: token) |> Repo.preload(:project),
-      {:ok, _id} <- Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", token.token, max_age: 86400 * 365) do
+    with token when not is_nil(token) <-
+           Repo.get_by(ProjectToken, token: token) |> Repo.preload(:project),
+         {:ok, _id} <-
+           Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", token.token,
+             max_age: 86400 * 365
+           ) do
       {:ok, token.project, token}
     else
       nil ->
@@ -740,7 +814,8 @@ defmodule Trifle.Organizations do
     Repo.get_by!(Database, id: id, organization_id: organization.id)
   end
 
-  def get_database_for_org!(organization_id, id) when is_binary(organization_id) and is_binary(id) do
+  def get_database_for_org!(organization_id, id)
+      when is_binary(organization_id) and is_binary(id) do
     Repo.get_by!(Database, id: id, organization_id: organization_id)
   end
 
@@ -844,7 +919,8 @@ defmodule Trifle.Organizations do
     Repo.get_by!(Transponder, id: id, organization_id: organization.id)
   end
 
-  def get_transponder_for_org!(organization_id, id) when is_binary(organization_id) and is_binary(id) do
+  def get_transponder_for_org!(organization_id, id)
+      when is_binary(organization_id) and is_binary(id) do
     Repo.get_by!(Transponder, id: id, organization_id: organization_id)
   end
 
@@ -919,11 +995,12 @@ defmodule Trifle.Organizations do
   Sets the next available order for a new transponder.
   """
   def get_next_transponder_order(%Database{} = database) do
-    query = from(t in Transponder, 
-      where: t.database_id == ^database.id, 
-      select: max(t.order)
-    )
-    
+    query =
+      from(t in Transponder,
+        where: t.database_id == ^database.id,
+        select: max(t.order)
+      )
+
     case Repo.one(query) do
       nil -> 0
       max_order -> max_order + 1
@@ -936,10 +1013,12 @@ defmodule Trifle.Organizations do
   """
   def get_next_dashboard_position_for_group(group_id) do
     base = from(d in Dashboard, select: max(d.position))
-    query = case group_id do
-      nil -> from(d in base, where: is_nil(d.group_id))
-      id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
-    end
+
+    query =
+      case group_id do
+        nil -> from(d in base, where: is_nil(d.group_id))
+        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
+      end
 
     case Repo.one(query) do
       nil -> 0
@@ -966,10 +1045,16 @@ defmodule Trifle.Organizations do
     end
   end
 
-  def list_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership, group_id \\ nil) do
+  def list_dashboards_for_membership(
+        %User{} = user,
+        %OrganizationMembership{} = membership,
+        group_id \\ nil
+      ) do
     base =
       from(d in Dashboard,
-        where: d.organization_id == ^membership.organization_id and (d.user_id == ^user.id or d.visibility == true),
+        where:
+          d.organization_id == ^membership.organization_id and
+            (d.user_id == ^user.id or d.visibility == true),
         order_by: [asc: d.position, asc: d.inserted_at],
         preload: [:user, :database]
       )
@@ -986,7 +1071,9 @@ defmodule Trifle.Organizations do
   def count_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
     Repo.one(
       from(d in Dashboard,
-        where: d.organization_id == ^membership.organization_id and (d.user_id == ^user.id or d.visibility == true),
+        where:
+          d.organization_id == ^membership.organization_id and
+            (d.user_id == ^user.id or d.visibility == true),
         select: count(d.id)
       )
     )
@@ -1001,7 +1088,10 @@ defmodule Trifle.Organizations do
     )
   end
 
-  def list_dashboard_groups_for_membership(%OrganizationMembership{} = membership, parent_group_id \\ nil) do
+  def list_dashboard_groups_for_membership(
+        %OrganizationMembership{} = membership,
+        parent_group_id \\ nil
+      ) do
     base =
       from(g in DashboardGroup,
         where: g.organization_id == ^membership.organization_id,
@@ -1025,7 +1115,11 @@ defmodule Trifle.Organizations do
     end)
   end
 
-  defp build_group_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership, %DashboardGroup{} = group) do
+  defp build_group_tree_for_membership(
+         %User{} = user,
+         %OrganizationMembership{} = membership,
+         %DashboardGroup{} = group
+       ) do
     children = list_dashboard_groups_for_membership(membership, group.id)
 
     %{
@@ -1035,13 +1129,18 @@ defmodule Trifle.Organizations do
     }
   end
 
-  def get_dashboard_for_membership!(%OrganizationMembership{} = membership, id) when is_binary(id) do
+  def get_dashboard_for_membership!(%OrganizationMembership{} = membership, id)
+      when is_binary(id) do
     Dashboard
     |> Repo.get_by!(id: id, organization_id: membership.organization_id)
     |> Repo.preload([:user, :database, :group])
   end
 
-  def create_dashboard_for_membership(%User{} = user, %OrganizationMembership{} = membership, attrs \\ %{}) do
+  def create_dashboard_for_membership(
+        %User{} = user,
+        %OrganizationMembership{} = membership,
+        attrs \\ %{}
+      ) do
     attrs =
       attrs
       |> Map.put("user_id", user.id)
@@ -1068,11 +1167,16 @@ defmodule Trifle.Organizations do
     |> Repo.insert()
   end
 
-  def get_dashboard_group_for_membership!(%OrganizationMembership{} = membership, id) when is_binary(id) do
+  def get_dashboard_group_for_membership!(%OrganizationMembership{} = membership, id)
+      when is_binary(id) do
     Repo.get_by!(DashboardGroup, id: id, organization_id: membership.organization_id)
   end
 
-  def update_dashboard_for_membership(%Dashboard{} = dashboard, %OrganizationMembership{} = membership, attrs) do
+  def update_dashboard_for_membership(
+        %Dashboard{} = dashboard,
+        %OrganizationMembership{} = membership,
+        attrs
+      ) do
     if dashboard.organization_id != membership.organization_id do
       {:error, :unauthorized}
     else
@@ -1087,7 +1191,10 @@ defmodule Trifle.Organizations do
     end
   end
 
-  def delete_dashboard_for_membership(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
+  def delete_dashboard_for_membership(
+        %Dashboard{} = dashboard,
+        %OrganizationMembership{} = membership
+      ) do
     if dashboard.organization_id != membership.organization_id do
       {:error, :unauthorized}
     else
@@ -1095,9 +1202,17 @@ defmodule Trifle.Organizations do
     end
   end
 
-  def reorder_nodes_for_membership(%OrganizationMembership{} = membership, parent_group_id, items, from_parent_id, from_items, moved_id, moved_type)
+  def reorder_nodes_for_membership(
+        %OrganizationMembership{} = membership,
+        parent_group_id,
+        items,
+        from_parent_id,
+        from_items,
+        moved_id,
+        moved_type
+      )
       when is_list(items) do
-    if moved_type == "group" and parent_group_id &&
+    if (moved_type == "group" and parent_group_id) &&
          group_descendant_for_membership?(membership, moved_id, parent_group_id) do
       {:error, :invalid_parent}
     else
@@ -1117,7 +1232,8 @@ defmodule Trifle.Organizations do
               )
               |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
 
-            _ -> :ok
+            _ ->
+              :ok
           end
         end)
 
@@ -1137,7 +1253,8 @@ defmodule Trifle.Organizations do
                 )
                 |> Repo.update_all(set: [position: idx])
 
-              _ -> :ok
+              _ ->
+                :ok
             end
           end)
         end
@@ -1192,11 +1309,12 @@ defmodule Trifle.Organizations do
   Returns dashboards either created by the given user or visible to everyone, filtered by group.
   """
   def list_dashboards_for_user_or_visible(%Trifle.Accounts.User{} = user, group_id \\ nil) do
-    base = from(d in Dashboard,
-      where: d.user_id == ^user.id or d.visibility == true,
-      order_by: [asc: d.position, asc: d.inserted_at],
-      preload: [:user, :database]
-    )
+    base =
+      from(d in Dashboard,
+        where: d.user_id == ^user.id or d.visibility == true,
+        order_by: [asc: d.position, asc: d.inserted_at],
+        preload: [:user, :database]
+      )
 
     query =
       case group_id do
@@ -1211,10 +1329,12 @@ defmodule Trifle.Organizations do
   Counts dashboards either created by the given user or visible to everyone.
   """
   def count_dashboards_for_user_or_visible(%Trifle.Accounts.User{} = user) do
-    query = from(d in Dashboard,
-      where: d.user_id == ^user.id or d.visibility == true,
-      select: count(d.id)
-    )
+    query =
+      from(d in Dashboard,
+        where: d.user_id == ^user.id or d.visibility == true,
+        select: count(d.id)
+      )
+
     Repo.one(query)
   end
 
@@ -1239,6 +1359,7 @@ defmodule Trifle.Organizations do
 
   defp build_group_tree_global(%Trifle.Accounts.User{} = user, %DashboardGroup{} = group) do
     children = list_dashboard_groups_global(group.id)
+
     %{
       group: group,
       children: Enum.map(children, &build_group_tree_global(user, &1)),
@@ -1291,17 +1412,23 @@ defmodule Trifle.Organizations do
   """
   def get_next_dashboard_group_position(parent_group_id) do
     base = from(g in DashboardGroup, select: max(g.position))
-    query = case parent_group_id do
-      nil -> from(g in base, where: is_nil(g.parent_group_id))
-      id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
-    end
+
+    query =
+      case parent_group_id do
+        nil -> from(g in base, where: is_nil(g.parent_group_id))
+        id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
+      end
+
     case Repo.one(query) do
       nil -> 0
       max_pos -> max_pos + 1
     end
   end
 
-  def get_next_dashboard_group_position_for_membership(%OrganizationMembership{} = membership, parent_group_id) do
+  def get_next_dashboard_group_position_for_membership(
+        %OrganizationMembership{} = membership,
+        parent_group_id
+      ) do
     base =
       from(g in DashboardGroup,
         where: g.organization_id == ^membership.organization_id,
@@ -1325,9 +1452,10 @@ defmodule Trifle.Organizations do
   items: list of maps %{"id" => id, "type" => "group" | "dashboard"}
   from_items: same for the source container after the move
   """
-  def reorder_nodes(parent_group_id, items, from_parent_id, from_items, moved_id, moved_type) when is_list(items) do
+  def reorder_nodes(parent_group_id, items, from_parent_id, from_items, moved_id, moved_type)
+      when is_list(items) do
     # Cycle protection for groups
-    if moved_type == "group" and parent_group_id && group_descendant?(moved_id, parent_group_id) do
+    if (moved_type == "group" and parent_group_id) && group_descendant?(moved_id, parent_group_id) do
       {:error, :invalid_parent}
     else
       Repo.transaction(fn ->
@@ -1338,10 +1466,13 @@ defmodule Trifle.Organizations do
             "dashboard" ->
               from(d in Dashboard, where: d.id == ^id)
               |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
+
             "group" ->
               from(g in DashboardGroup, where: g.id == ^id)
               |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
-            _ -> :ok
+
+            _ ->
+              :ok
           end
         end)
 
@@ -1353,20 +1484,35 @@ defmodule Trifle.Organizations do
               "dashboard" ->
                 from(d in Dashboard, where: d.id == ^id)
                 |> Repo.update_all(set: [position: idx])
+
               "group" ->
                 from(g in DashboardGroup, where: g.id == ^id)
                 |> Repo.update_all(set: [position: idx])
-              _ -> :ok
+
+              _ ->
+                :ok
             end
           end)
         end
       end)
     end
   end
-  defp group_descendant_for_membership?(%OrganizationMembership{} = membership, group_id, possible_parent_id) do
-    case Repo.get_by(DashboardGroup, id: possible_parent_id, organization_id: membership.organization_id) do
-      nil -> false
-      %DashboardGroup{parent_group_id: nil} -> group_id == possible_parent_id
+
+  defp group_descendant_for_membership?(
+         %OrganizationMembership{} = membership,
+         group_id,
+         possible_parent_id
+       ) do
+    case Repo.get_by(DashboardGroup,
+           id: possible_parent_id,
+           organization_id: membership.organization_id
+         ) do
+      nil ->
+        false
+
+      %DashboardGroup{parent_group_id: nil} ->
+        group_id == possible_parent_id
+
       %DashboardGroup{parent_group_id: parent_id} = group ->
         group_id == group.id or group_descendant_for_membership?(membership, group_id, parent_id)
     end
@@ -1375,8 +1521,12 @@ defmodule Trifle.Organizations do
   # Returns true if possible_parent_id is a descendant of group_id
   defp group_descendant?(group_id, possible_parent_id) do
     case Repo.get(DashboardGroup, possible_parent_id) do
-      nil -> false
-      %DashboardGroup{parent_group_id: nil} -> group_id == possible_parent_id
+      nil ->
+        false
+
+      %DashboardGroup{parent_group_id: nil} ->
+        group_id == possible_parent_id
+
       %DashboardGroup{parent_group_id: parent_id} = g ->
         group_id == g.id || group_descendant?(group_id, parent_id)
     end
@@ -1448,12 +1598,13 @@ defmodule Trifle.Organizations do
     {:error, :invalid_token}
   end
 
-  def get_dashboard_by_token(dashboard_id, token) when is_binary(dashboard_id) and is_binary(token) do
+  def get_dashboard_by_token(dashboard_id, token)
+      when is_binary(dashboard_id) and is_binary(token) do
     case Repo.get(Dashboard, dashboard_id) do
       %Dashboard{access_token: ^token} = dashboard when not is_nil(token) ->
         dashboard = Repo.preload(dashboard, [:user, :database])
         {:ok, dashboard}
-      
+
       _ ->
         {:error, :not_found}
     end
@@ -1464,12 +1615,14 @@ defmodule Trifle.Organizations do
   If `group_id` is nil, returns an empty list.
   """
   def get_dashboard_group_chain(nil), do: []
+
   def get_dashboard_group_chain(group_id) when is_binary(group_id) do
     chain = do_group_chain(group_id, [])
     Enum.reverse(chain)
   end
 
   defp do_group_chain(nil, acc), do: acc
+
   defp do_group_chain(group_id, acc) do
     case Repo.get(DashboardGroup, group_id) do
       nil -> acc

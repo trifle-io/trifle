@@ -102,11 +102,13 @@ defmodule Trifle.DatabasePools.PostgresPoolSupervisor do
   defp postgres_pool_spec(database, connection_name) do
     # Extract pool_size from config
     db_config = database.config || %{}
-    pool_size = case db_config["pool_size"] do
-      nil -> 5
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
+
+    pool_size =
+      case db_config["pool_size"] do
+        nil -> 5
+        val when is_integer(val) -> val
+        val when is_binary(val) -> String.to_integer(val)
+      end
 
     # Build connection config from database record
     config = [

@@ -1,10 +1,10 @@
 defmodule TrifleWeb.PageController do
   use TrifleWeb, :controller
 
-  plug :put_layout, [html: {TrifleWeb.Layouts, :page}]
+  plug :put_layout, html: {TrifleWeb.Layouts, :page}
 
   def home(conn, _params) do
-    redirect(conn, to: "/app")
+    redirect(conn, to: ~p"/dashboards")
   end
 
   def home_page(conn, _params) do

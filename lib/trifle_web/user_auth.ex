@@ -185,6 +185,7 @@ defmodule TrifleWeb.UserAuth do
       case socket.assigns do
         %{current_user: %Accounts.User{} = user} ->
           Organizations.get_membership_for_user(user)
+
         _ ->
           nil
       end
@@ -239,5 +240,5 @@ defmodule TrifleWeb.UserAuth do
 
   defp maybe_store_return_to(conn), do: conn
 
-  defp signed_in_path(_conn), do: ~p"/app"
+  defp signed_in_path(_conn), do: ~p"/dashboards"
 end

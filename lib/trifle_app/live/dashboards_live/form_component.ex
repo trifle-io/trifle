@@ -18,8 +18,14 @@ defmodule TrifleApp.DashboardsLive.FormComponent do
         phx-change="validate"
         phx-submit="save"
       >
-        <.form_field field={@form[:name]} type="text" label="Name" placeholder="e.g., Sales Dashboard" required />
-        
+        <.form_field
+          field={@form[:name]}
+          type="text"
+          label="Name"
+          placeholder="e.g., Sales Dashboard"
+          required
+        />
+
         <:actions>
           <.primary_button phx-disable-with="Creating...">Create Dashboard</.primary_button>
           <.secondary_button phx-click={JS.patch(@patch)}>Cancel</.secondary_button>
@@ -52,12 +58,14 @@ defmodule TrifleApp.DashboardsLive.FormComponent do
   end
 
   defp save_dashboard(socket, dashboard_params) do
-    dashboard_params = 
+    dashboard_params =
       dashboard_params
       |> Map.put("database_id", socket.assigns.database.id)
       |> Map.put("user_id", socket.assigns.current_user.id)
-      |> Map.put("key", "dashboard")  # Default key
-      |> Map.put("visibility", false)  # Default to personal
+      # Default key
+      |> Map.put("key", "dashboard")
+      # Default to personal
+      |> Map.put("visibility", false)
       |> Map.put_new("default_timeframe", socket.assigns.database.default_timeframe || "24h")
       |> Map.put_new("default_granularity", socket.assigns.database.default_granularity || "1h")
 

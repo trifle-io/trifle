@@ -6,7 +6,7 @@ defmodule TrifleApp.AppRedirectLive do
   end
 
   def handle_params(_params, _uri, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/app/dashboards")}
+    {:noreply, push_navigate(socket, to: ~p"/dashboards")}
   end
 
   def render(assigns) do
@@ -17,4 +17,3 @@ defmodule TrifleApp.AppRedirectLive do
     """
   end
 end
-

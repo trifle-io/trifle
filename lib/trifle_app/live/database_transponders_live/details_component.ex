@@ -7,11 +7,11 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
     ~H"""
     <div>
       <.header>
-        <%= @transponder.key %>
+        {@transponder.key}
         <:subtitle>View transponder details and configuration.</:subtitle>
         <:actions>
           <.link
-            patch={~p"/app/dbs/#{@database.id}/transponders/#{@transponder.id}/edit"}
+            patch={~p"/dbs/#{@database.id}/transponders/#{@transponder.id}/edit"}
             class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
           >
             <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -27,9 +27,11 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
         <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
           <div>
             <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Type</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300"><%= Transponder.get_type_display_name(@transponder.type) %></dd>
+            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
+              {Transponder.get_type_display_name(@transponder.type)}
+            </dd>
           </div>
-          
+
           <div>
             <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Status</dt>
             <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
@@ -44,10 +46,12 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
               <% end %>
             </dd>
           </div>
-          
+
           <%= if not Enum.empty?(@transponder.config) do %>
             <div class="sm:col-span-2">
-              <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Configuration</dt>
+              <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">
+                Configuration
+              </dt>
               <dd class="mt-2">
                 <div class="overflow-hidden bg-gray-50 dark:bg-slate-700 shadow sm:rounded-lg">
                   <div class="px-4 py-5 sm:p-6">
@@ -55,9 +59,9 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
                       <%= for {key, value} <- @transponder.config do %>
                         <div>
                           <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">
-                            <%= String.capitalize(String.replace(to_string(key), "_", " ")) %>
+                            {String.capitalize(String.replace(to_string(key), "_", " "))}
                           </dt>
-                          <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= value %></dd>
+                          <dd class="mt-1 text-sm text-gray-900 dark:text-white">{value}</dd>
                         </div>
                       <% end %>
                     </dl>
@@ -66,18 +70,18 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
               </dd>
             </div>
           <% end %>
-          
+
           <div>
             <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Created</dt>
             <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              <%= Calendar.strftime(@transponder.inserted_at, "%B %d, %Y at %I:%M %p") %>
+              {Calendar.strftime(@transponder.inserted_at, "%B %d, %Y at %I:%M %p")}
             </dd>
           </div>
-          
+
           <div>
             <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Last Updated</dt>
             <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              <%= Calendar.strftime(@transponder.updated_at, "%B %d, %Y at %I:%M %p") %>
+              {Calendar.strftime(@transponder.updated_at, "%B %d, %Y at %I:%M %p")}
             </dd>
           </div>
         </dl>

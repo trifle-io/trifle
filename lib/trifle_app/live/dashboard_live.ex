@@ -19,10 +19,14 @@ defmodule TrifleApp.DashboardLive do
   ]
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/app/organization")}
+    {:ok, redirect(socket, to: ~p"/organization")}
   end
 
-  def mount(%{"id" => dashboard_id}, _session, %{assigns: %{current_membership: membership}} = socket) do
+  def mount(
+        %{"id" => dashboard_id},
+        _session,
+        %{assigns: %{current_membership: membership}} = socket
+      ) do
     dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
     database = dashboard.database
 
@@ -31,8 +35,8 @@ defmodule TrifleApp.DashboardLive do
     groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
 
     breadcrumbs =
-      [{"Dashboards", "/app/dashboards"}] ++
-        Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [dashboard.name]
+      [{"Dashboards", "/dashboards"}] ++
+        Enum.map(groups, &{&1.name, "/dashboards"}) ++ [dashboard.name]
 
     {:ok,
      socket
@@ -149,8 +153,8 @@ defmodule TrifleApp.DashboardLive do
         groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
 
         updated_breadcrumbs =
-          [{"Dashboards", "/app/dashboards"}] ++
-            Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [updated_dashboard.name]
+          [{"Dashboards", "/dashboards"}] ++
+            Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
         updated_page_title = ["Dashboards", updated_dashboard.name]
 
@@ -220,7 +224,7 @@ defmodule TrifleApp.DashboardLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> push_navigate(to: ~p"/app/dashboards")
+         |> push_navigate(to: ~p"/dashboards")
          |> put_flash(:info, "Dashboard deleted successfully")}
 
       {:error, _changeset} ->
@@ -244,7 +248,8 @@ defmodule TrifleApp.DashboardLive do
         original.default_granularity || database.default_granularity || "1h",
       "visibility" => original.visibility,
       "group_id" => original.group_id,
-      "position" => Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
+      "position" =>
+        Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
     }
 
     case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
@@ -252,7 +257,7 @@ defmodule TrifleApp.DashboardLive do
         {:noreply,
          socket
          |> put_flash(:info, "Dashboard duplicated")
-         |> push_navigate(to: ~p"/app/dashboards/#{new_dash.id}")}
+         |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
 
       {:error, _cs} ->
         {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
@@ -267,7 +272,7 @@ defmodule TrifleApp.DashboardLive do
          |> assign(:dashboard, dashboard)
          |> assign(:dashboard_changeset, nil)
          |> assign(:dashboard_form, nil)
-         |> push_patch(to: ~p"/app/dashboards/#{dashboard.id}")
+         |> push_patch(to: ~p"/dashboards/#{dashboard.id}")
          |> put_flash(:info, "Dashboard updated successfully")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -342,7 +347,7 @@ defmodule TrifleApp.DashboardLive do
      socket
      |> assign(:dashboard_changeset, nil)
      |> assign(:dashboard_form, nil)
-     |> push_patch(to: ~p"/app/dashboards/#{socket.assigns.dashboard.id}")}
+     |> push_patch(to: ~p"/dashboards/#{socket.assigns.dashboard.id}")}
   end
 
   # Widget editing modal controls
@@ -577,6 +582,7 @@ defmodule TrifleApp.DashboardLive do
   def handle_event("change_text_subtype", %{"widget_id" => id, "text_subtype" => subtype}, socket) do
     w = socket.assigns.editing_widget || %{"id" => id}
     normalized = normalize_text_subtype(subtype)
+
     w =
       w
       |> Map.put("subtype", normalized)
@@ -593,6 +599,7 @@ defmodule TrifleApp.DashboardLive do
 
     w = socket.assigns.editing_widget || %{"id" => id}
     normalized = normalize_text_subtype(subtype)
+
     w =
       w
       |> Map.put("subtype", normalized)
@@ -832,7 +839,14 @@ defmodule TrifleApp.DashboardLive do
 
         visual_map =
           if has_visual do
-            %{id: id, type: "progress", current: value || 0.0, target: target, ratio: ratio, invert: invert_goal}
+            %{
+              id: id,
+              type: "progress",
+              current: value || 0.0,
+              target: target,
+              ratio: ratio,
+              invert: invert_goal
+            }
           end
 
         {value_map, visual_map}
@@ -1586,13 +1600,13 @@ defmodule TrifleApp.DashboardLive do
   def handle_event("download_dashboard_pdf", _params, socket) do
     # Prefer direct download via controller route to avoid large payloads over LiveView socket
     fname = export_filename("dashboard", socket.assigns, ".pdf")
-    url = ~p"/app/export/dashboards/#{socket.assigns.dashboard.id}/pdf?filename=#{fname}"
+    url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/pdf?filename=#{fname}"
     {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
   end
 
   def handle_event("download_dashboard_png", _params, socket) do
     fname = export_filename("dashboard", socket.assigns, ".png")
-    url = ~p"/app/export/dashboards/#{socket.assigns.dashboard.id}/png?filename=#{fname}"
+    url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/png?filename=#{fname}"
     {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
   end
 
@@ -1678,8 +1692,8 @@ defmodule TrifleApp.DashboardLive do
         groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
 
         updated_breadcrumbs =
-          [{"Dashboards", "/app/dashboards"}] ++
-            Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [updated_dashboard.name]
+          [{"Dashboards", "/dashboards"}] ++
+            Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
         updated_page_title = ["Dashboards", updated_dashboard.name]
 
@@ -1865,7 +1879,7 @@ defmodule TrifleApp.DashboardLive do
                   </button>
                 <% else %>
                   <.link
-                    patch={~p"/app/dashboards/#{@dashboard.id}/edit"}
+                    patch={~p"/dashboards/#{@dashboard.id}/edit"}
                     class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
                   >
                     <svg
@@ -1887,7 +1901,7 @@ defmodule TrifleApp.DashboardLive do
                   
     <!-- Configure Button -->
                   <.link
-                    patch={~p"/app/dashboards/#{@dashboard.id}/configure"}
+                    patch={~p"/dashboards/#{@dashboard.id}/configure"}
                     class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
                   >
                     <svg
@@ -2172,7 +2186,7 @@ defmodule TrifleApp.DashboardLive do
           <.app_modal
             id="configure-modal"
             show={true}
-            on_cancel={JS.patch(~p"/app/dashboards/#{@dashboard.id}")}
+            on_cancel={JS.patch(~p"/dashboards/#{@dashboard.id}")}
           >
             <:title>Configure Dashboard</:title>
             <:body>
@@ -2935,7 +2949,12 @@ defmodule TrifleApp.DashboardLive do
                                   viewBox="0 0 24 24"
                                   stroke="currentColor"
                                 >
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                  <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M19 9l-7 7-7-7"
+                                  />
                                 </svg>
                               </span>
                             </button>
@@ -3035,7 +3054,9 @@ defmodule TrifleApp.DashboardLive do
                                 class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
                               >
                                 <option value="left" selected={alignment == "left"}>Left</option>
-                                <option value="center" selected={alignment == "center"}>Center</option>
+                                <option value="center" selected={alignment == "center"}>
+                                  Center
+                                </option>
                                 <option value="right" selected={alignment == "right"}>Right</option>
                               </select>
                               <svg
@@ -3284,7 +3305,7 @@ defmodule TrifleApp.DashboardLive do
         ~p"/d/#{socket.assigns.dashboard.id}?#{query}"
 
       true ->
-        ~p"/app/dashboards/#{socket.assigns.dashboard.id}?#{params}"
+        ~p"/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
   end
 

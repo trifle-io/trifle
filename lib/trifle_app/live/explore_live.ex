@@ -8,7 +8,7 @@ defmodule TrifleApp.ExploreLive do
   alias TrifleApp.TimeframeParsing
 
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/app/organization")}
+    {:ok, redirect(socket, to: ~p"/organization")}
   end
 
   def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do
@@ -17,10 +17,13 @@ defmodule TrifleApp.ExploreLive do
 
     selected_db_id =
       cond do
-        Map.has_key?(params, "database_id") and params["database_id"] != nil and params["database_id"] != "" ->
+        Map.has_key?(params, "database_id") and params["database_id"] != nil and
+            params["database_id"] != "" ->
           params["database_id"]
+
         databases != [] ->
           hd(databases).id
+
         true ->
           nil
       end
@@ -58,65 +61,66 @@ defmodule TrifleApp.ExploreLive do
        |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
        |> assign(load_start_time: nil)
        |> assign(load_duration_microseconds: nil)
-       |> assign(show_export_dropdown: false)
-      }
+       |> assign(show_export_dropdown: false)}
     else
       database = Organizations.get_database_for_org!(membership.organization_id, selected_db_id)
 
-    # Load transponders to identify response paths and their names
-    transponders = Organizations.list_transponders_for_database(database)
-    transponder_info = transponders
-    |> Enum.map(fn transponder ->
-      response_path = Map.get(transponder.config, "response_path", "")
-      transponder_name = transponder.name || transponder.key
-      if response_path != "", do: {response_path, transponder_name}, else: nil
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.into(%{})
+      # Load transponders to identify response paths and their names
+      transponders = Organizations.list_transponders_for_database(database)
 
-    transponder_response_paths = Map.keys(transponder_info)
+      transponder_info =
+        transponders
+        |> Enum.map(fn transponder ->
+          response_path = Map.get(transponder.config, "response_path", "")
+          transponder_name = transponder.name || transponder.key
+          if response_path != "", do: {response_path, transponder_name}, else: nil
+        end)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.into(%{})
 
-    # Cache config to avoid recalculation on every render
-    database_config = Database.stats_config(database)
-    available_granularities = get_available_granularities(database)
+      transponder_response_paths = Map.keys(transponder_info)
+
+      # Cache config to avoid recalculation on every render
+      database_config = Database.stats_config(database)
+      available_granularities = get_available_granularities(database)
 
       socket =
         socket
-      |> assign(page_title: ["Explore", database.display_name])
-      |> assign(database: database)
-      |> assign(no_database: false)
-      |> assign(database_config: database_config)
-      |> assign(available_granularities: available_granularities)
-      |> assign(transponder_response_paths: transponder_response_paths)
-      |> assign(transponder_info: transponder_info)
-      |> assign(stats: nil)
-      |> assign(timeline: "[]")
-      |> assign(chart_type: "stacked")
-      |> assign(keys: %{})
-      |> assign(selected_key_color: nil)
-      |> assign(smart_timeframe_input: nil)
-      |> assign(key_search_filter: "")
-      |> assign(loading: false)
-      |> assign(loading_chunks: false)
-      |> assign(loading_progress: nil)
-      |> assign(transponding: false)
-      |> assign(show_timeframe_dropdown: false)
-      |> assign(show_sensitivity_dropdown: false)
-      |> assign(show_granularity_dropdown: false)
-      |> assign(transponder_errors: [])
-      |> assign(show_error_modal: false)
+        |> assign(page_title: ["Explore", database.display_name])
+        |> assign(database: database)
+        |> assign(no_database: false)
+        |> assign(database_config: database_config)
+        |> assign(available_granularities: available_granularities)
+        |> assign(transponder_response_paths: transponder_response_paths)
+        |> assign(transponder_info: transponder_info)
+        |> assign(stats: nil)
+        |> assign(timeline: "[]")
+        |> assign(chart_type: "stacked")
+        |> assign(keys: %{})
+        |> assign(selected_key_color: nil)
+        |> assign(smart_timeframe_input: nil)
+        |> assign(key_search_filter: "")
+        |> assign(loading: false)
+        |> assign(loading_chunks: false)
+        |> assign(loading_progress: nil)
+        |> assign(transponding: false)
+        |> assign(show_timeframe_dropdown: false)
+        |> assign(show_sensitivity_dropdown: false)
+        |> assign(show_granularity_dropdown: false)
+        |> assign(transponder_errors: [])
+        |> assign(show_error_modal: false)
         |> assign(transponder_results: [])
         |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
         |> assign(load_start_time: nil)
         |> assign(load_duration_microseconds: nil)
         |> assign(show_export_dropdown: false)
         |> assign(:breadcrumb_links, [
-          {"Explore", ~p"/app/explore?#{[database_id: database.id]}"}
+          {"Explore", ~p"/explore?#{[database_id: database.id]}"}
         ])
 
       {:ok, socket}
     end
-    end
+  end
 
   def parse_date(date, time_zone) do
     case NaiveDateTime.from_iso8601(date) do
@@ -170,7 +174,13 @@ defmodule TrifleApp.ExploreLive do
 
   def format_smart_timeframe_display(smart_input, config) when is_nil(smart_input), do: ""
 
-  def format_smart_timeframe_display(smart_input, config, use_fixed_times \\ false, fixed_from \\ nil, fixed_to \\ nil)
+  def format_smart_timeframe_display(
+        smart_input,
+        config,
+        use_fixed_times \\ false,
+        fixed_from \\ nil,
+        fixed_to \\ nil
+      )
 
   def format_smart_timeframe_display(smart_input, config, true, fixed_from, fixed_to)
       when not is_nil(fixed_from) and not is_nil(fixed_to) do
@@ -279,6 +289,7 @@ defmodule TrifleApp.ExploreLive do
         else
           _ -> {:error, "Invalid datetime format"}
         end
+
       _ ->
         {:error, "Invalid timeframe format"}
     end
@@ -297,29 +308,50 @@ defmodule TrifleApp.ExploreLive do
     if to_diff_from_now <= 60 do
       # This looks like a "last X" timeframe, try to match common patterns
       case diff_seconds do
-        300 -> "5m"      # 5 minutes
-        600 -> "10m"     # 10 minutes
-        900 -> "15m"     # 15 minutes
-        1800 -> "30m"    # 30 minutes
-        3600 -> "1h"     # 1 hour
-        7200 -> "2h"     # 2 hours
-        10800 -> "3h"    # 3 hours
-        21600 -> "6h"    # 6 hours
-        43200 -> "12h"   # 12 hours
-        86400 -> "1d"    # 1 day
-        172800 -> "2d"   # 2 days
-        259200 -> "3d"   # 3 days
-        604800 -> "1w"   # 1 week
-        1209600 -> "2w"  # 2 weeks
-        2629746 -> "1mo" # ~1 month (30.44 days)
-        5259492 -> "2mo" # ~2 months
-        7889238 -> "3mo" # ~3 months
-        15778476 -> "6mo" # ~6 months
-        31556952 -> "1y" # ~1 year
-        _ -> "c" # Custom timeframe
+        # 5 minutes
+        300 -> "5m"
+        # 10 minutes
+        600 -> "10m"
+        # 15 minutes
+        900 -> "15m"
+        # 30 minutes
+        1800 -> "30m"
+        # 1 hour
+        3600 -> "1h"
+        # 2 hours
+        7200 -> "2h"
+        # 3 hours
+        10800 -> "3h"
+        # 6 hours
+        21600 -> "6h"
+        # 12 hours
+        43200 -> "12h"
+        # 1 day
+        86400 -> "1d"
+        # 2 days
+        172_800 -> "2d"
+        # 3 days
+        259_200 -> "3d"
+        # 1 week
+        604_800 -> "1w"
+        # 2 weeks
+        1_209_600 -> "2w"
+        # ~1 month (30.44 days)
+        2_629_746 -> "1mo"
+        # ~2 months
+        5_259_492 -> "2mo"
+        # ~3 months
+        7_889_238 -> "3mo"
+        # ~6 months
+        15_778_476 -> "6mo"
+        # ~1 year
+        31_556_952 -> "1y"
+        # Custom timeframe
+        _ -> "c"
       end
     else
-      "c" # Custom timeframe (not relative to now)
+      # Custom timeframe (not relative to now)
+      "c"
     end
   end
 
@@ -362,7 +394,7 @@ defmodule TrifleApp.ExploreLive do
           |> assign(smart_timeframe_input: nil)
           |> push_patch(
             to:
-              ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
+              ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
           )
 
         {:noreply, socket}
@@ -396,6 +428,7 @@ defmodule TrifleApp.ExploreLive do
 
   def handle_event("select_timeframe_preset", %{"preset" => preset, "label" => _label}, socket) do
     config = Database.stats_config(socket.assigns.database)
+
     case parse_smart_timeframe(preset, config) do
       {:ok, from, to} ->
         granularity = socket.assigns.granularity
@@ -410,10 +443,10 @@ defmodule TrifleApp.ExploreLive do
           |> push_event("update_smart_timeframe_input", %{
             value: format_smart_timeframe_display(preset, config)
           })
-            |> push_patch(
-              to:
-                ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
-            )
+          |> push_patch(
+            to:
+              ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
+          )
 
         {:noreply, socket}
 
@@ -441,10 +474,10 @@ defmodule TrifleApp.ExploreLive do
           |> push_event("update_smart_timeframe_input", %{
             value: format_timeframe_display(from, to)
           })
-            |> push_patch(
-              to:
-                ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
-            )
+          |> push_patch(
+            to:
+              ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
+          )
 
         {:noreply, socket}
 
@@ -472,7 +505,7 @@ defmodule TrifleApp.ExploreLive do
               })
               |> push_patch(
                 to:
-                  ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+                  ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
               )
 
             {:noreply, socket}
@@ -499,7 +532,7 @@ defmodule TrifleApp.ExploreLive do
       |> assign(show_granularity_dropdown: false)
       |> push_patch(
         to:
-          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -511,7 +544,7 @@ defmodule TrifleApp.ExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -523,7 +556,7 @@ defmodule TrifleApp.ExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -557,25 +590,27 @@ defmodule TrifleApp.ExploreLive do
     duration_seconds = DateTime.diff(to, from, :second)
 
     # Calculate new timeframe based on direction
-    {new_from, new_to} = case direction do
-      :backward ->
-        # Move backwards: TO becomes FROM, FROM = FROM - duration
-        new_from = DateTime.add(from, -duration_seconds, :second)
-        {new_from, from}
+    {new_from, new_to} =
+      case direction do
+        :backward ->
+          # Move backwards: TO becomes FROM, FROM = FROM - duration
+          new_from = DateTime.add(from, -duration_seconds, :second)
+          {new_from, from}
 
-      :forward ->
-        # Move forwards: FROM becomes TO, TO = TO + duration (clamped to 'now')
-        proposed_to = DateTime.add(to, duration_seconds, :second)
-        config = socket.assigns.database_config
-        now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
-        if DateTime.compare(proposed_to, now) == :gt do
-          clamped_to = now
-          clamped_from = DateTime.add(clamped_to, -duration_seconds, :second)
-          {clamped_from, clamped_to}
-        else
-          {to, proposed_to}
-        end
-    end
+        :forward ->
+          # Move forwards: FROM becomes TO, TO = TO + duration (clamped to 'now')
+          proposed_to = DateTime.add(to, duration_seconds, :second)
+          config = socket.assigns.database_config
+          now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+
+          if DateTime.compare(proposed_to, now) == :gt do
+            clamped_to = now
+            clamped_from = DateTime.add(clamped_to, -duration_seconds, :second)
+            {clamped_from, clamped_to}
+          else
+            {to, proposed_to}
+          end
+      end
 
     # Update socket with new timeframe and trigger reload
     granularity = socket.assigns.granularity
@@ -585,13 +620,14 @@ defmodule TrifleApp.ExploreLive do
       |> assign(from: new_from, to: new_to)
       |> assign(loading: true)
       |> assign(use_fixed_display: false)
-      |> assign(smart_timeframe_input: "c")  # Mark as custom since it's a calculated range
+      # Mark as custom since it's a calculated range
+      |> assign(smart_timeframe_input: "c")
       |> push_event("update_smart_timeframe_input", %{
         value: format_timeframe_display(new_from, new_to)
       })
       |> push_patch(
         to:
-          ~p"/app/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
+          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
       )
 
     {:noreply, socket}
@@ -620,7 +656,7 @@ defmodule TrifleApp.ExploreLive do
     {:noreply,
      socket
      |> assign(loading: true)
-     |> push_patch(to: ~p"/app/explore?#{[database_id: socket.assigns.database.id] ++ params}")}
+     |> push_patch(to: ~p"/explore?#{[database_id: socket.assigns.database.id] ++ params}")}
   end
 
   def determine_granularity_for_timeframe(from, to) do
@@ -660,30 +696,49 @@ defmodule TrifleApp.ExploreLive do
   """
   def granularity_to_readable(granularity) do
     case granularity do
-      "1s" -> "1 second"
-      "1m" -> "1 minute"
-      "1h" -> "1 hour"
-      "1d" -> "1 day"
-      "1w" -> "1 week"
-      "1mo" -> "1 month"
-      "1q" -> "1 quarter"
-      "1y" -> "1 year"
+      "1s" ->
+        "1 second"
+
+      "1m" ->
+        "1 minute"
+
+      "1h" ->
+        "1 hour"
+
+      "1d" ->
+        "1 day"
+
+      "1w" ->
+        "1 week"
+
+      "1mo" ->
+        "1 month"
+
+      "1q" ->
+        "1 quarter"
+
+      "1y" ->
+        "1 year"
+
       _ ->
         # For custom granularities like "5m", "15m", etc., try to parse with Nocturnal.Parser
         try do
           parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
+
           if Trifle.Stats.Nocturnal.Parser.valid?(parser) do
-            unit_name = case parser.unit do
-              :second -> if parser.offset == 1, do: "second", else: "seconds"
-              :minute -> if parser.offset == 1, do: "minute", else: "minutes"
-              :hour -> if parser.offset == 1, do: "hour", else: "hours"
-              :day -> if parser.offset == 1, do: "day", else: "days"
-              :week -> if parser.offset == 1, do: "week", else: "weeks"
-              :month -> if parser.offset == 1, do: "month", else: "months"
-              :quarter -> if parser.offset == 1, do: "quarter", else: "quarters"
-              :year -> if parser.offset == 1, do: "year", else: "years"
-              _ -> "units"
-            end
+            unit_name =
+              case parser.unit do
+                :second -> if parser.offset == 1, do: "second", else: "seconds"
+                :minute -> if parser.offset == 1, do: "minute", else: "minutes"
+                :hour -> if parser.offset == 1, do: "hour", else: "hours"
+                :day -> if parser.offset == 1, do: "day", else: "days"
+                :week -> if parser.offset == 1, do: "week", else: "weeks"
+                :month -> if parser.offset == 1, do: "month", else: "months"
+                :quarter -> if parser.offset == 1, do: "quarter", else: "quarters"
+                :year -> if parser.offset == 1, do: "year", else: "years"
+                _ -> "units"
+              end
+
             "#{parser.offset} #{unit_name}"
           else
             granularity
@@ -748,145 +803,172 @@ defmodule TrifleApp.ExploreLive do
     if is_nil(socket.assigns[:database]) do
       {:noreply, socket}
     else
-    require Logger
-    Logger.info("ExploreLive.handle_params called with: #{inspect(params)}")
+      require Logger
+      Logger.info("ExploreLive.handle_params called with: #{inspect(params)}")
 
-    # If database_id param changed, update database assigns first
-    socket =
-      case params["database_id"] do
-        nil -> socket
-        db_id ->
-          if socket.assigns[:database] && to_string(socket.assigns.database.id) == to_string(db_id) do
+      # If database_id param changed, update database assigns first
+      socket =
+        case params["database_id"] do
+          nil ->
             socket
-          else
-            membership = socket.assigns.current_membership
-            database = Organizations.get_database_for_org!(membership.organization_id, db_id)
-            database_config = Database.stats_config(database)
-            available_granularities = get_available_granularities(database)
-            assign(socket,
-              database: database,
-              database_config: database_config,
-              available_granularities: available_granularities
-            )
-          end
-      end
 
-    db_default_gran = socket.assigns.database.default_granularity
-    granularity = params["granularity"] || db_default_gran || "1h"
-    config = Database.stats_config(socket.assigns.database)
+          db_id ->
+            if socket.assigns[:database] &&
+                 to_string(socket.assigns.database.id) == to_string(db_id) do
+              socket
+            else
+              membership = socket.assigns.current_membership
+              database = Organizations.get_database_for_org!(membership.organization_id, db_id)
+              database_config = Database.stats_config(database)
+              available_granularities = get_available_granularities(database)
 
-    # Determine from and to times based on URL parameters
-    {from, to, smart_input, use_fixed_display} =
-      cond do
-        # If we have explicit from/to parameters, use them (they take precedence)
-        params["from"] && params["from"] != "" && params["to"] && params["to"] != "" ->
-          case {TimeframeParsing.parse_date(params["from"], config.time_zone), TimeframeParsing.parse_date(params["to"], config.time_zone)} do
-            {{:ok, from}, {:ok, to}} ->
-              # When explicit from/to are provided, prioritize the timeframe parameter from URL
-              # Only fall back to determining smart input if no timeframe parameter exists
-              smart_input = if params["timeframe"] && params["timeframe"] != "" do
-                params["timeframe"]
-              else
-                determine_smart_input_for_range(from, to, config.time_zone)
-              end
-              # Use fixed display when we have both explicit from/to AND timeframe (indicates page reload)
-              use_fixed_display = params["timeframe"] && params["timeframe"] != ""
-              {from, to, smart_input, use_fixed_display}
+              assign(socket,
+                database: database,
+                database_config: database_config,
+                available_granularities: available_granularities
+              )
+            end
+        end
 
-            _ ->
-              # If parsing fails, fall back to timeframe or defaults
-              cond do
-                params["timeframe"] && params["timeframe"] != "" ->
-                  case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
-                    {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
-                    {:error, _} ->
-                      tf = socket.assigns.database.default_timeframe || "24h"
-                      case TimeframeParsing.parse_smart_timeframe(tf, config) do
-                        {:ok, f, t, si, uf} -> {f, t, si, uf}
-                        {:error, _} ->
-                          default_to = DateTime.utc_now()
-                          default_from = DateTime.shift(default_to, hour: -24)
-                          {default_from, default_to, "24h", false}
-                      end
+      db_default_gran = socket.assigns.database.default_granularity
+      granularity = params["granularity"] || db_default_gran || "1h"
+      config = Database.stats_config(socket.assigns.database)
+
+      # Determine from and to times based on URL parameters
+      {from, to, smart_input, use_fixed_display} =
+        cond do
+          # If we have explicit from/to parameters, use them (they take precedence)
+          params["from"] && params["from"] != "" && params["to"] && params["to"] != "" ->
+            case {TimeframeParsing.parse_date(params["from"], config.time_zone),
+                  TimeframeParsing.parse_date(params["to"], config.time_zone)} do
+              {{:ok, from}, {:ok, to}} ->
+                # When explicit from/to are provided, prioritize the timeframe parameter from URL
+                # Only fall back to determining smart input if no timeframe parameter exists
+                smart_input =
+                  if params["timeframe"] && params["timeframe"] != "" do
+                    params["timeframe"]
+                  else
+                    determine_smart_input_for_range(from, to, config.time_zone)
                   end
 
-                true ->
-                  tf = socket.assigns.database.default_timeframe || "24h"
-                  case TimeframeParsing.parse_smart_timeframe(tf, config) do
-                    {:ok, f, t, si, uf} -> {f, t, si, uf}
-                    {:error, _} ->
-                      default_to = DateTime.utc_now()
-                      default_from = DateTime.shift(default_to, hour: -24)
-                      {default_from, default_to, "24h", false}
-                  end
-              end
-          end
+                # Use fixed display when we have both explicit from/to AND timeframe (indicates page reload)
+                use_fixed_display = params["timeframe"] && params["timeframe"] != ""
+                {from, to, smart_input, use_fixed_display}
 
-        # If we have a timeframe parameter but no explicit from/to, calculate from timeframe
-        params["timeframe"] && params["timeframe"] != "" ->
-          case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
-            {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
-            {:error, _} ->
-              # Fallback to defaults if timeframe parsing fails
-              default_to = DateTime.utc_now()
-              default_from = DateTime.shift(default_to, hour: -24)
-              {default_from, default_to, "24h", false}
-          end
+              _ ->
+                # If parsing fails, fall back to timeframe or defaults
+                cond do
+                  params["timeframe"] && params["timeframe"] != "" ->
+                    case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
+                      {:ok, from, to, smart_input, use_fixed} ->
+                        {from, to, smart_input, use_fixed}
 
-        # Default case: use 24-hour range from now
-        true ->
-          tf = socket.assigns.database.default_timeframe || "24h"
-          case TimeframeParsing.parse_smart_timeframe(tf, config) do
-            {:ok, from, to, smart_input, use_fixed} -> {from, to, smart_input, use_fixed}
-            {:error, _} ->
-              default_to = DateTime.utc_now()
-              default_from = DateTime.shift(default_to, hour: -24)
-              {default_from, default_to, "24h", false}
-          end
-      end
+                      {:error, _} ->
+                        tf = socket.assigns.database.default_timeframe || "24h"
 
-    # Preserve the current key search filter if it exists, otherwise use empty string
-    current_key_filter = socket.assigns[:key_search_filter] || ""
+                        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+                          {:ok, f, t, si, uf} ->
+                            {f, t, si, uf}
 
-    socket =
-      socket
-      |> assign(granularity: granularity, from: from, to: to)
-      |> assign(key: params["key"])
-      |> assign(form: to_form(%{}))
-      |> assign(smart_timeframe_input: smart_input)
-      |> assign(use_fixed_display: use_fixed_display)
-      |> assign(key_search_filter: current_key_filter)
-      |> assign(show_timeframe_dropdown: false)
-      |> assign(show_sensitivity_dropdown: false)
-      |> assign(show_granularity_dropdown: false)
+                          {:error, _} ->
+                            default_to = DateTime.utc_now()
+                            default_from = DateTime.shift(default_to, hour: -24)
+                            {default_from, default_to, "24h", false}
+                        end
+                    end
 
-    # Check if this is a fresh page load without timeframe parameters
-    # If so, update URL to include default parameters for consistency
-    should_update_url = is_nil(params["timeframe"]) and is_nil(params["from"]) and is_nil(params["to"])
+                  true ->
+                    tf = socket.assigns.database.default_timeframe || "24h"
 
-    if should_update_url do
-      # Push default parameters to URL to maintain consistency between URL and UI state
-      url_params = %{
-        timeframe: smart_input,
-        granularity: granularity
-      }
-      # Only add key parameter if it exists
-      url_params = if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
+                    case TimeframeParsing.parse_smart_timeframe(tf, config) do
+                      {:ok, f, t, si, uf} ->
+                        {f, t, si, uf}
 
-      socket = push_patch(socket, to: ~p"/app/explore?#{Map.put(url_params, :database_id, socket.assigns.database.id)}")
-      {:noreply, socket}
-    else
-      # Check if we need to keep the current loading state (when coming from event handlers)
-      # or load data immediately (when first loading the page or refreshing)
-      if socket.assigns[:loading] do
-        # Loading state already set by event handler, trigger async data load
-        send(self(), :load_data)
+                      {:error, _} ->
+                        default_to = DateTime.utc_now()
+                        default_from = DateTime.shift(default_to, hour: -24)
+                        {default_from, default_to, "24h", false}
+                    end
+                end
+            end
+
+          # If we have a timeframe parameter but no explicit from/to, calculate from timeframe
+          params["timeframe"] && params["timeframe"] != "" ->
+            case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
+              {:ok, from, to, smart_input, use_fixed} ->
+                {from, to, smart_input, use_fixed}
+
+              {:error, _} ->
+                # Fallback to defaults if timeframe parsing fails
+                default_to = DateTime.utc_now()
+                default_from = DateTime.shift(default_to, hour: -24)
+                {default_from, default_to, "24h", false}
+            end
+
+          # Default case: use 24-hour range from now
+          true ->
+            tf = socket.assigns.database.default_timeframe || "24h"
+
+            case TimeframeParsing.parse_smart_timeframe(tf, config) do
+              {:ok, from, to, smart_input, use_fixed} ->
+                {from, to, smart_input, use_fixed}
+
+              {:error, _} ->
+                default_to = DateTime.utc_now()
+                default_from = DateTime.shift(default_to, hour: -24)
+                {default_from, default_to, "24h", false}
+            end
+        end
+
+      # Preserve the current key search filter if it exists, otherwise use empty string
+      current_key_filter = socket.assigns[:key_search_filter] || ""
+
+      socket =
+        socket
+        |> assign(granularity: granularity, from: from, to: to)
+        |> assign(key: params["key"])
+        |> assign(form: to_form(%{}))
+        |> assign(smart_timeframe_input: smart_input)
+        |> assign(use_fixed_display: use_fixed_display)
+        |> assign(key_search_filter: current_key_filter)
+        |> assign(show_timeframe_dropdown: false)
+        |> assign(show_sensitivity_dropdown: false)
+        |> assign(show_granularity_dropdown: false)
+
+      # Check if this is a fresh page load without timeframe parameters
+      # If so, update URL to include default parameters for consistency
+      should_update_url =
+        is_nil(params["timeframe"]) and is_nil(params["from"]) and is_nil(params["to"])
+
+      if should_update_url do
+        # Push default parameters to URL to maintain consistency between URL and UI state
+        url_params = %{
+          timeframe: smart_input,
+          granularity: granularity
+        }
+
+        # Only add key parameter if it exists
+        url_params =
+          if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
+
+        socket =
+          push_patch(socket,
+            to: ~p"/explore?#{Map.put(url_params, :database_id, socket.assigns.database.id)}"
+          )
+
         {:noreply, socket}
       else
-        # First page load or refresh - load data immediately without loading indicator
-        load_data_and_update_socket(socket)
+        # Check if we need to keep the current loading state (when coming from event handlers)
+        # or load data immediately (when first loading the page or refreshing)
+        if socket.assigns[:loading] do
+          # Loading state already set by event handler, trigger async data load
+          send(self(), :load_data)
+          {:noreply, socket}
+        else
+          # First page load or refresh - load data immediately without loading indicator
+          load_data_and_update_socket(socket)
+        end
       end
-    end
     end
   end
 
@@ -905,6 +987,7 @@ defmodule TrifleApp.ExploreLive do
     if socket.assigns.loading_chunks do
       :timer.send_after(5000, self(), :heartbeat)
     end
+
     {:noreply, socket}
   end
 
@@ -918,9 +1001,10 @@ defmodule TrifleApp.ExploreLive do
     Logger.info("ExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
 
     # Handle filter changes from the FilterBar component
-    updated_socket = Enum.reduce(changes, socket, fn {key, value}, acc ->
-      assign(acc, key, value)
-    end)
+    updated_socket =
+      Enum.reduce(changes, socket, fn {key, value}, acc ->
+        assign(acc, key, value)
+      end)
 
     # If database was changed, update dependent assigns (database record, config, granularities, timeframe)
     updated_socket =
@@ -933,12 +1017,21 @@ defmodule TrifleApp.ExploreLive do
 
         {from, to, smart_input, use_fixed} =
           if updated_socket.assigns[:use_fixed_display] do
-            {updated_socket.assigns[:from], updated_socket.assigns[:to], updated_socket.assigns[:smart_timeframe_input], true}
+            {updated_socket.assigns[:from], updated_socket.assigns[:to],
+             updated_socket.assigns[:smart_timeframe_input], true}
           else
-            tf = updated_socket.assigns[:smart_timeframe_input] || (database.default_timeframe || "24h")
+            tf =
+              updated_socket.assigns[:smart_timeframe_input] ||
+                (database.default_timeframe || "24h")
+
             case TimeframeParsing.parse_smart_timeframe(tf, database_config) do
-              {:ok, f, t, si, uf} -> {f, t, si, uf}
-              {:error, _} -> {updated_socket.assigns[:from], updated_socket.assigns[:to], updated_socket.assigns[:smart_timeframe_input], updated_socket.assigns[:use_fixed_display]}
+              {:ok, f, t, si, uf} ->
+                {f, t, si, uf}
+
+              {:error, _} ->
+                {updated_socket.assigns[:from], updated_socket.assigns[:to],
+                 updated_socket.assigns[:smart_timeframe_input],
+                 updated_socket.assigns[:use_fixed_display]}
             end
           end
 
@@ -954,28 +1047,43 @@ defmodule TrifleApp.ExploreLive do
       end
 
     # Update URL with new parameters if needed
-    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) or Map.has_key?(changes, :database_id) do
+    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or
+         Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) or
+         Map.has_key?(changes, :database_id) do
       base_params = %{
         timeframe: updated_socket.assigns.smart_timeframe_input,
         granularity: updated_socket.assigns.granularity
       }
+
       url_params =
         if updated_socket.assigns.use_fixed_display do
           Map.merge(base_params, %{
-            from: if(updated_socket.assigns.from, do: DateTime.to_iso8601(updated_socket.assigns.from), else: nil),
-            to: if(updated_socket.assigns.to, do: DateTime.to_iso8601(updated_socket.assigns.to), else: nil)
+            from:
+              if(updated_socket.assigns.from,
+                do: DateTime.to_iso8601(updated_socket.assigns.from),
+                else: nil
+              ),
+            to:
+              if(updated_socket.assigns.to,
+                do: DateTime.to_iso8601(updated_socket.assigns.to),
+                else: nil
+              )
           })
         else
           base_params
         end
 
       # Add key parameter if it exists
-      url_params = if updated_socket.assigns.key,
-        do: Map.put(url_params, :key, updated_socket.assigns.key),
-        else: url_params
+      url_params =
+        if updated_socket.assigns.key,
+          do: Map.put(url_params, :key, updated_socket.assigns.key),
+          else: url_params
 
       # Just update URL - let handle_params handle the data loading to avoid double loading
-      {:noreply, push_patch(updated_socket, to: ~p"/app/explore?#{Map.put(url_params, :database_id, updated_socket.assigns.database.id)}")}
+      {:noreply,
+       push_patch(updated_socket,
+         to: ~p"/explore?#{Map.put(url_params, :database_id, updated_socket.assigns.database.id)}"
+       )}
     else
       {:noreply, updated_socket}
     end
@@ -985,11 +1093,23 @@ defmodule TrifleApp.ExploreLive do
   def handle_event("toggle_play_pause", _params, socket) do
     socket =
       if socket.assigns.use_fixed_display do
-        tf = socket.assigns.smart_timeframe_input || (socket.assigns.database.default_timeframe || "24h")
+        tf =
+          socket.assigns.smart_timeframe_input ||
+            (socket.assigns.database.default_timeframe || "24h")
+
         config = socket.assigns.database_config
+
         case TimeframeParsing.parse_smart_timeframe(tf, config) do
-          {:ok, from, to, smart, _} -> assign(socket, from: from, to: to, smart_timeframe_input: smart, use_fixed_display: false)
-          {:error, _} -> assign(socket, use_fixed_display: false)
+          {:ok, from, to, smart, _} ->
+            assign(socket,
+              from: from,
+              to: to,
+              smart_timeframe_input: smart,
+              use_fixed_display: false
+            )
+
+          {:error, _} ->
+            assign(socket, use_fixed_display: false)
         end
       else
         assign(socket, use_fixed_display: true)
@@ -1120,20 +1240,16 @@ defmodule TrifleApp.ExploreLive do
      |> put_flash(:error, "Data loading failed: #{inspect(reason)}")}
   end
 
-
-
-
-
-
   defp load_data_and_update_socket(socket) do
     # Start timing the data loading process
-    socket = assign(socket,
-      load_start_time: System.monotonic_time(:microsecond),
-      loading: true,
-      loading_chunks: true,
-      loading_progress: nil,
-      transponding: false
-    )
+    socket =
+      assign(socket,
+        load_start_time: System.monotonic_time(:microsecond),
+        loading: true,
+        loading_chunks: true,
+        loading_progress: nil,
+        transponding: false
+      )
 
     # Extract values to avoid async socket warnings
     database = socket.assigns.database
@@ -1141,53 +1257,79 @@ defmodule TrifleApp.ExploreLive do
     granularity = socket.assigns.granularity
     from = socket.assigns.from
     to = socket.assigns.to
-    liveview_pid = self() # Capture LiveView PID before async task
+    # Capture LiveView PID before async task
+    liveview_pid = self()
 
     # Create progress callback to send updates back to LiveView
     progress_callback = fn progress_info ->
       case progress_info do
         {:chunk_progress, current, total} ->
           send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+
         {:transponder_progress, :starting} ->
           send(liveview_pid, {:transponding, true})
       end
     end
 
     # Use SeriesFetcher for all data loading to ensure consistent transponder application
-    {:noreply, start_async(socket, :data_task, fn ->
-      if key && key != "" do
-        # Get transponders that match the specific key
-        matching_transponders = Organizations.list_transponders_for_database(database)
-        |> Enum.filter(&(&1.enabled))
-        |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
-        |> Enum.sort_by(& &1.order)
+    {:noreply,
+     start_async(
+       socket,
+       :data_task,
+       fn ->
+         if key && key != "" do
+           # Get transponders that match the specific key
+           matching_transponders =
+             Organizations.list_transponders_for_database(database)
+             |> Enum.filter(& &1.enabled)
+             |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
+             |> Enum.sort_by(& &1.order)
 
-        # Load both system key (no transponders) and specific key (with transponders)
-        case {SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, [], progress_callback: progress_callback),
-              SeriesFetcher.fetch_series(database, key, from, to, granularity, matching_transponders, progress_callback: progress_callback)} do
-          {{:ok, system_result}, {:ok, key_result}} ->
-            %{system: system_result.series, key: key_result.series, key_transponder_results: key_result.transponder_results}
-          {{:error, error}, _} ->
-            {:error, {:system_key_failed, error}}
-          {_, {:error, error}} ->
-            {:error, {:specific_key_failed, error}}
-        end
-      else
-        # Only load system key when no specific key is selected (no transponders)
-        case SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, [], progress_callback: progress_callback) do
-          {:ok, result} -> %{system: result.series}
-          {:error, error} -> {:error, error}
-        end
-      end
-    end, timeout: 300_000)}
+           # Load both system key (no transponders) and specific key (with transponders)
+           case {SeriesFetcher.fetch_series(
+                   database,
+                   "__system__key__",
+                   from,
+                   to,
+                   granularity,
+                   [],
+                   progress_callback: progress_callback
+                 ),
+                 SeriesFetcher.fetch_series(
+                   database,
+                   key,
+                   from,
+                   to,
+                   granularity,
+                   matching_transponders,
+                   progress_callback: progress_callback
+                 )} do
+             {{:ok, system_result}, {:ok, key_result}} ->
+               %{
+                 system: system_result.series,
+                 key: key_result.series,
+                 key_transponder_results: key_result.transponder_results
+               }
+
+             {{:error, error}, _} ->
+               {:error, {:system_key_failed, error}}
+
+             {_, {:error, error}} ->
+               {:error, {:specific_key_failed, error}}
+           end
+         else
+           # Only load system key when no specific key is selected (no transponders)
+           case SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, [],
+                  progress_callback: progress_callback
+                ) do
+             {:ok, result} -> %{system: result.series}
+             {:error, error} -> {:error, error}
+           end
+         end
+       end,
+       timeout: 300_000
+     )}
   end
-
-
-
-
-
-
-
 
   def reduce_stats(values) when is_list(values) do
     Enum.reduce(values, [], fn data, acc -> [data["keys"] | acc] end)
@@ -1202,6 +1344,7 @@ defmodule TrifleApp.ExploreLive do
     escaped = String.replace(v, "\"", "\"\"")
     "\"" <> escaped <> "\""
   end
+
   defp csv_escape(nil), do: ""
   defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
   defp csv_escape(v), do: csv_escape(to_string(v))
@@ -1213,16 +1356,19 @@ defmodule TrifleApp.ExploreLive do
 
     header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
 
-    rows = Enum.map(paths, fn path ->
-      row_values = Enum.map(at, fn t -> Map.get(values, {path, t}) || 0 end)
-      [path | row_values]
-    end)
+    rows =
+      Enum.map(paths, fn path ->
+        row_values = Enum.map(at, fn t -> Map.get(values, {path, t}) || 0 end)
+        [path | row_values]
+      end)
 
     lines = [header | rows]
+
     lines
     |> Enum.map(fn cols -> cols |> Enum.map(&csv_escape/1) |> Enum.join(",") end)
     |> Enum.join("\n")
   end
+
   defp explore_table_to_csv(_), do: ""
 
   def series_from(%{at: at, values: values}, path) when is_list(path) do
@@ -1292,15 +1438,13 @@ defmodule TrifleApp.ExploreLive do
     end)
   end
 
-
-
-
   def filter_keys(keys, filter) when filter == "" or is_nil(filter) do
     keys |> Enum.sort_by(fn {key, _count} -> key end)
   end
 
   def filter_keys(keys, filter) when is_binary(filter) do
     filter_lower = String.downcase(filter)
+
     keys
     |> Enum.filter(fn {key, _count} ->
       String.contains?(String.downcase(key), filter_lower)
@@ -1322,7 +1466,13 @@ defmodule TrifleApp.ExploreLive do
 
   def get_summary_stats(assigns) do
     case assigns do
-      %{key: key, stats: stats, transponder_info: transponder_info, key_transponder_results: key_transponder_results} when not is_nil(key) and key != "" and not is_nil(stats) ->
+      %{
+        key: key,
+        stats: stats,
+        transponder_info: transponder_info,
+        key_transponder_results: key_transponder_results
+      }
+      when not is_nil(key) and key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
         column_count = if stats[:at], do: length(stats[:at]), else: 0
 
@@ -1369,7 +1519,8 @@ defmodule TrifleApp.ExploreLive do
 
   # Export dropdown handlers
   def handle_event("toggle_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, :show_export_dropdown, !(socket.assigns[:show_export_dropdown] || false))}
+    {:noreply,
+     assign(socket, :show_export_dropdown, !(socket.assigns[:show_export_dropdown] || false))}
   end
 
   def handle_event("hide_export_dropdown", _params, socket) do
@@ -1382,12 +1533,15 @@ defmodule TrifleApp.ExploreLive do
     else
       csv = explore_table_to_csv(socket.assigns)
       fname = export_filename("explore", socket.assigns, ".csv")
-      {:noreply, push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
+
+      {:noreply,
+       push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
     end
   end
 
   def handle_event("download_explore_json", _params, socket) do
     raw = socket.assigns[:series_raw]
+
     if is_nil(raw) do
       {:noreply, put_flash(socket, :error, "No data to export")}
     else
@@ -1395,26 +1549,36 @@ defmodule TrifleApp.ExploreLive do
       values = raw[:values] || []
       json = Jason.encode!(%{at: at, values: values})
       fname = export_filename("explore", socket.assigns, ".json")
-      {:noreply, push_event(socket, "file_download", %{content: json, filename: fname, type: "application/json"})}
+
+      {:noreply,
+       push_event(socket, "file_download", %{
+         content: json,
+         filename: fname,
+         type: "application/json"
+       })}
     end
   end
 
   defp export_filename(prefix, assigns, ext) do
     ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
-    base = [prefix, assigns[:database] && assigns.database.display_name, assigns[:key]]
+
+    base =
+      [prefix, assigns[:database] && assigns.database.display_name, assigns[:key]]
       |> Enum.reject(&is_nil/1)
       |> Enum.map(&String.replace(to_string(&1), ~r/[^a-zA-Z0-9_-]+/, "-"))
       |> Enum.join("-")
-    (if base == "", do: prefix, else: base) <> "-" <> ts <> ext
+
+    if(base == "", do: prefix, else: base) <> "-" <> ts <> ext
   end
 
   def format_nested_path(path, all_paths, transponder_info \\ %{}) when is_binary(path) do
     transponder_name = Map.get(transponder_info, path)
 
-    formatted_path = path
-    |> String.split(".")
-    |> build_nested_html(all_paths, [])
-    |> Enum.join(".")
+    formatted_path =
+      path
+      |> String.split(".")
+      |> build_nested_html(all_paths, [])
+      |> Enum.join(".")
 
     if transponder_name do
       # Escape the transponder name for safe HTML attribute usage
@@ -1522,480 +1686,709 @@ defmodule TrifleApp.ExploreLive do
   def render(assigns) do
     ~H"""
     <%= if @no_database do %>
-      <div id="explore-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
-      <div class="max-w-3xl mx-auto mt-16">
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No databases found</h2>
-          <p class="text-gray-600 dark:text-slate-300">Please add a database first to use Explore.</p>
-          <div class="mt-4">
-            <.link navigate={~p"/app/dbs"} class="inline-flex items-center px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700">Go to Databases</.link>
+      <div
+        id="explore-root"
+        class="flex flex-col dark:bg-slate-900 min-h-screen relative"
+        phx-hook="FileDownload"
+      >
+        <div class="max-w-3xl mx-auto mt-16">
+          <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              No databases found
+            </h2>
+            <p class="text-gray-600 dark:text-slate-300">
+              Please add a database first to use Explore.
+            </p>
+            <div class="mt-4">
+              <.link
+                navigate={~p"/dbs"}
+                class="inline-flex items-center px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+              >
+                Go to Databases
+              </.link>
+            </div>
           </div>
         </div>
-      </div>
       </div>
     <% else %>
-    <div id="explore-root" class="flex flex-col dark:bg-slate-900 min-h-screen relative" phx-hook="FileDownload">
-    <!-- Loading Overlay (covers entire page content; message at 1/3 height) -->
-    <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-      <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
-        <div class="absolute left-1/2 -translate-x-1/2" style="top: 33%;">
-          <div class="flex flex-col items-center space-y-3">
-            <div class="flex items-center space-x-2">
-              <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500"></div>
-              <span class="text-sm text-gray-600 dark:text-white">
-                <%= if @transponding do %>
-                  Transponding data...
-                <% else %>
-                  Scientificating piece <%= @loading_progress.current %> of <%= @loading_progress.total %>...
-                <% end %>
-              </span>
-            </div>
-            <!-- Always reserve space for progress bar to keep text position consistent -->
-            <div class="w-64 h-2">
-              <%= if @loading_chunks && @loading_progress do %>
-                <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                  <div
-                    class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                    style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                  ></div>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-    
-
-
-    <!-- Filter Bar Component -->
-    <.live_component
-      module={TrifleApp.Components.FilterBar}
-      id="explore-filter-bar"
-      config={@database_config}
-      granularity={@granularity}
-      available_granularities={@available_granularities}
-      from={@from}
-      to={@to}
-      smart_timeframe_input={@smart_timeframe_input}
-      use_fixed_display={@use_fixed_display}
-      show_timeframe_dropdown={@show_timeframe_dropdown}
-      show_granularity_dropdown={@show_granularity_dropdown}
-      show_controls={true}
-      databases={@databases}
-      selected_database_id={@database.id}
-      force_granularity_dropdown={false}
-    />
-
-    <!-- Row 2: Activity/Events Chart -->
-    <div class="sticky top-16 z-40 mb-6">
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow py-1 px-3" style="height: 160px;">
-        <%= if map_size(@keys) == 0 && !(@loading_chunks || @transponding) do %>
-          <!-- Empty State: No Data Tracked -->
-          <div class="flex flex-col items-center justify-center h-full text-center">
-            <div class="space-y-2">
-              <div class="flex items-center justify-center gap-2">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                  Nothing to see here... yet
-                </h3>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-gray-500 dark:text-slate-400">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" />
-                </svg>
-              </div>
-              <p class="text-sm text-gray-500 dark:text-slate-400 max-w-md">
-                Your dashboard is having trust issues with empty data. Feed it some metrics and it'll start showing off!
-              </p>
-              <div class="mt-4">
-                <.link
-                  navigate={~p"/app/dbs/#{@database.id}/transponders"}
-                  class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
-                  </svg>
-                  Set up Transponders →
-                </.link>
-              </div>
-            </div>
-          </div>
-        <% else %>
-          <!-- Chart (when data exists) -->
-          <div
-            id="timeline-hook"
-            phx-hook="DatabaseExploreChart"
-            data-events={@timeline}
-            data-key={@key}
-            data-timezone={@database.time_zone || "UTC"}
-            data-chart-type={@chart_type}
-            data-colors={ChartColors.json_palette()}
-            data-selected-key-color={@selected_key_color}
-            class=""
-          >
-          </div>
-          <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5 h-full">
-            <div id="timeline-chart"></div>
-          </div>
-        <% end %>
-      </div>
-    </div>
-
-    <!-- Row 3: Key Selection -->
-    <div class="mb-6">
-      <.data_table>
-        <:header>
-          <.table_header
-            title="Keys"
-            count={length(filter_keys(@keys, @key_search_filter))}
-          >
-            <:search>
-              <div class="relative">
-                <input
-                  type="text"
-                  placeholder="Search keys..."
-                  value={@key_search_filter}
-                  phx-keyup="filter_keys"
-                  class="block w-64 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-xs !pl-9"
-                />
-                <div class="absolute inset-y-0 left-2 flex items-center">
-                  <svg class="h-4 w-4 text-gray-400 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </div>
-            </:search>
-          </.table_header>
-        </:header>
-
-        <:body>
-          <div class="h-48 overflow-auto rounded-b-lg"> <!-- Fixed height for ~3 items with scrolling -->
-            <ul role="list" class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden">
-              <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
-                <li class={
-                    if @key == key,
-                      do: "relative bg-teal-50 dark:bg-teal-900/30",
-                      else: "relative bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-slate-700"
-                  }>
-                  <button
-                    type="button"
-                    phx-click={if @key == key, do: "deselect_key", else: "select_key"}
-                    phx-value-key={key}
-                    class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left min-w-max"
-                  >
-                    <div class="flex justify-between gap-x-6">
-                      <div class="flex gap-x-3 items-center">
-                        <%= if @key == key do %>
-                          <svg
-                            class="h-5 w-5 text-teal-600 flex-shrink-0"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                            <circle cx="12" cy="12" r="4" fill="currentColor" />
-                          </svg>
-                        <% else %>
-                          <svg
-                            class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                        <% end %>
-
-                        <div class="min-w-0 flex-auto">
-                          <p
-                            class="text-sm font-semibold font-mono leading-6 whitespace-nowrap"
-                            style={"color: #{get_key_color(@keys, key)} !important"}
-                          >
-                            {key}
-                          </p>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-x-4">
-                        <span
-                          class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium border float-right"
-                          style={"background-color: #{get_key_color(@keys, key)}15; color: #{get_key_color(@keys, key)} !important; border-color: #{get_key_color(@keys, key)}40 !important"}
-                        >
-                          {format_number(count)}
-                        </span>
-                        <svg
-                          class="h-5 w-5 flex-none text-gray-400 dark:text-slate-400"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fill-rule="evenodd"
-                            d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                            clip-rule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  </button>
-                </li>
-              <% end %>
-              <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
-                <div class="flex items-center justify-center h-48 text-gray-500 dark:text-slate-400 text-sm">
-                  <span>No keys found</span>
-                </div>
-              <% end %>
-            </ul>
-          </div>
-        </:body>
-      </.data_table>
-    </div>
-
-    <!-- Row 4: Data for Selected Key -->
-    <div class="flex-1 flex flex-col min-h-0">
-      <%= if @stats do %>
-        <div id="phantom-rows-container" class="flex-1 bg-white dark:bg-slate-800 flex flex-col min-h-0" phx-hook="PhantomRows">
-          <div
-            class="flex-1 overflow-x-auto overflow-y-auto relative"
-            id="table-hover-container"
-            phx-hook="TableHover"
-          >
-            <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto" id="data-table" phx-hook="FastTooltip" style="table-layout: fixed;">
-              <thead>
-                <tr>
-                  <th
-                    scope="col"
-                    class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
-                    style="width: 200px;"
-                  >
-                    Path
-                  </th>
-                  <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
-                    <th
-                      scope="col"
-                      class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 dark:text-teal-400 bg-white dark:bg-slate-800 h-16 align-top z-10 transition-colors duration-150"
-                      data-col={col_index}
-                      style="width: 120px;"
-                    >
-                      {format_table_timestamp(at, @granularity)}
-                    </th>
-                  <% end %>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800">
-                <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
-                  <tr data-row={row_index}>
-                    <td
-                      class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
-                        data-row={row_index}
-                    >
-                      {format_nested_path(path, @stats[:paths], @transponder_info)}
-                    </td>
-                    <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
-                      <% value = @stats[:values][{path, at}] %>
-                      <%= if value do %>
-                        <td
-                          class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 dark:text-white transition-colors duration-150 cursor-pointer"
-                          data-row={row_index}
-                          data-col={col_index}
-                        >
-                          {value}
-                        </td>
-                      <% else %>
-                        <td
-                          class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 dark:text-slate-500 transition-colors duration-150 cursor-pointer"
-                          data-row={row_index}
-                          data-col={col_index}
-                        >
-                          0
-                        </td>
-                      <% end %>
-                    <% end %>
-                  </tr>
-                <% end %>
-              </tbody>
-            </table>
-
-            <!-- Border after last row -->
-            <div class="border-t border-gray-200 dark:border-slate-700"></div>
-          </div>
-
-        </div>
-
-        <!-- Sticky Summary Footer -->
-      <%= if summary = get_summary_stats(assigns) do %>
-          <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
-              <div class="flex flex-wrap items-center gap-4 text-xs">
-                <!-- Selected Key (only show if key is selected) -->
-                <%= if summary.key do %>
-                  <div class="flex items-center gap-1">
-                    <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-                    </svg>
-                    <span class="font-medium text-gray-700 dark:text-slate-300">Key:</span>
-                    <span class="font-mono text-gray-900 dark:text-white max-w-xs truncate" title={summary.key}>{summary.key}</span>
+      <div
+        id="explore-root"
+        class="flex flex-col dark:bg-slate-900 min-h-screen relative"
+        phx-hook="FileDownload"
+      >
+        <!-- Loading Overlay (covers entire page content; message at 1/3 height) -->
+        <%= if (@loading_chunks && @loading_progress) || @transponding do %>
+          <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
+            <div class="absolute left-1/2 -translate-x-1/2" style="top: 33%;">
+              <div class="flex flex-col items-center space-y-3">
+                <div class="flex items-center space-x-2">
+                  <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500">
                   </div>
-                <% end %>
-
-                <!-- Columns -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
-                  </svg>
-                  <span class="font-medium text-gray-700 dark:text-slate-300">Columns:</span>
-                  <span class="text-gray-900 dark:text-white">{summary.column_count}</span>
-                </div>
-
-                <!-- Paths -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                  </svg>
-                  <span class="font-medium text-gray-700 dark:text-slate-300">Paths:</span>
-                  <span class="text-gray-900 dark:text-white">{summary.path_count}</span>
-                </div>
-
-                <!-- Transponders -->
-                <div class="flex items-center gap-1">
-                  <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
-                  </svg>
-                  <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
-
-                  <!-- Success count -->
-                  <div class="flex items-center gap-1">
-                    <svg class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                    </svg>
-                    <span class="text-gray-900 dark:text-white">{summary.successful_transponders}</span>
-                  </div>
-
-                  <!-- Fail count -->
-                  <div class="flex items-center gap-1">
-                    <svg class="h-3 w-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                    </svg>
-                    <%= if summary.failed_transponders > 0 do %>
-                      <button
-                        phx-click="show_transponder_errors"
-                        class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
-                      >
-                        {summary.failed_transponders}
-                      </button>
+                  <span class="text-sm text-gray-600 dark:text-white">
+                    <%= if @transponding do %>
+                      Transponding data...
                     <% else %>
-                      <span class="text-gray-900 dark:text-white">0</span>
+                      Scientificating piece {@loading_progress.current} of {@loading_progress.total}...
                     <% end %>
-                  </div>
+                  </span>
                 </div>
-
-                <!-- Load Speed -->
-                <%= if @load_duration_microseconds do %>
-                  <div class="flex items-center gap-1">
-                    <svg class="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
-                    </svg>
-                    <span class="text-gray-900 dark:text-white">{format_duration(@load_duration_microseconds)}</span>
-                  </div>
-                <% end %>
-
-                <!-- Export drop-up -->
-                <div id="explore-download-menu" class="ml-auto relative" data-default-label="Export" phx-hook="DownloadMenu">
-                  <button type="button" phx-click="toggle_export_dropdown" data-role="download-button" class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                    <span class="inline" data-role="download-text">Export</span>
-                    <svg class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
-                  </button>
-                  <%= if @show_export_dropdown do %>
-                    <div data-role="download-dropdown" class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40" phx-click-away="hide_export_dropdown">
-                      <button type="button" phx-click="download_explore_csv" data-export-trigger="csv" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
-                        <svg class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
-                        CSV (table)
-                      </button>
-                      <button type="button" phx-click="download_explore_json" data-export-trigger="json" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center">
-                        <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"/></svg>
-                        JSON (raw)
-                      </button>
+                <!-- Always reserve space for progress bar to keep text position consistent -->
+                <div class="w-64 h-2">
+                  <%= if @loading_chunks && @loading_progress do %>
+                    <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                      <div
+                        class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                        style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
+                      >
+                      </div>
                     </div>
                   <% end %>
                 </div>
               </div>
+            </div>
           </div>
         <% end %>
-      <% else %>
-        <div class="bg-white dark:bg-slate-800 p-8">
-          <div class="text-gray-500 dark:text-slate-300 text-center">
-            <p class="text-lg">↑ Select a key to view detailed data</p>
-            <p class="text-sm mt-2">
-              The chart above shows a stacked view of all events in this database.
-            </p>
-          </div>
-        </div>
-      <% end %>
-    </div>
-
-    <!-- Transponder Error Modal -->
-    <%= if @show_error_modal do %>
-      <% modal_summary = get_summary_stats(assigns) %>
-      <%= if modal_summary && length(modal_summary.transponder_errors) > 0 do %>
-        <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
-          <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"></div>
-
-            <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6" phx-click-away="hide_transponder_errors">
-              <div class="sm:flex sm:items-start">
-                <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
-                  <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                </div>
-                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                  <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
-                    Transponder Errors
-                  </h3>
+        
+    <!-- Filter Bar Component -->
+        <.live_component
+          module={TrifleApp.Components.FilterBar}
+          id="explore-filter-bar"
+          config={@database_config}
+          granularity={@granularity}
+          available_granularities={@available_granularities}
+          from={@from}
+          to={@to}
+          smart_timeframe_input={@smart_timeframe_input}
+          use_fixed_display={@use_fixed_display}
+          show_timeframe_dropdown={@show_timeframe_dropdown}
+          show_granularity_dropdown={@show_granularity_dropdown}
+          show_controls={true}
+          databases={@databases}
+          selected_database_id={@database.id}
+          force_granularity_dropdown={false}
+        />
+        
+    <!-- Row 2: Activity/Events Chart -->
+        <div class="sticky top-16 z-40 mb-6">
+          <div class="bg-white dark:bg-slate-800 rounded-lg shadow py-1 px-3" style="height: 160px;">
+            <%= if map_size(@keys) == 0 && !(@loading_chunks || @transponding) do %>
+              <!-- Empty State: No Data Tracked -->
+              <div class="flex flex-col items-center justify-center h-full text-center">
+                <div class="space-y-2">
+                  <div class="flex items-center justify-center gap-2">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                      Nothing to see here... yet
+                    </h3>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                      class="w-6 h-6 text-gray-500 dark:text-slate-400"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"
+                      />
+                    </svg>
+                  </div>
+                  <p class="text-sm text-gray-500 dark:text-slate-400 max-w-md">
+                    Your dashboard is having trust issues with empty data. Feed it some metrics and it'll start showing off!
+                  </p>
                   <div class="mt-4">
-                    <div class="space-y-4">
-                      <%= for error <- modal_summary.transponder_errors do %>
-                        <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
-                          <div class="flex items-center justify-between mb-2">
-                            <h4 class="font-medium text-red-800 dark:text-red-300">
-                              {error.transponder.name || error.transponder.key}
-                            </h4>
-                            <span class="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 px-2 py-1 rounded">
-                              {error.transponder.type}
-                            </span>
-                          </div>
-                          <p class="text-sm text-red-700 dark:text-red-300 font-mono">
-                            {error.error.message}
-                          </p>
-                        </div>
-                      <% end %>
-                    </div>
+                    <.link
+                      navigate={~p"/dbs/#{@database.id}/transponders"}
+                      class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
+                        />
+                      </svg>
+                      Set up Transponders →
+                    </.link>
                   </div>
                 </div>
               </div>
-              <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                <button
-                  type="button"
-                  phx-click="hide_transponder_errors"
-                  class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gray-600 text-base font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Close
-                </button>
+            <% else %>
+              <!-- Chart (when data exists) -->
+              <div
+                id="timeline-hook"
+                phx-hook="DatabaseExploreChart"
+                data-events={@timeline}
+                data-key={@key}
+                data-timezone={@database.time_zone || "UTC"}
+                data-chart-type={@chart_type}
+                data-colors={ChartColors.json_palette()}
+                data-selected-key-color={@selected_key_color}
+                class=""
+              >
               </div>
-            </div>
+              <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5 h-full">
+                <div id="timeline-chart"></div>
+              </div>
+            <% end %>
           </div>
         </div>
-      <% end %>
-    <% end %>
-    </div>
+        
+    <!-- Row 3: Key Selection -->
+        <div class="mb-6">
+          <.data_table>
+            <:header>
+              <.table_header title="Keys" count={length(filter_keys(@keys, @key_search_filter))}>
+                <:search>
+                  <div class="relative">
+                    <input
+                      type="text"
+                      placeholder="Search keys..."
+                      value={@key_search_filter}
+                      phx-keyup="filter_keys"
+                      class="block w-64 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-xs !pl-9"
+                    />
+                    <div class="absolute inset-y-0 left-2 flex items-center">
+                      <svg
+                        class="h-4 w-4 text-gray-400 dark:text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </:search>
+              </.table_header>
+            </:header>
+
+            <:body>
+              <div class="h-48 overflow-auto rounded-b-lg">
+                <!-- Fixed height for ~3 items with scrolling -->
+                <ul
+                  role="list"
+                  class="divide-y divide-gray-100 dark:divide-slate-700 rounded-b-lg overflow-hidden"
+                >
+                  <%= for {key, count} <- filter_keys(@keys, @key_search_filter) do %>
+                    <li class={
+                      if @key == key,
+                        do: "relative bg-teal-50 dark:bg-teal-900/30",
+                        else:
+                          "relative bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-slate-700"
+                    }>
+                      <button
+                        type="button"
+                        phx-click={if @key == key, do: "deselect_key", else: "select_key"}
+                        phx-value-key={key}
+                        class="w-full py-2 px-4 sm:px-6 lg:px-8 text-left min-w-max"
+                      >
+                        <div class="flex justify-between gap-x-6">
+                          <div class="flex gap-x-3 items-center">
+                            <%= if @key == key do %>
+                              <svg
+                                class="h-5 w-5 text-teal-600 flex-shrink-0"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                                <circle cx="12" cy="12" r="4" fill="currentColor" />
+                              </svg>
+                            <% else %>
+                              <svg
+                                class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                            <% end %>
+
+                            <div class="min-w-0 flex-auto">
+                              <p
+                                class="text-sm font-semibold font-mono leading-6 whitespace-nowrap"
+                                style={"color: #{get_key_color(@keys, key)} !important"}
+                              >
+                                {key}
+                              </p>
+                            </div>
+                          </div>
+                          <div class="flex items-center gap-x-4">
+                            <span
+                              class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium border float-right"
+                              style={"background-color: #{get_key_color(@keys, key)}15; color: #{get_key_color(@keys, key)} !important; border-color: #{get_key_color(@keys, key)}40 !important"}
+                            >
+                              {format_number(count)}
+                            </span>
+                            <svg
+                              class="h-5 w-5 flex-none text-gray-400 dark:text-slate-400"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path
+                                fill-rule="evenodd"
+                                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                                clip-rule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  <% end %>
+                  <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
+                    <div class="flex items-center justify-center h-48 text-gray-500 dark:text-slate-400 text-sm">
+                      <span>No keys found</span>
+                    </div>
+                  <% end %>
+                </ul>
+              </div>
+            </:body>
+          </.data_table>
+        </div>
+        
+    <!-- Row 4: Data for Selected Key -->
+        <div class="flex-1 flex flex-col min-h-0">
+          <%= if @stats do %>
+            <div
+              id="phantom-rows-container"
+              class="flex-1 bg-white dark:bg-slate-800 flex flex-col min-h-0"
+              phx-hook="PhantomRows"
+            >
+              <div
+                class="flex-1 overflow-x-auto overflow-y-auto relative"
+                id="table-hover-container"
+                phx-hook="TableHover"
+              >
+                <table
+                  class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto"
+                  id="data-table"
+                  phx-hook="FastTooltip"
+                  style="table-layout: fixed;"
+                >
+                  <thead>
+                    <tr>
+                      <th
+                        scope="col"
+                        class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
+                        style="width: 200px;"
+                      >
+                        Path
+                      </th>
+                      <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
+                        <th
+                          scope="col"
+                          class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 dark:text-teal-400 bg-white dark:bg-slate-800 h-16 align-top z-10 transition-colors duration-150"
+                          data-col={col_index}
+                          style="width: 120px;"
+                        >
+                          {format_table_timestamp(at, @granularity)}
+                        </th>
+                      <% end %>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800">
+                    <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
+                      <tr data-row={row_index}>
+                        <td
+                          class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
+                          data-row={row_index}
+                        >
+                          {format_nested_path(path, @stats[:paths], @transponder_info)}
+                        </td>
+                        <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
+                          <% value = @stats[:values][{path, at}] %>
+                          <%= if value do %>
+                            <td
+                              class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 dark:text-white transition-colors duration-150 cursor-pointer"
+                              data-row={row_index}
+                              data-col={col_index}
+                            >
+                              {value}
+                            </td>
+                          <% else %>
+                            <td
+                              class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 dark:text-slate-500 transition-colors duration-150 cursor-pointer"
+                              data-row={row_index}
+                              data-col={col_index}
+                            >
+                              0
+                            </td>
+                          <% end %>
+                        <% end %>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+                
+    <!-- Border after last row -->
+                <div class="border-t border-gray-200 dark:border-slate-700"></div>
+              </div>
+            </div>
+            
+    <!-- Sticky Summary Footer -->
+            <%= if summary = get_summary_stats(assigns) do %>
+              <div class="sticky bottom-0 border-t border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 shadow-lg z-30">
+                <div class="flex flex-wrap items-center gap-4 text-xs">
+                  <!-- Selected Key (only show if key is selected) -->
+                  <%= if summary.key do %>
+                    <div class="flex items-center gap-1">
+                      <svg
+                        class="h-4 w-4 text-teal-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
+                        />
+                      </svg>
+                      <span class="font-medium text-gray-700 dark:text-slate-300">Key:</span>
+                      <span
+                        class="font-mono text-gray-900 dark:text-white max-w-xs truncate"
+                        title={summary.key}
+                      >
+                        {summary.key}
+                      </span>
+                    </div>
+                  <% end %>
+                  
+    <!-- Columns -->
+                  <div class="flex items-center gap-1">
+                    <svg
+                      class="h-4 w-4 text-teal-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z"
+                      />
+                    </svg>
+                    <span class="font-medium text-gray-700 dark:text-slate-300">Columns:</span>
+                    <span class="text-gray-900 dark:text-white">{summary.column_count}</span>
+                  </div>
+                  
+    <!-- Paths -->
+                  <div class="flex items-center gap-1">
+                    <svg
+                      class="h-4 w-4 text-teal-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+                      />
+                    </svg>
+                    <span class="font-medium text-gray-700 dark:text-slate-300">Paths:</span>
+                    <span class="text-gray-900 dark:text-white">{summary.path_count}</span>
+                  </div>
+                  
+    <!-- Transponders -->
+                  <div class="flex items-center gap-1">
+                    <svg
+                      class="h-4 w-4 text-teal-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
+                      />
+                    </svg>
+                    <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
+                    
+    <!-- Success count -->
+                    <div class="flex items-center gap-1">
+                      <svg
+                        class="h-3 w-3 text-green-600"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                        />
+                      </svg>
+                      <span class="text-gray-900 dark:text-white">
+                        {summary.successful_transponders}
+                      </span>
+                    </div>
+                    
+    <!-- Fail count -->
+                    <div class="flex items-center gap-1">
+                      <svg
+                        class="h-3 w-3 text-red-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+                        />
+                      </svg>
+                      <%= if summary.failed_transponders > 0 do %>
+                        <button
+                          phx-click="show_transponder_errors"
+                          class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
+                        >
+                          {summary.failed_transponders}
+                        </button>
+                      <% else %>
+                        <span class="text-gray-900 dark:text-white">0</span>
+                      <% end %>
+                    </div>
+                  </div>
+                  
+    <!-- Load Speed -->
+                  <%= if @load_duration_microseconds do %>
+                    <div class="flex items-center gap-1">
+                      <svg
+                        class="h-4 w-4 text-teal-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"
+                        />
+                      </svg>
+                      <span class="text-gray-900 dark:text-white">
+                        {format_duration(@load_duration_microseconds)}
+                      </span>
+                    </div>
+                  <% end %>
+                  
+    <!-- Export drop-up -->
+                  <div
+                    id="explore-download-menu"
+                    class="ml-auto relative"
+                    data-default-label="Export"
+                    phx-hook="DownloadMenu"
+                  >
+                    <button
+                      type="button"
+                      phx-click="toggle_export_dropdown"
+                      data-role="download-button"
+                      class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                        />
+                      </svg>
+                      <span class="inline" data-role="download-text">Export</span>
+                      <svg
+                        class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                    <%= if @show_export_dropdown do %>
+                      <div
+                        data-role="download-dropdown"
+                        class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40"
+                        phx-click-away="hide_export_dropdown"
+                      >
+                        <button
+                          type="button"
+                          phx-click="download_explore_csv"
+                          data-export-trigger="csv"
+                          class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center"
+                        >
+                          <svg
+                            class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
+                            />
+                          </svg>
+                          CSV (table)
+                        </button>
+                        <button
+                          type="button"
+                          phx-click="download_explore_json"
+                          data-export-trigger="json"
+                          class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center"
+                        >
+                          <svg
+                            class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
+                            />
+                          </svg>
+                          JSON (raw)
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          <% else %>
+            <div class="bg-white dark:bg-slate-800 p-8">
+              <div class="text-gray-500 dark:text-slate-300 text-center">
+                <p class="text-lg">↑ Select a key to view detailed data</p>
+                <p class="text-sm mt-2">
+                  The chart above shows a stacked view of all events in this database.
+                </p>
+              </div>
+            </div>
+          <% end %>
+        </div>
+        
+    <!-- Transponder Error Modal -->
+        <%= if @show_error_modal do %>
+          <% modal_summary = get_summary_stats(assigns) %>
+          <%= if modal_summary && length(modal_summary.transponder_errors) > 0 do %>
+            <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
+              <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75">
+                </div>
+
+                <div
+                  class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6"
+                  phx-click-away="hide_transponder_errors"
+                >
+                  <div class="sm:flex sm:items-start">
+                    <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
+                      <svg
+                        class="h-6 w-6 text-red-600 dark:text-red-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                      <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                        Transponder Errors
+                      </h3>
+                      <div class="mt-4">
+                        <div class="space-y-4">
+                          <%= for error <- modal_summary.transponder_errors do %>
+                            <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
+                              <div class="flex items-center justify-between mb-2">
+                                <h4 class="font-medium text-red-800 dark:text-red-300">
+                                  {error.transponder.name || error.transponder.key}
+                                </h4>
+                                <span class="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 px-2 py-1 rounded">
+                                  {error.transponder.type}
+                                </span>
+                              </div>
+                              <p class="text-sm text-red-700 dark:text-red-300 font-mono">
+                                {error.error.message}
+                              </p>
+                            </div>
+                          <% end %>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                    <button
+                      type="button"
+                      phx-click="hide_transponder_errors"
+                      class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gray-600 text-base font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:ml-3 sm:w-auto sm:text-sm"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
     <% end %>
     """
   end
@@ -2007,9 +2400,9 @@ defmodule TrifleApp.ExploreLive do
           {:ok, regex} -> Regex.match?(regex, key)
           {:error, _} -> false
         end
+
       true ->
         key == pattern
     end
   end
-
 end

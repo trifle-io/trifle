@@ -29,7 +29,16 @@ defmodule Trifle.Organizations.OrganizationInvitation do
 
   def changeset(invitation, attrs) do
     invitation
-    |> cast(attrs, [:organization_id, :email, :role, :token, :status, :expires_at, :invited_by_user_id, :accepted_user_id])
+    |> cast(attrs, [
+      :organization_id,
+      :email,
+      :role,
+      :token,
+      :status,
+      :expires_at,
+      :invited_by_user_id,
+      :accepted_user_id
+    ])
     |> validate_required([:organization_id, :email, :role])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
     |> validate_inclusion(:role, @roles)

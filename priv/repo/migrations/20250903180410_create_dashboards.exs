@@ -9,7 +9,9 @@ defmodule Trifle.Repo.Migrations.CreateDashboards do
       add :access_token, :string, null: false
       add :payload, :map, default: %{}, null: false
       add :key, :text, null: false
-      add :database_id, references(:databases, on_delete: :delete_all, type: :binary_id), null: false
+
+      add :database_id, references(:databases, on_delete: :delete_all, type: :binary_id),
+        null: false
 
       timestamps()
     end

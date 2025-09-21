@@ -49,8 +49,10 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_pdf launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
-         {:ok, page_ws} <- open_page_ws_with_theme(state, url, :light), # Always use light theme for PDF
-         _ = normalize_background(page_ws), # Apply normalization early
+         # Always use light theme for PDF
+         {:ok, page_ws} <- open_page_ws_with_theme(state, url, :light),
+         # Apply normalization early
+         _ = normalize_background(page_ws),
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
          {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base) do
@@ -293,17 +295,21 @@ defmodule TrifleApp.Exporters.ChromeCDP do
            page_ws,
            "Runtime.evaluate",
            %{expression: js, returnByValue: true, awaitPromise: true},
-           timeout_ms + 2000 # Add buffer for internal delays
+           # Add buffer for internal delays
+           timeout_ms + 2000
          ) do
-      {:ok, %{"result" => %{"value" => true}}} -> 
+      {:ok, %{"result" => %{"value" => true}}} ->
         # Add stabilization check after initial readiness
         wait_for_stable_rendering(page_ws)
-      {:ok, %{"result" => %{"value" => false}}} -> 
+
+      {:ok, %{"result" => %{"value" => false}}} ->
         {:error, :charts_not_ready_timeout}
-      {:ok, %{"result" => result}} -> 
+
+      {:ok, %{"result" => result}} ->
         Logger.warning("Unexpected readiness result: #{inspect(result)}")
         :ok
-      other -> 
+
+      other ->
         {:error, {:evaluation_failed, other}}
     end
   end
@@ -358,16 +364,24 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       });
     })()
     """
-    
-    case __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{
-      expression: js,
-      returnByValue: true,
-      awaitPromise: true
-    }, 10_000) do
-      {:ok, _} -> :ok
-      {:error, reason} -> 
+
+    case __MODULE__.WS.call(
+           page_ws,
+           "Runtime.evaluate",
+           %{
+             expression: js,
+             returnByValue: true,
+             awaitPromise: true
+           },
+           10_000
+         ) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
         Logger.warning("Stability check failed: #{inspect(reason)}")
-        :ok # Continue anyway
+        # Continue anyway
+        :ok
     end
   end
 
@@ -420,48 +434,59 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     })()
     """
 
-    _ = __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{
-      expression: js, 
-      returnByValue: true,
-      awaitPromise: true
-    }, 5000)
+    _ =
+      __MODULE__.WS.call(
+        page_ws,
+        "Runtime.evaluate",
+        %{
+          expression: js,
+          returnByValue: true,
+          awaitPromise: true
+        },
+        5000
+      )
+
     :ok
   end
 
-
   defp apply_theme_before_load(page_ws, theme) do
     # Inject a script that will apply theme immediately on page load
-    js = case theme do
-      :dark -> """
-        (function() {
-          // Apply dark theme via localStorage and DOM manipulation
-          localStorage.setItem('theme', 'dark');
-          document.addEventListener('DOMContentLoaded', function() {
-            document.documentElement.classList.add('dark');
-            document.body.classList.add('dark');
-            document.body.style.background = '#0f172a';
-            document.body.setAttribute('data-theme', 'dark');
-          });
-        })();
-      """
-      _ -> """
-        (function() {
-          // Apply light theme via localStorage and DOM manipulation
-          localStorage.setItem('theme', 'light');
-          document.addEventListener('DOMContentLoaded', function() {
-            document.documentElement.classList.remove('dark');
-            document.body.classList.remove('dark');
-            document.body.style.background = '#ffffff';
-            document.body.setAttribute('data-theme', 'light');
-          });
-        })();
-      """
-    end
-    
-    _ = __MODULE__.WS.call(page_ws, "Page.addScriptToEvaluateOnNewDocument", %{
-      source: js
-    })
-    
+    js =
+      case theme do
+        :dark ->
+          """
+            (function() {
+              // Apply dark theme via localStorage and DOM manipulation
+              localStorage.setItem('theme', 'dark');
+              document.addEventListener('DOMContentLoaded', function() {
+                document.documentElement.classList.add('dark');
+                document.body.classList.add('dark');
+                document.body.style.background = '#0f172a';
+                document.body.setAttribute('data-theme', 'dark');
+              });
+            })();
+          """
+
+        _ ->
+          """
+            (function() {
+              // Apply light theme via localStorage and DOM manipulation
+              localStorage.setItem('theme', 'light');
+              document.addEventListener('DOMContentLoaded', function() {
+                document.documentElement.classList.remove('dark');
+                document.body.classList.remove('dark');
+                document.body.style.background = '#ffffff';
+                document.body.setAttribute('data-theme', 'light');
+              });
+            })();
+          """
+      end
+
+    _ =
+      __MODULE__.WS.call(page_ws, "Page.addScriptToEvaluateOnNewDocument", %{
+        source: js
+      })
+
     :ok
   end
 

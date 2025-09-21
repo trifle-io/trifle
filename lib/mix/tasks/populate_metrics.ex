@@ -1,7 +1,7 @@
 defmodule Mix.Tasks.PopulateMetrics do
   @moduledoc """
   Populates metrics data for testing purposes.
-  
+
   Usage:
     mix populate_metrics --token=your_token_here
     
@@ -17,15 +17,16 @@ defmodule Mix.Tasks.PopulateMetrics do
   @shortdoc "Populate metrics data for testing"
 
   def run(args) do
-    {opts, _, _} = OptionParser.parse(args,
-      strict: [
-        token: :string,
-        count: :integer,
-        hours: :integer,
-        batch_size: :integer,
-        batch_delay: :integer
-      ]
-    )
+    {opts, _, _} =
+      OptionParser.parse(args,
+        strict: [
+          token: :string,
+          count: :integer,
+          hours: :integer,
+          batch_size: :integer,
+          batch_delay: :integer
+        ]
+      )
 
     token = opts[:token] || raise "Missing required --token option"
     count = opts[:count] || 50
@@ -34,61 +35,74 @@ defmodule Mix.Tasks.PopulateMetrics do
     batch_delay = opts[:batch_delay] || 3
 
     Application.ensure_all_started(:hackney)
-    
+
     # Configure hackney pool to limit concurrent connections - very conservative
-    :hackney_pool.start_pool(:trifle_pool, [timeout: 15000, max_connections: 1])
-    
-    IO.puts("🚀 Starting to populate #{count} metrics in batches of #{batch_size} over #{hours} hours")
-    
+    :hackney_pool.start_pool(:trifle_pool, timeout: 15000, max_connections: 1)
+
+    IO.puts(
+      "🚀 Starting to populate #{count} metrics in batches of #{batch_size} over #{hours} hours"
+    )
+
     # Check server health before starting
     case check_server_health() do
-      :ok -> 
+      :ok ->
         IO.puts("✅ Server health check passed")
-      :error -> 
-        IO.puts("❌ Server appears to be down or unresponsive. Please restart your Phoenix server and try again.")
+
+      :error ->
+        IO.puts(
+          "❌ Server appears to be down or unresponsive. Please restart your Phoenix server and try again."
+        )
+
         System.halt(1)
     end
-    
+
     # Process metrics in batches
     total_batches = ceil(count / batch_size)
     submitted = 0
-    
+
     1..total_batches
     |> Enum.reduce_while(submitted, fn batch_num, acc_submitted ->
       remaining = count - acc_submitted
       current_batch_size = min(batch_size, remaining)
-      
-      IO.puts("\n📦 Batch #{batch_num}/#{total_batches}: Submitting #{current_batch_size} metrics (total: #{acc_submitted}/#{count})")
-      
+
+      IO.puts(
+        "\n📦 Batch #{batch_num}/#{total_batches}: Submitting #{current_batch_size} metrics (total: #{acc_submitted}/#{count})"
+      )
+
       # Process current batch
       batch_result = process_batch(token, current_batch_size, hours, acc_submitted)
-      
+
       case batch_result do
         {:ok, batch_submitted} ->
           new_total = acc_submitted + batch_submitted
-          
+
           if new_total < count do
             IO.puts("⏳ Waiting #{batch_delay} seconds before next batch...")
             Process.sleep(batch_delay * 1000)
           end
-          
+
           {:cont, new_total}
-        
+
         {:error, reason} ->
           IO.puts("❌ Batch #{batch_num} failed: #{reason}")
           {:halt, acc_submitted}
       end
     end)
-    
+
     IO.puts("\n🎉 Completed populating #{count} metrics!")
   end
 
   defp check_server_health do
     IO.puts("🔍 Checking server health...")
-    
-    case :hackney.get("http://localhost:4000", [], "", [with_body: true, timeout: 5000, pool: :trifle_pool]) do
+
+    case :hackney.get("http://localhost:4000", [], "",
+           with_body: true,
+           timeout: 5000,
+           pool: :trifle_pool
+         ) do
       {:ok, status, _headers, _body} when status >= 200 and status < 500 ->
         :ok
+
       _ ->
         :error
     end
@@ -100,10 +114,10 @@ defmodule Mix.Tasks.PopulateMetrics do
     # Generate timestamps randomly distributed over the time range
     now = DateTime.utc_now()
     start_time = DateTime.shift(now, second: -hours * 3600)
-    
+
     metrics_keys = [
       "page_views",
-      "user_signups", 
+      "user_signups",
       "api_calls",
       "errors",
       "performance",
@@ -115,28 +129,28 @@ defmodule Mix.Tasks.PopulateMetrics do
       # Random timestamp within the range
       random_seconds = :rand.uniform(hours * 3600)
       timestamp = DateTime.shift(start_time, second: random_seconds)
-      
+
       # Random metric key
       key = Enum.random(metrics_keys)
-      
+
       # Generate realistic nested values based on the key
       values = generate_values(key)
-      
+
       # Submit the metric
       case submit_metric(token, key, timestamp, values) do
-        {:ok, _} -> 
+        {:ok, _} ->
           new_count = success_count + 1
           global_count = offset + new_count
-          
+
           if rem(global_count, 5) == 0 do
             IO.puts("  ✅ Submitted #{new_count}/#{batch_size} (global: #{global_count})")
           end
-          
+
           # Small delay to avoid overwhelming
           Process.sleep(100)
           {:cont, {:ok, new_count}}
-        
-        {:error, reason} -> 
+
+        {:error, reason} ->
           IO.puts("  ❌ Failed to submit metric #{i}: #{reason}")
           # Wait longer on failures
           Process.sleep(1000)
@@ -210,7 +224,8 @@ defmodule Mix.Tasks.PopulateMetrics do
         "referral" => :rand.uniform(5),
         "paid" => :rand.uniform(8)
       },
-      "conversion_rate" => (:rand.uniform(50) + 10) / 10  # 1.0 - 6.0%
+      # 1.0 - 6.0%
+      "conversion_rate" => (:rand.uniform(50) + 10) / 10
     }
   end
 
@@ -377,8 +392,10 @@ defmodule Mix.Tasks.PopulateMetrics do
           "fatal" => %{
             "system_crash" => :rand.uniform(1),
             "data_corruption" => %{
-              "database" => :rand.uniform(2), # 1-2
-              "file_system" => :rand.uniform(2) # 1-2
+              # 1-2
+              "database" => :rand.uniform(2),
+              # 1-2
+              "file_system" => :rand.uniform(2)
             }
           }
         }
@@ -388,7 +405,8 @@ defmodule Mix.Tasks.PopulateMetrics do
 
   defp generate_values("performance") do
     %{
-      "avg_response_time" => :rand.uniform(2000) + 100,  # 100-2100ms
+      # 100-2100ms
+      "avg_response_time" => :rand.uniform(2000) + 100,
       "requests" => %{
         "fast" => %{
           "under_100ms" => :rand.uniform(400),
@@ -438,25 +456,29 @@ defmodule Mix.Tasks.PopulateMetrics do
       },
       "system" => %{
         "memory_usage" => %{
-          "heap" => (:rand.uniform(60) + 20),  # 20-80%
+          # 20-80%
+          "heap" => :rand.uniform(60) + 20,
           "non_heap" => %{
-            "metaspace" => (:rand.uniform(30) + 10),
-            "compressed_class" => (:rand.uniform(20) + 5)
+            "metaspace" => :rand.uniform(30) + 10,
+            "compressed_class" => :rand.uniform(20) + 5
           }
         },
         "cpu_usage" => %{
-          "user" => (:rand.uniform(40) + 10),    # 10-50%
-          "system" => (:rand.uniform(20) + 5),    # 5-25%
+          # 10-50%
+          "user" => :rand.uniform(40) + 10,
+          # 5-25%
+          "system" => :rand.uniform(20) + 5,
           "io_wait" => %{
-            "disk" => (:rand.uniform(10) + 2),
+            "disk" => :rand.uniform(10) + 2,
             "network" => %{
-              "inbound" => (:rand.uniform(5) + 1),
-              "outbound" => (:rand.uniform(3) + 1)
+              "inbound" => :rand.uniform(5) + 1,
+              "outbound" => :rand.uniform(3) + 1
             }
           }
         },
         "disk" => %{
-          "usage" => (:rand.uniform(70) + 10),    # 10-80%
+          # 10-80%
+          "usage" => :rand.uniform(70) + 10,
           "iops" => %{
             "read" => :rand.uniform(1000) + 100,
             "write" => %{
@@ -475,14 +497,16 @@ defmodule Mix.Tasks.PopulateMetrics do
 
   defp generate_values("sales") do
     %{
-      "revenue" => :rand.uniform(10000) + 500,  # $500-$10500
+      # $500-$10500
+      "revenue" => :rand.uniform(10000) + 500,
       "orders" => :rand.uniform(50) + 5,
       "products" => %{
         "premium" => :rand.uniform(20),
         "basic" => :rand.uniform(30),
         "enterprise" => :rand.uniform(5)
       },
-      "avg_order_value" => (:rand.uniform(500) + 100) / 10  # $10-$60
+      # $10-$60
+      "avg_order_value" => (:rand.uniform(500) + 100) / 10
     }
   end
 
@@ -501,25 +525,27 @@ defmodule Mix.Tasks.PopulateMetrics do
 
   defp submit_metric(token, key, timestamp, values) do
     url = "http://localhost:4000/api/metrics"
-    
+
     payload = %{
       "key" => key,
       "at" => DateTime.to_iso8601(timestamp),
       "values" => values
     }
-    
+
     headers = [
       {"Content-Type", "application/json"},
       {"Authorization", "Bearer #{token}"}
     ]
-    
+
     body = Jason.encode!(payload)
-    
-    case :hackney.post(url, headers, body, [with_body: true, pool: :trifle_pool]) do
+
+    case :hackney.post(url, headers, body, with_body: true, pool: :trifle_pool) do
       {:ok, 201, _headers, response_body} ->
         {:ok, response_body}
+
       {:ok, status, _headers, response_body} ->
         {:error, "HTTP #{status}: #{response_body}"}
+
       {:error, reason} ->
         {:error, reason}
     end
