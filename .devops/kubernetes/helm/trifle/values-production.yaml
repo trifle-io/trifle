@@ -58,6 +58,14 @@ app:
   honeybadger:
     apiKey: "CHANGE_ME_IN_PRODUCTION"  # Set your Honeybadger API key
 
+  mailer:
+    adapter: "sendgrid"
+    from:
+      name: "Trifle"
+      email: "no-reply@yourdomain.com"
+    sendgrid:
+      apiKey: "CHANGE_ME_IN_PRODUCTION"
+
   # User registration settings
   registration:
     enabled: false  # Disable registration in production for security

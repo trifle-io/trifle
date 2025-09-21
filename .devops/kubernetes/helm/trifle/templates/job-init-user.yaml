@@ -53,6 +53,86 @@ spec:
               value: {{ .Values.initialUser.admin | quote }}
             - name: TRIFLE_DEPLOYMENT_MODE
               value: {{ .Values.app.deploymentMode | quote }}
+            - name: MAILER_ADAPTER
+              value: {{ .Values.app.mailer.adapter | quote }}
+            - name: MAILER_FROM_NAME
+              value: {{ .Values.app.mailer.from.name | quote }}
+            - name: MAILER_FROM_EMAIL
+              value: {{ .Values.app.mailer.from.email | quote }}
+            {{- with .Values.app.mailer.smtp.relay }}
+            - name: SMTP_RELAY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.smtp.port }}
+            - name: SMTP_PORT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.smtp.auth }}
+            - name: SMTP_AUTH
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.smtp.tls }}
+            - name: SMTP_TLS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if hasKey .Values.app.mailer.smtp "ssl" }}
+            - name: SMTP_SSL
+              value: {{ .Values.app.mailer.smtp.ssl | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.smtp.retries }}
+            - name: SMTP_RETRIES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.smtp.username }}
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: smtp-username
+            {{- end }}
+            {{- with .Values.app.mailer.smtp.password }}
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: smtp-password
+            {{- end }}
+            {{- with .Values.app.mailer.postmark.apiKey }}
+            - name: POSTMARK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: postmark-api-key
+            {{- end }}
+            {{- with .Values.app.mailer.sendgrid.apiKey }}
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: sendgrid-api-key
+            {{- end }}
+            {{- with .Values.app.mailer.mailgun.domain }}
+            - name: MAILGUN_DOMAIN
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.mailgun.baseUrl }}
+            - name: MAILGUN_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.mailer.mailgun.apiKey }}
+            - name: MAILGUN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: mailgun-api-key
+            {{- end }}
+            {{- with .Values.app.mailer.sendinblue.apiKey }}
+            - name: SENDINBLUE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: sendinblue-api-key
+            {{- end }}
           resources:
             limits:
               cpu: 500m
