@@ -51,6 +51,8 @@ spec:
               value: {{ .Values.initialUser.password | quote }}
             - name: INITIAL_USER_ADMIN
               value: {{ .Values.initialUser.admin | quote }}
+            - name: TRIFLE_DEPLOYMENT_MODE
+              value: {{ .Values.app.deploymentMode | quote }}
           resources:
             limits:
               cpu: 500m

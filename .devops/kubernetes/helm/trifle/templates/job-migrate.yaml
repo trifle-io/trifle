@@ -63,6 +63,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: secret-key-base
+            - name: TRIFLE_DEPLOYMENT_MODE
+              value: {{ .Values.app.deploymentMode | quote }}
           resources:
             limits:
               cpu: 500m

@@ -84,6 +84,8 @@ spec:
               value: {{ .Values.app.poolSize | quote }}
             - name: TZ
               value: {{ .Values.app.timezone | quote }}
+            - name: TRIFLE_DEPLOYMENT_MODE
+              value: {{ .Values.app.deploymentMode | quote }}
             - name: LANG
               value: "en_US.UTF-8"
             - name: LC_ALL

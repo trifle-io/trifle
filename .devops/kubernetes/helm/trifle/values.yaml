@@ -89,6 +89,9 @@ app:
   registration:
     enabled: true  # Set to false to disable user registration
   
+  # Deployment mode: "self_hosted" (default) or "saas"
+  deploymentMode: "self_hosted"
+  
   # Environment variables
   env:
     MIX_ENV: "prod"
