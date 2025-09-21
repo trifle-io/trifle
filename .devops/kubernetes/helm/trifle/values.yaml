@@ -97,6 +97,31 @@ app:
     MIX_ENV: "prod"
     PHX_SERVER: "true"
 
+  mailer:
+    adapter: "local" # Options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo
+    from:
+      name: "Trifle"
+      email: "contact@example.com"
+    smtp:
+      relay: ""
+      username: ""
+      password: ""
+      port: 587
+      auth: "if_available" # always | never | if_available
+      tls: "if_available"   # always | never | if_available
+      ssl: false
+      retries: 2
+    postmark:
+      apiKey: ""
+    sendgrid:
+      apiKey: ""
+    mailgun:
+      apiKey: ""
+      domain: ""
+      baseUrl: ""
+    sendinblue:
+      apiKey: ""
+
 # Initial user creation (runs during installation)
 initialUser:
   enabled: true

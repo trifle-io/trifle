@@ -24,6 +24,19 @@ app:
   secretKeyBase: "your-64-character-secret-key-base-here"
   host: "trifle.yourdomain.com"
   deploymentMode: "self_hosted"
+  mailer:
+    adapter: "smtp"
+    from:
+      name: "Trifle"
+      email: "no-reply@yourdomain.com"
+    smtp:
+      relay: "smtp.yourdomain.com"
+      username: "smtp-user"
+      password: "smtp-password"
+      port: 587
+      auth: "if_available"
+      tls: "if_available"
+      ssl: false
 
 # Initial user creation (runs during installation)
 initialUser:

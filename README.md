@@ -327,6 +327,41 @@ The palette is used throughout the analytics dashboard for:
 - AppSignal can be enabled by setting `app.appsignal.enabled: true` and providing the relevant values (OTP app, name, env, and `pushApiKey`).
 - When AppSignal is enabled, the Helm chart injects the following environment variables: `APPSIGNAL_OTP_APP`, `APPSIGNAL_APP_NAME`, `APPSIGNAL_APP_ENV`, and `APPSIGNAL_PUSH_API_KEY`.
 
+### Email delivery
+
+- Mail delivery is now fully configurable via Helm by setting `app.mailer.adapter` and the provider-specific keys under `app.mailer.*`.
+- Supported adapters out of the box: `local` (default), `smtp`, `postmark`, `sendgrid`, `mailgun`, and `sendinblue`/`brevo`.
+- Define the sender identity with `app.mailer.from.name` and `app.mailer.from.email`. Credentials (API keys, SMTP username/password) are written to the release secret automatically.
+- Example—Brevo (Sendinblue):
+  ```yaml
+  app:
+    mailer:
+      adapter: "sendinblue"
+      from:
+        name: "Trifle"
+        email: "no-reply@example.com"
+      sendinblue:
+        apiKey: "YOUR_BREVO_KEY"
+  ```
+- Example—SMTP:
+  ```yaml
+  app:
+    mailer:
+      adapter: "smtp"
+      from:
+        name: "Trifle"
+        email: "no-reply@example.com"
+      smtp:
+        relay: "smtp.example.com"
+        username: "smtp-user"
+        password: "smtp-pass"
+        port: 587
+        auth: "if_available"
+        tls: "if_available"
+        ssl: false
+  ```
+  Optional keys such as `smtp.retries` or `mailgun.baseUrl` can be provided when needed.
+
 ### Docker Compose (Production)
 
 For production deployment using Docker Compose:

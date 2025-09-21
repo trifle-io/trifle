@@ -104,21 +104,140 @@ if config_env() == :prod do
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
 
-  # ## Configuring the mailer
-  #
-  # In production you need to configure the mailer to use a different adapter.
-  # Also, you may need to configure the Swoosh API client of your choice if you
-  # are not using SMTP. Here is an example of the configuration:
-  #
-  #     config :trifle, Trifle.Mailer,
-  #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
-  #
-  # For this example you need include a HTTP client required by Swoosh API client.
-  # Swoosh supports Hackney and Finch out of the box:
-  #
-  #     config :swoosh, :api_client, Swoosh.ApiClient.Hackney
-  #
-  # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+  mailer_from_name = System.get_env("MAILER_FROM_NAME") || "Trifle"
+  mailer_from_email = System.get_env("MAILER_FROM_EMAIL") || "contact@example.com"
+
+  config :trifle, :mailer_from, {mailer_from_name, mailer_from_email}
+
+  mailer_adapter =
+    System.get_env("MAILER_ADAPTER", "local")
+    |> String.downcase()
+
+  to_int = fn value, default ->
+    case value do
+      nil -> default
+      "" -> default
+      v -> String.to_integer(v)
+    end
+  end
+
+  truthy? = fn value, default ->
+    case value do
+      nil -> default
+      "" -> default
+      v when v in ["1", "true", "TRUE", "yes", "on", "enabled"] -> true
+      v when v in ["0", "false", "FALSE", "no", "off", "disabled"] -> false
+      _ -> default
+    end
+  end
+
+  parse_setting = fn value, default ->
+    case value do
+      nil ->
+        default
+
+      "" ->
+        default
+
+      v ->
+        case String.downcase(v) do
+          "always" -> :always
+          "never" -> :never
+          _ -> default
+        end
+    end
+  end
+
+  configure_api_client = fn ->
+    config :swoosh, api_client: Swoosh.ApiClient.Finch, finch_name: Trifle.Finch
+  end
+
+  case mailer_adapter do
+    "local" ->
+      config :trifle, Trifle.Mailer, adapter: Swoosh.Adapters.Local
+      config :swoosh, api_client: false, finch_name: nil
+
+    "smtp" ->
+      relay =
+        System.get_env("SMTP_RELAY") ||
+          raise "MAILER_ADAPTER=smtp requires SMTP_RELAY to be set"
+
+      smtp_opts =
+        [
+          adapter: Swoosh.Adapters.SMTP,
+          relay: relay,
+          username: System.get_env("SMTP_USERNAME"),
+          password: System.get_env("SMTP_PASSWORD"),
+          port: to_int.(System.get_env("SMTP_PORT"), 587),
+          tls: parse_setting.(System.get_env("SMTP_TLS"), :if_available),
+          ssl: truthy?.(System.get_env("SMTP_SSL"), false),
+          auth: parse_setting.(System.get_env("SMTP_AUTH"), :if_available),
+          retries: to_int.(System.get_env("SMTP_RETRIES"), nil)
+        ]
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+
+      config :trifle, Trifle.Mailer, smtp_opts
+      config :swoosh, api_client: false, finch_name: nil
+
+    "postmark" ->
+      api_key =
+        System.get_env("POSTMARK_API_KEY") ||
+          raise "MAILER_ADAPTER=postmark requires POSTMARK_API_KEY"
+
+      config :trifle, Trifle.Mailer,
+        adapter: Swoosh.Adapters.Postmark,
+        api_key: api_key
+
+      configure_api_client.()
+
+    "sendgrid" ->
+      api_key =
+        System.get_env("SENDGRID_API_KEY") ||
+          raise "MAILER_ADAPTER=sendgrid requires SENDGRID_API_KEY"
+
+      config :trifle, Trifle.Mailer,
+        adapter: Swoosh.Adapters.Sendgrid,
+        api_key: api_key
+
+      configure_api_client.()
+
+    "mailgun" ->
+      api_key =
+        System.get_env("MAILGUN_API_KEY") ||
+          raise "MAILER_ADAPTER=mailgun requires MAILGUN_API_KEY"
+
+      domain =
+        System.get_env("MAILGUN_DOMAIN") ||
+          raise "MAILER_ADAPTER=mailgun requires MAILGUN_DOMAIN"
+
+      opts =
+        [
+          adapter: Swoosh.Adapters.Mailgun,
+          api_key: api_key,
+          domain: domain
+        ]
+        |> maybe_put(:base_url, System.get_env("MAILGUN_BASE_URL"))
+
+      config :trifle, Trifle.Mailer, opts
+      configure_api_client.()
+
+    adapter when adapter in ["sendinblue", "brevo"] ->
+      api_key =
+        System.get_env("SENDINBLUE_API_KEY") ||
+          System.get_env("BREVO_API_KEY") ||
+          raise "MAILER_ADAPTER=#{adapter} requires SENDINBLUE_API_KEY (or BREVO_API_KEY)"
+
+      config :trifle, Trifle.Mailer,
+        adapter: Swoosh.Adapters.Sendinblue,
+        api_key: api_key
+
+      configure_api_client.()
+
+    other ->
+      raise ArgumentError,
+            "Unsupported MAILER_ADAPTER '#{other}'. Valid options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo."
+  end
 end
+
+defp maybe_put(keyword, _key, value) when value in [nil, ""], do: keyword
+defp maybe_put(keyword, key, value), do: Keyword.put(keyword, key, value)
