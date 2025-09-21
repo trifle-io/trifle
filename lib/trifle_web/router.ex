@@ -92,6 +92,7 @@ defmodule TrifleWeb.Router do
       live "/projects/:id/settings", ProjectSettingsLive
       live "/projects/:id/tokens", ProjectTokensLive, :index
       live "/projects/:id/tokens/new", ProjectTokensLive, :new
+      live "/organization", OrganizationLive, :show
       live "/dbs", DatabasesLive, :index
       # Database root redirects to Dashboards (handled by DatabaseRedirectLive)
       live "/dbs/:id", DatabaseRedirectLive, :index

@@ -3,8 +3,12 @@ defmodule TrifleApp.DatabaseTranspondersLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.{Database, Transponder}
 
-  def mount(%{"id" => database_id}, _session, socket) do
-    database = Organizations.get_database!(database_id)
+  def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
+    {:ok, redirect(socket, to: ~p"/app/organization")}
+  end
+
+  def mount(%{"id" => database_id}, _session, %{assigns: %{current_membership: membership}} = socket) do
+    database = Organizations.get_database_for_org!(membership.organization_id, database_id)
 
     {:ok,
      socket
@@ -33,13 +37,17 @@ defmodule TrifleApp.DatabaseTranspondersLive do
   end
 
   defp apply_action(socket, :show, %{"transponder_id" => transponder_id}) do
+    membership = socket.assigns.current_membership
+
     socket
-    |> assign(:transponder, Organizations.get_transponder!(transponder_id))
+    |> assign(:transponder, Organizations.get_transponder_for_org!(membership.organization_id, transponder_id))
   end
 
   defp apply_action(socket, :edit, %{"transponder_id" => transponder_id}) do
+    membership = socket.assigns.current_membership
+
     socket
-    |> assign(:transponder, Organizations.get_transponder!(transponder_id))
+    |> assign(:transponder, Organizations.get_transponder_for_org!(membership.organization_id, transponder_id))
   end
 
   def handle_info({TrifleApp.DatabaseTranspondersLive.FormComponent, {:saved, transponder}}, socket) do
@@ -51,7 +59,8 @@ defmodule TrifleApp.DatabaseTranspondersLive do
   end
 
   def handle_event("delete_transponder", %{"id" => id}, socket) do
-    transponder = Organizations.get_transponder!(id)
+    membership = socket.assigns.current_membership
+    transponder = Organizations.get_transponder_for_org!(membership.organization_id, id)
     {:ok, _} = Organizations.delete_transponder(transponder)
 
     # Reprioritize remaining transponders to close gaps
@@ -69,14 +78,16 @@ defmodule TrifleApp.DatabaseTranspondersLive do
   end
 
   def handle_event("toggle_transponder", %{"id" => id}, socket) do
-    transponder = Organizations.get_transponder!(id)
+    membership = socket.assigns.current_membership
+    transponder = Organizations.get_transponder_for_org!(membership.organization_id, id)
     {:ok, updated_transponder} = Organizations.update_transponder(transponder, %{enabled: !transponder.enabled})
 
     {:noreply, stream_insert(socket, :transponders, updated_transponder)}
   end
 
   def handle_event("duplicate_transponder", %{"id" => id}, socket) do
-    original = Organizations.get_transponder!(id)
+    membership = socket.assigns.current_membership
+    original = Organizations.get_transponder_for_org!(membership.organization_id, id)
     database = socket.assigns.database
     next_order = Organizations.get_next_transponder_order(database)
 

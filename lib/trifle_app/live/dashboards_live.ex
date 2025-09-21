@@ -3,18 +3,22 @@ defmodule TrifleApp.DashboardsLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Dashboard
 
-  def mount(_params, _session, socket) do
-    user = socket.assigns.current_user
+  def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
+    {:ok, redirect(socket, to: ~p"/app/organization")}
+  end
+
+  def mount(_params, _session, %{assigns: %{current_user: user, current_membership: membership}} = socket) do
     {:ok,
      socket
      |> assign(:page_title, ["Dashboards"])
      |> assign(:breadcrumb_links, ["Dashboards"])
-     |> assign(:dashboards_count, Organizations.count_dashboards_for_user_or_visible(user))
-      |> assign(:dashboard_groups_count, Organizations.count_dashboard_groups_global())
-      |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
-      |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
-      |> assign(:editing_group_id, nil)
-      |> assign(:collapsed_groups, MapSet.new())}
+     |> assign(:dashboards_count, Organizations.count_dashboards_for_membership(user, membership))
+     |> assign(:dashboard_groups_count, Organizations.count_dashboard_groups_for_membership(membership))
+     |> assign(:groups_tree, Organizations.list_dashboard_tree_for_membership(user, membership))
+     |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_membership(user, membership, nil))
+     |> assign(:editing_group_id, nil)
+     |> assign(:collapsed_groups, MapSet.new())
+     |> assign(:current_membership, membership)}
   end
 
   def handle_params(params, _url, socket) do
@@ -30,14 +34,15 @@ defmodule TrifleApp.DashboardsLive do
   defp apply_action(socket, :new, _params) do
     socket
     |> assign(:dashboard, %Dashboard{})
-    |> assign(:databases, Organizations.list_databases())
+    |> assign(:databases, Organizations.list_databases_for_org(socket.assigns.current_membership.organization_id))
   end
 
   # No modal form events in global-only mode
 
   def handle_event("delete_dashboard", %{"id" => id}, socket) do
-    dashboard = Organizations.get_dashboard!(id)
-    {:ok, _} = Organizations.delete_dashboard(dashboard)
+    membership = socket.assigns.current_membership
+    dashboard = Organizations.get_dashboard_for_membership!(membership, id)
+    {:ok, _} = Organizations.delete_dashboard_for_membership(dashboard, membership)
 
     {:noreply,
      socket
@@ -46,12 +51,12 @@ defmodule TrifleApp.DashboardsLive do
   end
 
   def handle_event("duplicate_dashboard", %{"id" => id}, socket) do
-    original = Organizations.get_dashboard!(id)
+    membership = socket.assigns.current_membership
+    original = Organizations.get_dashboard_for_membership!(membership, id)
     current_user = socket.assigns.current_user
 
     attrs = %{
       "database_id" => original.database_id,
-      "user_id" => current_user && current_user.id,
       "name" => (original.name || "Dashboard") <> " (copy)",
       "key" => original.key || "dashboard",
       "payload" => original.payload || %{},
@@ -59,10 +64,10 @@ defmodule TrifleApp.DashboardsLive do
       "default_granularity" => original.default_granularity || original.database.default_granularity || "1h",
       "visibility" => original.visibility,
       "group_id" => original.group_id,
-      "position" => Organizations.get_next_dashboard_position_for_group(original.group_id)
+      "position" => Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
     }
 
-    case Organizations.create_dashboard(attrs) do
+    case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
       {:ok, _new_dash} ->
         {:noreply,
          socket
@@ -113,27 +118,30 @@ defmodule TrifleApp.DashboardsLive do
     db_id = Map.get(params, "database_id") |> to_string()
     key = String.trim(to_string(Map.get(params, "key", "")))
 
+    membership = socket.assigns.current_membership
+
     cond do
       name == "" ->
         {:noreply, put_flash(socket, :error, "Name is required")}
+
       db_id in [nil, ""] ->
         {:noreply, put_flash(socket, :error, "Database is required")}
+
       true ->
-        db = Organizations.get_database!(db_id)
+        db = Organizations.get_database_for_org!(membership.organization_id, db_id)
 
         attrs = %{
           "name" => name,
           "key" => if(key == "", do: "dashboard", else: key),
           "database_id" => db.id,
-          "user_id" => current_user.id,
           "visibility" => false,
           "group_id" => nil,
           "default_timeframe" => db.default_timeframe || "24h",
           "default_granularity" => db.default_granularity || "1h",
-          "position" => Trifle.Organizations.get_next_dashboard_position_for_group(nil)
+          "position" => Organizations.get_next_dashboard_position_for_membership(membership, nil)
         }
 
-        case Trifle.Organizations.create_dashboard(attrs) do
+        case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
           {:ok, _dash} ->
             {:noreply,
              socket
@@ -162,18 +170,22 @@ defmodule TrifleApp.DashboardsLive do
   end
 
   def handle_event("new_group", params, socket) do
+    membership = socket.assigns.current_membership
     name = Map.get(params, "name", "New Group")
     parent_id = Map.get(params, "parent_id")
-    pos = Organizations.get_next_dashboard_group_position(parent_id)
+    pos = Organizations.get_next_dashboard_group_position_for_membership(membership, parent_id)
     attrs = %{"name" => name, "parent_group_id" => parent_id, "position" => pos}
-    case Organizations.create_dashboard_group(attrs) do
+
+    case Organizations.create_dashboard_group_for_membership(membership, attrs) do
       {:ok, _group} -> {:noreply, refresh_tree(socket)}
       {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
     end
   end
 
   def handle_event("rename_group", %{"id" => id, "name" => name}, socket) do
-    group = Organizations.get_dashboard_group!(id)
+    membership = socket.assigns.current_membership
+    group = Organizations.get_dashboard_group_for_membership!(membership, id)
+
     case Organizations.update_dashboard_group(group, %{name: name}) do
       {:ok, _} -> {:noreply, socket |> assign(:editing_group_id, nil) |> refresh_tree()}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Could not rename group")}
@@ -181,7 +193,9 @@ defmodule TrifleApp.DashboardsLive do
   end
 
   def handle_event("delete_group", %{"id" => id}, socket) do
-    group = Organizations.get_dashboard_group!(id)
+    membership = socket.assigns.current_membership
+    group = Organizations.get_dashboard_group_for_membership!(membership, id)
+
     case Organizations.delete_dashboard_group(group) do
       {:ok, _} -> {:noreply, refresh_tree(socket)}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Could not delete group")}
@@ -190,9 +204,11 @@ defmodule TrifleApp.DashboardsLive do
 
   # Reorder events from Sortable (mixed groups + dashboards)
   def handle_event("reorder_nodes", %{"items" => items, "parent_id" => parent_id, "from_items" => from_items, "from_parent_id" => from_parent_id, "moved_id" => moved_id, "moved_type" => moved_type}, socket) do
+    membership = socket.assigns.current_membership
     p = normalize_parent(parent_id)
     fp = normalize_parent(from_parent_id)
-    case Organizations.reorder_nodes(p, items, fp, from_items, moved_id, moved_type) do
+
+    case Organizations.reorder_nodes_for_membership(membership, p, items, fp, from_items, moved_id, moved_type) do
       {:ok, _} -> {:noreply, refresh_tree(socket)}
       {:error, :invalid_parent} -> {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to reorder")}
@@ -205,11 +221,13 @@ defmodule TrifleApp.DashboardsLive do
 
   defp refresh_tree(socket) do
     user = socket.assigns.current_user
+    membership = socket.assigns.current_membership
+
     socket
-    |> assign(:dashboards_count, Organizations.count_dashboards_for_user_or_visible(user))
-    |> assign(:dashboard_groups_count, Organizations.count_dashboard_groups_global())
-    |> assign(:groups_tree, Organizations.list_dashboard_tree_global(user))
-    |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_user_or_visible(user, nil))
+    |> assign(:dashboards_count, Organizations.count_dashboards_for_membership(user, membership))
+    |> assign(:dashboard_groups_count, Organizations.count_dashboard_groups_for_membership(membership))
+    |> assign(:groups_tree, Organizations.list_dashboard_tree_for_membership(user, membership))
+    |> assign(:ungrouped_dashboards, Organizations.list_dashboards_for_membership(user, membership, nil))
   end
 
   defp gravatar_url(email) do

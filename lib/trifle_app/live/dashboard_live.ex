@@ -18,34 +18,35 @@ defmodule TrifleApp.DashboardLive do
     %{id: "rose", label: "Rose", background: "#f43f5e", text: "#fff1f2"}
   ]
 
-  def mount(params, _session, socket) do
-    case params do
-      %{"id" => dashboard_id} ->
-        # Authenticated access; fetch dashboard and associated database
-        dashboard = Organizations.get_dashboard!(dashboard_id)
-        database = dashboard.database
+  def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
+    {:ok, redirect(socket, to: ~p"/app/organization")}
+  end
 
-        socket = initialize_dashboard_state(socket, database, dashboard, false, nil)
+  def mount(%{"id" => dashboard_id}, _session, %{assigns: %{current_membership: membership}} = socket) do
+    dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
+    database = dashboard.database
 
-        groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
+    socket = initialize_dashboard_state(socket, database, dashboard, false, nil)
 
-        breadcrumbs =
-          [{"Dashboards", "/app/dashboards"}] ++
-            Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [dashboard.name]
+    groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
 
-        {:ok,
-         socket
-         |> assign(:page_title, ["Dashboards", dashboard.name])
-         |> assign(:breadcrumb_links, breadcrumbs)}
+    breadcrumbs =
+      [{"Dashboards", "/app/dashboards"}] ++
+        Enum.map(groups, &{&1.name, "/app/dashboards"}) ++ [dashboard.name]
 
-      %{"dashboard_id" => dashboard_id} ->
-        # Public access - token will be provided in handle_params
-        {:ok,
-         socket
-         |> assign(:is_public_access, true)
-         |> assign(:public_token, nil)
-         |> assign(:dashboard_id, dashboard_id)}
-    end
+    {:ok,
+     socket
+     |> assign(:page_title, ["Dashboards", dashboard.name])
+     |> assign(:breadcrumb_links, breadcrumbs)
+     |> assign(:current_membership, membership)}
+  end
+
+  def mount(%{"dashboard_id" => dashboard_id}, _session, socket) do
+    {:ok,
+     socket
+     |> assign(:is_public_access, true)
+     |> assign(:public_token, nil)
+     |> assign(:dashboard_id, dashboard_id)}
   end
 
   def handle_params(params, _url, socket) do
@@ -125,7 +126,8 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp apply_action(socket, :configure, _params) do
-    databases = Organizations.list_databases()
+    membership = socket.assigns.current_membership
+    databases = Organizations.list_databases_for_org(membership.organization_id)
 
     socket
     |> assign(:dashboard_changeset, nil)
@@ -212,8 +214,9 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("delete_dashboard", _params, socket) do
     dashboard = socket.assigns.dashboard
+    membership = socket.assigns.current_membership
 
-    case Organizations.delete_dashboard(dashboard) do
+    case Organizations.delete_dashboard_for_membership(dashboard, membership) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -229,10 +232,10 @@ defmodule TrifleApp.DashboardLive do
     original = socket.assigns.dashboard
     database = socket.assigns.database
     current_user = socket.assigns.current_user
+    membership = socket.assigns.current_membership
 
     attrs = %{
       "database_id" => database.id,
-      "user_id" => current_user.id,
       "name" => (original.name || "Dashboard") <> " (copy)",
       "key" => original.key || "dashboard",
       "payload" => original.payload || %{},
@@ -241,10 +244,10 @@ defmodule TrifleApp.DashboardLive do
         original.default_granularity || database.default_granularity || "1h",
       "visibility" => original.visibility,
       "group_id" => original.group_id,
-      "position" => Organizations.get_next_dashboard_position_for_group(original.group_id)
+      "position" => Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
     }
 
-    case Organizations.create_dashboard(attrs) do
+    case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
       {:ok, new_dash} ->
         {:noreply,
          socket
@@ -1651,13 +1654,15 @@ defmodule TrifleApp.DashboardLive do
     attrs =
       if new_db_id && new_db_id != "", do: Map.put(attrs, :database_id, new_db_id), else: attrs
 
-    case Trifle.Organizations.update_dashboard(dashboard, attrs) do
+    membership = socket.assigns.current_membership
+
+    case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
       {:ok, updated_dashboard} ->
         # If database changed, update assigns and related config
         socket =
           if new_db_id && new_db_id != "" &&
                to_string(socket.assigns.database.id) != to_string(new_db_id) do
-            new_db = Organizations.get_database!(new_db_id)
+            new_db = Organizations.get_database_for_org!(membership.organization_id, new_db_id)
             new_config = Database.stats_config(new_db)
             new_grans = new_db.granularities || []
 

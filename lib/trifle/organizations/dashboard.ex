@@ -15,6 +15,7 @@ defmodule Trifle.Organizations.Dashboard do
     field :default_granularity, :string
     field :position, :integer, default: 0
 
+    belongs_to :organization, Trifle.Organizations.Organization
     belongs_to :database, Trifle.Organizations.Database
     belongs_to :user, Trifle.Accounts.User
     belongs_to :group, Trifle.Organizations.DashboardGroup
@@ -34,8 +35,8 @@ defmodule Trifle.Organizations.Dashboard do
       end
     
     dashboard
-    |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key, :default_timeframe, :default_granularity, :position, :group_id])
-    |> validate_required([:database_id, :user_id, :name, :key])
+    |> cast(attrs_without_payload, [:database_id, :user_id, :name, :visibility, :access_token, :key, :default_timeframe, :default_granularity, :position, :group_id, :organization_id])
+    |> validate_required([:database_id, :user_id, :name, :key, :organization_id])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
     |> handle_payload_field(payload_raw, payload_provided)
