@@ -125,6 +125,9 @@ defmodule TrifleWeb.Router do
   scope "/", TrifleWeb do
     pipe_through [:browser]
 
+    get "/invitations/:token", InvitationController, :show
+    post "/invitations/:token/accept", InvitationController, :accept
+
     delete "/users/log_out", UserSessionController, :delete
 
     live_session :current_user,

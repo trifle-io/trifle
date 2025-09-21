@@ -21,6 +21,8 @@ defmodule Trifle.Organizations do
     DashboardGroup
   }
 
+  alias Trifle.Organizations.InvitationNotifier
+
   ## Organizations
 
   def list_organizations do
@@ -261,12 +263,20 @@ defmodule Trifle.Organizations do
   def create_invitation(%Organization{} = organization, attrs \\ %{}, invited_by \\ nil) do
     attrs =
       attrs
-      |> Map.put(:organization_id, organization.id)
-      |> Map.put(:invited_by_user_id, invited_by && invited_by.id)
+      |> Map.new(fn
+        {key, value} when is_atom(key) -> {Atom.to_string(key), value}
+        other -> other
+      end)
+      |> Map.put("organization_id", organization.id)
+      |> Map.put("invited_by_user_id", invited_by && invited_by.id)
 
     %OrganizationInvitation{}
     |> OrganizationInvitation.changeset(attrs)
     |> Repo.insert()
+    |> tap(fn
+      {:ok, invitation} -> InvitationNotifier.deliver_invitation(invitation)
+      _ -> :ok
+    end)
   end
 
   def refresh_invitation(%OrganizationInvitation{status: status} = invitation)
@@ -274,6 +284,10 @@ defmodule Trifle.Organizations do
     invitation
     |> OrganizationInvitation.changeset(%{token: nil, expires_at: nil, status: "pending"})
     |> Repo.update()
+    |> tap(fn
+      {:ok, updated_invitation} -> InvitationNotifier.deliver_invitation(updated_invitation)
+      _ -> :ok
+    end)
   end
 
   def refresh_invitation(%OrganizationInvitation{}), do: {:error, :invalid_status}
