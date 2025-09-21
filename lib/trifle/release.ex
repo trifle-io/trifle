@@ -2,7 +2,7 @@ defmodule Trifle.Release do
   @moduledoc """
   Tasks to run in production releases.
   """
-  
+
   @app :trifle
 
   def migrate do
@@ -26,14 +26,16 @@ defmodule Trifle.Release do
     admin = System.get_env("INITIAL_USER_ADMIN", "true") |> String.downcase() == "true"
 
     if email && String.trim(email) != "" do
-      {:ok, _, _} = Ecto.Migrator.with_repo(List.first(repos()), fn _repo ->
-        case Trifle.Accounts.get_user_by_email(email) do
-          nil ->
-            create_user(email, password, admin)
-          user ->
-            reset_user(email, user, password, admin)
-        end
-      end)
+      {:ok, _, _} =
+        Ecto.Migrator.with_repo(List.first(repos()), fn _repo ->
+          case Trifle.Accounts.get_user_by_email(email) do
+            nil ->
+              create_user(email, password, admin)
+
+            user ->
+              reset_user(email, user, password, admin)
+          end
+        end)
     else
       IO.puts("ℹ️ No initial user email provided, skipping user creation")
     end
@@ -86,9 +88,11 @@ defmodule Trifle.Release do
 
   defp load_app do
     Application.load(@app)
+
     Enum.each([:crypto, :ssl, :public_key, :inets], fn app ->
       {:ok, _} = Application.ensure_all_started(app)
     end)
+
     {:ok, _} = Application.ensure_all_started(@app)
   end
 end

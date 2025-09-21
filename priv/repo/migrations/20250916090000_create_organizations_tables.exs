@@ -24,7 +24,10 @@ defmodule Trifle.Repo.Migrations.CreateOrganizationsTables do
 
     create table(:organization_memberships, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :user_id, references(:users, type: :binary_id, on_delete: :delete_all), null: false
       add :role, :string, null: false, default: "member"
       add :invited_by_user_id, references(:users, type: :binary_id, on_delete: :nilify_all)
@@ -33,12 +36,20 @@ defmodule Trifle.Repo.Migrations.CreateOrganizationsTables do
       timestamps()
     end
 
-    create unique_index(:organization_memberships, [:organization_id, :user_id], name: :organization_memberships_org_user_index)
-    create unique_index(:organization_memberships, [:user_id], name: :organization_memberships_user_unique)
+    create unique_index(:organization_memberships, [:organization_id, :user_id],
+             name: :organization_memberships_org_user_index
+           )
+
+    create unique_index(:organization_memberships, [:user_id],
+             name: :organization_memberships_user_unique
+           )
 
     create table(:organization_invitations, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :email, :string, null: false
       add :role, :string, null: false, default: "member"
       add :token, :string, null: false

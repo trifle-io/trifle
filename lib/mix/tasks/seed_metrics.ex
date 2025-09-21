@@ -1,7 +1,7 @@
 defmodule Mix.Tasks.SeedMetrics do
   @moduledoc """
   Seeds metrics data directly to any Trifle.Stats driver for testing purposes.
-  
+
   Usage:
     # For project-based drivers
     mix seed_metrics --type=project --id=0ec3422a-f6d8-42b6-b818-030033407a7e
@@ -22,16 +22,17 @@ defmodule Mix.Tasks.SeedMetrics do
   @shortdoc "Seed metrics data directly to any Trifle.Stats driver"
 
   def run(args) do
-    {opts, _, _} = OptionParser.parse(args,
-      strict: [
-        type: :string,
-        id: :string,
-        count: :integer,
-        hours: :integer,
-        batch_size: :integer,
-        batch_delay: :integer
-      ]
-    )
+    {opts, _, _} =
+      OptionParser.parse(args,
+        strict: [
+          type: :string,
+          id: :string,
+          count: :integer,
+          hours: :integer,
+          batch_size: :integer,
+          batch_delay: :integer
+        ]
+      )
 
     type = opts[:type] || raise "Missing required --type option (project or database)"
     id = opts[:id] || raise "Missing required --id option"
@@ -49,47 +50,50 @@ defmodule Mix.Tasks.SeedMetrics do
 
     IO.puts("🚀 Starting to seed #{count} metrics in batches of #{batch_size} over #{hours} hours")
     IO.puts("   Type: #{type}, ID: #{id}")
-    
+
     # Load the record and get stats configuration
-    config = case type do
-      "project" -> load_project_config(id)
-      "database" -> load_database_config(id)
-    end
-    
+    config =
+      case type do
+        "project" -> load_project_config(id)
+        "database" -> load_database_config(id)
+      end
+
     IO.puts("✅ Successfully loaded #{type} configuration")
-    
+
     # Process metrics in batches
     total_batches = ceil(count / batch_size)
     submitted = 0
-    
+
     1..total_batches
     |> Enum.reduce_while(submitted, fn batch_num, acc_submitted ->
       remaining = count - acc_submitted
       current_batch_size = min(batch_size, remaining)
-      
-      IO.puts("\n📦 Batch #{batch_num}/#{total_batches}: Seeding #{current_batch_size} metrics (total: #{acc_submitted}/#{count})")
-      
+
+      IO.puts(
+        "\n📦 Batch #{batch_num}/#{total_batches}: Seeding #{current_batch_size} metrics (total: #{acc_submitted}/#{count})"
+      )
+
       # Process current batch
       batch_result = process_batch(config, current_batch_size, hours, acc_submitted)
-      
+
       case batch_result do
         {:ok, batch_submitted} ->
           new_total = acc_submitted + batch_submitted
-          
+
           if new_total < count do
             if batch_delay > 0 do
               Process.sleep(batch_delay)
             end
           end
-          
+
           {:cont, new_total}
-        
+
         {:error, reason} ->
           IO.puts("❌ Batch #{batch_num} failed: #{reason}")
           {:halt, acc_submitted}
       end
     end)
-    
+
     IO.puts("\n🎉 Completed seeding #{count} metrics!")
   end
 
@@ -108,6 +112,7 @@ defmodule Mix.Tasks.SeedMetrics do
     case Trifle.Repo.get(Trifle.Organizations.Database, id) do
       nil ->
         raise "Database with ID #{id} not found"
+
       database ->
         IO.puts("   Database: #{database.display_name} (#{database.driver})")
         Trifle.Organizations.Database.stats_config(database)
@@ -119,10 +124,10 @@ defmodule Mix.Tasks.SeedMetrics do
     timezone = config.time_zone || "Etc/UTC"
     now = DateTime.now!(timezone)
     start_time = DateTime.shift(now, second: -hours * 3600)
-    
+
     metrics_keys = [
       "page_views",
-      "user_signups", 
+      "user_signups",
       "api_calls",
       "errors",
       "performance",
@@ -138,28 +143,28 @@ defmodule Mix.Tasks.SeedMetrics do
       # Random timestamp within the range
       random_seconds = :rand.uniform(hours * 3600)
       timestamp = DateTime.shift(start_time, second: random_seconds)
-      
+
       # Random metric key
       key = Enum.random(metrics_keys)
-      
+
       # Generate realistic nested values based on the key
       values = generate_values(key)
-      
+
       # Submit the metric directly using Trifle.Stats
       try do
         # Track the metric
         _result = Trifle.Stats.track(key, timestamp, values, config)
-        
+
         new_count = success_count + 1
         global_count = offset + new_count
-        
+
         if rem(global_count, 10) == 0 do
           IO.puts("  ✅ Seeded #{new_count}/#{batch_size} (global: #{global_count})")
         end
-        
+
         {:cont, {:ok, new_count}}
       rescue
-        error -> 
+        error ->
           IO.puts("  ❌ Failed to seed metric #{i}: #{inspect(error)}")
           {:halt, {:error, error}}
       end
@@ -232,7 +237,8 @@ defmodule Mix.Tasks.SeedMetrics do
         "referral" => :rand.uniform(5),
         "paid" => :rand.uniform(8)
       },
-      "conversion_rate" => (:rand.uniform(50) + 10) / 10,  # 1.0 - 6.0%
+      # 1.0 - 6.0%
+      "conversion_rate" => (:rand.uniform(50) + 10) / 10,
       "demographics" => %{
         "age_groups" => %{
           "18_24" => :rand.uniform(5),
@@ -386,7 +392,8 @@ defmodule Mix.Tasks.SeedMetrics do
 
   defp generate_values("performance") do
     %{
-      "avg_response_time" => :rand.uniform(2000) + 100,  # 100-2100ms
+      # 100-2100ms
+      "avg_response_time" => :rand.uniform(2000) + 100,
       "requests" => %{
         "fast" => %{
           "under_100ms" => :rand.uniform(400),
@@ -436,20 +443,23 @@ defmodule Mix.Tasks.SeedMetrics do
       },
       "system" => %{
         "memory_usage" => %{
-          "heap" => (:rand.uniform(60) + 20),  # 20-80%
+          # 20-80%
+          "heap" => :rand.uniform(60) + 20,
           "non_heap" => %{
-            "metaspace" => (:rand.uniform(30) + 10),
-            "compressed_class" => (:rand.uniform(20) + 5)
+            "metaspace" => :rand.uniform(30) + 10,
+            "compressed_class" => :rand.uniform(20) + 5
           }
         },
         "cpu_usage" => %{
-          "user" => (:rand.uniform(40) + 10),    # 10-50%
-          "system" => (:rand.uniform(20) + 5),    # 5-25%
+          # 10-50%
+          "user" => :rand.uniform(40) + 10,
+          # 5-25%
+          "system" => :rand.uniform(20) + 5,
           "io_wait" => %{
-            "disk" => (:rand.uniform(10) + 2),
+            "disk" => :rand.uniform(10) + 2,
             "network" => %{
-              "inbound" => (:rand.uniform(5) + 1),
-              "outbound" => (:rand.uniform(3) + 1)
+              "inbound" => :rand.uniform(5) + 1,
+              "outbound" => :rand.uniform(3) + 1
             }
           }
         }
@@ -459,14 +469,16 @@ defmodule Mix.Tasks.SeedMetrics do
 
   defp generate_values("sales") do
     %{
-      "revenue" => :rand.uniform(10000) + 500,  # $500-$10500
+      # $500-$10500
+      "revenue" => :rand.uniform(10000) + 500,
       "orders" => :rand.uniform(50) + 5,
       "products" => %{
         "premium" => :rand.uniform(20),
         "basic" => :rand.uniform(30),
         "enterprise" => :rand.uniform(5)
       },
-      "avg_order_value" => (:rand.uniform(500) + 100) / 10,  # $10-$60
+      # $10-$60
+      "avg_order_value" => (:rand.uniform(500) + 100) / 10,
       "payment_methods" => %{
         "credit_card" => %{
           "visa" => :rand.uniform(25),
@@ -490,7 +502,8 @@ defmodule Mix.Tasks.SeedMetrics do
 
   defp generate_values("conversion") do
     %{
-      "rate" => (:rand.uniform(100) + 50) / 10,  # 5.0 - 15.0%
+      # 5.0 - 15.0%
+      "rate" => (:rand.uniform(100) + 50) / 10,
       "funnel" => %{
         "awareness" => %{
           "visitors" => :rand.uniform(1000) + 500,
@@ -539,7 +552,8 @@ defmodule Mix.Tasks.SeedMetrics do
 
   defp generate_values("engagement") do
     %{
-      "session_duration" => :rand.uniform(1800) + 300,  # 5-35 minutes
+      # 5-35 minutes
+      "session_duration" => :rand.uniform(1800) + 300,
       "page_depth" => %{
         "single_page" => :rand.uniform(200),
         "2_to_5_pages" => %{
@@ -585,9 +599,12 @@ defmodule Mix.Tasks.SeedMetrics do
 
   defp generate_values("retention") do
     %{
-      "day_1" => (:rand.uniform(800) + 200) / 10,  # 20-100%
-      "day_7" => (:rand.uniform(600) + 100) / 10,  # 10-70%
-      "day_30" => (:rand.uniform(400) + 50) / 10,  # 5-45%
+      # 20-100%
+      "day_1" => (:rand.uniform(800) + 200) / 10,
+      # 10-70%
+      "day_7" => (:rand.uniform(600) + 100) / 10,
+      # 5-45%
+      "day_30" => (:rand.uniform(400) + 50) / 10,
       "cohorts" => %{
         "this_month" => %{
           "new_users" => :rand.uniform(500) + 100,
@@ -621,7 +638,8 @@ defmodule Mix.Tasks.SeedMetrics do
 
   defp generate_values("revenue") do
     %{
-      "total" => :rand.uniform(50000) + 5000,  # $5000-$55000
+      # $5000-$55000
+      "total" => :rand.uniform(50000) + 5000,
       "recurring" => %{
         "monthly" => :rand.uniform(30000) + 3000,
         "annual" => %{

@@ -36,7 +36,12 @@ defmodule Trifle.OrganizationsTest do
 
     test "update_project/2 with valid data updates the project" do
       project = project_fixture()
-      update_attrs = %{beginning_of_week: 43, name: "some updated name", time_zone: "some updated time_zone"}
+
+      update_attrs = %{
+        beginning_of_week: 43,
+        name: "some updated name",
+        time_zone: "some updated time_zone"
+      }
 
       assert {:ok, %Project{} = project} = Organizations.update_project(project, update_attrs)
       assert project.beginning_of_week == 43
@@ -83,7 +88,9 @@ defmodule Trifle.OrganizationsTest do
     test "create_project_token/1 with valid data creates a project_token" do
       valid_attrs = %{name: "some name", read: true, token: "some token", write: true}
 
-      assert {:ok, %ProjectToken{} = project_token} = Organizations.create_project_token(valid_attrs)
+      assert {:ok, %ProjectToken{} = project_token} =
+               Organizations.create_project_token(valid_attrs)
+
       assert project_token.name == "some name"
       assert project_token.read == true
       assert project_token.token == "some token"
@@ -96,9 +103,17 @@ defmodule Trifle.OrganizationsTest do
 
     test "update_project_token/2 with valid data updates the project_token" do
       project_token = project_token_fixture()
-      update_attrs = %{name: "some updated name", read: false, token: "some updated token", write: false}
 
-      assert {:ok, %ProjectToken{} = project_token} = Organizations.update_project_token(project_token, update_attrs)
+      update_attrs = %{
+        name: "some updated name",
+        read: false,
+        token: "some updated token",
+        write: false
+      }
+
+      assert {:ok, %ProjectToken{} = project_token} =
+               Organizations.update_project_token(project_token, update_attrs)
+
       assert project_token.name == "some updated name"
       assert project_token.read == false
       assert project_token.token == "some updated token"
@@ -107,14 +122,20 @@ defmodule Trifle.OrganizationsTest do
 
     test "update_project_token/2 with invalid data returns error changeset" do
       project_token = project_token_fixture()
-      assert {:error, %Ecto.Changeset{}} = Organizations.update_project_token(project_token, @invalid_attrs)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Organizations.update_project_token(project_token, @invalid_attrs)
+
       assert project_token == Organizations.get_project_token!(project_token.id)
     end
 
     test "delete_project_token/1 deletes the project_token" do
       project_token = project_token_fixture()
       assert {:ok, %ProjectToken{}} = Organizations.delete_project_token(project_token)
-      assert_raise Ecto.NoResultsError, fn -> Organizations.get_project_token!(project_token.id) end
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Organizations.get_project_token!(project_token.id)
+      end
     end
 
     test "change_project_token/1 returns a project_token changeset" do

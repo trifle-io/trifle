@@ -8,4 +8,3 @@ defmodule Trifle.Repo.Migrations.AddDefaultsToDashboards do
     end
   end
 end
-

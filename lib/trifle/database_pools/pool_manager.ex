@@ -1,14 +1,14 @@
 defmodule Trifle.DatabasePools.PoolManager do
   @moduledoc """
   Centralized pool management for database connections.
-  
+
   Provides utilities for managing connection pools across different
   database types and cleaning up resources when databases are removed.
   """
 
   @doc """
   Stop all pools for a given database across all database types.
-  
+
   This should be called when a database record is deleted to properly
   clean up all associated connection pools.
   """
@@ -28,7 +28,7 @@ defmodule Trifle.DatabasePools.PoolManager do
 
   @doc """
   Get information about all active pools for a database.
-  
+
   Returns a map with database types as keys and pool info as values.
   """
   def get_database_pool_info(database_id) do
@@ -43,7 +43,7 @@ defmodule Trifle.DatabasePools.PoolManager do
 
   @doc """
   Get overview of all active pools across all supervisors.
-  
+
   Useful for monitoring and debugging connection pool usage.
   """
   def list_all_active_pools do
@@ -58,7 +58,7 @@ defmodule Trifle.DatabasePools.PoolManager do
 
   @doc """
   Get count of active pools by database type.
-  
+
   Returns a summary of how many pools are running for each database type.
   """
   def pool_counts do

@@ -236,7 +236,7 @@ defmodule TrifleApp.ProjectLive do
       |> assign(smart_timeframe_input: nil)
       |> push_patch(
         to:
-          ~p"/app/projects/#{socket.assigns.project.id}?#{[range: range, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
+          ~p"/projects/#{socket.assigns.project.id}?#{[range: range, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
       )
 
     {:noreply, socket}
@@ -272,7 +272,7 @@ defmodule TrifleApp.ProjectLive do
           })
           |> push_patch(
             to:
-              ~p"/app/projects/#{socket.assigns.project.id}?#{[range: range, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
+              ~p"/projects/#{socket.assigns.project.id}?#{[range: range, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
           )
 
         {:noreply, socket}
@@ -308,7 +308,7 @@ defmodule TrifleApp.ProjectLive do
           })
           |> push_patch(
             to:
-              ~p"/app/projects/#{socket.assigns.project.id}?#{[range: range, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+              ~p"/projects/#{socket.assigns.project.id}?#{[range: range, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
           )
 
         {:noreply, socket}
@@ -330,7 +330,7 @@ defmodule TrifleApp.ProjectLive do
       |> assign(range: sensitivity)
       |> push_patch(
         to:
-          ~p"/app/projects/#{socket.assigns.project.id}?#{[range: sensitivity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/projects/#{socket.assigns.project.id}?#{[range: sensitivity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -371,10 +371,8 @@ defmodule TrifleApp.ProjectLive do
       "month" -> "1mo"
       "quarter" -> "1q"
       "year" -> "1y"
-
       # Direct granularity strings (for future use or config)
       granularity when is_binary(granularity) -> granularity
-
       # Fallback for any other cases
       _ -> "1h"
     end
@@ -418,11 +416,12 @@ defmodule TrifleApp.ProjectLive do
     |> Enum.map(fn {granularity, index} ->
       label = granularity_to_label(granularity)
 
-      position = cond do
-        index == 0 -> :first
-        index == length(granularities) - 1 -> :last
-        true -> :middle
-      end
+      position =
+        cond do
+          index == 0 -> :first
+          index == length(granularities) - 1 -> :last
+          true -> :middle
+        end
 
       {label, granularity, position}
     end)
@@ -534,11 +533,12 @@ defmodule TrifleApp.ProjectLive do
       end
 
     # Get the selected key's color for single charts
-    selected_key_color = if params["key"] && params["key"] != "" do
-      get_key_color(keys_sum, params["key"])
-    else
-      nil
-    end
+    selected_key_color =
+      if params["key"] && params["key"] != "" do
+        get_key_color(keys_sum, params["key"])
+      else
+        nil
+      end
 
     socket =
       socket
@@ -671,12 +671,14 @@ defmodule TrifleApp.ProjectLive do
   def get_key_color(keys, target_key) when is_map(keys) do
     keys
     |> Map.keys()
-    |> Enum.sort()  # Ensure consistent ordering
+    # Ensure consistent ordering
+    |> Enum.sort()
     |> Enum.with_index()
     |> Enum.find(fn {key, _index} -> key == target_key end)
     |> case do
       {_key, index} -> ChartColors.color_for(index)
-      nil -> ChartColors.primary()  # Fallback to primary color
+      # Fallback to primary color
+      nil -> ChartColors.primary()
     end
   end
 
@@ -718,7 +720,8 @@ defmodule TrifleApp.ProjectLive do
 
   def format_table_timestamp(datetime, _range) when is_struct(datetime, DateTime) do
     date = datetime |> DateTime.to_date() |> Date.to_string()
-    time = datetime |> DateTime.to_time() |> Time.to_string() |> String.slice(0, 8) # HH:MM:SS
+    # HH:MM:SS
+    time = datetime |> DateTime.to_time() |> Time.to_string() |> String.slice(0, 8)
     Phoenix.HTML.raw("#{date}<br/>#{time}")
   end
 
@@ -729,17 +732,18 @@ defmodule TrifleApp.ProjectLive do
 
   defp get_component_index_at_level(component, all_paths, path_so_far) do
     # Build the prefix for this level
-    prefix = case path_so_far do
-      [] -> ""
-      parts -> Enum.join(parts, ".") <> "."
-    end
+    prefix =
+      case path_so_far do
+        [] -> ""
+        parts -> Enum.join(parts, ".") <> "."
+      end
 
     # Get all components at this level with the same prefix
     siblings =
       all_paths
       |> Enum.filter(fn path ->
         String.starts_with?(path, prefix) &&
-        length(String.split(path, ".")) > length(path_so_far)
+          length(String.split(path, ".")) > length(path_so_far)
       end)
       |> Enum.map(fn path ->
         String.split(path, ".")
@@ -760,7 +764,7 @@ defmodule TrifleApp.ProjectLive do
         <div class="border-b border-gray-200">
           <nav class="-mb-px space-x-8" aria-label="Tabs">
             <.link
-              navigate={~p"/app/projects/#{@project.id}"}
+              navigate={~p"/projects/#{@project.id}"}
               class="border-teal-500 text-teal-600 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
               aria-current="page"
             >
@@ -782,7 +786,7 @@ defmodule TrifleApp.ProjectLive do
               <span class="hidden sm:block">Explore</span>
             </.link>
             <.link
-              navigate={~p"/app/projects/#{@project.id}/transponders"}
+              navigate={~p"/projects/#{@project.id}/transponders"}
               class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
             >
               <svg
@@ -803,7 +807,7 @@ defmodule TrifleApp.ProjectLive do
               <span class="hidden sm:block">Transponders</span>
             </.link>
             <.link
-              navigate={~p"/app/projects/#{@project.id}/tokens"}
+              navigate={~p"/projects/#{@project.id}/tokens"}
               class="float-right border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
             >
               <svg
@@ -824,7 +828,7 @@ defmodule TrifleApp.ProjectLive do
               <span class="hidden sm:block">Tokens</span>
             </.link>
             <.link
-              navigate={~p"/app/projects/#{@project.id}/settings"}
+              navigate={~p"/projects/#{@project.id}/settings"}
               class="float-right border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
             >
               <svg
@@ -865,7 +869,7 @@ defmodule TrifleApp.ProjectLive do
                   for="smart_timeframe"
                   class="absolute -top-2 left-2 inline-block bg-white px-1 text-xs font-medium text-gray-900"
                 >
-                  Timeframe UTC<%= get_timezone_offset_display(@project.time_zone) %>
+                  Timeframe UTC{get_timezone_offset_display(@project.time_zone)}
                 </label>
                 <input
                   type="text"
@@ -884,7 +888,7 @@ defmodule TrifleApp.ProjectLive do
                 <%= if @smart_timeframe_input && @smart_timeframe_input != "" do %>
                   <div class="absolute inset-y-0 right-8 flex items-center">
                     <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10">
-                      <%= @smart_timeframe_input %>
+                      {@smart_timeframe_input}
                     </span>
                   </div>
                 <% end %>
@@ -926,9 +930,9 @@ defmodule TrifleApp.ProjectLive do
                         class="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-50"
                       >
                         <div class="flex items-center justify-between">
-                          <span class="text-sm text-gray-900"><%= label %></span>
+                          <span class="text-sm text-gray-900">{label}</span>
                           <span class="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600 ring-1 ring-inset ring-gray-500/10">
-                            <%= value %>
+                            {value}
                           </span>
                         </div>
                       </div>
@@ -937,8 +941,8 @@ defmodule TrifleApp.ProjectLive do
                 <% end %>
               </div>
             </div>
-
-            <!-- Sensitivity controls -->
+            
+    <!-- Sensitivity controls -->
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-2">Sensitivity</label>
               <div class="inline-flex rounded-md shadow-sm" role="group">
@@ -970,24 +974,24 @@ defmodule TrifleApp.ProjectLive do
                       "#{base_classes} #{position_classes} #{state_classes} #{border_classes}"
                     }
                   >
-                    <%= label %>
+                    {label}
                   </button>
                 <% end %>
               </div>
             </div>
-
-            <!-- Current selection display -->
+            
+    <!-- Current selection display -->
             <div class="flex-shrink-0">
               <div class="text-xs text-gray-500 bg-gray-50 rounded px-3 py-2">
-                <span class="font-medium">Current:</span><br/>
-                <%= format_timeframe_display(@from, @to) %>
+                <span class="font-medium">Current:</span> <br />
+                {format_timeframe_display(@from, @to)}
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Main content area -->
+      
+    <!-- Main content area -->
       <div class="flex-1 xl:flex">
         <div class="xl:w-96 xl:shrink-0 flex flex-col">
           <!-- Left column area -->
@@ -1010,7 +1014,7 @@ defmodule TrifleApp.ProjectLive do
                           <!-- Selected state: filled dot (radio button style) -->
                           <.link
                             navigate={
-                              ~p"/app/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), timeframe: @smart_timeframe_input]}"
+                              ~p"/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), timeframe: @smart_timeframe_input]}"
                             }
                             class="flex-shrink-0"
                           >
@@ -1033,7 +1037,7 @@ defmodule TrifleApp.ProjectLive do
                           <!-- Unselected state: empty circle -->
                           <.link
                             navigate={
-                              ~p"/app/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), key: key, timeframe: @smart_timeframe_input]}"
+                              ~p"/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), key: key, timeframe: @smart_timeframe_input]}"
                             }
                             class="flex-shrink-0"
                           >
@@ -1054,23 +1058,32 @@ defmodule TrifleApp.ProjectLive do
                         <% end %>
 
                         <div class="min-w-0 flex-auto">
-                          <p class="text-sm font-semibold font-mono leading-6" style={"color: #{get_key_color(@keys, key)} !important"}>
-                            <.link navigate={
-                              if @key == key,
-                                do:
-                                  ~p"/app/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), timeframe: @smart_timeframe_input]}",
-                                else:
-                                  ~p"/app/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), key: key, timeframe: @smart_timeframe_input]}"
-                            } style={"color: inherit !important"}>
+                          <p
+                            class="text-sm font-semibold font-mono leading-6"
+                            style={"color: #{get_key_color(@keys, key)} !important"}
+                          >
+                            <.link
+                              navigate={
+                                if @key == key,
+                                  do:
+                                    ~p"/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), timeframe: @smart_timeframe_input]}",
+                                  else:
+                                    ~p"/projects/#{@project.id}?#{[range: @range, from: format_for_datetime_input(@from), to: format_for_datetime_input(@to), key: key, timeframe: @smart_timeframe_input]}"
+                              }
+                              style="color: inherit !important"
+                            >
                               <span class="absolute inset-x-0 -top-px bottom-0"></span>
-                              <%= key %>
+                              {key}
                             </.link>
                           </p>
                         </div>
                       </div>
                       <div class="flex items-center gap-x-4">
-                        <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ring-gray-300 float-right" style={"background-color: #{get_key_color(@keys, key)}15; color: #{get_key_color(@keys, key)} !important"}>
-                          <%= count %>
+                        <span
+                          class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ring-gray-300 float-right"
+                          style={"background-color: #{get_key_color(@keys, key)}15; color: #{get_key_color(@keys, key)} !important"}
+                        >
+                          {count}
                         </span>
                         <svg
                           class="h-5 w-5 flex-none text-gray-400"
@@ -1100,12 +1113,12 @@ defmodule TrifleApp.ProjectLive do
               id="timeline-hook"
               phx-hook="ProjectTimeline"
               data-events={@timeline}
-            data-key={@key}
-            data-timezone={@project.time_zone}
-            data-chart-type={@chart_type}
-            data-colors={ChartColors.json_palette()}
-            data-selected-key-color={@selected_key_color}
-            class=""
+              data-key={@key}
+              data-timezone={@project.time_zone}
+              data-chart-type={@chart_type}
+              data-colors={ChartColors.json_palette()}
+              data-selected-key-color={@selected_key_color}
+              class=""
             >
             </div>
             <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5">
@@ -1116,7 +1129,11 @@ defmodule TrifleApp.ProjectLive do
           <%= if @stats do %>
             <div class="text-lg font-semibold leading-6 text-gray-900 mt-5">Data</div>
 
-            <div class="overflow-x-auto overflow-hidden bg-white rounded-lg shadow mt-5" id="table-hover-container" phx-hook="TableHover">
+            <div
+              class="overflow-x-auto overflow-hidden bg-white rounded-lg shadow mt-5"
+              id="table-hover-container"
+              phx-hook="TableHover"
+            >
               <table class="min-w-full divide-y divide-gray-300 overflow-auto" id="data-table">
                 <thead>
                   <tr>
@@ -1133,7 +1150,7 @@ defmodule TrifleApp.ProjectLive do
                         class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 h-16 align-top z-10 transition-colors duration-150"
                         data-col={col_index}
                       >
-                        <%= format_table_timestamp(at, @range) %>
+                        {format_table_timestamp(at, @range)}
                       </th>
                     <% end %>
                   </tr>
@@ -1141,17 +1158,29 @@ defmodule TrifleApp.ProjectLive do
                 <tbody class="divide-y divide-gray-200 bg-white">
                   <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
                     <tr data-row={row_index}>
-                      <td class="left-0 sticky bg-white whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono pl-4 z-10 transition-colors duration-150" style="box-shadow: 1px 0 0 0 #d1d5db;" data-row={row_index}>
-                        <%= format_nested_path(path, @stats[:paths]) %>
+                      <td
+                        class="left-0 sticky bg-white whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono pl-4 z-10 transition-colors duration-150"
+                        style="box-shadow: 1px 0 0 0 #d1d5db;"
+                        data-row={row_index}
+                      >
+                        {format_nested_path(path, @stats[:paths])}
                       </td>
                       <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
                         <% value = @stats[:values][{path, at}] %>
                         <%= if value do %>
-                          <td class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 transition-colors duration-150 cursor-pointer" data-row={row_index} data-col={col_index}>
-                            <%= value %>
+                          <td
+                            class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 transition-colors duration-150 cursor-pointer"
+                            data-row={row_index}
+                            data-col={col_index}
+                          >
+                            {value}
                           </td>
                         <% else %>
-                          <td class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 transition-colors duration-150 cursor-pointer" data-row={row_index} data-col={col_index}>
+                          <td
+                            class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 transition-colors duration-150 cursor-pointer"
+                            data-row={row_index}
+                            data-col={col_index}
+                          >
                             0
                           </td>
                         <% end %>
@@ -1164,7 +1193,9 @@ defmodule TrifleApp.ProjectLive do
           <% else %>
             <div class="text-gray-500 text-center py-8 mt-5">
               <p class="text-lg">← Select a key to view detailed data</p>
-              <p class="text-sm mt-2">The chart above shows a stacked view of all events of the project.</p>
+              <p class="text-sm mt-2">
+                The chart above shows a stacked view of all events of the project.
+              </p>
             </div>
           <% end %>
         </div>

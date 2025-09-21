@@ -14,32 +14,34 @@ defmodule TrifleWeb.UserSettingsLive do
             Manage your account email address and password settings
           </p>
         </div>
-
-        <!-- Settings Sections -->
+        
+    <!-- Settings Sections -->
         <div class="divide-y divide-gray-900/10 dark:divide-slate-700">
           <!-- Theme Settings Section -->
           <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
             <div class="px-4 sm:px-0">
-              <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Theme Preference</h2>
+              <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                Theme Preference
+              </h2>
               <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
                 Choose your preferred theme. System will automatically switch between light and dark based on your device settings.
               </p>
             </div>
 
-            <.form_container 
-              for={@theme_form} 
-              phx-submit="update_theme" 
-              phx-change="validate_theme" 
+            <.form_container
+              for={@theme_form}
+              phx-submit="update_theme"
+              phx-change="validate_theme"
               layout="simple"
               class="bg-white dark:bg-slate-800 shadow-sm ring-1 ring-gray-900/5 dark:ring-slate-700 sm:rounded-xl md:col-span-2"
             >
               <div class="px-4 py-6 sm:p-8">
                 <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
                   <div class="col-span-full">
-                    <.form_field 
-                      field={@theme_form[:theme]} 
-                      type="select" 
-                      label="Theme" 
+                    <.form_field
+                      field={@theme_form[:theme]}
+                      type="select"
+                      label="Theme"
                       options={[
                         {"Light", "light"},
                         {"Dark", "dark"},
@@ -60,8 +62,8 @@ defmodule TrifleWeb.UserSettingsLive do
               </:actions>
             </.form_container>
           </div>
-
-          <!-- Email Settings Section -->
+          
+    <!-- Email Settings Section -->
           <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
             <div class="px-4 sm:px-0">
               <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Email Address</h2>
@@ -70,31 +72,31 @@ defmodule TrifleWeb.UserSettingsLive do
               </p>
             </div>
 
-            <.form_container 
-              for={@email_form} 
-              phx-submit="update_email" 
-              phx-change="validate_email" 
+            <.form_container
+              for={@email_form}
+              phx-submit="update_email"
+              phx-change="validate_email"
               layout="simple"
               class="bg-white dark:bg-slate-800 shadow-sm ring-1 ring-gray-900/5 dark:ring-slate-700 sm:rounded-xl md:col-span-2"
             >
               <div class="px-4 py-6 sm:p-8">
                 <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
                   <div class="col-span-full">
-                    <.form_field 
-                      field={@email_form[:email]} 
-                      type="email" 
-                      label="New email address" 
-                      required 
+                    <.form_field
+                      field={@email_form[:email]}
+                      type="email"
+                      label="New email address"
+                      required
                       placeholder="Enter your new email"
                     />
                   </div>
 
                   <div class="col-span-full">
-                    <.form_field 
+                    <.form_field
                       field={@email_form[:current_password]}
-                      type="password" 
-                      label="Current password" 
-                      required 
+                      type="password"
+                      label="Current password"
+                      required
                       placeholder="Enter your current password"
                       help_text="We need your current password to confirm this change"
                     />
@@ -111,8 +113,8 @@ defmodule TrifleWeb.UserSettingsLive do
               </:actions>
             </.form_container>
           </div>
-
-          <!-- Password Settings Section -->
+          
+    <!-- Password Settings Section -->
           <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
             <div class="px-4 sm:px-0">
               <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Password</h2>
@@ -121,8 +123,8 @@ defmodule TrifleWeb.UserSettingsLive do
               </p>
             </div>
 
-            <.form_container 
-              for={@password_form} 
+            <.form_container
+              for={@password_form}
               phx-submit="update_password"
               phx-change="validate_password"
               action={~p"/users/log_in?_action=password_updated"}
@@ -134,34 +136,34 @@ defmodule TrifleWeb.UserSettingsLive do
               <div class="px-4 py-6 sm:p-8">
                 <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
                   <input type="hidden" name="user[email]" value={@current_email} />
-                  
+
                   <div class="col-span-full">
-                    <.form_field 
-                      field={@password_form[:password]} 
-                      type="password" 
-                      label="New password" 
-                      required 
+                    <.form_field
+                      field={@password_form[:password]}
+                      type="password"
+                      label="New password"
+                      required
                       placeholder="Enter your new password"
                       help_text="Must be at least 8 characters long"
                     />
                   </div>
 
                   <div class="col-span-full">
-                    <.form_field 
-                      field={@password_form[:password_confirmation]} 
-                      type="password" 
-                      label="Confirm new password" 
-                      required 
+                    <.form_field
+                      field={@password_form[:password_confirmation]}
+                      type="password"
+                      label="Confirm new password"
+                      required
                       placeholder="Confirm your new password"
                     />
                   </div>
 
                   <div class="col-span-full">
-                    <.form_field 
+                    <.form_field
                       field={@password_form[:current_password]}
-                      type="password" 
-                      label="Current password" 
-                      required 
+                      type="password"
+                      label="Current password"
+                      required
                       placeholder="Enter your current password"
                       help_text="We need your current password to confirm this change"
                     />
@@ -306,13 +308,12 @@ defmodule TrifleWeb.UserSettingsLive do
           |> Accounts.change_user_theme()
           |> to_form()
 
-        {:noreply, 
+        {:noreply,
          socket
          |> assign(theme_form: theme_form)
          |> assign(current_user: updated_user)
          |> put_flash(:info, "Theme preference updated successfully.")
-         |> push_event("theme-changed", %{theme: updated_user.theme})
-}
+         |> push_event("theme-changed", %{theme: updated_user.theme})}
 
       {:error, changeset} ->
         {:noreply, assign(socket, theme_form: to_form(changeset))}

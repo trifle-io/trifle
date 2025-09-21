@@ -73,7 +73,7 @@ defmodule Trifle.Repo.Migrations.ConvertIdsToUuids do
     execute "ALTER TABLE projects DROP CONSTRAINT projects_user_id_fkey;"
 
     drop constraint(:users, "users_pkey")
-    drop constraint(:projects, "projects_pkey") 
+    drop constraint(:projects, "projects_pkey")
     drop constraint(:project_tokens, "project_tokens_pkey")
     drop constraint(:users_tokens, "users_tokens_pkey")
 

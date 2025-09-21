@@ -7,7 +7,7 @@ defmodule TrifleApp.DatabaseRedirectLive do
 
   def handle_params(_params, _uri, socket) do
     # Redirect database root to Transponders (since database-scoped Dashboards were removed)
-    {:noreply, push_navigate(socket, to: ~p"/app/dbs/#{socket.assigns.database_id}/transponders")}
+    {:noreply, push_navigate(socket, to: ~p"/dbs/#{socket.assigns.database_id}/transponders")}
   end
 
   def render(assigns) do

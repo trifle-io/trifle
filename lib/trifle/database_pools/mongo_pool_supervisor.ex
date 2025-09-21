@@ -105,11 +105,13 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
 
     # Extract pool_size from config
     db_config = database.config || %{}
-    pool_size = case db_config["pool_size"] do
-      nil -> 5
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
+
+    pool_size =
+      case db_config["pool_size"] do
+        nil -> 5
+        val when is_integer(val) -> val
+        val when is_binary(val) -> String.to_integer(val)
+      end
 
     # Build connection config from database record
     config = [
@@ -139,7 +141,7 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
     # Build full URL
     port = database.port || 27017
     db_name = database.database_name || "admin"
-    
+
     # Add authSource parameter if auth_database is specified
     auth_source_param =
       if database.auth_database && database.auth_database != "" do

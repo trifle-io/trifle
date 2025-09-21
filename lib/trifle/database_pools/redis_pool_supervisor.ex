@@ -135,17 +135,21 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
 
         %{
           id: connection_name,
-          start: {Redix, :start_link, [[
-            name: connection_name,
-            host: database.host,
-            port: database.port || 6379,
-            password: database.password,
-            database: database.database_name || 0,
-            socket_opts: [:inet6],
-            # Additional Redix options for reliability
-            sync_connect: true,
-            exit_on_disconnection: true
-          ]]}
+          start:
+            {Redix, :start_link,
+             [
+               [
+                 name: connection_name,
+                 host: database.host,
+                 port: database.port || 6379,
+                 password: database.password,
+                 database: database.database_name || 0,
+                 socket_opts: [:inet6],
+                 # Additional Redix options for reliability
+                 sync_connect: true,
+                 exit_on_disconnection: true
+               ]
+             ]}
         }
       end
 
@@ -153,7 +157,8 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
     %{
       id: supervisor_name,
       type: :supervisor,
-      start: {Supervisor, :start_link, [children, [strategy: :one_for_one, name: supervisor_name]]}
+      start:
+        {Supervisor, :start_link, [children, [strategy: :one_for_one, name: supervisor_name]]}
     }
   end
 

@@ -3,9 +3,9 @@ defmodule TrifleApp.DesignSystem.FormButtons do
 
   @doc """
   Renders a standardized form action button group.
-  
+
   ## Examples
-  
+
       <.form_actions>
         <.primary_button phx-disable-with="Saving...">Save</.primary_button>
         <.secondary_button navigate={~p"/back"}>Cancel</.secondary_button>
@@ -19,7 +19,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   attr :align, :string, default: "right", values: ~w(left center right)
   attr :class, :string, default: ""
   attr :spacing, :string, default: "gap-3", values: ~w(gap-2 gap-3 gap-4)
-  
+
   slot :inner_block, required: true
 
   def form_actions(assigns) do
@@ -30,7 +30,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
       @spacing,
       @class
     ]}>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </div>
     """
   end
@@ -41,7 +41,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   attr :type, :string, default: "submit"
   attr :class, :string, default: ""
   attr :rest, :global, include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled)
-  
+
   slot :inner_block, required: true
 
   def primary_button(assigns) do
@@ -54,7 +54,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
       ]}
       {@rest}
     >
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </button>
     """
   end
@@ -67,7 +67,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   attr :navigate, :string, default: nil
   attr :patch, :string, default: nil
   attr :rest, :global, include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled)
-  
+
   slot :inner_block, required: true
 
   def secondary_button(assigns) do
@@ -80,7 +80,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
           @class
         ]}
       >
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </.link>
     <% else %>
       <button
@@ -91,7 +91,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
         ]}
         {@rest}
       >
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </button>
     <% end %>
     """
@@ -103,7 +103,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   attr :type, :string, default: "button"
   attr :class, :string, default: ""
   attr :rest, :global, include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled)
-  
+
   slot :inner_block, required: true
 
   def danger_button(assigns) do
@@ -116,7 +116,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
       ]}
       {@rest}
     >
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </button>
     """
   end
@@ -129,7 +129,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   attr :navigate, :string, default: nil
   attr :patch, :string, default: nil
   attr :rest, :global, include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled)
-  
+
   slot :inner_block, required: true
 
   def ghost_button(assigns) do
@@ -142,7 +142,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
           @class
         ]}
       >
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </.link>
     <% else %>
       <button
@@ -153,7 +153,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
         ]}
         {@rest}
       >
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </button>
     <% end %>
     """

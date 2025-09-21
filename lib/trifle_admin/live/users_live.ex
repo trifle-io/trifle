@@ -11,12 +11,12 @@ defmodule TrifleAdmin.UsersLive do
     ~H"""
     <.admin_table>
       <:header>
-        <.admin_table_header 
-          title="Users" 
+        <.admin_table_header
+          title="Users"
           description="A list of all users in the system including their email and admin status."
         />
       </:header>
-      
+
       <:body>
         <.admin_table_container>
           <.admin_table_full>
@@ -27,7 +27,7 @@ defmodule TrifleAdmin.UsersLive do
               <.admin_table_column>Created</.admin_table_column>
               <.admin_table_column actions />
             </:columns>
-            
+
             <:rows>
               <%= for user <- @users do %>
                 <tr>
@@ -35,17 +35,27 @@ defmodule TrifleAdmin.UsersLive do
                     <div class="group flex items-center space-x-3">
                       <div class="flex-shrink-0">
                         <div class="w-10 h-10 bg-gradient-to-br from-teal-50 to-blue-50 dark:from-teal-900 dark:to-blue-900 rounded-lg flex items-center justify-center group-hover:from-teal-100 group-hover:to-blue-100 dark:group-hover:from-teal-800 dark:group-hover:to-blue-800 transition-all duration-200">
-                          <svg class="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          <svg
+                            class="w-5 h-5 text-teal-600 dark:text-teal-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            />
                           </svg>
                         </div>
                       </div>
                       <div class="flex-1 min-w-0">
                         <p class="text-sm font-semibold text-gray-900 dark:text-white transition-colors duration-200">
-                          <%= user.email %>
+                          {user.email}
                         </p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">
-                          <%= if user.is_admin, do: "Administrator", else: "Standard User" %>
+                          {if user.is_admin, do: "Administrator", else: "Standard User"}
                         </p>
                       </div>
                     </div>
@@ -68,7 +78,7 @@ defmodule TrifleAdmin.UsersLive do
                       </div>
                       <%= if user.confirmed_at do %>
                         <div class="text-xs text-gray-400 dark:text-gray-500">
-                          <%= Calendar.strftime(user.confirmed_at, "%Y-%m-%d %H:%M") %> UTC
+                          {Calendar.strftime(user.confirmed_at, "%Y-%m-%d %H:%M")} UTC
                         </div>
                       <% else %>
                         <div class="text-xs text-gray-400 dark:text-gray-500">
@@ -80,26 +90,26 @@ defmodule TrifleAdmin.UsersLive do
                   <.admin_table_cell>
                     <div class="flex flex-col">
                       <div class="text-gray-900 dark:text-white">
-                        <%= Calendar.strftime(user.inserted_at, "%Y-%m-%d") %>
+                        {Calendar.strftime(user.inserted_at, "%Y-%m-%d")}
                       </div>
                       <div class="text-xs text-gray-400 dark:text-gray-500">
-                        <%= Calendar.strftime(user.inserted_at, "%H:%M") %> UTC
+                        {Calendar.strftime(user.inserted_at, "%H:%M")} UTC
                       </div>
                     </div>
                   </.admin_table_cell>
                   <.admin_table_cell actions>
                     <%= if user.is_admin do %>
-                      <.table_action_button 
-                        variant="danger" 
-                        phx_click="revoke_admin" 
+                      <.table_action_button
+                        variant="danger"
+                        phx_click="revoke_admin"
                         phx_value_id={user.id}
                       >
                         Revoke Admin
                       </.table_action_button>
                     <% else %>
-                      <.table_action_button 
-                        variant="primary" 
-                        phx_click="grant_admin" 
+                      <.table_action_button
+                        variant="primary"
+                        phx_click="grant_admin"
                         phx_value_id={user.id}
                       >
                         Grant Admin
@@ -119,10 +129,11 @@ defmodule TrifleAdmin.UsersLive do
   def handle_event("grant_admin", %{"id" => id}, socket) do
     case Accounts.update_user_admin_status(id, true) do
       {:ok, _user} ->
-        {:noreply, 
-         socket 
+        {:noreply,
+         socket
          |> assign(users: list_users())
          |> put_flash(:info, "Admin access granted successfully")}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to grant admin access")}
     end
@@ -131,10 +142,11 @@ defmodule TrifleAdmin.UsersLive do
   def handle_event("revoke_admin", %{"id" => id}, socket) do
     case Accounts.update_user_admin_status(id, false) do
       {:ok, _user} ->
-        {:noreply, 
-         socket 
+        {:noreply,
+         socket
          |> assign(users: list_users())
          |> put_flash(:info, "Admin access revoked successfully")}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to revoke admin access")}
     end

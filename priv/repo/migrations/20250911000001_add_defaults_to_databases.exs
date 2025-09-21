@@ -8,4 +8,3 @@ defmodule Trifle.Repo.Migrations.AddDefaultsToDatabases do
     end
   end
 end
-

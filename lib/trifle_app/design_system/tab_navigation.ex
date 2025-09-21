@@ -3,9 +3,9 @@ defmodule TrifleApp.DesignSystem.TabNavigation do
 
   @doc """
   Renders a tab navigation with consistent styling.
-  
+
   ## Examples
-  
+
       <.tab_navigation>
         <:tab href="/explore" active={true}>
           <:icon>
@@ -28,7 +28,7 @@ defmodule TrifleApp.DesignSystem.TabNavigation do
     attr :navigate, :string
     attr :active, :boolean
     attr :align, :string, values: ["left", "right"]
-    
+
     slot :icon, doc: "Icon for tab"
     slot :label, doc: "Label for tab"
   end
@@ -45,12 +45,12 @@ defmodule TrifleApp.DesignSystem.TabNavigation do
           >
             <%= for icon <- tab[:icon] || [] do %>
               <div class={tab_icon_classes(tab)}>
-                <%= render_slot(icon) %>
+                {render_slot(icon)}
               </div>
             <% end %>
             <%= for label <- tab[:label] || [] do %>
               <span class="hidden sm:block">
-                <%= render_slot(label) %>
+                {render_slot(label)}
               </span>
             <% end %>
           </.link>
@@ -70,24 +70,26 @@ defmodule TrifleApp.DesignSystem.TabNavigation do
 
   defp tab_classes(tab) do
     base_classes = "group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium"
-    
-    active_classes = if Map.get(tab, :active, false) do
-      "border-teal-500 text-teal-600 dark:text-teal-400"
-    else
-      "border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300"
-    end
 
-    align_classes = case Map.get(tab, :align, "left") do
-      "right" -> "float-right"
-      _ -> ""
-    end
+    active_classes =
+      if Map.get(tab, :active, false) do
+        "border-teal-500 text-teal-600 dark:text-teal-400"
+      else
+        "border-transparent text-gray-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300"
+      end
+
+    align_classes =
+      case Map.get(tab, :align, "left") do
+        "right" -> "float-right"
+        _ -> ""
+      end
 
     "#{base_classes} #{active_classes} #{align_classes}"
   end
 
   defp tab_icon_classes(tab) do
     base_classes = "-ml-0.5 mr-2 h-5 w-5"
-    
+
     if Map.get(tab, :active, false) do
       "text-teal-400 group-hover:text-teal-500 #{base_classes}"
     else

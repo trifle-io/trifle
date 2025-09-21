@@ -3,9 +3,9 @@ defmodule TrifleApp.DesignSystem.DatabaseLabel do
 
   @doc """
   Renders a consistent database type label with blue styling.
-  
+
   ## Examples
-  
+
       <.database_label driver="postgres" />
       <.database_label driver="redis" />
   """
@@ -18,7 +18,7 @@ defmodule TrifleApp.DesignSystem.DatabaseLabel do
       "inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/20 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-600/20 dark:ring-blue-400/30",
       @class
     ]}>
-      <%= String.capitalize(@driver) %>
+      {String.capitalize(@driver)}
     </span>
     """
   end

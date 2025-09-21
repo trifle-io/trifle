@@ -1,31 +1,43 @@
 defmodule TrifleWeb.DesignSystem.ChartColors do
   @moduledoc """
   Official chart color palette for Trifle Analytics.
-  
+
   Provides a curated set of 12 vibrant colors based on Tailwind CSS 
   for consistent data visualization across charts and graphs.
-  
+
   These colors ensure consistency across all chart instances in the application.
   """
 
   @official_palette [
-    "#14b8a6",  # Teal-600 (primary)
-    "#f59e0b",  # Amber-500
-    "#ef4444",  # Red-500
-    "#8b5cf6",  # Violet-500
-    "#06b6d4",  # Cyan-500
-    "#10b981",  # Emerald-500
-    "#f97316",  # Orange-500
-    "#ec4899",  # Pink-500
-    "#3b82f6",  # Blue-500
-    "#84cc16",  # Lime-500
-    "#f43f5e",  # Rose-500
-    "#6366f1"   # Indigo-500
+    # Teal-600 (primary)
+    "#14b8a6",
+    # Amber-500
+    "#f59e0b",
+    # Red-500
+    "#ef4444",
+    # Violet-500
+    "#8b5cf6",
+    # Cyan-500
+    "#06b6d4",
+    # Emerald-500
+    "#10b981",
+    # Orange-500
+    "#f97316",
+    # Pink-500
+    "#ec4899",
+    # Blue-500
+    "#3b82f6",
+    # Lime-500
+    "#84cc16",
+    # Rose-500
+    "#f43f5e",
+    # Indigo-500
+    "#6366f1"
   ]
 
   @doc """
   Returns the complete official color palette.
-  
+
   ## Examples
       
       iex> TrifleWeb.DesignSystem.ChartColors.palette()
@@ -36,9 +48,9 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
 
   @doc """
   Returns the color at a specific index (0-based).
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.DesignSystem.ChartColors.color_at(0)
       "#14b8a6"
       
@@ -52,9 +64,9 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
   @doc """
   Returns a color for the given index with automatic cycling.
   If the index exceeds the palette size, it cycles back to the beginning.
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.DesignSystem.ChartColors.color_for(0)
       "#14b8a6"
       
@@ -72,9 +84,9 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
 
   @doc """
   Returns the number of colors in the palette.
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.DesignSystem.ChartColors.count()
       12
   """
@@ -82,9 +94,9 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
 
   @doc """
   Returns colors for a list of items, cycling through the palette as needed.
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.DesignSystem.ChartColors.colors_for(["key1", "key2", "key3"])
       [{"key1", "#14b8a6"}, {"key2", "#f59e0b"}, {"key3", "#ef4444"}]
   """
@@ -96,9 +108,9 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
 
   @doc """
   Returns the palette as a JSON-encoded string for JavaScript consumption.
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.DesignSystem.ChartColors.json_palette()
       "[\"#14b8a6\",\"#f59e0b\",\"#ef4444\",\"#8b5cf6\",\"#06b6d4\",\"#10b981\",\"#f97316\",\"#ec4899\",\"#3b82f6\",\"#84cc16\",\"#f43f5e\",\"#6366f1\"]"
   """
@@ -108,9 +120,9 @@ defmodule TrifleWeb.DesignSystem.ChartColors do
 
   @doc """
   Returns the primary color (first color in the palette).
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.DesignSystem.ChartColors.primary()
       "#14b8a6"
   """

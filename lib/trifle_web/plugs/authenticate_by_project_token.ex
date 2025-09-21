@@ -18,6 +18,7 @@ defmodule TrifleWeb.Plugs.AuthenticateByProjectToken do
         |> put_view(TrifleWeb.Api.ErrorJSON)
         |> render("403.json", %{})
         |> halt()
+
       _error ->
         conn
         |> assign(:current_project, nil)
@@ -31,14 +32,16 @@ defmodule TrifleWeb.Plugs.AuthenticateByProjectToken do
 
   def find_project_from_header(conn, mode) do
     with token when not is_nil(token) <- extract_bearer_token(conn),
-      {:ok, project, token} <- Trifle.Organizations.get_project_by_token(token),
-      {:ok, permission} <- valid_mode?(token, mode) do
-        {:ok, project}
+         {:ok, project, token} <- Trifle.Organizations.get_project_by_token(token),
+         {:ok, permission} <- valid_mode?(token, mode) do
+      {:ok, project}
     else
       {:error, :invalid_permissions} ->
         {:error, :invalid_permissions}
+
       {:error, :not_found} ->
         {:error, :not_found}
+
       nil ->
         {:error, :not_found}
     end
@@ -55,10 +58,13 @@ defmodule TrifleWeb.Plugs.AuthenticateByProjectToken do
     cond do
       token.read && mode == :read ->
         {:ok, :read}
+
       token.write && mode == :write ->
         {:ok, :write}
+
       true ->
-        {:error, :invalid_permissions} # true is else
+        # true is else
+        {:error, :invalid_permissions}
     end
   end
 end

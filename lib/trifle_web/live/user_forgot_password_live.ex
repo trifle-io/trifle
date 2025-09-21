@@ -10,8 +10,14 @@ defmodule TrifleWeb.UserForgotPasswordLive do
         <!-- Logo and Brand -->
         <div class="text-center">
           <div class="flex justify-center">
-            <svg viewBox="0 0 1024 1024" class="h-20 w-20 text-teal-600 dark:text-teal-400" stroke="currentColor" fill="none" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
-              <path d="M512,255.985L767.995,768.015L256.005,768.015L512,255.985Z" stroke-width="48"/>
+            <svg
+              viewBox="0 0 1024 1024"
+              class="h-20 w-20 text-teal-600 dark:text-teal-400"
+              stroke="currentColor"
+              fill="none"
+              style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;"
+            >
+              <path d="M512,255.985L767.995,768.015L256.005,768.015L512,255.985Z" stroke-width="48" />
               <path d="M384.035,512L191.977,543.055" stroke-width="48" />
               <path d="M832.002,319.913L578.581,384.001" stroke-width="48" />
               <path d="M832.002,414.511L611.315,447.956" stroke-width="48" />
@@ -27,15 +33,15 @@ defmodule TrifleWeb.UserForgotPasswordLive do
             Enter your email and we'll send you a password reset link
           </p>
         </div>
-
-        <!-- Reset Form -->
+        
+    <!-- Reset Form -->
         <div class="bg-white dark:bg-slate-800 py-8 px-6 shadow-xl rounded-xl border border-gray-100 dark:border-slate-700">
           <.form_container for={@form} phx-submit="send_email" layout="simple">
-            <.form_field 
-              field={@form[:email]} 
-              type="email" 
-              label="Email address" 
-              required 
+            <.form_field
+              field={@form[:email]}
+              type="email"
+              label="Email address"
+              required
               placeholder="Enter your email address"
             />
 
@@ -46,18 +52,21 @@ defmodule TrifleWeb.UserForgotPasswordLive do
             </:actions>
           </.form_container>
         </div>
-
-        <!-- Navigation Links -->
+        
+    <!-- Navigation Links -->
         <div class="text-center">
-          <.link navigate={~p"/users/log_in"} class="text-sm font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300">
+          <.link
+            navigate={~p"/users/log_in"}
+            class="text-sm font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
+          >
             ← Back to sign in
           </.link>
         </div>
-
-        <!-- Footer -->
+        
+    <!-- Footer -->
         <div class="text-center">
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            © <%= Date.utc_today().year %> Trifle Analytics. Secure analytics platform.
+            © {Date.utc_today().year} Trifle Analytics. Secure analytics platform.
           </p>
         </div>
       </div>

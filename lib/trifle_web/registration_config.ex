@@ -1,7 +1,7 @@
 defmodule TrifleWeb.RegistrationConfig do
   @moduledoc """
   Configuration helpers for user registration functionality.
-  
+
   This module provides utilities to check whether user registration is enabled
   based on environment variables. This allows for runtime configuration of
   registration availability.
@@ -9,11 +9,11 @@ defmodule TrifleWeb.RegistrationConfig do
 
   @doc """
   Checks if user registration is enabled based on the REGISTRATION_ENABLED environment variable.
-  
+
   Defaults to true if the environment variable is not set.
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.RegistrationConfig.enabled?()
       true
       
@@ -27,11 +27,11 @@ defmodule TrifleWeb.RegistrationConfig do
 
   @doc """
   Returns the registration URL path if registration is enabled, otherwise returns nil.
-  
+
   This is useful for conditional navigation links.
-  
+
   ## Examples
-  
+
       iex> TrifleWeb.RegistrationConfig.registration_path()
       "/users/register"
       

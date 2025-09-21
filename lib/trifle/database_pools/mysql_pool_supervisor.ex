@@ -102,11 +102,13 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
   defp mysql_pool_spec(database, connection_name) do
     # Extract pool_size from config
     db_config = database.config || %{}
-    pool_size = case db_config["pool_size"] do
-      nil -> 5
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
+
+    pool_size =
+      case db_config["pool_size"] do
+        nil -> 5
+        val when is_integer(val) -> val
+        val when is_binary(val) -> String.to_integer(val)
+      end
 
     # Build connection config from database record
     config = [
@@ -121,14 +123,16 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
       pool_timeout: 5000,
       # MySQL-specific options for better reliability and performance
       socket_options: [:inet6],
-      ssl: false,  # Enable SSL if needed
+      # Enable SSL if needed
+      ssl: false,
       ssl_opts: [],
       charset: "utf8mb4",
       collation: "utf8mb4_unicode_ci",
       # Connection behavior
       connect_timeout: 5000,
       handshake_timeout: 5000,
-      prepare: :named,  # Use named prepared statements
+      # Use named prepared statements
+      prepare: :named,
       # Connection pool configuration
       queue_target: 5000,
       queue_interval: 5000

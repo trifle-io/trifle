@@ -4,7 +4,8 @@ defmodule TrifleWeb.Layouts do
   embed_templates "layouts/*"
 
   def gravatar(email) do
-    hash = email
+    hash =
+      email
       |> String.trim()
       |> String.downcase()
       |> :erlang.md5()

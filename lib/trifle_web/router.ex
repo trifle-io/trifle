@@ -20,7 +20,6 @@ defmodule TrifleWeb.Router do
   scope "/", TrifleWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
     get "/home", PageController, :home_page
     get "/toc", PageController, :toc
     get "/privacy", PageController, :privacy
@@ -59,6 +58,7 @@ defmodule TrifleWeb.Router do
       if TrifleWeb.RegistrationConfig.enabled?() do
         live "/users/register", UserRegistrationLive, :new
       end
+
       live "/users/log_in", UserLoginLive, :new
       live "/users/reset_password", UserForgotPasswordLive, :new
       live "/users/reset_password/:token", UserResetPasswordLive, :edit
@@ -77,13 +77,13 @@ defmodule TrifleWeb.Router do
     end
   end
 
-  # TrifleApp routes
-  scope "/app", TrifleApp do
+  # TrifleApp routes mounted at root
+  scope "/", TrifleApp do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :app_authenticated,
       on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
-      # Redirect /app to /app/dashboards
+      # Redirect root to dashboards
       live "/", AppRedirectLive, :index
       live "/projects", ProjectsLive, :index
       live "/projects/new", ProjectsLive, :new
@@ -113,7 +113,7 @@ defmodule TrifleWeb.Router do
   end
 
   # Export downloads (controller) under authenticated app scope
-  scope "/app", TrifleWeb do
+  scope "/", TrifleWeb do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/export/dashboards/:id/pdf", ExportController, :dashboard_pdf
@@ -166,5 +166,4 @@ defmodule TrifleWeb.Router do
       live "/databases/:id/show", DatabasesLive, :show
     end
   end
-
 end

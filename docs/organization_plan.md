@@ -44,7 +44,7 @@
 6. Update session/plug logic (likely in `TrifleWeb.UserAuth` and LiveView mount hooks) to load memberships and enforce presence of active organization before loading app routes; keep assumption of single membership while architecting for future multi-org selection.
 
 ## Phase 4 – LiveView & UI Additions
-1. Add “Organization” entry to the user dropdown (desktop + mobile) pointing to `/app/organization` LiveView; ensure consistent styling with existing menu.
+1. Add “Organization” entry to the user dropdown (desktop + mobile) pointing to `/organization` LiveView; ensure consistent styling with existing menu.
 2. Create `TrifleApp.OrganizationLive` (tabs) mirroring Transponders layout:
    - Tab 1: “Profile” (editable fields for org name, address, VAT/registration identifiers, timezone).
    - Tab 2: “Users” (table of members with role badges, remove action, role toggle).

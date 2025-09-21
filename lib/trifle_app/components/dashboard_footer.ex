@@ -219,7 +219,7 @@ defmodule TrifleApp.Components.DashboardFooter do
               <a
                 data-export-link
                 onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
-                href={~p"/app/export/dashboards/#{@dashboard.id}/csv?#{export_params}"}
+                href={~p"/export/dashboards/#{@dashboard.id}/csv?#{export_params}"}
                 target="download_iframe"
                 class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
               >
@@ -244,7 +244,7 @@ defmodule TrifleApp.Components.DashboardFooter do
               <a
                 data-export-link
                 onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
-                href={~p"/app/export/dashboards/#{@dashboard.id}/json?#{export_params}"}
+                href={~p"/export/dashboards/#{@dashboard.id}/json?#{export_params}"}
                 target="download_iframe"
                 class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
               >
@@ -269,7 +269,7 @@ defmodule TrifleApp.Components.DashboardFooter do
               <a
                 data-export-link
                 onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
-                href={~p"/app/export/dashboards/#{@dashboard.id}/pdf?#{export_params}"}
+                href={~p"/export/dashboards/#{@dashboard.id}/pdf?#{export_params}"}
                 target="download_iframe"
                 class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
               >
@@ -295,7 +295,7 @@ defmodule TrifleApp.Components.DashboardFooter do
                 data-export-link
                 onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                 href={
-                  ~p"/app/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "light")}"
+                  ~p"/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "light")}"
                 }
                 target="download_iframe"
                 class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
@@ -322,7 +322,7 @@ defmodule TrifleApp.Components.DashboardFooter do
                 data-export-link
                 onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                 href={
-                  ~p"/app/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "dark")}"
+                  ~p"/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "dark")}"
                 }
                 target="download_iframe"
                 class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"

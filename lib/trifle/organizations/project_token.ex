@@ -19,8 +19,14 @@ defmodule Trifle.Organizations.ProjectToken do
   def changeset(project_token, attrs) do
     project_token
     |> cast(attrs, [:name, :read, :write])
-    |> put_assoc(:project,  attrs["project"])
-    |> put_change(:token, (project_token.token || Phoenix.Token.sign(TrifleWeb.Endpoint, "project auth", attrs["project"].id, max_age: 86400 * 365)))
+    |> put_assoc(:project, attrs["project"])
+    |> put_change(
+      :token,
+      project_token.token ||
+        Phoenix.Token.sign(TrifleWeb.Endpoint, "project auth", attrs["project"].id,
+          max_age: 86400 * 365
+        )
+    )
     |> validate_required([:project, :name, :token, :read, :write])
     |> unique_constraint(:token)
   end

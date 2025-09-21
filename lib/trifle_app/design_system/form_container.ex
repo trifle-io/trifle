@@ -3,9 +3,9 @@ defmodule TrifleApp.DesignSystem.FormContainer do
 
   @doc """
   Renders a standardized form container with consistent layout and styling.
-  
+
   ## Examples
-  
+
       <.form_container for={@form} phx-submit="save">
         <:header title="Create User" subtitle="Add a new user to the system" />
         
@@ -27,13 +27,15 @@ defmodule TrifleApp.DesignSystem.FormContainer do
   attr :for, :any, required: true
   attr :layout, :string, default: "simple", values: ~w(simple grid slide_over)
   attr :class, :string, default: ""
-  attr :rest, :global, include: ~w(phx-submit phx-change phx-update action method phx-trigger-action)
+
+  attr :rest, :global,
+    include: ~w(phx-submit phx-change phx-update action method phx-trigger-action)
 
   slot :header do
     attr :title, :string
     attr :subtitle, :string
   end
-  
+
   slot :inner_block, required: true
   slot :actions
 
@@ -45,27 +47,27 @@ defmodule TrifleApp.DesignSystem.FormContainer do
         <div class={header_classes(@layout)}>
           <%= if header[:title] do %>
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              <%= header[:title] %>
+              {header[:title]}
             </h2>
           <% end %>
           <%= if header[:subtitle] do %>
             <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
-              <%= header[:subtitle] %>
+              {header[:subtitle]}
             </p>
           <% end %>
         </div>
       <% end %>
       
-      <!-- Form Fields -->
+    <!-- Form Fields -->
       <div class={fields_classes(@layout)}>
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </div>
       
-      <!-- Actions -->
+    <!-- Actions -->
       <%= if @actions != [] do %>
         <div class={actions_classes(@layout)}>
           <%= for action <- @actions do %>
-            <%= render_slot(action) %>
+            {render_slot(action)}
           <% end %>
         </div>
       <% end %>
@@ -79,7 +81,7 @@ defmodule TrifleApp.DesignSystem.FormContainer do
   attr :title, :string, default: nil
   attr :description, :string, default: nil
   attr :class, :string, default: ""
-  
+
   slot :inner_block, required: true
 
   def form_section(assigns) do
@@ -89,19 +91,19 @@ defmodule TrifleApp.DesignSystem.FormContainer do
         <div>
           <%= if @title do %>
             <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-              <%= @title %>
+              {@title}
             </h3>
           <% end %>
           <%= if @description do %>
             <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
-              <%= @description %>
+              {@description}
             </p>
           <% end %>
         </div>
       <% end %>
-      
+
       <div class="space-y-4">
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </div>
     </div>
     """
@@ -109,9 +111,14 @@ defmodule TrifleApp.DesignSystem.FormContainer do
 
   defp container_classes(layout) do
     case layout do
-      "simple" -> "space-y-6"
-      "grid" -> "space-y-6"
-      "slide_over" -> "flex h-full flex-col overflow-y-scroll bg-white dark:bg-slate-800 shadow-xl"
+      "simple" ->
+        "space-y-6"
+
+      "grid" ->
+        "space-y-6"
+
+      "slide_over" ->
+        "flex h-full flex-col overflow-y-scroll bg-white dark:bg-slate-800 shadow-xl"
     end
   end
 
@@ -133,9 +140,14 @@ defmodule TrifleApp.DesignSystem.FormContainer do
 
   defp actions_classes(layout) do
     case layout do
-      "simple" -> "border-t border-gray-200 dark:border-slate-700 pt-4"
-      "grid" -> "border-t border-gray-200 dark:border-slate-700 pt-6"
-      "slide_over" -> "flex-shrink-0 border-t border-gray-200 dark:border-slate-700 px-4 py-5 sm:px-6"
+      "simple" ->
+        "border-t border-gray-200 dark:border-slate-700 pt-4"
+
+      "grid" ->
+        "border-t border-gray-200 dark:border-slate-700 pt-6"
+
+      "slide_over" ->
+        "flex-shrink-0 border-t border-gray-200 dark:border-slate-700 px-4 py-5 sm:px-6"
     end
   end
 end

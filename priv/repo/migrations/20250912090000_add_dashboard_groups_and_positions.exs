@@ -6,8 +6,12 @@ defmodule Trifle.Repo.Migrations.AddDashboardGroupsAndPositions do
       add :id, :binary_id, primary_key: true
       add :name, :string, null: false
       add :position, :integer, null: false, default: 0
-      add :database_id, references(:databases, on_delete: :delete_all, type: :binary_id), null: false
-      add :parent_group_id, references(:dashboard_groups, on_delete: :nilify_all, type: :binary_id)
+
+      add :database_id, references(:databases, on_delete: :delete_all, type: :binary_id),
+        null: false
+
+      add :parent_group_id,
+          references(:dashboard_groups, on_delete: :nilify_all, type: :binary_id)
 
       timestamps()
     end
@@ -25,4 +29,3 @@ defmodule Trifle.Repo.Migrations.AddDashboardGroupsAndPositions do
     create index(:dashboards, [:database_id, :group_id, :position])
   end
 end
-

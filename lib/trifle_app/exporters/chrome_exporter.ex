@@ -21,7 +21,8 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   Export the dashboard to a PDF. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_pdf(dashboard_id, opts \\ []) do
-    with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+    with {:ok, url, cleanup} <-
+           public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
          # Prefer CDP (wait-for-ready) exporter for determinism
          {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts) do
       cleanup.()
@@ -30,20 +31,21 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       {:error, reason} ->
         Logger.warn("ChromeExporter CDP PDF failed: #{inspect(reason)} — falling back to CLI")
         # Fallback to CLI flags
-        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
-          {:ok, chrome} <- find_chrome_binary(),
-         {:ok, tmpfile} <- tmp_path(".pdf"),
-         _ = Logger.debug("ChromeExporter PDF start url=#{url} out=#{tmpfile}"),
-         {:ok, _} <- run_chrome(chrome, :pdf, url, tmpfile, opts),
-         {:ok, bin} <- File.read(tmpfile) do
-      Logger.debug("ChromeExporter PDF ok size=#{byte_size(bin)} url=#{url} out=#{tmpfile}")
-      File.rm(tmpfile)
-      cleanup.()
-      {:ok, bin}
-    else
-      {:error, reason} = err -> err
-      other -> {:error, other}
-    end
+        with {:ok, url, cleanup} <-
+               public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+             {:ok, chrome} <- find_chrome_binary(),
+             {:ok, tmpfile} <- tmp_path(".pdf"),
+             _ = Logger.debug("ChromeExporter PDF start url=#{url} out=#{tmpfile}"),
+             {:ok, _} <- run_chrome(chrome, :pdf, url, tmpfile, opts),
+             {:ok, bin} <- File.read(tmpfile) do
+          Logger.debug("ChromeExporter PDF ok size=#{byte_size(bin)} url=#{url} out=#{tmpfile}")
+          File.rm(tmpfile)
+          cleanup.()
+          {:ok, bin}
+        else
+          {:error, reason} = err -> err
+          other -> {:error, other}
+        end
     end
   end
 
@@ -51,15 +53,18 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   Export the dashboard to a PNG screenshot. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_png(dashboard_id, opts \\ []) do
-    with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+    with {:ok, url, cleanup} <-
+           public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
          {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_png(url, opts) do
       cleanup.()
       {:ok, bin}
     else
       {:error, reason} ->
         Logger.warn("ChromeExporter CDP PNG failed: #{inspect(reason)} — falling back to CLI")
-        with {:ok, url, cleanup} <- public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
-          {:ok, chrome} <- find_chrome_binary(),
+
+        with {:ok, url, cleanup} <-
+               public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+             {:ok, chrome} <- find_chrome_binary(),
              {:ok, tmpfile} <- tmp_path(".png"),
              _ = Logger.debug("ChromeExporter PNG start url=#{url} out=#{tmpfile}"),
              {:ok, _} <- run_chrome(chrome, :png, url, tmpfile, opts),
@@ -91,9 +96,14 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       "token" => dashboard.access_token,
       "print" => if(opts[:print], do: "1", else: nil)
     }
-    extra_params = (opts[:params] || %{})
-                   |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
-    query_map = Map.merge(base_params, extra_params) |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+
+    extra_params =
+      (opts[:params] || %{})
+      |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+
+    query_map =
+      Map.merge(base_params, extra_params) |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+
     query = URI.encode_query(query_map)
     url = base <> "/d/" <> dashboard.id <> if(query == "", do: "", else: "?" <> query)
 
@@ -110,6 +120,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   defp base_url do
     base = Endpoint.url()
     uri = URI.parse(base)
+
     port =
       cond do
         is_integer(uri.port) and uri.port > 0 -> uri.port
@@ -147,20 +158,22 @@ defmodule TrifleApp.Exporters.ChromeExporter do
 
   defp unique(prefix) do
     {m, s, us} = :os.timestamp()
-    :crypto.hash(:sha256, "#{prefix}-#{m}-#{s}-#{us}-#{:rand.uniform()}" )
+
+    :crypto.hash(:sha256, "#{prefix}-#{m}-#{s}-#{us}-#{:rand.uniform()}")
     |> Base.url_encode64(padding: false)
     |> binary_part(0, 12)
   end
 
   def find_chrome_binary do
-    candidates = [
-      System.get_env("CHROME_PATH"),
-      "google-chrome-stable",
-      "google-chrome",
-      "chromium",
-      "chromium-browser"
-    ]
-    |> Enum.reject(&is_nil/1)
+    candidates =
+      [
+        System.get_env("CHROME_PATH"),
+        "google-chrome-stable",
+        "google-chrome",
+        "chromium",
+        "chromium-browser"
+      ]
+      |> Enum.reject(&is_nil/1)
 
     case Enum.find(candidates, &System.find_executable/1) do
       nil -> {:error, :chrome_not_found}
@@ -172,7 +185,8 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   def chrome_path, do: find_chrome_binary()
 
   # Public helper to build the public dashboard URL for debugging
-  def public_dashboard_url(dashboard_id, opts \\ []), do: public_url_for_dashboard(dashboard_id, opts)
+  def public_dashboard_url(dashboard_id, opts \\ []),
+    do: public_url_for_dashboard(dashboard_id, opts)
 
   defp run_chrome(chrome_bin, :pdf, url, out_path, opts) do
     {w, h} = Keyword.get(opts, :window_size, @default_pdf_window_size)
@@ -194,27 +208,40 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       "--print-to-pdf-no-header",
       url
     ]
-    Logger.debug("ChromeExporter run (pdf:min) bin=#{inspect(chrome_bin)} args=#{inspect(args_min)}")
+
+    Logger.debug(
+      "ChromeExporter run (pdf:min) bin=#{inspect(chrome_bin)} args=#{inspect(args_min)}"
+    )
+
     case run_cmd(chrome_bin, args_min) do
       {:ok, out1} ->
         case ensure_non_empty_file(out_path, out1) do
-          :ok -> {:ok, out1}
+          :ok ->
+            {:ok, out1}
+
           {:empty_file, _} ->
             # Fallback: legacy headless
             args_legacy = List.replace_at(args_min, 0, "--headless")
             Logger.debug("ChromeExporter retry legacy headless (pdf)")
+
             case run_cmd(chrome_bin, args_legacy) do
               {:ok, out2} ->
                 case ensure_non_empty_file(out_path, out2) do
-                  :ok -> {:ok, out2}
+                  :ok ->
+                    {:ok, out2}
+
                   {:empty_file, out2} ->
                     _ = debug_dump_dom(chrome_bin, url)
                     {:error, {:empty_pdf, out2}}
                 end
-              {:error, _} = err2 -> err2
+
+              {:error, _} = err2 ->
+                err2
             end
         end
-      {:error, _} = err -> err
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -236,26 +263,39 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       "--screenshot=#{out_path}",
       url
     ]
-    Logger.debug("ChromeExporter run (png:min) bin=#{inspect(chrome_bin)} args=#{inspect(args_min)}")
+
+    Logger.debug(
+      "ChromeExporter run (png:min) bin=#{inspect(chrome_bin)} args=#{inspect(args_min)}"
+    )
+
     case run_cmd(chrome_bin, args_min) do
       {:ok, out1} ->
         case ensure_non_empty_file(out_path, out1) do
-          :ok -> {:ok, out1}
+          :ok ->
+            {:ok, out1}
+
           {:empty_file, _} ->
             args_legacy = List.replace_at(args_min, 0, "--headless")
             Logger.debug("ChromeExporter retry legacy headless (png)")
+
             case run_cmd(chrome_bin, args_legacy) do
               {:ok, out2} ->
                 case ensure_non_empty_file(out_path, out2) do
-                  :ok -> {:ok, out2}
+                  :ok ->
+                    {:ok, out2}
+
                   {:empty_file, out2} ->
                     _ = debug_dump_dom(chrome_bin, url)
                     {:error, {:empty_png, out2}}
                 end
-              {:error, _} = err2 -> err2
+
+              {:error, _} = err2 ->
+                err2
             end
         end
-      {:error, _} = err -> err
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -278,10 +318,12 @@ defmodule TrifleApp.Exporters.ChromeExporter do
     # Best-effort DOM dump to debug what Chrome actually loads
     args = ["--headless=new", "--disable-gpu", "--no-sandbox", "--dump-dom", url]
     Logger.debug("ChromeExporter DOM dump attempt")
+
     case System.cmd(chrome_bin, args, stderr_to_stdout: true) do
       {out, 0} ->
         Logger.debug("ChromeExporter DOM dump size=#{byte_size(out)}")
         :ok
+
       {out, status} ->
         Logger.debug("ChromeExporter DOM dump failed status=#{status} out=#{out}")
         :error

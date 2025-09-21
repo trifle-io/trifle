@@ -78,7 +78,7 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
 
   @doc """
   Execute a SQLite query using the pool for the given database ID.
-  
+
   ## Examples
       iex> SqlitePoolSupervisor.query(123, "SELECT * FROM users", [])
       {:ok, %{rows: [...], columns: [...]}}
@@ -132,15 +132,18 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
 
     # Extract pool_size from config
     db_config = database.config || %{}
-    pool_size = case db_config["pool_size"] do
-      nil -> 3  # Smaller default pool for SQLite
-      val when is_integer(val) -> val
-      val when is_binary(val) -> String.to_integer(val)
-    end
+
+    pool_size =
+      case db_config["pool_size"] do
+        # Smaller default pool for SQLite
+        nil -> 3
+        val when is_integer(val) -> val
+        val when is_binary(val) -> String.to_integer(val)
+      end
 
     # For SQLite, we'll create a simple GenServer wrapper that manages a single connection
     # since SQLite doesn't benefit from connection pooling the same way as other databases
-    
+
     # Build connection config for direct exqlite usage
     config = [
       name: connection_name,
@@ -236,6 +239,7 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
       if conn do
         GenServer.stop(conn)
       end
+
       :ok
     end
   end

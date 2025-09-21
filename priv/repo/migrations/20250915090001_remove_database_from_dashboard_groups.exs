@@ -17,7 +17,8 @@ defmodule Trifle.Repo.Migrations.RemoveDatabaseFromDashboardGroups do
 
   def down do
     alter table(:dashboard_groups) do
-      add :database_id, references(:databases, on_delete: :delete_all, type: :binary_id), null: false
+      add :database_id, references(:databases, on_delete: :delete_all, type: :binary_id),
+        null: false
     end
 
     create index(:dashboard_groups, [:database_id])
@@ -27,4 +28,3 @@ defmodule Trifle.Repo.Migrations.RemoveDatabaseFromDashboardGroups do
     drop_if_exists index(:dashboard_groups, [:parent_group_id, :position])
   end
 end
-

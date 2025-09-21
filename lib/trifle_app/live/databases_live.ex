@@ -4,7 +4,7 @@ defmodule TrifleApp.DatabasesLive do
   alias Trifle.Organizations
 
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/app/organization")}
+    {:ok, redirect(socket, to: ~p"/organization")}
   end
 
   def mount(_params, _session, %{assigns: %{current_membership: membership}} = socket) do
@@ -12,13 +12,12 @@ defmodule TrifleApp.DatabasesLive do
 
     case databases do
       [single_database] ->
-        {:ok, push_navigate(socket, to: ~p"/app/dbs/#{single_database.id}/transponders")}
+        {:ok, push_navigate(socket, to: ~p"/dbs/#{single_database.id}/transponders")}
 
       _ ->
         {:ok, assign(socket, page_title: "Databases", databases: databases)}
     end
   end
-
 
   defp is_supported_driver?("redis"), do: true
   defp is_supported_driver?("mongo"), do: true
@@ -31,34 +30,50 @@ defmodule TrifleApp.DatabasesLive do
     <div class="px-4 sm:px-6 lg:px-8">
       <div class="sm:flex sm:items-center">
         <div class="sm:flex-auto">
-          <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">Your Databases</h1>
-          <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">Pick a database to open Dashboards, Transponders, or Explore.</p>
+          <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
+            Your Databases
+          </h1>
+          <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+            Pick a database to open Dashboards, Transponders, or Explore.
+          </p>
         </div>
       </div>
 
       <div class="mt-6 space-y-3">
         <%= for database <- @databases do %>
           <%= if is_supported_driver?(database.driver) do %>
-            <div class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
-                 phx-click={JS.navigate(~p"/app/dbs/#{database.id}/transponders")}>
+            <div
+              class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
+              phx-click={JS.navigate(~p"/dbs/#{database.id}/transponders")}
+            >
               <div class="flex items-center gap-3 pl-3 py-3">
                 <div class={"h-10 w-1.5 rounded " <> driver_accent_class(database.driver)}></div>
                 <div>
                   <div class="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400">
-                    <%= database.display_name %>
+                    {database.display_name}
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     <.database_label driver={database.driver} />
                     <%= if database.host do %>
                       <span class="mx-2">•</span>
-                      <%= database.host %><%= if database.port, do: ":#{database.port}" %>
+                      {database.host}{if database.port, do: ":#{database.port}"}
                     <% end %>
                   </div>
                 </div>
               </div>
               <div class="flex items-center gap-3 pr-3">
-                <svg class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                <svg
+                  class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+                  />
                 </svg>
               </div>
             </div>
@@ -68,19 +83,21 @@ defmodule TrifleApp.DatabasesLive do
                 <div class={"h-10 w-1.5 rounded " <> driver_accent_class(database.driver)}></div>
                 <div>
                   <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    <%= database.display_name %>
+                    {database.display_name}
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     <.database_label driver={database.driver} />
                     <%= if database.host do %>
                       <span class="mx-2">•</span>
-                      <%= database.host %><%= if database.port, do: ":#{database.port}" %>
+                      {database.host}{if database.port, do: ":#{database.port}"}
                     <% end %>
                   </div>
                 </div>
               </div>
               <div class="flex items-center gap-2 pr-3">
-                <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-600 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-100 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-500/40">Unsupported</span>
+                <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-600 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-100 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-500/40">
+                  Unsupported
+                </span>
               </div>
             </div>
           <% end %>
@@ -89,14 +106,31 @@ defmodule TrifleApp.DatabasesLive do
 
       <%= if Enum.empty?(@databases) do %>
         <div class="text-center py-12">
-          <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+          <svg
+            class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
+            />
           </svg>
-          <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No databases configured</h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by configuring your first database connection.</p>
+          <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+            No databases configured
+          </h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Get started by configuring your first database connection.
+          </p>
           <%= if @current_user.is_admin do %>
             <div class="mt-6">
-              <.link navigate={~p"/admin/databases/new"} class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
+              <.link
+                navigate={~p"/admin/databases/new"}
+                class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+              >
                 Add Database
               </.link>
             </div>
@@ -109,20 +143,26 @@ defmodule TrifleApp.DatabasesLive do
 
   # Icon helpers for database cards
   attr :driver, :string, required: true
+
   defp database_icon_svg(assigns) do
     ~H"""
-    <svg class="h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+    <svg
+      class="h-5 w-5 text-white"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
       <%= case @driver do %>
         <% "postgres" -> %>
-          <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z"/>
+          <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z" />
         <% "sqlite" -> %>
-          <path d="M6 3.75A2.25 2.25 0 0 1 8.25 1.5h7.5A2.25 2.25 0 0 1 18 3.75v16.5A2.25 2.25 0 0 1 15.75 22.5h-7.5A2.25 2.25 0 0 1 6 20.25V3.75Zm3 1.5h6v1.5H9v-1.5Zm0 3h6v1.5H9v-1.5Zm0 3h6v1.5H9v-1.5Z"/>
+          <path d="M6 3.75A2.25 2.25 0 0 1 8.25 1.5h7.5A2.25 2.25 0 0 1 18 3.75v16.5A2.25 2.25 0 0 1 15.75 22.5h-7.5A2.25 2.25 0 0 1 6 20.25V3.75Zm3 1.5h6v1.5H9v-1.5Zm0 3h6v1.5H9v-1.5Zm0 3h6v1.5H9v-1.5Z" />
         <% "redis" -> %>
-          <path d="M3.5 8.25 12 5l8.5 3.25L12 11.5 3.5 8.25Zm0 4L12 9l8.5 3.25L12 15.5 3.5 12.25Zm0 4L12 13l8.5 3.25L12 19.5 3.5 16.25Z"/>
+          <path d="M3.5 8.25 12 5l8.5 3.25L12 11.5 3.5 8.25Zm0 4L12 9l8.5 3.25L12 15.5 3.5 12.25Zm0 4L12 13l8.5 3.25L12 19.5 3.5 16.25Z" />
         <% "mongo" -> %>
-          <path d="M12 2c.5 2 3.5 4 3.5 7.5S13 17 12 22c-1-5-3.5-9.5-3.5-12.5S11.5 4 12 2Z"/>
+          <path d="M12 2c.5 2 3.5 4 3.5 7.5S13 17 12 22c-1-5-3.5-9.5-3.5-12.5S11.5 4 12 2Z" />
         <% _ -> %>
-          <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z"/>
+          <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z" />
       <% end %>
     </svg>
     """

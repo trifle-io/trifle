@@ -40,7 +40,9 @@ defmodule Trifle.Organizations.Organization do
     |> validate_required(@required_fields)
     |> validate_length(:name, min: 1, max: 255)
     |> maybe_put_slug()
-    |> validate_format(:slug, ~r/^[a-z0-9][a-z0-9\-]*$/, message: "must contain lowercase letters, numbers, and hyphens")
+    |> validate_format(:slug, ~r/^[a-z0-9][a-z0-9\-]*$/,
+      message: "must contain lowercase letters, numbers, and hyphens"
+    )
     |> unique_constraint(:slug)
     |> store_address_country()
   end
@@ -58,6 +60,7 @@ defmodule Trifle.Organizations.Organization do
 
       address_country ->
         metadata = get_field(changeset, :metadata) || %{}
+
         updated_metadata =
           if blank?(address_country) do
             Map.delete(metadata, "address_country")
@@ -79,6 +82,7 @@ defmodule Trifle.Organizations.Organization do
   end
 
   defp slugify(nil), do: nil
+
   defp slugify(name) when is_binary(name) do
     name
     |> String.trim()

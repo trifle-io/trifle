@@ -53,7 +53,7 @@ defmodule TrifleWeb.FilterComponents do
   def filter_input(%{type: "select"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.filter_label for={@id}><%= @label %></.filter_label>
+      <.filter_label for={@id}>{@label}</.filter_label>
       <select
         id={@id}
         name={@name}
@@ -61,10 +61,10 @@ defmodule TrifleWeb.FilterComponents do
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value=""><%= @prompt %></option>
-        <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
+        <option :if={@prompt} value="">{@prompt}</option>
+        {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
-      <.filter_error :for={msg <- @errors}><%= msg %></.filter_error>
+      <.filter_error :for={msg <- @errors}>{msg}</.filter_error>
     </div>
     """
   end
@@ -73,7 +73,7 @@ defmodule TrifleWeb.FilterComponents do
   def filter_input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.filter_label for={@id}><%= @label %></.filter_label>
+      <.filter_label for={@id}>{@label}</.filter_label>
       <input
         type={@type}
         name={@name}
@@ -87,7 +87,7 @@ defmodule TrifleWeb.FilterComponents do
         ]}
         {@rest}
       />
-      <.filter_error :for={msg <- @errors}><%= msg %></.filter_error>
+      <.filter_error :for={msg <- @errors}>{msg}</.filter_error>
     </div>
     """
   end
@@ -100,8 +100,11 @@ defmodule TrifleWeb.FilterComponents do
 
   def filter_label(assigns) do
     ~H"""
-    <label for={@for} class="absolute -top-2 left-2 inline-block bg-white px-1 text-xs font-medium text-gray-900">
-      <%= render_slot(@inner_block) %>
+    <label
+      for={@for}
+      class="absolute -top-2 left-2 inline-block bg-white px-1 text-xs font-medium text-gray-900"
+    >
+      {render_slot(@inner_block)}
     </label>
     """
   end
@@ -115,11 +118,10 @@ defmodule TrifleWeb.FilterComponents do
     ~H"""
     <p class="mt-3 flex gap-3 text-sm leading-6 text-rose-600 phx-no-feedback:hidden">
       <.filter_icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </p>
     """
   end
-
 
   @doc """
   Renders a [Hero Icon](https://heroicons.com).

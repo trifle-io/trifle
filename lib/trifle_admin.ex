@@ -62,7 +62,7 @@ defmodule TrifleAdmin do
       import Phoenix.HTML
       import TrifleApp.CoreComponents
       import TrifleAdmin.Gettext
-      
+
       # Design System Components
       import TrifleApp.DesignSystem.AdminTable
       import TrifleApp.DesignSystem.Modal

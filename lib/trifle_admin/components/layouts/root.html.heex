@@ -5,13 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <.live_title suffix=" | Trifle">
-      <%= TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %>
+      {TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle")}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
-    <script defer src="https://unpkg.com/alpinejs@3.10.5/dist/cdn.min.js"></script>
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    </script>
+    <script defer src="https://unpkg.com/alpinejs@3.10.5/dist/cdn.min.js">
+    </script>
   </head>
-  <body class={"#{TrifleApp.CoreComponents.theme_classes((assigns[:current_user] && assigns.current_user.theme) || "system")} bg-slate-100 dark:bg-slate-900 text-gray-900 dark:text-white antialiased h-screen"} {TrifleApp.CoreComponents.theme_data_attrs((assigns[:current_user] && assigns.current_user.theme) || "system")}>
-    <%= @inner_content %>
+  <body
+    class={"#{TrifleApp.CoreComponents.theme_classes((assigns[:current_user] && assigns.current_user.theme) || "system")} bg-slate-100 dark:bg-slate-900 text-gray-900 dark:text-white antialiased h-screen"}
+    {TrifleApp.CoreComponents.theme_data_attrs((assigns[:current_user] && assigns.current_user.theme) || "system")}
+  >
+    {@inner_content}
   </body>
 </html>

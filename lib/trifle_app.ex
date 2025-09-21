@@ -1,7 +1,8 @@
 defmodule TrifleApp do
   @moduledoc """
   The entrypoint for defining the Trifle client application interface.
-  This module handles all user-facing functionality under /app routes.
+  This module handles all user-facing functionality mounted at the
+  authenticated application root.
   """
 
   def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
@@ -62,7 +63,7 @@ defmodule TrifleApp do
       import Phoenix.HTML
       import TrifleApp.CoreComponents
       import TrifleApp.Gettext
-      
+
       # Design System Components
       import TrifleApp.DesignSystem.ButtonGroup
       import TrifleApp.DesignSystem.Modal

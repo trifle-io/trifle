@@ -4,7 +4,8 @@ defmodule Trifle.Repo.Migrations.AddUserToDashboards do
   def change do
     alter table(:dashboards) do
       add :user_id, references(:users, on_delete: :delete_all, type: :binary_id)
-      modify :access_token, :string, null: true  # Make access_token nullable for public links
+      # Make access_token nullable for public links
+      modify :access_token, :string, null: true
     end
 
     create index(:dashboards, [:user_id])

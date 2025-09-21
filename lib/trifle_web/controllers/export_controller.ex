@@ -12,19 +12,25 @@ defmodule TrifleWeb.ExportController do
   def dashboard_pdf(conn, %{"id" => id} = params) do
     # Basic access check: ensure dashboard exists (ownership/visibility can be added later)
     _ = Organizations.get_dashboard!(id)
-    export_params = Map.take(params, ["timeframe", "granularity", "from", "to"]) 
+    export_params = Map.take(params, ["timeframe", "granularity", "from", "to"])
+
     case ChromeExporter.export_dashboard_pdf(id, params: export_params) do
       {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
         filename = params["filename"] || default_filename("dashboard", id, ".pdf")
+
         conn
         |> put_download_token_cookie(params)
         |> send_download({:binary, bin}, filename: filename, content_type: "application/pdf")
+
       {:ok, _} ->
         send_resp(conn, 500, "Empty PDF output")
+
       {:error, :chrome_not_found} ->
         send_resp(conn, 500, "Chrome binary not found")
+
       {:error, {_status, out}} ->
         send_resp(conn, 500, "PDF export failed: #{out}")
+
       {:error, reason} ->
         send_resp(conn, 500, "PDF export failed: #{inspect(reason)}")
     end
@@ -32,23 +38,34 @@ defmodule TrifleWeb.ExportController do
 
   def dashboard_png(conn, %{"id" => id} = params) do
     _ = Organizations.get_dashboard!(id)
-    theme = case params["theme"] do
-      "dark" -> :dark
-      _ -> :light
-    end
-    export_params = Map.take(params, ["timeframe", "granularity", "from", "to"]) 
+
+    theme =
+      case params["theme"] do
+        "dark" -> :dark
+        _ -> :light
+      end
+
+    export_params = Map.take(params, ["timeframe", "granularity", "from", "to"])
+
     case ChromeExporter.export_dashboard_png(id, theme: theme, params: export_params) do
       {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
-        filename = params["filename"] || default_filename("dashboard-" <> (theme == :dark && "dark" || "light"), id, ".png")
+        filename =
+          params["filename"] ||
+            default_filename("dashboard-" <> ((theme == :dark && "dark") || "light"), id, ".png")
+
         conn
         |> put_download_token_cookie(params)
         |> send_download({:binary, bin}, filename: filename, content_type: "image/png")
+
       {:ok, _} ->
         send_resp(conn, 500, "Empty PNG output")
+
       {:error, :chrome_not_found} ->
         send_resp(conn, 500, "Chrome binary not found")
+
       {:error, {_status, out}} ->
         send_resp(conn, 500, "PNG export failed: #{out}")
+
       {:error, reason} ->
         send_resp(conn, 500, "PNG export failed: #{inspect(reason)}")
     end
@@ -58,6 +75,7 @@ defmodule TrifleWeb.ExportController do
     with {:ok, series} <- fetch_series_for_export(id, params) do
       csv = series_to_csv(series)
       filename = params["filename"] || default_filename("dashboard", id, ".csv")
+
       conn
       |> put_download_token_cookie(params)
       |> send_download({:binary, csv}, filename: filename, content_type: "text/csv")
@@ -73,6 +91,7 @@ defmodule TrifleWeb.ExportController do
       values = series[:values] || []
       json = Jason.encode!(%{at: at, values: values})
       filename = params["filename"] || default_filename("dashboard", id, ".json")
+
       conn
       |> put_download_token_cookie(params)
       |> send_download({:binary, json}, filename: filename, content_type: "application/json")
@@ -102,15 +121,26 @@ defmodule TrifleWeb.ExportController do
       |> Enum.filter(fn t -> key_matches_pattern?(dashboard.key, t.key) end)
       |> Enum.sort_by(& &1.order)
 
-    case SeriesFetcher.fetch_series(database, dashboard.key, from, to, granularity, matching_transponders, progress_callback: nil) do
+    case SeriesFetcher.fetch_series(
+           database,
+           dashboard.key,
+           from,
+           to,
+           granularity,
+           matching_transponders,
+           progress_callback: nil
+         ) do
       {:ok, result} ->
         s = normalize_series(result.series)
+
         if is_map(s) and (s[:at] || []) != [] do
           {:ok, s}
         else
           {:error, :no_data}
         end
-      other -> other
+
+      other ->
+        other
     end
   end
 
@@ -133,7 +163,12 @@ defmodule TrifleWeb.ExportController do
     paths = table[:paths] || []
     values_map = table[:values] || %{}
     header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
-    rows = Enum.map(paths, fn path -> [path | Enum.map(at, fn t -> Map.get(values_map, {path, t}) || 0 end)] end)
+
+    rows =
+      Enum.map(paths, fn path ->
+        [path | Enum.map(at, fn t -> Map.get(values_map, {path, t}) || 0 end)]
+      end)
+
     to_csv([header | rows])
   end
 
@@ -151,6 +186,7 @@ defmodule TrifleWeb.ExportController do
     escaped = String.replace(v, "\"", "\"\"")
     "\"" <> escaped <> "\""
   end
+
   defp csv_escape(nil), do: ""
   defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
   defp csv_escape(v), do: csv_escape(to_string(v))
@@ -161,10 +197,16 @@ defmodule TrifleWeb.ExportController do
   end
 
   defp put_download_token_cookie(conn, params) do
-    token = case Map.get(params, "download_token") do
-      token when is_binary(token) and token != "" -> token
-      _ -> Integer.to_string(System.system_time(:millisecond))
-    end
-    Plug.Conn.put_resp_cookie(conn, "download_token", token, max_age: 60, http_only: false, path: "/")
+    token =
+      case Map.get(params, "download_token") do
+        token when is_binary(token) and token != "" -> token
+        _ -> Integer.to_string(System.system_time(:millisecond))
+      end
+
+    Plug.Conn.put_resp_cookie(conn, "download_token", token,
+      max_age: 60,
+      http_only: false,
+      path: "/"
+    )
   end
 end

@@ -8,7 +8,7 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
     ~H"""
     <div>
       <.header>
-        <%= @title %>
+        {@title}
         <:subtitle>Create or edit transponders to collect data from your applications.</:subtitle>
       </.header>
 
@@ -19,34 +19,57 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
         phx-change="validate"
         phx-submit="save"
       >
-        <.form_field field={@form[:name]} type="text" label="Name" placeholder="e.g., Conversion Rate Calculator" />
-        <.form_field field={@form[:key]} type="text" label="Key Pattern" placeholder="e.g., customer::(.*)::orders" />
-        
+        <.form_field
+          field={@form[:name]}
+          type="text"
+          label="Name"
+          placeholder="e.g., Conversion Rate Calculator"
+        />
+        <.form_field
+          field={@form[:key]}
+          type="text"
+          label="Key Pattern"
+          placeholder="e.g., customer::(.*)::orders"
+        />
+
         <div>
           <.label>Type</.label>
           <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-            <select 
+            <select
               id="transponder_type"
-              name="transponder[type]" 
-              phx-change="select_type" 
+              name="transponder[type]"
+              phx-change="select_type"
               phx-target={@myself}
               disabled={@action == :edit}
               class={[
                 "col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 focus:outline-2 focus:-outline-offset-2 sm:text-sm/6",
-                if(@action == :edit, 
-                  do: "bg-gray-50 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed outline-gray-200 dark:outline-slate-600", 
-                  else: "bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-teal-600")
+                if(@action == :edit,
+                  do:
+                    "bg-gray-50 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed outline-gray-200 dark:outline-slate-600",
+                  else:
+                    "bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-teal-600"
+                )
               ]}
             >
               <option value="">Select transponder type...</option>
               <%= for type <- Transponder.available_types() do %>
                 <option value={type} selected={@selected_type == type}>
-                  <%= Transponder.get_type_display_name(type) %>
+                  {Transponder.get_type_display_name(type)}
                 </option>
               <% end %>
             </select>
-            <svg viewBox="0 0 16 16" fill="currentColor" data-slot="icon" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4">
-              <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              data-slot="icon"
+              aria-hidden="true"
+              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+            >
+              <path
+                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                clip-rule="evenodd"
+                fill-rule="evenodd"
+              />
             </svg>
           </div>
         </div>
@@ -55,8 +78,10 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
           <%= for field <- Transponder.get_transponder_fields(@selected_type) do %>
             <div>
               <.label>
-                <%= field.label %>
-                <%= if field.required do %><span class="text-red-500 dark:text-red-400">*</span><% end %>
+                {field.label}
+                <%= if field.required do %>
+                  <span class="text-red-500 dark:text-red-400">*</span>
+                <% end %>
               </.label>
               <input
                 type="text"
@@ -73,7 +98,7 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
         <:actions>
           <.form_actions>
             <.primary_button phx-disable-with="Saving..." class="bg-teal-600 hover:bg-teal-500">
-              <%= if @action == :new, do: "Create Transponder", else: "Update Transponder" %>
+              {if @action == :new, do: "Create Transponder", else: "Update Transponder"}
             </.primary_button>
           </.form_actions>
         </:actions>
@@ -97,22 +122,23 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
 
   def handle_event("validate", %{"transponder" => transponder_params}, socket) do
     config_values = Map.get(transponder_params, "config", %{})
-    
+
     # Only validate the basic fields, preserve config values in component state
     basic_params = Map.drop(transponder_params, ["config"])
-    
+
     changeset =
       socket.assigns.transponder
       |> Organizations.change_transponder(basic_params)
       |> Map.put(:action, :validate)
 
-    {:noreply, 
+    {:noreply,
      socket
      |> assign(:config_values, Map.merge(socket.assigns.config_values, config_values))
      |> assign_form(changeset)}
   end
 
-  def handle_event("select_type", %{"transponder" => %{"type" => type}}, socket) when type != "" do
+  def handle_event("select_type", %{"transponder" => %{"type" => type}}, socket)
+      when type != "" do
     {:noreply, assign(socket, :selected_type, type)}
   end
 
@@ -124,10 +150,10 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
     # Get config from the form submission and merge with component state
     form_config = Map.get(transponder_params, "config", %{})
     merged_config = Map.merge(socket.assigns.config_values, form_config)
-    
+
     # Filter out empty values from config
     clean_config = Enum.reject(merged_config, fn {_k, v} -> v == "" or is_nil(v) end) |> Map.new()
-    
+
     transponder_params = Map.put(transponder_params, "config", clean_config)
     save_transponder(socket, socket.assigns.action, transponder_params)
   end
@@ -150,8 +176,8 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
   defp save_transponder(socket, :new, transponder_params) do
     # Set the order for new transponders
     next_order = Organizations.get_next_transponder_order(socket.assigns.database)
-    
-    transponder_params = 
+
+    transponder_params =
       transponder_params
       |> Map.put("database_id", socket.assigns.database.id)
       |> Map.put("order", next_order)
@@ -175,5 +201,4 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
   end
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
-
 end
