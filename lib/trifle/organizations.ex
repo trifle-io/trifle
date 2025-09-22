@@ -198,8 +198,34 @@ defmodule Trifle.Organizations do
     |> Repo.update()
   end
 
+  def membership_owner?(%OrganizationMembership{} = membership) do
+    membership.role == "owner"
+  end
+
   def membership_admin?(%OrganizationMembership{} = membership) do
     membership.role in ["owner", "admin"]
+  end
+
+  def can_view_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
+    cond do
+      membership_owner?(membership) -> true
+      membership.role == "admin" -> true
+      dashboard.user_id == membership.user_id -> true
+      dashboard.visibility -> true
+      true -> false
+    end
+  end
+
+  def can_edit_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
+    cond do
+      membership_owner?(membership) -> true
+      dashboard.user_id == membership.user_id -> true
+      true -> false
+    end
+  end
+
+  def can_clone_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
+    can_view_dashboard?(dashboard, membership)
   end
 
   ## Organization invitations
@@ -1099,12 +1125,17 @@ defmodule Trifle.Organizations do
       ) do
     base =
       from(d in Dashboard,
-        where:
-          d.organization_id == ^membership.organization_id and
-            (d.user_id == ^user.id or d.visibility == true),
+        where: d.organization_id == ^membership.organization_id,
         order_by: [asc: d.position, asc: d.inserted_at],
         preload: [:user, :database]
       )
+
+    base =
+      case membership.role do
+        "owner" -> base
+        "admin" -> base
+        _ -> from(d in base, where: d.user_id == ^user.id or d.visibility == true)
+      end
 
     query =
       case group_id do
@@ -1116,14 +1147,19 @@ defmodule Trifle.Organizations do
   end
 
   def count_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
-    Repo.one(
+    base =
       from(d in Dashboard,
-        where:
-          d.organization_id == ^membership.organization_id and
-            (d.user_id == ^user.id or d.visibility == true),
-        select: count(d.id)
+        where: d.organization_id == ^membership.organization_id
       )
-    )
+
+    base =
+      case membership.role do
+        "owner" -> base
+        "admin" -> base
+        _ -> from(d in base, where: d.user_id == ^user.id or d.visibility == true)
+      end
+
+    Repo.one(from(d in base, select: count(d.id)))
   end
 
   def count_dashboard_groups_for_membership(%OrganizationMembership{} = membership) do
@@ -1157,9 +1193,16 @@ defmodule Trifle.Organizations do
   def list_dashboard_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
     top_groups = list_dashboard_groups_for_membership(membership, nil)
 
-    Enum.map(top_groups, fn group ->
+    tree =
+      Enum.map(top_groups, fn group ->
       build_group_tree_for_membership(user, membership, group)
-    end)
+      end)
+
+    case membership.role do
+      "owner" -> tree
+      "admin" -> tree
+      _ -> prune_empty_groups(tree)
+    end
   end
 
   defp build_group_tree_for_membership(
@@ -1176,11 +1219,34 @@ defmodule Trifle.Organizations do
     }
   end
 
+  defp prune_empty_groups(tree) when is_list(tree) do
+    tree
+    |> Enum.map(&prune_empty_groups/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp prune_empty_groups(%{group: _group, children: children, dashboards: dashboards} = node) do
+    pruned_children = prune_empty_groups(children)
+
+    if pruned_children == [] and dashboards == [] do
+      nil
+    else
+      %{node | children: pruned_children}
+    end
+  end
+
   def get_dashboard_for_membership!(%OrganizationMembership{} = membership, id)
       when is_binary(id) do
-    Dashboard
-    |> Repo.get_by!(id: id, organization_id: membership.organization_id)
-    |> Repo.preload([:user, :database, :group])
+    dashboard =
+      Dashboard
+      |> Repo.get_by!(id: id, organization_id: membership.organization_id)
+      |> Repo.preload([:user, :database, :group])
+
+    if can_view_dashboard?(dashboard, membership) do
+      dashboard
+    else
+      raise Ecto.NoResultsError, queryable: Dashboard
+    end
   end
 
   def create_dashboard_for_membership(
@@ -1203,6 +1269,9 @@ defmodule Trifle.Organizations do
   end
 
   def create_dashboard_group_for_membership(%OrganizationMembership{} = membership, attrs \\ %{}) do
+    if not membership_owner?(membership) do
+      {:error, :forbidden}
+    else
     attrs =
       attrs
       |> ensure_parent_group_within_org(membership)
@@ -1212,6 +1281,7 @@ defmodule Trifle.Organizations do
     %DashboardGroup{}
     |> DashboardGroup.changeset(attrs)
     |> Repo.insert()
+    end
   end
 
   def get_dashboard_group_for_membership!(%OrganizationMembership{} = membership, id)
@@ -1224,9 +1294,14 @@ defmodule Trifle.Organizations do
         %OrganizationMembership{} = membership,
         attrs
       ) do
-    if dashboard.organization_id != membership.organization_id do
-      {:error, :unauthorized}
-    else
+    cond do
+      dashboard.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
+
+      not can_edit_dashboard?(dashboard, membership) ->
+        {:error, :forbidden}
+
+      true ->
       attrs =
         attrs
         |> ensure_dashboard_group_within_org(membership)
@@ -1242,9 +1317,14 @@ defmodule Trifle.Organizations do
         %Dashboard{} = dashboard,
         %OrganizationMembership{} = membership
       ) do
-    if dashboard.organization_id != membership.organization_id do
-      {:error, :unauthorized}
-    else
+    cond do
+      dashboard.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
+
+      not can_edit_dashboard?(dashboard, membership) ->
+        {:error, :forbidden}
+
+      true ->
       delete_dashboard(dashboard)
     end
   end
@@ -1268,12 +1348,21 @@ defmodule Trifle.Organizations do
         |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
           case type do
             "dashboard" ->
-              from(d in Dashboard,
-                where: d.id == ^id and d.organization_id == ^membership.organization_id
-              )
+              dashboard =
+                Repo.get_by!(Dashboard, id: id, organization_id: membership.organization_id)
+
+              unless can_edit_dashboard?(dashboard, membership) do
+                Repo.rollback({:error, :forbidden})
+              end
+
+              from(d in Dashboard, where: d.id == ^id)
               |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
 
             "group" ->
+              unless membership_owner?(membership) do
+                Repo.rollback({:error, :forbidden})
+              end
+
               from(g in DashboardGroup,
                 where: g.id == ^id and g.organization_id == ^membership.organization_id
               )
@@ -1289,12 +1378,21 @@ defmodule Trifle.Organizations do
           |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
             case type do
               "dashboard" ->
-                from(d in Dashboard,
-                  where: d.id == ^id and d.organization_id == ^membership.organization_id
-                )
+                dashboard =
+                  Repo.get_by!(Dashboard, id: id, organization_id: membership.organization_id)
+
+                unless can_edit_dashboard?(dashboard, membership) do
+                  Repo.rollback({:error, :forbidden})
+                end
+
+                from(d in Dashboard, where: d.id == ^id)
                 |> Repo.update_all(set: [position: idx])
 
               "group" ->
+                unless membership_owner?(membership) do
+                  Repo.rollback({:error, :forbidden})
+                end
+
                 from(g in DashboardGroup,
                   where: g.id == ^id and g.organization_id == ^membership.organization_id
                 )

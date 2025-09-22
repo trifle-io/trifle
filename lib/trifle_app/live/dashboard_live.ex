@@ -44,7 +44,8 @@ defmodule TrifleApp.DashboardLive do
      socket
      |> assign(:page_title, ["Dashboards", dashboard.name])
      |> assign(:breadcrumb_links, breadcrumbs)
-     |> assign(:current_membership, membership)}
+     |> assign(:current_membership, membership)
+     |> assign_dashboard_permissions()}
   end
 
   def mount(%{"dashboard_id" => dashboard_id}, _session, socket) do
@@ -147,9 +148,13 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event("save_name", %{"name" => name}, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to rename this dashboard")}
+    else
     dashboard = socket.assigns.dashboard
+    membership = socket.assigns.current_membership
 
-    case Organizations.update_dashboard(dashboard, %{name: name}) do
+    case Organizations.update_dashboard_for_membership(dashboard, membership, %{name: name}) do
       {:ok, updated_dashboard} ->
         # Update breadcrumbs and page title with new dashboard name
         groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
@@ -162,7 +167,7 @@ defmodule TrifleApp.DashboardLive do
 
         {:noreply,
          socket
-         |> assign(:dashboard, updated_dashboard)
+         |> assign_dashboard(updated_dashboard)
          |> assign(:temp_name, updated_dashboard.name)
          |> assign(:breadcrumb_links, updated_breadcrumbs)
          |> assign(:page_title, updated_page_title)
@@ -171,54 +176,75 @@ defmodule TrifleApp.DashboardLive do
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to update dashboard name")}
     end
+    end
   end
 
   def handle_event("toggle_visibility", _params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to change visibility")}
+    else
     dashboard = socket.assigns.dashboard
+    membership = socket.assigns.current_membership
 
-    case Organizations.update_dashboard(dashboard, %{visibility: !dashboard.visibility}) do
+    case Organizations.update_dashboard_for_membership(
+           dashboard,
+           membership,
+           %{visibility: !dashboard.visibility}
+         ) do
       {:ok, updated_dashboard} ->
         {:noreply,
          socket
-         |> assign(:dashboard, updated_dashboard)
+         |> assign_dashboard(updated_dashboard)
          |> put_flash(:info, "Dashboard visibility updated successfully")}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to update dashboard visibility")}
     end
+    end
   end
 
   def handle_event("generate_public_token", _params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to generate a public link")}
+    else
     dashboard = socket.assigns.dashboard
 
     case Organizations.generate_dashboard_public_token(dashboard) do
       {:ok, updated_dashboard} ->
         {:noreply,
          socket
-         |> assign(:dashboard, updated_dashboard)
+         |> assign_dashboard(updated_dashboard)
          |> put_flash(:info, "Public link generated successfully")}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to generate public link")}
     end
+    end
   end
 
   def handle_event("remove_public_token", _params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to remove the public link")}
+    else
     dashboard = socket.assigns.dashboard
 
     case Organizations.remove_dashboard_public_token(dashboard) do
       {:ok, updated_dashboard} ->
         {:noreply,
          socket
-         |> assign(:dashboard, updated_dashboard)
+         |> assign_dashboard(updated_dashboard)
          |> put_flash(:info, "Public link removed successfully")}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to remove public link")}
     end
+    end
   end
 
   def handle_event("delete_dashboard", _params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+    else
     dashboard = socket.assigns.dashboard
     membership = socket.assigns.current_membership
 
@@ -229,12 +255,19 @@ defmodule TrifleApp.DashboardLive do
          |> push_navigate(to: ~p"/dashboards")
          |> put_flash(:info, "Dashboard deleted successfully")}
 
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to delete dashboard")}
+    end
     end
   end
 
   def handle_event("duplicate_dashboard", _params, socket) do
+    if !socket.assigns.can_clone_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to duplicate this dashboard")}
+    else
     original = socket.assigns.dashboard
     database = socket.assigns.database
     current_user = socket.assigns.current_user
@@ -257,21 +290,31 @@ defmodule TrifleApp.DashboardLive do
     case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
       {:ok, new_dash} ->
         {:noreply,
-         socket
-         |> put_flash(:info, "Dashboard duplicated")
-         |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
+        socket
+        |> put_flash(:info, "Dashboard duplicated")
+        |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
 
       {:error, _cs} ->
         {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
     end
+    end
   end
 
   def handle_event("save_dashboard", %{"dashboard" => dashboard_params}, socket) do
-    case Organizations.update_dashboard(socket.assigns.dashboard, dashboard_params) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to edit this dashboard")}
+    else
+    membership = socket.assigns.current_membership
+
+    case Organizations.update_dashboard_for_membership(
+           socket.assigns.dashboard,
+           membership,
+           dashboard_params
+         ) do
       {:ok, dashboard} ->
         {:noreply,
          socket
-         |> assign(:dashboard, dashboard)
+         |> assign_dashboard(dashboard)
          |> assign(:dashboard_changeset, nil)
          |> assign(:dashboard_form, nil)
          |> push_patch(to: ~p"/dashboards/#{dashboard.id}")
@@ -282,6 +325,7 @@ defmodule TrifleApp.DashboardLive do
          socket
          |> assign(:dashboard_changeset, changeset)
          |> assign(:dashboard_form, to_form(changeset))}
+    end
     end
   end
 
@@ -294,7 +338,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      socket.assigns.dashboard.user_id != socket.assigns.current_user.id ->
+      !socket.assigns.can_edit_dashboard ->
         {:noreply, socket}
 
       true ->
@@ -311,10 +355,16 @@ defmodule TrifleApp.DashboardLive do
 
         payload = Map.put(dashboard.payload || %{}, "grid", merged)
 
-        case Organizations.update_dashboard(dashboard, %{payload: payload}) do
+        membership = socket.assigns.current_membership
+
+        case Organizations.update_dashboard_for_membership(
+               dashboard,
+               membership,
+               %{payload: payload}
+             ) do
           {:ok, updated_dashboard} ->
             # If stats are loaded, recompute KPI values (in case new widgets were added)
-            socket = assign(socket, :dashboard, updated_dashboard)
+            socket = assign_dashboard(socket, updated_dashboard)
 
             items = updated_dashboard.payload["grid"] || []
 
@@ -361,7 +411,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      socket.assigns.dashboard.user_id != socket.assigns.current_user.id ->
+      !socket.assigns.can_edit_dashboard ->
         {:noreply, socket}
 
       true ->
@@ -389,7 +439,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      socket.assigns.dashboard.user_id != socket.assigns.current_user.id ->
+      !socket.assigns.can_edit_dashboard ->
         {:noreply, socket}
 
       true ->
@@ -529,10 +579,16 @@ defmodule TrifleApp.DashboardLive do
 
         payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
 
-        case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
+        membership = socket.assigns.current_membership
+
+        case Organizations.update_dashboard_for_membership(
+               socket.assigns.dashboard,
+               membership,
+               %{payload: payload}
+             ) do
           {:ok, dashboard} ->
             # After saving, recompute KPI values if stats already loaded
-            socket = socket |> assign(:dashboard, dashboard) |> assign(:editing_widget, nil)
+            socket = socket |> assign_dashboard(dashboard) |> assign(:editing_widget, nil)
 
             socket =
               if socket.assigns[:stats] do
@@ -677,7 +733,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      socket.assigns.dashboard.user_id != socket.assigns.current_user.id ->
+      !socket.assigns.can_edit_dashboard ->
         {:noreply, socket}
 
       true ->
@@ -685,11 +741,17 @@ defmodule TrifleApp.DashboardLive do
         updated = Enum.reject(items, fn i -> to_string(i["id"]) == to_string(id) end)
         payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
 
-        case Organizations.update_dashboard(socket.assigns.dashboard, %{payload: payload}) do
+        membership = socket.assigns.current_membership
+
+        case Organizations.update_dashboard_for_membership(
+               socket.assigns.dashboard,
+               membership,
+               %{payload: payload}
+             ) do
           {:ok, dashboard} ->
             {:noreply,
              socket
-             |> assign(:dashboard, dashboard)
+             |> assign_dashboard(dashboard)
              |> assign(:editing_widget, nil)
              |> push_event("dashboard_grid_widget_deleted", %{id: id})}
 
@@ -1216,7 +1278,7 @@ defmodule TrifleApp.DashboardLive do
 
     socket
     |> assign(:database, database)
-    |> assign(:dashboard, dashboard)
+    |> assign_dashboard(dashboard)
     |> assign(:is_public_access, is_public_access)
     |> assign(:public_token, public_token)
     |> assign(:database_config, database_config)
@@ -1242,6 +1304,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:show_export_dropdown, false)
     |> assign(:widget_path_options, [])
     |> assign(:widget_path_options_loaded, false)
+    |> assign_dashboard_permissions()
   end
 
   defp apply_url_params(socket, params) do
@@ -1481,6 +1544,30 @@ defmodule TrifleApp.DashboardLive do
       [] -> [""]
       list -> list
     end
+  end
+
+  defp assign_dashboard_permissions(socket) do
+    membership = socket.assigns[:current_membership]
+    dashboard = socket.assigns[:dashboard]
+
+    cond do
+      match?(%Trifle.Organizations.Dashboard{}, dashboard) and
+          match?(%Trifle.Organizations.OrganizationMembership{}, membership) ->
+        socket
+        |> assign(:can_edit_dashboard, Organizations.can_edit_dashboard?(dashboard, membership))
+        |> assign(:can_clone_dashboard, Organizations.can_clone_dashboard?(dashboard, membership))
+
+      true ->
+        socket
+        |> assign(:can_edit_dashboard, false)
+        |> assign(:can_clone_dashboard, false)
+    end
+  end
+
+  defp assign_dashboard(socket, dashboard) do
+    socket
+    |> assign(:dashboard, dashboard)
+    |> assign_dashboard_permissions()
   end
 
   defp build_url_params(%Phoenix.LiveView.Socket{} = socket), do: build_url_params(socket.assigns)
@@ -1793,6 +1880,9 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event("save_settings", params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply, put_flash(socket, :error, "You do not have permission to update this dashboard")}
+    else
     dashboard = socket.assigns.dashboard
     name = Map.get(params, "name")
     key = Map.get(params, "key")
@@ -1841,7 +1931,7 @@ defmodule TrifleApp.DashboardLive do
 
         {:noreply,
          socket
-         |> assign(:dashboard, updated_dashboard)
+         |> assign_dashboard(updated_dashboard)
          |> assign(:temp_name, updated_dashboard.name)
          |> assign(:breadcrumb_links, updated_breadcrumbs)
          |> assign(:page_title, updated_page_title)
@@ -1849,6 +1939,7 @@ defmodule TrifleApp.DashboardLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to save settings")}
+    end
     end
   end
 
@@ -1975,7 +2066,7 @@ defmodule TrifleApp.DashboardLive do
               </h1>
             </div>
 
-            <%= if !@print_mode && !@is_public_access && @current_user && @dashboard.user_id == @current_user.id do %>
+            <%= if !@print_mode && !@is_public_access && @current_user && @can_edit_dashboard do %>
               <!-- Dashboard owner controls -->
               <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
                 <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
@@ -2307,7 +2398,7 @@ defmodule TrifleApp.DashboardLive do
             phx-hook="DashboardGrid"
             data-print-mode={if @print_mode, do: "true", else: "false"}
             data-editable={
-              if !@is_public_access && @current_user && @dashboard.user_id == @current_user.id,
+              if !@is_public_access && @current_user && @can_edit_dashboard,
                 do: "true",
                 else: "false"
             }
@@ -2475,41 +2566,44 @@ defmodule TrifleApp.DashboardLive do
                   </div>
                 </.form>
                 <!-- Actions -->
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                        Actions
-                      </span>
-                      <p class="text-xs text-gray-500 dark:text-slate-400">
-                        Make a copy of this dashboard.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      phx-click="duplicate_dashboard"
-                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                      title="Duplicate dashboard"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                <%= if @can_clone_dashboard do %>
+                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                    <div class="flex items-center justify-between mb-2">
+                      <div>
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                          Actions
+                        </span>
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Make a copy of this dashboard.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="duplicate_dashboard"
+                        class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                        title="Duplicate dashboard"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-                        />
-                      </svg>
-                      <span class="hidden md:inline">Duplicate</span>
-                    </button>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                          />
+                        </svg>
+                        <span class="hidden md:inline">Duplicate</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                <% end %>
                 
+                <%= if @can_edit_dashboard do %>
     <!-- Visibility Toggle (moved below Actions) -->
                 <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
                   <div>
@@ -2693,6 +2787,7 @@ defmodule TrifleApp.DashboardLive do
                     Delete Dashboard
                   </button>
                 </div>
+                <% end %>
               </div>
             </:body>
           </.app_modal>

@@ -28,7 +28,8 @@ defmodule TrifleApp.DashboardsLive do
      )
      |> assign(:editing_group_id, nil)
      |> assign(:collapsed_groups, MapSet.new())
-     |> assign(:current_membership, membership)}
+     |> assign(:current_membership, membership)
+     |> assign(:can_manage_dashboards, Organizations.membership_owner?(membership))}
   end
 
   def handle_params(params, _url, socket) do
@@ -55,43 +56,53 @@ defmodule TrifleApp.DashboardsLive do
   def handle_event("delete_dashboard", %{"id" => id}, socket) do
     membership = socket.assigns.current_membership
     dashboard = Organizations.get_dashboard_for_membership!(membership, id)
-    {:ok, _} = Organizations.delete_dashboard_for_membership(dashboard, membership)
+    case Organizations.delete_dashboard_for_membership(dashboard, membership) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> refresh_tree()
+         |> put_flash(:info, "Dashboard deleted successfully")}
 
-    {:noreply,
-     socket
-     |> refresh_tree()
-     |> put_flash(:info, "Dashboard deleted successfully")}
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "Dashboard does not belong to this organization")}
+    end
   end
 
   def handle_event("duplicate_dashboard", %{"id" => id}, socket) do
     membership = socket.assigns.current_membership
     original = Organizations.get_dashboard_for_membership!(membership, id)
     current_user = socket.assigns.current_user
+    if Organizations.can_clone_dashboard?(original, membership) do
+      attrs = %{
+        "database_id" => original.database_id,
+        "name" => (original.name || "Dashboard") <> " (copy)",
+        "key" => original.key || "dashboard",
+        "payload" => original.payload || %{},
+        "default_timeframe" =>
+          original.default_timeframe || original.database.default_timeframe || "24h",
+        "default_granularity" =>
+          original.default_granularity || original.database.default_granularity || "1h",
+        "visibility" => original.visibility,
+        "group_id" => original.group_id,
+        "position" =>
+          Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
+      }
 
-    attrs = %{
-      "database_id" => original.database_id,
-      "name" => (original.name || "Dashboard") <> " (copy)",
-      "key" => original.key || "dashboard",
-      "payload" => original.payload || %{},
-      "default_timeframe" =>
-        original.default_timeframe || original.database.default_timeframe || "24h",
-      "default_granularity" =>
-        original.default_granularity || original.database.default_granularity || "1h",
-      "visibility" => original.visibility,
-      "group_id" => original.group_id,
-      "position" =>
-        Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
-    }
+      case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
+        {:ok, _new_dash} ->
+          {:noreply,
+           socket
+           |> refresh_tree()
+           |> put_flash(:info, "Dashboard duplicated")}
 
-    case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
-      {:ok, _new_dash} ->
-        {:noreply,
-         socket
-         |> refresh_tree()
-         |> put_flash(:info, "Dashboard duplicated")}
-
-      {:error, _cs} ->
-        {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
+        {:error, _cs} ->
+          {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You do not have permission to duplicate this dashboard")}
     end
   end
 
@@ -206,6 +217,9 @@ defmodule TrifleApp.DashboardsLive do
 
   def handle_event("new_group", params, socket) do
     membership = socket.assigns.current_membership
+    if not Organizations.membership_owner?(membership) do
+      {:noreply, put_flash(socket, :error, "Only organization owners can create groups")}
+    else
     name = Map.get(params, "name", "New Group")
     parent_id = Map.get(params, "parent_id")
     pos = Organizations.get_next_dashboard_group_position_for_membership(membership, parent_id)
@@ -215,25 +229,34 @@ defmodule TrifleApp.DashboardsLive do
       {:ok, _group} -> {:noreply, refresh_tree(socket)}
       {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
     end
+    end
   end
 
   def handle_event("rename_group", %{"id" => id, "name" => name}, socket) do
     membership = socket.assigns.current_membership
-    group = Organizations.get_dashboard_group_for_membership!(membership, id)
+    if not Organizations.membership_owner?(membership) do
+      {:noreply, put_flash(socket, :error, "Only organization owners can rename groups")}
+    else
+      group = Organizations.get_dashboard_group_for_membership!(membership, id)
 
-    case Organizations.update_dashboard_group(group, %{name: name}) do
-      {:ok, _} -> {:noreply, socket |> assign(:editing_group_id, nil) |> refresh_tree()}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not rename group")}
+      case Organizations.update_dashboard_group(group, %{name: name}) do
+        {:ok, _} -> {:noreply, socket |> assign(:editing_group_id, nil) |> refresh_tree()}
+        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not rename group")}
+      end
     end
   end
 
   def handle_event("delete_group", %{"id" => id}, socket) do
     membership = socket.assigns.current_membership
-    group = Organizations.get_dashboard_group_for_membership!(membership, id)
+    if not Organizations.membership_owner?(membership) do
+      {:noreply, put_flash(socket, :error, "Only organization owners can delete groups")}
+    else
+      group = Organizations.get_dashboard_group_for_membership!(membership, id)
 
-    case Organizations.delete_dashboard_group(group) do
-      {:ok, _} -> {:noreply, refresh_tree(socket)}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not delete group")}
+      case Organizations.delete_dashboard_group(group) do
+        {:ok, _} -> {:noreply, refresh_tree(socket)}
+        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not delete group")}
+      end
     end
   end
 
@@ -251,26 +274,33 @@ defmodule TrifleApp.DashboardsLive do
         socket
       ) do
     membership = socket.assigns.current_membership
-    p = normalize_parent(parent_id)
-    fp = normalize_parent(from_parent_id)
+    if not Organizations.membership_owner?(membership) do
+      {:noreply, put_flash(socket, :error, "Only organization owners can reorder dashboards")}
+    else
+      p = normalize_parent(parent_id)
+      fp = normalize_parent(from_parent_id)
 
-    case Organizations.reorder_nodes_for_membership(
-           membership,
-           p,
-           items,
-           fp,
-           from_items,
-           moved_id,
-           moved_type
-         ) do
-      {:ok, _} ->
-        {:noreply, refresh_tree(socket)}
+      case Organizations.reorder_nodes_for_membership(
+             membership,
+             p,
+             items,
+             fp,
+             from_items,
+             moved_id,
+             moved_type
+           ) do
+        {:ok, _} ->
+          {:noreply, refresh_tree(socket)}
 
-      {:error, :invalid_parent} ->
-        {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
+        {:error, :invalid_parent} ->
+          {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to reorder")}
+        {:error, :forbidden} ->
+          {:noreply, put_flash(socket, :error, "You do not have permission to reorder these dashboards")}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to reorder")}
+      end
     end
   end
 
@@ -357,28 +387,30 @@ defmodule TrifleApp.DashboardsLive do
                 </svg>
                 <span class="hidden md:inline">New Dashboard</span>
               </.link>
-              <button
-                type="button"
-                phx-click="new_group"
-                aria-label="New Group"
-                class="inline-flex items-center rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-5 w-5 md:-ml-0.5 md:mr-1.5"
+              <%= if @can_manage_dashboards do %>
+                <button
+                  type="button"
+                  phx-click="new_group"
+                  aria-label="New Group"
+                  class="inline-flex items-center rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
-                  />
-                </svg>
-                <span class="hidden md:inline">New Group</span>
-              </button>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="h-5 w-5 md:-ml-0.5 md:mr-1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+                    />
+                  </svg>
+                  <span class="hidden md:inline">New Group</span>
+                </button>
+              <% end %>
               <button
                 type="button"
                 phx-click="expand_all_groups"
@@ -467,7 +499,9 @@ defmodule TrifleApp.DashboardsLive do
                       node: node,
                       level: 0,
                       editing_group_id: @editing_group_id,
-                      collapsed_groups: @collapsed_groups
+                      collapsed_groups: @collapsed_groups,
+                      can_manage_dashboards: @can_manage_dashboards,
+                      current_membership: @current_membership
                     })}
                   <% end %>
                 </div>
@@ -494,7 +528,12 @@ defmodule TrifleApp.DashboardsLive do
                     style="min-height: 14px;"
                   >
                     <%= for dashboard <- @ungrouped_dashboards do %>
-                      {render_dashboard(%{dashboard: dashboard, level: 0})}
+                      {render_dashboard(%{
+                        dashboard: dashboard,
+                        level: 0,
+                        can_clone_dashboard: Organizations.can_clone_dashboard?(dashboard, @current_membership),
+                        can_manage_dashboards: @can_manage_dashboards
+                      })}
                     <% end %>
                   </div>
                 </div>
@@ -595,6 +634,11 @@ defmodule TrifleApp.DashboardsLive do
   attr :collapsed_groups, :any, default: nil
 
   defp render_group(assigns) do
+    assigns =
+      assigns
+      |> Map.put_new(:can_manage_dashboards, false)
+      |> Map.put_new(:current_membership, nil)
+
     ~H"""
     <div data-id={@node.group.id} data-type="group">
       <div
@@ -693,7 +737,8 @@ defmodule TrifleApp.DashboardsLive do
             </span>
           </div>
           <div class="flex items-center gap-2 mr-3" phx-click="noop">
-            <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+            <%= if @can_manage_dashboards do %>
+              <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
               <button
                 type="button"
                 phx-click="new_group"
@@ -766,18 +811,19 @@ defmodule TrifleApp.DashboardsLive do
               </button>
             </div>
             <!-- Drag handle to the far right -->
-            <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-                class="h-5 w-5"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
-              </svg>
-            </div>
+              <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-5 w-5"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
+                </svg>
+              </div>
+            <% end %>
           </div>
         <% end %>
       </div>
@@ -795,14 +841,21 @@ defmodule TrifleApp.DashboardsLive do
           <%= for entry <- mixed_group_nodes(@node) do %>
             <%= case entry do %>
               <% {:group, child} -> %>
-                {render_group(%{
-                  node: child,
-                  level: @level + 1,
-                  editing_group_id: @editing_group_id,
-                  collapsed_groups: @collapsed_groups
-                })}
+              {render_group(%{
+                node: child,
+                level: @level + 1,
+                editing_group_id: @editing_group_id,
+                collapsed_groups: @collapsed_groups,
+                can_manage_dashboards: @can_manage_dashboards,
+                current_membership: @current_membership
+              })}
               <% {:dashboard, dashboard} -> %>
-                {render_dashboard(%{dashboard: dashboard, level: @level + 1})}
+                {render_dashboard(%{
+                  dashboard: dashboard,
+                  level: @level + 1,
+                  can_clone_dashboard: Organizations.can_clone_dashboard?(dashboard, @current_membership),
+                  can_manage_dashboards: @can_manage_dashboards
+                })}
             <% end %>
           <% end %>
         </div>
@@ -811,8 +864,10 @@ defmodule TrifleApp.DashboardsLive do
     """
   end
 
-  attr :dashboard, Trifle.Organizations.Dashboard, required: true
-  attr :level, :integer, default: 0
+attr :dashboard, Trifle.Organizations.Dashboard, required: true
+attr :level, :integer, default: 0
+attr :can_clone_dashboard, :boolean, default: false
+attr :can_manage_dashboards, :boolean, default: false
 
   defp render_dashboard(assigns) do
     ~H"""
@@ -856,31 +911,33 @@ defmodule TrifleApp.DashboardsLive do
           </div>
         <% end %>
       </div>
-      <div class="flex items-center gap-2 justify-self-end mr-3" phx-click="noop">
+        <div class="flex items-center gap-2 justify-self-end mr-3" phx-click="noop">
         <div class="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-          <button
-            type="button"
-            phx-click="duplicate_dashboard"
-            phx-value-id={@dashboard.id}
-            title="Duplicate dashboard"
-            aria-label="Duplicate dashboard"
-            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 mr-1"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-              class="h-4 w-4"
+          <%= if @can_clone_dashboard do %>
+            <button
+              type="button"
+              phx-click="duplicate_dashboard"
+              phx-value-id={@dashboard.id}
+              title="Duplicate dashboard"
+              aria-label="Duplicate dashboard"
+              class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 mr-1"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                />
+              </svg>
+            </button>
+          <% end %>
         </div>
         <%= if @dashboard.visibility do %>
           <svg
@@ -938,18 +995,20 @@ defmodule TrifleApp.DashboardsLive do
           />
         </svg>
         <!-- Drag handle -->
-        <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-            class="h-5 w-5"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
-          </svg>
-        </div>
+            <%= if @can_manage_dashboards do %>
+              <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="h-5 w-5"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
+              </svg>
+            </div>
+            <% end %>
       </div>
     </div>
     """
