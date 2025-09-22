@@ -3,6 +3,8 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Stats.SeriesFetcher
+  alias Phoenix.HTML
+  alias TrifleApp.ExploreLive
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
@@ -363,6 +365,7 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       true ->
+        socket = ensure_widget_path_options(socket)
         items = socket.assigns.dashboard.payload["grid"] || []
         widget = Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
         widget = (widget || %{"id" => id, "title" => ""}) |> Map.put_new("type", "kpi")
@@ -442,10 +445,8 @@ defmodule TrifleApp.DashboardLive do
                 "timeseries" ->
                   paths =
                     params
-                    |> Map.get("ts_paths", "")
-                    |> String.split(["\n", "\r"], trim: true)
-                    |> Enum.map(&String.trim/1)
-                    |> Enum.reject(&(&1 == ""))
+                    |> Map.get("ts_paths", Map.get(params, "ts_paths[]", []))
+                    |> normalize_timeseries_paths_param()
 
                   base
                   |> Map.put("paths", paths)
@@ -644,6 +645,28 @@ defmodule TrifleApp.DashboardLive do
     w = socket.assigns.editing_widget || %{"id" => id}
     normalized = normalize_kpi_subtype(subtype, w)
     {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
+  end
+
+  def handle_event(
+        "timeseries_paths_update",
+        %{"widget_id" => widget_id, "paths" => raw_paths},
+        socket
+      ) do
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:editing_widget]) ->
+        {:noreply, socket}
+
+      to_string(socket.assigns.editing_widget["id"]) != to_string(widget_id) ->
+        {:noreply, socket}
+
+      true ->
+        paths = normalize_timeseries_paths_for_edit(raw_paths)
+        widget = Map.put(socket.assigns.editing_widget, "paths", paths)
+        {:noreply, assign(socket, :editing_widget, widget)}
+    end
   end
 
   def handle_event("delete_widget", %{"id" => id}, socket) do
@@ -1217,6 +1240,8 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:load_duration_microseconds, nil)
     |> assign(:editing_widget, nil)
     |> assign(:show_export_dropdown, false)
+    |> assign(:widget_path_options, [])
+    |> assign(:widget_path_options_loaded, false)
   end
 
   defp apply_url_params(socket, params) do
@@ -1350,6 +1375,114 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  defp ensure_widget_path_options(%{assigns: %{widget_path_options_loaded: true}} = socket),
+    do: socket
+
+  defp ensure_widget_path_options(socket) do
+    options = build_widget_path_options(socket.assigns)
+
+    socket
+    |> assign(:widget_path_options, options)
+    |> assign(:widget_path_options_loaded, true)
+  end
+
+  defp build_widget_path_options(%{stats: %Trifle.Stats.Series{series: series_map}} = assigns) do
+    table = Trifle.Stats.Tabler.tabulize(series_map)
+    paths = table[:paths] || []
+    transponder_info = Map.get(assigns, :transponder_info, %{})
+
+    sorted_paths = Enum.sort(paths)
+
+    Enum.map(sorted_paths, fn path ->
+      label =
+        path
+        |> ExploreLive.format_nested_path(sorted_paths, transponder_info)
+        |> HTML.safe_to_string()
+
+      %{"value" => path, "label" => label}
+    end)
+  end
+
+  defp build_widget_path_options(_assigns), do: []
+
+  defp timeseries_paths_for_form(nil), do: [""]
+
+  defp timeseries_paths_for_form(paths) when is_list(paths) do
+    cleaned = Enum.map(paths, &to_string/1)
+
+    case cleaned do
+      [] -> [""]
+      list -> list
+    end
+  end
+
+  defp timeseries_paths_for_form(path), do: timeseries_paths_for_form([path])
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, default: ""
+  attr :placeholder, :string, default: ""
+  attr :path_options, :list, default: []
+
+  attr :input_class, :string,
+    default:
+      "block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+
+  defp path_autocomplete_input(assigns) do
+    assigns = assign(assigns, :options_json, Jason.encode!(assigns.path_options))
+
+    ~H"""
+    <div id={"#{@id}-wrapper"} class="relative" phx-hook="PathAutocomplete" data-paths={@options_json}>
+      <input
+        id={@id}
+        type="text"
+        name={@name}
+        value={@value}
+        placeholder={@placeholder}
+        class={@input_class}
+        autocomplete="off"
+        spellcheck="false"
+        data-role="path-input"
+      />
+      <div
+        id={"#{@id}-suggestions"}
+        data-role="suggestions"
+        phx-update="ignore"
+        class="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
+      >
+      </div>
+    </div>
+    """
+  end
+
+  defp normalize_timeseries_paths_param(value) do
+    value
+    |> case do
+      nil -> []
+      list when is_list(list) -> list
+      other -> [other]
+    end
+    |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp normalize_timeseries_paths_for_edit(paths) do
+    cleaned =
+      paths
+      |> case do
+        nil -> []
+        list when is_list(list) -> list
+        other -> [other]
+      end
+      |> Enum.map(&to_string/1)
+
+    case cleaned do
+      [] -> [""]
+      list -> list
+    end
+  end
+
   defp build_url_params(%Phoenix.LiveView.Socket{} = socket), do: build_url_params(socket.assigns)
 
   defp build_url_params(data) when is_map(data) do
@@ -1395,6 +1528,15 @@ defmodule TrifleApp.DashboardLive do
      |> assign(transponding: false)
      |> assign(stats: result.series)
      |> assign(transponder_results: result.transponder_results)
+     |> assign(widget_path_options: [])
+     |> assign(widget_path_options_loaded: false)
+     |> then(fn socket ->
+       if socket.assigns.editing_widget do
+         ensure_widget_path_options(socket)
+       else
+         socket
+       end
+     end)
      |> assign(load_duration_microseconds: load_duration)
      |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
      |> push_event("dashboard_grid_kpi_visual", %{items: kpi_visuals})
@@ -2638,12 +2780,12 @@ defmodule TrifleApp.DashboardLive do
                           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                             Path
                           </label>
-                          <input
-                            type="text"
+                          <.path_autocomplete_input
+                            id="widget-kpi-path"
                             name="kpi_path"
                             value={@editing_widget["path"] || ""}
-                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
                             placeholder="e.g. sales.total"
+                            path_options={@widget_path_options}
                           />
                         </div>
                         <div>
@@ -2814,16 +2956,52 @@ defmodule TrifleApp.DashboardLive do
                     <% "timeseries" -> %>
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="sm:col-span-2">
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Paths (one per line)
-                          </label>
-                          <% paths = (@editing_widget["paths"] || []) |> Enum.join("\n") %>
-                          <textarea
-                            name="ts_paths"
-                            rows="4"
-                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                            placeholder="metrics.sales\nmetrics.orders"
-                          ><%= paths %></textarea>
+                          <% paths = timeseries_paths_for_form(@editing_widget["paths"]) %>
+                          <% paths_length = length(paths) %>
+                          <div
+                            id={"widget-#{@editing_widget["id"]}-timeseries-paths"}
+                            phx-hook="TimeseriesPaths"
+                            data-widget-id={@editing_widget["id"]}
+                            class="space-y-2"
+                          >
+                            <div class="flex items-center justify-between">
+                              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                                Paths
+                              </label>
+                              <button
+                                type="button"
+                                data-action="add"
+                                class="inline-flex items-center gap-1 rounded-md border border-teal-500 px-2 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-slate-700"
+                              >
+                                <span aria-hidden="true">+</span>
+                                <span class="sr-only">Add path</span>
+                              </button>
+                            </div>
+                            <div class="space-y-2">
+                              <%= for {path, index} <- Enum.with_index(paths) do %>
+                                <div class="flex items-start gap-2">
+                                  <.path_autocomplete_input
+                                    id={"widget-ts-path-#{@editing_widget["id"]}-#{index}"}
+                                    name="ts_paths[]"
+                                    value={path}
+                                    placeholder="metrics.sales"
+                                    path_options={@widget_path_options}
+                                    input_class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                  />
+                                  <button
+                                    type="button"
+                                    data-action="remove"
+                                    data-index={index}
+                                    class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                                    aria-label="Remove path"
+                                    disabled={paths_length == 1}
+                                  >
+                                    &minus;
+                                  </button>
+                                </div>
+                              <% end %>
+                            </div>
+                          </div>
                         </div>
                         <div>
                           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
@@ -3093,12 +3271,12 @@ defmodule TrifleApp.DashboardLive do
                           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                             Path
                           </label>
-                          <input
-                            type="text"
+                          <.path_autocomplete_input
+                            id="widget-category-path"
                             name="cat_path"
                             value={@editing_widget["path"] || ""}
-                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
                             placeholder="metrics.category"
+                            path_options={@widget_path_options}
                           />
                         </div>
                         <div>
