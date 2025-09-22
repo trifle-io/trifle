@@ -260,6 +260,39 @@ defmodule Trifle.Organizations do
     |> maybe_mark_invitation_expired()
   end
 
+  @doc """
+  Retrieves an active invitation by token.
+
+  Returns `{:ok, invitation}` when the invitation exists, is pending, and
+  has not expired. Otherwise returns `{:error, reason}` where reason is one of
+  `:not_found`, `:expired`, `:already_accepted`, `:cancelled`, or `:invalid`.
+  """
+  def get_active_invitation_by_token(token) when is_binary(token) do
+    case get_invitation_by_token(token) do
+      %OrganizationInvitation{status: "pending"} = invitation ->
+        if invitation_expired?(invitation) do
+          {:error, :expired}
+        else
+          {:ok, invitation}
+        end
+
+      %OrganizationInvitation{status: "accepted"} ->
+        {:error, :already_accepted}
+
+      %OrganizationInvitation{status: "cancelled"} ->
+        {:error, :cancelled}
+
+      %OrganizationInvitation{status: "expired"} ->
+        {:error, :expired}
+
+      nil ->
+        {:error, :not_found}
+
+      _ ->
+        {:error, :invalid}
+    end
+  end
+
   def create_invitation(%Organization{} = organization, attrs \\ %{}, invited_by \\ nil) do
     attrs =
       attrs

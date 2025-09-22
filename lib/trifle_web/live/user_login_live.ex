@@ -79,12 +79,22 @@ defmodule TrifleWeb.UserLoginLive do
         </div>
         
     <!-- Navigation Links -->
-        <%= if TrifleWeb.RegistrationConfig.enabled?() do %>
+        <%= if TrifleWeb.RegistrationConfig.enabled?() or @invitation_token do %>
           <div class="text-center">
             <p class="text-sm text-gray-600 dark:text-gray-400">
-              Don't have an account?
+              <%= if @invitation_token && !TrifleWeb.RegistrationConfig.enabled?() do %>
+                You were invited to join. Create your account below.
+              <% else %>
+                Don't have an account?
+              <% end %>
               <.link
-                navigate={~p"/users/register"}
+                navigate={
+                  if @invitation_token do
+                    ~p"/users/register?invitation_token=#{@invitation_token}"
+                  else
+                    ~p"/users/register"
+                  end
+                }
                 class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
               >
                 Sign up
@@ -104,9 +114,23 @@ defmodule TrifleWeb.UserLoginLive do
     """
   end
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     email = live_flash(socket.assigns.flash, :email)
     form = to_form(%{"email" => email}, as: "user")
-    {:ok, assign(socket, form: form), temporary_assigns: [form: form]}
+    invitation_token = params["invitation_token"] |> normalize_token()
+
+    socket =
+      socket
+      |> assign(form: form)
+      |> assign(invitation_token: invitation_token)
+
+    {:ok, socket, temporary_assigns: [form: form]}
   end
+
+  defp normalize_token(nil), do: nil
+  defp normalize_token(token) when is_binary(token) do
+    cleaned = String.trim(token)
+    if cleaned == "", do: nil, else: cleaned
+  end
+  defp normalize_token(_), do: nil
 end

@@ -54,10 +54,7 @@ defmodule TrifleWeb.Router do
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [{TrifleWeb.UserAuth, :redirect_if_user_is_authenticated}] do
-      # Registration route - conditionally enabled via REGISTRATION_ENABLED environment variable
-      if TrifleWeb.RegistrationConfig.enabled?() do
-        live "/users/register", UserRegistrationLive, :new
-      end
+      live "/users/register", UserRegistrationLive, :new
 
       live "/users/log_in", UserLoginLive, :new
       live "/users/reset_password", UserForgotPasswordLive, :new

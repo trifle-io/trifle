@@ -6,6 +6,7 @@ defmodule TrifleWeb.InvitationController do
   alias Ecto.Changeset
   alias Trifle.Organizations
   alias Trifle.Organizations.OrganizationInvitation
+  alias TrifleWeb.RegistrationConfig
 
   plug :put_root_layout, html: {TrifleWeb.Layouts, :page}
   plug :require_authenticated_user when action in [:accept]
@@ -62,7 +63,14 @@ defmodule TrifleWeb.InvitationController do
   defp maybe_require_login(%{assigns: %{current_user: nil}} = conn, invitation, token) do
     conn
     |> put_session(:user_return_to, ~p"/invitations/#{token}")
-    |> redirect(to: ~p"/users/log_in?invitation_token=#{token}")
+    |> redirect(
+      to:
+        if RegistrationConfig.enabled?() do
+          ~p"/users/log_in?invitation_token=#{token}"
+        else
+          ~p"/users/register?invitation_token=#{token}"
+        end
+    )
   end
 
   defp maybe_require_login(conn, invitation, _token) do
