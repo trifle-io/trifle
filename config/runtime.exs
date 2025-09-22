@@ -215,8 +215,11 @@ if config_env() == :prod do
           adapter: Swoosh.Adapters.Mailgun,
           api_key: api_key,
           domain: domain
-        ]
-        |> add_optional(:base_url, System.get_env("MAILGUN_BASE_URL"))
+        ] ++
+          case System.get_env("MAILGUN_BASE_URL") do
+            value when value in [nil, ""] -> []
+            value -> [base_url: value]
+          end
 
       config :trifle, Trifle.Mailer, opts
       configure_api_client.()
@@ -238,6 +241,3 @@ if config_env() == :prod do
             "Unsupported MAILER_ADAPTER '#{other}'. Valid options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo."
   end
 end
-
-defp add_optional(keyword, _key, value) when value in [nil, ""], do: keyword
-defp add_optional(keyword, key, value), do: Keyword.put(keyword, key, value)
