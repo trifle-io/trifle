@@ -216,7 +216,7 @@ if config_env() == :prod do
           api_key: api_key,
           domain: domain
         ]
-        |> maybe_put(:base_url, System.get_env("MAILGUN_BASE_URL"))
+        |> add_optional(:base_url, System.get_env("MAILGUN_BASE_URL"))
 
       config :trifle, Trifle.Mailer, opts
       configure_api_client.()
@@ -239,5 +239,5 @@ if config_env() == :prod do
   end
 end
 
-defp maybe_put(keyword, _key, value) when value in [nil, ""], do: keyword
-defp maybe_put(keyword, key, value), do: Keyword.put(keyword, key, value)
+defp add_optional(keyword, _key, value) when value in [nil, ""], do: keyword
+defp add_optional(keyword, key, value), do: Keyword.put(keyword, key, value)
