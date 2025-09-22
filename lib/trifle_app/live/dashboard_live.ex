@@ -2962,37 +2962,29 @@ defmodule TrifleApp.DashboardLive do
                             id={"widget-#{@editing_widget["id"]}-timeseries-paths"}
                             phx-hook="TimeseriesPaths"
                             data-widget-id={@editing_widget["id"]}
-                            class="space-y-2"
+                            class="space-y-3"
                           >
-                            <div class="flex items-center justify-between">
-                              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
-                                Paths
-                              </label>
-                              <button
-                                type="button"
-                                data-action="add"
-                                class="inline-flex items-center gap-1 rounded-md border border-teal-500 px-2 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-slate-700"
-                              >
-                                <span aria-hidden="true">+</span>
-                                <span class="sr-only">Add path</span>
-                              </button>
-                            </div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                              Paths
+                            </label>
                             <div class="space-y-2">
                               <%= for {path, index} <- Enum.with_index(paths) do %>
-                                <div class="flex items-start gap-2">
-                                  <.path_autocomplete_input
-                                    id={"widget-ts-path-#{@editing_widget["id"]}-#{index}"}
-                                    name="ts_paths[]"
-                                    value={path}
-                                    placeholder="metrics.sales"
-                                    path_options={@widget_path_options}
-                                    input_class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                                  />
+                                <div class="flex items-center gap-2">
+                                  <div class="flex-1 min-w-0">
+                                    <.path_autocomplete_input
+                                      id={"widget-ts-path-#{@editing_widget["id"]}-#{index}"}
+                                      name="ts_paths[]"
+                                      value={path}
+                                      placeholder="metrics.sales"
+                                      path_options={@widget_path_options}
+                                      input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                    />
+                                  </div>
                                   <button
                                     type="button"
                                     data-action="remove"
                                     data-index={index}
-                                    class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                                    class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                                     aria-label="Remove path"
                                     disabled={paths_length == 1}
                                   >
@@ -3001,6 +2993,14 @@ defmodule TrifleApp.DashboardLive do
                                 </div>
                               <% end %>
                             </div>
+                            <button
+                              type="button"
+                              data-action="add"
+                              class="inline-flex items-center gap-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
+                            >
+                              <span aria-hidden="true">+</span>
+                              <span class="sr-only">Add path</span>
+                            </button>
                           </div>
                         </div>
                         <div>
