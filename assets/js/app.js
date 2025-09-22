@@ -1960,6 +1960,286 @@ Hooks.DownloadMenu = {
   }
 }
 
+Hooks.PathAutocomplete = {
+  mounted() {
+    this.input = this.el.querySelector('[data-role="path-input"]');
+    this.suggestionBox = this.el.querySelector('[data-role="suggestions"]');
+    this.matches = [];
+    this.activeIndex = -1;
+    this.visible = false;
+    this.suppressNextFilter = false;
+
+    this.loadOptions();
+
+    if (!this.input || !this.suggestionBox) return;
+
+    this.handleInput = () => this.filterSuggestions();
+    this.handleFocus = () => this.openSuggestions();
+    this.handleBlur = () => {
+      this._blurTimer = setTimeout(() => this.hideSuggestions(), 100);
+    };
+    this.handleKeydown = (event) => this.onKeydown(event);
+
+    this.input.addEventListener('input', this.handleInput);
+    this.input.addEventListener('focus', this.handleFocus);
+    this.input.addEventListener('blur', this.handleBlur);
+    this.input.addEventListener('keydown', this.handleKeydown);
+
+    // Show initial matches if input already has a value
+    if (document.activeElement === this.input) {
+      this.filterSuggestions();
+    }
+  },
+
+  updated() {
+    const previous = JSON.stringify(this.options || []);
+    this.loadOptions();
+    if (JSON.stringify(this.options) !== previous) {
+      this.filterSuggestions();
+    }
+  },
+
+  destroyed() {
+    if (!this.input) return;
+    this.input.removeEventListener('input', this.handleInput);
+    this.input.removeEventListener('focus', this.handleFocus);
+    this.input.removeEventListener('blur', this.handleBlur);
+    this.input.removeEventListener('keydown', this.handleKeydown);
+    if (this._blurTimer) clearTimeout(this._blurTimer);
+  },
+
+  loadOptions() {
+    const raw = this.el.dataset.paths || '[]';
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      parsed = [];
+    }
+
+    if (!Array.isArray(parsed)) parsed = [];
+
+    this.options = parsed
+      .map((item) => {
+        if (typeof item === 'string') {
+          return { value: item, label: item };
+        }
+
+        if (item && typeof item.value === 'string') {
+          return {
+            value: item.value,
+            label: typeof item.label === 'string' ? item.label : item.value
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+  },
+
+  filterSuggestions() {
+    if (this.suppressNextFilter) {
+      this.suppressNextFilter = false;
+      return;
+    }
+
+    if (!this.input) return;
+
+    const hasFocus = document.activeElement === this.input;
+    if (!hasFocus) {
+      this.hideSuggestions();
+      return;
+    }
+
+    const query = (this.input.value || '').trim().toLowerCase();
+
+    let candidates = this.options;
+    if (query) {
+      candidates = this.options.filter((item) =>
+        item.value.toLowerCase().includes(query)
+      );
+    }
+
+    const limited = candidates.slice(0, 15);
+    if (limited.length === 0) {
+      this.hideSuggestions();
+      return;
+    }
+
+    this.renderSuggestions(limited);
+  },
+
+  renderSuggestions(items) {
+    if (!this.suggestionBox) return;
+
+    this.matches = items;
+    this.activeIndex = -1;
+
+    const fragment = document.createDocumentFragment();
+
+    items.forEach((item, index) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'w-full px-3 py-2 text-left text-sm leading-tight text-slate-700 hover:bg-teal-50 focus:outline-none dark:text-slate-200 dark:hover:bg-slate-700';
+      option.setAttribute('role', 'option');
+      option.dataset.index = index;
+      option.dataset.value = item.value;
+      option.innerHTML = item.label;
+
+      option.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        this.selectOption(index);
+      });
+
+      fragment.appendChild(option);
+    });
+
+    this.suggestionBox.innerHTML = '';
+    this.suggestionBox.appendChild(fragment);
+    this.suggestionBox.classList.remove('hidden');
+    this.visible = true;
+  },
+
+  openSuggestions() {
+    if (this._blurTimer) clearTimeout(this._blurTimer);
+    this.filterSuggestions();
+  },
+
+  hideSuggestions() {
+    if (!this.suggestionBox) return;
+    this.suggestionBox.classList.add('hidden');
+    this.suggestionBox.innerHTML = '';
+    this.visible = false;
+    this.matches = [];
+    this.activeIndex = -1;
+  },
+
+  onKeydown(event) {
+    if (!this.visible && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      this.filterSuggestions();
+    }
+
+    if (!this.visible) return;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        this.moveActive(1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.moveActive(-1);
+        break;
+      case 'Enter':
+        if (this.activeIndex >= 0) {
+          event.preventDefault();
+          this.selectOption(this.activeIndex);
+        }
+        break;
+      case 'Escape':
+        this.hideSuggestions();
+        break;
+      default:
+        break;
+    }
+  },
+
+  moveActive(delta) {
+    if (this.matches.length === 0 || !this.suggestionBox) return;
+
+    const nextIndex = (this.activeIndex + delta + this.matches.length) % this.matches.length;
+    this.setActive(nextIndex);
+  },
+
+  setActive(index) {
+    if (!this.suggestionBox) return;
+
+    const buttons = Array.from(this.suggestionBox.querySelectorAll('button[data-index]'));
+    buttons.forEach((btn) => {
+      btn.classList.remove('bg-teal-100', 'dark:bg-slate-600');
+    });
+
+    const active = buttons[index];
+    if (active) {
+      active.classList.add('bg-teal-100', 'dark:bg-slate-600');
+      active.scrollIntoView({ block: 'nearest' });
+      this.activeIndex = index;
+    }
+  },
+
+  selectOption(index) {
+    const item = this.matches[index];
+    if (!item || !this.input) return;
+
+    this.input.value = item.value;
+    this.suppressNextFilter = true;
+    this.hideSuggestions();
+
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(this.input, item.value);
+    }
+
+    this.input.dispatchEvent(new Event('input', { bubbles: true }));
+    this.input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
+Hooks.TimeseriesPaths = {
+  mounted() {
+    this.widgetId = this.el.dataset.widgetId;
+
+    this.handleClick = (event) => {
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+
+      const action = button.dataset.action;
+      if (!action) return;
+
+      event.preventDefault();
+
+      const paths = this.readPaths();
+
+      if (action === 'add') {
+        paths.push('');
+      } else if (action === 'remove') {
+        const index = parseInt(button.dataset.index || '-1', 10);
+        if (!Number.isNaN(index)) {
+          paths.splice(index, 1);
+        }
+        if (paths.length === 0) {
+          paths.push('');
+        }
+      } else {
+        return;
+      }
+
+      this.pushEvent('timeseries_paths_update', {
+        widget_id: this.widgetId,
+        paths
+      });
+    };
+
+    this.el.addEventListener('click', this.handleClick);
+  },
+
+  updated() {
+    this.widgetId = this.el.dataset.widgetId;
+  },
+
+  destroyed() {
+    if (this.handleClick) {
+      this.el.removeEventListener('click', this.handleClick);
+    }
+  },
+
+  readPaths() {
+    return Array.from(this.el.querySelectorAll('input[name="ts_paths[]"]')).map((input) =>
+      input.value || ''
+    );
+  }
+}
+
 
 Hooks.PhantomRows = {
   mounted() {
