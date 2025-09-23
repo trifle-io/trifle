@@ -34,7 +34,7 @@ defmodule TrifleApp.ExploreLive do
       # No databases available: show guidance message
       {:ok,
        socket
-       |> assign(page_title: ["Explore"])
+       |> assign(page_title: "Explore")
        |> assign(no_database: true)
        |> assign(database: nil)
        |> assign(database_config: nil)
@@ -86,7 +86,7 @@ defmodule TrifleApp.ExploreLive do
 
       socket =
         socket
-        |> assign(page_title: ["Explore", database.display_name])
+        |> assign(page_title: "Explore · #{database.display_name}")
         |> assign(database: database)
         |> assign(no_database: false)
         |> assign(database_config: database_config)

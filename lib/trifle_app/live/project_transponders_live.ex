@@ -106,6 +106,6 @@ defmodule TrifleApp.ProjectTranspondersLive do
     project = Organizations.get_project!(params["id"])
 
     {:ok,
-     assign(socket, page_title: ["Projects", project.name, "Transponders"], project: project)}
+     assign(socket, page_title: "Projects · #{project.name} · Transponders", project: project)}
   end
 end

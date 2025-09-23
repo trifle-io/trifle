@@ -119,7 +119,8 @@ defmodule TrifleWeb.UserRegistrationLive do
             check_errors: false,
             invitation: invitation,
             invitation_token: token,
-            registration_mode: mode
+            registration_mode: mode,
+            page_title: "Sign Up"
           )
           |> assign_form(changeset)
 

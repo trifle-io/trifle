@@ -123,6 +123,7 @@ defmodule TrifleWeb.UserLoginLive do
       socket
       |> assign(form: form)
       |> assign(invitation_token: invitation_token)
+      |> assign(page_title: "Sign In")
 
     {:ok, socket, temporary_assigns: [form: form]}
   end

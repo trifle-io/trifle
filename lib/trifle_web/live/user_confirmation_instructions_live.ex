@@ -31,7 +31,7 @@ defmodule TrifleWeb.UserConfirmationInstructionsLive do
   end
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, form: to_form(%{}, as: "user"))}
+    {:ok, assign(socket, form: to_form(%{}, as: "user"), page_title: "Resend Confirmation")}
   end
 
   def handle_event("send_instructions", %{"user" => %{"email" => email}}, socket) do

@@ -124,7 +124,7 @@ defmodule TrifleWeb.UserResetPasswordLive do
 
   defp assign_user_and_token(socket, %{"token" => token}) do
     if user = Accounts.get_user_by_reset_password_token(token) do
-      assign(socket, user: user, token: token)
+      assign(socket, user: user, token: token, page_title: "Reset Password")
     else
       socket
       |> put_flash(:error, "Reset password link is invalid or it has expired.")

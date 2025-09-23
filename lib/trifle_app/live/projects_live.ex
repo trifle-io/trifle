@@ -232,22 +232,39 @@ defmodule TrifleApp.ProjectsLive do
     """
   end
 
-  def mount(_params, _session, socket) do
-    is_new = socket.assigns.live_action == :new
+  def mount(params, _session, socket) do
     projects = Organizations.list_users_projects(socket.assigns.current_user)
     changeset = Organizations.change_project(%Project{})
 
     socket =
-      assign(socket,
-        page_title: if(is_new, do: ["Projects", "New"], else: ["Projects"]),
-        projects: projects,
-        is_new: is_new,
-        form: to_form(changeset),
-        time_zones: time_zones()
-      )
+      socket
+      |> assign(:projects, projects)
+      |> assign(:form, to_form(changeset))
+      |> assign(:time_zones, time_zones())
+      |> assign(:page_title, "Projects")
 
-    {:ok, socket}
+    {:ok, apply_action(socket, socket.assigns.live_action, params)}
   end
+
+  def handle_params(params, _url, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  defp apply_action(socket, :new, _params) do
+    socket
+    |> assign(:page_title, "Projects · New")
+    |> assign(:is_new, true)
+    |> assign(:form, to_form(Organizations.change_project(%Project{})))
+  end
+
+  defp apply_action(socket, :index, _params) do
+    socket
+    |> assign(:page_title, "Projects")
+    |> assign(:is_new, false)
+    |> assign(:projects, Organizations.list_users_projects(socket.assigns.current_user))
+  end
+
+  defp apply_action(socket, _action, _params), do: socket
 
   def time_zones do
     now = DateTime.utc_now()

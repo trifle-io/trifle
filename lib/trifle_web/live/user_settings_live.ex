@@ -214,6 +214,7 @@ defmodule TrifleWeb.UserSettingsLive do
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:theme_form, to_form(theme_changeset))
       |> assign(:trigger_submit, false)
+      |> assign(:page_title, "Account Settings")
 
     {:ok, socket}
   end
