@@ -2279,6 +2279,59 @@ Hooks.TimeseriesPaths = {
   }
 }
 
+Hooks.CategoryPaths = {
+  mounted() {
+    this.widgetId = this.el.dataset.widgetId;
+
+    this.handleClick = (event) => {
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+
+      const action = button.dataset.action;
+      if (!action) return;
+
+      event.preventDefault();
+
+      const paths = this.readPaths();
+
+      if (action === 'add') {
+        paths.push('');
+      } else if (action === 'remove') {
+        const index = parseInt(button.dataset.index || '-1', 10);
+        if (!Number.isNaN(index)) {
+          paths.splice(index, 1);
+        }
+        if (paths.length === 0) paths.push('');
+      } else {
+        return;
+      }
+
+      this.pushEvent('category_paths_update', {
+        widget_id: this.widgetId,
+        paths
+      });
+    };
+
+    this.el.addEventListener('click', this.handleClick);
+  },
+
+  updated() {
+    this.widgetId = this.el.dataset.widgetId;
+  },
+
+  destroyed() {
+    if (this.handleClick) {
+      this.el.removeEventListener('click', this.handleClick);
+    }
+  },
+
+  readPaths() {
+    return Array.from(this.el.querySelectorAll('input[name="cat_paths[]"]')).map((input) =>
+      input.value || ''
+    );
+  }
+}
+
 
 Hooks.PhantomRows = {
   mounted() {

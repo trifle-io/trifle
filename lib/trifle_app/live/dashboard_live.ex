@@ -155,31 +155,31 @@ defmodule TrifleApp.DashboardLive do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to rename this dashboard")}
     else
-    dashboard = socket.assigns.dashboard
-    membership = socket.assigns.current_membership
+      dashboard = socket.assigns.dashboard
+      membership = socket.assigns.current_membership
 
-    case Organizations.update_dashboard_for_membership(dashboard, membership, %{name: name}) do
-      {:ok, updated_dashboard} ->
-        # Update breadcrumbs and page title with new dashboard name
-        groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
+      case Organizations.update_dashboard_for_membership(dashboard, membership, %{name: name}) do
+        {:ok, updated_dashboard} ->
+          # Update breadcrumbs and page title with new dashboard name
+          groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
 
-        updated_breadcrumbs =
-          [{"Dashboards", "/dashboards"}] ++
-            Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
+          updated_breadcrumbs =
+            [{"Dashboards", "/dashboards"}] ++
+              Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
-        updated_page_title = "Dashboards · #{updated_dashboard.name}"
+          updated_page_title = "Dashboards · #{updated_dashboard.name}"
 
-        {:noreply,
-         socket
-         |> assign_dashboard(updated_dashboard)
-         |> assign(:temp_name, updated_dashboard.name)
-         |> assign(:breadcrumb_links, updated_breadcrumbs)
-         |> assign(:page_title, updated_page_title)
-         |> put_flash(:info, "Dashboard name updated successfully")}
+          {:noreply,
+           socket
+           |> assign_dashboard(updated_dashboard)
+           |> assign(:temp_name, updated_dashboard.name)
+           |> assign(:breadcrumb_links, updated_breadcrumbs)
+           |> assign(:page_title, updated_page_title)
+           |> put_flash(:info, "Dashboard name updated successfully")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to update dashboard name")}
-    end
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update dashboard name")}
+      end
     end
   end
 
@@ -187,61 +187,63 @@ defmodule TrifleApp.DashboardLive do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to change visibility")}
     else
-    dashboard = socket.assigns.dashboard
-    membership = socket.assigns.current_membership
+      dashboard = socket.assigns.dashboard
+      membership = socket.assigns.current_membership
 
-    case Organizations.update_dashboard_for_membership(
-           dashboard,
-           membership,
-           %{visibility: !dashboard.visibility}
-         ) do
-      {:ok, updated_dashboard} ->
-        {:noreply,
-         socket
-         |> assign_dashboard(updated_dashboard)
-         |> put_flash(:info, "Dashboard visibility updated successfully")}
+      case Organizations.update_dashboard_for_membership(
+             dashboard,
+             membership,
+             %{visibility: !dashboard.visibility}
+           ) do
+        {:ok, updated_dashboard} ->
+          {:noreply,
+           socket
+           |> assign_dashboard(updated_dashboard)
+           |> put_flash(:info, "Dashboard visibility updated successfully")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to update dashboard visibility")}
-    end
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update dashboard visibility")}
+      end
     end
   end
 
   def handle_event("generate_public_token", _params, socket) do
     if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to generate a public link")}
+      {:noreply,
+       put_flash(socket, :error, "You do not have permission to generate a public link")}
     else
-    dashboard = socket.assigns.dashboard
+      dashboard = socket.assigns.dashboard
 
-    case Organizations.generate_dashboard_public_token(dashboard) do
-      {:ok, updated_dashboard} ->
-        {:noreply,
-         socket
-         |> assign_dashboard(updated_dashboard)
-         |> put_flash(:info, "Public link generated successfully")}
+      case Organizations.generate_dashboard_public_token(dashboard) do
+        {:ok, updated_dashboard} ->
+          {:noreply,
+           socket
+           |> assign_dashboard(updated_dashboard)
+           |> put_flash(:info, "Public link generated successfully")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to generate public link")}
-    end
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to generate public link")}
+      end
     end
   end
 
   def handle_event("remove_public_token", _params, socket) do
     if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to remove the public link")}
+      {:noreply,
+       put_flash(socket, :error, "You do not have permission to remove the public link")}
     else
-    dashboard = socket.assigns.dashboard
+      dashboard = socket.assigns.dashboard
 
-    case Organizations.remove_dashboard_public_token(dashboard) do
-      {:ok, updated_dashboard} ->
-        {:noreply,
-         socket
-         |> assign_dashboard(updated_dashboard)
-         |> put_flash(:info, "Public link removed successfully")}
+      case Organizations.remove_dashboard_public_token(dashboard) do
+        {:ok, updated_dashboard} ->
+          {:noreply,
+           socket
+           |> assign_dashboard(updated_dashboard)
+           |> put_flash(:info, "Public link removed successfully")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to remove public link")}
-    end
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to remove public link")}
+      end
     end
   end
 
@@ -249,58 +251,60 @@ defmodule TrifleApp.DashboardLive do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
     else
-    dashboard = socket.assigns.dashboard
-    membership = socket.assigns.current_membership
+      dashboard = socket.assigns.dashboard
+      membership = socket.assigns.current_membership
 
-    case Organizations.delete_dashboard_for_membership(dashboard, membership) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> push_navigate(to: ~p"/dashboards")
-         |> put_flash(:info, "Dashboard deleted successfully")}
+      case Organizations.delete_dashboard_for_membership(dashboard, membership) do
+        {:ok, _} ->
+          {:noreply,
+           socket
+           |> push_navigate(to: ~p"/dashboards")
+           |> put_flash(:info, "Dashboard deleted successfully")}
 
-      {:error, :forbidden} ->
-        {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+        {:error, :forbidden} ->
+          {:noreply,
+           put_flash(socket, :error, "You do not have permission to delete this dashboard")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete dashboard")}
-    end
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to delete dashboard")}
+      end
     end
   end
 
   def handle_event("duplicate_dashboard", _params, socket) do
     if !socket.assigns.can_clone_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to duplicate this dashboard")}
+      {:noreply,
+       put_flash(socket, :error, "You do not have permission to duplicate this dashboard")}
     else
-    original = socket.assigns.dashboard
-    database = socket.assigns.database
-    current_user = socket.assigns.current_user
-    membership = socket.assigns.current_membership
+      original = socket.assigns.dashboard
+      database = socket.assigns.database
+      current_user = socket.assigns.current_user
+      membership = socket.assigns.current_membership
 
-    attrs = %{
-      "database_id" => database.id,
-      "name" => (original.name || "Dashboard") <> " (copy)",
-      "key" => original.key || "dashboard",
-      "payload" => original.payload || %{},
-      "default_timeframe" => original.default_timeframe || database.default_timeframe || "24h",
-      "default_granularity" =>
-        original.default_granularity || database.default_granularity || "1h",
-      "visibility" => original.visibility,
-      "group_id" => original.group_id,
-      "position" =>
-        Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
-    }
+      attrs = %{
+        "database_id" => database.id,
+        "name" => (original.name || "Dashboard") <> " (copy)",
+        "key" => original.key || "dashboard",
+        "payload" => original.payload || %{},
+        "default_timeframe" => original.default_timeframe || database.default_timeframe || "24h",
+        "default_granularity" =>
+          original.default_granularity || database.default_granularity || "1h",
+        "visibility" => original.visibility,
+        "group_id" => original.group_id,
+        "position" =>
+          Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
+      }
 
-    case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
-      {:ok, new_dash} ->
-        {:noreply,
-        socket
-        |> put_flash(:info, "Dashboard duplicated")
-        |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
+      case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
+        {:ok, new_dash} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Dashboard duplicated")
+           |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
 
-      {:error, _cs} ->
-        {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
-    end
+        {:error, _cs} ->
+          {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
+      end
     end
   end
 
@@ -308,28 +312,28 @@ defmodule TrifleApp.DashboardLive do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to edit this dashboard")}
     else
-    membership = socket.assigns.current_membership
+      membership = socket.assigns.current_membership
 
-    case Organizations.update_dashboard_for_membership(
-           socket.assigns.dashboard,
-           membership,
-           dashboard_params
-         ) do
-      {:ok, dashboard} ->
-        {:noreply,
-         socket
-         |> assign_dashboard(dashboard)
-         |> assign(:dashboard_changeset, nil)
-         |> assign(:dashboard_form, nil)
-         |> push_patch(to: ~p"/dashboards/#{dashboard.id}")
-         |> put_flash(:info, "Dashboard updated successfully")}
+      case Organizations.update_dashboard_for_membership(
+             socket.assigns.dashboard,
+             membership,
+             dashboard_params
+           ) do
+        {:ok, dashboard} ->
+          {:noreply,
+           socket
+           |> assign_dashboard(dashboard)
+           |> assign(:dashboard_changeset, nil)
+           |> assign(:dashboard_form, nil)
+           |> push_patch(to: ~p"/dashboards/#{dashboard.id}")
+           |> put_flash(:info, "Dashboard updated successfully")}
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply,
-         socket
-         |> assign(:dashboard_changeset, changeset)
-         |> assign(:dashboard_form, to_form(changeset))}
-    end
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply,
+           socket
+           |> assign(:dashboard_changeset, changeset)
+           |> assign(:dashboard_form, to_form(changeset))}
+      end
     end
   end
 
@@ -421,8 +425,16 @@ defmodule TrifleApp.DashboardLive do
       true ->
         socket = ensure_widget_path_options(socket)
         items = socket.assigns.dashboard.payload["grid"] || []
-        widget = Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
-        widget = (widget || %{"id" => id, "title" => ""}) |> Map.put_new("type", "kpi")
+        path_options = socket.assigns[:widget_path_options] || []
+
+        widget =
+          Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
+          |> case do
+            nil -> %{"id" => id, "title" => "", "type" => "kpi"}
+            found -> Map.put_new(found, "type", "kpi")
+          end
+          |> maybe_auto_expand_widget_paths(path_options)
+
         {:noreply, assign(socket, :editing_widget, widget)}
     end
   end
@@ -447,6 +459,8 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       true ->
+        socket = ensure_widget_path_options(socket)
+        path_options = socket.assigns[:widget_path_options] || []
         items = socket.assigns.dashboard.payload["grid"] || []
 
         updated =
@@ -503,7 +517,7 @@ defmodule TrifleApp.DashboardLive do
                     |> normalize_timeseries_paths_param()
 
                   base
-                  |> Map.put("paths", paths)
+                  |> Map.put("paths", auto_expand_path_wildcards(paths, path_options))
                   |> Map.put("chart_type", Map.get(params, "ts_chart_type", "line"))
                   |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
                   |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
@@ -511,8 +525,35 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
 
                 "category" ->
+                  cat_paths_param =
+                    params
+                    |> Map.get("cat_paths", Map.get(params, "cat_paths[]", []))
+
+                  cat_paths = normalize_category_paths_param(cat_paths_param)
+
+                  fallback_path =
+                    params
+                    |> Map.get("cat_path", "")
+                    |> to_string()
+                    |> String.trim()
+
+                  paths =
+                    case cat_paths do
+                      [] -> if(fallback_path == "", do: [], else: [fallback_path])
+                      list -> list
+                    end
+
+                  expanded_paths = auto_expand_path_wildcards(paths, path_options)
+
+                  primary_path =
+                    expanded_paths
+                    |> Enum.reject(&(&1 == ""))
+                    |> List.first()
+                    |> Kernel.||(fallback_path)
+
                   base
-                  |> Map.put("path", Map.get(params, "cat_path", ""))
+                  |> Map.put("paths", expanded_paths)
+                  |> Map.put("path", primary_path)
                   |> Map.put("chart_type", Map.get(params, "cat_chart_type", "bar"))
 
                 "text" ->
@@ -723,8 +764,49 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       true ->
+        path_options = socket.assigns[:widget_path_options] || []
         paths = normalize_timeseries_paths_for_edit(raw_paths)
-        widget = Map.put(socket.assigns.editing_widget, "paths", paths)
+        expanded_paths = auto_expand_path_wildcards(paths, path_options)
+        widget = Map.put(socket.assigns.editing_widget, "paths", expanded_paths)
+        {:noreply, assign(socket, :editing_widget, widget)}
+    end
+  end
+
+  def handle_event(
+        "category_paths_update",
+        %{"widget_id" => widget_id, "paths" => raw_paths},
+        socket
+      ) do
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:editing_widget]) ->
+        {:noreply, socket}
+
+      to_string(socket.assigns.editing_widget["id"]) != to_string(widget_id) ->
+        {:noreply, socket}
+
+      true ->
+        path_options = socket.assigns[:widget_path_options] || []
+        paths = normalize_category_paths_for_edit(raw_paths)
+        expanded_paths = auto_expand_path_wildcards(paths, path_options)
+
+        primary_path =
+          expanded_paths
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> List.first()
+          |> case do
+            nil -> ""
+            value -> value
+          end
+
+        widget =
+          socket.assigns.editing_widget
+          |> Map.put("paths", expanded_paths)
+          |> Map.put("path", primary_path)
+
         {:noreply, assign(socket, :editing_widget, widget)}
     end
   end
@@ -968,20 +1050,81 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp build_kpi_timeline(series_struct, path) do
-    Trifle.Stats.Series.format_timeline(series_struct, path, 1, fn at, value ->
-      naive = DateTime.to_naive(at)
-      utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-      ts = DateTime.to_unix(utc_dt, :millisecond)
+    normalized_path = to_string(path || "")
 
-      val =
-        cond do
-          match?(%Decimal{}, value) -> Decimal.to_float(value)
-          is_number(value) -> value * 1.0
-          true -> 0.0
+    timeline_map =
+      format_timeline_map(series_struct, normalized_path, 1, fn at, value ->
+        naive = DateTime.to_naive(at)
+        utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
+        ts = DateTime.to_unix(utc_dt, :millisecond)
+
+        val =
+          cond do
+            match?(%Decimal{}, value) -> Decimal.to_float(value)
+            is_number(value) -> value * 1.0
+            true -> 0.0
+          end
+
+        [ts, val]
+      end)
+
+    extract_timeline_series(timeline_map, normalized_path)
+  end
+
+  defp format_timeline_map(series_struct, path, slices, callback) do
+    result = Trifle.Stats.Series.format_timeline(series_struct, path, slices, callback)
+
+    cond do
+      is_map(result) -> result
+      is_list(result) -> %{path => result}
+      true -> %{}
+    end
+  end
+
+  defp extract_timeline_series(timeline_map, path) do
+    cond do
+      timeline_map == %{} ->
+        []
+
+      Map.has_key?(timeline_map, path) ->
+        normalize_timeline_points(Map.get(timeline_map, path))
+
+      true ->
+        timeline_map
+        |> Enum.take(1)
+        |> Enum.map(fn {_k, value} -> normalize_timeline_points(value) end)
+        |> List.first()
+        |> case do
+          nil -> []
+          points -> points
         end
+    end
+  end
 
-      [ts, val]
-    end) || []
+  defp normalize_timeline_points(nil), do: []
+  defp normalize_timeline_points(list) when is_list(list), do: list
+  defp normalize_timeline_points(other), do: List.wrap(other)
+
+  defp merge_category_formatted(acc, formatted) do
+    cond do
+      is_list(formatted) ->
+        formatted
+        |> Enum.filter(&is_map/1)
+        |> Enum.reduce(acc, &merge_category_map(&2, &1))
+
+      is_map(formatted) ->
+        merge_category_map(acc, formatted)
+
+      true ->
+        acc
+    end
+  end
+
+  defp merge_category_map(acc, map) do
+    Enum.reduce(map, acc, fn {key, value}, inner_acc ->
+      number = normalize_number(value)
+      Map.update(inner_acc, to_string(key), number, fn existing -> existing + number end)
+    end)
   end
 
   defp aggregate_for_function(series_struct, path, func, slices) do
@@ -1024,7 +1167,26 @@ defmodule TrifleApp.DashboardLive do
       end)
       |> Enum.map(fn item ->
         id = to_string(item["id"])
-        paths = (item["paths"] || []) |> Enum.map(&to_string/1)
+
+        raw_paths =
+          case item["paths"] do
+            list when is_list(list) -> list
+            _ -> []
+          end
+
+        fallback_paths =
+          case Map.get(item, "path") do
+            nil -> []
+            "" -> []
+            value -> [value]
+          end
+
+        paths =
+          (raw_paths ++ fallback_paths)
+          |> Enum.map(&to_string/1)
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+
         chart_type = String.downcase(to_string(item["chart_type"] || "line"))
         stacked = !!item["stacked"]
         normalized = !!item["normalized"]
@@ -1032,25 +1194,37 @@ defmodule TrifleApp.DashboardLive do
         y_label = to_string(item["y_label"] || "")
 
         # Use formatter to align timeline and values per path
+        timeline_callback = fn at, value ->
+          naive = DateTime.to_naive(at)
+          utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
+          ts = DateTime.to_unix(utc_dt, :millisecond)
+
+          val =
+            case value do
+              %Decimal{} = d -> Decimal.to_float(d)
+              v when is_number(v) -> v * 1.0
+              _ -> 0.0
+            end
+
+          [ts, val]
+        end
+
         per_path =
-          Enum.map(paths, fn path ->
-            data =
-              Trifle.Stats.Series.format_timeline(series_struct, path, 1, fn at, value ->
-                naive = DateTime.to_naive(at)
-                utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-                ts = DateTime.to_unix(utc_dt, :millisecond)
+          Enum.reduce(paths, [], fn path, acc ->
+            timeline_map = format_timeline_map(series_struct, path, 1, timeline_callback)
 
-                val =
-                  case value do
-                    %Decimal{} = d -> Decimal.to_float(d)
-                    v when is_number(v) -> v * 1.0
-                    _ -> 0.0
-                  end
+            Enum.reduce(timeline_map, acc, fn {series_path, data}, inner_acc ->
+              name = to_string(series_path)
+              normalized_data = normalize_timeline_points(data)
 
-                [ts, val]
-              end) || []
+              case Enum.find_index(inner_acc, &(&1.name == name)) do
+                nil ->
+                  inner_acc ++ [%{name: name, data: normalized_data}]
 
-            %{name: path, data: data}
+                idx ->
+                  List.update_at(inner_acc, idx, fn _ -> %{name: name, data: normalized_data} end)
+              end
+            end)
           end)
 
         series =
@@ -1124,7 +1298,26 @@ defmodule TrifleApp.DashboardLive do
       |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "category" end)
       |> Enum.map(fn item ->
         id = to_string(item["id"])
-        path = to_string(item["path"] || "")
+
+        raw_paths =
+          case item["paths"] do
+            list when is_list(list) -> list
+            _ -> []
+          end
+
+        fallback_paths =
+          case Map.get(item, "path") do
+            nil -> []
+            "" -> []
+            value -> [value]
+          end
+
+        paths =
+          (raw_paths ++ fallback_paths)
+          |> Enum.map(&to_string/1)
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+
         chart_type = String.downcase(to_string(item["chart_type"] || "bar"))
 
         slice_count =
@@ -1139,25 +1332,11 @@ defmodule TrifleApp.DashboardLive do
               1
           end
 
-        # Use format_category to aggregate across timeframe. With slices=2 we avoid the single-slice
-        # timeline return and get maps we can merge into a single total category map.
-        formatted = Trifle.Stats.Series.format_category(series_struct, path, slice_count)
-
         merged_map =
-          cond do
-            is_list(formatted) ->
-              formatted
-              |> Enum.filter(&is_map/1)
-              |> Enum.reduce(%{}, fn m, acc ->
-                Map.merge(acc, m, fn _k, a, b -> normalize_number(a) + normalize_number(b) end)
-              end)
-
-            is_map(formatted) ->
-              formatted
-
-            true ->
-              %{}
-          end
+          Enum.reduce(paths, %{}, fn path, acc ->
+            formatted = Trifle.Stats.Series.format_category(series_struct, path, slice_count)
+            merge_category_formatted(acc, formatted)
+          end)
 
         data =
           merged_map
@@ -1550,6 +1729,115 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  defp normalize_category_paths_param(value), do: normalize_timeseries_paths_param(value)
+  defp normalize_category_paths_for_edit(paths), do: normalize_timeseries_paths_for_edit(paths)
+
+  defp category_paths_for_form(%{} = widget) do
+    paths = normalize_category_paths_for_edit(widget["paths"])
+
+    has_populated_path =
+      paths
+      |> Enum.map(&String.trim/1)
+      |> Enum.any?(&(&1 != ""))
+
+    cond do
+      has_populated_path -> paths
+      true -> normalize_category_paths_for_edit(widget["path"])
+    end
+  end
+
+  defp category_paths_for_form(paths), do: normalize_category_paths_for_edit(paths)
+
+  defp maybe_auto_expand_widget_paths(widget, options) when is_map(widget) do
+    type = widget["type"] |> to_string() |> String.downcase()
+
+    case type do
+      "timeseries" ->
+        paths =
+          widget
+          |> Map.get("paths", widget["path"])
+          |> normalize_timeseries_paths_for_edit()
+
+        expanded = auto_expand_path_wildcards(paths, options)
+        Map.put(widget, "paths", expanded)
+
+      "category" ->
+        paths =
+          widget
+          |> Map.get("paths", widget["path"])
+          |> normalize_category_paths_for_edit()
+          |> auto_expand_path_wildcards(options)
+
+        primary =
+          paths
+          |> Enum.reject(&(&1 == ""))
+          |> List.first()
+          |> Kernel.||(widget["path"] || "")
+
+        widget
+        |> Map.put("paths", paths)
+        |> Map.put("path", primary)
+
+      _ ->
+        widget
+    end
+  end
+
+  defp maybe_auto_expand_widget_paths(widget, _options), do: widget
+
+  defp available_series_paths(%Trifle.Stats.Series{series: series_map}) when is_map(series_map) do
+    case Trifle.Stats.Tabler.tabulize(series_map) do
+      %{paths: paths} when is_list(paths) -> paths
+      _ -> []
+    end
+  end
+
+  defp available_series_paths(_), do: []
+
+  defp auto_expand_path_wildcards(paths, options) when is_list(paths) do
+    option_values = normalize_option_values(options)
+    do_auto_expand_path_wildcards(paths, option_values)
+  end
+
+  defp auto_expand_path_wildcards(paths, _options) when is_list(paths),
+    do: do_auto_expand_path_wildcards(paths, [])
+
+  defp do_auto_expand_path_wildcards(paths, option_values) do
+    Enum.reduce(paths, [], fn original, acc ->
+      trimmed = original |> to_string() |> String.trim()
+
+      expanded =
+        cond do
+          trimmed == "" -> ""
+          String.contains?(trimmed, "*") -> trimmed
+          Enum.any?(option_values, &String.starts_with?(&1, trimmed <> ".")) -> trimmed <> ".*"
+          true -> trimmed
+        end
+
+      if expanded == "" do
+        if Enum.any?(acc, &(&1 == "")), do: acc, else: acc ++ [expanded]
+      else
+        if Enum.any?(acc, &(&1 == expanded)), do: acc, else: acc ++ [expanded]
+      end
+    end)
+  end
+
+  defp normalize_option_values(options) do
+    options
+    |> Enum.map(&extract_option_value/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&(&1 != ""))
+  end
+
+  defp extract_option_value(%{"value" => value}), do: to_option_string(value)
+  defp extract_option_value(%{value: value}), do: to_option_string(value)
+  defp extract_option_value(value), do: to_option_string(value)
+
+  defp to_option_string(nil), do: ""
+  defp to_option_string(value) when is_binary(value), do: value
+  defp to_option_string(value) when is_atom(value), do: Atom.to_string(value)
+  defp to_option_string(value), do: to_string(value)
+
   defp assign_dashboard_permissions(socket) do
     membership = socket.assigns[:current_membership]
     dashboard = socket.assigns[:dashboard]
@@ -1887,63 +2175,63 @@ defmodule TrifleApp.DashboardLive do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to update this dashboard")}
     else
-    dashboard = socket.assigns.dashboard
-    name = Map.get(params, "name")
-    key = Map.get(params, "key")
-    tf = Map.get(params, "timeframe")
-    gran = Map.get(params, "granularity")
-    new_db_id = Map.get(params, "database_id")
+      dashboard = socket.assigns.dashboard
+      name = Map.get(params, "name")
+      key = Map.get(params, "key")
+      tf = Map.get(params, "timeframe")
+      gran = Map.get(params, "granularity")
+      new_db_id = Map.get(params, "database_id")
 
-    attrs = %{
-      name: String.trim(to_string(name || "")),
-      key: String.trim(to_string(key || "")),
-      default_timeframe: String.trim(to_string(tf || "")),
-      default_granularity: String.trim(to_string(gran || ""))
-    }
+      attrs = %{
+        name: String.trim(to_string(name || "")),
+        key: String.trim(to_string(key || "")),
+        default_timeframe: String.trim(to_string(tf || "")),
+        default_granularity: String.trim(to_string(gran || ""))
+      }
 
-    attrs =
-      if new_db_id && new_db_id != "", do: Map.put(attrs, :database_id, new_db_id), else: attrs
+      attrs =
+        if new_db_id && new_db_id != "", do: Map.put(attrs, :database_id, new_db_id), else: attrs
 
-    membership = socket.assigns.current_membership
+      membership = socket.assigns.current_membership
 
-    case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
-      {:ok, updated_dashboard} ->
-        # If database changed, update assigns and related config
-        socket =
-          if new_db_id && new_db_id != "" &&
-               to_string(socket.assigns.database.id) != to_string(new_db_id) do
-            new_db = Organizations.get_database_for_org!(membership.organization_id, new_db_id)
-            new_config = Database.stats_config(new_db)
-            new_grans = new_db.granularities || []
+      case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
+        {:ok, updated_dashboard} ->
+          # If database changed, update assigns and related config
+          socket =
+            if new_db_id && new_db_id != "" &&
+                 to_string(socket.assigns.database.id) != to_string(new_db_id) do
+              new_db = Organizations.get_database_for_org!(membership.organization_id, new_db_id)
+              new_config = Database.stats_config(new_db)
+              new_grans = new_db.granularities || []
 
-            socket
-            |> assign(:database, new_db)
-            |> assign(:database_config, new_config)
-            |> assign(:available_granularities, new_grans)
-          else
-            socket
-          end
+              socket
+              |> assign(:database, new_db)
+              |> assign(:database_config, new_config)
+              |> assign(:available_granularities, new_grans)
+            else
+              socket
+            end
 
-        # Update breadcrumbs and title to reflect new name
-        groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
+          # Update breadcrumbs and title to reflect new name
+          groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
 
-        updated_breadcrumbs =
-          [{"Dashboards", "/dashboards"}] ++
-            Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
+          updated_breadcrumbs =
+            [{"Dashboards", "/dashboards"}] ++
+              Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
-        updated_page_title = "Dashboards · #{updated_dashboard.name}"
+          updated_page_title = "Dashboards · #{updated_dashboard.name}"
 
-        {:noreply,
-         socket
-         |> assign_dashboard(updated_dashboard)
-         |> assign(:temp_name, updated_dashboard.name)
-         |> assign(:breadcrumb_links, updated_breadcrumbs)
-         |> assign(:page_title, updated_page_title)
-         |> put_flash(:info, "Settings saved")}
+          {:noreply,
+           socket
+           |> assign_dashboard(updated_dashboard)
+           |> assign(:temp_name, updated_dashboard.name)
+           |> assign(:breadcrumb_links, updated_breadcrumbs)
+           |> assign(:page_title, updated_page_title)
+           |> put_flash(:info, "Settings saved")}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to save settings")}
-    end
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to save settings")}
+      end
     end
   end
 
@@ -2606,138 +2894,175 @@ defmodule TrifleApp.DashboardLive do
                     </div>
                   </div>
                 <% end %>
-                
+
                 <%= if @can_edit_dashboard do %>
-    <!-- Visibility Toggle (moved below Actions) -->
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-                  <div>
-                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                      Visibility
-                    </span>
-                    <p class="text-xs text-gray-500 dark:text-slate-400">
-                      Make this dashboard visible to everyone in the organization
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    phx-click="toggle_visibility"
-                    class={[
-                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                      if(@dashboard.visibility,
-                        do: "bg-teal-600",
-                        else: "bg-gray-200 dark:bg-gray-700"
-                      )
-                    ]}
-                  >
-                    <span class={[
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                      if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
-                    ]}>
-                    </span>
-                  </button>
-                </div>
-                
-    <!-- Public Link Management -->
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                  <div class="flex items-center justify-between mb-4">
+                  <!-- Visibility Toggle (moved below Actions) -->
+                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
                     <div>
                       <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                        Public Link
+                        Visibility
                       </span>
                       <p class="text-xs text-gray-500 dark:text-slate-400">
-                        Allow unauthenticated Read-only access to this dashboard
+                        Make this dashboard visible to everyone in the organization
                       </p>
                     </div>
-                  </div>
-
-                  <%= if @dashboard.access_token do %>
-                    <!-- Hidden element with the URL to copy -->
-                    <span id="modal-dashboard-public-url" class="hidden">
-                      {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
-                    </span>
-
-                    <div class="flex items-center gap-3">
-                      <!-- Copy Link Button -->
-                      <span
-                        id="modal-copy-dashboard-link"
-                        x-data="{ copied: false }"
-                        phx-click={JS.dispatch("phx:copy", to: "#modal-dashboard-public-url")}
-                        x-on:click="copied = true; setTimeout(() => copied = false, 3000)"
-                        class="flex-1 cursor-pointer inline-flex items-center justify-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                        title="Copy public link to clipboard"
-                        phx-update="ignore"
-                      >
-                        <!-- Copy Icon (show when not copied) -->
-                        <svg
-                          x-show="!copied"
-                          class="-ml-0.5 mr-2 h-4 w-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"
-                          />
-                        </svg>
-                        
-    <!-- Check Icon (show when copied) -->
-                        <svg
-                          x-show="copied"
-                          class="-ml-0.5 mr-2 h-4 w-4 text-green-600"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        
-    <!-- Text -->
-                        <span x-show="!copied">Copy Public Link</span>
-                        <span x-show="copied" class="text-green-600">Copied!</span>
-                      </span>
-                      
-    <!-- Remove Button -->
-                      <button
-                        type="button"
-                        phx-click="remove_public_token"
-                        data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
-                        class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                        title="Remove public link"
-                      >
-                        <svg
-                          class="-ml-0.5 mr-2 h-4 w-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                          />
-                        </svg>
-                        Remove Link
-                      </button>
-                    </div>
-                  <% else %>
-                    <!-- No token: show generate -->
                     <button
                       type="button"
-                      phx-click="generate_public_token"
-                      class="w-full inline-flex items-center justify-center rounded-md bg-teal-50 dark:bg-teal-900 px-3 py-2 text-sm font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30 hover:bg-teal-100 dark:hover:bg-teal-800"
-                      title="Generate public link for unauthenticated access"
+                      phx-click="toggle_visibility"
+                      class={[
+                        "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                        if(@dashboard.visibility,
+                          do: "bg-teal-600",
+                          else: "bg-gray-200 dark:bg-gray-700"
+                        )
+                      ]}
+                    >
+                      <span class={[
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
+                      ]}>
+                      </span>
+                    </button>
+                  </div>
+                  
+    <!-- Public Link Management -->
+                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                    <div class="flex items-center justify-between mb-4">
+                      <div>
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                          Public Link
+                        </span>
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Allow unauthenticated Read-only access to this dashboard
+                        </p>
+                      </div>
+                    </div>
+
+                    <%= if @dashboard.access_token do %>
+                      <!-- Hidden element with the URL to copy -->
+                      <span id="modal-dashboard-public-url" class="hidden">
+                        {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
+                      </span>
+
+                      <div class="flex items-center gap-3">
+                        <!-- Copy Link Button -->
+                        <span
+                          id="modal-copy-dashboard-link"
+                          x-data="{ copied: false }"
+                          phx-click={JS.dispatch("phx:copy", to: "#modal-dashboard-public-url")}
+                          x-on:click="copied = true; setTimeout(() => copied = false, 3000)"
+                          class="flex-1 cursor-pointer inline-flex items-center justify-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                          title="Copy public link to clipboard"
+                          phx-update="ignore"
+                        >
+                          <!-- Copy Icon (show when not copied) -->
+                          <svg
+                            x-show="!copied"
+                            class="-ml-0.5 mr-2 h-4 w-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"
+                            />
+                          </svg>
+                          
+    <!-- Check Icon (show when copied) -->
+                          <svg
+                            x-show="copied"
+                            class="-ml-0.5 mr-2 h-4 w-4 text-green-600"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          
+    <!-- Text -->
+                          <span x-show="!copied">Copy Public Link</span>
+                          <span x-show="copied" class="text-green-600">Copied!</span>
+                        </span>
+                        
+    <!-- Remove Button -->
+                        <button
+                          type="button"
+                          phx-click="remove_public_token"
+                          data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
+                          class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                          title="Remove public link"
+                        >
+                          <svg
+                            class="-ml-0.5 mr-2 h-4 w-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                            />
+                          </svg>
+                          Remove Link
+                        </button>
+                      </div>
+                    <% else %>
+                      <!-- No token: show generate -->
+                      <button
+                        type="button"
+                        phx-click="generate_public_token"
+                        class="w-full inline-flex items-center justify-center rounded-md bg-teal-50 dark:bg-teal-900 px-3 py-2 text-sm font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30 hover:bg-teal-100 dark:hover:bg-teal-800"
+                        title="Generate public link for unauthenticated access"
+                      >
+                        <svg
+                          class="-ml-0.5 mr-2 h-4 w-4"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                          />
+                        </svg>
+                        Generate Public Link
+                      </button>
+                    <% end %>
+                  </div>
+                  
+    <!-- Danger Zone -->
+                  <div class="border-t border-red-200 dark:border-red-800 pt-6">
+                    <div class="mb-4">
+                      <span class="text-sm font-medium text-red-700 dark:text-red-400">
+                        Danger Zone
+                      </span>
+                      <p class="text-xs text-red-600 dark:text-red-400">
+                        This action cannot be undone
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      phx-click="delete_dashboard"
+                      data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
+                      class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                      title="Delete this dashboard"
                     >
                       <svg
                         class="-ml-0.5 mr-2 h-4 w-4"
@@ -2750,47 +3075,12 @@ defmodule TrifleApp.DashboardLive do
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
-                          d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                          d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
                         />
                       </svg>
-                      Generate Public Link
+                      Delete Dashboard
                     </button>
-                  <% end %>
-                </div>
-                
-    <!-- Danger Zone -->
-                <div class="border-t border-red-200 dark:border-red-800 pt-6">
-                  <div class="mb-4">
-                    <span class="text-sm font-medium text-red-700 dark:text-red-400">
-                      Danger Zone
-                    </span>
-                    <p class="text-xs text-red-600 dark:text-red-400">This action cannot be undone</p>
                   </div>
-
-                  <button
-                    type="button"
-                    phx-click="delete_dashboard"
-                    data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
-                    class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                    title="Delete this dashboard"
-                  >
-                    <svg
-                      class="-ml-0.5 mr-2 h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                      />
-                    </svg>
-                    Delete Dashboard
-                  </button>
-                </div>
                 <% end %>
               </div>
             </:body>
@@ -3100,6 +3390,10 @@ defmodule TrifleApp.DashboardLive do
                               <span aria-hidden="true">+</span>
                               <span class="sr-only">Add path</span>
                             </button>
+                            <p class="text-xs text-gray-500 dark:text-slate-400">
+                              Use <code>*</code>
+                              to include nested keys (for example <code>breakdown.*</code>). Parent paths automatically expand when matching children exist.
+                            </p>
                           </div>
                         </div>
                         <div>
@@ -3367,16 +3661,56 @@ defmodule TrifleApp.DashboardLive do
                     <% "category" -> %>
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="sm:col-span-2">
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Path
-                          </label>
-                          <.path_autocomplete_input
-                            id="widget-category-path"
-                            name="cat_path"
-                            value={@editing_widget["path"] || ""}
-                            placeholder="metrics.category"
-                            path_options={@widget_path_options}
-                          />
+                          <% cat_paths = category_paths_for_form(@editing_widget || %{}) %>
+                          <% cat_paths_length = length(cat_paths) %>
+                          <div
+                            id={"widget-#{@editing_widget["id"]}-category-paths"}
+                            phx-hook="CategoryPaths"
+                            data-widget-id={@editing_widget["id"]}
+                            class="space-y-3"
+                          >
+                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                              Paths
+                            </label>
+                            <div class="space-y-2">
+                              <%= for {path, index} <- Enum.with_index(cat_paths) do %>
+                                <div class="flex items-center gap-2">
+                                  <div class="flex-1 min-w-0">
+                                    <.path_autocomplete_input
+                                      id={"widget-cat-path-#{@editing_widget["id"]}-#{index}"}
+                                      name="cat_paths[]"
+                                      value={path}
+                                      placeholder="metrics.category"
+                                      path_options={@widget_path_options}
+                                      input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    data-action="remove"
+                                    data-index={index}
+                                    class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                                    aria-label="Remove path"
+                                    disabled={cat_paths_length == 1}
+                                  >
+                                    &minus;
+                                  </button>
+                                </div>
+                              <% end %>
+                            </div>
+                            <button
+                              type="button"
+                              data-action="add"
+                              class="inline-flex items-center gap-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
+                            >
+                              <span aria-hidden="true">+</span>
+                              <span class="sr-only">Add path</span>
+                            </button>
+                            <p class="text-xs text-gray-500 dark:text-slate-400">
+                              Use <code>*</code>
+                              to include nested keys (for example <code>breakdown.*</code>). Parent paths automatically expand when matching children exist.
+                            </p>
+                          </div>
                         </div>
                         <div>
                           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">

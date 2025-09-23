@@ -1,6 +1,7 @@
 defmodule TrifleApp.ExploreLive do
   use TrifleApp, :live_view
 
+  alias Decimal
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Stats.SeriesFetcher
@@ -1138,8 +1139,19 @@ defmodule TrifleApp.ExploreLive do
         # - Use key stats only for table data
         keys_sum = reduce_stats(system_stats.series[:values] || [])
         # Chart always shows events from system data, for the specific key
-        timeline = series_from(system_stats.series, ["keys", socket.assigns.key])
-        timeline_data = Jason.encode!(timeline["keys.#{socket.assigns.key}"])
+        timeline_map = series_from(system_stats.series, ["keys", socket.assigns.key])
+        path = "keys.#{socket.assigns.key}"
+
+        timeline_points =
+          timeline_map
+          |> Map.get(path)
+          |> case do
+            nil -> fallback_points_for_key(keys_sum, socket.assigns.key)
+            [] -> fallback_points_for_key(keys_sum, socket.assigns.key)
+            list -> list
+          end
+
+        timeline_data = Jason.encode!(timeline_points)
         selected_key_color = get_key_color(keys_sum, socket.assigns.key)
         table_stats = Trifle.Stats.Tabler.tabulize(key_stats.series)
 
@@ -1161,8 +1173,8 @@ defmodule TrifleApp.ExploreLive do
       %{system: system_stats} ->
         # When no specific key is selected, use system stats for everything
         keys_sum = reduce_stats(system_stats.series[:values] || [])
-        timeline = series_from_all_keys(system_stats.series, keys_sum)
-        timeline_data = Jason.encode!(timeline)
+        timeline_series = series_from_all_keys(system_stats.series, keys_sum)
+        timeline_data = Jason.encode!(timeline_series)
         table_stats = Trifle.Stats.Tabler.tabulize(system_stats.series)
 
         {:noreply,
@@ -1185,11 +1197,22 @@ defmodule TrifleApp.ExploreLive do
 
         {timeline_data, chart_type} =
           if socket.assigns.key && socket.assigns.key != "" do
-            timeline = series_from(raw_stats, ["keys", socket.assigns.key])
-            {Jason.encode!(timeline["keys.#{socket.assigns.key}"]), "single"}
+            timeline_map = series_from(raw_stats, ["keys", socket.assigns.key])
+            path = "keys.#{socket.assigns.key}"
+
+            points =
+              timeline_map
+              |> Map.get(path)
+              |> case do
+                nil -> fallback_points_for_key(keys_sum, socket.assigns.key)
+                [] -> fallback_points_for_key(keys_sum, socket.assigns.key)
+                list -> list
+              end
+
+            {Jason.encode!(points), "single"}
           else
-            timeline = series_from_all_keys(raw_stats, keys_sum)
-            {Jason.encode!(timeline), "stacked"}
+            timeline_series = series_from_all_keys(raw_stats, keys_sum)
+            {Jason.encode!(timeline_series), "stacked"}
           end
 
         selected_key_color =
@@ -1371,72 +1394,94 @@ defmodule TrifleApp.ExploreLive do
 
   defp explore_table_to_csv(_), do: ""
 
-  def series_from(%{at: at, values: values}, path) when is_list(path) do
-    key = Enum.join(path, ".")
+  def series_from(series_input, path) when is_list(path) do
+    path = Enum.join(path, ".")
+    series_struct = ensure_series_struct(series_input)
 
-    Enum.with_index(at)
-    |> Enum.reduce(%{}, fn {a, i}, acc ->
-      v = get_in(Enum.at(values, i), path)
-      # Convert to naive datetime to preserve the local time representation
-      naive = DateTime.to_naive(a)
-      # Create UTC datetime with the same time values to display correctly in charts
-      utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-      unix_ms = DateTime.to_unix(utc_dt, :millisecond)
-      Map.put(acc, key, [[unix_ms, v || 0] | acc[key] || []])
-    end)
+    format_timeline_map(series_struct, path, 1, &timeline_chart_point/2)
+    |> Enum.into(%{}, fn {k, v} -> {k, normalize_timeline_points(v)} end)
   end
 
-  def series_from_all_keys(%{at: at, values: values}, keys_sum)
-      when is_list(at) and is_list(values) do
-    available_keys = Map.keys(keys_sum)
+  def series_from_all_keys(series_input, keys_sum) do
+    series_struct = ensure_series_struct(series_input)
+    option_values = Map.keys(keys_sum)
+    timeline_map = format_timeline_map(series_struct, "keys.*", 1, &timeline_chart_point/2)
 
-    if length(at) == 0 or length(values) == 0 do
-      current_time = DateTime.to_unix(DateTime.utc_now(), :millisecond)
+    cond do
+      map_size(timeline_map) == 0 ->
+        fallback_series_from_keys_sum(keys_sum)
 
-      Enum.map(available_keys, fn key ->
-        total_value = keys_sum[key] || 0
+      true ->
+        option_values
+        |> Enum.sort()
+        |> Enum.map(fn key ->
+          path = "keys." <> key
+          points = normalize_timeline_points(Map.get(timeline_map, path))
 
-        %{
-          name: key,
-          data: [[current_time, total_value]]
-        }
-      end)
-    else
-      Enum.map(available_keys, fn key ->
-        key_data =
-          Enum.with_index(at)
-          |> Enum.map(fn {a, i} ->
-            value_at_index = Enum.at(values, i)
-            v = get_in(value_at_index, ["keys", key]) || 0
-            # Convert to naive datetime to preserve the local time representation
-            naive = DateTime.to_naive(a)
-            # Create UTC datetime with the same time values to display correctly in charts
-            utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-            unix_ms = DateTime.to_unix(utc_dt, :millisecond)
-            [unix_ms, v]
-          end)
-          |> Enum.reverse()
+          data =
+            case points do
+              [] -> fallback_points_for_key(keys_sum, key)
+              list -> list
+            end
 
-        %{
-          name: key,
-          data: key_data
-        }
-      end)
+          %{name: key, data: data}
+        end)
     end
   end
 
-  def series_from_all_keys(_stats, keys_sum) do
+  defp ensure_series_struct(%Trifle.Stats.Series{} = series), do: series
+  defp ensure_series_struct(series) when is_map(series), do: Trifle.Stats.Series.new(series)
+
+  defp format_timeline_map(series_struct, path, slices, callback) do
+    series_struct
+    |> Trifle.Stats.Series.format_timeline(path, slices, callback)
+    |> case do
+      %{} = map -> map
+      list when is_list(list) -> %{path => list}
+      _ -> %{}
+    end
+  end
+
+  defp normalize_timeline_points(nil), do: []
+  defp normalize_timeline_points(list) when is_list(list), do: list
+  defp normalize_timeline_points(other), do: List.wrap(other)
+
+  defp timeline_chart_point(at, value) do
+    naive = DateTime.to_naive(at)
+    utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
+    ts = DateTime.to_unix(utc_dt, :millisecond)
+
+    val =
+      cond do
+        match?(%Decimal{}, value) -> Decimal.to_float(value)
+        is_number(value) -> value * 1.0
+        true -> 0.0
+      end
+
+    [ts, val]
+  end
+
+  defp fallback_series_from_keys_sum(keys_sum) when map_size(keys_sum) == 0, do: []
+
+  defp fallback_series_from_keys_sum(keys_sum) do
     current_time = DateTime.to_unix(DateTime.utc_now(), :millisecond)
 
-    Enum.map(Map.keys(keys_sum), fn key ->
-      total_value = keys_sum[key] || 0
-
-      %{
-        name: key,
-        data: [[current_time, total_value]]
-      }
+    keys_sum
+    |> Map.keys()
+    |> Enum.sort()
+    |> Enum.map(fn key ->
+      %{name: key, data: [[current_time, normalize_chart_value(Map.get(keys_sum, key))]]}
     end)
   end
+
+  defp fallback_points_for_key(keys_sum, key) do
+    current_time = DateTime.to_unix(DateTime.utc_now(), :millisecond)
+    [[current_time, normalize_chart_value(Map.get(keys_sum, key))]]
+  end
+
+  defp normalize_chart_value(%Decimal{} = value), do: Decimal.to_float(value)
+  defp normalize_chart_value(value) when is_number(value), do: value * 1.0
+  defp normalize_chart_value(_), do: 0.0
 
   def filter_keys(keys, filter) when filter == "" or is_nil(filter) do
     keys |> Enum.sort_by(fn {key, _count} -> key end)
