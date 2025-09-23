@@ -33,6 +33,45 @@ const withChartOpts = (opts = {}) => Object.assign({ renderer: ECHARTS_RENDERER,
 
 let Hooks = {}
 
+Hooks.DocumentTitle = {
+  mounted() {
+    // Create bound event handler so we can properly remove it
+    this.handleNavigate = () => {
+      // Force LiveView to update the title after navigation
+      // This ensures the title updates even when using push_navigate
+      requestAnimationFrame(() => {
+        const liveTitle = document.querySelector('[data-phx-main] title')
+        if (liveTitle && liveTitle.textContent) {
+          document.title = liveTitle.textContent
+        } else {
+          // Fallback to our element's data
+          this.updateTitle()
+        }
+      })
+    }
+    
+    this.updateTitle()
+    
+    // Listen for both navigation events
+    window.addEventListener("phx:page-loading-stop", this.handleNavigate)
+    window.addEventListener("phx:navigate", this.handleNavigate)
+  },
+  updated() {
+    this.updateTitle()
+  },
+  destroyed() {
+    if (this.handleNavigate) {
+      window.removeEventListener("phx:page-loading-stop", this.handleNavigate)
+      window.removeEventListener("phx:navigate", this.handleNavigate)
+    }
+  },
+  updateTitle() {
+    const title = this.el.dataset.title || 'Trifle'
+    const suffix = this.el.dataset.suffix || ''
+    document.title = `${title}${suffix}`
+  }
+}
+
 Hooks.SmartTimeframeInput = {
   mounted() {
     this.handleEvent("update_smart_timeframe_input", ({value}) => {

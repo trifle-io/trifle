@@ -2,7 +2,7 @@ defmodule TrifleApp.AppRedirectLive do
   use TrifleApp, :live_view
 
   def mount(_params, _session, socket) do
-    {:ok, socket}
+    {:ok, assign(socket, page_title: "Redirecting")}
   end
 
   def handle_params(_params, _uri, socket) do

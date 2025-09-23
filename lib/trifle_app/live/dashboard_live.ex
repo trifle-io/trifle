@@ -40,9 +40,13 @@ defmodule TrifleApp.DashboardLive do
       [{"Dashboards", "/dashboards"}] ++
         Enum.map(groups, &{&1.name, "/dashboards"}) ++ [dashboard.name]
 
+    # Build page title with groups
+    title_parts = ["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [dashboard.name]
+    page_title = Enum.join(title_parts, " · ")
+
     {:ok,
      socket
-     |> assign(:page_title, ["Dashboards", dashboard.name])
+     |> assign(:page_title, page_title)
      |> assign(:breadcrumb_links, breadcrumbs)
      |> assign(:current_membership, membership)
      |> assign_dashboard_permissions()}
@@ -163,7 +167,7 @@ defmodule TrifleApp.DashboardLive do
           [{"Dashboards", "/dashboards"}] ++
             Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
-        updated_page_title = ["Dashboards", updated_dashboard.name]
+        updated_page_title = "Dashboards · #{updated_dashboard.name}"
 
         {:noreply,
          socket
@@ -1927,7 +1931,7 @@ defmodule TrifleApp.DashboardLive do
           [{"Dashboards", "/dashboards"}] ++
             Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
-        updated_page_title = ["Dashboards", updated_dashboard.name]
+        updated_page_title = "Dashboards · #{updated_dashboard.name}"
 
         {:noreply,
          socket

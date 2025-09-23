@@ -489,27 +489,50 @@ defmodule TrifleApp.ProjectTokensLive do
   end
 
   def mount(params, _session, socket) do
-    is_new = socket.assigns.live_action == :new
     project = Organizations.get_project!(params["id"])
     tokens = Organizations.list_projects_project_tokens(project)
     changeset = Organizations.change_project_token(%ProjectToken{}, %{"project" => project})
 
     socket =
-      assign(socket,
-        page_title:
-          if(is_new,
-            do: ["Projects", project.name, "Tokens", "New"],
-            else: ["Projects", project.name, "Tokens"]
-          ),
-        is_new: is_new,
-        project: project,
-        tokens: tokens,
-        token: nil,
-        form: to_form(changeset)
-      )
+      socket
+      |> assign(:project, project)
+      |> assign(:tokens, tokens)
+      |> assign(:token, nil)
+      |> assign(:form, to_form(changeset))
+      |> assign(:page_title, "Projects · #{project.name} · Tokens")
 
-    {:ok, socket}
+    {:ok, apply_action(socket, socket.assigns.live_action, params)}
   end
+
+  def handle_params(params, _url, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  defp apply_action(socket, :new, _params) do
+    socket
+    |> assign(:page_title, "Projects · #{socket.assigns.project.name} · Tokens · New")
+    |> assign(:is_new, true)
+    |> assign(:token, nil)
+    |> assign(
+      :form,
+      to_form(
+        Organizations.change_project_token(
+          %ProjectToken{},
+          %{"project" => socket.assigns.project}
+        )
+      )
+    )
+  end
+
+  defp apply_action(socket, :index, _params) do
+    socket
+    |> assign(:page_title, "Projects · #{socket.assigns.project.name} · Tokens")
+    |> assign(:is_new, false)
+    |> assign(:token, nil)
+    |> assign(:tokens, Organizations.list_projects_project_tokens(socket.assigns.project))
+  end
+
+  defp apply_action(socket, _action, _params), do: socket
 
   def handle_event("create", %{"project_token" => project_token_params}, socket) do
     case Organizations.create_projects_project_token(project_token_params, socket.assigns.project) do

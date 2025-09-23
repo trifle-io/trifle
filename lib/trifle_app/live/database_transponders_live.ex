@@ -17,7 +17,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
     {:ok,
      socket
      |> assign(:database, database)
-     |> assign(:page_title, ["Database", database.display_name, "Transponders"])
+     |> assign(:page_title, "Database · #{database.display_name} · Transponders")
      |> assign(:breadcrumb_links, [
        {"Database", ~p"/dbs"},
        {database.display_name, ~p"/dashboards"},

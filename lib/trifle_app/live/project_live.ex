@@ -12,7 +12,7 @@ defmodule TrifleApp.ProjectLive do
 
     socket =
       socket
-      |> assign(page_title: ["Projects", project.name, "Explore"])
+      |> assign(page_title: "Projects · #{project.name} · Explore")
       |> assign(project: project)
       |> assign(stats: nil)
       |> assign(timeline: "")

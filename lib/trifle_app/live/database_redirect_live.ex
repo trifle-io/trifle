@@ -2,7 +2,7 @@ defmodule TrifleApp.DatabaseRedirectLive do
   use TrifleApp, :live_view
 
   def mount(%{"id" => id}, _session, socket) do
-    {:ok, assign(socket, database_id: id)}
+    {:ok, assign(socket, database_id: id, page_title: "Redirecting")}
   end
 
   def handle_params(_params, _uri, socket) do

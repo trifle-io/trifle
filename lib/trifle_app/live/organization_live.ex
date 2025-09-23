@@ -94,6 +94,7 @@ defmodule TrifleApp.OrganizationLive do
       |> assign(:deployment_mode, deployment_mode())
       |> assign(:roles, Organizations.membership_roles())
       |> assign(:show_profile_modal, false)
+      |> assign(:page_title, "Organization")
 
     cond do
       is_nil(current_user) ->
