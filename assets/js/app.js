@@ -210,6 +210,7 @@ Hooks.DatabaseExploreChart = {
         textStyle: {
           color: isDarkMode ? '#F3F4F6' : '#1F2937'
         },
+        appendToBody: true,
         extraCssText: 'z-index: 9999;',
         formatter: function(params) {
           const date = new Date(params.value[0]);
@@ -368,7 +369,8 @@ Hooks.DatabaseExploreChart = {
           borderColor: isDarkMode ? '#374151' : '#E5E7EB',
           textStyle: {
             color: isDarkMode ? '#F3F4F6' : '#1F2937'
-          }
+          },
+          appendToBody: true
         },
         xAxis: {
           axisLine: {
@@ -1325,7 +1327,7 @@ Hooks.DashboardGrid = {
           legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false },
           tooltip: {
             trigger: 'axis',
-            confine: true,
+            appendToBody: true,
             valueFormatter: (v) => {
               if (v == null) return '-';
               if (normalized) {
@@ -1390,7 +1392,8 @@ Hooks.DashboardGrid = {
               trigger: 'item',
               textStyle: { color: isDarkMode ? '#F3F4F6' : '#1F2937' },
               backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-              borderColor: isDarkMode ? '#4B5563' : '#E5E7EB'
+              borderColor: isDarkMode ? '#4B5563' : '#E5E7EB',
+              appendToBody: true
             },
             color: (colors && colors.length ? colors : undefined),
             series: [{
@@ -1419,7 +1422,7 @@ Hooks.DashboardGrid = {
                 formatter: (v) => formatCompactNumber(v)
               }
             },
-            tooltip: { trigger: 'axis' },
+            tooltip: { trigger: 'axis', appendToBody: true },
             series: [{
               type: 'bar',
               data: data.map((d) => d.value),
