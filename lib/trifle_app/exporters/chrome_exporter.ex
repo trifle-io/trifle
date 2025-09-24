@@ -101,10 +101,18 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       (opts[:params] || %{})
       |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
 
-    query_map =
-      Map.merge(base_params, extra_params) |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    query_params =
+      Map.merge(base_params, extra_params)
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        cond do
+          is_nil(value) -> acc
+          value == "" -> acc
+          is_map(value) and map_size(value) == 0 -> acc
+          true -> Map.put(acc, key, value)
+        end
+      end)
 
-    query = URI.encode_query(query_map)
+    query = Plug.Conn.Query.encode(query_params)
     url = base <> "/d/" <> dashboard.id <> if(query == "", do: "", else: "?" <> query)
 
     cleanup = fn ->

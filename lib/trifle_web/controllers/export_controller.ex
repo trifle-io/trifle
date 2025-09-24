@@ -12,7 +12,9 @@ defmodule TrifleWeb.ExportController do
   def dashboard_pdf(conn, %{"id" => id} = params) do
     # Basic access check: ensure dashboard exists (ownership/visibility can be added later)
     _ = Organizations.get_dashboard!(id)
-    export_params = Map.take(params, ["timeframe", "granularity", "from", "to"])
+
+    export_params =
+      Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
 
     case ChromeExporter.export_dashboard_pdf(id, params: export_params) do
       {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
@@ -45,7 +47,8 @@ defmodule TrifleWeb.ExportController do
         _ -> :light
       end
 
-    export_params = Map.take(params, ["timeframe", "granularity", "from", "to"])
+    export_params =
+      Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
 
     case ChromeExporter.export_dashboard_png(id, theme: theme, params: export_params) do
       {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
@@ -115,15 +118,17 @@ defmodule TrifleWeb.ExportController do
     {from, to, granularity, _smart, _use_fixed} =
       UrlParsing.parse_url_params(params, config, available_granularities, defaults)
 
+    resolved_key = resolved_key_from_params(dashboard, params)
+
     matching_transponders =
       Organizations.list_transponders_for_database(database)
       |> Enum.filter(& &1.enabled)
-      |> Enum.filter(fn t -> key_matches_pattern?(dashboard.key, t.key) end)
+      |> Enum.filter(fn t -> key_matches_pattern?(t.key, resolved_key) end)
       |> Enum.sort_by(& &1.order)
 
     case SeriesFetcher.fetch_series(
            database,
-           dashboard.key,
+           resolved_key,
            from,
            to,
            granularity,
@@ -152,6 +157,13 @@ defmodule TrifleWeb.ExportController do
       end
     else
       pattern == key
+    end
+  end
+
+  defp resolved_key_from_params(dashboard, params) do
+    case Map.get(params, "key") do
+      key when is_binary(key) and key != "" -> key
+      _ -> dashboard.key || ""
     end
   end
 
