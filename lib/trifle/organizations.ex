@@ -1195,7 +1195,7 @@ defmodule Trifle.Organizations do
 
     tree =
       Enum.map(top_groups, fn group ->
-      build_group_tree_for_membership(user, membership, group)
+        build_group_tree_for_membership(user, membership, group)
       end)
 
     case membership.role do
@@ -1272,15 +1272,15 @@ defmodule Trifle.Organizations do
     if not membership_owner?(membership) do
       {:error, :forbidden}
     else
-    attrs =
-      attrs
-      |> ensure_parent_group_within_org(membership)
-      |> assign_org_id(membership.organization_id)
-      |> atomize_keys()
+      attrs =
+        attrs
+        |> ensure_parent_group_within_org(membership)
+        |> assign_org_id(membership.organization_id)
+        |> atomize_keys()
 
-    %DashboardGroup{}
-    |> DashboardGroup.changeset(attrs)
-    |> Repo.insert()
+      %DashboardGroup{}
+      |> DashboardGroup.changeset(attrs)
+      |> Repo.insert()
     end
   end
 
@@ -1302,14 +1302,14 @@ defmodule Trifle.Organizations do
         {:error, :forbidden}
 
       true ->
-      attrs =
-        attrs
-        |> ensure_dashboard_group_within_org(membership)
-        |> ensure_dashboard_database_within_org(membership)
+        attrs =
+          attrs
+          |> ensure_dashboard_group_within_org(membership)
+          |> ensure_dashboard_database_within_org(membership)
 
-      dashboard
-      |> Dashboard.changeset(assign_org_id(attrs, membership.organization_id) |> atomize_keys())
-      |> Repo.update()
+        dashboard
+        |> Dashboard.changeset(assign_org_id(attrs, membership.organization_id) |> atomize_keys())
+        |> Repo.update()
     end
   end
 
@@ -1325,7 +1325,7 @@ defmodule Trifle.Organizations do
         {:error, :forbidden}
 
       true ->
-      delete_dashboard(dashboard)
+        delete_dashboard(dashboard)
     end
   end
 

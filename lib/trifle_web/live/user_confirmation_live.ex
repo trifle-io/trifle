@@ -27,7 +27,9 @@ defmodule TrifleWeb.UserConfirmationLive do
 
   def mount(%{"token" => token}, _session, socket) do
     form = to_form(%{"token" => token}, as: "user")
-    {:ok, assign(socket, form: form, page_title: "Confirm Account"), temporary_assigns: [form: nil]}
+
+    {:ok, assign(socket, form: form, page_title: "Confirm Account"),
+     temporary_assigns: [form: nil]}
   end
 
   # Do not log in the user after confirmation to avoid a

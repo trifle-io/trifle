@@ -129,9 +129,11 @@ defmodule TrifleWeb.UserLoginLive do
   end
 
   defp normalize_token(nil), do: nil
+
   defp normalize_token(token) when is_binary(token) do
     cleaned = String.trim(token)
     if cleaned == "", do: nil, else: cleaned
   end
+
   defp normalize_token(_), do: nil
 end

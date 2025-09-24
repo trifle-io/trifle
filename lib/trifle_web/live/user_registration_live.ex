@@ -37,12 +37,21 @@ defmodule TrifleWeb.UserRegistrationLive do
             {registration_subtitle(@invitation)}
           </p>
         </div>
-
-        <!-- Registration Form -->
+        
+    <!-- Registration Form -->
         <div class="bg-white dark:bg-slate-800 py-8 px-6 shadow-xl rounded-xl border border-gray-100 dark:border-slate-700">
-          <div :if={@invitation} class="mb-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 dark:border-teal-700/70 dark:bg-slate-700/60 dark:text-teal-100">
-            <p class="font-medium">You're joining {invitation_org_name(@invitation)} as a {invitation_role_label(@invitation)}.</p>
-            <p class="mt-1">We'll use the invitation email {@invitation.email} for your new account.</p>
+          <div
+            :if={@invitation}
+            class="mb-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 dark:border-teal-700/70 dark:bg-slate-700/60 dark:text-teal-100"
+          >
+            <p class="font-medium">
+              You're joining {invitation_org_name(@invitation)} as a {invitation_role_label(
+                @invitation
+              )}.
+            </p>
+            <p class="mt-1">
+              We'll use the invitation email {@invitation.email} for your new account.
+            </p>
           </div>
 
           <.form_container
@@ -54,7 +63,12 @@ defmodule TrifleWeb.UserRegistrationLive do
             method="post"
             layout="simple"
           >
-            <input :if={@invitation_token} type="hidden" name="invitation_token" value={@invitation_token} />
+            <input
+              :if={@invitation_token}
+              type="hidden"
+              name="invitation_token"
+              value={@invitation_token}
+            />
 
             <.form_field
               field={@form[:email]}
@@ -81,8 +95,8 @@ defmodule TrifleWeb.UserRegistrationLive do
             </:actions>
           </.form_container>
         </div>
-
-        <!-- Navigation Links -->
+        
+    <!-- Navigation Links -->
         <div class="text-center">
           <p class="text-sm text-gray-600 dark:text-gray-400">
             Already have an account?
@@ -94,8 +108,8 @@ defmodule TrifleWeb.UserRegistrationLive do
             </.link>
           </p>
         </div>
-
-        <!-- Footer -->
+        
+    <!-- Footer -->
         <div class="text-center">
           <p class="text-xs text-gray-500 dark:text-gray-400">
             © {Date.utc_today().year} Trifle Analytics. Secure analytics platform.
@@ -176,7 +190,9 @@ defmodule TrifleWeb.UserRegistrationLive do
       RegistrationConfig.enabled?() ->
         invitation =
           case token do
-            nil -> nil
+            nil ->
+              nil
+
             _ ->
               case Organizations.get_active_invitation_by_token(token) do
                 {:ok, invitation} -> invitation
@@ -206,7 +222,8 @@ defmodule TrifleWeb.UserRegistrationLive do
   end
 
   defp registration_error_message(:registration_disabled),
-    do: "Self-service registrations are currently disabled. Please use your invitation or contact an administrator."
+    do:
+      "Self-service registrations are currently disabled. Please use your invitation or contact an administrator."
 
   defp registration_error_message(:not_found),
     do: "We couldn't find that invitation. Please request a new invite."
@@ -255,7 +272,8 @@ defmodule TrifleWeb.UserRegistrationLive do
 
   defp registration_subtitle(_), do: "Get started with Trifle Analytics"
 
-  defp invitation_org_name(%OrganizationInvitation{organization: %{name: name}}) when is_binary(name) do
+  defp invitation_org_name(%OrganizationInvitation{organization: %{name: name}})
+       when is_binary(name) do
     name
   end
 

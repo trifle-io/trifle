@@ -56,6 +56,7 @@ defmodule TrifleApp.DashboardsLive do
   def handle_event("delete_dashboard", %{"id" => id}, socket) do
     membership = socket.assigns.current_membership
     dashboard = Organizations.get_dashboard_for_membership!(membership, id)
+
     case Organizations.delete_dashboard_for_membership(dashboard, membership) do
       {:ok, _} ->
         {:noreply,
@@ -64,7 +65,8 @@ defmodule TrifleApp.DashboardsLive do
          |> put_flash(:info, "Dashboard deleted successfully")}
 
       {:error, :forbidden} ->
-        {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+        {:noreply,
+         put_flash(socket, :error, "You do not have permission to delete this dashboard")}
 
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "Dashboard does not belong to this organization")}
@@ -75,6 +77,7 @@ defmodule TrifleApp.DashboardsLive do
     membership = socket.assigns.current_membership
     original = Organizations.get_dashboard_for_membership!(membership, id)
     current_user = socket.assigns.current_user
+
     if Organizations.can_clone_dashboard?(original, membership) do
       attrs = %{
         "database_id" => original.database_id,
@@ -102,7 +105,8 @@ defmodule TrifleApp.DashboardsLive do
           {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
       end
     else
-      {:noreply, put_flash(socket, :error, "You do not have permission to duplicate this dashboard")}
+      {:noreply,
+       put_flash(socket, :error, "You do not have permission to duplicate this dashboard")}
     end
   end
 
@@ -217,23 +221,25 @@ defmodule TrifleApp.DashboardsLive do
 
   def handle_event("new_group", params, socket) do
     membership = socket.assigns.current_membership
+
     if not Organizations.membership_owner?(membership) do
       {:noreply, put_flash(socket, :error, "Only organization owners can create groups")}
     else
-    name = Map.get(params, "name", "New Group")
-    parent_id = Map.get(params, "parent_id")
-    pos = Organizations.get_next_dashboard_group_position_for_membership(membership, parent_id)
-    attrs = %{"name" => name, "parent_group_id" => parent_id, "position" => pos}
+      name = Map.get(params, "name", "New Group")
+      parent_id = Map.get(params, "parent_id")
+      pos = Organizations.get_next_dashboard_group_position_for_membership(membership, parent_id)
+      attrs = %{"name" => name, "parent_group_id" => parent_id, "position" => pos}
 
-    case Organizations.create_dashboard_group_for_membership(membership, attrs) do
-      {:ok, _group} -> {:noreply, refresh_tree(socket)}
-      {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
-    end
+      case Organizations.create_dashboard_group_for_membership(membership, attrs) do
+        {:ok, _group} -> {:noreply, refresh_tree(socket)}
+        {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
+      end
     end
   end
 
   def handle_event("rename_group", %{"id" => id, "name" => name}, socket) do
     membership = socket.assigns.current_membership
+
     if not Organizations.membership_owner?(membership) do
       {:noreply, put_flash(socket, :error, "Only organization owners can rename groups")}
     else
@@ -248,6 +254,7 @@ defmodule TrifleApp.DashboardsLive do
 
   def handle_event("delete_group", %{"id" => id}, socket) do
     membership = socket.assigns.current_membership
+
     if not Organizations.membership_owner?(membership) do
       {:noreply, put_flash(socket, :error, "Only organization owners can delete groups")}
     else
@@ -274,6 +281,7 @@ defmodule TrifleApp.DashboardsLive do
         socket
       ) do
     membership = socket.assigns.current_membership
+
     if not Organizations.membership_owner?(membership) do
       {:noreply, put_flash(socket, :error, "Only organization owners can reorder dashboards")}
     else
@@ -296,7 +304,8 @@ defmodule TrifleApp.DashboardsLive do
           {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
 
         {:error, :forbidden} ->
-          {:noreply, put_flash(socket, :error, "You do not have permission to reorder these dashboards")}
+          {:noreply,
+           put_flash(socket, :error, "You do not have permission to reorder these dashboards")}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, "Failed to reorder")}
@@ -531,7 +540,8 @@ defmodule TrifleApp.DashboardsLive do
                       {render_dashboard(%{
                         dashboard: dashboard,
                         level: 0,
-                        can_clone_dashboard: Organizations.can_clone_dashboard?(dashboard, @current_membership),
+                        can_clone_dashboard:
+                          Organizations.can_clone_dashboard?(dashboard, @current_membership),
                         can_manage_dashboards: @can_manage_dashboards
                       })}
                     <% end %>
@@ -739,78 +749,78 @@ defmodule TrifleApp.DashboardsLive do
           <div class="flex items-center gap-2 mr-3" phx-click="noop">
             <%= if @can_manage_dashboards do %>
               <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-              <button
-                type="button"
-                phx-click="new_group"
-                phx-value-parent_id={@node.group.id}
-                title="New subgroup"
-                aria-label="New subgroup"
-                class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-4 w-4"
+                <button
+                  type="button"
+                  phx-click="new_group"
+                  phx-value-parent_id={@node.group.id}
+                  title="New subgroup"
+                  aria-label="New subgroup"
+                  class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
-                  />
-                </svg>
-              </button>
-              <button
-                type="button"
-                phx-click="start_rename_group"
-                phx-value-id={@node.group.id}
-                title="Rename"
-                aria-label="Rename group"
-                class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-4 w-4"
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  phx-click="start_rename_group"
+                  phx-value-id={@node.group.id}
+                  title="Rename"
+                  aria-label="Rename group"
+                  class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0  0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0  0 1 3 18.75V8.25A2.25 2.25 0  0 1 5.25 6H10"
-                  />
-                </svg>
-              </button>
-              <button
-                type="button"
-                phx-click="delete_group"
-                phx-value-id={@node.group.id}
-                data-confirm="Delete this group? Children will move up one level."
-                title="Delete"
-                aria-label="Delete group"
-                class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-4 w-4"
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0  0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0  0 1 3 18.75V8.25A2.25 2.25 0  0 1 5.25 6H10"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  phx-click="delete_group"
+                  phx-value-id={@node.group.id}
+                  data-confirm="Delete this group? Children will move up one level."
+                  title="Delete"
+                  aria-label="Delete group"
+                  class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                  />
-                </svg>
-              </button>
-            </div>
-            <!-- Drag handle to the far right -->
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <!-- Drag handle to the far right -->
               <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -841,19 +851,20 @@ defmodule TrifleApp.DashboardsLive do
           <%= for entry <- mixed_group_nodes(@node) do %>
             <%= case entry do %>
               <% {:group, child} -> %>
-              {render_group(%{
-                node: child,
-                level: @level + 1,
-                editing_group_id: @editing_group_id,
-                collapsed_groups: @collapsed_groups,
-                can_manage_dashboards: @can_manage_dashboards,
-                current_membership: @current_membership
-              })}
+                {render_group(%{
+                  node: child,
+                  level: @level + 1,
+                  editing_group_id: @editing_group_id,
+                  collapsed_groups: @collapsed_groups,
+                  can_manage_dashboards: @can_manage_dashboards,
+                  current_membership: @current_membership
+                })}
               <% {:dashboard, dashboard} -> %>
                 {render_dashboard(%{
                   dashboard: dashboard,
                   level: @level + 1,
-                  can_clone_dashboard: Organizations.can_clone_dashboard?(dashboard, @current_membership),
+                  can_clone_dashboard:
+                    Organizations.can_clone_dashboard?(dashboard, @current_membership),
                   can_manage_dashboards: @can_manage_dashboards
                 })}
             <% end %>
@@ -864,10 +875,10 @@ defmodule TrifleApp.DashboardsLive do
     """
   end
 
-attr :dashboard, Trifle.Organizations.Dashboard, required: true
-attr :level, :integer, default: 0
-attr :can_clone_dashboard, :boolean, default: false
-attr :can_manage_dashboards, :boolean, default: false
+  attr :dashboard, Trifle.Organizations.Dashboard, required: true
+  attr :level, :integer, default: 0
+  attr :can_clone_dashboard, :boolean, default: false
+  attr :can_manage_dashboards, :boolean, default: false
 
   defp render_dashboard(assigns) do
     ~H"""
@@ -911,7 +922,7 @@ attr :can_manage_dashboards, :boolean, default: false
           </div>
         <% end %>
       </div>
-        <div class="flex items-center gap-2 justify-self-end mr-3" phx-click="noop">
+      <div class="flex items-center gap-2 justify-self-end mr-3" phx-click="noop">
         <div class="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
           <%= if @can_clone_dashboard do %>
             <button
@@ -995,20 +1006,20 @@ attr :can_manage_dashboards, :boolean, default: false
           />
         </svg>
         <!-- Drag handle -->
-            <%= if @can_manage_dashboards do %>
-              <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-                class="h-5 w-5"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
-              </svg>
-            </div>
-            <% end %>
+        <%= if @can_manage_dashboards do %>
+          <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="h-5 w-5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
+            </svg>
+          </div>
+        <% end %>
       </div>
     </div>
     """
