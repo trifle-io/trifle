@@ -3433,7 +3433,7 @@ defmodule TrifleApp.DashboardLive do
           </div>
         </div>
         
-        <!-- Filter Bar (only show if dashboard has a key) -->
+    <!-- Filter Bar (only show if dashboard has a key) -->
         <%= if dashboard_has_key?(assigns) do %>
           <.live_component
             module={TrifleApp.Components.FilterBar}
@@ -3514,7 +3514,7 @@ defmodule TrifleApp.DashboardLive do
             </div>
           </form>
         <% end %>
-
+        
     <!-- Edit Form (only shown in edit mode for authenticated users) -->
         <%= if !@is_public_access && @live_action == :edit && @dashboard_form do %>
           <div class="mb-6">
@@ -3614,12 +3614,12 @@ defmodule TrifleApp.DashboardLive do
             <:title>Configure Dashboard</:title>
             <:body>
               <div class="space-y-6">
-              <.form
-                for={%{}}
-                phx-change="segments_editor_change"
-                phx-submit="save_settings"
-                class="space-y-6"
-              >
+                <.form
+                  for={%{}}
+                  phx-change="segments_editor_change"
+                  phx-submit="save_settings"
+                  class="space-y-6"
+                >
                   <!-- Dashboard Name -->
                   <div>
                     <label
@@ -3679,25 +3679,26 @@ defmodule TrifleApp.DashboardLive do
                     >
                       Key
                     </label>
-                  <input
-                    type="text"
-                    id="configure_key"
-                    name="key"
-                    value={@dashboard.key || ""}
-                    class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                    placeholder="e.g., sales.metrics"
-                    required
-                  />
-                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    Use regex capture groups to mark dynamic segments, for example
-                    <code>commodity::events::detail::(?&lt;source&gt;.*)</code>. The capture name should match the
-                    segment name; otherwise segments fallback to positional order.
-                  </p>
-                </div>
+                    <input
+                      type="text"
+                      id="configure_key"
+                      name="key"
+                      value={@dashboard.key || ""}
+                      class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                      placeholder="e.g., sales.metrics"
+                      required
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                      Use regex capture groups to mark dynamic segments, for example <code>commodity::events::detail::(?&lt;source&gt;.*)</code>. The capture name should match the
+                      segment name; otherwise segments fallback to positional order.
+                    </p>
+                  </div>
 
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
                     <div class="mb-4">
-                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Key Segments</h3>
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        Key Segments
+                      </h3>
                       <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
                         Configure dynamic parts of the dashboard key. Each segment becomes a filter exposed at the top of the dashboard.
                       </p>
@@ -3753,8 +3754,12 @@ defmodule TrifleApp.DashboardLive do
                                   name={"segments[#{segment_id}][type]"}
                                   class="block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
                                 >
-                                  <option value="select" selected={segment_type != "text"}>Dropdown</option>
-                                  <option value="text" selected={segment_type == "text"}>Text input</option>
+                                  <option value="select" selected={segment_type != "text"}>
+                                    Dropdown
+                                  </option>
+                                  <option value="text" selected={segment_type == "text"}>
+                                    Text input
+                                  </option>
                                 </select>
                               </div>
                             </div>
@@ -3764,8 +3769,17 @@ defmodule TrifleApp.DashboardLive do
                               phx-value-id={segment_id}
                               class="inline-flex items-center gap-1 rounded-md bg-transparent px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
-                                <path fill-rule="evenodd" d="M6.28 5.22a.75.75 0 0 1 1.06 0L10 7.94l2.66-2.72a.75.75 0 0 1 1.08 1.04L11.06 9l2.72 2.66a.75.75 0 1 1-1.04 1.08L10 10.06l-2.66 2.72a.75.75 0 1 1-1.08-1.04L8.94 9l-2.72-2.66a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                class="h-4 w-4"
+                              >
+                                <path
+                                  fill-rule="evenodd"
+                                  d="M6.28 5.22a.75.75 0 0 1 1.06 0L10 7.94l2.66-2.72a.75.75 0 0 1 1.08 1.04L11.06 9l2.72 2.66a.75.75 0 1 1-1.04 1.08L10 10.06l-2.66 2.72a.75.75 0 1 1-1.08-1.04L8.94 9l-2.72-2.66a.75.75 0 0 1 0-1.06Z"
+                                  clip-rule="evenodd"
+                                />
                               </svg>
                               Remove
                             </button>
@@ -3826,8 +3840,17 @@ defmodule TrifleApp.DashboardLive do
                                       phx-value-group-id={group_id}
                                       class="inline-flex items-center gap-1 rounded-md bg-transparent px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
                                     >
-                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
-                                        <path fill-rule="evenodd" d="M6.28 5.22a.75.75 0 0 1 1.06 0L10 7.94l2.66-2.72a.75.75 0 0 1 1.08 1.04L11.06 9l2.72 2.66a.75.75 0 1 1-1.04 1.08L10 10.06l-2.66 2.72a.75.75 0 1 1-1.08-1.04L8.94 9l-2.72-2.66a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                        class="h-4 w-4"
+                                      >
+                                        <path
+                                          fill-rule="evenodd"
+                                          d="M6.28 5.22a.75.75 0 0 1 1.06 0L10 7.94l2.66-2.72a.75.75 0 0 1 1.08 1.04L11.06 9l2.72 2.66a.75.75 0 1 1-1.04 1.08L10 10.06l-2.66 2.72a.75.75 0 1 1-1.08-1.04L8.94 9l-2.72-2.66a.75.75 0 0 1 0-1.06Z"
+                                          clip-rule="evenodd"
+                                        />
                                       </svg>
                                       Remove group
                                     </button>
@@ -3846,7 +3869,9 @@ defmodule TrifleApp.DashboardLive do
                                             checked={item_value == default_value}
                                             class="h-4 w-4 text-teal-600 focus:ring-teal-500"
                                           />
-                                          <span class="text-xs text-gray-500 dark:text-slate-400">Default</span>
+                                          <span class="text-xs text-gray-500 dark:text-slate-400">
+                                            Default
+                                          </span>
                                         </div>
                                         <div>
                                           <label class="sr-only">Option label</label>
@@ -3889,8 +3914,7 @@ defmodule TrifleApp.DashboardLive do
                                     phx-value-group-id={group_id}
                                     class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
                                   >
-                                    <span aria-hidden="true">+</span>
-                                    Add option
+                                    <span aria-hidden="true">+</span> Add option
                                   </button>
                                 </div>
                               <% end %>
@@ -3900,8 +3924,7 @@ defmodule TrifleApp.DashboardLive do
                                 phx-value-segment-id={segment_id}
                                 class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
                               >
-                                <span aria-hidden="true">+</span>
-                                Add group
+                                <span aria-hidden="true">+</span> Add group
                               </button>
                             </div>
                           <% end %>
@@ -3914,12 +3937,11 @@ defmodule TrifleApp.DashboardLive do
                         phx-click="segments_add"
                         class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
                       >
-                        <span aria-hidden="true">+</span>
-                        Add segment
+                        <span aria-hidden="true">+</span> Add segment
                       </button>
                     </div>
                   </div>
-
+                  
     <!-- Defaults -->
                   <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
                     <div class="mb-4">
@@ -4990,8 +5012,18 @@ defmodule TrifleApp.DashboardLive do
                 smart_timeframe_input: @smart_timeframe_input,
                 use_fixed_display: @use_fixed_display,
                 from: @from,
-                to: @to
+                to: @to,
+                segment_values: @segment_values
               })
+              |> then(fn params ->
+                cond do
+                  is_binary(@resolved_key) and @resolved_key != "" ->
+                    Map.put(params, "key", @resolved_key)
+
+                  true ->
+                    params
+                end
+              end)
             }
           />
         <% end %>
