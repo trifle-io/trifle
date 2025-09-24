@@ -797,8 +797,10 @@ Hooks.DashboardGrid = {
         }
       }
 
-      // ensure layout save reflects new title
-      this.saveLayout();
+      // ensure layout save reflects new title when we're in multi-column mode
+      if (!this._isOneCol) {
+        this.saveLayout();
+      }
     });
     this.handleEvent('dashboard_grid_widget_deleted', ({ id }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
