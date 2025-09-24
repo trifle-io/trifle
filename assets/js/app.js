@@ -1888,6 +1888,7 @@ Hooks.DownloadMenu = {
     const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
     this.originalLabel = datasetLabel || (this.label ? this.label.textContent : '');
     this.iframe = document.querySelector('iframe[name="download_iframe"]');
+    this.hrefSignature = this.computeHrefSignature();
 
     this.bindAnchors();
     this.bindIframe();
@@ -1907,6 +1908,13 @@ Hooks.DownloadMenu = {
     } else if (!this.originalLabel && this.label) {
       this.originalLabel = this.label.textContent;
     }
+
+    const newSignature = this.computeHrefSignature();
+    if (newSignature !== this.hrefSignature) {
+      this.hrefSignature = newSignature;
+      this.stopLoading(true);
+    }
+
     this.bindAnchors();
     // Rebind iframe in case it was re-rendered
     const newIframe = document.querySelector('iframe[name="download_iframe"]');
@@ -1917,6 +1925,12 @@ Hooks.DownloadMenu = {
     }
     // If still loading, re-apply loading UI state after LV patch
     if (this.loading) this.applyLoadingState();
+  },
+
+  computeHrefSignature() {
+    return Array.from(this.el.querySelectorAll('a[data-export-link]'))
+      .map((a) => a.getAttribute('href') || '')
+      .join('|');
   },
 
   bindAnchors() {
@@ -1964,8 +1978,8 @@ Hooks.DownloadMenu = {
     this.applyLoadingState();
   },
 
-  stopLoading() {
-    if (!this.loading) return;
+  stopLoading(force = false) {
+    if (!this.loading && !force) return;
     this.loading = false;
     this.stopCookiePolling();
     if (this.button) {
