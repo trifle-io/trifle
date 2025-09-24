@@ -8,6 +8,7 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
+  alias Ecto.UUID
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
   require Logger
 
@@ -19,6 +20,9 @@ defmodule TrifleApp.DashboardLive do
     %{id: "emerald", label: "Emerald", background: "#10b981", text: "#064e3b"},
     %{id: "rose", label: "Rose", background: "#f43f5e", text: "#fff1f2"}
   ]
+
+  @capture_group_regex ~r/\((?:\\.|[^()])*\)/
+  @noncapturing_prefixes ["?:", "?=", "?!", "?<=", "?<!"]
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
     {:ok, redirect(socket, to: ~p"/organization")}
@@ -145,6 +149,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:dashboard_form, nil)
     |> assign(:temp_name, socket.assigns.dashboard.name)
     |> assign(:databases, databases)
+    |> assign(:configure_segments, configure_segments_from_dashboard(socket.assigns.dashboard))
   end
 
   def handle_event("update_temp_name", %{"value" => name}, socket) do
@@ -1164,7 +1169,9 @@ defmodule TrifleApp.DashboardLive do
 
   defp natural_sort_key(name) when is_binary(name) do
     case Regex.scan(~r/\d+|\D+/, name) do
-      [] -> [{:str, String.downcase(name)}]
+      [] ->
+        [{:str, String.downcase(name)}]
+
       segments ->
         segments
         |> Enum.map(&List.first/1)
@@ -1176,10 +1183,14 @@ defmodule TrifleApp.DashboardLive do
 
   defp natural_token(segment) do
     cond do
-      segment == "" -> {:str, ""}
+      segment == "" ->
+        {:str, ""}
+
       true ->
         case Integer.parse(segment) do
-          {int, ""} -> {:num, int}
+          {int, ""} ->
+            {:num, int}
+
           _ ->
             case Float.parse(segment) do
               {float, ""} -> {:num, float}
@@ -1575,12 +1586,17 @@ defmodule TrifleApp.DashboardLive do
         defaults
       )
 
-    socket
-    |> assign(:from, from)
-    |> assign(:to, to)
-    |> assign(:granularity, granularity)
-    |> assign(:smart_timeframe_input, smart_timeframe_input)
-    |> assign(:use_fixed_display, use_fixed_display)
+    socket =
+      socket
+      |> assign(:from, from)
+      |> assign(:to, to)
+      |> assign(:granularity, granularity)
+      |> assign(:smart_timeframe_input, smart_timeframe_input)
+      |> assign(:use_fixed_display, use_fixed_display)
+
+    segment_params = Map.get(params, "segments") || %{}
+
+    assign_segment_state(socket, segment_params)
   end
 
   defp get_default_timeframe_params(database) do
@@ -1642,7 +1658,8 @@ defmodule TrifleApp.DashboardLive do
 
       # Extract values to avoid async socket warnings
       database = socket.assigns.database
-      key = socket.assigns.dashboard.key
+      key = socket.assigns.resolved_key || socket.assigns.dashboard.key
+      key = key || ""
       granularity = socket.assigns.granularity
       from = socket.assigns.from
       to = socket.assigns.to
@@ -1729,15 +1746,16 @@ defmodule TrifleApp.DashboardLive do
 
   defp timeseries_paths_for_form(path), do: timeseries_paths_for_form([path])
 
-  attr :id, :string, required: true
-  attr :name, :string, required: true
-  attr :value, :string, default: ""
-  attr :placeholder, :string, default: ""
-  attr :path_options, :list, default: []
+  attr(:id, :string, required: true)
+  attr(:name, :string, required: true)
+  attr(:value, :string, default: "")
+  attr(:placeholder, :string, default: "")
+  attr(:path_options, :list, default: [])
 
-  attr :input_class, :string,
+  attr(:input_class, :string,
     default:
       "block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+  )
 
   defp path_autocomplete_input(assigns) do
     assigns = assign(assigns, :options_json, Jason.encode!(assigns.path_options))
@@ -1925,6 +1943,592 @@ defmodule TrifleApp.DashboardLive do
     socket
     |> assign(:dashboard, dashboard)
     |> assign_dashboard_permissions()
+    |> assign_segment_state()
+  end
+
+  defp assign_segment_state(socket, overrides \\ %{}) do
+    dashboard = socket.assigns.dashboard
+    raw_segments = dashboard.segments || []
+    previous_values = Map.get(socket.assigns, :segment_values, %{})
+
+    overrides = normalize_segment_value_map(overrides)
+    previous_values = normalize_segment_value_map(previous_values)
+
+    {segment_values, segments_with_current} =
+      compute_segment_state(raw_segments, overrides, previous_values)
+
+    resolved_key = resolve_dashboard_key(dashboard.key, segments_with_current, segment_values)
+
+    socket
+    |> assign(:dashboard_segments, segments_with_current)
+    |> assign(:segment_values, segment_values)
+    |> assign(:resolved_key, resolved_key)
+  end
+
+  defp compute_segment_state(segments, overrides, previous_values) do
+    segments
+    |> Enum.reduce({%{}, []}, fn segment, {values_acc, segments_acc} ->
+      name = segment_name(segment)
+      type = segment_type(segment)
+      available_values = segment_select_values(segment)
+      override_present? = Map.has_key?(overrides, name)
+      override_value = Map.get(overrides, name)
+      previous_present? = Map.has_key?(previous_values, name)
+      previous_value = Map.get(previous_values, name)
+      default_value = Map.get(segment, "default_value")
+
+      {selected_value, resolved_default} =
+        case type do
+          "text" ->
+            value =
+              cond do
+                override_present? -> sanitize_text_value(override_value)
+                previous_present? -> sanitize_text_value(previous_value)
+                not is_nil(default_value) -> sanitize_text_value(default_value)
+                true -> ""
+              end
+
+            {value, sanitize_text_value(default_value)}
+
+          _ ->
+            resolved_default = resolve_default_value(default_value, available_values)
+
+            selected =
+              cond do
+                override_present? ->
+                  value = sanitize_select_value(override_value)
+
+                  if value in available_values or available_values == [] do
+                    value
+                  else
+                    fallback_select_value(
+                      previous_present?,
+                      previous_value,
+                      resolved_default,
+                      available_values
+                    )
+                  end
+
+                previous_present? ->
+                  value = sanitize_select_value(previous_value)
+
+                  if value in available_values or available_values == [] do
+                    value
+                  else
+                    fallback_select_value(false, nil, resolved_default, available_values)
+                  end
+
+                true ->
+                  fallback_select_value(false, nil, resolved_default, available_values)
+              end
+
+            {selected, resolved_default}
+        end
+
+      updated_segment =
+        segment
+        |> Map.put("type", type)
+        |> Map.put("default_value", resolved_default)
+        |> Map.put("current_value", selected_value)
+
+      {Map.put(values_acc, name, selected_value), [updated_segment | segments_acc]}
+    end)
+    |> then(fn {values, segments_rev} ->
+      {values, Enum.reverse(segments_rev)}
+    end)
+  end
+
+  defp resolve_dashboard_key(nil, _segments, _values), do: nil
+  defp resolve_dashboard_key("", _segments, _values), do: ""
+
+  defp resolve_dashboard_key(pattern, segments, values_map) when is_binary(pattern) do
+    captures = extract_captures(pattern)
+
+    if captures == [] do
+      strip_regex_anchors(pattern)
+    else
+      values_map = normalize_segment_value_map(values_map)
+      ordered_names = Enum.map(segments, &segment_name/1)
+
+      {values, _unused} =
+        Enum.reduce(captures, {[], ordered_names}, fn capture, {acc_values, unused_names} ->
+          {value, updated_unused} = capture_value_for_segment(capture, values_map, unused_names)
+          {[value | acc_values], updated_unused}
+        end)
+
+      substituted = substitute_captures(pattern, captures, Enum.reverse(values))
+      strip_regex_anchors(substituted)
+    end
+  end
+
+  defp capture_value_for_segment(%{name: name}, values_map, unused_names) do
+    cond do
+      name && Map.has_key?(values_map, name) ->
+        value = Map.get(values_map, name, "")
+        {value, delete_first(unused_names, name)}
+
+      true ->
+        case unused_names do
+          [next_name | rest] -> {Map.get(values_map, next_name, ""), rest}
+          [] -> {"", []}
+        end
+    end
+  end
+
+  defp extract_captures(pattern) do
+    Regex.scan(@capture_group_regex, pattern, return: :index)
+    |> Enum.map(&hd/1)
+    |> Enum.reduce({[], 0}, fn {start, length}, {acc, idx} ->
+      match = binary_part(pattern, start, length)
+
+      case classify_capture(match) do
+        {:capturing, name} ->
+          info = %{index: idx, start: start, length: length, name: name, raw: match}
+          {[info | acc], idx + 1}
+
+        :noncapturing ->
+          {acc, idx}
+      end
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp substitute_captures(pattern, captures, values) do
+    {iodata, last_index} =
+      Enum.zip(captures, values)
+      |> Enum.reduce({[], 0}, fn {capture, value}, {parts, cursor} ->
+        prefix_length = capture.start - cursor
+        prefix = if prefix_length > 0, do: binary_part(pattern, cursor, prefix_length), else: ""
+
+        {[parts | [prefix, value]], capture.start + capture.length}
+      end)
+
+    flat_parts = List.flatten(iodata)
+    suffix_length = byte_size(pattern) - last_index
+    suffix = if suffix_length > 0, do: binary_part(pattern, last_index, suffix_length), else: ""
+
+    [flat_parts, suffix]
+    |> IO.iodata_to_binary()
+  end
+
+  defp classify_capture(match) do
+    inner = inner_capture_content(match)
+
+    cond do
+      String.starts_with?(inner, "?<") ->
+        name = extract_group_name(inner, 2)
+        {:capturing, name}
+
+      String.starts_with?(inner, "?P<") ->
+        name = extract_group_name(inner, 3)
+        {:capturing, name}
+
+      String.starts_with?(inner, "?") ->
+        prefix = String.slice(inner, 1, 2)
+
+        cond do
+          prefix in @noncapturing_prefixes ->
+            :noncapturing
+
+          String.starts_with?(inner, "?<") ->
+            name = extract_group_name(inner, 2)
+            {:capturing, name}
+
+          String.starts_with?(inner, "?P<") ->
+            name = extract_group_name(inner, 3)
+            {:capturing, name}
+
+          true ->
+            {:capturing, nil}
+        end
+
+      true ->
+        {:capturing, nil}
+    end
+  end
+
+  defp inner_capture_content(capture) do
+    capture
+    |> String.slice(1, max(byte_size(capture) - 2, 0))
+  end
+
+  defp extract_group_name(inner, prefix_length) do
+    rest = String.slice(inner, prefix_length, byte_size(inner) - prefix_length)
+
+    case String.split(rest, ">", parts: 2) do
+      [name | _] -> String.trim(name)
+      _ -> nil
+    end
+  end
+
+  defp strip_regex_anchors(nil), do: nil
+
+  defp strip_regex_anchors(value) when is_binary(value) do
+    value
+    |> strip_leading_anchor()
+    |> strip_trailing_anchor()
+  end
+
+  defp strip_leading_anchor(""), do: ""
+  defp strip_leading_anchor("^" <> rest), do: strip_leading_anchor(rest)
+  defp strip_leading_anchor(value), do: value
+
+  defp strip_trailing_anchor(""), do: ""
+
+  defp strip_trailing_anchor(value) do
+    if String.ends_with?(value, "$") do
+      value
+      |> String.trim_trailing("$")
+      |> strip_trailing_anchor()
+    else
+      value
+    end
+  end
+
+  defp fallback_select_value(_previous_present?, _previous_value, default_value, available_values) do
+    cond do
+      default_value not in [nil, ""] and default_value in available_values -> default_value
+      available_values != [] -> hd(available_values)
+      default_value in [nil, ""] -> default_value || ""
+      true -> sanitize_select_value(default_value)
+    end
+  end
+
+  defp resolve_default_value(nil, available_values) do
+    case available_values do
+      [] -> ""
+      [first | _] -> first
+    end
+  end
+
+  defp resolve_default_value("", available_values) do
+    if available_values == [] do
+      ""
+    else
+      ""
+    end
+  end
+
+  defp resolve_default_value(value, available_values) do
+    sanitized = sanitize_select_value(value)
+
+    cond do
+      sanitized == "" -> ""
+      sanitized in available_values -> sanitized
+      available_values == [] -> sanitized
+      true -> hd(available_values)
+    end
+  end
+
+  defp segment_select_values(segment) do
+    segment
+    |> Map.get("groups", [])
+    |> Enum.flat_map(fn group ->
+      group
+      |> Map.get("items", [])
+      |> Enum.map(fn item -> sanitize_select_value(Map.get(item, "value")) end)
+    end)
+  end
+
+  defp segment_name(segment) do
+    segment
+    |> Map.get("name")
+    |> case do
+      nil -> ""
+      value -> value |> to_string() |> String.trim()
+    end
+  end
+
+  defp segment_type(segment) do
+    segment
+    |> Map.get("type", "select")
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "text" -> "text"
+      "select" -> "select"
+      "dropdown" -> "select"
+      other when other == "" -> "select"
+      other -> other
+    end
+  end
+
+  defp normalize_segment_value_map(nil), do: %{}
+
+  defp normalize_segment_value_map(values) when is_map(values) do
+    values
+    |> Enum.reduce(%{}, fn {key, value}, acc ->
+      normalized_key = key |> to_string()
+
+      normalized_value =
+        cond do
+          is_binary(value) -> value
+          is_nil(value) -> ""
+          true -> to_string(value)
+        end
+
+      Map.put(acc, normalized_key, normalized_value)
+    end)
+  end
+
+  defp normalize_segment_value_map(_other), do: %{}
+
+  defp sanitize_select_value(nil), do: ""
+  defp sanitize_select_value(value) when is_binary(value), do: value
+  defp sanitize_select_value(value), do: to_string(value)
+
+  defp sanitize_text_value(nil), do: ""
+  defp sanitize_text_value(value) when is_binary(value), do: value
+  defp sanitize_text_value(value), do: to_string(value)
+
+  defp delete_first([], _value), do: []
+  defp delete_first([value | rest], value), do: rest
+  defp delete_first([head | rest], value), do: [head | delete_first(rest, value)]
+
+  defp configure_segments_from_dashboard(%{segments: segments}) when is_list(segments) do
+    segments
+    |> deep_copy()
+    |> normalize_configure_segments()
+  end
+
+  defp configure_segments_from_dashboard(_), do: []
+
+  defp deep_copy(term), do: term |> :erlang.term_to_binary() |> :erlang.binary_to_term()
+
+  defp merge_segment_form_params(segments, params) when is_list(segments) do
+    params = params || %{}
+
+    Enum.map(segments, fn segment ->
+      id = segment["id"] |> to_string()
+      segment_params = Map.get(params, id) || %{}
+      update_segment_from_params(segment, segment_params)
+    end)
+  end
+
+  defp merge_segment_form_params(segments, _params), do: segments
+
+  defp update_segment_from_params(segment, params) do
+    name = params |> Map.get("name", segment["name"]) |> sanitize_text_value()
+    label = params |> Map.get("label", segment["label"]) |> sanitize_optional_text()
+    type = params |> Map.get("type", segment["type"]) |> segment_type_from_param()
+
+    placeholder =
+      params |> Map.get("placeholder", segment["placeholder"]) |> sanitize_optional_text()
+
+    default_value_param = Map.get(params, "default_value", segment["default_value"])
+
+    updated =
+      segment
+      |> Map.put("name", name)
+      |> Map.put("label", label)
+      |> Map.put("type", type)
+      |> Map.put("placeholder", placeholder)
+
+    case type do
+      "text" ->
+        default_value = sanitize_text_value(default_value_param)
+
+        updated
+        |> Map.put("default_value", default_value)
+
+      _ ->
+        groups_params = Map.get(params, "groups") || %{}
+        groups = merge_group_form_params(Map.get(segment, "groups", []), groups_params)
+        default_value = sanitize_select_value(default_value_param)
+
+        updated
+        |> Map.put("groups", groups)
+        |> Map.put("default_value", default_value)
+    end
+  end
+
+  defp merge_group_form_params(groups, params) when is_list(groups) do
+    Enum.map(groups, fn group ->
+      id = group["id"] |> to_string()
+      group_params = Map.get(params, id) || %{}
+      update_group_from_params(group, group_params)
+    end)
+  end
+
+  defp merge_group_form_params(groups, _params), do: groups
+
+  defp update_group_from_params(group, params) do
+    label = params |> Map.get("label", group["label"]) |> sanitize_optional_text()
+    items_params = Map.get(params, "items") || %{}
+    items = merge_item_form_params(Map.get(group, "items", []), items_params)
+
+    group
+    |> Map.put("label", label)
+    |> Map.put("items", items)
+  end
+
+  defp merge_item_form_params(items, params) when is_list(items) do
+    Enum.map(items, fn item ->
+      id = item["id"] |> to_string()
+      item_params = Map.get(params, id) || %{}
+      update_item_from_params(item, item_params)
+    end)
+  end
+
+  defp merge_item_form_params(items, _params), do: items
+
+  defp update_item_from_params(item, params) do
+    label = params |> Map.get("label", item["label"]) |> sanitize_optional_text()
+    value = params |> Map.get("value", item["value"]) |> sanitize_select_value()
+
+    item
+    |> Map.put("label", label)
+    |> Map.put("value", value)
+  end
+
+  defp sanitize_optional_text(nil), do: nil
+
+  defp sanitize_optional_text(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp sanitize_optional_text(value),
+    do: value |> to_string() |> String.trim() |> sanitize_optional_text()
+
+  defp fetch_identifier(params, key) do
+    params
+    |> param_get(key)
+    |> case do
+      nil ->
+        nil
+
+      value ->
+        value
+        |> to_string()
+        |> String.trim()
+        |> case do
+          "" -> nil
+          trimmed -> trimmed
+        end
+    end
+  end
+
+  defp param_get(params, key) when is_map(params) do
+    params[key] ||
+      params[String.replace(key, "_", "-")] ||
+      params[String.replace(key, "-", "_")]
+  end
+
+  defp param_get(_params, _key), do: nil
+
+  defp segment_type_from_param(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "text" -> "text"
+      _ -> "select"
+    end
+  end
+
+  defp new_config_segment(type \\ "select") do
+    id = UUID.generate()
+    normalized_type = segment_type_from_param(type)
+
+    base = %{
+      "id" => id,
+      "name" => "",
+      "label" => "",
+      "type" => normalized_type,
+      "placeholder" => nil,
+      "default_value" => if(normalized_type == "text", do: "", else: nil)
+    }
+
+    case normalized_type do
+      "text" ->
+        Map.put(base, "groups", [])
+
+      _ ->
+        Map.put(base, "groups", [new_config_group()])
+    end
+  end
+
+  defp new_config_group do
+    %{
+      "id" => UUID.generate(),
+      "label" => nil,
+      "items" => [new_config_item()]
+    }
+  end
+
+  defp new_config_item do
+    %{
+      "id" => UUID.generate(),
+      "label" => "",
+      "value" => ""
+    }
+  end
+
+  defp update_segment_by_id(segments, segment_id, fun) do
+    segments
+    |> Enum.map(fn segment ->
+      if to_string(segment["id"]) == to_string(segment_id) do
+        fun.(segment)
+      else
+        segment
+      end
+    end)
+  end
+
+  defp update_group_by_id(segment, group_id, fun) do
+    groups =
+      segment
+      |> Map.get("groups", [])
+      |> Enum.map(fn group ->
+        if to_string(group["id"]) == to_string(group_id) do
+          fun.(group)
+        else
+          group
+        end
+      end)
+
+    Map.put(segment, "groups", groups)
+  end
+
+  defp ensure_group_presence([]), do: [new_config_group()]
+  defp ensure_group_presence(groups), do: groups
+
+  defp ensure_item_presence([]), do: [new_config_item()]
+  defp ensure_item_presence(items), do: items
+
+  defp normalize_configure_segments(segments) when is_list(segments) do
+    Enum.map(segments, &normalize_configure_segment/1)
+  end
+
+  defp normalize_configure_segments(other), do: other
+
+  defp normalize_configure_segment(segment) do
+    type = segment_type(segment)
+
+    case type do
+      "text" ->
+        segment
+
+      _ ->
+        values = segment_select_values(segment)
+        default = segment["default_value"] || ""
+
+        normalized_default =
+          cond do
+            default == "" -> ""
+            default in values -> default
+            values != [] -> hd(values)
+            true -> ""
+          end
+
+        Map.put(segment, "default_value", normalized_default)
+    end
   end
 
   defp build_url_params(%Phoenix.LiveView.Socket{} = socket), do: build_url_params(socket.assigns)
@@ -1939,16 +2543,31 @@ defmodule TrifleApp.DashboardLive do
     use_fixed = Map.get(data, :use_fixed_display) || Map.get(data, "use_fixed_display") || false
     base = %{"granularity" => gran, "timeframe" => timeframe}
 
-    if use_fixed do
-      from = Map.get(data, :from) || Map.get(data, "from")
-      to = Map.get(data, :to) || Map.get(data, "to")
+    params =
+      if use_fixed do
+        from = Map.get(data, :from) || Map.get(data, "from")
+        to = Map.get(data, :to) || Map.get(data, "to")
 
-      Map.merge(base, %{
-        "from" => TimeframeParsing.format_for_datetime_input(from),
-        "to" => TimeframeParsing.format_for_datetime_input(to)
-      })
+        Map.merge(base, %{
+          "from" => TimeframeParsing.format_for_datetime_input(from),
+          "to" => TimeframeParsing.format_for_datetime_input(to)
+        })
+      else
+        base
+      end
+
+    segment_values =
+      data
+      |> Map.get(:segment_values) || Map.get(data, "segment_values") ||
+        %{}
+        |> normalize_segment_value_map()
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Enum.into(%{})
+
+    if segment_values == %{} do
+      params
     else
-      base
+      Map.put(params, "segments", segment_values)
     end
   end
 
@@ -2023,12 +2642,13 @@ defmodule TrifleApp.DashboardLive do
   def get_summary_stats(assigns) do
     case assigns do
       %{
-        dashboard: %{key: key},
+        dashboard: %{key: _key},
+        resolved_key: resolved_key,
         stats: stats,
         transponder_info: transponder_info,
         transponder_results: transponder_results
       }
-      when not is_nil(key) and key != "" and not is_nil(stats) ->
+      when not is_nil(resolved_key) and resolved_key != "" and not is_nil(stats) ->
         # Count columns (timeline points)
         column_count = if stats.series[:at], do: length(stats.series[:at]), else: 0
 
@@ -2041,7 +2661,7 @@ defmodule TrifleApp.DashboardLive do
         transponder_errors = transponder_results.errors
 
         result = %{
-          key: key,
+          key: resolved_key,
           column_count: column_count,
           path_count: path_count,
           matching_transponders: successful_transponders + failed_transponders,
@@ -2054,10 +2674,11 @@ defmodule TrifleApp.DashboardLive do
         IO.inspect(result, label: "Dashboard summary stats")
         result
 
-      %{dashboard: %{key: key}} when not is_nil(key) and key != "" ->
+      %{dashboard: %{key: _key}, resolved_key: resolved_key}
+      when not is_nil(resolved_key) and resolved_key != "" ->
         # Dashboard has key but no stats loaded yet - show basic info
         result = %{
-          key: key,
+          key: resolved_key,
           column_count: 0,
           path_count: 0,
           matching_transponders: 0,
@@ -2074,6 +2695,7 @@ defmodule TrifleApp.DashboardLive do
           %{
             has_dashboard: Map.has_key?(assigns, :dashboard),
             dashboard_key: assigns[:dashboard][:key],
+            resolved_key: Map.get(assigns, :resolved_key),
             has_stats: Map.has_key?(assigns, :stats),
             stats_nil: is_nil(assigns[:stats]),
             has_transponder_results: Map.has_key?(assigns, :transponder_results)
@@ -2208,6 +2830,20 @@ defmodule TrifleApp.DashboardLive do
     reload_current_timeframe(socket)
   end
 
+  def handle_event("update_segment_filters", %{"segments" => segments_params}, socket) do
+    socket = assign_segment_state(socket, segments_params)
+    params = build_url_params(socket.assigns)
+
+    {:noreply,
+     socket
+     |> assign(loading: true)
+     |> push_patch(to: build_dashboard_url(socket, params))}
+  end
+
+  def handle_event("update_segment_filters", _params, socket) do
+    {:noreply, socket}
+  end
+
   # Toggle Play/Pause from parent LiveView (in case event bubbles up)
   def handle_event("toggle_play_pause", _params, socket) do
     socket =
@@ -2236,6 +2872,128 @@ defmodule TrifleApp.DashboardLive do
     reload_current_timeframe(socket)
   end
 
+  def handle_event("segments_editor_change", %{"segments" => segments_params}, socket) do
+    current_segments = socket.assigns.configure_segments || []
+
+    updated_segments =
+      current_segments
+      |> merge_segment_form_params(segments_params)
+      |> normalize_configure_segments()
+
+    {:noreply, assign(socket, :configure_segments, updated_segments)}
+  end
+
+  def handle_event("segments_editor_change", _params, socket), do: {:noreply, socket}
+
+  def handle_event("segments_add", _params, socket) do
+    segments = socket.assigns.configure_segments || []
+
+    updated_segments =
+      (segments ++ [new_config_segment()])
+      |> normalize_configure_segments()
+
+    {:noreply, assign(socket, :configure_segments, updated_segments)}
+  end
+
+  def handle_event("segments_remove", %{"id" => segment_id}, socket) do
+    segments = socket.assigns.configure_segments || []
+
+    filtered =
+      segments
+      |> Enum.reject(fn segment -> segment["id"] == segment_id end)
+      |> normalize_configure_segments()
+
+    {:noreply, assign(socket, :configure_segments, filtered)}
+  end
+
+  def handle_event("segments_add_group", params, socket) do
+    case fetch_identifier(params, "segment_id") do
+      nil ->
+        {:noreply, socket}
+
+      segment_id ->
+        segments = socket.assigns.configure_segments || []
+
+        updated =
+          update_segment_by_id(segments, segment_id, fn segment ->
+            groups = Map.get(segment, "groups", []) ++ [new_config_group()]
+            Map.put(segment, "groups", groups)
+          end)
+          |> normalize_configure_segments()
+
+        {:noreply, assign(socket, :configure_segments, updated)}
+    end
+  end
+
+  def handle_event("segments_remove_group", params, socket) do
+    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
+         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id") do
+      segments = socket.assigns.configure_segments || []
+
+      updated =
+        update_segment_by_id(segments, segment_id, fn segment ->
+          groups =
+            segment
+            |> Map.get("groups", [])
+            |> Enum.reject(&(&1["id"] == group_id))
+            |> ensure_group_presence()
+
+          Map.put(segment, "groups", groups)
+        end)
+        |> normalize_configure_segments()
+
+      {:noreply, assign(socket, :configure_segments, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("segments_add_item", params, socket) do
+    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
+         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id") do
+      segments = socket.assigns.configure_segments || []
+
+      updated =
+        update_segment_by_id(segments, segment_id, fn segment ->
+          update_group_by_id(segment, group_id, fn group ->
+            items = Map.get(group, "items", []) ++ [new_config_item()]
+            Map.put(group, "items", items)
+          end)
+        end)
+        |> normalize_configure_segments()
+
+      {:noreply, assign(socket, :configure_segments, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("segments_remove_item", params, socket) do
+    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
+         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id"),
+         item_id when not is_nil(item_id) <- fetch_identifier(params, "item_id") do
+      segments = socket.assigns.configure_segments || []
+
+      updated =
+        update_segment_by_id(segments, segment_id, fn segment ->
+          update_group_by_id(segment, group_id, fn group ->
+            items =
+              group
+              |> Map.get("items", [])
+              |> Enum.reject(&(&1["id"] == item_id))
+              |> ensure_item_presence()
+
+            Map.put(group, "items", items)
+          end)
+        end)
+        |> normalize_configure_segments()
+
+      {:noreply, assign(socket, :configure_segments, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("save_settings", params, socket) do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to update this dashboard")}
@@ -2247,17 +3005,28 @@ defmodule TrifleApp.DashboardLive do
       gran = Map.get(params, "granularity")
       new_db_id = Map.get(params, "database_id")
 
+      segment_params = Map.get(params, "segments") || %{}
+
+      configure_segments =
+        socket.assigns.configure_segments
+        |> List.wrap()
+        |> merge_segment_form_params(segment_params)
+        |> normalize_configure_segments()
+
       attrs = %{
         name: String.trim(to_string(name || "")),
         key: String.trim(to_string(key || "")),
         default_timeframe: String.trim(to_string(tf || "")),
-        default_granularity: String.trim(to_string(gran || ""))
+        default_granularity: String.trim(to_string(gran || "")),
+        segments: configure_segments
       }
 
       attrs =
         if new_db_id && new_db_id != "", do: Map.put(attrs, :database_id, new_db_id), else: attrs
 
       membership = socket.assigns.current_membership
+
+      socket = assign(socket, :configure_segments, configure_segments)
 
       case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
         {:ok, updated_dashboard} ->
@@ -2292,6 +3061,7 @@ defmodule TrifleApp.DashboardLive do
            |> assign(:temp_name, updated_dashboard.name)
            |> assign(:breadcrumb_links, updated_breadcrumbs)
            |> assign(:page_title, updated_page_title)
+           |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
            |> put_flash(:info, "Settings saved")}
 
         {:error, _} ->
@@ -2663,7 +3433,7 @@ defmodule TrifleApp.DashboardLive do
           </div>
         </div>
         
-    <!-- Filter Bar (only show if dashboard has a key) -->
+        <!-- Filter Bar (only show if dashboard has a key) -->
         <%= if dashboard_has_key?(assigns) do %>
           <.live_component
             module={TrifleApp.Components.FilterBar}
@@ -2681,7 +3451,70 @@ defmodule TrifleApp.DashboardLive do
             force_granularity_dropdown={@print_mode}
           />
         <% end %>
-        
+        <% segment_definitions = @dashboard_segments || [] %>
+        <%= if !@print_mode and segment_definitions != [] do %>
+          <form
+            id="dashboard-segments-form"
+            class="mb-6 flex justify-center"
+            phx-change="update_segment_filters"
+            phx-submit="update_segment_filters"
+          >
+            <div class="flex flex-wrap items-center justify-center gap-4">
+              <%= for segment <- segment_definitions do %>
+                <% segment_name = segment["name"] %>
+                <% label = segment["label"] || segment_name || "Segment" %>
+                <% current_value = Map.get(@segment_values || %{}, segment_name, "") %>
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-slate-300">
+                  <span>{label}:</span>
+                  <%= if segment["type"] == "text" do %>
+                    <input
+                      type="text"
+                      name={"segments[#{segment_name}]"}
+                      value={current_value}
+                      placeholder={segment["placeholder"] || ""}
+                      phx-debounce="500"
+                      class="w-56 rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                  <% else %>
+                    <% groups = segment["groups"] || [] %>
+                    <% has_items = Enum.any?(groups, fn group -> (group["items"] || []) != [] end) %>
+                    <select
+                      name={"segments[#{segment_name}]"}
+                      class="w-56 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
+                    >
+                      <%= for group <- groups do %>
+                        <% group_label = group["label"] %>
+                        <%= if group_label && group_label != "" do %>
+                          <optgroup label={group_label}>
+                            <%= for item <- group["items"] || [] do %>
+                              <% option_value = item["value"] || "" %>
+                              <option value={option_value} selected={option_value == current_value}>
+                                {item["label"] || option_value}
+                              </option>
+                            <% end %>
+                          </optgroup>
+                        <% else %>
+                          <%= for item <- group["items"] || [] do %>
+                            <% option_value = item["value"] || "" %>
+                            <option value={option_value} selected={option_value == current_value}>
+                              {item["label"] || option_value}
+                            </option>
+                          <% end %>
+                        <% end %>
+                      <% end %>
+                      <%= if !has_items do %>
+                        <option value="" selected={current_value in [nil, ""]} disabled>
+                          No options configured
+                        </option>
+                      <% end %>
+                    </select>
+                  <% end %>
+                </label>
+              <% end %>
+            </div>
+          </form>
+        <% end %>
+
     <!-- Edit Form (only shown in edit mode for authenticated users) -->
         <%= if !@is_public_access && @live_action == :edit && @dashboard_form do %>
           <div class="mb-6">
@@ -2781,7 +3614,12 @@ defmodule TrifleApp.DashboardLive do
             <:title>Configure Dashboard</:title>
             <:body>
               <div class="space-y-6">
-                <.form for={%{}} phx-submit="save_settings" class="space-y-6">
+              <.form
+                for={%{}}
+                phx-change="segments_editor_change"
+                phx-submit="save_settings"
+                class="space-y-6"
+              >
                   <!-- Dashboard Name -->
                   <div>
                     <label
@@ -2841,17 +3679,247 @@ defmodule TrifleApp.DashboardLive do
                     >
                       Key
                     </label>
-                    <input
-                      type="text"
-                      id="configure_key"
-                      name="key"
-                      value={@dashboard.key || ""}
-                      class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                      placeholder="e.g., sales.metrics"
-                      required
-                    />
+                  <input
+                    type="text"
+                    id="configure_key"
+                    name="key"
+                    value={@dashboard.key || ""}
+                    class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    placeholder="e.g., sales.metrics"
+                    required
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                    Use regex capture groups to mark dynamic segments, for example
+                    <code>commodity::events::detail::(?&lt;source&gt;.*)</code>. The capture name should match the
+                    segment name; otherwise segments fallback to positional order.
+                  </p>
+                </div>
+
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                    <div class="mb-4">
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Key Segments</h3>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                        Configure dynamic parts of the dashboard key. Each segment becomes a filter exposed at the top of the dashboard.
+                      </p>
+                    </div>
+                    <% configure_segments = @configure_segments || [] %>
+                    <div class="space-y-6">
+                      <%= for segment <- configure_segments do %>
+                        <% segment_id = segment["id"] %>
+                        <% segment_name = segment["name"] || "" %>
+                        <% segment_label = segment["label"] || "" %>
+                        <% segment_type = segment["type"] || "select" %>
+                        <% placeholder = segment["placeholder"] || "" %>
+                        <% default_value = segment["default_value"] || "" %>
+                        <div class="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 p-4 space-y-4">
+                          <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                  Name
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  name={"segments[#{segment_id}][name]"}
+                                  value={segment_name}
+                                  class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                  placeholder="source"
+                                />
+                                <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                                  Matching placeholder name used in the key (e.g. (source)).
+                                </p>
+                              </div>
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                  Label
+                                </label>
+                                <input
+                                  type="text"
+                                  name={"segments[#{segment_id}][label]"}
+                                  value={segment_label}
+                                  class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                  placeholder="Source"
+                                />
+                                <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                                  Display name shown above the dashboard.
+                                </p>
+                              </div>
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                  Segment Type
+                                </label>
+                                <select
+                                  name={"segments[#{segment_id}][type]"}
+                                  class="block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
+                                >
+                                  <option value="select" selected={segment_type != "text"}>Dropdown</option>
+                                  <option value="text" selected={segment_type == "text"}>Text input</option>
+                                </select>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              phx-click="segments_remove"
+                              phx-value-id={segment_id}
+                              class="inline-flex items-center gap-1 rounded-md bg-transparent px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                                <path fill-rule="evenodd" d="M6.28 5.22a.75.75 0 0 1 1.06 0L10 7.94l2.66-2.72a.75.75 0 0 1 1.08 1.04L11.06 9l2.72 2.66a.75.75 0 1 1-1.04 1.08L10 10.06l-2.66 2.72a.75.75 0 1 1-1.08-1.04L8.94 9l-2.72-2.66a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                              </svg>
+                              Remove
+                            </button>
+                          </div>
+
+                          <%= if segment_type == "text" do %>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                  Placeholder
+                                </label>
+                                <input
+                                  type="text"
+                                  name={"segments[#{segment_id}][placeholder]"}
+                                  value={placeholder}
+                                  class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                  placeholder="e.g., Enter product ID"
+                                />
+                              </div>
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                  Default value
+                                </label>
+                                <input
+                                  type="text"
+                                  name={"segments[#{segment_id}][default_value]"}
+                                  value={default_value}
+                                  class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                  placeholder="Leave blank for no default"
+                                />
+                              </div>
+                            </div>
+                          <% else %>
+                            <% groups = segment["groups"] || [] %>
+                            <div class="space-y-4">
+                              <%= for group <- groups do %>
+                                <% group_id = group["id"] %>
+                                <% group_label = group["label"] || "" %>
+                                <% items = group["items"] || [] %>
+                                <div class="rounded-md border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
+                                  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                    <div class="w-full">
+                                      <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                                        Group label
+                                      </label>
+                                      <input
+                                        type="text"
+                                        name={"segments[#{segment_id}][groups][#{group_id}][label]"}
+                                        value={group_label}
+                                        class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                        placeholder="Optional label"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      phx-click="segments_remove_group"
+                                      phx-value-segment-id={segment_id}
+                                      phx-value-group-id={group_id}
+                                      class="inline-flex items-center gap-1 rounded-md bg-transparent px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                                        <path fill-rule="evenodd" d="M6.28 5.22a.75.75 0 0 1 1.06 0L10 7.94l2.66-2.72a.75.75 0 0 1 1.08 1.04L11.06 9l2.72 2.66a.75.75 0 1 1-1.04 1.08L10 10.06l-2.66 2.72a.75.75 0 1 1-1.08-1.04L8.94 9l-2.72-2.66a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                                      </svg>
+                                      Remove group
+                                    </button>
+                                  </div>
+                                  <div class="space-y-3">
+                                    <%= for item <- items do %>
+                                      <% item_id = item["id"] %>
+                                      <% item_label = item["label"] || "" %>
+                                      <% item_value = item["value"] || "" %>
+                                      <div class="grid grid-cols-1 md:grid-cols-[auto,1fr,1fr,auto] gap-3 md:items-center">
+                                        <div class="flex items-center gap-2">
+                                          <input
+                                            type="radio"
+                                            name={"segments[#{segment_id}][default_value]"}
+                                            value={item_value}
+                                            checked={item_value == default_value}
+                                            class="h-4 w-4 text-teal-600 focus:ring-teal-500"
+                                          />
+                                          <span class="text-xs text-gray-500 dark:text-slate-400">Default</span>
+                                        </div>
+                                        <div>
+                                          <label class="sr-only">Option label</label>
+                                          <input
+                                            type="text"
+                                            name={"segments[#{segment_id}][groups][#{group_id}][items][#{item_id}][label]"}
+                                            value={item_label}
+                                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                            placeholder="Label"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label class="sr-only">Option value</label>
+                                          <input
+                                            type="text"
+                                            name={"segments[#{segment_id}][groups][#{group_id}][items][#{item_id}][value]"}
+                                            value={item_value}
+                                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                                            placeholder="Value"
+                                          />
+                                        </div>
+                                        <button
+                                          type="button"
+                                          phx-click="segments_remove_item"
+                                          phx-value-segment-id={segment_id}
+                                          phx-value-group-id={group_id}
+                                          phx-value-item-id={item_id}
+                                          class="inline-flex items-center justify-center rounded-md bg-transparent px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                                          aria-label="Remove option"
+                                        >
+                                          &times;
+                                        </button>
+                                      </div>
+                                    <% end %>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    phx-click="segments_add_item"
+                                    phx-value-segment-id={segment_id}
+                                    phx-value-group-id={group_id}
+                                    class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
+                                  >
+                                    <span aria-hidden="true">+</span>
+                                    Add option
+                                  </button>
+                                </div>
+                              <% end %>
+                              <button
+                                type="button"
+                                phx-click="segments_add_group"
+                                phx-value-segment-id={segment_id}
+                                class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
+                              >
+                                <span aria-hidden="true">+</span>
+                                Add group
+                              </button>
+                            </div>
+                          <% end %>
+                        </div>
+                      <% end %>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        phx-click="segments_add"
+                        class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
+                      >
+                        <span aria-hidden="true">+</span>
+                        Add segment
+                      </button>
+                    </div>
                   </div>
-                  
+
     <!-- Defaults -->
                   <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
                     <div class="mb-4">
@@ -3933,6 +5001,8 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp key_matches_pattern?(key, pattern) do
+    key = key || ""
+
     cond do
       String.contains?(pattern, "^") or String.contains?(pattern, "$") ->
         case Regex.compile(pattern) do
@@ -3970,6 +5040,8 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp build_dashboard_url(socket, params) do
+    params = ensure_segment_params(socket, params)
+
     cond do
       socket.assigns.is_public_access ->
         query =
@@ -3984,6 +5056,32 @@ defmodule TrifleApp.DashboardLive do
         ~p"/dashboards/#{socket.assigns.dashboard.id}?#{params}"
     end
   end
+
+  defp ensure_segment_params(socket, params) when is_map(params) do
+    cond do
+      Map.has_key?(params, "segments") ->
+        params
+
+      Map.has_key?(params, :segments) ->
+        params
+
+      true ->
+        segment_values =
+          socket.assigns
+          |> Map.get(:segment_values, %{})
+          |> normalize_segment_value_map()
+          |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+          |> Enum.into(%{})
+
+        if segment_values == %{} do
+          params
+        else
+          Map.put(params, "segments", segment_values)
+        end
+    end
+  end
+
+  defp ensure_segment_params(_socket, params), do: params
 
   defp navigate_timeframe(socket, direction) do
     from = socket.assigns.from
