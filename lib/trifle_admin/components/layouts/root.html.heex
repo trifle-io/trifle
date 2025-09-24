@@ -1,5 +1,4 @@
-<% page_title = TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %>
-<!DOCTYPE html>
+<% page_title = TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %> <!DOCTYPE html>
 <html lang="en" style="scrollbar-gutter: stable;">
   <head>
     <meta charset="utf-8" />
@@ -18,7 +17,14 @@
     class={"#{TrifleApp.CoreComponents.theme_classes((assigns[:current_user] && assigns.current_user.theme) || "system")} bg-slate-100 dark:bg-slate-900 text-gray-900 dark:text-white antialiased h-screen"}
     {TrifleApp.CoreComponents.theme_data_attrs((assigns[:current_user] && assigns.current_user.theme) || "system")}
   >
-    <span id="live-page-title" phx-hook="DocumentTitle" data-title={page_title} data-suffix=" | Trifle" class="hidden"></span>
+    <span
+      id="live-page-title"
+      phx-hook="DocumentTitle"
+      data-title={page_title}
+      data-suffix=" | Trifle"
+      class="hidden"
+    >
+    </span>
     {@inner_content}
   </body>
 </html>
