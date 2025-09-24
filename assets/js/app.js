@@ -31,6 +31,34 @@ const ECHARTS_RENDERER = 'svg';
 const ECHARTS_DEVICE_PIXEL_RATIO = Math.max(1, window.devicePixelRatio || 1);
 const withChartOpts = (opts = {}) => Object.assign({ renderer: ECHARTS_RENDERER, devicePixelRatio: ECHARTS_DEVICE_PIXEL_RATIO }, opts);
 
+const formatCompactNumber = (value) => {
+  if (value === null || value === undefined || value === '') return '0';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  const abs = Math.abs(n);
+  if (abs >= 1_000) {
+    const units = ['', 'K', 'M', 'B', 'T'];
+    let unitIndex = 0;
+    let scaled = abs;
+    while (scaled >= 1000 && unitIndex < units.length - 1) {
+      scaled /= 1000;
+      unitIndex += 1;
+    }
+    const decimals = scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
+    const formatted = scaled
+      .toFixed(decimals)
+      .replace(/\.0+$/, '')
+      .replace(/(\.\d*?[1-9])0+$/, '$1');
+    return `${n < 0 ? '-' : ''}${formatted}${units[unitIndex]}`;
+  }
+
+  const decimals = abs < 1 ? 2 : Number.isInteger(n) ? 0 : abs < 10 ? 2 : 1;
+  return n
+    .toFixed(decimals)
+    .replace(/\.0+$/, '')
+    .replace(/(\.\d*?[1-9])0+$/, '$1');
+};
+
 let Hooks = {}
 
 Hooks.DocumentTitle = {
@@ -160,7 +188,7 @@ Hooks.DatabaseExploreChart = {
     // Create ECharts options with theme-aware colors
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
-    
+
     const option = {
       backgroundColor: 'transparent',
       grid: {
@@ -186,7 +214,7 @@ Hooks.DatabaseExploreChart = {
         formatter: function(params) {
           const date = new Date(params.value[0]);
           const dateStr = echarts.format.formatTime('yyyy-MM-dd hh:mm:ss', date, false);
-          const value = params.value[1];
+          const value = formatCompactNumber(params.value[1]);
           return `${dateStr}<br/>${params.marker} ${params.seriesName}: ${value}`;
         }
       },
@@ -226,7 +254,8 @@ Hooks.DatabaseExploreChart = {
           }
         },
         axisLabel: {
-          color: textColor
+          color: textColor,
+          formatter: (value) => formatCompactNumber(value)
         },
         splitLine: {
           lineStyle: {
@@ -304,7 +333,7 @@ Hooks.DatabaseExploreChart = {
       const isDarkMode = document.documentElement.classList.contains('dark');
       const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
       const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
-      
+
       // Prepare series data
       let series;
       if (chartType === 'stacked') {
@@ -358,7 +387,8 @@ Hooks.DatabaseExploreChart = {
             }
           },
           axisLabel: {
-            color: textColor
+            color: textColor,
+            formatter: (value) => formatCompactNumber(value)
           },
           splitLine: {
             lineStyle: {
@@ -1255,27 +1285,6 @@ Hooks.DashboardGrid = {
         const legendText = isDarkMode ? '#D1D5DB' : '#374151';
         const showLegend = !!it.legend;
         const bottomPadding = showLegend ? 56 : 28;
-        const formatCompactNumber = (value) => {
-          if (value === null || value === undefined || value === '') return '0';
-          const n = Number(value);
-          if (!Number.isFinite(n)) return String(value);
-          const abs = Math.abs(n);
-          if (abs >= 1_000) {
-            const units = ['', 'K', 'M', 'B', 'T'];
-            let unitIndex = 0;
-            let scaled = abs;
-            while (scaled >= 1000 && unitIndex < units.length - 1) {
-              scaled /= 1000;
-              unitIndex += 1;
-            }
-            const decimals = scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
-            const formatted = scaled.toFixed(decimals).replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
-            return `${n < 0 ? '-' : ''}${formatted}${units[unitIndex]}`;
-          }
-
-          const decimals = abs < 1 ? 2 : (Number.isInteger(n) ? 0 : abs < 10 ? 2 : 1);
-          return n.toFixed(decimals).replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
-        };
         const series = (it.series || []).map((s, idx) => {
           const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
           if (stacked) base.stack = 'total';
@@ -1399,7 +1408,26 @@ Hooks.DashboardGrid = {
             }]
           };
         } else {
-          option = { backgroundColor: 'transparent', grid: { top: 12, bottom: 28, left: 48, right: 16 }, xAxis: { type: 'category', data: data.map(d => d.name) }, yAxis: { type: 'value', min: 0 }, tooltip: { trigger: 'axis' }, series: [{ type: 'bar', data: data.map(d => d.value), itemStyle: { color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6' } }] };
+          option = {
+            backgroundColor: 'transparent',
+            grid: { top: 12, bottom: 28, left: 48, right: 16 },
+            xAxis: { type: 'category', data: data.map((d) => d.name) },
+            yAxis: {
+              type: 'value',
+              min: 0,
+              axisLabel: {
+                formatter: (v) => formatCompactNumber(v)
+              }
+            },
+            tooltip: { trigger: 'axis' },
+            series: [{
+              type: 'bar',
+              data: data.map((d) => d.value),
+              itemStyle: {
+                color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6'
+              }
+            }]
+          };
         }
         chart.setOption(option, true);
         try {
