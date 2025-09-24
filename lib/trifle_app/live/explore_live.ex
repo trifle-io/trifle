@@ -2012,8 +2012,32 @@ defmodule TrifleApp.ExploreLive do
                     </li>
                   <% end %>
                   <%= if Enum.empty?(filter_keys(@keys, @key_search_filter)) do %>
-                    <div class="flex items-center justify-center h-48 text-gray-500 dark:text-slate-400 text-sm">
+                    <% trimmed_filter = String.trim(@key_search_filter || "") %>
+                    <div class="flex flex-col items-center justify-center gap-3 h-48 text-gray-500 dark:text-slate-400 text-sm">
                       <span>No keys found</span>
+                      <%= if trimmed_filter != "" do %>
+                        <button
+                          type="button"
+                          phx-click="select_key"
+                          phx-value-key={trimmed_filter}
+                          class="inline-flex items-center gap-2 rounded-md border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/30 px-3 py-1.5 text-xs font-medium text-teal-600 hover:bg-teal-100 dark:text-teal-300 dark:hover:bg-teal-900/40"
+                        >
+                          <svg
+                            class="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                            />
+                          </svg>
+                          Try the "{@key_search_filter}" key anyway
+                        </button>
+                      <% end %>
                     </div>
                   <% end %>
                 </ul>
