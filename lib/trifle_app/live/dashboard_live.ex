@@ -3,6 +3,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Stats.SeriesFetcher
+  alias Trifle.Stats.Source
   alias Phoenix.HTML
   alias TrifleApp.ExploreLive
   alias TrifleApp.TimeframeParsing
@@ -1512,16 +1513,17 @@ defmodule TrifleApp.DashboardLive do
   # Dashboard Data Management
 
   defp initialize_dashboard_state(socket, database, dashboard, is_public_access, public_token) do
+    source = Source.from_database(database)
     # Parse timeframe from URL or use default
     {from, to, granularity, smart_timeframe_input, use_fixed_display} =
-      get_default_timeframe_params(database)
+      get_default_timeframe_params(source)
 
     # Cache config to avoid recalculation on every render
-    database_config = Database.stats_config(database)
-    available_granularities = get_available_granularities(database)
+    database_config = Source.stats_config(source)
+    available_granularities = get_available_granularities(source)
 
     # Load transponders to identify response paths and their names
-    transponders = Organizations.list_transponders_for_database(database)
+    transponders = Source.transponders(source)
 
     transponder_info =
       transponders
@@ -1537,6 +1539,7 @@ defmodule TrifleApp.DashboardLive do
 
     socket
     |> assign(:database, database)
+    |> assign(:source, source)
     |> assign_dashboard(dashboard)
     |> assign(:is_public_access, is_public_access)
     |> assign(:public_token, public_token)
@@ -1572,10 +1575,13 @@ defmodule TrifleApp.DashboardLive do
 
     defaults = %{
       default_timeframe:
-        socket.assigns.dashboard.default_timeframe || socket.assigns.database.default_timeframe,
+        socket.assigns.dashboard.default_timeframe ||
+          Source.default_timeframe(socket.assigns.source) ||
+          "24h",
       default_granularity:
         socket.assigns.dashboard.default_granularity ||
-          socket.assigns.database.default_granularity
+          Source.default_granularity(socket.assigns.source) ||
+          "1h"
     }
 
     {from, to, granularity, smart_timeframe_input, use_fixed_display} =
@@ -1599,13 +1605,13 @@ defmodule TrifleApp.DashboardLive do
     assign_segment_state(socket, segment_params)
   end
 
-  defp get_default_timeframe_params(database) do
-    config = Database.stats_config(database)
-    granularities = get_available_granularities(database)
+  defp get_default_timeframe_params(source) do
+    config = Source.stats_config(source)
+    granularities = get_available_granularities(source)
 
-    # Use database defaults if present
-    default_tf = database.default_timeframe || "24h"
-    default_gran = database.default_granularity || "1h"
+    # Use source defaults if present
+    default_tf = Source.default_timeframe(source) || "24h"
+    default_gran = Source.default_granularity(source) || "1h"
 
     case TimeframeParsing.parse_smart_timeframe(default_tf, config) do
       {:ok, from, to, smart_input, use_fixed} ->
@@ -1624,9 +1630,8 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp get_available_granularities(database) do
-    config = Database.stats_config(database)
-    config.track_granularities
+  defp get_available_granularities(source) do
+    Source.available_granularities(source)
   end
 
   defp dashboard_has_key?(socket) when is_struct(socket, Phoenix.LiveView.Socket) do
@@ -1657,7 +1662,8 @@ defmodule TrifleApp.DashboardLive do
         )
 
       # Extract values to avoid async socket warnings
-      database = socket.assigns.database
+      source = socket.assigns.source
+      database = Source.record(source)
       key = socket.assigns.resolved_key || socket.assigns.dashboard.key
       key = key || ""
       granularity = socket.assigns.granularity
@@ -1669,7 +1675,7 @@ defmodule TrifleApp.DashboardLive do
       start_async(socket, :dashboard_data_task, fn ->
         # Get transponders that match the dashboard key
         matching_transponders =
-          Organizations.list_transponders_for_database(database)
+          Source.transponders(source)
           |> Enum.filter(& &1.enabled)
           |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
           |> Enum.sort_by(& &1.order)
@@ -1689,7 +1695,7 @@ defmodule TrifleApp.DashboardLive do
         end
 
         case SeriesFetcher.fetch_series(
-               database,
+               source,
                key,
                from,
                to,
@@ -3038,11 +3044,13 @@ defmodule TrifleApp.DashboardLive do
             if new_db_id && new_db_id != "" &&
                  to_string(socket.assigns.database.id) != to_string(new_db_id) do
               new_db = Organizations.get_database_for_org!(membership.organization_id, new_db_id)
-              new_config = Database.stats_config(new_db)
-              new_grans = new_db.granularities || []
+              new_source = Source.from_database(new_db)
+              new_config = Source.stats_config(new_source)
+              new_grans = get_available_granularities(new_source)
 
               socket
               |> assign(:database, new_db)
+              |> assign(:source, new_source)
               |> assign(:database_config, new_config)
               |> assign(:available_granularities, new_grans)
             else
