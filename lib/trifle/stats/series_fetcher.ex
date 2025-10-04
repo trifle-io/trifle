@@ -241,25 +241,31 @@ defmodule Trifle.Stats.SeriesFetcher do
           end
         end)
 
-      case Task.await(task, @transponder_timeout) do
-        {:ok, result} ->
-          {:ok, result}
+      try do
+        case Task.await(task, @transponder_timeout) do
+          {:ok, result} ->
+            {:ok, result}
 
-        {:error, error} ->
-          Logger.error("Transponder application failed: #{inspect(error)}")
+          {:error, error} ->
+            Logger.error("Transponder application failed: #{inspect(error)}")
 
-          {:ok,
-           %{
-             series: Trifle.Stats.Series.new(raw_stats),
-             transponder_results: %{
-               successful: [],
-               failed: transponders,
-               errors:
-                 Enum.map(transponders, fn t ->
-                   %{transponder: t, error: %{message: "Timeout or exception: #{inspect(error)}"}}
-                 end)
-             }
-           }}
+            {:ok,
+             %{
+               series: Trifle.Stats.Series.new(raw_stats),
+               transponder_results: %{
+                 successful: [],
+                 failed: transponders,
+                 errors:
+                   Enum.map(transponders, fn t ->
+                     %{transponder: t, error: %{message: "Timeout or exception: #{inspect(error)}"}}
+                   end)
+               }
+             }}
+        end
+      after
+        if progress_callback do
+          progress_callback.({:transponder_progress, :finished})
+        end
       end
     end
   end
