@@ -144,36 +144,63 @@ Hooks.SmartTimeframeBlur = {
 
 
 Hooks.DatabaseExploreChart = {
-  createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
-    // Parse colors from the passed parameter
-    const colorArray = typeof colors === 'string' ? JSON.parse(colors) : colors;
-    
-    // Initialize ECharts instance
-    const isDarkMode = document.documentElement.classList.contains('dark');
-    const container = document.getElementById('timeline-chart');
-    
-    // Set theme based on dark mode
-    const theme = isDarkMode ? 'dark' : undefined;
-    this.chart = echarts.init(container, theme, withChartOpts({ height: 120 }));
-    
-    // Configure options based on chart type
+  _resolveTheme() {
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'default';
+  },
+
+  _normalizeColors(colors) {
+    if (Array.isArray(colors)) return colors;
+    if (typeof colors === 'string') {
+      try { return JSON.parse(colors); } catch (_) { return []; }
+    }
+    return [];
+  },
+
+  _parseJson(value, fallback) {
+    try {
+      return value ? JSON.parse(value) : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  },
+
+  _bindThemeListener() {
+    if (this._themeListenerBound) return;
+    this._themeListenerBound = true;
+    this.handleEvent('phx:theme-changed', () => this._handleThemeChanged());
+  },
+
+  _handleThemeChanged() {
+    if (!this.chart || this.chart.isDisposed()) return;
+    const themeName = this._resolveTheme();
+    if (themeName !== this._currentThemeName && typeof this.chart.setTheme === 'function') {
+      try {
+        this.chart.setTheme(themeName);
+        this._currentThemeName = themeName;
+      } catch (_) {}
+    }
+
+    this._refreshChartFromDataset();
+  },
+
+  _buildOption(data, key, chartType, colors, selectedKeyColor) {
+    const themeName = this._resolveTheme();
+    const isDarkMode = themeName === 'dark';
+    const colorArray = this._normalizeColors(colors);
+
     const isStacked = chartType === 'stacked';
-    
-    // Prepare series data
     let series;
     if (isStacked) {
-      // For stacked chart, data comes as array of series
       series = (data && data.length > 0) ? data.map((seriesData, index) => ({
         name: seriesData.name,
         type: 'bar',
         stack: 'total',
         data: seriesData.data,
         itemStyle: {
-          color: colorArray[index % colorArray.length]
+          color: colorArray.length ? colorArray[index % colorArray.length] : undefined
         }
       })) : [];
     } else {
-      // For single series
       const seriesColor = selectedKeyColor || colorArray[0];
       series = [{
         name: key || 'Data',
@@ -184,12 +211,11 @@ Hooks.DatabaseExploreChart = {
         }
       }];
     }
-    
-    // Create ECharts options with theme-aware colors
+
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
 
-    const option = {
+    return {
       backgroundColor: 'transparent',
       grid: {
         top: 10,
@@ -229,16 +255,13 @@ Hooks.DatabaseExploreChart = {
         axisLabel: {
           color: textColor,
           formatter: function(value) {
-            // Format based on the granularity
             const date = new Date(value);
             const hours = date.getHours();
             const minutes = date.getMinutes();
-            
-            // Show date when it's midnight
+
             if (hours === 0 && minutes === 0) {
               return echarts.format.formatTime('MM-dd', value, false);
             }
-            // Otherwise show time
             return echarts.format.formatTime('hh:mm', value, false);
           }
         },
@@ -264,14 +287,47 @@ Hooks.DatabaseExploreChart = {
           }
         }
       },
-      series: series,
+      series,
       animation: true,
       animationDuration: 300
     };
-    
-    // Set the option
-    this.chart.setOption(option);
-    
+  },
+
+  _applyOption(option) {
+    if (!this.chart || this.chart.isDisposed() || !option) return;
+    try {
+      this.chart.setOption(option, true);
+      this.chart.resize();
+    } catch (_) {}
+  },
+
+  _refreshChartFromDataset() {
+    if (!this.chart || this.chart.isDisposed()) return;
+    const data = this._parseJson(this.el.dataset.events, []);
+    const key = this.el.dataset.key;
+    const chartType = this.el.dataset.chartType;
+    const colors = this._parseJson(this.el.dataset.colors, []);
+    const selectedKeyColor = this.el.dataset.selectedKeyColor;
+
+    const option = this._buildOption(data, key, chartType, colors, selectedKeyColor);
+    this._applyOption(option);
+  },
+
+  createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
+    // Initialize ECharts instance
+    const themeName = this._resolveTheme();
+    const initTheme = themeName === 'dark' ? 'dark' : undefined;
+    const container = document.getElementById('timeline-chart');
+
+    // Set theme based on dark mode
+    this.chart = echarts.init(container, initTheme, withChartOpts({ height: 120 }));
+    this._currentThemeName = themeName;
+    this._bindThemeListener();
+
+    // Build and apply the base option
+    const option = this._buildOption(data, key, chartType, colors, selectedKeyColor);
+    this._applyOption(option);
+
     // Handle window resize
     this.resizeHandler = () => {
       if (this.chart && !this.chart.isDisposed()) {
@@ -281,20 +337,6 @@ Hooks.DatabaseExploreChart = {
     window.addEventListener('resize', this.resizeHandler);
     
     // Handle theme changes
-    this.handleEvent("phx:theme-changed", () => {
-      if (this.chart && !this.chart.isDisposed()) {
-        this.chart.dispose();
-        this.chart = this.createChart(
-          JSON.parse(this.el.dataset.events),
-          this.el.dataset.key,
-          this.el.dataset.timezone,
-          this.el.dataset.chartType,
-          JSON.parse(this.el.dataset.colors),
-          this.el.dataset.selectedKeyColor
-        );
-      }
-    });
-    
     return this.chart;
   },
 
@@ -330,76 +372,8 @@ Hooks.DatabaseExploreChart = {
 
     // Update existing chart with new data
     if (this.chart && !this.chart.isDisposed()) {
-      // Check current theme
-      const isDarkMode = document.documentElement.classList.contains('dark');
-      const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
-      const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
-
-      // Prepare series data
-      let series;
-      if (chartType === 'stacked') {
-        series = (data && data.length > 0) ? data.map((seriesData, index) => ({
-          name: seriesData.name,
-          type: 'bar',
-          stack: 'total',
-          data: seriesData.data,
-          itemStyle: {
-            color: colors[index % colors.length]
-          }
-        })) : [];
-      } else {
-        const seriesColor = selectedKeyColor || colors[0];
-        series = [{
-          name: key || 'Data',
-          type: 'bar',
-          data: data || [],
-          itemStyle: {
-            color: seriesColor
-          }
-        }];
-      }
-
-      // Update the chart with theme-aware colors
-      this.chart.setOption({
-        textStyle: {
-          color: textColor
-        },
-        tooltip: {
-          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-          borderColor: isDarkMode ? '#374151' : '#E5E7EB',
-          textStyle: {
-            color: isDarkMode ? '#F3F4F6' : '#1F2937'
-          },
-          appendToBody: true
-        },
-        xAxis: {
-          axisLine: {
-            lineStyle: {
-              color: axisLineColor
-            }
-          },
-          axisLabel: {
-            color: textColor
-          }
-        },
-        yAxis: {
-          axisLine: {
-            lineStyle: {
-              color: axisLineColor
-            }
-          },
-          axisLabel: {
-            color: textColor,
-            formatter: (value) => formatCompactNumber(value)
-          },
-          splitLine: {
-            lineStyle: {
-              color: axisLineColor
-            }
-          }
-        },
-        series: series
-      });
+      const option = this._buildOption(data, key, chartType, colors, selectedKeyColor);
+      this._applyOption(option);
     }
   },
 
@@ -1171,7 +1145,7 @@ Hooks.DashboardGrid = {
 
       const render = () => {
         let chart = this._sparklines[it.id];
-        const theme = isDarkMode ? 'dark' : undefined;
+        const initTheme = isDarkMode ? 'dark' : undefined;
        if (!chart) {
          if (visual.clientWidth === 0 || visual.clientHeight === 0) {
            if (this._sparkTimers && this._sparkTimers[it.id]) clearTimeout(this._sparkTimers[it.id]);
@@ -1180,7 +1154,7 @@ Hooks.DashboardGrid = {
            }
            return;
          }
-         chart = echarts.init(visual, theme, withChartOpts({ height: type === 'progress' ? 20 : 40 }));
+         chart = echarts.init(visual, initTheme, withChartOpts({ height: type === 'progress' ? 20 : 40 }));
          this._sparklines[it.id] = chart;
        }
        if (this._sparkTimers && this._sparkTimers[it.id]) delete this._sparkTimers[it.id];
@@ -1273,11 +1247,11 @@ Hooks.DashboardGrid = {
         body.appendChild(container);
       }
       let chart = this._tsCharts[it.id];
-      const theme = isDarkMode ? 'dark' : undefined;
+      const initTheme = isDarkMode ? 'dark' : undefined;
       const ensureInit = () => {
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
-          chart = echarts.init(container, theme, withChartOpts());
+          chart = echarts.init(container, initTheme, withChartOpts());
           this._tsCharts[it.id] = chart;
         }
         const type = (it.chart_type || 'line');
@@ -1375,11 +1349,11 @@ Hooks.DashboardGrid = {
         body.appendChild(container);
       }
       let chart = this._catCharts[it.id];
-      const theme = isDarkMode ? 'dark' : undefined;
+      const initTheme = isDarkMode ? 'dark' : undefined;
       const ensureInit = () => {
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
-          chart = echarts.init(container, theme, withChartOpts());
+          chart = echarts.init(container, initTheme, withChartOpts());
           this._catCharts[it.id] = chart;
         }
         const data = it.data || [];
@@ -1699,33 +1673,27 @@ Hooks.DashboardGrid = {
   _applyThemeToCharts(isDarkMode) {
     const themeIsDark = typeof isDarkMode === 'boolean' ? isDarkMode : document.documentElement.classList.contains('dark');
     this._currentThemeIsDark = themeIsDark;
+    const themeName = themeIsDark ? 'dark' : 'default';
 
     const kpiVisuals = Array.isArray(this._lastKpiVisuals) ? this._deepClone(this._lastKpiVisuals) : null;
     const timeseries = Array.isArray(this._lastTimeseries) ? this._deepClone(this._lastTimeseries) : null;
     const categories = Array.isArray(this._lastCategory) ? this._deepClone(this._lastCategory) : null;
     const textWidgets = Array.isArray(this._lastText) ? this._deepClone(this._lastText) : null;
 
-    const disposeMap = (map) => {
+    const updateTheme = (map) => {
       if (!map) return;
-      Object.keys(map).forEach((key) => {
-        const chart = map[key];
+      Object.values(map).forEach((chart) => {
         try {
-          if (chart && typeof chart.dispose === 'function' && !chart.isDisposed()) {
-            chart.dispose();
+          if (chart && typeof chart.setTheme === 'function' && !chart.isDisposed()) {
+            chart.setTheme(themeName);
           }
         } catch (_) {}
-        delete map[key];
       });
     };
 
-    disposeMap(this._sparklines);
-    disposeMap(this._tsCharts);
-    disposeMap(this._catCharts);
-
-    this._sparklines = {};
-    this._tsCharts = {};
-    this._catCharts = {};
-    this._sparkTypes = {};
+    updateTheme(this._sparklines);
+    updateTheme(this._tsCharts);
+    updateTheme(this._catCharts);
 
     if (this._sparkTimers) {
       Object.keys(this._sparkTimers).forEach((key) => {

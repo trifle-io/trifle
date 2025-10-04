@@ -3478,36 +3478,50 @@ defmodule TrifleApp.DashboardLive do
                   <% else %>
                     <% groups = segment["groups"] || [] %>
                     <% has_items = Enum.any?(groups, fn group -> (group["items"] || []) != [] end) %>
-                    <select
-                      name={"segments[#{segment_name}]"}
-                      class="w-56 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
-                    >
-                      <%= for group <- groups do %>
-                        <% group_label = group["label"] %>
-                        <%= if group_label && group_label != "" do %>
-                          <optgroup label={group_label}>
+                    <div class="grid grid-cols-1">
+                      <select
+                        name={"segments[#{segment_name}]"}
+                        class="col-start-1 row-start-1 w-56 appearance-none rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-1.5 pr-8 pl-3"
+                      >
+                        <%= for group <- groups do %>
+                          <% group_label = group["label"] %>
+                          <%= if group_label && group_label != "" do %>
+                            <optgroup label={group_label}>
+                              <%= for item <- group["items"] || [] do %>
+                                <% option_value = item["value"] || "" %>
+                                <option value={option_value} selected={option_value == current_value}>
+                                  {item["label"] || option_value}
+                                </option>
+                              <% end %>
+                            </optgroup>
+                          <% else %>
                             <%= for item <- group["items"] || [] do %>
                               <% option_value = item["value"] || "" %>
                               <option value={option_value} selected={option_value == current_value}>
                                 {item["label"] || option_value}
                               </option>
                             <% end %>
-                          </optgroup>
-                        <% else %>
-                          <%= for item <- group["items"] || [] do %>
-                            <% option_value = item["value"] || "" %>
-                            <option value={option_value} selected={option_value == current_value}>
-                              {item["label"] || option_value}
-                            </option>
                           <% end %>
                         <% end %>
-                      <% end %>
-                      <%= if !has_items do %>
-                        <option value="" selected={current_value in [nil, ""]} disabled>
-                          No options configured
-                        </option>
-                      <% end %>
-                    </select>
+                        <%= if !has_items do %>
+                          <option value="" selected={current_value in [nil, ""]} disabled>
+                            No options configured
+                          </option>
+                        <% end %>
+                      </select>
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        aria-hidden="true"
+                        class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                      >
+                        <path
+                          d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                          clip-rule="evenodd"
+                          fill-rule="evenodd"
+                        />
+                      </svg>
+                    </div>
                   <% end %>
                 </label>
               <% end %>
@@ -3750,17 +3764,31 @@ defmodule TrifleApp.DashboardLive do
                                 <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                                   Segment Type
                                 </label>
-                                <select
-                                  name={"segments[#{segment_id}][type]"}
-                                  class="block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
-                                >
-                                  <option value="select" selected={segment_type != "text"}>
-                                    Dropdown
-                                  </option>
-                                  <option value="text" selected={segment_type == "text"}>
-                                    Text input
-                                  </option>
-                                </select>
+                                <div class="grid grid-cols-1">
+                                  <select
+                                    name={"segments[#{segment_id}][type]"}
+                                    class="col-start-1 row-start-1 block w-full appearance-none rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-1.5 pr-8 pl-3"
+                                  >
+                                    <option value="select" selected={segment_type != "text"}>
+                                      Dropdown
+                                    </option>
+                                    <option value="text" selected={segment_type == "text"}>
+                                      Text input
+                                    </option>
+                                  </select>
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                    class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                                  >
+                                    <path
+                                      d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                      clip-rule="evenodd"
+                                      fill-rule="evenodd"
+                                    />
+                                  </svg>
+                                </div>
                               </div>
                             </div>
                             <button
