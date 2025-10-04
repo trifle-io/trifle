@@ -2,6 +2,7 @@ defmodule TrifleApp.DashboardLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
+  alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Stats.SeriesFetcher
   alias Trifle.Stats.Source
   alias Phoenix.HTML
@@ -37,7 +38,7 @@ defmodule TrifleApp.DashboardLive do
     dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
     database = dashboard.database
 
-    socket = initialize_dashboard_state(socket, database, dashboard, false, nil)
+    socket = initialize_dashboard_state(socket, database, dashboard, membership, false, nil)
 
     groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
 
@@ -74,7 +75,8 @@ defmodule TrifleApp.DashboardLive do
       case Organizations.get_dashboard_by_token(dashboard_id, token) do
         {:ok, dashboard} ->
           # Initialize dashboard data state for public access
-          socket = initialize_dashboard_state(socket, dashboard.database, dashboard, true, token)
+          socket =
+            initialize_dashboard_state(socket, dashboard.database, dashboard, nil, true, token)
 
           socket = apply_url_params(socket, params)
 
@@ -1471,34 +1473,50 @@ defmodule TrifleApp.DashboardLive do
 
   # Filter bar message handling
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
-    # Update socket with filter changes from FilterBar component
-    socket =
-      Enum.reduce(changes, socket, fn {key, value}, acc ->
-        case key do
-          :from -> assign(acc, :from, value)
-          :to -> assign(acc, :to, value)
-          :granularity -> assign(acc, :granularity, value)
-          :smart_timeframe_input -> assign(acc, :smart_timeframe_input, value)
-          :use_fixed_display -> assign(acc, :use_fixed_display, value)
-          # Just trigger reload
-          :reload -> acc
-          _ -> acc
-        end
+    updated_socket =
+      Enum.reduce(changes, socket, fn
+        {:source, _value}, acc -> acc
+        {:database_id, _value}, acc -> acc
+        {:reload, _}, acc -> acc
+        {:from, value}, acc -> assign(acc, :from, value)
+        {:to, value}, acc -> assign(acc, :to, value)
+        {:granularity, value}, acc -> assign(acc, :granularity, value)
+        {:smart_timeframe_input, value}, acc -> assign(acc, :smart_timeframe_input, value)
+        {:use_fixed_display, value}, acc -> assign(acc, :use_fixed_display, value)
+        {_, _}, acc -> acc
       end)
 
-    # Update URL with new parameters
-    params = build_url_params(socket)
-    socket = push_patch(socket, to: build_dashboard_url(socket, params))
+    updated_socket =
+      case determine_dashboard_source(changes, socket.assigns.sources) do
+        nil ->
+          updated_socket
 
-    # Reload dashboard data
-    socket =
-      if dashboard_has_key?(socket) do
-        load_dashboard_data(socket)
-      else
-        socket
+        new_source ->
+          {from, to, granularity, smart_timeframe_input, use_fixed_display} =
+            get_default_timeframe_params(new_source)
+
+          updated_socket
+          |> apply_dashboard_source_change(new_source)
+          |> assign(:from, from)
+          |> assign(:to, to)
+          |> assign(:granularity, granularity)
+          |> assign(:smart_timeframe_input, smart_timeframe_input)
+          |> assign(:use_fixed_display, use_fixed_display)
       end
 
-    {:noreply, socket}
+    url_params = build_url_params(updated_socket)
+
+    updated_socket =
+      push_patch(updated_socket, to: build_dashboard_url(updated_socket, url_params))
+
+    updated_socket =
+      if dashboard_has_key?(updated_socket) do
+        load_dashboard_data(updated_socket)
+      else
+        updated_socket
+      end
+
+    {:noreply, updated_socket}
   end
 
   # Progress message handling
@@ -1512,34 +1530,40 @@ defmodule TrifleApp.DashboardLive do
 
   # Dashboard Data Management
 
-  defp initialize_dashboard_state(socket, database, dashboard, is_public_access, public_token) do
+  defp initialize_dashboard_state(
+         socket,
+         database,
+         dashboard,
+         membership,
+         is_public_access,
+         public_token
+       ) do
     source = Source.from_database(database)
-    # Parse timeframe from URL or use default
+
+    sources =
+      case membership do
+        %OrganizationMembership{} = member -> Source.list_for_membership(member)
+        _ -> []
+      end
+
+    sources = ensure_source_in_list(sources, source)
+    selected_source_ref = component_source_ref(source)
+
     {from, to, granularity, smart_timeframe_input, use_fixed_display} =
       get_default_timeframe_params(source)
 
-    # Cache config to avoid recalculation on every render
     database_config = Source.stats_config(source)
     available_granularities = get_available_granularities(source)
 
-    # Load transponders to identify response paths and their names
-    transponders = Source.transponders(source)
-
-    transponder_info =
-      transponders
-      |> Enum.map(fn transponder ->
-        response_path = Map.get(transponder.config, "response_path", "")
-        transponder_name = transponder.name || transponder.key
-        if response_path != "", do: {response_path, transponder_name}, else: nil
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.into(%{})
-
-    transponder_response_paths = Map.keys(transponder_info)
+    {transponder_info, transponder_response_paths} =
+      Source.transponders(source)
+      |> build_transponder_info()
 
     socket
     |> assign(:database, database)
     |> assign(:source, source)
+    |> assign(:sources, sources)
+    |> assign(:selected_source_ref, selected_source_ref)
     |> assign_dashboard(dashboard)
     |> assign(:is_public_access, is_public_access)
     |> assign(:public_token, public_token)
@@ -2573,6 +2597,9 @@ defmodule TrifleApp.DashboardLive do
         |> Enum.reject(fn {_key, value} -> is_nil(value) end)
         |> Enum.into(%{})
 
+    params =
+      Map.merge(params, source_params_map(Map.get(data, :source) || Map.get(data, "source")))
+
     if segment_values == %{} do
       params
     else
@@ -3459,6 +3486,8 @@ defmodule TrifleApp.DashboardLive do
             show_controls={!@print_mode}
             show_timeframe_dropdown={false}
             show_granularity_dropdown={false}
+            sources={@sources || []}
+            selected_source={@selected_source_ref}
             force_granularity_dropdown={@print_mode}
           />
         <% end %>
@@ -5194,4 +5223,128 @@ defmodule TrifleApp.DashboardLive do
      |> assign(from: new_from, to: new_to, loading: true, smart_timeframe_input: "c")
      |> push_patch(to: build_dashboard_url(socket, params))}
   end
+
+  defp determine_dashboard_source(changes, sources) do
+    cond do
+      Map.has_key?(changes, :source) ->
+        source_from_change(changes.source, sources)
+
+      Map.has_key?(changes, :database_id) ->
+        Source.find_in_list(sources, :database, changes.database_id)
+
+      true ->
+        nil
+    end
+  end
+
+  defp source_from_change(%{type: type, id: id}, sources) do
+    type_atom = parse_source_type(type)
+    Source.find_in_list(sources, type_atom, id)
+  end
+
+  defp source_from_change(%{"type" => type, "id" => id}, sources) do
+    type_atom = parse_source_type(type)
+    Source.find_in_list(sources, type_atom, id)
+  end
+
+  defp source_from_change(_other, _sources), do: nil
+
+  defp parse_source_type(nil), do: nil
+  defp parse_source_type(type) when is_atom(type), do: type
+
+  defp parse_source_type(type) when is_binary(type) do
+    case String.trim(type) do
+      "" -> nil
+      "database" -> :database
+      "project" -> :project
+      other -> String.to_atom(other)
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp apply_dashboard_source_change(socket, source) do
+    {transponder_info, transponder_response_paths} =
+      build_transponder_info(Source.transponders(source))
+
+    database_config = Source.stats_config(source)
+    available_granularities = get_available_granularities(source)
+
+    socket
+    |> assign(:source, source)
+    |> assign(:sources, ensure_source_in_list(socket.assigns[:sources] || [], source))
+    |> assign(:selected_source_ref, component_source_ref(source))
+    |> assign(:database, database_from_source(source))
+    |> assign(:database_config, database_config)
+    |> assign(:available_granularities, available_granularities)
+    |> assign(:transponder_info, transponder_info)
+    |> assign(:transponder_response_paths, transponder_response_paths)
+  end
+
+  defp build_transponder_info(transponders) do
+    info =
+      transponders
+      |> Enum.map(fn transponder ->
+        response_path = Map.get(transponder.config, "response_path", "")
+        transponder_name = transponder.name || transponder.key
+        if response_path != "", do: {response_path, transponder_name}, else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.into(%{})
+
+    {info, Map.keys(info)}
+  end
+
+  defp database_from_source(source) do
+    case Source.type(source) do
+      :database -> Source.record(source)
+      _ -> nil
+    end
+  end
+
+  defp source_params_map(nil), do: %{}
+
+  defp source_params_map(source) do
+    base = %{
+      "source_type" => Atom.to_string(Source.type(source)),
+      "source_id" => to_string(Source.id(source))
+    }
+
+    if Source.type(source) == :database do
+      Map.put(base, "database_id", to_string(Source.id(source)))
+    else
+      base
+    end
+  end
+
+  defp ensure_source_in_list(sources, source) do
+    cond do
+      is_nil(source) ->
+        sources
+
+      Enum.any?(sources, &source_same?(&1, source)) ->
+        sources
+
+      true ->
+        (sources ++ [source])
+        |> Enum.reject(&is_nil/1)
+        |> Enum.sort_by(fn s ->
+          {source_sort_key(Source.type(s)), String.downcase(Source.display_name(s))}
+        end)
+    end
+  end
+
+  defp component_source_ref(nil), do: nil
+
+  defp component_source_ref(source) do
+    %{type: Source.type(source), id: to_string(Source.id(source))}
+  end
+
+  defp source_same?(a, b) do
+    Source.type(a) == Source.type(b) && to_string(Source.id(a)) == to_string(Source.id(b))
+  end
+
+  defp source_sort_key(:database), do: 0
+  defp source_sort_key(:project), do: 1
+  defp source_sort_key(_other), do: 2
 end

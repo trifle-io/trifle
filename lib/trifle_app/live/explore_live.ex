@@ -13,116 +13,18 @@ defmodule TrifleApp.ExploreLive do
   end
 
   def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do
-    # Determine selected database from params or default to first available
-    databases = Organizations.list_databases_for_org(membership.organization_id)
+    sources = Source.list_for_membership(membership)
 
-    selected_db_id =
-      cond do
-        Map.has_key?(params, "database_id") and params["database_id"] != nil and
-            params["database_id"] != "" ->
-          params["database_id"]
+    socket =
+      socket
+      |> assign(:sources, sources)
 
-        databases != [] ->
-          hd(databases).id
+    case select_source_from_params(params, sources) do
+      nil ->
+        {:ok, assign_no_source(socket)}
 
-        true ->
-          nil
-      end
-
-    socket = assign(socket, databases: databases)
-
-    if is_nil(selected_db_id) do
-      # No databases available: show guidance message
-      {:ok,
-       socket
-       |> assign(page_title: "Explore")
-       |> assign(no_database: true)
-       |> assign(database: nil)
-       |> assign(source: nil)
-       |> assign(database_config: nil)
-       |> assign(available_granularities: [])
-       |> assign(transponder_response_paths: [])
-       |> assign(transponder_info: %{})
-       |> assign(stats: nil)
-       |> assign(timeline: "[]")
-       |> assign(chart_type: "stacked")
-       |> assign(keys: %{})
-       |> assign(selected_key_color: nil)
-       |> assign(smart_timeframe_input: nil)
-       |> assign(key_search_filter: "")
-       |> assign(loading: false)
-       |> assign(loading_chunks: false)
-       |> assign(loading_progress: nil)
-       |> assign(transponding: false)
-       |> assign(show_timeframe_dropdown: false)
-       |> assign(show_sensitivity_dropdown: false)
-       |> assign(show_granularity_dropdown: false)
-       |> assign(transponder_errors: [])
-       |> assign(show_error_modal: false)
-       |> assign(transponder_results: [])
-       |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
-       |> assign(load_start_time: nil)
-       |> assign(load_duration_microseconds: nil)
-       |> assign(show_export_dropdown: false)}
-    else
-      database = Organizations.get_database_for_org!(membership.organization_id, selected_db_id)
-      source = Source.from_database(database)
-
-      # Load transponders to identify response paths and their names
-      transponders = Source.transponders(source)
-
-      transponder_info =
-        transponders
-        |> Enum.map(fn transponder ->
-          response_path = Map.get(transponder.config, "response_path", "")
-          transponder_name = transponder.name || transponder.key
-          if response_path != "", do: {response_path, transponder_name}, else: nil
-        end)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.into(%{})
-
-      transponder_response_paths = Map.keys(transponder_info)
-
-      # Cache config to avoid recalculation on every render
-      database_config = Source.stats_config(source)
-      available_granularities = get_available_granularities(source)
-
-      socket =
-        socket
-        |> assign(page_title: "Explore · #{Source.display_name(source)}")
-        |> assign(database: database)
-        |> assign(source: source)
-        |> assign(no_database: false)
-        |> assign(database_config: database_config)
-        |> assign(available_granularities: available_granularities)
-        |> assign(transponder_response_paths: transponder_response_paths)
-        |> assign(transponder_info: transponder_info)
-        |> assign(stats: nil)
-        |> assign(timeline: "[]")
-        |> assign(chart_type: "stacked")
-        |> assign(keys: %{})
-        |> assign(selected_key_color: nil)
-        |> assign(smart_timeframe_input: nil)
-        |> assign(key_search_filter: "")
-        |> assign(loading: false)
-        |> assign(loading_chunks: false)
-        |> assign(loading_progress: nil)
-        |> assign(transponding: false)
-        |> assign(show_timeframe_dropdown: false)
-        |> assign(show_sensitivity_dropdown: false)
-        |> assign(show_granularity_dropdown: false)
-        |> assign(transponder_errors: [])
-        |> assign(show_error_modal: false)
-        |> assign(transponder_results: [])
-        |> assign(key_transponder_results: %{successful: [], failed: [], errors: []})
-        |> assign(load_start_time: nil)
-        |> assign(load_duration_microseconds: nil)
-        |> assign(show_export_dropdown: false)
-        |> assign(:breadcrumb_links, [
-          {"Explore", ~p"/explore?#{[database_id: Source.id(source)]}"}
-        ])
-
-      {:ok, socket}
+      source ->
+        {:ok, assign_source_state(socket, source)}
     end
   end
 
@@ -396,10 +298,12 @@ defmodule TrifleApp.ExploreLive do
           socket
           |> assign(granularity: granularity, from: from, to: to)
           |> assign(smart_timeframe_input: nil)
-          |> push_patch(
-            to:
-              ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
-          )
+          |> push_source_patch(%{
+            granularity: granularity,
+            from: format_for_datetime_input(from),
+            to: format_for_datetime_input(to),
+            key: socket.assigns.key
+          })
 
         {:noreply, socket}
 
@@ -447,10 +351,13 @@ defmodule TrifleApp.ExploreLive do
           |> push_event("update_smart_timeframe_input", %{
             value: format_smart_timeframe_display(preset, config)
           })
-          |> push_patch(
-            to:
-              ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
-          )
+          |> push_source_patch(%{
+            granularity: granularity,
+            from: format_for_datetime_input(from),
+            to: format_for_datetime_input(to),
+            key: socket.assigns[:key] || "",
+            timeframe: preset
+          })
 
         {:noreply, socket}
 
@@ -478,10 +385,13 @@ defmodule TrifleApp.ExploreLive do
           |> push_event("update_smart_timeframe_input", %{
             value: format_timeframe_display(from, to)
           })
-          |> push_patch(
-            to:
-              ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
-          )
+          |> push_source_patch(%{
+            granularity: granularity,
+            from: format_for_datetime_input(from),
+            to: format_for_datetime_input(to),
+            key: socket.assigns[:key] || "",
+            timeframe: detected_shorthand
+          })
 
         {:noreply, socket}
 
@@ -507,10 +417,13 @@ defmodule TrifleApp.ExploreLive do
               |> push_event("update_smart_timeframe_input", %{
                 value: format_smart_timeframe_display(short_input, config)
               })
-              |> push_patch(
-                to:
-                  ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
-              )
+              |> push_source_patch(%{
+                granularity: granularity,
+                from: format_for_datetime_input(from),
+                to: format_for_datetime_input(to),
+                key: socket.assigns[:key] || "",
+                timeframe: short_input
+              })
 
             {:noreply, socket}
 
@@ -534,10 +447,13 @@ defmodule TrifleApp.ExploreLive do
       |> assign(granularity: granularity)
       |> assign(loading: true)
       |> assign(show_granularity_dropdown: false)
-      |> push_patch(
-        to:
-          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
-      )
+      |> push_source_patch(%{
+        granularity: granularity,
+        from: format_for_datetime_input(socket.assigns.from),
+        to: format_for_datetime_input(socket.assigns.to),
+        key: socket.assigns[:key] || "",
+        timeframe: socket.assigns[:smart_timeframe_input]
+      })
 
     {:noreply, socket}
   end
@@ -546,10 +462,13 @@ defmodule TrifleApp.ExploreLive do
     socket =
       socket
       |> assign(loading: true)
-      |> push_patch(
-        to:
-          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
-      )
+      |> push_source_patch(%{
+        granularity: socket.assigns.granularity,
+        from: format_for_datetime_input(socket.assigns.from),
+        to: format_for_datetime_input(socket.assigns.to),
+        key: key,
+        timeframe: socket.assigns[:smart_timeframe_input]
+      })
 
     {:noreply, socket}
   end
@@ -558,10 +477,12 @@ defmodule TrifleApp.ExploreLive do
     socket =
       socket
       |> assign(loading: true)
-      |> push_patch(
-        to:
-          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
-      )
+      |> push_source_patch(%{
+        granularity: socket.assigns.granularity,
+        from: format_for_datetime_input(socket.assigns.from),
+        to: format_for_datetime_input(socket.assigns.to),
+        timeframe: socket.assigns[:smart_timeframe_input]
+      })
 
     {:noreply, socket}
   end
@@ -629,10 +550,13 @@ defmodule TrifleApp.ExploreLive do
       |> push_event("update_smart_timeframe_input", %{
         value: format_timeframe_display(new_from, new_to)
       })
-      |> push_patch(
-        to:
-          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
-      )
+      |> push_source_patch(%{
+        granularity: granularity,
+        from: format_for_datetime_input(new_from),
+        to: format_for_datetime_input(new_to),
+        key: socket.assigns[:key] || "",
+        timeframe: "c"
+      })
 
     {:noreply, socket}
   end
@@ -642,25 +566,25 @@ defmodule TrifleApp.ExploreLive do
 
     params =
       if socket.assigns.use_fixed_display do
-        [
+        %{
           granularity: granularity,
           from: format_for_datetime_input(socket.assigns.from),
           to: format_for_datetime_input(socket.assigns.to),
           key: socket.assigns[:key] || "",
           timeframe: socket.assigns[:smart_timeframe_input]
-        ]
+        }
       else
-        [
+        %{
           granularity: granularity,
           key: socket.assigns[:key] || "",
           timeframe: socket.assigns[:smart_timeframe_input]
-        ]
+        }
       end
 
     {:noreply,
      socket
      |> assign(loading: true)
-     |> push_patch(to: ~p"/explore?#{[database_id: Source.id(socket.assigns.source)] ++ params}")}
+     |> push_source_patch(params)}
   end
 
   def determine_granularity_for_timeframe(from, to) do
@@ -802,175 +726,113 @@ defmodule TrifleApp.ExploreLive do
   end
 
   def handle_params(params, _session, socket) do
-    # If no database is available, skip further processing
-    if is_nil(socket.assigns[:source]) do
-      {:noreply, socket}
-    else
-      require Logger
-      Logger.info("ExploreLive.handle_params called with: #{inspect(params)}")
-
-      # If database_id param changed, update database assigns first
-      socket =
-        case params["database_id"] do
-          nil ->
-            socket
-
-          db_id ->
-            current_source = socket.assigns[:source]
-
-            if current_source && to_string(Source.id(current_source)) == to_string(db_id) do
-              socket
-            else
-              membership = socket.assigns.current_membership
-              database = Organizations.get_database_for_org!(membership.organization_id, db_id)
-              source = Source.from_database(database)
-              database_config = Source.stats_config(source)
-              available_granularities = get_available_granularities(source)
-
-              socket
-              |> assign(database: database)
-              |> assign(source: source)
-              |> assign(database_config: database_config)
-              |> assign(available_granularities: available_granularities)
-            end
-        end
-
-      source = socket.assigns.source
-      source_default_tf = Source.default_timeframe(source) || "24h"
-      db_default_gran = Source.default_granularity(source) || "1h"
-      granularity = params["granularity"] || db_default_gran || "1h"
-      config = Source.stats_config(source)
-
-      # Determine from and to times based on URL parameters
-      {from, to, smart_input, use_fixed_display} =
-        cond do
-          # If we have explicit from/to parameters, use them (they take precedence)
-          params["from"] && params["from"] != "" && params["to"] && params["to"] != "" ->
-            case {TimeframeParsing.parse_date(params["from"], config.time_zone),
-                  TimeframeParsing.parse_date(params["to"], config.time_zone)} do
-              {{:ok, from}, {:ok, to}} ->
-                # When explicit from/to are provided, prioritize the timeframe parameter from URL
-                # Only fall back to determining smart input if no timeframe parameter exists
-                smart_input =
-                  if params["timeframe"] && params["timeframe"] != "" do
-                    params["timeframe"]
-                  else
-                    determine_smart_input_for_range(from, to, config.time_zone)
-                  end
-
-                # Use fixed display when we have both explicit from/to AND timeframe (indicates page reload)
-                use_fixed_display = params["timeframe"] && params["timeframe"] != ""
-                {from, to, smart_input, use_fixed_display}
-
-              _ ->
-                # If parsing fails, fall back to timeframe or defaults
-                cond do
-                  params["timeframe"] && params["timeframe"] != "" ->
-                    case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
-                      {:ok, from, to, smart_input, use_fixed} ->
-                        {from, to, smart_input, use_fixed}
-
-                      {:error, _} ->
-                        case TimeframeParsing.parse_smart_timeframe(source_default_tf, config) do
-                          {:ok, f, t, si, uf} ->
-                            {f, t, si, uf}
-
-                          {:error, _} ->
-                            default_to = DateTime.utc_now()
-                            default_from = DateTime.shift(default_to, hour: -24)
-                            {default_from, default_to, "24h", false}
-                        end
-                    end
-
-                  true ->
-                    case TimeframeParsing.parse_smart_timeframe(source_default_tf, config) do
-                      {:ok, f, t, si, uf} ->
-                        {f, t, si, uf}
-
-                      {:error, _} ->
-                        default_to = DateTime.utc_now()
-                        default_from = DateTime.shift(default_to, hour: -24)
-                        {default_from, default_to, "24h", false}
-                    end
-                end
-            end
-
-          # If we have a timeframe parameter but no explicit from/to, calculate from timeframe
-          params["timeframe"] && params["timeframe"] != "" ->
-            case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
-              {:ok, from, to, smart_input, use_fixed} ->
-                {from, to, smart_input, use_fixed}
-
-              {:error, _} ->
-                # Fallback to defaults if timeframe parsing fails
-                default_to = DateTime.utc_now()
-                default_from = DateTime.shift(default_to, hour: -24)
-                {default_from, default_to, "24h", false}
-            end
-
-          # Default case: use 24-hour range from now
-          true ->
-            case TimeframeParsing.parse_smart_timeframe(source_default_tf, config) do
-              {:ok, from, to, smart_input, use_fixed} ->
-                {from, to, smart_input, use_fixed}
-
-              {:error, _} ->
-                default_to = DateTime.utc_now()
-                default_from = DateTime.shift(default_to, hour: -24)
-                {default_from, default_to, "24h", false}
-            end
-        end
-
-      # Preserve the current key search filter if it exists, otherwise use empty string
-      current_key_filter = socket.assigns[:key_search_filter] || ""
-
-      socket =
-        socket
-        |> assign(granularity: granularity, from: from, to: to)
-        |> assign(key: params["key"])
-        |> assign(form: to_form(%{}))
-        |> assign(smart_timeframe_input: smart_input)
-        |> assign(use_fixed_display: use_fixed_display)
-        |> assign(key_search_filter: current_key_filter)
-        |> assign(show_timeframe_dropdown: false)
-        |> assign(show_sensitivity_dropdown: false)
-        |> assign(show_granularity_dropdown: false)
-
-      # Check if this is a fresh page load without timeframe parameters
-      # If so, update URL to include default parameters for consistency
-      should_update_url =
-        is_nil(params["timeframe"]) and is_nil(params["from"]) and is_nil(params["to"])
-
-      if should_update_url do
-        # Push default parameters to URL to maintain consistency between URL and UI state
-        url_params = %{
-          timeframe: smart_input,
-          granularity: granularity
-        }
-
-        # Only add key parameter if it exists
-        url_params =
-          if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
-
-        socket =
-          push_patch(socket,
-            to:
-              ~p"/explore?#{Map.put(url_params, :database_id, Source.id(socket.assigns.source))}"
-          )
-
+    cond do
+      is_nil(socket.assigns[:source]) ->
         {:noreply, socket}
-      else
-        # Check if we need to keep the current loading state (when coming from event handlers)
-        # or load data immediately (when first loading the page or refreshing)
-        if socket.assigns[:loading] do
-          # Loading state already set by event handler, trigger async data load
-          send(self(), :load_data)
+
+      true ->
+        socket =
+          case source_from_params(params, socket.assigns.sources) do
+            nil ->
+              socket
+
+            new_source ->
+              if sources_equal?(new_source, socket.assigns.source) do
+                socket
+              else
+                apply_source_change(socket, new_source)
+              end
+          end
+
+        source = socket.assigns.source
+
+        if is_nil(source) do
           {:noreply, socket}
         else
-          # First page load or refresh - load data immediately without loading indicator
-          load_data_and_update_socket(socket)
+          config = Source.stats_config(source)
+          source_default_tf = Source.default_timeframe(source) || "24h"
+          default_granularity = Source.default_granularity(source) || "1h"
+          available_granularities = Source.available_granularities(source) || []
+
+          granularity =
+            ensure_granularity(
+              params["granularity"] || default_granularity || "1h",
+              available_granularities
+            )
+
+          {from, to, smart_input, use_fixed_display} =
+            cond do
+              params["from"] && params["from"] != "" && params["to"] && params["to"] != "" ->
+                case {TimeframeParsing.parse_date(params["from"], config.time_zone),
+                      TimeframeParsing.parse_date(params["to"], config.time_zone)} do
+                  {{:ok, from}, {:ok, to}} ->
+                    smart_input =
+                      if params["timeframe"] && params["timeframe"] != "" do
+                        params["timeframe"]
+                      else
+                        determine_smart_input_for_range(from, to, config.time_zone)
+                      end
+
+                    use_fixed_display = params["timeframe"] && params["timeframe"] != ""
+                    {from, to, smart_input, !!use_fixed_display}
+
+                  _ ->
+                    cond do
+                      params["timeframe"] && params["timeframe"] != "" ->
+                        case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
+                          {:ok, f, t, si, uf} -> {f, t, si, uf}
+                          {:error, _} -> fallback_timeframe(config, source_default_tf)
+                        end
+
+                      true ->
+                        fallback_timeframe(config, source_default_tf)
+                    end
+                end
+
+              params["timeframe"] && params["timeframe"] != "" ->
+                case TimeframeParsing.parse_smart_timeframe(params["timeframe"], config) do
+                  {:ok, f, t, si, uf} -> {f, t, si, uf}
+                  {:error, _} -> fallback_timeframe(config, source_default_tf)
+                end
+
+              true ->
+                fallback_timeframe(config, source_default_tf)
+            end
+
+          current_key_filter = socket.assigns[:key_search_filter] || ""
+
+          socket =
+            socket
+            |> assign(granularity: granularity, from: from, to: to)
+            |> assign(key: params["key"])
+            |> assign(form: to_form(%{}))
+            |> assign(smart_timeframe_input: smart_input)
+            |> assign(use_fixed_display: use_fixed_display)
+            |> assign(key_search_filter: current_key_filter)
+            |> assign(show_timeframe_dropdown: false)
+            |> assign(show_sensitivity_dropdown: false)
+            |> assign(show_granularity_dropdown: false)
+
+          should_update_url =
+            is_nil(params["timeframe"]) && is_nil(params["from"]) && is_nil(params["to"])
+
+          if should_update_url do
+            url_params = %{timeframe: smart_input, granularity: granularity}
+
+            url_params =
+              if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
+
+            socket = push_source_patch(socket, url_params)
+            {:noreply, socket}
+          else
+            if socket.assigns[:loading] do
+              send(self(), :load_data)
+              {:noreply, socket}
+            else
+              load_data_and_update_socket(socket)
+            end
+          end
         end
-      end
     end
   end
 
@@ -1002,95 +864,71 @@ defmodule TrifleApp.ExploreLive do
     require Logger
     Logger.info("ExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
 
-    # Handle filter changes from the FilterBar component
     updated_socket =
-      Enum.reduce(changes, socket, fn {key, value}, acc ->
-        assign(acc, key, value)
+      Enum.reduce(changes, socket, fn
+        {:source, _value}, acc -> acc
+        {:database_id, _value}, acc -> acc
+        {key, value}, acc -> assign(acc, key, value)
       end)
 
-    # If database was changed, update dependent assigns (database record, config, granularities, timeframe)
     updated_socket =
-      if Map.has_key?(changes, :database_id) do
-        db_id = changes.database_id
-        membership = socket.assigns.current_membership
-        database = Organizations.get_database_for_org!(membership.organization_id, db_id)
-        source = Source.from_database(database)
-        database_config = Source.stats_config(source)
-        available_granularities = get_available_granularities(source)
+      case determine_new_source(changes, socket.assigns.sources) do
+        nil ->
+          updated_socket
 
-        {from, to, smart_input, use_fixed} =
-          if updated_socket.assigns[:use_fixed_display] do
-            {updated_socket.assigns[:from], updated_socket.assigns[:to],
-             updated_socket.assigns[:smart_timeframe_input], true}
-          else
-            tf =
-              updated_socket.assigns[:smart_timeframe_input] ||
-                (Source.default_timeframe(source) || "24h")
-
-            case TimeframeParsing.parse_smart_timeframe(tf, database_config) do
-              {:ok, f, t, si, uf} ->
-                {f, t, si, uf}
-
-              {:error, _} ->
-                {updated_socket.assigns[:from], updated_socket.assigns[:to],
-                 updated_socket.assigns[:smart_timeframe_input],
-                 updated_socket.assigns[:use_fixed_display]}
-            end
-          end
-
-        updated_socket
-        |> assign(database: database)
-        |> assign(source: source)
-        |> assign(database_config: database_config)
-        |> assign(available_granularities: available_granularities)
-        |> assign(from: from, to: to)
-        |> assign(smart_timeframe_input: smart_input)
-        |> assign(use_fixed_display: use_fixed)
-      else
-        updated_socket
+        new_source ->
+          updated_socket
+          |> apply_source_change(new_source)
+          |> recalculate_timeframe_for_source(new_source)
       end
 
-    # Update URL with new parameters if needed
-    if Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or
-         Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) or
-         Map.has_key?(changes, :database_id) do
-      base_params = %{
-        timeframe: updated_socket.assigns.smart_timeframe_input,
-        granularity: updated_socket.assigns.granularity
-      }
-
-      url_params =
-        if updated_socket.assigns.use_fixed_display do
-          Map.merge(base_params, %{
-            from:
-              if(updated_socket.assigns.from,
-                do: DateTime.to_iso8601(updated_socket.assigns.from),
-                else: nil
-              ),
-            to:
-              if(updated_socket.assigns.to,
-                do: DateTime.to_iso8601(updated_socket.assigns.to),
-                else: nil
-              )
-          })
-        else
-          base_params
-        end
-
-      # Add key parameter if it exists
-      url_params =
-        if updated_socket.assigns.key,
-          do: Map.put(url_params, :key, updated_socket.assigns.key),
-          else: url_params
-
-      # Just update URL - let handle_params handle the data loading to avoid double loading
-      {:noreply,
-       push_patch(updated_socket,
-         to:
-           ~p"/explore?#{Map.put(url_params, :database_id, Source.id(updated_socket.assigns.source))}"
-       )}
-    else
+    if is_nil(updated_socket.assigns[:source]) do
       {:noreply, updated_socket}
+    else
+      needs_url_update? =
+        Map.has_key?(changes, :from) or Map.has_key?(changes, :to) or
+          Map.has_key?(changes, :granularity) or Map.has_key?(changes, :use_fixed_display) or
+          Map.has_key?(changes, :source) or Map.has_key?(changes, :database_id)
+
+      if needs_url_update? do
+        base_params = %{
+          timeframe: updated_socket.assigns.smart_timeframe_input,
+          granularity: updated_socket.assigns.granularity
+        }
+
+        url_params =
+          if updated_socket.assigns.use_fixed_display do
+            Map.merge(base_params, %{
+              from:
+                if(updated_socket.assigns.from,
+                  do: DateTime.to_iso8601(updated_socket.assigns.from),
+                  else: nil
+                ),
+              to:
+                if(updated_socket.assigns.to,
+                  do: DateTime.to_iso8601(updated_socket.assigns.to),
+                  else: nil
+                )
+            })
+          else
+            base_params
+          end
+
+        url_params =
+          if updated_socket.assigns.key do
+            Map.put(url_params, :key, updated_socket.assigns.key)
+          else
+            url_params
+          end
+
+        {:noreply, push_source_patch(updated_socket, url_params)}
+      else
+        if Map.has_key?(changes, :reload) do
+          load_data_and_update_socket(updated_socket)
+        else
+          {:noreply, updated_socket}
+        end
+      end
     end
   end
 
@@ -1369,6 +1207,303 @@ defmodule TrifleApp.ExploreLive do
 
   def reduce_stats(_values) do
     %{}
+  end
+
+  defp select_source_from_params(params, sources) do
+    cond do
+      sources == [] -> nil
+      source = source_from_explicit_params(params, sources) -> source
+      true -> hd(sources)
+    end
+  end
+
+  defp source_from_params(params, sources) do
+    source_from_explicit_params(params, sources)
+  end
+
+  defp source_from_explicit_params(params, sources) do
+    with type when not is_nil(type) <- parse_source_type(Map.get(params, "source_type")),
+         id when not is_nil(id) <- Map.get(params, "source_id"),
+         source when not is_nil(source) <- Source.find_in_list(sources, type, id) do
+      source
+    else
+      _ ->
+        case Map.get(params, "database_id") do
+          nil -> nil
+          db_id -> Source.find_in_list(sources, :database, db_id)
+        end
+    end
+  end
+
+  defp apply_source_change(socket, nil), do: assign_no_source(socket)
+
+  defp apply_source_change(socket, source) do
+    {transponder_info, response_paths} = build_transponder_info(Source.transponders(source))
+    config = Source.stats_config(source)
+    available_granularities = Source.available_granularities(source) || []
+
+    socket
+    |> assign(:no_source, false)
+    |> assign(:source, source)
+    |> assign(:selected_source_ref, component_source_ref(source))
+    |> assign(:sources, ensure_source_in_list(socket.assigns[:sources] || [], source))
+    |> assign(:database, database_from_source(source))
+    |> assign(:database_config, config)
+    |> assign(:available_granularities, available_granularities)
+    |> assign(:transponder_info, transponder_info)
+    |> assign(:transponder_response_paths, response_paths)
+    |> assign(:page_title, "Explore · #{Source.display_name(source)}")
+    |> assign(:breadcrumb_links, [{"Explore", ~p"/explore?#{source_params(source)}"}])
+  end
+
+  defp assign_source_state(socket, nil), do: assign_no_source(socket)
+
+  defp assign_source_state(socket, source) do
+    socket
+    |> apply_source_change(source)
+    |> assign(:stats, nil)
+    |> assign(:timeline, "[]")
+    |> assign(:chart_type, "stacked")
+    |> assign(:keys, %{})
+    |> assign(:selected_key_color, nil)
+    |> assign(:smart_timeframe_input, nil)
+    |> assign(:key_search_filter, "")
+    |> assign(:loading, false)
+    |> assign(:loading_chunks, false)
+    |> assign(:loading_progress, nil)
+    |> assign(:transponding, false)
+    |> assign(:show_timeframe_dropdown, false)
+    |> assign(:show_sensitivity_dropdown, false)
+    |> assign(:show_granularity_dropdown, false)
+    |> assign(:transponder_errors, [])
+    |> assign(:show_error_modal, false)
+    |> assign(:transponder_results, [])
+    |> assign(:key_transponder_results, %{successful: [], failed: [], errors: []})
+    |> assign(:load_start_time, nil)
+    |> assign(:load_duration_microseconds, nil)
+    |> assign(:show_export_dropdown, false)
+  end
+
+  defp assign_no_source(socket) do
+    socket
+    |> assign(:page_title, "Explore")
+    |> assign(:no_source, true)
+    |> assign(:source, nil)
+    |> assign(:selected_source_ref, nil)
+    |> assign(:database, nil)
+    |> assign(:database_config, nil)
+    |> assign(:available_granularities, [])
+    |> assign(:transponder_response_paths, [])
+    |> assign(:transponder_info, %{})
+    |> assign(:stats, nil)
+    |> assign(:timeline, "[]")
+    |> assign(:chart_type, "stacked")
+    |> assign(:keys, %{})
+    |> assign(:selected_key_color, nil)
+    |> assign(:smart_timeframe_input, nil)
+    |> assign(:key_search_filter, "")
+    |> assign(:loading, false)
+    |> assign(:loading_chunks, false)
+    |> assign(:loading_progress, nil)
+    |> assign(:transponding, false)
+    |> assign(:show_timeframe_dropdown, false)
+    |> assign(:show_sensitivity_dropdown, false)
+    |> assign(:show_granularity_dropdown, false)
+    |> assign(:transponder_errors, [])
+    |> assign(:show_error_modal, false)
+    |> assign(:transponder_results, [])
+    |> assign(:key_transponder_results, %{successful: [], failed: [], errors: []})
+    |> assign(:load_start_time, nil)
+    |> assign(:load_duration_microseconds, nil)
+    |> assign(:show_export_dropdown, false)
+    |> assign(:breadcrumb_links, [])
+  end
+
+  defp ensure_source_in_list(sources, source) do
+    cond do
+      is_nil(source) ->
+        sources || []
+
+      Enum.any?(sources || [], &sources_equal?(&1, source)) ->
+        sources || []
+
+      true ->
+        ((sources || []) ++ [source])
+        |> Enum.reject(&is_nil/1)
+        |> Enum.sort_by(fn s ->
+          {source_sort_key(Source.type(s)), String.downcase(Source.display_name(s))}
+        end)
+    end
+  end
+
+  defp source_sort_key(:database), do: 0
+  defp source_sort_key(:project), do: 1
+  defp source_sort_key(_other), do: 2
+
+  defp component_source_ref(nil), do: nil
+
+  defp component_source_ref(source) do
+    %{type: Source.type(source), id: to_string(Source.id(source))}
+  end
+
+  defp database_from_source(source) do
+    case Source.type(source) do
+      :database -> Source.record(source)
+      _ -> nil
+    end
+  end
+
+  defp build_transponder_info(transponders) do
+    info =
+      transponders
+      |> Enum.map(fn transponder ->
+        response_path = Map.get(transponder.config, "response_path", "")
+        transponder_name = transponder.name || transponder.key
+        if response_path != "", do: {response_path, transponder_name}, else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.into(%{})
+
+    {info, Map.keys(info)}
+  end
+
+  defp source_params(nil), do: %{}
+
+  defp source_params(source) do
+    id = Source.id(source) |> to_string()
+    type = Source.type(source)
+
+    params = %{
+      source_type: Atom.to_string(type),
+      source_id: id
+    }
+
+    if type == :database do
+      Map.put(params, :database_id, id)
+    else
+      params
+    end
+  end
+
+  defp push_source_patch(socket, extra_params) do
+    params =
+      socket.assigns.source
+      |> source_params()
+      |> Map.merge(extra_params)
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+      |> Map.new()
+
+    push_patch(socket, to: ~p"/explore?#{params}")
+  end
+
+  defp source_from_change(change, sources)
+
+  defp source_from_change(%{type: type, id: id}, sources) do
+    type_atom = parse_source_type(type)
+    Source.find_in_list(sources, type_atom, id)
+  end
+
+  defp source_from_change(%{"type" => type, "id" => id}, sources) do
+    type_atom = parse_source_type(type)
+    Source.find_in_list(sources, type_atom, id)
+  end
+
+  defp source_from_change(_other, _sources), do: nil
+
+  defp determine_new_source(changes, sources) do
+    cond do
+      Map.has_key?(changes, :source) ->
+        source_from_change(changes.source, sources)
+
+      Map.has_key?(changes, :database_id) ->
+        Source.find_in_list(sources, :database, changes.database_id)
+
+      true ->
+        nil
+    end
+  end
+
+  defp recalculate_timeframe_for_source(socket, source) do
+    config = Source.stats_config(source)
+    source_default_tf = Source.default_timeframe(source) || "24h"
+    available_granularities = Source.available_granularities(source) || []
+
+    current_granularity = socket.assigns[:granularity]
+
+    granularity =
+      if current_granularity in available_granularities do
+        current_granularity
+      else
+        List.first(available_granularities) || current_granularity
+      end
+
+    {from, to, smart_input, use_fixed} =
+      if socket.assigns[:use_fixed_display] do
+        {socket.assigns[:from], socket.assigns[:to], socket.assigns[:smart_timeframe_input], true}
+      else
+        tf = socket.assigns[:smart_timeframe_input] || source_default_tf
+
+        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+          {:ok, f, t, si, uf} ->
+            {f, t, si, uf}
+
+          {:error, _} ->
+            default_to = DateTime.utc_now()
+            default_from = DateTime.shift(default_to, hour: -24)
+            {default_from, default_to, "24h", false}
+        end
+      end
+
+    socket
+    |> assign(:granularity, granularity)
+    |> assign(:from, from)
+    |> assign(:to, to)
+    |> assign(:smart_timeframe_input, smart_input)
+    |> assign(:use_fixed_display, use_fixed)
+  end
+
+  defp fallback_timeframe(config, timeframe) do
+    case TimeframeParsing.parse_smart_timeframe(timeframe, config) do
+      {:ok, from, to, smart_input, use_fixed} ->
+        {from, to, smart_input, use_fixed}
+
+      {:error, _} ->
+        default_to = DateTime.utc_now()
+        default_from = DateTime.shift(default_to, hour: -24)
+        {default_from, default_to, "24h", false}
+    end
+  end
+
+  defp ensure_granularity(granularity, []), do: granularity
+
+  defp ensure_granularity(granularity, available) do
+    if granularity in available do
+      granularity
+    else
+      List.first(available) || granularity
+    end
+  end
+
+  defp parse_source_type(nil), do: nil
+  defp parse_source_type(type) when is_atom(type), do: type
+
+  defp parse_source_type(type) when is_binary(type) do
+    case String.trim(type) do
+      "" -> nil
+      "database" -> :database
+      "project" -> :project
+      other -> String.to_atom(other)
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp sources_equal?(nil, nil), do: true
+  defp sources_equal?(_, nil), do: false
+  defp sources_equal?(nil, _), do: false
+
+  defp sources_equal?(a, b) do
+    Source.type(a) == Source.type(b) && to_string(Source.id(a)) == to_string(Source.id(b))
   end
 
   defp csv_escape(v) when is_binary(v) do
@@ -1745,7 +1880,7 @@ defmodule TrifleApp.ExploreLive do
 
   def render(assigns) do
     ~H"""
-    <%= if @no_database do %>
+    <%= if @no_source do %>
       <div
         id="explore-root"
         class="flex flex-col dark:bg-slate-900 min-h-screen relative"
@@ -1754,10 +1889,10 @@ defmodule TrifleApp.ExploreLive do
         <div class="max-w-3xl mx-auto mt-16">
           <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              No databases found
+              No sources found
             </h2>
             <p class="text-gray-600 dark:text-slate-300">
-              Please add a database first to use Explore.
+              Please add a database or project first to use Explore.
             </p>
             <div class="mt-4">
               <.link
@@ -1823,8 +1958,8 @@ defmodule TrifleApp.ExploreLive do
           show_timeframe_dropdown={@show_timeframe_dropdown}
           show_granularity_dropdown={@show_granularity_dropdown}
           show_controls={true}
-          databases={@databases}
-          selected_database_id={@source && Source.id(@source)}
+          sources={@sources}
+          selected_source={@selected_source_ref}
           force_granularity_dropdown={false}
         />
         
@@ -1862,27 +1997,29 @@ defmodule TrifleApp.ExploreLive do
                   <p class="text-sm text-gray-500 dark:text-slate-400 max-w-md">
                     Your dashboard is having trust issues with empty data. Feed it some metrics and it'll start showing off!
                   </p>
-                  <div class="mt-4">
-                    <.link
-                      navigate={~p"/dbs/#{@source && Source.id(@source)}/transponders"}
-                      class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
-                    >
-                      <svg
-                        class="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                  <%= if @source && Source.type(@source) == :database do %>
+                    <div class="mt-4">
+                      <.link
+                        navigate={~p"/dbs/#{Source.id(@source)}/transponders"}
+                        class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
-                        />
-                      </svg>
-                      Set up Transponders →
-                    </.link>
-                  </div>
+                        <svg
+                          class="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
+                          />
+                        </svg>
+                        Set up Transponders →
+                      </.link>
+                    </div>
+                  <% end %>
                 </div>
               </div>
             <% else %>
