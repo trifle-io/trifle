@@ -8,6 +8,11 @@ defmodule Trifle.Stats.Source do
   defstruct [:module, :record]
 
   alias __MODULE__.Behaviour
+  alias Trifle.Organizations
+  alias Trifle.Organizations.Project, as: OrgProject
+  alias Trifle.Organizations.OrganizationMembership
+  alias Trifle.Stats.Source.Database
+  alias Trifle.Stats.Source.Project, as: SourceProject
 
   defmodule Behaviour do
     @callback type(struct()) :: atom()
@@ -31,7 +36,12 @@ defmodule Trifle.Stats.Source do
 
   @spec from_database(Trifle.Organizations.Database.t()) :: t()
   def from_database(%Trifle.Organizations.Database{} = database) do
-    new(Trifle.Stats.Source.Database, database)
+    new(Database, database)
+  end
+
+  @spec from_project(OrgProject.t()) :: t()
+  def from_project(%OrgProject{} = project) do
+    new(SourceProject, project)
   end
 
   @spec record(t()) :: struct()
@@ -71,6 +81,82 @@ defmodule Trifle.Stats.Source do
 
   @spec transponders(t()) :: list()
   def transponders(source), do: delegate(source, :transponders)
+
+  @spec reference(t()) :: %{type: atom(), id: term()}
+  def reference(source) do
+    %{type: type(source), id: id(source)}
+  end
+
+  @spec type_string(t()) :: String.t()
+  def type_string(source), do: source |> type() |> Atom.to_string()
+
+  @spec list_for_membership(OrganizationMembership.t() | nil) :: [t()]
+  def list_for_membership(nil), do: []
+
+  def list_for_membership(%OrganizationMembership{organization_id: org_id, user_id: user_id}) do
+    databases = list_for_organization(org_id)
+
+    projects =
+      Organizations.list_projects()
+      |> Enum.filter(&(&1.user_id == user_id))
+      |> Enum.map(&from_project/1)
+
+    (databases ++ projects)
+    |> sort_sources()
+  end
+
+  @spec list_for_organization(term()) :: [t()]
+  def list_for_organization(nil), do: []
+
+  def list_for_organization(org_id) do
+    Organizations.list_databases_for_org(org_id)
+    |> Enum.map(&from_database/1)
+    |> sort_sources()
+  end
+
+  @spec find_in_list([t()], atom(), term()) :: t() | nil
+  def find_in_list(sources, type, id) do
+    type_atom = normalize_type(type)
+    id_str = id |> to_string()
+
+    Enum.find(sources, fn source ->
+      type(source) == type_atom && to_string(id(source)) == id_str
+    end)
+  end
+
+  @spec type_label(atom()) :: String.t()
+  def type_label(:database), do: "Databases"
+  def type_label(:project), do: "Projects"
+  def type_label(other), do: other |> Atom.to_string() |> String.capitalize()
+
+  defp sort_sources(sources) do
+    sources
+    |> Enum.sort_by(fn source ->
+      {
+        type_sort_key(type(source)),
+        display_name(source) |> String.downcase()
+      }
+    end)
+  end
+
+  defp type_sort_key(:database), do: 0
+  defp type_sort_key(:project), do: 1
+  defp type_sort_key(_other), do: 2
+
+  defp normalize_type(type) when is_atom(type), do: type
+
+  defp normalize_type(type) when is_binary(type) do
+    case String.trim(type) do
+      "" -> nil
+      "database" -> :database
+      "project" -> :project
+      other -> String.to_atom(other)
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp normalize_type(_), do: nil
 
   defp delegate(%__MODULE__{module: module, record: record}, function) do
     apply(module, function, [record])

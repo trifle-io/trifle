@@ -7,10 +7,8 @@ defmodule TrifleApp.Components.FilterBar do
   """
   use TrifleApp, :live_component
 
-  alias Trifle.Organizations.Database
-  alias Trifle.Organizations.Project
+  alias Trifle.Stats.Source
   alias TrifleApp.TimeframeParsing
-  # Optional: databases and selected_database_id assigns can be passed by parent LiveView
 
   def render(assigns) do
     ~H"""
@@ -18,26 +16,24 @@ defmodule TrifleApp.Components.FilterBar do
       <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
         <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
           
-    <!-- Database Dropdown (optional; only if >1 DB) -->
-          <%= if @databases && length(@databases) > 1 do %>
+    <!-- Source Dropdown (optional; only if >1 source) -->
+          <%= if @sources && length(@sources) > 1 do %>
             <div class="w-full md:w-64">
               <div class="relative">
                 <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-                  Database
+                  Source
                 </div>
                 <button
                   type="button"
                   phx-target={@myself}
-                  phx-click="toggle_database_dropdown"
+                  phx-click="toggle_source_dropdown"
                   class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                 >
                   <div class="flex items-center justify-between">
                     <span class="truncate">
-                      {case Enum.find(@databases, fn d ->
-                              to_string(d.id) == to_string(@selected_database_id)
-                            end) do
-                        nil -> "Select a database"
-                        db -> db.display_name
+                      {case selected_source_struct(@sources, @selected_source) do
+                        nil -> "Select a source"
+                        source -> Source.display_name(source)
                       end}
                     </span>
                   </div>
@@ -58,31 +54,40 @@ defmodule TrifleApp.Components.FilterBar do
                   </span>
                 </button>
 
-                <%= if @show_database_dropdown do %>
+                <%= if @show_source_dropdown do %>
                   <div
-                    phx-click-away="hide_database_dropdown"
+                    phx-click-away="hide_source_dropdown"
                     phx-target={@myself}
                     class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
                   >
-                    <%= for db <- @databases do %>
-                      <button
-                        type="button"
-                        phx-target={@myself}
-                        phx-click="select_database"
-                        phx-value-id={db.id}
-                        onmousedown="event.preventDefault()"
-                        class={[
-                          "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
-                          to_string(db.id) == to_string(@selected_database_id) &&
-                            "font-semibold text-teal-600 dark:text-teal-400"
-                        ]}
-                      >
-                        <div class="flex items-center justify-between">
-                          <span class="text-sm text-gray-900 dark:text-white truncate">
-                            {db.display_name}
-                          </span>
+                    <%= for {group_type, sources} <- grouped_sources(@sources) do %>
+                      <div class="py-1">
+                        <div class="px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                          {Source.type_label(group_type)}
                         </div>
-                      </button>
+                        <%= for source <- sources do %>
+                          <% source_id = Source.id(source) |> to_string() %>
+                          <button
+                            type="button"
+                            phx-target={@myself}
+                            phx-click="select_source"
+                            phx-value-id={source_id}
+                            phx-value-type={Source.type(source)}
+                            onmousedown="event.preventDefault()"
+                            class={[
+                              "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
+                              selected_source?(source, @selected_source) &&
+                                "font-semibold text-teal-600 dark:text-teal-400"
+                            ]}
+                          >
+                            <div class="flex items-center justify-between">
+                              <span class="text-sm text-gray-900 dark:text-white truncate">
+                                {Source.display_name(source)}
+                              </span>
+                            </div>
+                          </button>
+                        <% end %>
+                      </div>
                     <% end %>
                   </div>
                 <% end %>
@@ -395,21 +400,25 @@ defmodule TrifleApp.Components.FilterBar do
           )
       end
 
+    sources = Map.get(assigns, :sources, socket.assigns[:sources] || [])
+
+    selected_source_ref =
+      assigns
+      |> Map.get(:selected_source, socket.assigns[:selected_source])
+      |> normalize_selected_source_ref(sources)
+
     socket =
       socket
       |> assign(assigns)
-      |> assign(databases: Map.get(assigns, :databases, socket.assigns[:databases] || nil))
-      |> assign(
-        selected_database_id:
-          Map.get(assigns, :selected_database_id, socket.assigns[:selected_database_id] || nil)
-      )
+      |> assign(:sources, sources)
+      |> assign(:selected_source, selected_source_ref)
       |> assign(current_input_value: current_input)
 
-    # Ensure database dropdown visibility flag exists (component manages it internally)
+    # Ensure source dropdown visibility flag exists (component manages it internally)
     socket =
-      if Map.has_key?(socket.assigns, :show_database_dropdown),
+      if Map.has_key?(socket.assigns, :show_source_dropdown),
         do: socket,
-        else: assign(socket, show_database_dropdown: false)
+        else: assign(socket, show_source_dropdown: false)
 
     {:ok, socket}
   end
@@ -424,6 +433,37 @@ defmodule TrifleApp.Components.FilterBar do
   def handle_event("smart_timeframe_keyup", %{"value" => input}, socket) do
     # Update local input state on every keystroke without notifying parent
     {:noreply, assign(socket, current_input_value: input)}
+  end
+
+  def handle_event("toggle_source_dropdown", _params, socket) do
+    {:noreply, assign(socket, show_source_dropdown: !socket.assigns[:show_source_dropdown])}
+  end
+
+  def handle_event("hide_source_dropdown", _params, socket) do
+    {:noreply, assign(socket, show_source_dropdown: false)}
+  end
+
+  def handle_event("select_source", %{"id" => source_id, "type" => type_param}, socket) do
+    type = parse_source_type(type_param)
+
+    selected_ref =
+      normalize_selected_source_ref(%{type: type, id: source_id}, socket.assigns.sources)
+
+    payload = %{source: %{type: Atom.to_string(type), id: source_id}}
+
+    payload =
+      if type == :database do
+        Map.put(payload, :database_id, source_id)
+      else
+        payload
+      end
+
+    notify_parent({:filter_changed, payload})
+
+    {:noreply,
+     socket
+     |> assign(:show_source_dropdown, false)
+     |> assign(:selected_source, selected_ref)}
   end
 
   def handle_event("smart_timeframe_keydown", %{"key" => "Enter", "value" => input}, socket) do
@@ -488,19 +528,6 @@ defmodule TrifleApp.Components.FilterBar do
   def handle_event("select_granularity", %{"granularity" => granularity}, socket) do
     notify_parent({:filter_changed, %{granularity: granularity}})
     {:noreply, assign(socket, show_granularity_dropdown: false)}
-  end
-
-  def handle_event("toggle_database_dropdown", _params, socket) do
-    {:noreply, assign(socket, show_database_dropdown: !socket.assigns[:show_database_dropdown])}
-  end
-
-  def handle_event("hide_database_dropdown", _params, socket) do
-    {:noreply, assign(socket, show_database_dropdown: false)}
-  end
-
-  def handle_event("select_database", %{"id" => database_id}, socket) do
-    notify_parent({:filter_changed, %{database_id: database_id}})
-    {:noreply, assign(socket, show_database_dropdown: false, selected_database_id: database_id)}
   end
 
   def handle_event("toggle_granularity_dropdown", _params, socket) do
@@ -708,4 +735,73 @@ defmodule TrifleApp.Components.FilterBar do
     </div>
     """
   end
+
+  defp grouped_sources([]), do: []
+
+  defp grouped_sources(sources) do
+    sources
+    |> Enum.group_by(&Source.type/1)
+    |> Enum.map(fn {type, group_sources} ->
+      sorted = Enum.sort_by(group_sources, &String.downcase(Source.display_name(&1)))
+      {type, sorted}
+    end)
+    |> Enum.sort_by(fn {type, _} -> Source.type_label(type) end)
+  end
+
+  defp selected_source_struct(_sources, nil), do: nil
+
+  defp selected_source_struct(sources, %{type: type, id: id}) do
+    Source.find_in_list(sources, type, id)
+  end
+
+  defp selected_source?(source, nil), do: false
+
+  defp selected_source?(source, %{type: type, id: id}) do
+    Source.type(source) == type && to_string(Source.id(source)) == id
+  end
+
+  defp normalize_selected_source_ref(nil, sources) do
+    default_selected_source_ref(sources)
+  end
+
+  defp normalize_selected_source_ref(ref, sources) when is_map(ref) do
+    type_value = Map.get(ref, :type, Map.get(ref, "type"))
+    id_value = Map.get(ref, :id, Map.get(ref, "id"))
+
+    with type when not is_nil(type) <- parse_source_type(type_value),
+         id when not is_nil(id) <- id_value do
+      id_str = to_string(id)
+
+      if Source.find_in_list(sources, type, id_str) do
+        %{type: type, id: id_str}
+      else
+        default_selected_source_ref(sources)
+      end
+    else
+      _ -> default_selected_source_ref(sources)
+    end
+  end
+
+  defp normalize_selected_source_ref(_other, sources), do: default_selected_source_ref(sources)
+
+  defp default_selected_source_ref([]), do: nil
+
+  defp default_selected_source_ref([first | _]) do
+    %{type: Source.type(first), id: to_string(Source.id(first))}
+  end
+
+  defp parse_source_type(type) when is_atom(type), do: type
+
+  defp parse_source_type(type) when is_binary(type) do
+    case String.trim(type) do
+      "" -> nil
+      "database" -> :database
+      "project" -> :project
+      other -> String.to_atom(other)
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp parse_source_type(_), do: nil
 end
