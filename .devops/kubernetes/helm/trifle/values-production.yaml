@@ -95,7 +95,7 @@ postgresql:
   enabled: true
   image:
     repository: postgres
-    tag: latest
+    tag: "17.6"
     pullPolicy: IfNotPresent
   auth:
     username: trifle
