@@ -1884,7 +1884,7 @@ defmodule TrifleApp.ExploreLive do
                 class=""
               >
               </div>
-              <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-5 h-full">
+              <div id="timeline-chart-wrapper" phx-update="ignore" class="mt-3 h-full">
                 <div id="timeline-chart"></div>
               </div>
             <% end %>
