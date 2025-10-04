@@ -218,10 +218,11 @@ Hooks.DatabaseExploreChart = {
     return {
       backgroundColor: 'transparent',
       grid: {
-        top: 10,
-        bottom: 30,
-        left: 50,
-        right: 20
+        top: 8,
+        bottom: 12,
+        left: 32,
+        right: 8,
+        containLabel: true
       },
       textStyle: {
         color: textColor
@@ -254,6 +255,7 @@ Hooks.DatabaseExploreChart = {
         },
         axisLabel: {
           color: textColor,
+          margin: 6,
           formatter: function(value) {
             const date = new Date(value);
             const hours = date.getHours();
@@ -279,6 +281,7 @@ Hooks.DatabaseExploreChart = {
         },
         axisLabel: {
           color: textColor,
+          margin: 6,
           formatter: (value) => formatCompactNumber(value)
         },
         splitLine: {
@@ -318,9 +321,13 @@ Hooks.DatabaseExploreChart = {
     const themeName = this._resolveTheme();
     const initTheme = themeName === 'dark' ? 'dark' : undefined;
     const container = document.getElementById('timeline-chart');
+    if (container) {
+      container.style.height = '140px';
+      container.style.width = '100%';
+    }
 
     // Set theme based on dark mode
-    this.chart = echarts.init(container, initTheme, withChartOpts({ height: 120 }));
+    this.chart = echarts.init(container, initTheme, withChartOpts({ height: 140 }));
     this._currentThemeName = themeName;
     this._bindThemeListener();
 
