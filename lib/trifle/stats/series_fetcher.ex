@@ -9,8 +9,7 @@ defmodule Trifle.Stats.SeriesFetcher do
   - Handling both system keys and specific keys
   """
 
-  alias Trifle.Organizations
-  alias Trifle.Organizations.Database
+  alias Trifle.Stats.Source
 
   require Logger
 
@@ -35,8 +34,10 @@ defmodule Trifle.Stats.SeriesFetcher do
   - `:progressive` - Enable progressive loading for large datasets (default: true)
   - `:chunk_size` - Size of chunks for progressive loading (default: 720)
   """
-  def fetch_series(%Database{} = database, key, from, to, granularity, transponders, opts \\ []) do
-    config = Database.stats_config(database)
+  def fetch_series(source, key, from, to, granularity, transponders, opts \\ [])
+
+  def fetch_series(%Source{} = source, key, from, to, granularity, transponders, opts) do
+    config = Source.stats_config(source)
 
     opts =
       Keyword.merge(
@@ -55,11 +56,37 @@ defmodule Trifle.Stats.SeriesFetcher do
     end
   end
 
+  def fetch_series(
+        %Trifle.Organizations.Database{} = database,
+        key,
+        from,
+        to,
+        granularity,
+        transponders,
+        opts
+      ) do
+    source = Source.from_database(database)
+    fetch_series(source, key, from, to, granularity, transponders, opts)
+  end
+
   @doc """
   Fetches database system overview (all keys) with progressive loading.
   """
-  def fetch_system_overview(database, from, to, granularity, opts \\ []) do
-    fetch_series(database, "__system__key__", from, to, granularity, opts)
+  def fetch_system_overview(source, from, to, granularity, opts \\ [])
+
+  def fetch_system_overview(%Source{} = source, from, to, granularity, opts) do
+    fetch_series(source, "__system__key__", from, to, granularity, [], opts)
+  end
+
+  def fetch_system_overview(
+        %Trifle.Organizations.Database{} = database,
+        from,
+        to,
+        granularity,
+        opts
+      ) do
+    source = Source.from_database(database)
+    fetch_system_overview(source, from, to, granularity, opts)
   end
 
   @doc """
@@ -257,7 +284,10 @@ defmodule Trifle.Stats.SeriesFetcher do
                  failed: transponders,
                  errors:
                    Enum.map(transponders, fn t ->
-                     %{transponder: t, error: %{message: "Timeout or exception: #{inspect(error)}"}}
+                     %{
+                       transponder: t,
+                       error: %{message: "Timeout or exception: #{inspect(error)}"}
+                     }
                    end)
                }
              }}

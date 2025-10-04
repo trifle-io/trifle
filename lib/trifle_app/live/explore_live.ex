@@ -3,7 +3,7 @@ defmodule TrifleApp.ExploreLive do
 
   alias Decimal
   alias Trifle.Organizations
-  alias Trifle.Organizations.Database
+  alias Trifle.Stats.Source
   alias Trifle.Stats.SeriesFetcher
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
@@ -38,6 +38,7 @@ defmodule TrifleApp.ExploreLive do
        |> assign(page_title: "Explore")
        |> assign(no_database: true)
        |> assign(database: nil)
+       |> assign(source: nil)
        |> assign(database_config: nil)
        |> assign(available_granularities: [])
        |> assign(transponder_response_paths: [])
@@ -65,9 +66,10 @@ defmodule TrifleApp.ExploreLive do
        |> assign(show_export_dropdown: false)}
     else
       database = Organizations.get_database_for_org!(membership.organization_id, selected_db_id)
+      source = Source.from_database(database)
 
       # Load transponders to identify response paths and their names
-      transponders = Organizations.list_transponders_for_database(database)
+      transponders = Source.transponders(source)
 
       transponder_info =
         transponders
@@ -82,13 +84,14 @@ defmodule TrifleApp.ExploreLive do
       transponder_response_paths = Map.keys(transponder_info)
 
       # Cache config to avoid recalculation on every render
-      database_config = Database.stats_config(database)
-      available_granularities = get_available_granularities(database)
+      database_config = Source.stats_config(source)
+      available_granularities = get_available_granularities(source)
 
       socket =
         socket
-        |> assign(page_title: "Explore · #{database.display_name}")
+        |> assign(page_title: "Explore · #{Source.display_name(source)}")
         |> assign(database: database)
+        |> assign(source: source)
         |> assign(no_database: false)
         |> assign(database_config: database_config)
         |> assign(available_granularities: available_granularities)
@@ -116,7 +119,7 @@ defmodule TrifleApp.ExploreLive do
         |> assign(load_duration_microseconds: nil)
         |> assign(show_export_dropdown: false)
         |> assign(:breadcrumb_links, [
-          {"Explore", ~p"/explore?#{[database_id: database.id]}"}
+          {"Explore", ~p"/explore?#{[database_id: Source.id(source)]}"}
         ])
 
       {:ok, socket}
@@ -395,7 +398,7 @@ defmodule TrifleApp.ExploreLive do
           |> assign(smart_timeframe_input: nil)
           |> push_patch(
             to:
-              ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
+              ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns.key]}"
           )
 
         {:noreply, socket}
@@ -428,7 +431,7 @@ defmodule TrifleApp.ExploreLive do
   end
 
   def handle_event("select_timeframe_preset", %{"preset" => preset, "label" => _label}, socket) do
-    config = Database.stats_config(socket.assigns.database)
+    config = Source.stats_config(socket.assigns.source)
 
     case parse_smart_timeframe(preset, config) do
       {:ok, from, to} ->
@@ -446,7 +449,7 @@ defmodule TrifleApp.ExploreLive do
           })
           |> push_patch(
             to:
-              ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
+              ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: preset]}"
           )
 
         {:noreply, socket}
@@ -457,7 +460,7 @@ defmodule TrifleApp.ExploreLive do
   end
 
   def handle_event("smart_timeframe_keydown", %{"key" => "Enter", "value" => input}, socket) do
-    config = Database.stats_config(socket.assigns.database)
+    config = Source.stats_config(socket.assigns.source)
 
     # First try to parse as a direct timeframe range (YYYY-MM-DD HH:MM:SS - YYYY-MM-DD HH:MM:SS)
     case parse_direct_timeframe(input, config) do
@@ -477,7 +480,7 @@ defmodule TrifleApp.ExploreLive do
           })
           |> push_patch(
             to:
-              ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
+              ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: detected_shorthand]}"
           )
 
         {:noreply, socket}
@@ -506,7 +509,7 @@ defmodule TrifleApp.ExploreLive do
               })
               |> push_patch(
                 to:
-                  ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
+                  ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(from), to: format_for_datetime_input(to), key: socket.assigns[:key] || "", timeframe: short_input]}"
               )
 
             {:noreply, socket}
@@ -533,7 +536,7 @@ defmodule TrifleApp.ExploreLive do
       |> assign(show_granularity_dropdown: false)
       |> push_patch(
         to:
-          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: socket.assigns[:key] || "", timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -545,7 +548,7 @@ defmodule TrifleApp.ExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), key: key, timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -557,7 +560,7 @@ defmodule TrifleApp.ExploreLive do
       |> assign(loading: true)
       |> push_patch(
         to:
-          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
+          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: socket.assigns.granularity, from: format_for_datetime_input(socket.assigns.from), to: format_for_datetime_input(socket.assigns.to), timeframe: socket.assigns[:smart_timeframe_input]]}"
       )
 
     {:noreply, socket}
@@ -628,7 +631,7 @@ defmodule TrifleApp.ExploreLive do
       })
       |> push_patch(
         to:
-          ~p"/explore?#{[database_id: socket.assigns.database.id, granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
+          ~p"/explore?#{[database_id: Source.id(socket.assigns.source), granularity: granularity, from: format_for_datetime_input(new_from), to: format_for_datetime_input(new_to), key: socket.assigns[:key] || "", timeframe: "c"]}"
       )
 
     {:noreply, socket}
@@ -657,7 +660,7 @@ defmodule TrifleApp.ExploreLive do
     {:noreply,
      socket
      |> assign(loading: true)
-     |> push_patch(to: ~p"/explore?#{[database_id: socket.assigns.database.id] ++ params}")}
+     |> push_patch(to: ~p"/explore?#{[database_id: Source.id(socket.assigns.source)] ++ params}")}
   end
 
   def determine_granularity_for_timeframe(from, to) do
@@ -678,9 +681,8 @@ defmodule TrifleApp.ExploreLive do
   Get available granularities from the driver configuration.
   This allows the UI to display the actual supported granularities.
   """
-  def get_available_granularities(database) do
-    config = Database.stats_config(database)
-    config.track_granularities
+  def get_available_granularities(source) do
+    Source.available_granularities(source)
   end
 
   @doc """
@@ -753,8 +755,8 @@ defmodule TrifleApp.ExploreLive do
   @doc """
   Get granularities with their labels and positions for the UI buttons.
   """
-  def get_granularity_buttons(database) do
-    granularities = get_available_granularities(database)
+  def get_granularity_buttons(source) do
+    granularities = get_available_granularities(source)
 
     granularities
     |> Enum.with_index()
@@ -801,7 +803,7 @@ defmodule TrifleApp.ExploreLive do
 
   def handle_params(params, _session, socket) do
     # If no database is available, skip further processing
-    if is_nil(socket.assigns[:database]) do
+    if is_nil(socket.assigns[:source]) do
       {:noreply, socket}
     else
       require Logger
@@ -814,26 +816,30 @@ defmodule TrifleApp.ExploreLive do
             socket
 
           db_id ->
-            if socket.assigns[:database] &&
-                 to_string(socket.assigns.database.id) == to_string(db_id) do
+            current_source = socket.assigns[:source]
+
+            if current_source && to_string(Source.id(current_source)) == to_string(db_id) do
               socket
             else
               membership = socket.assigns.current_membership
               database = Organizations.get_database_for_org!(membership.organization_id, db_id)
-              database_config = Database.stats_config(database)
-              available_granularities = get_available_granularities(database)
+              source = Source.from_database(database)
+              database_config = Source.stats_config(source)
+              available_granularities = get_available_granularities(source)
 
-              assign(socket,
-                database: database,
-                database_config: database_config,
-                available_granularities: available_granularities
-              )
+              socket
+              |> assign(database: database)
+              |> assign(source: source)
+              |> assign(database_config: database_config)
+              |> assign(available_granularities: available_granularities)
             end
         end
 
-      db_default_gran = socket.assigns.database.default_granularity
+      source = socket.assigns.source
+      source_default_tf = Source.default_timeframe(source) || "24h"
+      db_default_gran = Source.default_granularity(source) || "1h"
       granularity = params["granularity"] || db_default_gran || "1h"
-      config = Database.stats_config(socket.assigns.database)
+      config = Source.stats_config(source)
 
       # Determine from and to times based on URL parameters
       {from, to, smart_input, use_fixed_display} =
@@ -865,9 +871,7 @@ defmodule TrifleApp.ExploreLive do
                         {from, to, smart_input, use_fixed}
 
                       {:error, _} ->
-                        tf = socket.assigns.database.default_timeframe || "24h"
-
-                        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+                        case TimeframeParsing.parse_smart_timeframe(source_default_tf, config) do
                           {:ok, f, t, si, uf} ->
                             {f, t, si, uf}
 
@@ -879,9 +883,7 @@ defmodule TrifleApp.ExploreLive do
                     end
 
                   true ->
-                    tf = socket.assigns.database.default_timeframe || "24h"
-
-                    case TimeframeParsing.parse_smart_timeframe(tf, config) do
+                    case TimeframeParsing.parse_smart_timeframe(source_default_tf, config) do
                       {:ok, f, t, si, uf} ->
                         {f, t, si, uf}
 
@@ -908,9 +910,7 @@ defmodule TrifleApp.ExploreLive do
 
           # Default case: use 24-hour range from now
           true ->
-            tf = socket.assigns.database.default_timeframe || "24h"
-
-            case TimeframeParsing.parse_smart_timeframe(tf, config) do
+            case TimeframeParsing.parse_smart_timeframe(source_default_tf, config) do
               {:ok, from, to, smart_input, use_fixed} ->
                 {from, to, smart_input, use_fixed}
 
@@ -954,7 +954,8 @@ defmodule TrifleApp.ExploreLive do
 
         socket =
           push_patch(socket,
-            to: ~p"/explore?#{Map.put(url_params, :database_id, socket.assigns.database.id)}"
+            to:
+              ~p"/explore?#{Map.put(url_params, :database_id, Source.id(socket.assigns.source))}"
           )
 
         {:noreply, socket}
@@ -1013,8 +1014,9 @@ defmodule TrifleApp.ExploreLive do
         db_id = changes.database_id
         membership = socket.assigns.current_membership
         database = Organizations.get_database_for_org!(membership.organization_id, db_id)
-        database_config = Database.stats_config(database)
-        available_granularities = get_available_granularities(database)
+        source = Source.from_database(database)
+        database_config = Source.stats_config(source)
+        available_granularities = get_available_granularities(source)
 
         {from, to, smart_input, use_fixed} =
           if updated_socket.assigns[:use_fixed_display] do
@@ -1023,7 +1025,7 @@ defmodule TrifleApp.ExploreLive do
           else
             tf =
               updated_socket.assigns[:smart_timeframe_input] ||
-                (database.default_timeframe || "24h")
+                (Source.default_timeframe(source) || "24h")
 
             case TimeframeParsing.parse_smart_timeframe(tf, database_config) do
               {:ok, f, t, si, uf} ->
@@ -1038,6 +1040,7 @@ defmodule TrifleApp.ExploreLive do
 
         updated_socket
         |> assign(database: database)
+        |> assign(source: source)
         |> assign(database_config: database_config)
         |> assign(available_granularities: available_granularities)
         |> assign(from: from, to: to)
@@ -1083,7 +1086,8 @@ defmodule TrifleApp.ExploreLive do
       # Just update URL - let handle_params handle the data loading to avoid double loading
       {:noreply,
        push_patch(updated_socket,
-         to: ~p"/explore?#{Map.put(url_params, :database_id, updated_socket.assigns.database.id)}"
+         to:
+           ~p"/explore?#{Map.put(url_params, :database_id, Source.id(updated_socket.assigns.source))}"
        )}
     else
       {:noreply, updated_socket}
@@ -1096,7 +1100,7 @@ defmodule TrifleApp.ExploreLive do
       if socket.assigns.use_fixed_display do
         tf =
           socket.assigns.smart_timeframe_input ||
-            (socket.assigns.database.default_timeframe || "24h")
+            (Source.default_timeframe(socket.assigns.source) || "24h")
 
         config = socket.assigns.database_config
 
@@ -1275,7 +1279,8 @@ defmodule TrifleApp.ExploreLive do
       )
 
     # Extract values to avoid async socket warnings
-    database = socket.assigns.database
+    source = socket.assigns.source
+    database = Source.record(source)
     key = socket.assigns.key
     granularity = socket.assigns.granularity
     from = socket.assigns.from
@@ -1306,14 +1311,14 @@ defmodule TrifleApp.ExploreLive do
          if key && key != "" do
            # Get transponders that match the specific key
            matching_transponders =
-             Organizations.list_transponders_for_database(database)
+             Source.transponders(source)
              |> Enum.filter(& &1.enabled)
              |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
              |> Enum.sort_by(& &1.order)
 
            # Load both system key (no transponders) and specific key (with transponders)
            case {SeriesFetcher.fetch_series(
-                   database,
+                   source,
                    "__system__key__",
                    from,
                    to,
@@ -1322,7 +1327,7 @@ defmodule TrifleApp.ExploreLive do
                    progress_callback: progress_callback
                  ),
                  SeriesFetcher.fetch_series(
-                   database,
+                   source,
                    key,
                    from,
                    to,
@@ -1345,7 +1350,7 @@ defmodule TrifleApp.ExploreLive do
            end
          else
            # Only load system key when no specific key is selected (no transponders)
-           case SeriesFetcher.fetch_series(database, "__system__key__", from, to, granularity, [],
+           case SeriesFetcher.fetch_series(source, "__system__key__", from, to, granularity, [],
                   progress_callback: progress_callback
                 ) do
              {:ok, result} -> %{system: result.series}
@@ -1610,8 +1615,15 @@ defmodule TrifleApp.ExploreLive do
   defp export_filename(prefix, assigns, ext) do
     ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
 
+    source_name =
+      cond do
+        Map.has_key?(assigns, :source) && assigns.source -> Source.display_name(assigns.source)
+        Map.has_key?(assigns, :database) && assigns.database -> assigns.database.display_name
+        true -> nil
+      end
+
     base =
-      [prefix, assigns[:database] && assigns.database.display_name, assigns[:key]]
+      [prefix, source_name, assigns[:key]]
       |> Enum.reject(&is_nil/1)
       |> Enum.map(&String.replace(to_string(&1), ~r/[^a-zA-Z0-9_-]+/, "-"))
       |> Enum.join("-")
@@ -1812,7 +1824,7 @@ defmodule TrifleApp.ExploreLive do
           show_granularity_dropdown={@show_granularity_dropdown}
           show_controls={true}
           databases={@databases}
-          selected_database_id={@database.id}
+          selected_database_id={@source && Source.id(@source)}
           force_granularity_dropdown={false}
         />
         
@@ -1852,7 +1864,7 @@ defmodule TrifleApp.ExploreLive do
                   </p>
                   <div class="mt-4">
                     <.link
-                      navigate={~p"/dbs/#{@database.id}/transponders"}
+                      navigate={~p"/dbs/#{@source && Source.id(@source)}/transponders"}
                       class="inline-flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
                     >
                       <svg
@@ -1880,7 +1892,7 @@ defmodule TrifleApp.ExploreLive do
                 phx-hook="DatabaseExploreChart"
                 data-events={@timeline}
                 data-key={@key}
-                data-timezone={@database.time_zone || "UTC"}
+                data-timezone={(@source && Source.time_zone(@source)) || "UTC"}
                 data-chart-type={@chart_type}
                 data-colors={ChartColors.json_palette()}
                 data-selected-key-color={@selected_key_color}

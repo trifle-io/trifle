@@ -7,6 +7,7 @@ defmodule TrifleWeb.ExportController do
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Trifle.Stats.SeriesFetcher
+  alias Trifle.Stats.Source
   alias Trifle.Stats.Tabler
 
   def dashboard_pdf(conn, %{"id" => id} = params) do
@@ -107,12 +108,14 @@ defmodule TrifleWeb.ExportController do
   defp fetch_series_for_export(dashboard_id, params) do
     dashboard = Organizations.get_dashboard!(dashboard_id)
     database = Database |> Trifle.Repo.get!(dashboard.database_id)
-    config = Database.stats_config(database)
-    available_granularities = config.track_granularities || []
+    source = Source.from_database(database)
+    config = Source.stats_config(source)
+    available_granularities = Source.available_granularities(source)
 
     defaults = %{
-      default_timeframe: dashboard.default_timeframe || database.default_timeframe || "24h",
-      default_granularity: dashboard.default_granularity || database.default_granularity || "1h"
+      default_timeframe: dashboard.default_timeframe || Source.default_timeframe(source) || "24h",
+      default_granularity:
+        dashboard.default_granularity || Source.default_granularity(source) || "1h"
     }
 
     {from, to, granularity, _smart, _use_fixed} =
@@ -121,13 +124,13 @@ defmodule TrifleWeb.ExportController do
     resolved_key = resolved_key_from_params(dashboard, params)
 
     matching_transponders =
-      Organizations.list_transponders_for_database(database)
+      Source.transponders(source)
       |> Enum.filter(& &1.enabled)
       |> Enum.filter(fn t -> key_matches_pattern?(t.key, resolved_key) end)
       |> Enum.sort_by(& &1.order)
 
     case SeriesFetcher.fetch_series(
-           database,
+           source,
            resolved_key,
            from,
            to,
