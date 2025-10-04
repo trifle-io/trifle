@@ -1291,6 +1291,9 @@ defmodule TrifleApp.ExploreLive do
 
         {:transponder_progress, :starting} ->
           send(liveview_pid, {:transponding, true})
+
+        {:transponder_progress, :finished} ->
+          send(liveview_pid, {:transponding, false})
       end
     end
 
