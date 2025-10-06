@@ -519,7 +519,8 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp valid_source_tuple?({type, id}) when type in ["database", "project"] and id not in [nil, ""] do
+  defp valid_source_tuple?({type, id})
+       when type in ["database", "project"] and id not in [nil, ""] do
     true
   end
 
@@ -1275,7 +1276,8 @@ defmodule Trifle.Organizations do
       |> Enum.each(fn {transponder_id, index} ->
         from(t in Transponder,
           where:
-            t.id == ^transponder_id and t.source_type == ^type_string and t.source_id == ^source_id
+            t.id == ^transponder_id and t.source_type == ^type_string and
+              t.source_id == ^source_id
         )
         |> Repo.update_all(set: [order: index])
       end)
@@ -1557,11 +1559,15 @@ defmodule Trifle.Organizations do
         attrs =
           attrs
           |> ensure_dashboard_group_within_org(membership)
+
         default_source = {dashboard.source_type, dashboard.source_id}
 
         with {:ok, attrs} <- ensure_dashboard_source(attrs, membership, default_source) do
           dashboard
-          |> Dashboard.changeset(assign_org_id(attrs, membership.organization_id) |> atomize_keys())
+          |> Dashboard.changeset(
+            assign_org_id(attrs, membership.organization_id)
+            |> atomize_keys()
+          )
           |> Repo.update()
         else
           {:error, message} ->

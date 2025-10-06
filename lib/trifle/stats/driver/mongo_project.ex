@@ -51,7 +51,16 @@ defmodule Trifle.Stats.Driver.MongoProject do
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
     system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
-    new(connection, reference, collection_name, config.separator, 1, joined_identifier, expire_after, system_tracking)
+    new(
+      connection,
+      reference,
+      collection_name,
+      config.separator,
+      1,
+      joined_identifier,
+      expire_after,
+      system_tracking
+    )
   end
 
   @doc """
@@ -70,7 +79,12 @@ defmodule Trifle.Stats.Driver.MongoProject do
       if joined_identifier do
         [%{"key" => %{"reference" => 1, "key" => 1}, "unique" => true}]
       else
-        [%{"key" => %{"reference" => 1, "key" => 1, "granularity" => 1, "at" => -1}, "unique" => true}]
+        [
+          %{
+            "key" => %{"reference" => 1, "key" => 1, "granularity" => 1, "at" => -1},
+            "unique" => true
+          }
+        ]
       end
 
     indexes =
@@ -135,7 +149,9 @@ defmodule Trifle.Stats.Driver.MongoProject do
             %{"$inc" => system_data}
           end
 
-        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update, upsert: true)
+        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
+          upsert: true
+        )
       end
     end)
   end
@@ -178,7 +194,9 @@ defmodule Trifle.Stats.Driver.MongoProject do
             %{"$inc" => system_data}
           end
 
-        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update, upsert: true)
+        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
+          upsert: true
+        )
       end
     end)
   end
@@ -263,7 +281,9 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
       case Mongo.find(driver.connection, driver.collection_name, filter, options)
            |> Enum.to_list() do
-        [] -> []
+        [] ->
+          []
+
         [doc] ->
           at =
             case doc["at"] do
@@ -272,14 +292,21 @@ defmodule Trifle.Stats.Driver.MongoProject do
               _ -> DateTime.utc_now()
             end
 
-          unpacked_data = Trifle.Stats.Packer.unpack(Map.drop(doc, ["_id", "key", "granularity", "reference"]))
+          unpacked_data =
+            Trifle.Stats.Packer.unpack(Map.drop(doc, ["_id", "key", "granularity", "reference"]))
+
           [at, unpacked_data]
       end
     end
   end
 
   defp system_identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
-    system_key = %Trifle.Stats.Nocturnal.Key{key: "__system__key__", granularity: key.granularity, at: key.at}
+    system_key = %Trifle.Stats.Nocturnal.Key{
+      key: "__system__key__",
+      granularity: key.granularity,
+      at: key.at
+    }
+
     Trifle.Stats.Nocturnal.Key.identifier(system_key, driver.separator)
   end
 
@@ -301,18 +328,26 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
   defp parse_timestamp_from_mongo(timestamp_value) do
     case timestamp_value do
-      %DateTime{} = dt -> dt
-      timestamp when is_integer(timestamp) -> DateTime.from_unix!(timestamp)
+      %DateTime{} = dt ->
+        dt
+
+      timestamp when is_integer(timestamp) ->
+        DateTime.from_unix!(timestamp)
+
       time_str when is_binary(time_str) ->
         case DateTime.from_iso8601(time_str) do
-          {:ok, dt, _} -> dt
+          {:ok, dt, _} ->
+            dt
+
           {:error, _} ->
             case Integer.parse(time_str) do
               {value, ""} -> DateTime.from_unix!(value)
               _ -> time_str
             end
         end
-      val -> val
+
+      val ->
+        val
     end
   end
 end

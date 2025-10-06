@@ -112,6 +112,7 @@ defmodule TrifleWeb.ExportController do
         "project" -> Source.from_project(Organizations.get_project!(dashboard.source_id))
         _ -> Source.from_database(Organizations.get_database!(dashboard.source_id))
       end
+
     config = Source.stats_config(source)
     available_granularities = Source.available_granularities(source)
 

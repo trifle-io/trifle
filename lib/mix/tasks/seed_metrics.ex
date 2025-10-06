@@ -40,6 +40,7 @@ defmodule Mix.Tasks.SeedMetrics do
         {:ok, type, id} -> {type, id}
         {:error, message} -> raise message
       end
+
     count = opts[:count] || 50
     hours = opts[:hours] || 48
     batch_size = opts[:batch_size] || 100
@@ -98,7 +99,9 @@ defmodule Mix.Tasks.SeedMetrics do
     try do
       project = Trifle.Organizations.get_project!(id)
       IO.puts("   Project: #{project.name}")
-      {Trifle.Stats.Source.from_project(project), Trifle.Organizations.Project.stats_config(project)}
+
+      {Trifle.Stats.Source.from_project(project),
+       Trifle.Organizations.Project.stats_config(project)}
     rescue
       Ecto.NoResultsError ->
         raise "Project with ID #{id} not found"
@@ -112,7 +115,9 @@ defmodule Mix.Tasks.SeedMetrics do
 
       database ->
         IO.puts("   Database: #{database.display_name} (#{database.driver})")
-        {Trifle.Stats.Source.from_database(database), Trifle.Organizations.Database.stats_config(database)}
+
+        {Trifle.Stats.Source.from_database(database),
+         Trifle.Organizations.Database.stats_config(database)}
     end
   end
 
@@ -200,7 +205,9 @@ defmodule Mix.Tasks.SeedMetrics do
     source
     |> Trifle.Stats.Source.transponders()
     |> case do
-      [] -> :ok
+      [] ->
+        :ok
+
       list ->
         IO.puts("   Transponders (#{length(list)}):")
 

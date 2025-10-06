@@ -4,111 +4,186 @@ defmodule TrifleApp.ProjectSettingsLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
 
+  @impl true
+  def mount(%{"id" => id}, _session, %{assigns: %{current_user: user}} = socket) do
+    project = Organizations.get_project!(id)
+
+    if project.user_id == user.id do
+      {:ok,
+       socket
+       |> assign(:project, project)
+       |> assign(:page_title, "Projects · #{project.name} · Settings")}
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "You do not have access to that project.")
+       |> redirect(to: ~p"/projects")}
+    end
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
-    <div>
+    <div class="space-y-6">
       <div class="sm:p-4">
         <.project_nav project={@project} current={:settings} />
       </div>
-    </div>
 
-    <div class="overflow-hidden bg-white shadow sm:rounded-lg max-w-full">
-      <div class="px-4 py-6 sm:px-6">
-        <h3 class="text-base font-semibold leading-7 text-gray-900">Applicant Information</h3>
-        <p class="mt-1 max-w-2xl text-sm leading-6 text-gray-500">
-          Personal details and application.
-        </p>
-      </div>
-      <div class="border-t border-gray-100">
-        <dl class="divide-y divide-gray-100">
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Full name</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">Margot Foster</dd>
+      <div class="space-y-6 px-4 pb-6 sm:px-6 lg:px-8">
+        <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
+          <div class="px-4 py-6 sm:px-6">
+            <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Project overview</h2>
+            <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
+              Key attributes that describe how this project is configured.
+            </p>
           </div>
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Application for</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">
-              Backend Developer
-            </dd>
+          <div class="border-t border-gray-100 dark:border-slate-700">
+            <dl class="divide-y divide-gray-100 dark:divide-slate-700">
+              <.detail_row label="Project name">
+                {@project.name}
+              </.detail_row>
+              <.detail_row label="Project ID">
+                <span class="font-mono text-sm text-gray-700 dark:text-slate-200 break-all">
+                  {@project.id}
+                </span>
+              </.detail_row>
+              <.detail_row label="Time zone">
+                {@project.time_zone}
+              </.detail_row>
+              <.detail_row label="Beginning of week">
+                {format_week_start(@project)}
+              </.detail_row>
+              <.detail_row label="Created">
+                {format_timestamp(@project.inserted_at)}
+              </.detail_row>
+              <.detail_row label="Last updated">
+                {format_timestamp(@project.updated_at)}
+              </.detail_row>
+            </dl>
           </div>
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Email address</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">
-              margotfoster@example.com
-            </dd>
+        </div>
+
+        <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
+          <div class="px-4 py-6 sm:px-6">
+            <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+              Reporting defaults
+            </h2>
+            <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
+              Settings applied when dashboards or Explore load without explicit overrides.
+            </p>
           </div>
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">Salary expectation</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">$120,000</dd>
-          </div>
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium text-gray-900">About</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">
-              Fugiat ipsum ipsum deserunt culpa aute sint do nostrud anim incididunt cillum culpa consequat. Excepteur qui ipsum aliquip consequat sint. Sit id mollit nulla mollit nostrud in ea officia proident. Irure nostrud pariatur mollit ad adipisicing reprehenderit deserunt qui eu.
-            </dd>
-          </div>
-          <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-            <dt class="text-sm font-medium leading-6 text-gray-900">Attachments</dt>
-            <dd class="mt-2 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-              <ul role="list" class="divide-y divide-gray-100 rounded-md border border-gray-200">
-                <li class="flex items-center justify-between py-4 pl-4 pr-5 text-sm leading-6">
-                  <div class="flex w-0 flex-1 items-center">
-                    <svg
-                      class="h-5 w-5 flex-shrink-0 text-gray-400"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M15.621 4.379a3 3 0 00-4.242 0l-7 7a3 3 0 004.241 4.243h.001l.497-.5a.75.75 0 011.064 1.057l-.498.501-.002.002a4.5 4.5 0 01-6.364-6.364l7-7a4.5 4.5 0 016.368 6.36l-3.455 3.553A2.625 2.625 0 119.52 9.52l3.45-3.451a.75.75 0 111.061 1.06l-3.45 3.451a1.125 1.125 0 001.587 1.595l3.454-3.553a3 3 0 000-4.242z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                    <div class="ml-4 flex min-w-0 flex-1 gap-2">
-                      <span class="truncate font-medium">resume_back_end_developer.pdf</span>
-                      <span class="flex-shrink-0 text-gray-400">2.4mb</span>
-                    </div>
+          <div class="border-t border-gray-100 dark:border-slate-700">
+            <dl class="divide-y divide-gray-100 dark:divide-slate-700">
+              <.detail_row label="Granularities">
+                <%= if @project.granularities && @project.granularities != [] do %>
+                  <div class="flex flex-wrap gap-2">
+                    <%= for granularity <- @project.granularities do %>
+                      <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/30">
+                        {granularity}
+                      </span>
+                    <% end %>
                   </div>
-                  <div class="ml-4 flex-shrink-0">
-                    <a href="#" class="font-medium text-teal-600 hover:text-teal-500">Download</a>
-                  </div>
-                </li>
-                <li class="flex items-center justify-between py-4 pl-4 pr-5 text-sm leading-6">
-                  <div class="flex w-0 flex-1 items-center">
-                    <svg
-                      class="h-5 w-5 flex-shrink-0 text-gray-400"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M15.621 4.379a3 3 0 00-4.242 0l-7 7a3 3 0 004.241 4.243h.001l.497-.5a.75.75 0 011.064 1.057l-.498.501-.002.002a4.5 4.5 0 01-6.364-6.364l7-7a4.5 4.5 0 016.368 6.36l-3.455 3.553A2.625 2.625 0 119.52 9.52l3.45-3.451a.75.75 0 111.061 1.06l-3.45 3.451a1.125 1.125 0 001.587 1.595l3.454-3.553a3 3 0 000-4.242z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                    <div class="ml-4 flex min-w-0 flex-1 gap-2">
-                      <span class="truncate font-medium">coverletter_back_end_developer.pdf</span>
-                      <span class="flex-shrink-0 text-gray-400">4.5mb</span>
-                    </div>
-                  </div>
-                  <div class="ml-4 flex-shrink-0">
-                    <a href="#" class="font-medium text-teal-600 hover:text-teal-500">Download</a>
-                  </div>
-                </li>
-              </ul>
-            </dd>
+                <% else %>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">
+                    Using defaults (1s, 1m, 1h, 1d, 1w, 1mo, 1q, 1y)
+                  </span>
+                <% end %>
+              </.detail_row>
+              <.detail_row label="Default timeframe">
+                <%= if present?(@project.default_timeframe) do %>
+                  <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/30">
+                    {@project.default_timeframe}
+                  </span>
+                <% else %>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">Not set</span>
+                <% end %>
+              </.detail_row>
+              <.detail_row label="Default granularity">
+                <%= if present?(@project.default_granularity) do %>
+                  <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/30">
+                    {@project.default_granularity}
+                  </span>
+                <% else %>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">Not set</span>
+                <% end %>
+              </.detail_row>
+              <.detail_row label="Data retention">
+                {format_expire_after(@project.expire_after)}
+              </.detail_row>
+            </dl>
           </div>
-        </dl>
+        </div>
       </div>
     </div>
     """
   end
 
-  def mount(params, _session, socket) do
-    project = Organizations.get_project!(params["id"])
+  attr :label, :string, required: true
+  slot :inner_block, required: true
 
-    {:ok, assign(socket, page_title: "Projects · #{project.name} · Settings", project: project)}
+  defp detail_row(assigns) do
+    ~H"""
+    <div class="px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+      <dt class="text-sm font-medium text-gray-900 dark:text-white">{@label}</dt>
+      <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+        {render_slot(@inner_block)}
+      </dd>
+    </div>
+    """
   end
+
+  defp present?(value) when value in [nil, ""], do: false
+  defp present?(_), do: true
+
+  defp format_week_start(%Project{} = project) do
+    project
+    |> Project.beginning_of_week_for()
+    |> case do
+      nil -> "Monday"
+      atom when is_atom(atom) -> atom |> Atom.to_string() |> String.capitalize()
+      value -> to_string(value)
+    end
+  end
+
+  defp format_timestamp(nil), do: "—"
+
+  defp format_timestamp(%NaiveDateTime{} = timestamp) do
+    Calendar.strftime(timestamp, "%B %d, %Y at %I:%M %p")
+  end
+
+  defp format_expire_after(nil), do: "Keep metrics forever"
+  defp format_expire_after(0), do: "Keep metrics forever"
+
+  defp format_expire_after(seconds) when is_integer(seconds) and seconds > 0 do
+    cond do
+      rem(seconds, 86_400) == 0 ->
+        days = div(seconds, 86_400)
+        pluralize(days, "day")
+
+      rem(seconds, 3_600) == 0 ->
+        hours = div(seconds, 3_600)
+        pluralize(hours, "hour")
+
+      rem(seconds, 60) == 0 ->
+        minutes = div(seconds, 60)
+        pluralize(minutes, "minute")
+
+      true ->
+        pluralize(seconds, "second")
+    end
+  end
+
+  defp format_expire_after(value) when is_binary(value) do
+    value
+    |> Integer.parse()
+    |> case do
+      {int, ""} -> format_expire_after(int)
+      _ -> "Keep metrics forever"
+    end
+  end
+
+  defp format_expire_after(_), do: "Keep metrics forever"
+
+  defp pluralize(value, unit) when value == 1, do: "1 #{unit}"
+  defp pluralize(value, unit), do: "#{value} #{unit}s"
 end

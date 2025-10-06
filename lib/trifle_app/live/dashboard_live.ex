@@ -143,6 +143,7 @@ defmodule TrifleApp.DashboardLive do
 
   defp apply_action(socket, :configure, _params) do
     membership = socket.assigns.current_membership
+
     sources =
       membership
       |> Source.list_for_membership()
@@ -298,7 +299,7 @@ defmodule TrifleApp.DashboardLive do
       default_granularity =
         original.default_granularity ||
           Source.default_granularity(source) ||
-          (Source.available_granularities(source) |> List.first()) || "1h"
+          Source.available_granularities(source) |> List.first() || "1h"
 
       attrs = %{
         "name" => (original.name || "Dashboard") <> " (copy)",
@@ -3079,37 +3080,43 @@ defmodule TrifleApp.DashboardLive do
 
       socket = assign(socket, :configure_segments, configure_segments)
 
-      with {:ok, source} <- resolve_source_selection(source_ref, socket.assigns.source, socket.assigns.sources || [], membership),
+      with {:ok, source} <-
+             resolve_source_selection(
+               source_ref,
+               socket.assigns.source,
+               socket.assigns.sources || [],
+               membership
+             ),
            {:ok, attrs} <- apply_source_to_attrs(attrs, source) do
         case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
           {:ok, updated_dashboard} ->
-          new_sources =
-            membership
-            |> Source.list_for_membership()
-            |> ensure_source_in_list(source)
+            new_sources =
+              membership
+              |> Source.list_for_membership()
+              |> ensure_source_in_list(source)
 
-          socket =
-            socket
-            |> assign(:sources, new_sources)
-            |> apply_dashboard_source_change(source)
+            socket =
+              socket
+              |> assign(:sources, new_sources)
+              |> apply_dashboard_source_change(source)
 
-          # Update breadcrumbs and title to reflect new name
-          groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
+            # Update breadcrumbs and title to reflect new name
+            groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
 
-          updated_breadcrumbs =
-            [{"Dashboards", "/dashboards"}] ++
-              Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
+            updated_breadcrumbs =
+              [{"Dashboards", "/dashboards"}] ++
+                Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
 
-          updated_page_title = "Dashboards · #{updated_dashboard.name}"
+            updated_page_title = "Dashboards · #{updated_dashboard.name}"
 
-          {:noreply,
-           socket
-           |> assign_dashboard(updated_dashboard)
-           |> assign(:temp_name, updated_dashboard.name)
-           |> assign(:breadcrumb_links, updated_breadcrumbs)
-           |> assign(:page_title, updated_page_title)
-           |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
-           |> put_flash(:info, "Settings saved")}
+            {:noreply,
+             socket
+             |> assign_dashboard(updated_dashboard)
+             |> assign(:temp_name, updated_dashboard.name)
+             |> assign(:breadcrumb_links, updated_breadcrumbs)
+             |> assign(:page_title, updated_page_title)
+             |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
+             |> put_flash(:info, "Settings saved")}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to save settings")}
@@ -3707,7 +3714,7 @@ defmodule TrifleApp.DashboardLive do
                     />
                   </div>
                   
-                  <!-- Source (editable) -->
+    <!-- Source (editable) -->
                   <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
                       Source
@@ -3723,7 +3730,10 @@ defmodule TrifleApp.DashboardLive do
                           <optgroup label={group_label}>
                             <%= for source <- sources do %>
                               <% value = source_option_value(source) %>
-                              <option value={value} selected={source_selected?(@selected_source_ref, source)}>
+                              <option
+                                value={value}
+                                selected={source_selected?(@selected_source_ref, source)}
+                              >
                                 {Source.display_name(source)}
                               </option>
                             <% end %>
@@ -5297,7 +5307,8 @@ defmodule TrifleApp.DashboardLive do
         with {:ok, {type_str, id}} <- parse_source_ref_string(trimmed_ref),
              type_atom when not is_nil(type_atom) <- parse_source_type(type_str),
              source when not is_nil(source) <-
-               Source.find_in_list(sources, type_atom, id) || fetch_source(type_atom, id, membership) do
+               Source.find_in_list(sources, type_atom, id) ||
+                 fetch_source(type_atom, id, membership) do
           {:ok, source}
         else
           _ -> {:error, "Selected source is not available"}

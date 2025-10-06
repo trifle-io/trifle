@@ -131,7 +131,8 @@ defmodule Trifle.OrganizationsTest do
           "config" => %{"path" => "foo"}
         })
 
-      assert Organizations.get_transponder_for_source!(project, transponder.id).id == transponder.id
+      assert Organizations.get_transponder_for_source!(project, transponder.id).id ==
+               transponder.id
     end
   end
 
