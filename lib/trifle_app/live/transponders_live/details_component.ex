@@ -1,17 +1,19 @@
-defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
+defmodule TrifleApp.TranspondersLive.DetailsComponent do
   use TrifleApp, :live_component
 
   alias Trifle.Organizations.Transponder
+  alias Trifle.Organizations.{Database, Project}
 
   def render(assigns) do
     ~H"""
     <div>
+      <% edit_path = details_edit_path(@source, @transponder.id) %>
       <.header>
         {@transponder.key}
         <:subtitle>View transponder details and configuration.</:subtitle>
         <:actions>
           <.link
-            patch={~p"/dbs/#{@database.id}/transponders/#{@transponder.id}/edit"}
+            patch={edit_path}
             class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
           >
             <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -97,4 +99,10 @@ defmodule TrifleApp.DatabaseTranspondersLive.DetailsComponent do
   def update(assigns, socket) do
     {:ok, assign(socket, assigns)}
   end
+
+  defp details_edit_path(%Database{id: id}, transponder_id),
+    do: ~p"/dbs/#{id}/transponders/#{transponder_id}/edit"
+
+  defp details_edit_path(%Project{id: id}, transponder_id),
+    do: ~p"/projects/#{id}/transponders/#{transponder_id}/edit"
 end

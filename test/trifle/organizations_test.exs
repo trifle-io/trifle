@@ -86,6 +86,55 @@ defmodule Trifle.OrganizationsTest do
     end
   end
 
+  describe "project transponders" do
+    import Trifle.OrganizationsFixtures
+
+    test "create_transponder_for_project/2 sets project source" do
+      project = project_fixture()
+
+      attrs = %{
+        "name" => "Project Total",
+        "key" => "metrics::total",
+        "type" => "Trifle.Stats.Transponder.Add",
+        "config" => %{"path1" => "foo", "path2" => "bar"}
+      }
+
+      {:ok, transponder} = Organizations.create_transponder_for_project(project, attrs)
+
+      assert transponder.source_type == "project"
+      assert transponder.source_id == project.id
+      assert transponder.organization_id == nil
+    end
+
+    test "list_transponders_for_project/1 returns transponders for project" do
+      project = project_fixture()
+
+      {:ok, transponder} =
+        Organizations.create_transponder_for_project(project, %{
+          "name" => "Project Ratio",
+          "key" => "proj::ratio",
+          "type" => "Trifle.Stats.Transponder.Ratio",
+          "config" => %{"path1" => "foo", "path2" => "bar"}
+        })
+
+      assert Organizations.list_transponders_for_project(project) == [transponder]
+    end
+
+    test "get_transponder_for_source!/2 fetches project transponder" do
+      project = project_fixture()
+
+      {:ok, transponder} =
+        Organizations.create_transponder_for_project(project, %{
+          "name" => "Project Mean",
+          "key" => "proj::mean",
+          "type" => "Trifle.Stats.Transponder.Mean",
+          "config" => %{"path" => "foo"}
+        })
+
+      assert Organizations.get_transponder_for_source!(project, transponder.id).id == transponder.id
+    end
+  end
+
   describe "project_tokens" do
     alias Trifle.Organizations.ProjectToken
 

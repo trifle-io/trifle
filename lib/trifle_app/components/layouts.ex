@@ -50,11 +50,11 @@ defmodule TrifleApp.Layouts do
       {:dashboards, TrifleApp.DashboardLive} -> true
       {:explore, TrifleApp.ExploreLive} -> true
       {:projects, TrifleApp.ProjectsLive} -> true
-      {:projects, TrifleApp.ProjectTranspondersLive} -> true
       {:projects, TrifleApp.ProjectSettingsLive} -> true
       {:projects, TrifleApp.ProjectTokensLive} -> true
+      {:projects, TrifleApp.TranspondersLive} -> Map.get(socket.assigns, :nav_section) == :projects
       {:databases, TrifleApp.DatabasesLive} -> true
-      {:databases, TrifleApp.DatabaseTranspondersLive} -> true
+      {:databases, TrifleApp.TranspondersLive} -> Map.get(socket.assigns, :nav_section) == :databases
       {:databases, TrifleApp.DatabaseRedirectLive} -> true
       _ -> false
     end

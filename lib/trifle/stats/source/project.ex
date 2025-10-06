@@ -5,6 +5,7 @@ defmodule Trifle.Stats.Source.Project do
 
   @behaviour Trifle.Stats.Source.Behaviour
 
+  alias Trifle.Organizations
   alias Trifle.Organizations.Project
 
   @impl true
@@ -40,5 +41,7 @@ defmodule Trifle.Stats.Source.Project do
   def time_zone(%Project{time_zone: time_zone}), do: time_zone || "UTC"
 
   @impl true
-  def transponders(_project), do: []
+  def transponders(%Project{} = project) do
+    Organizations.list_transponders_for_project(project)
+  end
 end

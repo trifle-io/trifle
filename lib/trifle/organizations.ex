@@ -978,11 +978,14 @@ defmodule Trifle.Organizations do
   Returns the list of transponders for a database.
   """
   def list_transponders_for_database(%Database{} = database) do
-    Repo.all(
-      from t in Transponder,
-        where: t.database_id == ^database.id and t.organization_id == ^database.organization_id,
-        order_by: [asc: t.order, asc: t.key]
-    )
+    list_transponders_for_source(:database, database.id, database.organization_id)
+  end
+
+  @doc """
+  Returns the list of transponders for a project.
+  """
+  def list_transponders_for_project(%Project{} = project) do
+    list_transponders_for_source(:project, project.id, nil)
   end
 
   @doc """
@@ -999,6 +1002,23 @@ defmodule Trifle.Organizations do
 
   def get_transponder!(id), do: Repo.get!(Transponder, id)
 
+  def get_transponder_for_source!(%Database{} = database, id) when is_binary(id) do
+    Repo.get_by!(Transponder,
+      id: id,
+      source_type: source_type_string(:database),
+      source_id: database.id,
+      organization_id: database.organization_id
+    )
+  end
+
+  def get_transponder_for_source!(%Project{} = project, id) when is_binary(id) do
+    Repo.get_by!(Transponder,
+      id: id,
+      source_type: source_type_string(:project),
+      source_id: project.id
+    )
+  end
+
   @doc """
   Creates a transponder bound to a database.
   """
@@ -1008,6 +1028,21 @@ defmodule Trifle.Organizations do
       |> Map.put("database_id", database.id)
       |> Map.delete(:database_id)
       |> assign_org_id(database.organization_id)
+      |> assign_source(:database, database.id)
+      |> atomize_keys()
+
+    create_transponder(attrs)
+  end
+
+  @doc """
+  Creates a transponder bound to a project.
+  """
+  def create_transponder_for_project(%Project{} = project, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Map.delete(:database_id)
+      |> Map.delete("database_id")
+      |> assign_source(:project, project.id)
       |> atomize_keys()
 
     create_transponder(attrs)
@@ -1020,6 +1055,7 @@ defmodule Trifle.Organizations do
     attrs =
       attrs
       |> ensure_transponder_org()
+      |> ensure_transponder_source()
       |> atomize_keys()
 
     %Transponder{}
@@ -1031,6 +1067,8 @@ defmodule Trifle.Organizations do
   Updates a transponder.
   """
   def update_transponder(%Transponder{} = transponder, attrs) do
+    attrs = ensure_transponder_source(attrs)
+
     transponder
     |> Transponder.changeset(attrs)
     |> Repo.update()
@@ -1047,6 +1085,8 @@ defmodule Trifle.Organizations do
   Returns an `%Ecto.Changeset{}` for tracking transponder changes.
   """
   def change_transponder(%Transponder{} = transponder, attrs \\ %{}) do
+    attrs = ensure_transponder_source(attrs)
+
     Transponder.changeset(transponder, attrs)
   end
 
@@ -1054,30 +1094,22 @@ defmodule Trifle.Organizations do
   Updates the order of transponders for a database.
   """
   def update_transponder_order(%Database{} = database, transponder_ids) do
-    Repo.transaction(fn ->
-      transponder_ids
-      |> Enum.with_index()
-      |> Enum.each(fn {transponder_id, index} ->
-        from(t in Transponder, where: t.id == ^transponder_id and t.database_id == ^database.id)
-        |> Repo.update_all(set: [order: index])
-      end)
-    end)
+    update_transponder_order_for_source(:database, database.id, transponder_ids)
+  end
+
+  def update_transponder_order(%Project{} = project, transponder_ids) do
+    update_transponder_order_for_source(:project, project.id, transponder_ids)
   end
 
   @doc """
   Sets the next available order for a new transponder.
   """
   def get_next_transponder_order(%Database{} = database) do
-    query =
-      from(t in Transponder,
-        where: t.database_id == ^database.id,
-        select: max(t.order)
-      )
+    get_next_transponder_order_for_source(:database, database.id)
+  end
 
-    case Repo.one(query) do
-      nil -> 0
-      max_order -> max_order + 1
-    end
+  def get_next_transponder_order(%Project{} = project) do
+    get_next_transponder_order_for_source(:project, project.id)
   end
 
   @doc """
@@ -1116,6 +1148,115 @@ defmodule Trifle.Organizations do
       nil -> 0
       max_pos -> max_pos + 1
     end
+  end
+
+  defp list_transponders_for_source(type, source_id, organization_id) do
+    type_string = source_type_string(type)
+
+    base_query =
+      from t in Transponder,
+        where: t.source_type == ^type_string and t.source_id == ^source_id,
+        order_by: [asc: t.order, asc: t.key]
+
+    query =
+      case organization_id do
+        nil -> base_query
+        org_id -> from t in base_query, where: t.organization_id == ^org_id
+      end
+
+    Repo.all(query)
+  end
+
+  defp update_transponder_order_for_source(type, source_id, transponder_ids) do
+    type_string = source_type_string(type)
+
+    Repo.transaction(fn ->
+      transponder_ids
+      |> Enum.with_index()
+      |> Enum.each(fn {transponder_id, index} ->
+        from(t in Transponder,
+          where:
+            t.id == ^transponder_id and t.source_type == ^type_string and t.source_id == ^source_id
+        )
+        |> Repo.update_all(set: [order: index])
+      end)
+    end)
+  end
+
+  defp get_next_transponder_order_for_source(type, source_id) do
+    type_string = source_type_string(type)
+
+    query =
+      from(t in Transponder,
+        where: t.source_type == ^type_string and t.source_id == ^source_id,
+        select: max(t.order)
+      )
+
+    case Repo.one(query) do
+      nil -> 0
+      max_order -> max_order + 1
+    end
+  end
+
+  defp assign_source(attrs, type, source_id) do
+    attrs
+    |> Map.put("source_type", source_type_string(type))
+    |> Map.put("source_id", source_id)
+    |> Map.delete(:source_type)
+    |> Map.delete(:source_id)
+  end
+
+  defp ensure_transponder_source(nil), do: %{}
+
+  defp ensure_transponder_source(attrs) when is_map(attrs) do
+    source_type = Map.get(attrs, :source_type) || Map.get(attrs, "source_type")
+    source_id = Map.get(attrs, :source_id) || Map.get(attrs, "source_id")
+    database_id = Map.get(attrs, :database_id) || Map.get(attrs, "database_id")
+
+    cond do
+      source_type && source_id ->
+        attrs
+        |> Map.put("source_type", normalize_source_type(source_type))
+        |> Map.delete(:source_type)
+        |> Map.put("source_id", source_id)
+        |> Map.delete(:source_id)
+
+      database_id ->
+        attrs
+        |> Map.put("source_type", source_type_string(:database))
+        |> Map.put("source_id", database_id)
+
+      true ->
+        attrs
+    end
+  end
+
+  defp ensure_transponder_source(attrs), do: attrs
+
+  defp normalize_source_type(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> normalize_source_type()
+  end
+
+  defp normalize_source_type(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  defp normalize_source_type(_), do: nil
+
+  defp source_type_string(type) when is_atom(type) do
+    type
+    |> Atom.to_string()
+    |> String.downcase()
+  end
+
+  defp source_type_string(type) when is_binary(type) do
+    type
+    |> String.trim()
+    |> String.downcase()
   end
 
   def list_dashboards_for_membership(
