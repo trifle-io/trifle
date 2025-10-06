@@ -474,35 +474,134 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp ensure_dashboard_database_within_org(attrs, %OrganizationMembership{} = membership) do
-    value = Map.get(attrs, "database_id") || Map.get(attrs, :database_id)
+  defp ensure_dashboard_source(attrs, %OrganizationMembership{} = membership, default \\ nil) do
+    with {:ok, {type, id}} <- resolve_dashboard_source(attrs, default),
+         {:ok, updated_attrs} <- coerce_dashboard_source(attrs, membership, type, id) do
+      {:ok, updated_attrs}
+    end
+  end
+
+  defp resolve_dashboard_source(attrs, default) do
+    case fetch_attr(attrs, "source") do
+      %{} = source_map ->
+        type = fetch_attr(source_map, "type")
+        id = fetch_attr(source_map, "id")
+        normalize_source_tuple(type, id)
+
+      _ ->
+        cond do
+          type = fetch_attr(attrs, "source_type") ->
+            id = fetch_attr(attrs, "source_id")
+            normalize_source_tuple(type, id)
+
+          id = fetch_attr(attrs, "database_id") ->
+            normalize_source_tuple("database", id)
+
+          valid_source_tuple?(default) ->
+            {:ok, default}
+
+          true ->
+            {:error, "Source selection is required"}
+        end
+    end
+  end
+
+  defp normalize_source_tuple(type, id) do
+    type = type && type |> to_string() |> String.trim() |> String.downcase()
+    id = id && to_string(id) |> String.trim()
 
     cond do
-      is_nil(value) ->
-        attrs
-
-      match?(%Database{}, value) ->
-        id = value.id
-        _ = get_database_for_org!(membership.organization_id, id)
-
-        attrs
-        |> Map.put("database_id", id)
-        |> Map.delete(:database_id)
-
-      is_binary(value) ->
-        _ = get_database_for_org!(membership.organization_id, value)
-
-        attrs
-        |> Map.put("database_id", value)
-        |> Map.delete(:database_id)
+      type in ["database", "project"] and id not in [nil, ""] ->
+        {:ok, {type, id}}
 
       true ->
-        database_id = to_string(value)
-        _ = get_database_for_org!(membership.organization_id, database_id)
+        {:error, "Invalid source selection"}
+    end
+  end
+
+  defp valid_source_tuple?({type, id}) when type in ["database", "project"] and id not in [nil, ""] do
+    true
+  end
+
+  defp valid_source_tuple?(_), do: false
+
+  defp coerce_dashboard_source(attrs, membership, "database", id) do
+    try do
+      _ = get_database_for_org!(membership.organization_id, id)
+
+      {:ok,
+       attrs
+       |> drop_source_param()
+       |> put_attr("database_id", id)
+       |> put_attr("source_type", "database")
+       |> put_attr("source_id", id)}
+    rescue
+      Ecto.NoResultsError ->
+        {:error, "Database is not part of this organization"}
+    end
+  end
+
+  defp coerce_dashboard_source(attrs, membership, "project", id) do
+    try do
+      project = get_project!(id)
+
+      if project.user_id == membership.user_id do
+        {:ok,
+         attrs
+         |> drop_source_param()
+         |> put_attr("database_id", nil)
+         |> put_attr("source_type", "project")
+         |> put_attr("source_id", project.id)}
+      else
+        {:error, "Project is not available to this user"}
+      end
+    rescue
+      Ecto.NoResultsError ->
+        {:error, "Project not found"}
+    end
+  end
+
+  defp coerce_dashboard_source(_attrs, _membership, _type, _id) do
+    {:error, "Invalid source selection"}
+  end
+
+  defp drop_source_param(attrs) do
+    attrs
+    |> Map.delete("source")
+    |> Map.delete(:source)
+  end
+
+  defp fetch_attr(attrs, key) when is_binary(key) do
+    Map.get(attrs, key) || Map.get(attrs, String.to_atom(key))
+  end
+
+  defp put_attr(attrs, key, value) when is_binary(key) do
+    attrs
+    |> Map.put(key, value)
+    |> Map.delete(String.to_atom(key))
+  end
+
+  defp ensure_dashboard_source_defaults(attrs) do
+    cond do
+      fetch_attr(attrs, "source_type") && fetch_attr(attrs, "source_id") ->
+        attrs
+
+      source = fetch_attr(attrs, "source") ->
+        type = fetch_attr(source, "type")
+        id = fetch_attr(source, "id")
 
         attrs
-        |> Map.put("database_id", database_id)
-        |> Map.delete(:database_id)
+        |> drop_source_param()
+        |> put_attr("source_type", type)
+        |> put_attr("source_id", id)
+
+      database_id = fetch_attr(attrs, "database_id") ->
+        attrs
+        |> put_attr("source_type", "database")
+        |> put_attr("source_id", database_id)
+
+      true ->
+        attrs
     end
   end
 
@@ -1400,13 +1499,25 @@ defmodule Trifle.Organizations do
       |> Map.put("user_id", user.id)
       |> Map.delete(:user_id)
       |> ensure_dashboard_group_within_org(membership)
-      |> ensure_dashboard_database_within_org(membership)
-      |> assign_org_id(membership.organization_id)
-      |> atomize_keys()
 
-    %Dashboard{}
-    |> Dashboard.changeset(attrs)
-    |> Repo.insert()
+    with {:ok, attrs} <- ensure_dashboard_source(attrs, membership) do
+      attrs =
+        attrs
+        |> assign_org_id(membership.organization_id)
+        |> atomize_keys()
+
+      %Dashboard{}
+      |> Dashboard.changeset(attrs)
+      |> Repo.insert()
+    else
+      {:error, message} ->
+        changeset =
+          %Dashboard{}
+          |> Dashboard.changeset(%{})
+          |> Ecto.Changeset.add_error(:source_id, message)
+
+        {:error, changeset}
+    end
   end
 
   def create_dashboard_group_for_membership(%OrganizationMembership{} = membership, attrs \\ %{}) do
@@ -1446,11 +1557,21 @@ defmodule Trifle.Organizations do
         attrs =
           attrs
           |> ensure_dashboard_group_within_org(membership)
-          |> ensure_dashboard_database_within_org(membership)
+        default_source = {dashboard.source_type, dashboard.source_id}
 
-        dashboard
-        |> Dashboard.changeset(assign_org_id(attrs, membership.organization_id) |> atomize_keys())
-        |> Repo.update()
+        with {:ok, attrs} <- ensure_dashboard_source(attrs, membership, default_source) do
+          dashboard
+          |> Dashboard.changeset(assign_org_id(attrs, membership.organization_id) |> atomize_keys())
+          |> Repo.update()
+        else
+          {:error, message} ->
+            changeset =
+              dashboard
+              |> Dashboard.changeset(%{})
+              |> Ecto.Changeset.add_error(:source_id, message)
+
+            {:error, changeset}
+        end
     end
   end
 
@@ -1831,6 +1952,8 @@ defmodule Trifle.Organizations do
   Creates a dashboard.
   """
   def create_dashboard(attrs \\ %{}) do
+    attrs = ensure_dashboard_source_defaults(attrs)
+
     %Dashboard{}
     |> Dashboard.changeset(attrs)
     |> Repo.insert()

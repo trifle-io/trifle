@@ -3,7 +3,6 @@ defmodule TrifleWeb.ExportController do
 
   alias TrifleApp.Exporters.ChromeExporter
   alias Trifle.Organizations
-  alias Trifle.Organizations.Database
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Trifle.Stats.SeriesFetcher
@@ -107,8 +106,12 @@ defmodule TrifleWeb.ExportController do
 
   defp fetch_series_for_export(dashboard_id, params) do
     dashboard = Organizations.get_dashboard!(dashboard_id)
-    database = Database |> Trifle.Repo.get!(dashboard.database_id)
-    source = Source.from_database(database)
+
+    source =
+      case dashboard.source_type do
+        "project" -> Source.from_project(Organizations.get_project!(dashboard.source_id))
+        _ -> Source.from_database(Organizations.get_database!(dashboard.source_id))
+      end
     config = Source.stats_config(source)
     available_granularities = Source.available_granularities(source)
 

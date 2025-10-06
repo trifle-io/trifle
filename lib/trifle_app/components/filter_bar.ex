@@ -17,79 +17,79 @@ defmodule TrifleApp.Components.FilterBar do
         <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
           
     <!-- Source Dropdown (optional; only if >1 source) -->
-          <%= if @sources && length(@sources) > 1 do %>
+          <%= if @sources && length(@sources) > 0 && !@source_locked do %>
+            <% selected_source = selected_source_struct(@sources, @selected_source) %>
             <div class="w-full md:w-64">
               <div class="relative">
                 <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
                   Source
                 </div>
-                <button
-                  type="button"
-                  phx-target={@myself}
-                  phx-click="toggle_source_dropdown"
-                  class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                >
-                  <div class="flex items-center justify-between">
-                    <span class="truncate">
-                      {case selected_source_struct(@sources, @selected_source) do
-                        nil -> "Select a source"
-                        source -> Source.display_name(source)
-                      end}
-                    </span>
-                  </div>
-                  <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                    <svg
-                      class="h-5 w-5 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </span>
-                </button>
-
-                <%= if @show_source_dropdown do %>
-                  <div
-                    phx-click-away="hide_source_dropdown"
+                <%= if length(@sources) > 1 do %>
+                  <button
+                    type="button"
                     phx-target={@myself}
-                    class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                    phx-click="toggle_source_dropdown"
+                    class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   >
-                    <%= for {group_type, sources} <- grouped_sources(@sources) do %>
-                      <div class="py-1">
-                        <div class="px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                          {Source.type_label(group_type)}
+                    <div class="flex items-center justify-between">
+                      <span class="truncate">
+                        {if selected_source, do: Source.display_name(selected_source), else: "Select a source"}
+                      </span>
+                    </div>
+                    <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                      <svg
+                        class="h-5 w-5 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </span>
+                  </button>
+
+                  <%= if @show_source_dropdown do %>
+                    <div
+                      phx-click-away="hide_source_dropdown"
+                      phx-target={@myself}
+                      class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                    >
+                      <%= for {group_type, sources} <- grouped_sources(@sources) do %>
+                        <div class="py-1">
+                          <div class="px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                            {Source.type_label(group_type)}
+                          </div>
+                          <%= for source <- sources do %>
+                            <% source_id = Source.id(source) |> to_string() %>
+                            <button
+                              type="button"
+                              phx-target={@myself}
+                              phx-click="select_source"
+                              phx-value-id={source_id}
+                              phx-value-type={Source.type(source)}
+                              onmousedown="event.preventDefault()"
+                              class={[
+                                "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
+                                selected_source?(source, @selected_source) &&
+                                  "font-semibold text-teal-600 dark:text-teal-400"
+                              ]}
+                            >
+                              <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-900 dark:text-white truncate">
+                                  {Source.display_name(source)}
+                                </span>
+                              </div>
+                            </button>
+                          <% end %>
                         </div>
-                        <%= for source <- sources do %>
-                          <% source_id = Source.id(source) |> to_string() %>
-                          <button
-                            type="button"
-                            phx-target={@myself}
-                            phx-click="select_source"
-                            phx-value-id={source_id}
-                            phx-value-type={Source.type(source)}
-                            onmousedown="event.preventDefault()"
-                            class={[
-                              "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
-                              selected_source?(source, @selected_source) &&
-                                "font-semibold text-teal-600 dark:text-teal-400"
-                            ]}
-                          >
-                            <div class="flex items-center justify-between">
-                              <span class="text-sm text-gray-900 dark:text-white truncate">
-                                {Source.display_name(source)}
-                              </span>
-                            </div>
-                          </button>
-                        <% end %>
-                      </div>
-                    <% end %>
-                  </div>
+                      <% end %>
+                    </div>
+                  <% end %>
                 <% end %>
               </div>
             </div>
@@ -410,6 +410,7 @@ defmodule TrifleApp.Components.FilterBar do
     socket =
       socket
       |> assign(assigns)
+      |> assign(:source_locked, Kernel.||(assigns[:source_locked], false))
       |> assign(:sources, sources)
       |> assign(:selected_source, selected_source_ref)
       |> assign(current_input_value: current_input)
@@ -436,7 +437,11 @@ defmodule TrifleApp.Components.FilterBar do
   end
 
   def handle_event("toggle_source_dropdown", _params, socket) do
-    {:noreply, assign(socket, show_source_dropdown: !socket.assigns[:show_source_dropdown])}
+    if socket.assigns[:source_locked] do
+      {:noreply, socket}
+    else
+      {:noreply, assign(socket, show_source_dropdown: !socket.assigns[:show_source_dropdown])}
+    end
   end
 
   def handle_event("hide_source_dropdown", _params, socket) do
@@ -444,26 +449,30 @@ defmodule TrifleApp.Components.FilterBar do
   end
 
   def handle_event("select_source", %{"id" => source_id, "type" => type_param}, socket) do
-    type = parse_source_type(type_param)
+    if socket.assigns[:source_locked] do
+      {:noreply, socket}
+    else
+      type = parse_source_type(type_param)
 
-    selected_ref =
-      normalize_selected_source_ref(%{type: type, id: source_id}, socket.assigns.sources)
+      selected_ref =
+        normalize_selected_source_ref(%{type: type, id: source_id}, socket.assigns.sources)
 
-    payload = %{source: %{type: Atom.to_string(type), id: source_id}}
+      payload = %{source: %{type: Atom.to_string(type), id: source_id}}
 
-    payload =
-      if type == :database do
-        Map.put(payload, :database_id, source_id)
-      else
-        payload
-      end
+      payload =
+        if type == :database do
+          Map.put(payload, :database_id, source_id)
+        else
+          payload
+        end
 
-    notify_parent({:filter_changed, payload})
+      notify_parent({:filter_changed, payload})
 
-    {:noreply,
-     socket
-     |> assign(:show_source_dropdown, false)
-     |> assign(:selected_source, selected_ref)}
+      {:noreply,
+       socket
+       |> assign(:show_source_dropdown, false)
+       |> assign(:selected_source, selected_ref)}
+    end
   end
 
   def handle_event("smart_timeframe_keydown", %{"key" => "Enter", "value" => input}, socket) do
