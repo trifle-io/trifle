@@ -63,8 +63,11 @@ defmodule TrifleApp.TranspondersLive do
     current_user = assigns[:current_user]
 
     cond do
-      is_nil(current_user) -> {:redirect, ~p"/projects"}
-      project.user_id != current_user.id -> {:redirect, ~p"/projects"}
+      is_nil(current_user) ->
+        {:redirect, ~p"/projects"}
+
+      project.user_id != current_user.id ->
+        {:redirect, ~p"/projects"}
 
       true ->
         {:ok,
@@ -99,6 +102,7 @@ defmodule TrifleApp.TranspondersLive do
   defp base_action(_), do: :index
 
   defp page_title_for_action(action, source_type, source, transponder \\ nil)
+
   defp page_title_for_action(:index, :database, %Database{} = database, _transponder) do
     "Database · #{database.display_name} · Transponders"
   end
@@ -324,7 +328,7 @@ defmodule TrifleApp.TranspondersLive do
 
       <%= if @source_type == :database do %>
         <!-- Database Tab Navigation -->
-        <div class="border-b border-gray-200 dark:border-slate-700">
+        <div class="border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <nav class="-mb-px flex space-x-4 sm:space-x-8" aria-label="Database tabs">
             <.link
               navigate={index_path}
@@ -379,8 +383,8 @@ defmodule TrifleApp.TranspondersLive do
       <% end %>
       
     <!-- Transponders Index -->
-      <div class="mb-6">
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
+      <div class="px-4 pb-6 sm:px-6 lg:px-8">
+        <div class="mt-6 bg-white dark:bg-slate-800 rounded-lg shadow">
           <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span>Transponders</span>
@@ -440,138 +444,48 @@ defmodule TrifleApp.TranspondersLive do
                   phx-click="transponder_clicked"
                   phx-value-id={transponder.id}
                 >
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-3">
-                        <div class="flex-shrink-0 text-gray-400 dark:text-slate-500 text-lg font-medium min-w-[2rem] text-center">
-                          {transponder.order + 1}
-                        </div>
-
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-center gap-2 mb-1">
-                            <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200">
-                              {Transponder.get_type_display_name(transponder.type)}
-                            </span>
-                            <.link
-                              patch={show_path.(transponder.id)}
-                              class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"
-                            >
-                              {transponder.name || transponder.key}
-                            </.link>
-                          </div>
-                          <p class="text-xs text-gray-500 dark:text-slate-400">
-                            Key Pattern:
-                            <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">
-                              {transponder.key}
-                            </code>
-                            <span class="mx-3">•</span>
-                            Response Path:
-                            <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">
-                              {Map.get(transponder.config, "response_path", "N/A")}
-                            </code>
-                          </p>
-                        </div>
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <div class="flex-shrink-0 text-gray-400 dark:text-slate-500 text-lg font-medium min-w-[2rem] text-center">
+                        {transponder.order + 1}
                       </div>
 
-                      <div class="flex items-center gap-2" phx-click="noop">
-                        <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-                          <!-- Duplicate -->
-                          <button
-                            type="button"
-                            phx-click="duplicate_transponder"
-                            phx-value-id={transponder.id}
-                            title="Duplicate"
-                            aria-label="Duplicate transponder"
-                            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              class="h-5 w-5"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-                              />
-                            </svg>
-                          </button>
-                          <!-- Edit -->
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200">
+                            {Transponder.get_type_display_name(transponder.type)}
+                          </span>
                           <.link
-                            patch={edit_path.(transponder.id)}
-                            title="Edit"
-                            aria-label="Edit transponder"
-                            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                            patch={show_path.(transponder.id)}
+                            class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              class="h-5 w-5"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                              />
-                            </svg>
+                            {transponder.name || transponder.key}
                           </.link>
-                          
-    <!-- Delete -->
-                          <button
-                            type="button"
-                            phx-click="delete_transponder"
-                            phx-value-id={transponder.id}
-                            data-confirm="Are you sure you want to delete this transponder?"
-                            title="Delete"
-                            aria-label="Delete transponder"
-                            class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              class="h-5 w-5"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                              />
-                            </svg>
-                          </button>
                         </div>
-                        
-    <!-- Toggle -->
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Key Pattern:
+                          <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">
+                            {transponder.key}
+                          </code>
+                          <span class="mx-3">•</span>
+                          Response Path:
+                          <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">
+                            {Map.get(transponder.config, "response_path", "N/A")}
+                          </code>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2" phx-click="noop">
+                      <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                        <!-- Duplicate -->
                         <button
                           type="button"
-                          phx-click="toggle_transponder"
+                          phx-click="duplicate_transponder"
                           phx-value-id={transponder.id}
-                          class={[
-                            "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:focus:ring-offset-slate-800",
-                            if(transponder.enabled,
-                              do: "bg-teal-600",
-                              else: "bg-gray-200 dark:bg-slate-600"
-                            )
-                          ]}
-                        >
-                          <span class="sr-only">Toggle transponder</span>
-                          <span class={[
-                            "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                            if(transponder.enabled, do: "translate-x-5", else: "translate-x-0")
-                          ]} />
-                        </button>
-                        
-    <!-- Reorder (Drag Handle) -->
-                        <div
-                          class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300"
-                          phx-click="noop"
+                          title="Duplicate"
+                          aria-label="Duplicate transponder"
+                          class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -581,11 +495,101 @@ defmodule TrifleApp.TranspondersLive do
                             stroke="currentColor"
                             class="h-5 w-5"
                           >
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                            />
                           </svg>
-                        </div>
+                        </button>
+                        <!-- Edit -->
+                        <.link
+                          patch={edit_path.(transponder.id)}
+                          title="Edit"
+                          aria-label="Edit transponder"
+                          class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-5 w-5"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                            />
+                          </svg>
+                        </.link>
+                        
+    <!-- Delete -->
+                        <button
+                          type="button"
+                          phx-click="delete_transponder"
+                          phx-value-id={transponder.id}
+                          data-confirm="Are you sure you want to delete this transponder?"
+                          title="Delete"
+                          aria-label="Delete transponder"
+                          class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-5 w-5"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                      
+    <!-- Toggle -->
+                      <button
+                        type="button"
+                        phx-click="toggle_transponder"
+                        phx-value-id={transponder.id}
+                        class={[
+                          "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:focus:ring-offset-slate-800",
+                          if(transponder.enabled,
+                            do: "bg-teal-600",
+                            else: "bg-gray-200 dark:bg-slate-600"
+                          )
+                        ]}
+                      >
+                        <span class="sr-only">Toggle transponder</span>
+                        <span class={[
+                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                          if(transponder.enabled, do: "translate-x-5", else: "translate-x-0")
+                        ]} />
+                      </button>
+                      
+    <!-- Reorder (Drag Handle) -->
+                      <div
+                        class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300"
+                        phx-click="noop"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
+                        </svg>
                       </div>
                     </div>
+                  </div>
                 </div>
               <% end %>
             </div>

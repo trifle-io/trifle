@@ -2,22 +2,80 @@ defmodule TrifleApp.DatabasesLive do
   use TrifleApp, :live_view
 
   alias Trifle.Organizations
+  alias Trifle.Organizations.Database
 
+  @impl true
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
     {:ok, redirect(socket, to: ~p"/organization")}
   end
 
-  def mount(_params, _session, %{assigns: %{current_membership: membership}} = socket) do
+  def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do
+    can_manage = Organizations.membership_owner?(membership)
     databases = Organizations.list_databases_for_org(membership.organization_id)
 
-    case databases do
-      [single_database] ->
-        {:ok, push_navigate(socket, to: ~p"/dbs/#{single_database.id}/transponders")}
+    socket =
+      socket
+      |> assign(:page_title, "Databases")
+      |> assign(:databases, databases)
+      |> assign(:database, nil)
+      |> assign(:can_manage_databases, can_manage)
 
-      _ ->
-        {:ok, assign(socket, page_title: "Databases", databases: databases)}
+    if length(databases) == 1 and not can_manage and socket.assigns.live_action == :index do
+      {:ok, push_navigate(socket, to: ~p"/dbs/#{hd(databases).id}/transponders")}
+    else
+      {:ok, apply_action(socket, socket.assigns.live_action, params)}
     end
   end
+
+  @impl true
+  def handle_params(params, _url, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  defp apply_action(socket, :new, _params) do
+    if socket.assigns.can_manage_databases do
+      socket
+      |> assign(:page_title, "Databases · New")
+      |> assign(:database, %Database{})
+    else
+      socket
+      |> put_flash(:error, "Only organization owners can create databases.")
+      |> push_patch(to: ~p"/dbs")
+    end
+  end
+
+  defp apply_action(socket, :index, _params) do
+    membership = socket.assigns.current_membership
+    databases = Organizations.list_databases_for_org(membership.organization_id)
+
+    socket
+    |> assign(:page_title, "Databases")
+    |> assign(:database, nil)
+    |> assign(:databases, databases)
+    |> maybe_redirect_single_database()
+  end
+
+  defp apply_action(socket, _action, _params), do: socket
+
+  @impl true
+  def handle_info({TrifleApp.DatabasesLive.FormComponent, {:saved, _database}}, socket) do
+    {:noreply, reload_databases(socket)}
+  end
+
+  defp reload_databases(socket) do
+    membership = socket.assigns.current_membership
+    databases = Organizations.list_databases_for_org(membership.organization_id)
+
+    assign(socket, :databases, databases)
+  end
+
+  defp maybe_redirect_single_database(
+         %{assigns: %{databases: [single_database], can_manage_databases: false}} = socket
+       ) do
+    push_navigate(socket, to: ~p"/dbs/#{single_database.id}/transponders")
+  end
+
+  defp maybe_redirect_single_database(socket), do: socket
 
   defp is_supported_driver?("redis"), do: true
   defp is_supported_driver?("mongo"), do: true
@@ -37,6 +95,16 @@ defmodule TrifleApp.DatabasesLive do
             Pick a database to open Dashboards, Transponders, or Explore.
           </p>
         </div>
+        <%= if @can_manage_databases do %>
+          <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+            <.link
+              patch={~p"/dbs/new"}
+              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            >
+              Add Database
+            </.link>
+          </div>
+        <% end %>
       </div>
 
       <div class="mt-6 space-y-3">
@@ -62,6 +130,15 @@ defmodule TrifleApp.DatabasesLive do
                 </div>
               </div>
               <div class="flex items-center gap-3 pr-3">
+                <%= if @can_manage_databases do %>
+                  <.link
+                    navigate={~p"/dbs/#{database.id}/settings"}
+                    onclick="event.stopPropagation();"
+                    class="hidden rounded-md border border-gray-200 dark:border-slate-600 px-2 py-1 text-xs font-medium text-gray-600 dark:text-slate-300 hover:border-teal-400 hover:text-teal-600 dark:hover:border-teal-400 dark:hover:text-teal-300 sm:inline-flex"
+                  >
+                    Settings
+                  </.link>
+                <% end %>
                 <svg
                   class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
                   fill="none"
@@ -95,6 +172,15 @@ defmodule TrifleApp.DatabasesLive do
                 </div>
               </div>
               <div class="flex items-center gap-2 pr-3">
+                <%= if @can_manage_databases do %>
+                  <.link
+                    navigate={~p"/dbs/#{database.id}/settings"}
+                    onclick="event.stopPropagation();"
+                    class="hidden rounded-md border border-gray-200 dark:border-slate-600 px-2 py-1 text-xs font-medium text-gray-600 dark:text-slate-300 hover:border-teal-400 hover:text-teal-600 dark:hover:border-teal-400 dark:hover:text-teal-300 sm:inline-flex"
+                  >
+                    Settings
+                  </.link>
+                <% end %>
                 <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-600 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-100 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-500/40">
                   Unsupported
                 </span>
@@ -125,19 +211,42 @@ defmodule TrifleApp.DatabasesLive do
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Get started by configuring your first database connection.
           </p>
-          <%= if @current_user.is_admin do %>
+          <%= if @can_manage_databases do %>
             <div class="mt-6">
               <.link
-                navigate={~p"/admin/databases/new"}
+                patch={~p"/dbs/new"}
                 class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
               >
                 Add Database
               </.link>
             </div>
+          <% else %>
+            <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">
+              Ask an organization owner to add one for your team.
+            </p>
           <% end %>
         </div>
       <% end %>
     </div>
+
+    <.app_modal
+      :if={@live_action == :new and @database}
+      id="database-modal"
+      show
+      on_cancel={JS.patch(~p"/dbs")}
+    >
+      <:title>New Database</:title>
+      <:body>
+        <.live_component
+          module={TrifleApp.DatabasesLive.FormComponent}
+          id={@database.id || :new}
+          title={@page_title}
+          action={@live_action}
+          database={@database}
+          patch={~p"/dbs"}
+        />
+      </:body>
+    </.app_modal>
     """
   end
 

@@ -33,7 +33,9 @@ defmodule TrifleApp.Components.FilterBar do
                   >
                     <div class="flex items-center justify-between">
                       <span class="truncate">
-                        {if selected_source, do: Source.display_name(selected_source), else: "Select a source"}
+                        {if selected_source,
+                          do: Source.display_name(selected_source),
+                          else: "Select a source"}
                       </span>
                     </div>
                     <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">

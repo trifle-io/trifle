@@ -99,6 +99,7 @@ defmodule TrifleWeb.Router do
       live "/dbs/new", DatabasesLive, :new
       # Database root redirects to Dashboards (handled by DatabaseRedirectLive)
       live "/dbs/:id", DatabaseRedirectLive, :index
+      live "/dbs/:id/settings", DatabaseSettingsLive, :show
       # Explore (global) – select database via params
       live "/explore", ExploreLive, :show
       live "/dbs/:id/transponders", TranspondersLive, :database_index

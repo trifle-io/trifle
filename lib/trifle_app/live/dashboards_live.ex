@@ -88,11 +88,16 @@ defmodule TrifleApp.DashboardsLive do
     if Organizations.can_clone_dashboard?(original, membership) do
       source =
         case original.source_type do
-          "project" -> Source.from_project(Organizations.get_project!(original.source_id))
+          "project" ->
+            Source.from_project(Organizations.get_project!(original.source_id))
+
           _ ->
             database =
               original.database ||
-                Organizations.get_database_for_org!(membership.organization_id, original.source_id)
+                Organizations.get_database_for_org!(
+                  membership.organization_id,
+                  original.source_id
+                )
 
             Source.from_database(database)
         end
@@ -103,7 +108,7 @@ defmodule TrifleApp.DashboardsLive do
       default_granularity =
         original.default_granularity ||
           Source.default_granularity(source) ||
-          (Source.available_granularities(source) |> List.first()) || "1h"
+          Source.available_granularities(source) |> List.first() || "1h"
 
       attrs = %{
         "name" => (original.name || "Dashboard") <> " (copy)",
@@ -212,7 +217,7 @@ defmodule TrifleApp.DashboardsLive do
 
           default_granularity =
             Source.default_granularity(source) ||
-              (Source.available_granularities(source) |> List.first()) || "1h"
+              Source.available_granularities(source) |> List.first() || "1h"
 
           base_attrs = %{
             "name" => name,
@@ -639,7 +644,10 @@ defmodule TrifleApp.DashboardsLive do
                     <optgroup label={group_label}>
                       <%= for source <- sources do %>
                         <% value = source_option_value(source) %>
-                        <option value={value} selected={source_selected?(@selected_source_ref, source)}>
+                        <option
+                          value={value}
+                          selected={source_selected?(@selected_source_ref, source)}
+                        >
                           {Source.display_name(source)}
                         </option>
                       <% end %>
