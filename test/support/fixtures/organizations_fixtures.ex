@@ -13,8 +13,11 @@ defmodule Trifle.OrganizationsFixtures do
       |> Enum.into(%{
         beginning_of_week: 42,
         name: "some name",
-        slug: "some slug",
-        time_zone: "some time_zone"
+        time_zone: "Etc/UTC",
+        granularities: ["1m", "1h", "1d"],
+        expire_after: 86_400,
+        default_timeframe: "7d",
+        default_granularity: "1h"
       })
       |> Trifle.Organizations.create_project()
 

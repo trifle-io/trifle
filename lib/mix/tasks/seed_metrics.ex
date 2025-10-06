@@ -100,7 +100,7 @@ defmodule Mix.Tasks.SeedMetrics do
   defp load_project_config(id) do
     try do
       project = Trifle.Organizations.get_project!(id)
-      IO.puts("   Project: #{project.name} (#{project.slug})")
+      IO.puts("   Project: #{project.name}")
       Trifle.Organizations.Project.stats_config(project)
     rescue
       Ecto.NoResultsError ->
