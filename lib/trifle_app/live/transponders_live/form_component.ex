@@ -1,8 +1,8 @@
-defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
+defmodule TrifleApp.TranspondersLive.FormComponent do
   use TrifleApp, :live_component
 
   alias Trifle.Organizations
-  alias Trifle.Organizations.Transponder
+  alias Trifle.Organizations.{Database, Project, Transponder}
 
   def render(assigns) do
     ~H"""
@@ -174,15 +174,15 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
   end
 
   defp save_transponder(socket, :new, transponder_params) do
-    # Set the order for new transponders
-    next_order = Organizations.get_next_transponder_order(socket.assigns.database)
+    source = socket.assigns.source
+    next_order = Organizations.get_next_transponder_order(source)
 
-    transponder_params =
+    attrs =
       transponder_params
-      |> Map.put("database_id", socket.assigns.database.id)
       |> Map.put("order", next_order)
+      |> maybe_put_source_specific_attrs(source)
 
-    case Organizations.create_transponder(transponder_params) do
+    case create_transponder_for_source(source, attrs) do
       {:ok, transponder} ->
         notify_parent({:saved, transponder})
 
@@ -195,6 +195,20 @@ defmodule TrifleApp.DatabaseTranspondersLive.FormComponent do
         {:noreply, assign_form(socket, changeset)}
     end
   end
+
+  defp create_transponder_for_source(%Database{} = database, attrs) do
+    Organizations.create_transponder_for_database(database, attrs)
+  end
+
+  defp create_transponder_for_source(%Project{} = project, attrs) do
+    Organizations.create_transponder_for_project(project, attrs)
+  end
+
+  defp maybe_put_source_specific_attrs(attrs, %Database{} = database) do
+    Map.put(attrs, "database_id", database.id)
+  end
+
+  defp maybe_put_source_specific_attrs(attrs, _), do: attrs
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
