@@ -10,33 +10,33 @@
 - Keep LiveViews responsible for state, routing, and permissions; push rendering into reusable components where practical.
 - Encapsulate source-specific details (driver, defaults, transponders) behind a unified behaviour to eliminate branching inside LiveViews.
 
-## Milestones
-1. **Define Source Behaviour**
-   - Create `Trifle.Stats.Source` behaviour describing capabilities required by Explore/Dashboard.
-   - Implement modules for `Database` and `Project` sources that satisfy the behaviour.
-   - Provide helper(s) to load a concrete source by `{type, id}` with authorization.
+## Milestones (status)
+1. **Define Source Behaviour** — ✅ done
+   - `Trifle.Stats.Source` wraps shared behaviour with concrete Database and Project implementations.
+   - Helper functions expose source references, grouping, and lookups for LiveViews/components.
 
-2. **Refactor Data Fetching**
-   - Update `Trifle.Stats.SeriesFetcher` and related helpers to accept any `Source` implementation instead of raw database structs.
-   - Ensure transponder lookups and granularities flow through the behaviour to stay consistent for both source types.
+2. **Refactor Data Fetching** — ✅ done
+   - `Trifle.Stats.SeriesFetcher` and `TrifleWeb.ExportController` accept any Source implementation (shims handle legacy database calls).
+   - Transponders, config, and granularities now flow through the behaviour.
 
-3. **LiveView Adaptation**
-   - Refactor ExploreLive/DashboardLive to resolve a `Source` at mount/param handling time.
-   - Replace direct database/project field access with behaviour calls (`stats_config`, `default_timeframe`, etc.).
-   - Keep FilterBar and existing components; ensure database/project switching uses the generic source loader.
+3. **LiveView Adaptation** — ✅ initial pass complete
+   - ExploreLive and DashboardLive resolve sources at mount/param time, propagate them through FilterBar, and persist `source_type`/`source_id` in URLs.
+   - FilterBar exposes a grouped “Source” selector instead of a database-only dropdown.
+   - Follow-up: finish cleaning database-specific helpers and polish project UX.
 
-4. **Dashboard Polymorphism**
-   - Migrate dashboards to store `source_type` + `source_id` instead of `database_id`.
-   - Backfill existing rows with `source_type = "database"` and update changesets/contexts to enforce one of the allowed types.
-   - Adjust Organizations context APIs to return the resolved source alongside dashboard records.
+4. **Dashboard Polymorphism** — ⬜ not started
+   - Next: introduce `source_type`/`source_id` fields, migrate data, and keep compatibility with `database_id` during rollout.
 
-5. **Component Extraction (Optional but Recommended)**
-   - Extract presentation-heavy markup from LiveViews into `TrifleApp.Components.Explore` and `TrifleApp.Components.Dashboard` to reduce duplication and simplify future maintenance.
-   - Ensure components remain UI-only; LiveViews continue to own events and asynchronous tasks.
+5. **Component Extraction (Optional)** — ⬜ not started
 
-6. **Project Routing Integration**
-   - Introduce project-based routes that reuse the existing LiveViews by passing a project source identifier.
-   - Remove legacy `ProjectLive` explore view once parity is confirmed.
+6. **Project Routing Integration** — ⬜ pending
+
+## Recent Progress
+- Added `Trifle.Stats.Source.Project` and expanded helper APIs (`list_for_membership/1`, grouping, sorting) so databases and projects appear uniformly.
+- Refactored FilterBar to accept polymorphic sources, emit typed selections, and group options by type.
+- ExploreLive now manages source-aware state, URL params, and data loading (including fallbacks when no source is available).
+- DashboardLive initializes/persists source context, feeds the new selector, and keeps source metadata in URLs.
+- SeriesFetcher, ExportController, and related utilities operate solely via the Source abstraction.
 
 ## Dependencies & Sequencing Notes
 - Complete Milestones 1–3 before migrating dashboard data; LiveViews must already understand generic sources prior to schema changes.
@@ -50,7 +50,7 @@
 
 ## Open Questions
 - Do we need to support dashboards referencing both a database and project simultaneously? (Current plan assumes exactly one source per dashboard.)
-- How should we expose source selection in the UI (single dropdown with type grouping vs separate navigation)?
+- Projects currently surface with no transponders—do we need project-scoped transform semantics?
 - Are there project-specific transponder differences that require additional behaviour callbacks?
 
 ## Risks & Mitigations
@@ -59,9 +59,9 @@
 - **Authorization gaps**: ensure source loader checks membership/token access for both databases and projects before exposing data.
 
 ## Status Tracking
-- [ ] Behaviour defined and implemented for both sources
-- [ ] SeriesFetcher updated to accept Source
-- [ ] LiveViews source-aware with no direct database/project branching
+- [x] Behaviour defined and implemented for both sources
+- [x] SeriesFetcher updated to accept Source
+- [x] LiveViews source-aware with no direct database/project branching (first pass)
 - [ ] Dashboard schema migrated to polymorphic source
 - [ ] UI components extracted (if pursued)
 - [ ] Project routes switched to shared LiveViews; legacy view removed

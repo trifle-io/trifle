@@ -23,16 +23,17 @@ defmodule Trifle.Stats.Source.Project do
   def stats_config(%Project{} = project), do: Project.stats_config(project)
 
   @impl true
-  def default_timeframe(_project), do: nil
+  def default_timeframe(%Project{default_timeframe: timeframe}), do: timeframe
 
   @impl true
-  def default_granularity(_project), do: nil
+  def default_granularity(%Project{default_granularity: granularity}), do: granularity
 
   @impl true
   def available_granularities(%Project{} = project) do
-    project
-    |> Project.stats_config()
-    |> Map.get(:track_granularities, [])
+    case project.granularities do
+      list when is_list(list) and list != [] -> list
+      _ -> Project.default_granularities()
+    end
   end
 
   @impl true

@@ -1,9 +1,9 @@
 defmodule Trifle.Stats.Driver.MongoProject do
   @moduledoc """
-  MongoDB driver for Trifle.Stats with project-specific reference filtering.
+  MongoDB driver for Trifle.Stats scoped by project reference.
 
-  Extends the base MongoDB driver to include project reference filtering,
-  allowing multi-tenant analytics with project isolation.
+  Mirrors the core Mongo driver while ensuring every query, index, and
+  upsert is filtered by the provided `reference`.
   """
 
   defstruct connection: nil,
@@ -12,27 +12,11 @@ defmodule Trifle.Stats.Driver.MongoProject do
             separator: "::",
             write_concern: 1,
             joined_identifier: true,
-            expire_after: nil
+            expire_after: nil,
+            system_tracking: true
 
   @doc """
   Create a new MongoDB project driver instance.
-
-  ## Parameters
-  - `connection`: MongoDB connection
-  - `reference`: Project reference/identifier for filtering
-  - `collection_name`: Collection name (default: "trifle_stats")
-  - `separator`: Key separator for joined mode (default: "::")
-  - `write_concern`: Write concern level (default: 1)
-  - `joined_identifier`: Use joined (true) or separated (false) identifiers (default: true)
-  - `expire_after`: TTL in seconds for automatic document expiration (default: nil)
-
-  ## Examples
-      # Basic usage with project reference
-      {:ok, conn} = Mongo.start_link(url: "mongodb://localhost:27017/test")
-      driver = Trifle.Stats.Driver.MongoProject.new(conn, "project_123")
-      
-      # With custom options
-      driver = Trifle.Stats.Driver.MongoProject.new(conn, "project_123", "analytics", "::", 1, true, 86400)
   """
   def new(
         connection,
@@ -41,78 +25,54 @@ defmodule Trifle.Stats.Driver.MongoProject do
         separator \\ "::",
         write_concern \\ 1,
         joined_identifier \\ true,
-        expire_after \\ nil
+        expire_after \\ nil,
+        system_tracking \\ true
       ) do
-    %Trifle.Stats.Driver.MongoProject{
+    %__MODULE__{
       connection: connection,
       reference: reference,
       collection_name: collection_name,
       separator: separator,
       write_concern: write_concern,
       joined_identifier: joined_identifier,
-      expire_after: expire_after
+      expire_after: expire_after,
+      system_tracking: system_tracking
     }
   end
 
   @doc """
-  Create a new MongoDB project driver from configuration.
-  This applies driver_options from the configuration to override defaults.
+  Build a driver from configuration.
   """
   def from_config(connection, reference, %Trifle.Stats.Configuration{} = config) do
-    # Extract driver options with defaults
     collection_name =
       Trifle.Stats.Configuration.driver_option(config, :collection_name, "trifle_stats")
 
     joined_identifier = Trifle.Stats.Configuration.driver_option(config, :joined_identifier, true)
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
+    system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
-    new(
-      connection,
-      reference,
-      collection_name,
-      config.separator,
-      1,
-      joined_identifier,
-      expire_after
-    )
+    new(connection, reference, collection_name, config.separator, 1, joined_identifier, expire_after, system_tracking)
   end
 
   @doc """
-  Setup MongoDB collections and indexes with project reference support.
-
-  ## Parameters  
-  - `connection`: MongoDB connection
-  - `collection_name`: Collection name (default: "trifle_stats")
-  - `joined_identifier`: Index strategy - true for joined, false for separated
-  - `expire_after`: TTL seconds for automatic expiration (default: nil)
-
-  ## Examples
-      # Basic setup (joined identifier mode)
-      Trifle.Stats.Driver.MongoProject.setup!(conn)
-      
-      # Separated mode with TTL
-      Trifle.Stats.Driver.MongoProject.setup!(conn, "analytics", false, 86400)
+  Setup MongoDB collections and indexes (reference scoped).
   """
   def setup!(
         connection,
         collection_name \\ "trifle_stats",
         joined_identifier \\ true,
-        expire_after \\ nil
+        expire_after \\ nil,
+        system_tracking \\ true
       ) do
-    # Create the collection
     Mongo.create(connection, collection_name)
 
-    # Create appropriate indexes based on identifier mode, including reference
     indexes =
       if joined_identifier do
-        # Joined identifier mode: reference + key fields
         [%{"key" => %{"reference" => 1, "key" => 1}, "unique" => true}]
       else
-        # Separated identifier mode: reference + key, range, at fields  
-        [%{"key" => %{"reference" => 1, "key" => 1, "range" => 1, "at" => -1}, "unique" => true}]
+        [%{"key" => %{"reference" => 1, "key" => 1, "granularity" => 1, "at" => -1}, "unique" => true}]
       end
 
-    # Add TTL index if expire_after is specified
     indexes =
       if expire_after do
         indexes ++ [%{"key" => %{"expire_at" => 1}, "expireAfterSeconds" => 0}]
@@ -120,93 +80,141 @@ defmodule Trifle.Stats.Driver.MongoProject do
         indexes
       end
 
-    # Create all indexes
     Mongo.create_indexes(connection, collection_name, indexes)
     :ok
   rescue
     e -> {:error, e}
   end
 
-  @doc """
-  Setup from configuration (convenience method).
-  """
   def setup_from_config!(connection, %Trifle.Stats.Configuration{} = config) do
     collection_name =
       Trifle.Stats.Configuration.driver_option(config, :collection_name, "trifle_stats")
 
     joined_identifier = Trifle.Stats.Configuration.driver_option(config, :joined_identifier, true)
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
+    system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
-    setup!(connection, collection_name, joined_identifier, expire_after)
+    setup!(connection, collection_name, joined_identifier, expire_after, system_tracking)
   end
 
   def inc(keys, values, driver) do
     data = Trifle.Stats.Packer.pack(%{data: values})
 
-    bulk =
-      Enum.reduce(
-        keys,
-        Mongo.UnorderedBulk.new(driver.collection_name),
-        fn %Trifle.Stats.Nocturnal.Key{} = key, bulk ->
-          pkey = Trifle.Stats.Nocturnal.Key.join(key, driver.separator)
-          upsert_operation(bulk, "$inc", pkey, driver.reference, data)
-        end
-      )
+    Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+      filter =
+        key
+        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> convert_keys_to_strings()
+        |> with_reference_scope(driver)
 
-    Mongo.BulkWrite.write(driver.connection, bulk, w: driver.write_concern)
+      expire_at =
+        if driver.expire_after, do: DateTime.add(key.at, driver.expire_after, :second), else: nil
+
+      update =
+        if expire_at do
+          %{"$inc" => data, "$set" => %{expire_at: expire_at}}
+        else
+          %{"$inc" => data}
+        end
+
+      Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+
+      if driver.system_tracking do
+        system_filter =
+          key
+          |> system_identifier_for(driver)
+          |> convert_keys_to_strings()
+          |> with_reference_scope(driver)
+
+        system_data = system_data_for(key)
+
+        system_update =
+          if expire_at do
+            %{"$inc" => system_data, "$set" => %{expire_at: expire_at}}
+          else
+            %{"$inc" => system_data}
+          end
+
+        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update, upsert: true)
+      end
+    end)
   end
 
   def set(keys, values, driver) do
-    # Don't flatten the data - keep it as a nested object to replace entirely
-    bulk =
-      Enum.reduce(
-        keys,
-        Mongo.UnorderedBulk.new(driver.collection_name),
-        fn %Trifle.Stats.Nocturnal.Key{} = key, bulk ->
-          pkey = Trifle.Stats.Nocturnal.Key.join(key, driver.separator)
-          # Replace the entire data field with the new values object
-          Mongo.UnorderedBulk.update_one(
-            bulk,
-            %{reference: driver.reference, key: pkey},
-            %{"$set" => %{data: values}},
-            upsert: true
-          )
+    packed_data = Trifle.Stats.Packer.pack(values)
+
+    Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+      filter =
+        key
+        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> convert_keys_to_strings()
+        |> with_reference_scope(driver)
+
+      expire_at =
+        if driver.expire_after, do: DateTime.add(key.at, driver.expire_after, :second), else: nil
+
+      update =
+        if expire_at do
+          %{"$set" => %{data: packed_data, expire_at: expire_at}}
+        else
+          %{"$set" => %{data: packed_data}}
         end
-      )
 
-    Mongo.BulkWrite.write(driver.connection, bulk, w: driver.write_concern)
-  end
+      Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
 
-  def upsert_operation(bulk, operation, pkey, reference, data) do
-    Mongo.UnorderedBulk.update_one(
-      bulk,
-      %{reference: reference, key: pkey},
-      %{operation => data},
-      upsert: true
-    )
+      if driver.system_tracking do
+        system_filter =
+          key
+          |> system_identifier_for(driver)
+          |> convert_keys_to_strings()
+          |> with_reference_scope(driver)
+
+        system_data = system_data_for(key)
+
+        system_update =
+          if expire_at do
+            %{"$inc" => system_data, "$set" => %{expire_at: expire_at}}
+          else
+            %{"$inc" => system_data}
+          end
+
+        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update, upsert: true)
+      end
+    end)
   end
 
   def get(keys, driver) do
-    pkeys =
+    identifiers =
       Enum.map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
-        Trifle.Stats.Nocturnal.Key.join(key, driver.separator)
+        key
+        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> convert_keys_to_strings()
+        |> with_reference_scope(driver)
       end)
 
-    map =
-      Mongo.find(
-        driver.connection,
-        driver.collection_name,
-        %{reference: driver.reference, key: %{"$in" => pkeys}}
-      )
-      |> Enum.reduce(%{}, fn d, acc -> Map.merge(acc, %{d["key"] => d["data"]}) end)
+    data =
+      Mongo.find(driver.connection, driver.collection_name, %{"$or" => identifiers})
+      |> Enum.reduce(%{}, fn d, acc ->
+        temp_key =
+          if driver.joined_identifier do
+            %Trifle.Stats.Nocturnal.Key{key: d["key"]}
+          else
+            %Trifle.Stats.Nocturnal.Key{
+              key: d["key"],
+              granularity: d["granularity"],
+              at: parse_timestamp_from_mongo(d["at"])
+            }
+          end
 
-    Enum.map(pkeys, fn pkey ->
-      raw_data = map[pkey] || %{}
-      # If data is stored as nested object, return the data field directly
-      case raw_data do
-        %{"data" => nested_data} when is_map(nested_data) -> nested_data
-        data -> Trifle.Stats.Packer.unpack(data)
-      end
+        simple_identifier =
+          Trifle.Stats.Nocturnal.Key.simple_identifier(temp_key, driver.separator)
+
+        Map.put(acc, simple_identifier, d["data"])
+      end)
+
+    Enum.map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+      simple_identifier = Trifle.Stats.Nocturnal.Key.simple_identifier(key, driver.separator)
+      Map.get(data, simple_identifier, %{})
     end)
   end
 
@@ -214,49 +222,97 @@ defmodule Trifle.Stats.Driver.MongoProject do
     if driver.joined_identifier do
       []
     else
-      # Pack data like Ruby version: { data: values, at: key.at }
       packed_data = Trifle.Stats.Packer.pack(%{data: values, at: key.at})
 
-      # Use reference + key for ping operations
-      filter = %{reference: driver.reference, key: key.key}
+      identifier =
+        key
+        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> convert_keys_to_strings()
+        |> with_reference_scope(driver)
+
+      filter = Map.take(identifier, ["key", "reference"])
       update = %{"$set" => packed_data}
 
-      Mongo.update_one(
-        driver.connection,
-        driver.collection_name,
-        filter,
-        update,
-        upsert: true,
-        w: driver.write_concern
-      )
+      expire_at =
+        if driver.expire_after, do: DateTime.add(key.at, driver.expire_after, :second), else: nil
 
+      update =
+        if expire_at do
+          Map.put(update, "$set", Map.merge(update["$set"], %{expire_at: expire_at}))
+        else
+          update
+        end
+
+      Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
       :ok
     end
   end
 
   def scan(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
     if driver.joined_identifier do
-      {nil, %{}}
+      []
     else
-      # Find the document by reference + key and sort by 'at' descending
-      filter = %{reference: driver.reference, key: key.key}
+      identifier =
+        key
+        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> convert_keys_to_strings()
+        |> with_reference_scope(driver)
+
+      filter = Map.take(identifier, ["key", "reference"])
       options = [sort: %{at: -1}, limit: 1]
 
       case Mongo.find(driver.connection, driver.collection_name, filter, options)
            |> Enum.to_list() do
-        [] ->
-          {nil, %{}}
-
+        [] -> []
         [doc] ->
-          # Convert timestamp back to DateTime if it's stored as unix timestamp
           at =
             case doc["at"] do
               timestamp when is_number(timestamp) -> DateTime.from_unix!(timestamp)
+              %DateTime{} = dt -> dt
               _ -> DateTime.utc_now()
             end
 
-          {at, Trifle.Stats.Packer.unpack(doc)}
+          unpacked_data = Trifle.Stats.Packer.unpack(Map.drop(doc, ["_id", "key", "granularity", "reference"]))
+          [at, unpacked_data]
       end
+    end
+  end
+
+  defp system_identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
+    system_key = %Trifle.Stats.Nocturnal.Key{key: "__system__key__", granularity: key.granularity, at: key.at}
+    Trifle.Stats.Nocturnal.Key.identifier(system_key, driver.separator)
+  end
+
+  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key) do
+    Trifle.Stats.Packer.pack(%{data: %{count: 1, keys: %{key.key => 1}}})
+  end
+
+  defp convert_keys_to_strings(map) when is_map(map) do
+    Enum.reduce(map, %{}, fn {k, v}, acc ->
+      key = if is_atom(k), do: Atom.to_string(k), else: k
+      value = if is_map(v), do: convert_keys_to_strings(v), else: v
+      Map.put(acc, key, value)
+    end)
+  end
+
+  defp with_reference_scope(filter, driver) do
+    Map.put(filter, "reference", driver.reference)
+  end
+
+  defp parse_timestamp_from_mongo(timestamp_value) do
+    case timestamp_value do
+      %DateTime{} = dt -> dt
+      timestamp when is_integer(timestamp) -> DateTime.from_unix!(timestamp)
+      time_str when is_binary(time_str) ->
+        case DateTime.from_iso8601(time_str) do
+          {:ok, dt, _} -> dt
+          {:error, _} ->
+            case Integer.parse(time_str) do
+              {value, ""} -> DateTime.from_unix!(value)
+              _ -> time_str
+            end
+        end
+      val -> val
     end
   end
 end

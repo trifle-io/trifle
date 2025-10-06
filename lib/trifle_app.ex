@@ -75,6 +75,7 @@ defmodule TrifleApp do
       import TrifleApp.DesignSystem.FormButtons
       import TrifleApp.DesignSystem.FormContainer
       import TrifleApp.DesignSystem.DatabaseLabel
+      import TrifleApp.Components.ProjectNav
 
       alias Phoenix.LiveView.JS
 

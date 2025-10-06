@@ -1,234 +1,207 @@
 defmodule TrifleApp.ProjectsLive do
   use TrifleApp, :live_view
 
+  alias Phoenix.LiveView.JS
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
 
+  @week_options [
+    {"Monday", 1},
+    {"Tuesday", 2},
+    {"Wednesday", 3},
+    {"Thursday", 4},
+    {"Friday", 5},
+    {"Saturday", 6},
+    {"Sunday", 7}
+  ]
+
+  @accent_classes ~w(bg-teal-500 bg-sky-500 bg-violet-500 bg-amber-500 bg-rose-500 bg-emerald-500)
+
   def render(assigns) do
     ~H"""
-    <%= if @is_new do %>
-      <div class="relative z-10" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
-        <!-- Background backdrop, show/hide based on slide-over state. -->
-        <div class="fixed inset-0"></div>
-
-        <div class="fixed inset-0 overflow-hidden">
-          <div class="absolute inset-0 overflow-hidden">
-            <div
-              class="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10 sm:pl-16"
-              x-transition:enter="transform transition ease-in-out duration-500 sm:duration-700"
-              x-transition:enter-start="translate-x-full"
-              x-transition:enter-end="translate-x-0"
-              x-transition:leave="transform transition ease-in-out duration-500 sm:duration-700"
-              x-transition:leave-start="translate-x-0"
-              x-transition:leave-end="translate-x-full"
-            >
-              <div class="pointer-events-auto w-screen max-w-2xl">
-                <.form
-                  for={@form}
-                  phx-submit="create"
-                  class="flex h-full flex-col overflow-y-scroll bg-white shadow-xl"
-                >
-                  <div class="flex-1">
-                    <!-- Header -->
-                    <div class="bg-gray-50 px-4 py-6 sm:px-6">
-                      <div class="flex items-start justify-between space-x-3">
-                        <div class="space-y-1">
-                          <h2
-                            class="text-base font-semibold leading-6 text-gray-900"
-                            id="slide-over-title"
-                          >
-                            New Project
-                          </h2>
-                          <p class="text-sm text-gray-500">
-                            Get started by filling in the information below to create your new project.
-                          </p>
-                        </div>
-                        <div class="text-gray-400 hover:text-gray-500">
-                          <.link navigate={~p"/projects"} class="">
-                            <span class="sr-only">Close panel</span>
-                            <svg
-                              class="h-6 w-6"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              aria-hidden="true"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
-                          </.link>
-                        </div>
-                      </div>
-                    </div>
-                    
-    <!-- Container -->
-                    <div class="space-y-6 py-6 sm:space-y-0 sm:divide-y sm:divide-gray-200 sm:py-0">
-                      <div class="space-y-2 px-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 sm:px-6 sm:py-5">
-                        <div>
-                          <label
-                            for="project_name"
-                            class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5"
-                          >
-                            Project Name
-                          </label>
-                        </div>
-                        <div class="sm:col-span-2">
-                          <.input
-                            field={@form[:name]}
-                            placeholder="Secret weather station"
-                            autocomplete="off"
-                            class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="space-y-2 px-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 sm:px-6 sm:py-5">
-                        <div>
-                          <label
-                            for="project_time_zone"
-                            class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5"
-                          >
-                            Time Zone
-                          </label>
-                        </div>
-                        <div class="sm:col-span-2">
-                          <.input
-                            field={@form[:time_zone]}
-                            type="select"
-                            options={@time_zones}
-                            class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="space-y-2 px-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 sm:px-6 sm:py-5">
-                        <div>
-                          <label
-                            for="project_beginning_of_week"
-                            class="block text-sm font-medium leading-6 text-gray-900 sm:mt-1.5"
-                          >
-                            Beginning of Week
-                          </label>
-                        </div>
-                        <div class="sm:col-span-2">
-                          <.input
-                            field={@form[:beginning_of_week]}
-                            type="select"
-                            options={[
-                              {"Monday", 1},
-                              {"Tuesday", 2},
-                              {"Wednesday", 3},
-                              {"Thursday", 4},
-                              {"Friday", 5},
-                              {"Saturday", 6},
-                              {"Sunday", 7}
-                            ]}
-                            class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 sm:text-sm sm:leading-6"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-    <!-- Action buttons -->
-                  <div class="flex-shrink-0 border-t border-gray-200 px-4 py-5 sm:px-6">
-                    <div class="flex justify-end space-x-3">
-                      <.button
-                        phx-disable-with="Creating..."
-                        class="inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-                      >
-                        Create
-                      </.button>
-                      <.link
-                        navigate={~p"/projects"}
-                        class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                      >
-                        Cancel
-                      </.link>
-                    </div>
-                  </div>
-                </.form>
-              </div>
-            </div>
-          </div>
+    <div class="px-4 sm:px-6 lg:px-8">
+      <div class="sm:flex sm:items-center">
+        <div class="sm:flex-auto">
+          <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
+            Your Projects
+          </h1>
+          <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+            Organize analytics by project to keep tokens, transponders, and dashboards grouped together.
+          </p>
+        </div>
+        <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <.link
+            patch={~p"/projects/new"}
+            class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+          >
+            New Project
+          </.link>
         </div>
       </div>
-    <% end %>
 
-    <.link navigate={~p"/projects/new"} class="">New</.link>
-
-    <div class="overflow-hidden bg-white shadow sm:rounded-md mt-4">
-      <ul role="list" class="divide-y divide-gray-200">
-        <%= for project <- @projects do %>
-          <li>
-            <.link navigate={~p"/projects/#{project.id}"} class="block hover:bg-gray-50">
-              <div class="flex items-center px-4 py-4 sm:px-6">
-                <div class="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div class="truncate">
-                    <div class="flex text-sm">
-                      <p class="truncate font-medium text-teal-600">{project.name}</p>
-                      <p class="ml-1 flex-shrink-0 font-normal text-gray-500">
-                        as <span class="text-red-500">{project.slug}</span>
-                      </p>
+      <%= if Enum.empty?(@projects) do %>
+        <div class="mt-12 text-center">
+          <svg
+            class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M3 7.5A2.25 2.25 0 015.25 5.25h3.6a2.25 2.25 0 001.59-.66l1.32-1.32a2.25 2.25 0 011.59-.66h4.45A2.25 2.25 0 0120.5 4.86v12.39A2.25 2.25 0 0118.25 19.5H5.25A2.25 2.25 0 013 17.25V7.5z"
+            />
+          </svg>
+          <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+            No projects yet
+          </h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Create your first project to start collecting metrics and sharing dashboards.
+          </p>
+          <div class="mt-6">
+            <.link
+              patch={~p"/projects/new"}
+              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            >
+              New Project
+            </.link>
+          </div>
+        </div>
+      <% else %>
+        <div class="mt-6 space-y-3">
+          <%= for project <- @projects do %>
+            <div
+              class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
+              phx-click={JS.navigate(~p"/projects/#{project.id}")}
+            >
+              <div class="flex items-center gap-3 pl-3 py-3">
+                <div class={"h-10 w-1.5 rounded " <> project_accent_class(project)}></div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <div class="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-md bg-gray-100 px-1 text-sm font-semibold text-gray-700 dark:bg-slate-700 dark:text-white">
+                      {project_initials(project)}
                     </div>
-                    <div class="mt-2 flex">
-                      <div class="flex items-center text-sm text-gray-500">
-                        <!-- Heroicon name: mini/calendar -->
-                        <svg
-                          class="mr-1.5 h-5 w-5 flex-shrink-0 text-gray-400"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fill-rule="evenodd"
-                            d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z"
-                            clip-rule="evenodd"
-                          />
-                        </svg>
-                        <p>
-                          Last data received at <time datetime="2020-01-07">January 7, 2020</time>
-                        </p>
-                      </div>
+                    <div class="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                      {project.name}
                     </div>
                   </div>
-                  <div class="mt-4 flex-shrink-0 sm:mt-0 sm:ml-5">
-                    <div class="flex -space-x-1 overflow-hidden">
-                      <img
-                        class="inline-block h-6 w-6 rounded-full ring-2 ring-white"
-                        src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                        alt="Dries Vincent"
-                      />
+                  <% meta = project_list_meta(project) %>
+                  <%= if meta != [] do %>
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <%= for {item, idx} <- Enum.with_index(meta) do %>
+                        <%= if idx > 0 do %>
+                          <span class="text-gray-300 dark:text-slate-500">•</span>
+                        <% end %>
+                        <span>{item}</span>
+                      <% end %>
                     </div>
-                  </div>
-                </div>
-                <div class="ml-5 flex-shrink-0">
-                  <!-- Heroicon name: mini/chevron-right -->
-                  <svg
-                    class="h-5 w-5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
+                  <% end %>
                 </div>
               </div>
-            </.link>
-          </li>
-        <% end %>
-      </ul>
+              <div class="flex items-center gap-3 pr-3">
+                <button
+                  type="button"
+                  class="hidden rounded-md border border-gray-200 dark:border-slate-600 px-2 py-1 text-xs font-medium text-gray-600 dark:text-slate-300 hover:border-teal-400 hover:text-teal-600 dark:hover:border-teal-400 dark:hover:text-teal-300 sm:inline-flex"
+                  phx-click="open_settings"
+                  phx-value-id={project.id}
+                >
+                  Settings
+                </button>
+                <svg
+                  class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+                  />
+                </svg>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
     </div>
+
+    <.app_modal id="new-project-modal" show={@show_new_modal} on_cancel="close_new_modal">
+      <:title>New Project</:title>
+      <:body>
+        <.form_container for={@form} phx-submit="create" class="space-y-6">
+          <:header
+            title="Project details"
+            subtitle="Name the project and choose defaults for reports and dashboards."
+          />
+
+          <.form_field
+            field={@form[:name]}
+            label="Project name"
+            placeholder="Secret weather station"
+            required
+          />
+
+          <.form_field
+            field={@form[:time_zone]}
+            type="select"
+            label="Time zone"
+            options={@time_zones}
+            prompt="Select a time zone"
+            required
+          />
+
+          <.form_field
+            field={@form[:beginning_of_week]}
+            type="select"
+            label="Beginning of week"
+            options={@week_options}
+            required
+          />
+
+          <div class="space-y-2">
+            <label
+              for={@form[:granularities].id}
+              class="block text-sm font-medium text-gray-900 dark:text-white"
+            >
+              Granularities
+            </label>
+            <input
+              id={@form[:granularities].id}
+              name={@form[:granularities].name}
+              type="text"
+              value={granularities_to_string(@form[:granularities].value)}
+              placeholder="1m, 1h, 1d, 1w, 1mo"
+              required
+              class="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
+            />
+            <p class="text-xs text-gray-600 dark:text-gray-400">
+              Comma-separated list matching the granularities you want available in Explore and dashboards.
+            </p>
+            <.form_errors field={@form[:granularities]} />
+          </div>
+
+          <.form_field
+            field={@form[:expire_after]}
+            type="number"
+            label="Expire after (seconds)"
+            placeholder="86400"
+            help_text="Optional. Leave blank to keep metrics forever."
+          />
+
+          <:actions>
+            <.form_actions>
+              <.primary_button phx-disable-with="Creating...">Create project</.primary_button>
+              <.secondary_button patch={~p"/projects"}>Cancel</.secondary_button>
+            </.form_actions>
+          </:actions>
+        </.form_container>
+      </:body>
+    </.app_modal>
     """
   end
 
@@ -241,7 +214,9 @@ defmodule TrifleApp.ProjectsLive do
       |> assign(:projects, projects)
       |> assign(:form, to_form(changeset))
       |> assign(:time_zones, time_zones())
+      |> assign(:week_options, @week_options)
       |> assign(:page_title, "Projects")
+      |> assign(:show_new_modal, false)
 
     {:ok, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -253,14 +228,14 @@ defmodule TrifleApp.ProjectsLive do
   defp apply_action(socket, :new, _params) do
     socket
     |> assign(:page_title, "Projects · New")
-    |> assign(:is_new, true)
+    |> assign(:show_new_modal, true)
     |> assign(:form, to_form(Organizations.change_project(%Project{})))
   end
 
   defp apply_action(socket, :index, _params) do
     socket
     |> assign(:page_title, "Projects")
-    |> assign(:is_new, false)
+    |> assign(:show_new_modal, false)
     |> assign(:projects, Organizations.list_users_projects(socket.assigns.current_user))
   end
 
@@ -285,8 +260,101 @@ defmodule TrifleApp.ProjectsLive do
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
 
-      {:ok, _project} ->
-        {:noreply, push_navigate(socket, to: ~p"/projects")}
+      {:ok, project} ->
+        socket =
+          socket
+          |> put_flash(:info, "#{project.name} created")
+          |> assign(:projects, Organizations.list_users_projects(socket.assigns.current_user))
+          |> assign(:form, to_form(Organizations.change_project(%Project{})))
+          |> assign(:show_new_modal, false)
+
+        {:noreply, push_patch(socket, to: ~p"/projects")}
     end
   end
+
+  def handle_event("open_settings", %{"id" => project_id}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/projects/#{project_id}/settings")}
+  end
+
+  def handle_event("close_new_modal", _params, socket) do
+    {:noreply, push_patch(assign(socket, :show_new_modal, false), to: ~p"/projects")}
+  end
+
+  defp week_label(1), do: "Monday"
+  defp week_label(2), do: "Tuesday"
+  defp week_label(3), do: "Wednesday"
+  defp week_label(4), do: "Thursday"
+  defp week_label(5), do: "Friday"
+  defp week_label(6), do: "Saturday"
+  defp week_label(7), do: "Sunday"
+  defp week_label(_), do: "Monday"
+
+  defp project_initials(%Project{name: name}) when is_binary(name) do
+    trimmed = String.trim(name)
+
+    trimmed
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.map(&String.first/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join()
+    |> String.slice(0, 3)
+    |> String.upcase()
+    |> case do
+      "" -> "PR"
+      initials -> initials
+    end
+  end
+
+  defp project_initials(_), do: "PR"
+
+  defp project_accent_class(%Project{} = project) do
+    hash_input = project.id || project.name || "project"
+    idx = :erlang.phash2(hash_input, length(@accent_classes))
+    Enum.at(@accent_classes, idx - 1)
+  end
+
+  defp granularities_to_string(nil), do: ""
+
+  defp granularities_to_string(value) when is_list(value) do
+    value
+    |> Enum.join(", ")
+  end
+
+  defp granularities_to_string(value) when is_binary(value), do: value
+  defp granularities_to_string(_), do: ""
+
+  defp format_expire_after(nil), do: "never"
+
+  defp format_expire_after(seconds) when is_integer(seconds) and seconds > 0 do
+    cond do
+      rem(seconds, 86_400) == 0 -> "#{div(seconds, 86_400)}d"
+      rem(seconds, 3_600) == 0 -> "#{div(seconds, 3_600)}h"
+      rem(seconds, 60) == 0 -> "#{div(seconds, 60)}m"
+      true -> "#{seconds}s"
+    end
+  end
+
+  defp format_expire_after(seconds) when is_binary(seconds) do
+    seconds
+    |> Integer.parse()
+    |> case do
+      {value, _} -> format_expire_after(value)
+      :error -> "never"
+    end
+  end
+
+  defp format_expire_after(_), do: "never"
+
+  defp project_list_meta(%Project{} = project) do
+    []
+    |> maybe_add_meta(project.default_timeframe, fn timeframe ->
+      "Default timeframe #{timeframe}"
+    end)
+    |> maybe_add_meta(project.expire_after, fn expire ->
+      "Retention #{format_expire_after(expire)}"
+    end)
+  end
+
+  defp maybe_add_meta(acc, value, _fun) when value in [nil, ""], do: acc
+  defp maybe_add_meta(acc, value, fun), do: acc ++ [fun.(value)]
 end

@@ -8,7 +8,7 @@ defmodule Trifle.OrganizationsTest do
 
     import Trifle.OrganizationsFixtures
 
-    @invalid_attrs %{beginning_of_week: nil, name: nil, slug: nil, time_zone: nil}
+    @invalid_attrs %{beginning_of_week: nil, name: nil, time_zone: nil, granularities: nil}
 
     test "list_projects/0 returns all projects" do
       project = project_fixture()
@@ -21,13 +21,24 @@ defmodule Trifle.OrganizationsTest do
     end
 
     test "create_project/1 with valid data creates a project" do
-      valid_attrs = %{beginning_of_week: 42, name: "some name", time_zone: "some time_zone"}
+      valid_attrs = %{
+        beginning_of_week: 42,
+        name: "some name",
+        time_zone: "Etc/UTC",
+        granularities: ["1m", "1h"],
+        expire_after: 3_600,
+        default_timeframe: "24h",
+        default_granularity: "1h"
+      }
 
       assert {:ok, %Project{} = project} = Organizations.create_project(valid_attrs)
       assert project.beginning_of_week == 42
       assert project.name == "some name"
-      assert project.slug == "some-name"
-      assert project.time_zone == "some time_zone"
+      assert project.time_zone == "Etc/UTC"
+      assert project.granularities == ["1m", "1h"]
+      assert project.default_granularity == "1h"
+      assert project.default_timeframe == "24h"
+      assert project.expire_after == 3_600
     end
 
     test "create_project/1 with invalid data returns error changeset" do
@@ -40,14 +51,21 @@ defmodule Trifle.OrganizationsTest do
       update_attrs = %{
         beginning_of_week: 43,
         name: "some updated name",
-        time_zone: "some updated time_zone"
+        time_zone: "America/New_York",
+        granularities: ["1h", "1d"],
+        expire_after: 86_400,
+        default_timeframe: "7d",
+        default_granularity: "1d"
       }
 
       assert {:ok, %Project{} = project} = Organizations.update_project(project, update_attrs)
       assert project.beginning_of_week == 43
       assert project.name == "some updated name"
-      assert project.slug == "some-updated-name"
-      assert project.time_zone == "some updated time_zone"
+      assert project.time_zone == "America/New_York"
+      assert project.granularities == ["1h", "1d"]
+      assert project.default_granularity == "1d"
+      assert project.default_timeframe == "7d"
+      assert project.expire_after == 86_400
     end
 
     test "update_project/2 with invalid data returns error changeset" do

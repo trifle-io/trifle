@@ -29,6 +29,7 @@
               <div class="ml-10 flex items-baseline space-x-4">
                 {live_active_link(@socket, :dashboards, "Dashboards", to: ~p"/dashboards")}
                 {live_active_link(@socket, :explore, "Explore", to: ~p"/explore")}
+                {live_active_link(@socket, :projects, "Projects", to: ~p"/projects")}
                 {live_active_link(@socket, :databases, "Databases", to: ~p"/dbs")}
               </div>
             </div>
@@ -192,6 +193,7 @@
             variant: :mobile
           )}
           {live_active_link(@socket, :explore, "Explore", to: ~p"/explore", variant: :mobile)}
+          {live_active_link(@socket, :projects, "Projects", to: ~p"/projects", variant: :mobile)}
           {live_active_link(@socket, :databases, "Databases", to: ~p"/dbs", variant: :mobile)}
         </div>
         <%= if @current_user.is_admin do %>

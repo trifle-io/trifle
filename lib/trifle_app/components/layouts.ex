@@ -49,6 +49,10 @@ defmodule TrifleApp.Layouts do
       {:dashboards, TrifleApp.DashboardsLive} -> true
       {:dashboards, TrifleApp.DashboardLive} -> true
       {:explore, TrifleApp.ExploreLive} -> true
+      {:projects, TrifleApp.ProjectsLive} -> true
+      {:projects, TrifleApp.ProjectTranspondersLive} -> true
+      {:projects, TrifleApp.ProjectSettingsLive} -> true
+      {:projects, TrifleApp.ProjectTokensLive} -> true
       {:databases, TrifleApp.DatabasesLive} -> true
       {:databases, TrifleApp.DatabaseTranspondersLive} -> true
       {:databases, TrifleApp.DatabaseRedirectLive} -> true
