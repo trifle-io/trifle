@@ -18,6 +18,8 @@ defmodule Trifle.Organizations.Dashboard do
     field(:default_timeframe, :string)
     field(:default_granularity, :string)
     field(:position, :integer, default: 0)
+    field(:source_type, :string)
+    field(:source_id, :binary_id)
 
     belongs_to(:organization, Trifle.Organizations.Organization)
     belongs_to(:database, Trifle.Organizations.Database)
@@ -59,11 +61,16 @@ defmodule Trifle.Organizations.Dashboard do
       :default_granularity,
       :position,
       :group_id,
-      :organization_id
+      :organization_id,
+      :source_type,
+      :source_id
     ])
-    |> validate_required([:database_id, :user_id, :name, :key, :organization_id])
+    |> validate_required([:user_id, :name, :key, :organization_id, :source_type, :source_id])
+    |> validate_source_type()
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
+    |> maybe_sync_database_reference()
+    |> maybe_require_database()
     |> handle_payload_field(payload_raw, payload_provided)
     |> handle_segments_field(segments_raw, segments_provided)
     |> unique_constraint(:access_token)
@@ -449,6 +456,43 @@ defmodule Trifle.Organizations.Dashboard do
   end
 
   defp normalize_placeholder(value), do: value
+
+  defp validate_source_type(changeset) do
+    validate_change(changeset, :source_type, fn :source_type, value ->
+      case value do
+        "database" -> []
+        "project" -> []
+        _ -> [source_type: "is invalid"]
+      end
+    end)
+  end
+
+  defp maybe_sync_database_reference(changeset) do
+    source_type = get_field(changeset, :source_type)
+    source_id = get_field(changeset, :source_id)
+    database_id = get_field(changeset, :database_id)
+
+    cond do
+      source_type == "database" and is_binary(source_id) and database_id in [nil, ""] ->
+        put_change(changeset, :database_id, source_id)
+
+      source_type == "database" and is_binary(source_id) and database_id != source_id ->
+        add_error(changeset, :database_id, "must match source reference")
+
+      source_type != "database" and database_id not in [nil, ""] ->
+        put_change(changeset, :database_id, nil)
+
+      true ->
+        changeset
+    end
+  end
+
+  defp maybe_require_database(changeset) do
+    case get_field(changeset, :source_type) do
+      "database" -> validate_required(changeset, [:database_id])
+      _ -> changeset
+    end
+  end
 
   @doc """
   Generates a new public access token for the dashboard

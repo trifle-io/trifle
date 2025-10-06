@@ -2,6 +2,7 @@ defmodule TrifleApp.DashboardsLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
   alias Trifle.Organizations.Dashboard
+  alias Trifle.Stats.Source
 
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
     {:ok, redirect(socket, to: ~p"/organization")}
@@ -43,12 +44,18 @@ defmodule TrifleApp.DashboardsLive do
   end
 
   defp apply_action(socket, :new, _params) do
+    membership = socket.assigns.current_membership
+
+    sources =
+      membership
+      |> Source.list_for_membership()
+
+    selected_source = List.first(sources)
+
     socket
     |> assign(:dashboard, %Dashboard{})
-    |> assign(
-      :databases,
-      Organizations.list_databases_for_org(socket.assigns.current_membership.organization_id)
-    )
+    |> assign(:sources, sources)
+    |> assign(:selected_source_ref, selected_source && component_source_ref(selected_source))
   end
 
   # No modal form events in global-only mode
@@ -79,19 +86,39 @@ defmodule TrifleApp.DashboardsLive do
     current_user = socket.assigns.current_user
 
     if Organizations.can_clone_dashboard?(original, membership) do
+      source =
+        case original.source_type do
+          "project" -> Source.from_project(Organizations.get_project!(original.source_id))
+          _ ->
+            database =
+              original.database ||
+                Organizations.get_database_for_org!(membership.organization_id, original.source_id)
+
+            Source.from_database(database)
+        end
+
+      default_timeframe =
+        original.default_timeframe || Source.default_timeframe(source) || "24h"
+
+      default_granularity =
+        original.default_granularity ||
+          Source.default_granularity(source) ||
+          (Source.available_granularities(source) |> List.first()) || "1h"
+
       attrs = %{
-        "database_id" => original.database_id,
         "name" => (original.name || "Dashboard") <> " (copy)",
         "key" => original.key || "dashboard",
         "payload" => original.payload || %{},
-        "default_timeframe" =>
-          original.default_timeframe || original.database.default_timeframe || "24h",
-        "default_granularity" =>
-          original.default_granularity || original.database.default_granularity || "1h",
         "visibility" => original.visibility,
         "group_id" => original.group_id,
         "position" =>
-          Organizations.get_next_dashboard_position_for_membership(membership, original.group_id)
+          Organizations.get_next_dashboard_position_for_membership(membership, original.group_id),
+        "source_type" => Atom.to_string(Source.type(source)),
+        "source_id" => to_string(Source.id(source)),
+        "default_timeframe" => default_timeframe,
+        "default_granularity" => default_granularity,
+        "database_id" =>
+          if(Source.type(source) == :database, do: to_string(Source.id(source)), else: nil)
       }
 
       case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
@@ -101,8 +128,9 @@ defmodule TrifleApp.DashboardsLive do
            |> refresh_tree()
            |> put_flash(:info, "Dashboard duplicated")}
 
-        {:error, _cs} ->
-          {:noreply, put_flash(socket, :error, "Could not duplicate dashboard")}
+        {:error, %Ecto.Changeset{} = changeset} ->
+          message = changeset_error_message(changeset)
+          {:noreply, put_flash(socket, :error, message || "Could not duplicate dashboard")}
       end
     else
       {:noreply,
@@ -164,7 +192,7 @@ defmodule TrifleApp.DashboardsLive do
   def handle_event("create_dashboard", params, socket) do
     current_user = socket.assigns.current_user
     name = String.trim(to_string(Map.get(params, "name", "")))
-    db_id = Map.get(params, "database_id") |> to_string()
+    source_ref = Map.get(params, "source_ref")
     key = String.trim(to_string(Map.get(params, "key", "")))
 
     membership = socket.assigns.current_membership
@@ -173,32 +201,52 @@ defmodule TrifleApp.DashboardsLive do
       name == "" ->
         {:noreply, put_flash(socket, :error, "Name is required")}
 
-      db_id in [nil, ""] ->
-        {:noreply, put_flash(socket, :error, "Database is required")}
+      is_nil(source_ref) or String.trim(to_string(source_ref)) == "" ->
+        {:noreply, put_flash(socket, :error, "Source is required")}
 
       true ->
-        db = Organizations.get_database_for_org!(membership.organization_id, db_id)
+        sources = Source.list_for_membership(membership)
 
-        attrs = %{
-          "name" => name,
-          "key" => if(key == "", do: "dashboard", else: key),
-          "database_id" => db.id,
-          "visibility" => false,
-          "group_id" => nil,
-          "default_timeframe" => db.default_timeframe || "24h",
-          "default_granularity" => db.default_granularity || "1h",
-          "position" => Organizations.get_next_dashboard_position_for_membership(membership, nil)
-        }
+        with {:ok, source} <- find_source_by_ref(sources, source_ref) do
+          default_timeframe = Source.default_timeframe(source) || "24h"
 
-        case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
-          {:ok, _dash} ->
-            {:noreply,
-             socket
-             |> put_flash(:info, "Dashboard created")
-             |> push_patch(to: ~p"/dashboards")}
+          default_granularity =
+            Source.default_granularity(source) ||
+              (Source.available_granularities(source) |> List.first()) || "1h"
 
-          {:error, _cs} ->
-            {:noreply, put_flash(socket, :error, "Could not create dashboard")}
+          base_attrs = %{
+            "name" => name,
+            "key" => if(key == "", do: "dashboard", else: key),
+            "source_type" => Atom.to_string(Source.type(source)),
+            "source_id" => to_string(Source.id(source)),
+            "visibility" => false,
+            "group_id" => nil,
+            "default_timeframe" => default_timeframe,
+            "default_granularity" => default_granularity,
+            "position" =>
+              Organizations.get_next_dashboard_position_for_membership(membership, nil)
+          }
+
+          attrs =
+            case Source.type(source) do
+              :database -> Map.put(base_attrs, "database_id", to_string(Source.id(source)))
+              _ -> Map.put(base_attrs, "database_id", nil)
+            end
+
+          case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
+            {:ok, _dash} ->
+              {:noreply,
+               socket
+               |> put_flash(:info, "Dashboard created")
+               |> push_patch(to: ~p"/dashboards")}
+
+            {:error, %Ecto.Changeset{} = changeset} ->
+              message = changeset_error_message(changeset)
+              {:noreply, put_flash(socket, :error, message || "Could not create dashboard")}
+          end
+        else
+          {:error, message} ->
+            {:noreply, put_flash(socket, :error, message)}
         end
     end
   end
@@ -577,16 +625,25 @@ defmodule TrifleApp.DashboardsLive do
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                Database
+                Source
               </label>
+              <% grouped_sources = group_sources_for_select(@sources || []) %>
               <div class="grid grid-cols-1 sm:max-w-xs">
                 <select
-                  name="database_id"
+                  name="source_ref"
                   required
                   class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                  disabled={grouped_sources == []}
                 >
-                  <%= for db <- @databases || [] do %>
-                    <option value={db.id}>{db.display_name}</option>
+                  <%= for {group_label, sources} <- grouped_sources do %>
+                    <optgroup label={group_label}>
+                      <%= for source <- sources do %>
+                        <% value = source_option_value(source) %>
+                        <option value={value} selected={source_selected?(@selected_source_ref, source)}>
+                          {Source.display_name(source)}
+                        </option>
+                      <% end %>
+                    </optgroup>
                   <% end %>
                 </select>
                 <svg
@@ -603,6 +660,11 @@ defmodule TrifleApp.DashboardsLive do
                   />
                 </svg>
               </div>
+              <%= if grouped_sources == [] do %>
+                <p class="mt-2 text-xs text-red-600 dark:text-red-400">
+                  You don't have any available sources yet. Create a database or project first.
+                </p>
+              <% end %>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
@@ -1024,4 +1086,69 @@ defmodule TrifleApp.DashboardsLive do
     </div>
     """
   end
+
+  defp group_sources_for_select(sources) do
+    sources
+    |> Enum.group_by(&Source.type/1)
+    |> Enum.map(fn {type, list} -> {Source.type_label(type), list} end)
+    |> Enum.sort_by(fn {label, _} -> label end)
+  end
+
+  defp source_option_value(source) do
+    type = source |> Source.type() |> Atom.to_string()
+    id = source |> Source.id() |> to_string()
+    "#{type}:#{id}"
+  end
+
+  defp source_selected?(nil, _source), do: false
+
+  defp source_selected?(%{type: type, id: id}, source) do
+    type == Source.type(source) && id == to_string(Source.id(source))
+  end
+
+  defp component_source_ref(nil), do: nil
+
+  defp component_source_ref(source) do
+    %{type: Source.type(source), id: to_string(Source.id(source))}
+  end
+
+  defp find_source_by_ref(_sources, nil), do: {:error, "Source is required"}
+
+  defp find_source_by_ref(sources, ref) do
+    with {:ok, {type, id}} <- parse_source_ref(ref) do
+      type_atom = if(type == "database", do: :database, else: :project)
+
+      case Enum.find(sources, fn source ->
+             Source.type(source) == type_atom && to_string(Source.id(source)) == id
+           end) do
+        nil -> {:error, "Selected source is not available"}
+        source -> {:ok, source}
+      end
+    end
+  end
+
+  defp parse_source_ref(ref) do
+    ref
+    |> to_string()
+    |> String.trim()
+    |> String.split(":", parts: 2)
+    |> case do
+      [type, id] when type in ["database", "project"] and id not in ["", nil] ->
+        {:ok, {type, id}}
+
+      _ ->
+        {:error, "Invalid source selection"}
+    end
+  end
+
+  defp changeset_error_message(%Ecto.Changeset{errors: errors}) do
+    errors
+    |> Enum.map(fn {field, {message, _opts}} ->
+      field = field |> to_string() |> String.replace("_", " ")
+      String.capitalize("#{field} #{message}")
+    end)
+    |> List.first()
+  end
+
+  defp changeset_error_message(_), do: nil
 end

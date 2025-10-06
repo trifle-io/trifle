@@ -4,14 +4,14 @@ defmodule Mix.Tasks.SeedMetrics do
 
   Usage:
     # For project-based drivers
-    mix seed_metrics --type=project --id=0ec3422a-f6d8-42b6-b818-030033407a7e
+    mix seed_metrics --source=project:0ec3422a-f6d8-42b6-b818-030033407a7e
     
     # For database-based drivers  
-    mix seed_metrics --type=database --id=a1b2c3d4-e5f6-7890-abcd-ef1234567890
-    
+    mix seed_metrics --source=database:a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
   Options:
-    --type: Either "project" or "database" (required)
-    --id: The UUID of the project or database record (required)
+    --source: Combined source reference in the format "project:<id>" or "database:<id>"
+    --type / --id: Legacy flags kept for backward compatibility with existing scripts
     --count: Number of metrics to generate (default: 50)
     --hours: Time range in hours (default: 48)
     --batch-size: Size of each batch for large datasets (default: 100)
@@ -25,6 +25,7 @@ defmodule Mix.Tasks.SeedMetrics do
     {opts, _, _} =
       OptionParser.parse(args,
         strict: [
+          source: :string,
           type: :string,
           id: :string,
           count: :integer,
@@ -34,16 +35,15 @@ defmodule Mix.Tasks.SeedMetrics do
         ]
       )
 
-    type = opts[:type] || raise "Missing required --type option (project or database)"
-    id = opts[:id] || raise "Missing required --id option"
+    {type, id} =
+      case parse_source(opts) do
+        {:ok, type, id} -> {type, id}
+        {:error, message} -> raise message
+      end
     count = opts[:count] || 50
     hours = opts[:hours] || 48
     batch_size = opts[:batch_size] || 100
     batch_delay = opts[:batch_delay] || 100
-
-    unless type in ["project", "database"] do
-      raise "Invalid --type option. Must be 'project' or 'database'"
-    end
 
     # Start the application to access Ecto and other dependencies
     Mix.Task.run("app.start")
@@ -51,14 +51,11 @@ defmodule Mix.Tasks.SeedMetrics do
     IO.puts("🚀 Starting to seed #{count} metrics in batches of #{batch_size} over #{hours} hours")
     IO.puts("   Type: #{type}, ID: #{id}")
 
-    # Load the record and get stats configuration
-    config =
-      case type do
-        "project" -> load_project_config(id)
-        "database" -> load_database_config(id)
-      end
+    {source, config} = load_source_and_config(type, id)
 
     IO.puts("✅ Successfully loaded #{type} configuration")
+
+    maybe_log_transponders(source)
 
     # Process metrics in batches
     total_batches = ceil(count / batch_size)
@@ -97,25 +94,25 @@ defmodule Mix.Tasks.SeedMetrics do
     IO.puts("\n🎉 Completed seeding #{count} metrics!")
   end
 
-  defp load_project_config(id) do
+  defp load_source_and_config("project", id) do
     try do
       project = Trifle.Organizations.get_project!(id)
       IO.puts("   Project: #{project.name}")
-      Trifle.Organizations.Project.stats_config(project)
+      {Trifle.Stats.Source.from_project(project), Trifle.Organizations.Project.stats_config(project)}
     rescue
       Ecto.NoResultsError ->
         raise "Project with ID #{id} not found"
     end
   end
 
-  defp load_database_config(id) do
+  defp load_source_and_config("database", id) do
     case Trifle.Repo.get(Trifle.Organizations.Database, id) do
       nil ->
         raise "Database with ID #{id} not found"
 
       database ->
         IO.puts("   Database: #{database.display_name} (#{database.driver})")
-        Trifle.Organizations.Database.stats_config(database)
+        {Trifle.Stats.Source.from_database(database), Trifle.Organizations.Database.stats_config(database)}
     end
   end
 
@@ -169,6 +166,49 @@ defmodule Mix.Tasks.SeedMetrics do
           {:halt, {:error, error}}
       end
     end)
+  end
+
+  defp parse_source(opts) do
+    cond do
+      source = opts[:source] ->
+        case String.split(source, ":", parts: 2) do
+          [type, id] when type in ["project", "database"] -> {:ok, type, id}
+          _ -> {:error, "Invalid --source format. Use project:<id> or database:<id>"}
+        end
+
+      opts[:type] && opts[:id] ->
+        type = opts[:type]
+
+        if type in ["project", "database"] do
+          {:ok, type, opts[:id]}
+        else
+          {:error, "Invalid --type option. Must be 'project' or 'database'"}
+        end
+
+      opts[:type] && is_nil(opts[:id]) ->
+        {:error, "Missing required --id option"}
+
+      opts[:id] && is_nil(opts[:type]) ->
+        {:error, "Missing required --type option (project or database)"}
+
+      true ->
+        {:error, "Missing required --source option (project:<id> or database:<id>)"}
+    end
+  end
+
+  defp maybe_log_transponders(source) do
+    source
+    |> Trifle.Stats.Source.transponders()
+    |> case do
+      [] -> :ok
+      list ->
+        IO.puts("   Transponders (#{length(list)}):")
+
+        Enum.each(list, fn transponder ->
+          display = transponder.name || transponder.key
+          IO.puts("     • #{display}")
+        end)
+    end
   end
 
   # All the generate_values functions remain the same as the original
