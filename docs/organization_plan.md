@@ -41,7 +41,7 @@
    - New users (preserve invite token through registration, automatically link after registration success).
 4. When generating invitation emails, include copy that the link expires in 3 days and handle resend by issuing a new token/expiry.
 5. Implement ability to switch active organization when user belongs to multiple (dropdown or modal) – leave hooks/placeholders but defer actual multi-membership UI until phase 2.
-6. Update session/plug logic (likely in `TrifleWeb.UserAuth` and LiveView mount hooks) to load memberships and enforce presence of active organization before loading app routes; keep assumption of single membership while architecting for future multi-org selection.
+6. Update session/plug logic (likely in `TrifleApp.UserAuth` and LiveView mount hooks) to load memberships and enforce presence of active organization before loading app routes; keep assumption of single membership while architecting for future multi-org selection.
 
 ## Phase 4 – LiveView & UI Additions
 1. Add “Organization” entry to the user dropdown (desktop + mobile) pointing to `/organization` LiveView; ensure consistent styling with existing menu.

@@ -40,7 +40,7 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
       
-      iex> TrifleWeb.DesignSystem.ChartColors.palette()
+      iex> TrifleApp.DesignSystem.ChartColors.palette()
       ["#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#10b981", 
        "#f97316", "#ec4899", "#3b82f6", "#84cc16", "#f43f5e", "#6366f1"]
   """
@@ -51,10 +51,10 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
 
-      iex> TrifleWeb.DesignSystem.ChartColors.color_at(0)
+      iex> TrifleApp.DesignSystem.ChartColors.color_at(0)
       "#14b8a6"
       
-      iex> TrifleWeb.DesignSystem.ChartColors.color_at(1)
+      iex> TrifleApp.DesignSystem.ChartColors.color_at(1)
       "#f59e0b"
   """
   def color_at(index) when index >= 0 do
@@ -67,13 +67,13 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
 
-      iex> TrifleWeb.DesignSystem.ChartColors.color_for(0)
+      iex> TrifleApp.DesignSystem.ChartColors.color_for(0)
       "#14b8a6"
       
-      iex> TrifleWeb.DesignSystem.ChartColors.color_for(12)
+      iex> TrifleApp.DesignSystem.ChartColors.color_for(12)
       "#14b8a6"  # Cycles back to first color
       
-      iex> TrifleWeb.DesignSystem.ChartColors.color_for(13)
+      iex> TrifleApp.DesignSystem.ChartColors.color_for(13)
       "#f59e0b"  # Second color
   """
   def color_for(index) when index >= 0 do
@@ -87,7 +87,7 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
 
-      iex> TrifleWeb.DesignSystem.ChartColors.count()
+      iex> TrifleApp.DesignSystem.ChartColors.count()
       12
   """
   def count, do: length(@official_palette)
@@ -97,7 +97,7 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
 
-      iex> TrifleWeb.DesignSystem.ChartColors.colors_for(["key1", "key2", "key3"])
+      iex> TrifleApp.DesignSystem.ChartColors.colors_for(["key1", "key2", "key3"])
       [{"key1", "#14b8a6"}, {"key2", "#f59e0b"}, {"key3", "#ef4444"}]
   """
   def colors_for(items) when is_list(items) do
@@ -111,7 +111,7 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
 
-      iex> TrifleWeb.DesignSystem.ChartColors.json_palette()
+      iex> TrifleApp.DesignSystem.ChartColors.json_palette()
       "[\"#14b8a6\",\"#f59e0b\",\"#ef4444\",\"#8b5cf6\",\"#06b6d4\",\"#10b981\",\"#f97316\",\"#ec4899\",\"#3b82f6\",\"#84cc16\",\"#f43f5e\",\"#6366f1\"]"
   """
   def json_palette do
@@ -123,7 +123,7 @@ defmodule TrifleApp.DesignSystem.ChartColors do
 
   ## Examples
 
-      iex> TrifleWeb.DesignSystem.ChartColors.primary()
+      iex> TrifleApp.DesignSystem.ChartColors.primary()
       "#14b8a6"
   """
   def primary, do: hd(@official_palette)

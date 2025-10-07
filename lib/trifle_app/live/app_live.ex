@@ -99,7 +99,7 @@ defmodule TrifleApp.AppLive do
       </.header>
 
       <p class="text-center mt-4">
-        <%= if TrifleWeb.RegistrationConfig.enabled?() do %>
+        <%= if TrifleApp.RegistrationConfig.enabled?() do %>
           <.link href={~p"/users/register"}>Register</.link> |
         <% end %>
         <.link href={~p"/users/log_in"}>Log in</.link>

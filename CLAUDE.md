@@ -76,8 +76,8 @@ mix populate_metrics --token=your_token_here --count=100 --hours=24
 - Each project gets isolated MongoDB collection: `proj_{project_id}`
 
 **Phoenix LiveView Structure:**
-- `TrifleWeb.Api.MetricsController` - REST API for metrics ingestion
-- `TrifleWeb.DesignSystem.ChartColors` - 12-color palette system for consistent visualization
+- `TrifleApi.MetricsController` - REST API for metrics ingestion
+- `TrifleApp.DesignSystem.ChartColors` - 12-color palette system for consistent visualization
 
 ### Metrics Architecture
 

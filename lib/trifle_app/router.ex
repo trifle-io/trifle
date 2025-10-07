@@ -1,7 +1,7 @@
 defmodule TrifleApp.Router do
   use TrifleApp, :router
 
-  import TrifleWeb.UserAuth
+  import TrifleApp.UserAuth
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -17,7 +17,7 @@ defmodule TrifleApp.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", TrifleWeb do
+  scope "/", TrifleApp do
     pipe_through :browser
 
     get "/home", PageController, :home_page
@@ -36,11 +36,11 @@ defmodule TrifleApp.Router do
     end
   end
 
-  scope "/", TrifleWeb do
+  scope "/", TrifleApp do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     live_session :redirect_if_user_is_authenticated,
-      on_mount: [{TrifleWeb.UserAuth, :redirect_if_user_is_authenticated}] do
+      on_mount: [{TrifleApp.UserAuth, :redirect_if_user_is_authenticated}] do
       live "/users/register", UserRegistrationLive, :new
       live "/users/log_in", UserLoginLive, :new
       live "/users/reset_password", UserForgotPasswordLive, :new
@@ -50,11 +50,11 @@ defmodule TrifleApp.Router do
     post "/users/log_in", UserSessionController, :create
   end
 
-  scope "/", TrifleWeb do
+  scope "/", TrifleApp do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :require_authenticated_user,
-      on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
+      on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
       live "/users/settings", UserSettingsLive, :edit
       live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
     end
@@ -64,7 +64,7 @@ defmodule TrifleApp.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :app_authenticated,
-      on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
+      on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
       live "/", AppRedirectLive, :index
       live "/projects", ProjectsLive, :index
       live "/projects/new", ProjectsLive, :new
@@ -97,7 +97,7 @@ defmodule TrifleApp.Router do
     end
   end
 
-  scope "/", TrifleWeb do
+  scope "/", TrifleApp do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/export/dashboards/:id/pdf", ExportController, :dashboard_pdf
@@ -106,7 +106,7 @@ defmodule TrifleApp.Router do
     get "/export/dashboards/:id/json", ExportController, :dashboard_json
   end
 
-  scope "/", TrifleWeb do
+  scope "/", TrifleApp do
     pipe_through [:browser]
 
     get "/invitations/:token", InvitationController, :show
@@ -115,7 +115,7 @@ defmodule TrifleApp.Router do
     delete "/users/log_out", UserSessionController, :delete
 
     live_session :current_user,
-      on_mount: [{TrifleWeb.UserAuth, :mount_current_user}] do
+      on_mount: [{TrifleApp.UserAuth, :mount_current_user}] do
       live "/users/confirm/:token", UserConfirmationLive, :edit
       live "/users/confirm", UserConfirmationInstructionsLive, :new
     end
@@ -125,7 +125,7 @@ defmodule TrifleApp.Router do
     pipe_through [:browser]
 
     live_session :public_dashboard,
-      on_mount: [{TrifleWeb.UserAuth, :mount_current_user}] do
+      on_mount: [{TrifleApp.UserAuth, :mount_current_user}] do
       live "/:dashboard_id", DashboardLive, :public
     end
   end

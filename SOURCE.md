@@ -16,7 +16,7 @@
    - Helper functions expose source references, grouping, and lookups for LiveViews/components.
 
 2. **Refactor Data Fetching** — ✅ done
-   - `Trifle.Stats.SeriesFetcher` and `TrifleWeb.ExportController` accept any Source implementation (shims handle legacy database calls).
+   - `Trifle.Stats.SeriesFetcher` and `TrifleApp.ExportController` accept any Source implementation (shims handle legacy database calls).
    - Transponders, config, and granularities now flow through the behaviour.
 
 3. **LiveView Adaptation** — ✅ initial pass complete
@@ -65,4 +65,3 @@
 - [ ] Dashboard schema migrated to polymorphic source
 - [ ] UI components extracted (if pursued)
 - [ ] Project routes switched to shared LiveViews; legacy view removed
-

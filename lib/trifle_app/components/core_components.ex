@@ -17,7 +17,7 @@ defmodule TrifleApp.CoreComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
-  import TrifleWeb.Gettext
+  import TrifleApp.Gettext
 
   @doc """
   Renders a modal.
@@ -630,9 +630,9 @@ defmodule TrifleApp.CoreComponents do
     # with our gettext backend as first argument. Translations are
     # available in the errors.po file (as we use the "errors" domain).
     if count = opts[:count] do
-      Gettext.dngettext(TrifleWeb.Gettext, "errors", msg, msg, count, opts)
+      Gettext.dngettext(TrifleApp.Gettext, "errors", msg, msg, count, opts)
     else
-      Gettext.dgettext(TrifleWeb.Gettext, "errors", msg, opts)
+      Gettext.dgettext(TrifleApp.Gettext, "errors", msg, opts)
     end
   end
 
