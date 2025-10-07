@@ -354,6 +354,7 @@ defmodule TrifleApp.ProjectTokensLive do
       |> assign(:token, nil)
       |> assign(:form, to_form(changeset))
       |> assign(:page_title, "Projects · #{project.name} · Tokens")
+      |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Tokens"))
 
     {:ok, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -418,5 +419,15 @@ defmodule TrifleApp.ProjectTokensLive do
       |> put_flash(:info, "Token deleted successfully.")
 
     {:noreply, socket}
+  end
+
+  defp project_breadcrumb_links(project, last) do
+    project_name = project.name || "Project"
+
+    [
+      {"Projects", ~p"/projects"},
+      {project_name, ~p"/projects/#{project.id}/transponders"},
+      last
+    ]
   end
 end

@@ -49,7 +49,7 @@ defmodule TrifleApp.TranspondersLive do
        database: database,
        nav_section: :databases,
        breadcrumb_links: [
-         {"Database", ~p"/dbs"},
+         {"Databases", ~p"/dbs"},
          {database.display_name, ~p"/dashboards"},
          "Transponders"
        ],
@@ -523,7 +523,7 @@ defmodule TrifleApp.TranspondersLive do
                               />
                             </svg>
                           </.link>
-                          
+
     <!-- Delete -->
                           <button
                             type="button"
@@ -550,7 +550,7 @@ defmodule TrifleApp.TranspondersLive do
                             </svg>
                           </button>
                         </div>
-                        
+
     <!-- Toggle -->
                         <button
                           type="button"
@@ -570,7 +570,7 @@ defmodule TrifleApp.TranspondersLive do
                             if(transponder.enabled, do: "translate-x-5", else: "translate-x-0")
                           ]} />
                         </button>
-                        
+
     <!-- Reorder (Drag Handle) -->
                         <div
                           class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300"
@@ -596,7 +596,7 @@ defmodule TrifleApp.TranspondersLive do
           </div>
         </div>
       </div>
-      
+
     <!-- Modals -->
       <.app_modal
         :if={@ui_action in [:new, :edit]}
