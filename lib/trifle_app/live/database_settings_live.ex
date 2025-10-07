@@ -154,7 +154,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
     ~H"""
     <div class="space-y-6">
       <div class="sm:p-4">
-        <div class="border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div class="border-b border-gray-200 dark:border-slate-700">
           <nav class="-mb-px flex space-x-4 sm:space-x-8" aria-label="Database tabs">
             <.link
               navigate={~p"/dbs/#{@database.id}/transponders"}
