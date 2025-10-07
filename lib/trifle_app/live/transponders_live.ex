@@ -384,7 +384,7 @@ defmodule TrifleApp.TranspondersLive do
 
         <div class="px-4 pb-6 sm:px-6 lg:px-8">
           <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
-            <div class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3.5 text-sm font-semibold text-gray-900 sm:px-6 dark:border-slate-700 dark:text-white">
               <div class="flex items-center gap-2">
                 <span>Transponders</span>
                 <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30">

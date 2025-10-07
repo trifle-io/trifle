@@ -429,7 +429,7 @@ defmodule TrifleApp.DashboardsLive do
         <div class="bg-white dark:bg-slate-800 rounded-lg shadow">
           <div
             id="dashboards-header-controls"
-            class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between"
+            class="flex items-center justify-between border-b border-gray-100 px-4 py-3.5 text-sm font-semibold text-gray-900 sm:px-6 dark:border-slate-700 dark:text-white"
             phx-hook="FastTooltip"
           >
             <div class="flex items-center gap-2">
