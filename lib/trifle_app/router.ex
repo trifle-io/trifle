@@ -17,6 +17,14 @@ defmodule TrifleApp.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :projects_enabled do
+    plug TrifleApp.Plugs.RequireProjectsEnabled
+  end
+
+  pipeline :projects_api_enabled do
+    plug TrifleApp.Plugs.RequireProjectsEnabled, format: :json
+  end
+
   scope "/", TrifleApp do
     pipe_through :browser
 
@@ -66,16 +74,6 @@ defmodule TrifleApp.Router do
     live_session :app_authenticated,
       on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
       live "/", AppRedirectLive, :index
-      live "/projects", ProjectsLive, :index
-      live "/projects/new", ProjectsLive, :new
-      live "/projects/:id", ProjectRedirectLive, :index
-      live "/projects/:id/transponders", ProjectTranspondersLive, :index
-      live "/projects/:id/transponders/new", ProjectTranspondersLive, :new
-      live "/projects/:id/transponders/:transponder_id", ProjectTranspondersLive, :show
-      live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
-      live "/projects/:id/settings", ProjectSettingsLive
-      live "/projects/:id/tokens", ProjectTokensLive, :index
-      live "/projects/:id/tokens/new", ProjectTokensLive, :new
       live "/organization", OrganizationRedirectLive, :index
       live "/organization/profile", OrganizationProfileLive, :show
       live "/organization/users", OrganizationUsersLive, :index
@@ -94,6 +92,24 @@ defmodule TrifleApp.Router do
       live "/dashboards/:id", DashboardLive, :show
       live "/dashboards/:id/edit", DashboardLive, :edit
       live "/dashboards/:id/configure", DashboardLive, :configure
+    end
+  end
+
+  scope "/", TrifleApp do
+    pipe_through [:browser, :require_authenticated_user, :projects_enabled]
+
+    live_session :app_authenticated_projects,
+      on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
+      live "/projects", ProjectsLive, :index
+      live "/projects/new", ProjectsLive, :new
+      live "/projects/:id", ProjectRedirectLive, :index
+      live "/projects/:id/transponders", ProjectTranspondersLive, :index
+      live "/projects/:id/transponders/new", ProjectTranspondersLive, :new
+      live "/projects/:id/transponders/:transponder_id", ProjectTranspondersLive, :show
+      live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
+      live "/projects/:id/settings", ProjectSettingsLive
+      live "/projects/:id/tokens", ProjectTokensLive, :index
+      live "/projects/:id/tokens/new", ProjectTokensLive, :new
     end
   end
 
@@ -131,7 +147,7 @@ defmodule TrifleApp.Router do
   end
 
   scope "/api", TrifleApi, as: :api do
-    pipe_through(:api)
+    pipe_through [:api, :projects_api_enabled]
 
     get("/health", MetricsController, :health)
     post("/metrics", MetricsController, :create)
