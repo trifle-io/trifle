@@ -6,7 +6,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
 
   @impl true
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/organization")}
+    {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
   def mount(%{"id" => id}, _session, %{assigns: %{current_membership: membership}} = socket) do

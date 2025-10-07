@@ -5,7 +5,7 @@ defmodule TrifleApp.DashboardsLive do
   alias Trifle.Stats.Source
 
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/organization")}
+    {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
   def mount(

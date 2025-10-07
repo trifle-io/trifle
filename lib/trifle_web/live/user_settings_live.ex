@@ -196,7 +196,7 @@ defmodule TrifleWeb.UserSettingsLive do
           put_flash(socket, :error, "Email change link is invalid or it has expired.")
       end
 
-    {:ok, push_navigate(socket, to: ~p"/users/settings")}
+    {:ok, push_navigate(socket, to: ~p"/users/settings"), layout: {TrifleApp.Layouts, :app}}
   end
 
   def mount(_params, _session, socket) do
@@ -216,7 +216,7 @@ defmodule TrifleWeb.UserSettingsLive do
       |> assign(:trigger_submit, false)
       |> assign(:page_title, "Account Settings")
 
-    {:ok, socket}
+    {:ok, socket, layout: {TrifleApp.Layouts, :app}}
   end
 
   def handle_event("validate_email", params, socket) do

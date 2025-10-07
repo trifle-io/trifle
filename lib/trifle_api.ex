@@ -20,7 +20,7 @@ defmodule TrifleApi do
     quote do
       use Phoenix.VerifiedRoutes,
         endpoint: TrifleWeb.Endpoint,
-        router: TrifleWeb.Router,
+        router: TrifleApp.Router,
         statics: []
     end
   end

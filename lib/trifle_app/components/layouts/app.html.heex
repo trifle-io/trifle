@@ -38,7 +38,7 @@
             <div class="ml-4 flex items-center md:ml-6">
               <%= if @current_user.is_admin do %>
                 <.link
-                  navigate={~p"/admin"}
+                  navigate="/admin"
                   class="text-teal-400 hover:text-teal-300 hover:border-b-2 hover:border-teal-400 px-3 py-2 text-sm font-medium mr-4 border-b-2 border-transparent"
                 >
                   Admin
@@ -99,13 +99,7 @@
                     navigate={~p"/users/settings"}
                     class="block px-4 py-2 text-sm text-gray-700"
                   >
-                    Your Profile
-                  </.link>
-                  <.link
-                    navigate={~p"/users/settings"}
-                    class="block px-4 py-2 text-sm text-gray-700"
-                  >
-                    Settings
+                    Account Settings
                   </.link>
                   <%= if @current_membership do %>
                     <.link
@@ -200,7 +194,7 @@
           <div class="border-t border-gray-700 pt-2 pb-3">
             <div class="space-y-1 px-2">
               <.link
-                navigate={~p"/admin"}
+                navigate="/admin"
                 class="text-blue-300 hover:bg-gray-700 hover:text-blue-200 block px-3 py-2 rounded-md text-base font-medium"
               >
                 Admin
@@ -245,13 +239,7 @@
               navigate={~p"/users/settings"}
               class="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white"
             >
-              Your Profile
-            </.link>
-            <.link
-              navigate={~p"/users/settings"}
-              class="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white"
-            >
-              Settings
+              Account Settings
             </.link>
             <%= if @current_membership do %>
               <.link
