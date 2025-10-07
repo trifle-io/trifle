@@ -3,6 +3,17 @@ defmodule TrifleApp.ProjectSettingsLive do
 
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
+  alias TrifleApp.ProjectsLive
+
+  @week_options [
+    {"Monday", 1},
+    {"Tuesday", 2},
+    {"Wednesday", 3},
+    {"Thursday", 4},
+    {"Friday", 5},
+    {"Saturday", 6},
+    {"Sunday", 7}
+  ]
 
   @impl true
   def mount(%{"id" => id}, _session, %{assigns: %{current_user: user}} = socket) do
@@ -12,12 +23,44 @@ defmodule TrifleApp.ProjectSettingsLive do
       {:ok,
        socket
        |> assign(:project, project)
-       |> assign(:page_title, "Projects · #{project.name} · Settings")}
+       |> assign(:page_title, "Projects · #{project.name} · Settings")
+       |> assign(:form, to_form(Organizations.change_project(project)))
+       |> assign(:show_edit_modal, false)
+       |> assign(:time_zones, time_zones())
+       |> assign(:week_options, @week_options)}
     else
       {:ok,
        socket
        |> put_flash(:error, "You do not have access to that project.")
        |> redirect(to: ~p"/projects")}
+    end
+  end
+
+  @impl true
+  def handle_event("open_edit_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:form, to_form(Organizations.change_project(socket.assigns.project)))
+     |> assign(:show_edit_modal, true)}
+  end
+
+  def handle_event("close_edit_modal", _params, socket) do
+    {:noreply, assign(socket, :show_edit_modal, false)}
+  end
+
+  def handle_event("save", %{"project" => project_params}, socket) do
+    case Organizations.update_project(socket.assigns.project, project_params) do
+      {:ok, project} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Project updated successfully.")
+         |> assign(:project, project)
+         |> assign(:page_title, "Projects · #{project.name} · Settings")
+         |> assign(:form, to_form(Organizations.change_project(project)))
+         |> assign(:show_edit_modal, false)}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :form, to_form(changeset))}
     end
   end
 
@@ -32,10 +75,23 @@ defmodule TrifleApp.ProjectSettingsLive do
       <div class="space-y-6 px-4 pb-6 sm:px-6 lg:px-8">
         <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
           <div class="px-4 py-6 sm:px-6">
-            <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Project overview</h2>
-            <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
-              Key attributes that describe how this project is configured.
-            </p>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                  Project overview
+                </h2>
+                <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
+                  Key attributes that describe how this project is configured.
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="open_edit_modal"
+                class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Edit project
+              </button>
+            </div>
           </div>
           <div class="border-t border-gray-100 dark:border-slate-700">
             <dl class="divide-y divide-gray-100 dark:divide-slate-700">
@@ -115,6 +171,93 @@ defmodule TrifleApp.ProjectSettingsLive do
         </div>
       </div>
     </div>
+
+    <.app_modal
+      :if={@show_edit_modal}
+      id="project-edit-modal"
+      show
+      on_cancel={JS.push("close_edit_modal")}
+    >
+      <:title>Edit Project</:title>
+      <:body>
+        <.form_container for={@form} phx-submit="save" class="space-y-6">
+          <:header
+            title="Project details"
+            subtitle="Update the defaults that shape how dashboards, Explore, and ingestion behave."
+          />
+
+          <.form_field field={@form[:name]} label="Project name" required />
+
+          <.form_field
+            field={@form[:time_zone]}
+            type="select"
+            label="Time zone"
+            options={@time_zones}
+            prompt="Select a time zone"
+            required
+          />
+
+          <.form_field
+            field={@form[:beginning_of_week]}
+            type="select"
+            label="Beginning of week"
+            options={@week_options}
+            required
+          />
+
+          <div class="space-y-2">
+            <label
+              for={@form[:granularities].id}
+              class="block text-sm font-medium text-gray-900 dark:text-white"
+            >
+              Granularities
+            </label>
+            <input
+              id={@form[:granularities].id}
+              name={@form[:granularities].name}
+              type="text"
+              value={granularities_to_string(@form[:granularities].value)}
+              placeholder="1m, 1h, 1d, 1w, 1mo"
+              required
+              class="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
+            />
+            <p class="text-xs text-gray-600 dark:text-gray-400">
+              Comma-separated list matching the granularities you want available in Explore and dashboards.
+            </p>
+            <.form_errors field={@form[:granularities]} />
+          </div>
+
+          <.form_field
+            field={@form[:default_timeframe]}
+            label="Default timeframe"
+            placeholder="7d"
+            help_text="Optional. Applied when dashboards or Explore load without explicit overrides."
+          />
+
+          <.form_field
+            field={@form[:default_granularity]}
+            label="Default granularity"
+            placeholder="1h"
+            help_text="Optional. Should match one of the configured granularities."
+          />
+
+          <.form_field
+            field={@form[:expire_after]}
+            type="number"
+            label="Expire after (seconds)"
+            placeholder="86400"
+            help_text="Optional. Leave blank to keep metrics forever."
+          />
+
+          <:actions>
+            <.form_actions>
+              <.primary_button phx-disable-with="Saving...">Save changes</.primary_button>
+              <.secondary_button phx-click="close_edit_modal">Cancel</.secondary_button>
+            </.form_actions>
+          </:actions>
+        </.form_container>
+      </:body>
+    </.app_modal>
     """
   end
 
@@ -131,6 +274,20 @@ defmodule TrifleApp.ProjectSettingsLive do
     </div>
     """
   end
+
+  defp time_zones do
+    ProjectsLive.time_zones()
+  end
+
+  defp granularities_to_string(nil), do: ""
+
+  defp granularities_to_string(value) when is_list(value) do
+    value
+    |> Enum.join(", ")
+  end
+
+  defp granularities_to_string(value) when is_binary(value), do: value
+  defp granularities_to_string(_), do: ""
 
   defp present?(value) when value in [nil, ""], do: false
   defp present?(_), do: true
