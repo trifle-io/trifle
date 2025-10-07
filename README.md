@@ -256,11 +256,11 @@ The application includes a comprehensive design system with reusable components 
 
 ### Official Chart Color Palette
 
-The analytics dashboard uses a carefully curated color palette managed by the `TrifleWeb.DesignSystem.ChartColors` module:
+The analytics dashboard uses a carefully curated color palette managed by the `TrifleApp.DesignSystem.ChartColors` module:
 
 ```elixir
 # Access the color palette in Elixir
-alias TrifleWeb.DesignSystem.ChartColors
+alias TrifleApp.DesignSystem.ChartColors
 
 ChartColors.palette()
 # => ["#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#10b981", 

@@ -21,7 +21,7 @@ defmodule TrifleWeb.Endpoint do
     at: "/",
     from: :trifle,
     gzip: false,
-    only: TrifleWeb.static_paths()
+    only: TrifleApp.static_paths()
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

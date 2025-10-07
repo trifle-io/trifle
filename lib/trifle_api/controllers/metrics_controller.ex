@@ -1,8 +1,8 @@
 defmodule TrifleApi.MetricsController do
   use TrifleApi, :controller
 
-  plug(TrifleWeb.Plugs.AuthenticateByProjectToken, %{mode: :read} when action in [:index])
-  plug(TrifleWeb.Plugs.AuthenticateByProjectToken, %{mode: :write} when action in [:create])
+  plug(TrifleApi.Plugs.AuthenticateByProjectToken, %{mode: :read} when action in [:index])
+  plug(TrifleApi.Plugs.AuthenticateByProjectToken, %{mode: :write} when action in [:create])
 
   def index(%{assigns: %{current_project: current_project}} = conn, params) do
     conn

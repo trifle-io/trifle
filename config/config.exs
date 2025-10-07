@@ -16,7 +16,7 @@ config :trifle, :deployment_mode, :saas
 config :trifle, TrifleWeb.Endpoint,
   url: [host: "0.0.0.0"],
   render_errors: [
-    formats: [html: TrifleWeb.ErrorHTML, json: TrifleWeb.ErrorJSON],
+    formats: [html: TrifleApp.ErrorHTML, json: TrifleApp.ErrorJSON],
     layout: false
   ],
   pubsub_server: Trifle.PubSub,

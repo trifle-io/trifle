@@ -1,7 +1,8 @@
 defmodule TrifleWeb.Router do
-  use TrifleWeb, :router
+  use Phoenix.Router, helpers: false
 
-  import TrifleWeb.UserAuth
+  import Phoenix.LiveView.Router
+  import TrifleApp.UserAuth
 
   pipeline :admin_browser do
     plug :accepts, ["html"]
@@ -17,7 +18,7 @@ defmodule TrifleWeb.Router do
     pipe_through [:admin_browser, :require_authenticated_user]
 
     live_session :admin_authenticated,
-      on_mount: [{TrifleWeb.UserAuth, :ensure_authenticated}] do
+      on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
       live "/", AdminLive, :index
       live "/users", UsersLive, :index
       live "/databases", DatabasesLive, :index
