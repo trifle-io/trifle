@@ -12,6 +12,7 @@ defmodule TrifleApp.DatabaseTranspondersLive do
           socket
           |> Shared.assign_initial(source_assigns)
           |> Shared.assign_paths()
+          |> assign(:nav_section, :databases)
 
         {:ok, socket}
 
