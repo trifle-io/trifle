@@ -27,7 +27,7 @@ defmodule TrifleApp.DashboardLive do
   @noncapturing_prefixes ["?:", "?=", "?!", "?<=", "?<!"]
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/organization")}
+    {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
   def mount(

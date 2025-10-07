@@ -87,7 +87,7 @@ defmodule TrifleApp do
     quote do
       use Phoenix.VerifiedRoutes,
         endpoint: TrifleWeb.Endpoint,
-        router: TrifleWeb.Router,
+        router: TrifleApp.Router,
         statics: TrifleApp.static_paths()
     end
   end

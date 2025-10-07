@@ -89,7 +89,8 @@ defmodule TrifleApp.OrganizationProfileLive do
 
     socket =
       socket
-      |> assign(:page_title, "Organization")
+      |> assign(:page_title, "Organization · Profile")
+      |> assign(:breadcrumb_links, Navigation.breadcrumb(:profile))
       |> assign(:active_tab, :profile)
       |> assign(:current_user, current_user)
       |> assign(:show_profile_modal, false)
@@ -228,6 +229,8 @@ defmodule TrifleApp.OrganizationProfileLive do
     |> assign(:organization, organization)
     |> assign(:can_manage, Organizations.membership_admin?(membership))
     |> assign(:organization_form, to_form(Organizations.change_organization(organization)))
+    |> assign(:breadcrumb_links, Navigation.breadcrumb(:profile))
+    |> assign(:page_title, "Organization · Profile")
     |> assign(:show_profile_modal, false)
   end
 
@@ -357,9 +360,13 @@ defmodule TrifleApp.OrganizationProfileLive do
           </p>
         </div>
         <%= if @can_manage and @organization do %>
-          <.ghost_button type="button" phx-click="open_profile_modal">
+          <button
+            type="button"
+            phx-click="open_profile_modal"
+            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
             Edit details
-          </.ghost_button>
+          </button>
         <% end %>
       </div>
 

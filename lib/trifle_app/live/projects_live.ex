@@ -26,7 +26,7 @@ defmodule TrifleApp.ProjectsLive do
             Your Projects
           </h1>
           <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-            Organize analytics by project to keep tokens, transponders, and dashboards grouped together.
+            Pick a Project to configure Transponders, Access Tokens and other Settings.
           </p>
         </div>
         <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">

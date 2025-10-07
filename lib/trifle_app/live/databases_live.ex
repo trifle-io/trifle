@@ -6,7 +6,7 @@ defmodule TrifleApp.DatabasesLive do
 
   @impl true
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/organization")}
+    {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
   def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do
@@ -92,7 +92,7 @@ defmodule TrifleApp.DatabasesLive do
             Your Databases
           </h1>
           <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-            Pick a database to open Dashboards, Transponders, or Explore.
+            Pick a Database to configure Transponders and other Settings.
           </p>
         </div>
         <%= if @can_manage_databases do %>

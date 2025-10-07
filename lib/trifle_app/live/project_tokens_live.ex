@@ -273,15 +273,30 @@ defmodule TrifleApp.ProjectTokensLive do
                           </span>
                         </div>
 
-                        <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
-                          Last used
-                          <%= if token.updated_at do %>
-                            <time datetime={Calendar.strftime(token.updated_at, "%Y-%m-%dT%H:%M:%S")}>
-                              {Calendar.strftime(token.updated_at, "%b %d, %Y %I:%M %p")}
-                            </time>
-                          <% else %>
-                            never
-                          <% end %>
+                        <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                          <span>
+                            Last used
+                            <%= if token.updated_at do %>
+                              <time datetime={
+                                Calendar.strftime(token.updated_at, "%Y-%m-%dT%H:%M:%S")
+                              }>
+                                {Calendar.strftime(token.updated_at, "%b %d, %Y %I:%M %p")}
+                              </time>
+                            <% else %>
+                              never
+                            <% end %>
+                          </span>
+                          <span class="hidden sm:inline text-gray-300 dark:text-slate-600">•</span>
+                          <span>
+                            Expires
+                            <%= if expires_at = token_expires_at(token) do %>
+                              <time datetime={NaiveDateTime.to_iso8601(expires_at)}>
+                                {Calendar.strftime(expires_at, "%b %d, %Y")}
+                              </time>
+                            <% else %>
+                              unknown
+                            <% end %>
+                          </span>
                         </p>
                       </div>
 
@@ -421,6 +436,12 @@ defmodule TrifleApp.ProjectTokensLive do
 
     {:noreply, socket}
   end
+
+  defp token_expires_at(%ProjectToken{inserted_at: %NaiveDateTime{} = inserted_at}) do
+    NaiveDateTime.add(inserted_at, 365 * 24 * 60 * 60, :second)
+  end
+
+  defp token_expires_at(_), do: nil
 
   defp project_breadcrumb_links(project, last) do
     project_name = project.name || "Project"

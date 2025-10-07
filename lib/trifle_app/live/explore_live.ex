@@ -9,7 +9,7 @@ defmodule TrifleApp.ExploreLive do
   alias TrifleApp.TimeframeParsing
 
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
-    {:ok, redirect(socket, to: ~p"/organization")}
+    {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
   def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do

@@ -7,7 +7,7 @@ defmodule TrifleApp.OrganizationLive.Navigation do
     ~H"""
     <div class="mb-6 border-b border-gray-200 dark:border-slate-700">
       <nav class="-mb-px flex flex-wrap gap-4" aria-label="Organization tabs">
-        <.link navigate={~p"/organization"} class={tab_link_classes(@active_tab == :profile)}>
+        <.link navigate={~p"/organization/profile"} class={tab_link_classes(@active_tab == :profile)}>
           <svg
             class={tab_icon_classes(@active_tab == :profile)}
             xmlns="http://www.w3.org/2000/svg"
@@ -93,4 +93,27 @@ defmodule TrifleApp.OrganizationLive.Navigation do
   defp tab_icon_classes(false) do
     "-ml-0.5 mr-2 h-5 w-5 text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300"
   end
+
+  def breadcrumb(:profile) do
+    [
+      {"Organization", ~p"/organization/profile"},
+      "Profile"
+    ]
+  end
+
+  def breadcrumb(:users) do
+    [
+      {"Organization", ~p"/organization/profile"},
+      "Users"
+    ]
+  end
+
+  def breadcrumb(:billing) do
+    [
+      {"Organization", ~p"/organization/profile"},
+      "Billing"
+    ]
+  end
+
+  def breadcrumb(_), do: breadcrumb(:profile)
 end

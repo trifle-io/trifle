@@ -169,7 +169,7 @@ defmodule TrifleApp.TranspondersLive.Shared do
   end
 
   def resolve_database_source(%{"id" => _database_id}, %{current_membership: nil}) do
-    {:redirect, ~p"/organization"}
+    {:redirect, ~p"/organization/profile"}
   end
 
   def resolve_database_source(%{"id" => database_id}, %{current_membership: membership}) do
@@ -210,7 +210,8 @@ defmodule TrifleApp.TranspondersLive.Shared do
            nav_section: :projects,
            breadcrumb_links: [
              {"Projects", ~p"/projects"},
-             {project.name || "Project", ~p"/projects/#{project.id}/transponders"}
+             {project.name || "Project", ~p"/projects/#{project.id}/transponders"},
+             "Transponders"
            ],
            page_title: page_title_for_action(:index, :project, project)
          }}

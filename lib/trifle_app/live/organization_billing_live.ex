@@ -9,6 +9,7 @@ defmodule TrifleApp.OrganizationBillingLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Billing")
+      |> assign(:breadcrumb_links, Navigation.breadcrumb(:billing))
       |> assign(:active_tab, :billing)
       |> assign(:deployment_mode, deployment_mode())
 
@@ -17,10 +18,13 @@ defmodule TrifleApp.OrganizationBillingLive do
         {:ok, socket}
 
       is_nil(membership) ->
-        {:ok, push_navigate(socket, to: ~p"/organization")}
+        {:ok, push_navigate(socket, to: ~p"/organization/profile")}
 
       true ->
-        {:ok, assign(socket, :current_membership, membership)}
+        {:ok,
+         socket
+         |> assign(:current_membership, membership)
+         |> assign(:breadcrumb_links, Navigation.breadcrumb(:billing))}
     end
   end
 
