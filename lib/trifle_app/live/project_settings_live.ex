@@ -24,6 +24,7 @@ defmodule TrifleApp.ProjectSettingsLive do
        socket
        |> assign(:project, project)
        |> assign(:page_title, "Projects · #{project.name} · Settings")
+       |> assign(:nav_section, :projects)
        |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
        |> assign(:form, to_form(Organizations.change_project(project)))
        |> assign(:show_edit_modal, false)
@@ -57,6 +58,7 @@ defmodule TrifleApp.ProjectSettingsLive do
          |> put_flash(:info, "Project updated successfully.")
          |> assign(:project, project)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
+         |> assign(:nav_section, :projects)
          |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
          |> assign(:form, to_form(Organizations.change_project(project)))
          |> assign(:show_edit_modal, false)}

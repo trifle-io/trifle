@@ -108,6 +108,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
     socket
     |> assign(:database, database)
     |> assign(:page_title, "Databases · #{database.display_name} · Settings")
+    |> assign(:nav_section, :databases)
     |> assign(:breadcrumb_links, database_breadcrumb_links(database))
   end
 

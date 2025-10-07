@@ -354,6 +354,7 @@ defmodule TrifleApp.ProjectTokensLive do
       |> assign(:token, nil)
       |> assign(:form, to_form(changeset))
       |> assign(:page_title, "Projects · #{project.name} · Tokens")
+      |> assign(:nav_section, :projects)
       |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Tokens"))
 
     {:ok, apply_action(socket, socket.assigns.live_action, params)}

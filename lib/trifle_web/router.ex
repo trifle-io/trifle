@@ -85,10 +85,10 @@ defmodule TrifleWeb.Router do
       live "/projects", ProjectsLive, :index
       live "/projects/new", ProjectsLive, :new
       live "/projects/:id", ProjectRedirectLive, :index
-      live "/projects/:id/transponders", TranspondersLive, :project_index
-      live "/projects/:id/transponders/new", TranspondersLive, :project_new
-      live "/projects/:id/transponders/:transponder_id", TranspondersLive, :project_show
-      live "/projects/:id/transponders/:transponder_id/edit", TranspondersLive, :project_edit
+      live "/projects/:id/transponders", ProjectTranspondersLive, :index
+      live "/projects/:id/transponders/new", ProjectTranspondersLive, :new
+      live "/projects/:id/transponders/:transponder_id", ProjectTranspondersLive, :show
+      live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
       live "/projects/:id/settings", ProjectSettingsLive
       live "/projects/:id/tokens", ProjectTokensLive, :index
       live "/projects/:id/tokens/new", ProjectTokensLive, :new
@@ -102,10 +102,10 @@ defmodule TrifleWeb.Router do
       live "/dbs/:id/settings", DatabaseSettingsLive, :show
       # Explore (global) – select database via params
       live "/explore", ExploreLive, :show
-      live "/dbs/:id/transponders", TranspondersLive, :database_index
-      live "/dbs/:id/transponders/new", TranspondersLive, :database_new
-      live "/dbs/:id/transponders/:transponder_id", TranspondersLive, :database_show
-      live "/dbs/:id/transponders/:transponder_id/edit", TranspondersLive, :database_edit
+      live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
+      live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
+      live "/dbs/:id/transponders/:transponder_id", DatabaseTranspondersLive, :show
+      live "/dbs/:id/transponders/:transponder_id/edit", DatabaseTranspondersLive, :edit
       # Global Dashboards index (uses DashboardsLive)
       live "/dashboards", DashboardsLive, :index
       live "/dashboards/new", DashboardsLive, :new
