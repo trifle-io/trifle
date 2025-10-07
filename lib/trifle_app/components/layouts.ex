@@ -67,16 +67,25 @@ defmodule TrifleApp.Layouts do
         true
 
       {:projects, TrifleApp.ProjectTranspondersLive} ->
-        Map.get(socket.assigns, :nav_section) == :projects
+        true
 
       {:databases, TrifleApp.DatabasesLive} ->
         true
 
       {:databases, TrifleApp.DatabaseTranspondersLive} ->
-        Map.get(socket.assigns, :nav_section) == :databases
+        true
+
+      {:databases, TrifleApp.DatabaseSettingsLive} ->
+        true
 
       {:databases, TrifleApp.DatabaseRedirectLive} ->
         true
+
+      {:projects, _} ->
+        Map.get(socket.assigns, :nav_section) == :projects
+
+      {:databases, _} ->
+        Map.get(socket.assigns, :nav_section) == :databases
 
       _ ->
         false
