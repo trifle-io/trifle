@@ -24,6 +24,7 @@ defmodule TrifleApp.ProjectSettingsLive do
        socket
        |> assign(:project, project)
        |> assign(:page_title, "Projects · #{project.name} · Settings")
+       |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
        |> assign(:form, to_form(Organizations.change_project(project)))
        |> assign(:show_edit_modal, false)
        |> assign(:time_zones, time_zones())
@@ -56,6 +57,7 @@ defmodule TrifleApp.ProjectSettingsLive do
          |> put_flash(:info, "Project updated successfully.")
          |> assign(:project, project)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
+         |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
          |> assign(:form, to_form(Organizations.change_project(project)))
          |> assign(:show_edit_modal, false)}
 
@@ -288,6 +290,16 @@ defmodule TrifleApp.ProjectSettingsLive do
 
   defp granularities_to_string(value) when is_binary(value), do: value
   defp granularities_to_string(_), do: ""
+
+  defp project_breadcrumb_links(%Project{} = project, last) do
+    project_name = project.name || "Project"
+
+    [
+      {"Projects", ~p"/projects"},
+      {project_name, ~p"/projects/#{project.id}/transponders"},
+      last
+    ]
+  end
 
   defp present?(value) when value in [nil, ""], do: false
   defp present?(_), do: true

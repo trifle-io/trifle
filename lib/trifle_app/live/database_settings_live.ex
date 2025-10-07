@@ -108,6 +108,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
     socket
     |> assign(:database, database)
     |> assign(:page_title, "Databases · #{database.display_name} · Settings")
+    |> assign(:breadcrumb_links, database_breadcrumb_links(database))
   end
 
   defp load_database(socket) do
@@ -509,4 +510,14 @@ defmodule TrifleApp.DatabaseSettingsLive do
 
   defp present?(value) when value in [nil, ""], do: false
   defp present?(_), do: true
+
+  defp database_breadcrumb_links(%Database{} = database) do
+    name = database.display_name || "Database"
+
+    [
+      {"Databases", ~p"/dbs"},
+      {name, ~p"/dbs/#{database.id}/transponders"},
+      "Settings"
+    ]
+  end
 end

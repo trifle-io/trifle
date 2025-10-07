@@ -84,7 +84,7 @@ defmodule TrifleWeb.Router do
       live "/", AppRedirectLive, :index
       live "/projects", ProjectsLive, :index
       live "/projects/new", ProjectsLive, :new
-      live "/projects/:id", TranspondersLive, :project_index
+      live "/projects/:id", ProjectRedirectLive, :index
       live "/projects/:id/transponders", TranspondersLive, :project_index
       live "/projects/:id/transponders/new", TranspondersLive, :project_new
       live "/projects/:id/transponders/:transponder_id", TranspondersLive, :project_show
