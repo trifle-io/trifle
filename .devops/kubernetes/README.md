@@ -113,6 +113,27 @@ externalPostgresql:
   database: "trifle_prod"
 ```
 
+### Projects Feature & MongoDB
+
+The Projects UI and its ingest API are disabled by default when deploying with this chart.
+Enable them by toggling the feature flag and, optionally, persistent storage for the bundled MongoDB sidecar:
+
+```yaml
+features:
+  projects:
+    enabled: true
+
+mongo:
+  persistence:
+    enabled: true
+    storageClass: "fast-ssd"
+    size: 20Gi
+```
+
+When enabled, the Helm chart injects the official `mongo` container into the Trifle pod and exposes it at `localhost:27017/trifle`.
+Leave MongoDB persistence disabled for ephemeral clusters or turn it on to provision a dedicated PVC named `<release>-mongo`.
+Authentication defaults to disabled to match the application defaults; supply custom credentials and connection logic if you require secured MongoDB.
+
 ### Persistence
 
 Configure persistent storage:

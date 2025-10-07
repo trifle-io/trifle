@@ -12,6 +12,8 @@ config :trifle,
 
 config :trifle, :deployment_mode, :saas
 
+config :trifle, :projects_enabled, true
+
 # Configures the endpoint
 config :trifle, TrifleWeb.Endpoint,
   url: [host: "0.0.0.0"],

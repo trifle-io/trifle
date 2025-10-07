@@ -86,6 +86,8 @@ spec:
               value: {{ .Values.app.timezone | quote }}
             - name: TRIFLE_DEPLOYMENT_MODE
               value: {{ .Values.app.deploymentMode | quote }}
+            - name: TRIFLE_PROJECTS_ENABLED
+              value: {{ ternary "true" "false" .Values.features.projects.enabled | quote }}
             - name: LANG
               value: "en_US.UTF-8"
             - name: LC_ALL
@@ -197,11 +199,34 @@ spec:
             - name: uploads
               mountPath: {{ .Values.persistence.mountPath }}
           {{- end }}
-      {{- if .Values.persistence.enabled }}
+        {{- if .Values.features.projects.enabled }}
+        - name: mongo
+          image: "{{ .Values.mongo.image.repository }}:{{ .Values.mongo.image.tag }}"
+          imagePullPolicy: {{ .Values.mongo.image.pullPolicy }}
+          ports:
+            - name: mongo
+              containerPort: 27017
+              protocol: TCP
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+          {{- with .Values.mongo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+
+      {{- if or .Values.persistence.enabled .Values.features.projects.enabled }}
       volumes:
+        {{- if .Values.persistence.enabled }}
         - name: uploads
           persistentVolumeClaim:
             claimName: {{ include "trifle.fullname" . }}-uploads
+        {{- end }}
+        {{- if .Values.features.projects.enabled }}
+        - name: mongo-data
+          emptyDir: {}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

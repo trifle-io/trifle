@@ -70,6 +70,25 @@ app:
   registration:
     enabled: false  # Disable registration in production for security
 
+# Feature toggles
+features:
+  projects:
+    enabled: false
+
+# MongoDB sidecar configuration
+mongo:
+  image:
+    repository: mongo
+    tag: "7.0"
+    pullPolicy: IfNotPresent
+  resources: {}
+  persistence:
+    enabled: false
+    storageClass: "fast-ssd"
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+
 # Initial user creation (runs during installation)
 initialUser:
   enabled: true

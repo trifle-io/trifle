@@ -29,6 +29,20 @@ deployment_mode =
 
 config :trifle, :deployment_mode, deployment_mode
 
+projects_enabled =
+  case System.get_env("TRIFLE_PROJECTS_ENABLED") do
+    nil -> Application.get_env(:trifle, :projects_enabled, true)
+    "" -> Application.get_env(:trifle, :projects_enabled, true)
+    value ->
+      case String.downcase(value) do
+        v when v in ["1", "true", "yes", "on", "enabled"] -> true
+        v when v in ["0", "false", "no", "off", "disabled"] -> false
+        _ -> Application.get_env(:trifle, :projects_enabled, true)
+      end
+  end
+
+config :trifle, :projects_enabled, projects_enabled
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
