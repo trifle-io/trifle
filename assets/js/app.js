@@ -141,6 +141,21 @@ Hooks.SmartTimeframeBlur = {
   }
 }
 
+Hooks.ChatScroll = {
+  mounted() {
+    this.scrollToBottom()
+    this.handleEvent("chat_scroll_bottom", () => this.scrollToBottom())
+  },
+  updated() {
+    this.scrollToBottom()
+  },
+  scrollToBottom() {
+    requestAnimationFrame(() => {
+      this.el.scrollTo({ top: this.el.scrollHeight, behavior: "smooth" })
+    })
+  }
+}
+
 
 
 Hooks.DatabaseExploreChart = {

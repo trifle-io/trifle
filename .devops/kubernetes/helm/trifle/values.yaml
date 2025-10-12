@@ -97,6 +97,15 @@ app:
     MIX_ENV: "prod"
     PHX_SERVER: "true"
 
+  openai:
+    apiKey: ""
+    model: "gpt-5"
+
+  chat:
+    mongo:
+      url: ""
+      poolSize: 5
+
   mailer:
     adapter: "local" # Options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo
     from:

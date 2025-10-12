@@ -100,6 +100,23 @@ spec:
               value: {{ .Values.app.mailer.from.name | quote }}
             - name: MAILER_FROM_EMAIL
               value: {{ .Values.app.mailer.from.email | quote }}
+            {{- with .Values.app.openai.model }}
+            - name: OPENAI_MODEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.app.openai.apiKey }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: openai-api-key
+            {{- end }}
+            {{- with .Values.app.chat.mongo.url }}
+            - name: MONGO_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: MONGO_POOL_SIZE
+              value: {{ .Values.app.chat.mongo.poolSize | default 5 | quote }}
             {{- with .Values.app.mailer.smtp.relay }}
             - name: SMTP_RELAY
               value: {{ . | quote }}
