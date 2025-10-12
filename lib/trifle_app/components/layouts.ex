@@ -81,6 +81,9 @@ defmodule TrifleApp.Layouts do
       {:databases, TrifleApp.DatabaseRedirectLive} ->
         true
 
+      {:chat, TrifleApp.ChatLive} ->
+        true
+
       {:projects, _} ->
         Map.get(socket.assigns, :nav_section) == :projects
 

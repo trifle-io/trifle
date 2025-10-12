@@ -57,6 +57,22 @@ mix phx.server
 
 Visit [`http://localhost:4000`](http://localhost:4000) to access the application.
 
+## ChatLive Assistant
+
+ChatLive is a conversational analytics assistant that lets you query your Trifle metrics using OpenAI's GPT models. You can find it in the main navigation or directly at [`/chat`](http://localhost:4000/chat).
+
+### Configuration
+
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Required – token used to call the OpenAI API | `sk-...` |
+| `OPENAI_MODEL` | Optional – override model name (defaults to `gpt-5`) | `gpt-4o` |
+| `MONGO_URL` | Required – MongoDB URL for persisting chat sessions | `mongodb://mongo:27017/trifle_chat` |
+
+You can also control the Mongo pool size with `MONGO_POOL_SIZE` (default `5`). In development the app falls back to `mongodb://localhost:27017/trifle_chat_dev` unless you set your own URL.
+
+After configuring the variables, restart the server. The assistant will list your accessible analytics sources and can call internal tools to fetch metric series using `Trifle.Stats`.
+
 ## API Testing and Data Population
 
 The application provides a metrics API for programmatic data submission. You'll need to create a project token with write permissions first.

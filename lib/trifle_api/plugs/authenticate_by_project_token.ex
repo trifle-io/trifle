@@ -2,6 +2,7 @@ defmodule TrifleApi.Plugs.AuthenticateByProjectToken do
   use Phoenix.Controller,
     formats: [:json],
     layouts: []
+
   import Plug.Conn
   alias Trifle.Organizations
 

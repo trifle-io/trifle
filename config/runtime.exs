@@ -31,8 +31,12 @@ config :trifle, :deployment_mode, deployment_mode
 
 projects_enabled =
   case System.get_env("TRIFLE_PROJECTS_ENABLED") do
-    nil -> Application.get_env(:trifle, :projects_enabled, true)
-    "" -> Application.get_env(:trifle, :projects_enabled, true)
+    nil ->
+      Application.get_env(:trifle, :projects_enabled, true)
+
+    "" ->
+      Application.get_env(:trifle, :projects_enabled, true)
+
     value ->
       case String.downcase(value) do
         v when v in ["1", "true", "yes", "on", "enabled"] -> true
@@ -254,4 +258,40 @@ if config_env() == :prod do
       raise ArgumentError,
             "Unsupported MAILER_ADAPTER '#{other}'. Valid options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo."
   end
+
+  mongo_url = System.get_env("MONGO_URL")
+
+  if mongo_url && mongo_url != "" do
+    pool_size = System.get_env("MONGO_POOL_SIZE", "5") |> String.to_integer()
+
+    config :trifle, Trifle.Chat.Mongo,
+      enabled: true,
+      url: mongo_url,
+      pool_size: pool_size,
+      pool_timeout: 5_000,
+      timeout: 5_000,
+      name: Trifle.Chat.Mongo
+  else
+    config :trifle, Trifle.Chat.Mongo, enabled: false
+  end
+
+  openai_model = System.get_env("OPENAI_MODEL", "gpt-5")
+
+  openai_receive_timeout =
+    case System.get_env("OPENAI_RECEIVE_TIMEOUT_MS") do
+      nil -> 120_000
+      "" -> 120_000
+      value -> String.to_integer(value)
+    end
+
+  openai_config =
+    case System.get_env("OPENAI_API_KEY") do
+      nil -> %{model: openai_model}
+      "" -> %{model: openai_model}
+      key -> %{model: openai_model, api_key: key}
+    end
+
+  openai_config = Map.put(openai_config, :receive_timeout, openai_receive_timeout)
+
+  config :trifle, Trifle.Chat.OpenAIClient, openai_config
 end

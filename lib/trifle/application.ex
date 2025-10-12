@@ -7,26 +7,27 @@ defmodule Trifle.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # Start the Telemetry supervisor
-      TrifleWeb.Telemetry,
-      # Start the Ecto repository (main application PostgreSQL)
-      Trifle.Repo,
-      # Start dynamic database connection pool supervisors
-      Trifle.DatabasePools.PostgresPoolSupervisor,
-      Trifle.DatabasePools.MongoPoolSupervisor,
-      Trifle.DatabasePools.RedisPoolSupervisor,
-      Trifle.DatabasePools.SqlitePoolSupervisor,
-      Trifle.DatabasePools.MySQLPoolSupervisor,
-      # Start the PubSub system
-      {Phoenix.PubSub, name: Trifle.PubSub},
-      # Start Finch
-      {Finch, name: Trifle.Finch},
-      # Start the Endpoint (http/https)
-      TrifleWeb.Endpoint
-      # Start a worker by calling: Trifle.Worker.start_link(arg)
-      # {Trifle.Worker, arg}
-    ]
+    children =
+      [
+        # Start the Telemetry supervisor
+        TrifleWeb.Telemetry,
+        # Start the Ecto repository (main application PostgreSQL)
+        Trifle.Repo,
+        # Start dynamic database connection pool supervisors
+        Trifle.DatabasePools.PostgresPoolSupervisor,
+        Trifle.DatabasePools.MongoPoolSupervisor,
+        Trifle.DatabasePools.RedisPoolSupervisor,
+        Trifle.DatabasePools.SqlitePoolSupervisor,
+        Trifle.DatabasePools.MySQLPoolSupervisor,
+        # Start the PubSub system
+        {Phoenix.PubSub, name: Trifle.PubSub},
+        # Start Finch
+        {Finch, name: Trifle.Finch},
+        # Start the Endpoint (http/https)
+        TrifleWeb.Endpoint
+        # Start a worker by calling: Trifle.Worker.start_link(arg)
+        # {Trifle.Worker, arg}
+      ] ++ chat_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -40,5 +41,13 @@ defmodule Trifle.Application do
   def config_change(changed, _new, removed) do
     TrifleWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  defp chat_children do
+    if Trifle.Chat.Mongo.enabled?() do
+      [Trifle.Chat.Mongo]
+    else
+      []
+    end
   end
 end

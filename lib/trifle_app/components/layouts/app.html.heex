@@ -33,6 +33,7 @@
                   {live_active_link(@socket, :projects, "Projects", to: ~p"/projects")}
                 <% end %>
                 {live_active_link(@socket, :databases, "Databases", to: ~p"/dbs")}
+                {live_active_link(@socket, :chat, "Trifle AI", to: ~p"/chat")}
               </div>
             </div>
           </div>
@@ -193,6 +194,7 @@
             {live_active_link(@socket, :projects, "Projects", to: ~p"/projects", variant: :mobile)}
           <% end %>
           {live_active_link(@socket, :databases, "Databases", to: ~p"/dbs", variant: :mobile)}
+          {live_active_link(@socket, :chat, "Trifle AI", to: ~p"/chat", variant: :mobile)}
         </div>
         <%= if @current_user.is_admin do %>
           <div class="border-t border-gray-700 pt-2 pb-3">

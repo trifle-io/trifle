@@ -81,6 +81,26 @@ config :phoenix, :plug_init_mode, :runtime
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
+config :trifle, Trifle.Chat.Mongo,
+  enabled: true,
+  url: System.get_env("MONGO_URL", "mongodb://localhost:27017/trifle_chat_dev"),
+  pool_size: System.get_env("MONGO_POOL_SIZE", "5") |> String.to_integer(),
+  pool_timeout: 5_000,
+  timeout: 5_000,
+  name: Trifle.Chat.Mongo
+
+openai_receive_timeout =
+  case System.get_env("OPENAI_RECEIVE_TIMEOUT_MS") do
+    nil -> 120_000
+    "" -> 120_000
+    value -> String.to_integer(value)
+  end
+
+config :trifle, Trifle.Chat.OpenAIClient,
+  api_key: System.get_env("OPENAI_API_KEY"),
+  model: System.get_env("OPENAI_MODEL", "gpt-5"),
+  receive_timeout: openai_receive_timeout
+
 # config :trifle_stats,
 #   driver: Mongo.start_link(url: "mongodb://mongo:27017/trifle"),
 #   track_ranges: [:minute, :hour, :day, :week, :month, :quarter, :year],

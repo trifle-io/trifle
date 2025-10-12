@@ -35,6 +35,14 @@ textarea {
   @apply focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500;
 }
 
+textarea.bg-transparent {
+  background-color: transparent !important;
+}
+
+.dark textarea.bg-transparent {
+  background-color: transparent !important;
+}
+
 input[type="checkbox"] {
   @apply w-4 h-4 text-teal-600 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 rounded focus:ring-teal-500;
 }
@@ -71,6 +79,31 @@ select[class*="grid"], select[class*="col-"] {
 .sortable-drag {
   opacity: 0.8;
   transform: rotate(3deg);
+}
+
+.chat-progress-wave {
+  background-image: linear-gradient(90deg, #14b8a6, #0ea5e9, #22d3ee, #38bdf8, #14b8a6);
+  background-size: 200% 200%;
+  animation: chat-progress-wave 2.4s ease-in-out infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 600;
+  filter: drop-shadow(0 0 0.45rem rgba(45, 212, 191, 0.3));
+}
+
+@keyframes chat-progress-wave {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 /* This file is for your main application CSS */

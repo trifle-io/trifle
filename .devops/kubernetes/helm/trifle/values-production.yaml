@@ -66,6 +66,15 @@ app:
     sendgrid:
       apiKey: "CHANGE_ME_IN_PRODUCTION"
 
+  openai:
+    apiKey: "CHANGE_ME_WITH_OPENAI_KEY"
+    model: "gpt-5"
+
+  chat:
+    mongo:
+      url: "mongodb://mongo:27017/trifle_chat"
+      poolSize: 10
+
   # User registration settings
   registration:
     enabled: false  # Disable registration in production for security
