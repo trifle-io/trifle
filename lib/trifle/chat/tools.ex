@@ -33,14 +33,14 @@ defmodule Trifle.Chat.Tools do
         "function" => %{
           "name" => "fetch_metric_timeseries",
           "description" =>
-            "Fetch detailed metric timeline data from the active analytics source. " <>
+            "Fetch detailed metric timeline data for a specific Metrics Key on the active analytics source. " <>
               "Use this when you need concrete numbers to answer the user.",
           "parameters" => %{
             "type" => "object",
             "properties" => %{
               "metric_key" => %{
                 "type" => "string",
-                "description" => "Metric identifier (exact key) to query."
+                "description" => "Metrics Key (exact path string) to query."
               },
               "timeframe" => %{
                 "type" => "string",
@@ -70,8 +70,8 @@ defmodule Trifle.Chat.Tools do
         "function" => %{
           "name" => "list_available_metrics",
           "description" =>
-            "Inspect the active analytics source and return observed metric keys. " <>
-              "Use this when you are unsure which metrics exist.",
+            "Inspect the active analytics source and return observed Metrics Keys. " <>
+              "Use this when you are unsure which paths exist.",
           "parameters" => %{
             "type" => "object",
             "properties" => %{
@@ -122,7 +122,7 @@ defmodule Trifle.Chat.Tools do
   def execute("fetch_metric_timeseries", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
          {:ok, source} <- ensure_source(context),
-         {:ok, metric_key} <- require_string(args, "metric_key", "Metric key required."),
+         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
          {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
          {:ok, granularity} <- resolve_granularity(args, source),
          :ok <-
@@ -150,6 +150,7 @@ defmodule Trifle.Chat.Tools do
       {:ok,
        %{
          status: "ok",
+         path: metric_key,
          metric_key: metric_key,
          timeframe: %{
            from: DateTime.to_iso8601(from),
@@ -197,15 +198,21 @@ defmodule Trifle.Chat.Tools do
              [],
              progressive: false
            ) do
-      metrics =
+      paths =
         result.series.series
         |> Map.get(:values, [])
         |> Enum.map(&Map.get(&1, "keys", %{}))
         |> Enum.reduce(%{}, fn keys_map, acc ->
           Map.merge(acc, keys_map, fn _key, left, right -> (left || 0) + (right || 0) end)
         end)
-        |> Enum.map(fn {key, count} -> %{metric_key: key, observations: count} end)
-        |> Enum.sort_by(& &1.metric_key)
+        |> Enum.map(fn {key, count} ->
+          %{
+            path: key,
+            metric_key: key,
+            observations: count
+          }
+        end)
+        |> Enum.sort_by(& &1.path)
 
       {:ok,
        %{
@@ -216,8 +223,8 @@ defmodule Trifle.Chat.Tools do
            label: timeframe_label,
            granularity: granularity
          },
-         metrics: metrics,
-         total_metrics: length(metrics)
+         paths: paths,
+         total_paths: length(paths)
        }}
     else
       {:error, %{} = err} ->
@@ -298,7 +305,7 @@ defmodule Trifle.Chat.Tools do
     #{active_source_text}
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
 
-    Output short, factual explanations. Always cite the metric key and timeframe you used.
+    Output short, factual explanations. Always cite the Metrics Key and timeframe you used, and label any retrieved values as [path: ...].
     If a tool fails, report the error plainly and suggest a safe follow-up.
     """
   end

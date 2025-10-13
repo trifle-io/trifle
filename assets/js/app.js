@@ -143,6 +143,7 @@ Hooks.SmartTimeframeBlur = {
 
 Hooks.ChatScroll = {
   mounted() {
+    this._pendingScroll = null
     this.scrollToBottom()
     this.handleEvent("chat_scroll_bottom", () => this.scrollToBottom())
   },
@@ -150,9 +151,27 @@ Hooks.ChatScroll = {
     this.scrollToBottom()
   },
   scrollToBottom() {
+    if (this._pendingScroll) {
+      clearTimeout(this._pendingScroll)
+    }
+
+    const performScroll = (behavior = "auto") => {
+      const el = this.el
+      if (!el) return
+      el.scrollTo({ top: el.scrollHeight, behavior })
+    }
+
     requestAnimationFrame(() => {
-      this.el.scrollTo({ top: this.el.scrollHeight, behavior: "smooth" })
+      performScroll("auto")
+      requestAnimationFrame(() => performScroll("smooth"))
     })
+
+    this._pendingScroll = setTimeout(() => performScroll("auto"), 300)
+  },
+  destroyed() {
+    if (this._pendingScroll) {
+      clearTimeout(this._pendingScroll)
+    }
   }
 }
 

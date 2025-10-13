@@ -38,7 +38,7 @@ defmodule Trifle.Chat.Progress do
 
     parts =
       [
-        metric && "metric #{metric}",
+        metric && "Metrics Key #{metric}",
         timeframe && timeframe,
         granularity && "granularity #{granularity}"
       ]
@@ -63,8 +63,8 @@ defmodule Trifle.Chat.Progress do
       |> Enum.join(" • ")
 
     case descriptor do
-      "" -> ensure_period("Listing available metrics")
-      other -> ensure_period("Listing available metrics (#{other})")
+      "" -> ensure_period("Listing available Metrics Keys")
+      other -> ensure_period("Listing available Metrics Keys (#{other})")
     end
   end
 
