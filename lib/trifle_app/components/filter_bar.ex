@@ -17,81 +17,79 @@ defmodule TrifleApp.Components.FilterBar do
         <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
           
     <!-- Source Dropdown (optional; only if >1 source) -->
-          <%= if @sources && length(@sources) > 0 && !@source_locked do %>
+          <%= if @sources && length(@sources) > 1 && !@source_locked do %>
             <% selected_source = selected_source_struct(@sources, @selected_source) %>
             <div class="w-full md:w-64">
               <div class="relative">
                 <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
                   Source
                 </div>
-                <%= if length(@sources) > 1 do %>
-                  <button
-                    type="button"
-                    phx-target={@myself}
-                    phx-click="toggle_source_dropdown"
-                    class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  >
-                    <div class="flex items-center justify-between">
-                      <span class="truncate">
-                        {if selected_source,
-                          do: Source.display_name(selected_source),
-                          else: "Select a source"}
-                      </span>
-                    </div>
-                    <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                      <svg
-                        class="h-5 w-5 text-gray-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
+                <button
+                  type="button"
+                  phx-target={@myself}
+                  phx-click="toggle_source_dropdown"
+                  class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                >
+                  <div class="flex items-center justify-between">
+                    <span class="truncate">
+                      {if selected_source,
+                        do: Source.display_name(selected_source),
+                        else: "Select a source"}
                     </span>
-                  </button>
-
-                  <%= if @show_source_dropdown do %>
-                    <div
-                      phx-click-away="hide_source_dropdown"
-                      phx-target={@myself}
-                      class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                  </div>
+                  <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                    <svg
+                      class="h-5 w-5 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
                     >
-                      <%= for {group_type, sources} <- grouped_sources(@sources) do %>
-                        <div class="py-1">
-                          <div class="px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                            {Source.type_label(group_type)}
-                          </div>
-                          <%= for source <- sources do %>
-                            <% source_id = Source.id(source) |> to_string() %>
-                            <button
-                              type="button"
-                              phx-target={@myself}
-                              phx-click="select_source"
-                              phx-value-id={source_id}
-                              phx-value-type={Source.type(source)}
-                              onmousedown="event.preventDefault()"
-                              class={[
-                                "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
-                                selected_source?(source, @selected_source) &&
-                                  "font-semibold text-teal-600 dark:text-teal-400"
-                              ]}
-                            >
-                              <div class="flex items-center justify-between">
-                                <span class="text-sm text-gray-900 dark:text-white truncate">
-                                  {Source.display_name(source)}
-                                </span>
-                              </div>
-                            </button>
-                          <% end %>
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </span>
+                </button>
+
+                <%= if @show_source_dropdown do %>
+                  <div
+                    phx-click-away="hide_source_dropdown"
+                    phx-target={@myself}
+                    class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                  >
+                    <%= for {group_type, sources} <- grouped_sources(@sources) do %>
+                      <div class="py-1">
+                        <div class="px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                          {Source.type_label(group_type)}
                         </div>
-                      <% end %>
-                    </div>
-                  <% end %>
+                        <%= for source <- sources do %>
+                          <% source_id = Source.id(source) |> to_string() %>
+                          <button
+                            type="button"
+                            phx-target={@myself}
+                            phx-click="select_source"
+                            phx-value-id={source_id}
+                            phx-value-type={Source.type(source)}
+                            onmousedown="event.preventDefault()"
+                            class={[
+                              "w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
+                              selected_source?(source, @selected_source) &&
+                                "font-semibold text-teal-600 dark:text-teal-400"
+                            ]}
+                          >
+                            <div class="flex items-center justify-between">
+                              <span class="text-sm text-gray-900 dark:text-white truncate">
+                                {Source.display_name(source)}
+                              </span>
+                            </div>
+                          </button>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </div>
                 <% end %>
               </div>
             </div>
