@@ -72,7 +72,6 @@ config :phoenix, :json_library, Jason
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 config :trifle, Trifle.Chat.Agent, history_limit: 40
-config :trifle, Trifle.Chat.SessionStore, collection: "chat_sessions"
 config :trifle, Trifle.Chat.OpenAIClient, model: "gpt-5"
 
 # Import environment specific config. This must remain at the bottom

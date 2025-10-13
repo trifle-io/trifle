@@ -1,17 +1,21 @@
 defmodule Trifle.Chat.SessionStore do
   @moduledoc """
-  Persistence layer for ChatLive sessions backed by MongoDB.
+  Persistence layer for ChatLive sessions backed by Postgres.
 
   The store keeps a single rolling conversation per user, organization,
   and analytics source combination. Messages are appended in order while
   keeping timestamps for auditing and UI display.
   """
 
-  alias Ecto.UUID
-  alias Trifle.Chat.Mongo, as: ChatMongo
-  alias Trifle.Chat.Session
+  import Ecto.Query, only: [from: 2]
 
-  @default_collection "chat_sessions"
+  alias Ecto.Changeset
+  alias Ecto.UUID
+  alias Trifle.Chat.Session
+  alias Trifle.Chat.SessionRecord
+  alias Trifle.Repo
+
+  @identity_index "chat_sessions_identity_index"
 
   @doc """
   Retrieves the latest session for the given identifiers or creates a new one.
@@ -35,28 +39,20 @@ defmodule Trifle.Chat.SessionStore do
   """
   @spec find_latest(String.t(), String.t(), %{type: String.t(), id: String.t()}) ::
           {:ok, Session.t()} | {:error, term()}
-  def find_latest(user_id, organization_id, source_ref) do
-    conn = ensure_connection!()
+  def find_latest(user_id, organization_id, %{type: type, id: source_id}) do
+    query =
+      from session in SessionRecord,
+        where:
+          session.user_id == ^cast_uuid!(user_id) and
+            session.organization_id == ^cast_uuid!(organization_id) and
+            session.source_type == ^to_string(type) and
+            session.source_id == ^cast_uuid!(source_id),
+        order_by: [desc: session.updated_at],
+        limit: 1
 
-    filter = %{
-      "user_id" => user_id,
-      "organization_id" => organization_id,
-      "source" => %{"type" => source_ref.type, "id" => source_ref.id}
-    }
-
-    options = [sort: %{"updated_at" => -1}, limit: 1]
-
-    case Mongo.find(conn, collection(), filter, options) do
-      {:error, reason} ->
-        {:error, reason}
-
-      cursor ->
-        cursor
-        |> Enum.to_list()
-        |> case do
-          [doc] -> {:ok, Session.from_document(doc)}
-          [] -> {:error, :not_found}
-        end
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      record -> {:ok, Session.from_record(record)}
     end
   rescue
     e -> {:error, e}
@@ -67,61 +63,49 @@ defmodule Trifle.Chat.SessionStore do
   """
   @spec create(String.t(), String.t(), %{type: String.t(), id: String.t()}) ::
           {:ok, Session.t()} | {:error, term()}
-  def create(user_id, organization_id, source_ref) do
-    conn = ensure_connection!()
-
-    timestamp = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    doc = %{
-      "_id" => UUID.generate(),
-      "user_id" => user_id,
-      "organization_id" => organization_id,
-      "source" => %{"type" => source_ref.type, "id" => source_ref.id},
-      "messages" => [],
-      "inserted_at" => timestamp,
-      "updated_at" => timestamp,
-      "pending_started_at" => nil,
-      "progress_events" => []
+  def create(user_id, organization_id, %{type: type, id: source_id}) do
+    attrs = %{
+      user_id: cast_uuid!(user_id),
+      organization_id: cast_uuid!(organization_id),
+      source_type: to_string(type),
+      source_id: cast_uuid!(source_id),
+      messages: [],
+      progress_events: [],
+      pending_started_at: nil
     }
 
-    case Mongo.insert_one(conn, collection(), doc) do
-      {:ok, _} -> {:ok, Session.from_document(doc)}
-      {:error, reason} -> {:error, reason}
+    %SessionRecord{}
+    |> SessionRecord.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, record} ->
+        {:ok, Session.from_record(record)}
+
+      {:error, %Changeset{} = changeset} ->
+        if unique_conflict?(changeset) do
+          find_latest(user_id, organization_id, %{type: to_string(type), id: source_id})
+        else
+          {:error, changeset}
+        end
     end
+  rescue
+    e -> {:error, e}
   end
 
   @doc """
   Clears the stored messages for the given session.
   """
   @spec reset(Session.t()) :: {:ok, Session.t()} | {:error, term()}
-  def reset(%Session{id: id} = session) do
-    conn = ensure_connection!()
+  def reset(%Session{id: id}) do
+    transaction(id, fn record, session ->
+      updated =
+        session
+        |> Session.replace_messages([])
+        |> Session.set_pending_started_at(nil)
+        |> Session.set_progress_events([])
 
-    timestamp = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    update = %{
-      "$set" => %{
-        "messages" => [],
-        "updated_at" => timestamp,
-        "pending_started_at" => nil,
-        "progress_events" => []
-      }
-    }
-
-    case Mongo.update_one(conn, collection(), %{"_id" => id}, update) do
-      {:ok, _} ->
-        {:ok,
-         %Session{
-           session
-           | messages: [],
-             updated_at: timestamp,
-             pending_started_at: nil,
-             progress_events: []
-         }}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+      persist_session(record, updated)
+    end)
   end
 
   @doc """
@@ -129,32 +113,12 @@ defmodule Trifle.Chat.SessionStore do
   """
   @spec append_message(Session.t(), Session.message()) ::
           {:ok, Session.t()} | {:error, term()}
-  def append_message(%Session{id: id} = session, message) do
-    conn = ensure_connection!()
-
-    normalized =
-      message
-      |> Map.put_new(:created_at, DateTime.utc_now() |> DateTime.truncate(:second))
-      |> Session.normalize_message()
-
-    stored_message = Session.encode_message(normalized)
-
-    timestamp = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    update = %{
-      "$push" => %{"messages" => stored_message},
-      "$set" => %{"updated_at" => timestamp}
-    }
-
-    case Mongo.update_one(conn, collection(), %{"_id" => id}, update) do
-      {:ok, _} ->
-        {:ok,
-         Session.append_message(session, normalized)
-         |> Map.put(:updated_at, timestamp)}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def append_message(%Session{id: id}, message) do
+    transaction(id, fn record, session ->
+      session
+      |> Session.append_message(message)
+      |> then(&persist_session(record, &1))
+    end)
   end
 
   @doc """
@@ -164,86 +128,42 @@ defmodule Trifle.Chat.SessionStore do
           {:ok, Session.t()} | {:error, term()}
   def append_messages(session, []), do: {:ok, session}
 
-  def append_messages(%Session{id: id} = session, messages) when is_list(messages) do
-    conn = ensure_connection!()
+  def append_messages(%Session{id: id}, messages) when is_list(messages) do
+    transaction(id, fn record, session ->
+      updated =
+        Enum.reduce(messages, session, fn message, acc ->
+          Session.append_message(acc, message)
+        end)
 
-    {normalized_messages, encoded_messages} =
-      messages
-      |> Enum.map(fn message ->
-        normalized =
-          message
-          |> Map.put_new(:created_at, DateTime.utc_now() |> DateTime.truncate(:second))
-          |> Session.normalize_message()
-
-        {normalized, Session.encode_message(normalized)}
-      end)
-      |> Enum.unzip()
-
-    timestamp = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    update = %{
-      "$push" => %{"messages" => %{"$each" => encoded_messages}},
-      "$set" => %{"updated_at" => timestamp}
-    }
-
-    case Mongo.update_one(conn, collection(), %{"_id" => id}, update) do
-      {:ok, _} ->
-        updated =
-          Enum.reduce(normalized_messages, session, fn message, acc ->
-            Session.append_message(acc, message)
-          end)
-          |> Map.put(:updated_at, timestamp)
-
-        {:ok, updated}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+      persist_session(record, updated)
+    end)
   end
 
   @doc """
   Clears any pending marker from the session.
   """
   @spec clear_pending(Session.t()) :: {:ok, Session.t()} | {:error, term()}
-  def clear_pending(%Session{id: id} = session) do
-    conn = ensure_connection!()
-
-    update = %{"$unset" => %{"pending_started_at" => ""}}
-
-    case Mongo.update_one(conn, collection(), %{"_id" => id}, update) do
-      {:ok, _} ->
-        {:ok, Session.set_pending_started_at(session, nil)}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def clear_pending(%Session{id: id}) do
+    transaction(id, fn record, session ->
+      session
+      |> Session.set_pending_started_at(nil)
+      |> then(&persist_session(record, &1))
+    end)
   end
 
   @doc """
   Resets the progress state for the session (clears events and sets pending start).
   """
   @spec reset_progress(Session.t(), DateTime.t()) :: {:ok, Session.t()} | {:error, term()}
-  def reset_progress(%Session{id: id} = session, %DateTime{} = timestamp) do
-    conn = ensure_connection!()
+  def reset_progress(%Session{id: id}, %DateTime{} = timestamp) do
     truncated = DateTime.truncate(timestamp, :second)
 
-    update = %{
-      "$set" => %{
-        "pending_started_at" => truncated,
-        "progress_events" => []
-      }
-    }
-
-    case Mongo.update_one(conn, collection(), %{"_id" => id}, update) do
-      {:ok, _} ->
-        {:ok,
-         session
-         |> Session.set_pending_started_at(truncated)
-         |> Session.set_progress_events([])}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    transaction(id, fn record, session ->
+      session
+      |> Session.set_pending_started_at(truncated)
+      |> Session.set_progress_events([])
+      |> then(&persist_session(record, &1))
+    end)
   end
 
   @doc """
@@ -251,57 +171,100 @@ defmodule Trifle.Chat.SessionStore do
   """
   @spec set_progress_events(Session.t(), [Session.progress_event()]) ::
           {:ok, Session.t()} | {:error, term()}
-  def set_progress_events(%Session{id: id} = session, events) when is_list(events) do
-    conn = ensure_connection!()
-    encoded = Session.encode_progress_events(events)
-
-    update = %{"$set" => %{"progress_events" => encoded}}
-
-    case Mongo.update_one(conn, collection(), %{"_id" => id}, update) do
-      {:ok, _} -> {:ok, Session.set_progress_events(session, events)}
-      {:error, reason} -> {:error, reason}
-    end
+  def set_progress_events(%Session{id: id}, events) when is_list(events) do
+    transaction(id, fn record, session ->
+      session
+      |> Session.set_progress_events(events)
+      |> then(&persist_session(record, &1))
+    end)
   end
 
   @doc """
-  Loads a session document by id.
+  Loads a session by id.
   """
   @spec get(String.t()) :: {:ok, Session.t()} | {:error, term()}
   def get(id) when is_binary(id) do
-    conn = ensure_connection!()
-
-    case Mongo.find_one(conn, collection(), %{"_id" => id}) do
+    case Repo.get(SessionRecord, cast_uuid!(id)) do
       nil -> {:error, :not_found}
-      doc -> {:ok, Session.from_document(doc)}
+      record -> {:ok, Session.from_record(record)}
     end
   rescue
     e -> {:error, e}
   end
 
-  defp ensure_connection! do
-    unless ChatMongo.enabled?() do
-      raise "Chat Mongo connection is not configured. Set config for Trifle.Chat.Mongo."
-    end
+  defp transaction(id, fun) do
+    Repo.transaction(fn ->
+      case lock_session(id) do
+        nil ->
+          Repo.rollback(:not_found)
 
-    conn = ChatMongo.conn_name()
+        record ->
+          session = Session.from_record(record)
 
-    if Process.whereis(conn) == nil do
-      config =
-        ChatMongo.config()
-        |> Keyword.put_new(:name, conn)
+          case fun.(record, session) do
+            {:ok, updated_session} ->
+              updated_session
 
-      case Mongo.start_link(config) do
-        {:ok, _} -> :ok
-        {:error, {:already_started, _}} -> :ok
-        {:error, reason} -> raise "Failed to start Chat Mongo connection: #{inspect(reason)}"
+            {:error, reason} ->
+              Repo.rollback(reason)
+          end
       end
-    end
-
-    conn
+    end)
+    |> unwrap_transaction()
   end
 
-  defp collection do
-    Application.get_env(:trifle, __MODULE__, [])
-    |> Keyword.get(:collection, @default_collection)
+  defp lock_session(id) do
+    query =
+      from session in SessionRecord,
+        where: session.id == ^cast_uuid!(id),
+        lock: "FOR UPDATE"
+
+    Repo.one(query)
+  end
+
+  defp persist_session(record, %Session{} = session) do
+    attrs =
+      session
+      |> Session.to_record_attrs()
+      |> normalize_persistence_attrs()
+
+    record
+    |> SessionRecord.changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, updated_record} -> {:ok, Session.from_record(updated_record)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp normalize_persistence_attrs(attrs) do
+    attrs
+    |> Map.update!(:user_id, &cast_uuid!/1)
+    |> Map.update!(:organization_id, &cast_uuid!/1)
+    |> Map.update!(:source_id, &cast_uuid!/1)
+  end
+
+  defp unwrap_transaction({:ok, value}), do: {:ok, value}
+  defp unwrap_transaction({:error, %Changeset{} = changeset}), do: {:error, changeset}
+  defp unwrap_transaction({:error, reason}), do: {:error, reason}
+
+  defp cast_uuid!(value) when is_binary(value) do
+    case UUID.cast(value) do
+      {:ok, uuid} -> uuid
+      :error -> raise ArgumentError, "expected binary UUID, got: #{inspect(value)}"
+    end
+  end
+
+  defp cast_uuid!(value) when is_nil(value) do
+    raise ArgumentError, "expected UUID, got nil"
+  end
+
+  defp cast_uuid!(value), do: value
+
+  defp unique_conflict?(%Changeset{constraints: constraints}) do
+    Enum.any?(constraints, fn
+      %{constraint_type: :unique, name: @identity_index} -> true
+      _ -> false
+    end)
   end
 end
