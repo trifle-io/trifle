@@ -111,12 +111,6 @@ spec:
                   name: {{ include "trifle.fullname" $ }}-secret
                   key: openai-api-key
             {{- end }}
-            {{- with .Values.app.chat.mongo.url }}
-            - name: MONGO_URL
-              value: {{ . | quote }}
-            {{- end }}
-            - name: MONGO_POOL_SIZE
-              value: {{ .Values.app.chat.mongo.poolSize | default 5 | quote }}
             {{- with .Values.app.mailer.smtp.relay }}
             - name: SMTP_RELAY
               value: {{ . | quote }}
