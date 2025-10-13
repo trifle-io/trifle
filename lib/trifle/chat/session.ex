@@ -1,6 +1,6 @@
 defmodule Trifle.Chat.Session do
   @moduledoc """
-  In-memory representation of a ChatLive conversation persisted to MongoDB.
+  In-memory representation of a ChatLive conversation persisted to Postgres.
 
   A session belongs to a specific user within an organization and analytics
   source. The message list mirrors the OpenAI chat API payload while adding
@@ -9,6 +9,11 @@ defmodule Trifle.Chat.Session do
 
   alias Ecto.UUID
   alias Trifle.Chat.Progress
+  alias Trifle.Chat.SessionRecord
+  alias Trifle.Chat.SessionRecord.Message, as: RecordMessage
+  alias Trifle.Chat.SessionRecord.Message.ToolCall, as: RecordToolCall
+  alias Trifle.Chat.SessionRecord.Message.ToolCall.Function, as: RecordToolFunction
+  alias Trifle.Chat.SessionRecord.ProgressEvent, as: RecordProgressEvent
   @enforce_keys [:id, :user_id, :organization_id, :source, :messages]
   defstruct [
     :id,
@@ -21,8 +26,6 @@ defmodule Trifle.Chat.Session do
     :pending_started_at,
     progress_events: []
   ]
-
-  @bson_datetime Module.concat(BSON, DateTime)
 
   @type message_role :: String.t()
 
@@ -66,38 +69,36 @@ defmodule Trifle.Chat.Session do
         }
 
   @doc """
-  Builds a session struct from a MongoDB document.
+  Builds a session struct from the stored database record.
   """
-  @spec from_document(map()) :: t()
-  def from_document(%{} = doc) do
+  @spec from_record(SessionRecord.t()) :: t()
+  def from_record(%SessionRecord{} = record) do
     %__MODULE__{
-      id: to_string(Map.fetch!(doc, "_id")),
-      user_id: doc |> Map.get("user_id") |> to_string(),
-      organization_id: doc |> Map.get("organization_id") |> to_string(),
-      source: normalize_source(doc["source"]),
-      messages: normalize_messages(doc["messages"] || []),
-      inserted_at: normalize_datetime(doc["inserted_at"]),
-      updated_at: normalize_datetime(doc["updated_at"]),
-      pending_started_at: normalize_datetime(doc["pending_started_at"]),
-      progress_events: normalize_progress_events(doc["progress_events"])
+      id: record.id |> to_string(),
+      user_id: record.user_id |> to_string(),
+      organization_id: record.organization_id |> to_string(),
+      source: %{"type" => record.source_type, "id" => record.source_id |> to_string()},
+      messages: Enum.map(record.messages, &from_record_message/1),
+      inserted_at: record.inserted_at,
+      updated_at: record.updated_at,
+      pending_started_at: record.pending_started_at,
+      progress_events: Enum.map(record.progress_events, &from_record_progress_event/1)
     }
   end
 
   @doc """
-  Converts a session struct back into a MongoDB document map.
+  Converts a session struct into attributes that can be put onto a record changeset.
   """
-  @spec to_document(t()) :: map()
-  def to_document(%__MODULE__{} = session) do
+  @spec to_record_attrs(t()) :: map()
+  def to_record_attrs(%__MODULE__{} = session) do
     %{
-      "_id" => session.id,
-      "user_id" => session.user_id,
-      "organization_id" => session.organization_id,
-      "source" => session.source,
-      "messages" => Enum.map(session.messages, &encode_message/1),
-      "inserted_at" => encode_datetime(session.inserted_at),
-      "updated_at" => encode_datetime(session.updated_at),
-      "pending_started_at" => encode_datetime(session.pending_started_at),
-      "progress_events" => encode_progress_events(session.progress_events)
+      user_id: session.user_id,
+      organization_id: session.organization_id,
+      source_type: session.source["type"] || session.source[:type],
+      source_id: session.source["id"] || session.source[:id],
+      pending_started_at: session.pending_started_at,
+      messages: Enum.map(session.messages, &encode_message/1),
+      progress_events: encode_progress_events(session.progress_events)
     }
   end
 
@@ -134,14 +135,66 @@ defmodule Trifle.Chat.Session do
     }
   end
 
-  defp normalize_source(%{"type" => type, "id" => id}) when is_binary(type) and is_binary(id) do
-    %{"type" => type, "id" => id}
+  defp from_record_message(%RecordMessage{} = record) do
+    tool_calls =
+      record.tool_calls
+      |> Enum.map(&from_record_tool_call/1)
+      |> Enum.reject(&is_nil/1)
+      |> case do
+        [] -> nil
+        list -> list
+      end
+
+    %{
+      role: record.role,
+      content: record.content,
+      created_at: record.created_at,
+      tool_calls: tool_calls,
+      tool_call_id: record.tool_call_id,
+      name: record.name
+    }
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
   end
 
-  defp normalize_source(_), do: %{"type" => "unknown", "id" => "unknown"}
+  defp from_record_tool_call(%RecordToolCall{} = record) do
+    function =
+      case record.function do
+        nil ->
+          nil
 
-  defp normalize_messages(messages) do
-    Enum.map(messages, &normalize_message/1)
+        %RecordToolFunction{} = func ->
+          %{
+            name: func.name,
+            arguments: func.arguments
+          }
+          |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+          |> Map.new()
+      end
+
+    %{
+      id: record.id,
+      type: record.type,
+      function: function
+    }
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
+  end
+
+  defp from_record_tool_call(_), do: nil
+
+  defp from_record_progress_event(%RecordProgressEvent{} = record) do
+    %{
+      id: record.id,
+      type: record.type,
+      payload: record.payload || %{},
+      text: record.text,
+      started_at: record.started_at,
+      finished_at: record.finished_at,
+      display: record.display
+    }
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
   end
 
   @doc """
@@ -194,21 +247,15 @@ defmodule Trifle.Chat.Session do
   end
 
   defp normalize_datetime(nil), do: nil
-  defp normalize_datetime(%DateTime{} = dt), do: dt
+  defp normalize_datetime(%DateTime{} = dt), do: DateTime.truncate(dt, :second)
 
-  defp normalize_datetime(%struct{utc: millis}) when struct == @bson_datetime do
-    millis
-    |> DateTime.from_unix!(:millisecond)
+  defp normalize_datetime(%NaiveDateTime{} = dt) do
+    dt
+    |> DateTime.from_naive!("Etc/UTC")
     |> DateTime.truncate(:second)
   end
 
-  defp normalize_datetime(%{"$date" => value}) do
-    DateTime.from_iso8601(value)
-    |> case do
-      {:ok, dt, _offset} -> DateTime.truncate(dt, :second)
-      _ -> nil
-    end
-  end
+  defp normalize_datetime(%{"$date" => value}), do: normalize_datetime(value)
 
   defp normalize_datetime(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do
@@ -301,36 +348,36 @@ defmodule Trifle.Chat.Session do
   end
 
   @doc """
-  Encodes a normalized message for MongoDB storage.
+  Encodes a normalized message for database storage.
   """
   @spec encode_message(message()) :: map()
   def encode_message(%{} = message) do
     %{
-      "role" => Map.get(message, :role),
-      "content" => Map.get(message, :content),
-      "created_at" => encode_datetime(Map.get(message, :created_at)),
-      "tool_calls" => encode_tool_calls(Map.get(message, :tool_calls)),
-      "tool_call_id" => Map.get(message, :tool_call_id),
-      "name" => Map.get(message, :name)
+      role: Map.get(message, :role),
+      content: Map.get(message, :content),
+      created_at: encode_datetime(Map.get(message, :created_at)),
+      tool_calls: encode_tool_calls(Map.get(message, :tool_calls)),
+      tool_call_id: Map.get(message, :tool_call_id),
+      name: Map.get(message, :name)
     }
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     |> Map.new()
   end
 
-  defp encode_tool_calls(nil), do: nil
+  defp encode_tool_calls(nil), do: []
 
   defp encode_tool_calls(tool_calls) when is_list(tool_calls) do
     Enum.map(tool_calls, fn call ->
       %{
-        "id" => Map.get(call, :id),
-        "type" => Map.get(call, :type),
-        "function" =>
+        id: Map.get(call, :id),
+        type: Map.get(call, :type),
+        function:
           call
           |> Map.get(:function, %{})
           |> then(fn function ->
             %{
-              "name" => Map.get(function, :name),
-              "arguments" => Map.get(function, :arguments)
+              name: Map.get(function, :name),
+              arguments: Map.get(function, :arguments)
             }
             |> Enum.reject(fn {_k, v} -> is_nil(v) end)
             |> Map.new()
@@ -343,7 +390,6 @@ defmodule Trifle.Chat.Session do
 
   defp encode_datetime(nil), do: nil
   defp encode_datetime(%DateTime{} = dt), do: DateTime.truncate(dt, :second)
-  defp encode_datetime(%struct{} = dt) when struct == @bson_datetime, do: dt
 
   defp encode_datetime(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do
@@ -352,7 +398,18 @@ defmodule Trifle.Chat.Session do
     end
   end
 
-  defp encode_datetime(value) when is_integer(value), do: value
+  defp encode_datetime(%NaiveDateTime{} = dt) do
+    dt
+    |> DateTime.from_naive!("Etc/UTC")
+    |> DateTime.truncate(:second)
+  end
+
+  defp encode_datetime(value) when is_integer(value) do
+    value
+    |> DateTime.from_unix!(:second)
+    |> DateTime.truncate(:second)
+  end
+
   defp encode_datetime(_), do: nil
 
   defp normalize_progress_events(nil), do: []
@@ -387,13 +444,13 @@ defmodule Trifle.Chat.Session do
   def encode_progress_events(events) when is_list(events) do
     Enum.map(events, fn event ->
       %{
-        "id" => Map.get(event, :id),
-        "type" => Map.get(event, :type),
-        "payload" => Map.get(event, :payload) || %{},
-        "text" => Map.get(event, :text),
-        "started_at" => encode_datetime(Map.get(event, :started_at)),
-        "finished_at" => encode_datetime(Map.get(event, :finished_at)),
-        "display" => Map.get(event, :display, true)
+        id: Map.get(event, :id),
+        type: Map.get(event, :type),
+        payload: Map.get(event, :payload) || %{},
+        text: Map.get(event, :text),
+        started_at: encode_datetime(Map.get(event, :started_at)),
+        finished_at: encode_datetime(Map.get(event, :finished_at)),
+        display: Map.get(event, :display, true)
       }
     end)
   end

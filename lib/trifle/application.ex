@@ -27,7 +27,7 @@ defmodule Trifle.Application do
         TrifleWeb.Endpoint
         # Start a worker by calling: Trifle.Worker.start_link(arg)
         # {Trifle.Worker, arg}
-      ] ++ chat_children()
+      ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -41,13 +41,5 @@ defmodule Trifle.Application do
   def config_change(changed, _new, removed) do
     TrifleWeb.Endpoint.config_change(changed, removed)
     :ok
-  end
-
-  defp chat_children do
-    if Trifle.Chat.Mongo.enabled?() do
-      [Trifle.Chat.Mongo]
-    else
-      []
-    end
   end
 end

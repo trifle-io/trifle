@@ -259,22 +259,6 @@ if config_env() == :prod do
             "Unsupported MAILER_ADAPTER '#{other}'. Valid options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo."
   end
 
-  mongo_url = System.get_env("MONGO_URL")
-
-  if mongo_url && mongo_url != "" do
-    pool_size = System.get_env("MONGO_POOL_SIZE", "5") |> String.to_integer()
-
-    config :trifle, Trifle.Chat.Mongo,
-      enabled: true,
-      url: mongo_url,
-      pool_size: pool_size,
-      pool_timeout: 5_000,
-      timeout: 5_000,
-      name: Trifle.Chat.Mongo
-  else
-    config :trifle, Trifle.Chat.Mongo, enabled: false
-  end
-
   openai_model = System.get_env("OPENAI_MODEL", "gpt-5")
 
   openai_receive_timeout =

@@ -227,7 +227,9 @@ defmodule TrifleApp.ChatLive do
         {:noreply, socket}
 
       true ->
-        socket = handle_non_resume_progress(socket, normalized_type, normalized_payload, text, now)
+        socket =
+          handle_non_resume_progress(socket, normalized_type, normalized_payload, text, now)
+
         {:noreply, socket}
     end
   end

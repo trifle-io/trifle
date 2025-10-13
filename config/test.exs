@@ -35,5 +35,4 @@ config :logger, level: :warning
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :trifle, Trifle.Chat.Mongo, enabled: false
 config :trifle, Trifle.Chat.OpenAIClient, api_key: nil, model: "gpt-5"
