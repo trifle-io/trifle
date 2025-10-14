@@ -517,7 +517,10 @@ defmodule Trifle.Chat.Tools do
 
   defp flatten_numeric_paths(value, prefix \\ nil)
 
-  defp flatten_numeric_paths(%{} = map, prefix) do
+  defp flatten_numeric_paths(%D{} = decimal, prefix) when not is_nil(prefix),
+    do: %{prefix => D.to_float(decimal)}
+
+  defp flatten_numeric_paths(map, prefix) when is_map(map) and not is_struct(map) do
     Enum.reduce(map, %{}, fn {key, v}, acc ->
       path = join_path(prefix, key)
       Map.merge(acc, flatten_numeric_paths(v, path))
@@ -532,9 +535,6 @@ defmodule Trifle.Chat.Tools do
       Map.merge(acc, flatten_numeric_paths(v, path))
     end)
   end
-
-  defp flatten_numeric_paths(%D{} = decimal, prefix) when not is_nil(prefix),
-    do: %{prefix => D.to_float(decimal)}
 
   defp flatten_numeric_paths(number, prefix) when is_number(number) and not is_nil(prefix),
     do: %{prefix => number}

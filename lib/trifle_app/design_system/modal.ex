@@ -19,7 +19,7 @@ defmodule TrifleApp.DesignSystem.Modal do
   attr :id, :string, required: true
   attr :show, :boolean, default: false
   attr :on_cancel, :string, default: nil
-  attr :size, :string, default: "md", values: ["sm", "md", "lg", "xl"]
+  attr :size, :string, default: "md", values: ["sm", "md", "lg", "xl", "full"]
 
   slot :title, required: true
   slot :body, required: true
@@ -100,6 +100,7 @@ defmodule TrifleApp.DesignSystem.Modal do
       "md" -> "sm:max-w-2xl sm:w-full"
       "lg" -> "sm:max-w-4xl sm:w-full"
       "xl" -> "sm:max-w-6xl sm:w-full"
+      "full" -> "sm:max-w-[95vw] sm:w-full max-h-[90vh]"
     end
   end
 end

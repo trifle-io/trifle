@@ -466,6 +466,22 @@ defmodule TrifleApp.DashboardLive do
     {:noreply, assign(socket, :editing_widget, nil)}
   end
 
+  def handle_event("expand_widget", %{"id" => id}, socket) do
+    expanded =
+      socket.assigns.dashboard
+      |> find_dashboard_widget(id)
+      |> case do
+        nil -> nil
+        widget -> build_expanded_widget(socket, widget)
+      end
+
+    {:noreply, assign(socket, :expanded_widget, expanded)}
+  end
+
+  def handle_event("close_expanded_widget", _params, socket) do
+    {:noreply, assign(socket, :expanded_widget, nil)}
+  end
+
   def handle_event("save_widget", params, socket) do
     %{"widget_id" => id} = params
     title = String.trim(to_string(Map.get(params, "widget_title", "")))
@@ -656,7 +672,11 @@ defmodule TrifleApp.DashboardLive do
              ) do
           {:ok, dashboard} ->
             # After saving, recompute KPI values if stats already loaded
-            socket = socket |> assign_dashboard(dashboard) |> assign(:editing_widget, nil)
+            socket =
+              socket
+              |> assign_dashboard(dashboard)
+              |> assign(:editing_widget, nil)
+              |> maybe_refresh_expanded_widget()
 
             socket =
               if socket.assigns[:stats] do
@@ -862,6 +882,7 @@ defmodule TrifleApp.DashboardLive do
              socket
              |> assign_dashboard(dashboard)
              |> assign(:editing_widget, nil)
+             |> maybe_refresh_expanded_widget()
              |> push_event("dashboard_grid_widget_deleted", %{id: id})}
 
           {:error, _} ->
@@ -983,16 +1004,18 @@ defmodule TrifleApp.DashboardLive do
         show_diff = !!item["diff"]
         has_visual = !!item["timeseries"]
 
-        value_map = %{
-          id: id,
-          subtype: "split",
-          size: size,
-          current: current,
-          previous: previous,
-          show_diff: show_diff,
-          has_visual: has_visual,
-          visual_type: if(has_visual, do: "sparkline", else: nil)
-        }
+        value_map =
+          %{
+            id: id,
+            subtype: "split",
+            size: size,
+            current: current,
+            previous: previous,
+            show_diff: show_diff,
+            has_visual: has_visual,
+            visual_type: if(has_visual, do: "sparkline", else: nil)
+          }
+          |> Map.put(:path, path)
 
         visual_map =
           if has_visual do
@@ -1018,18 +1041,20 @@ defmodule TrifleApp.DashboardLive do
 
         has_visual = progress_enabled and ratio != nil
 
-        value_map = %{
-          id: id,
-          subtype: "goal",
-          size: size,
-          value: value,
-          target: target,
-          progress_enabled: progress_enabled,
-          progress_ratio: ratio,
-          invert: invert_goal,
-          has_visual: has_visual,
-          visual_type: if(has_visual, do: "progress", else: nil)
-        }
+        value_map =
+          %{
+            id: id,
+            subtype: "goal",
+            size: size,
+            value: value,
+            target: target,
+            progress_enabled: progress_enabled,
+            progress_ratio: ratio,
+            invert: invert_goal,
+            has_visual: has_visual,
+            visual_type: if(has_visual, do: "progress", else: nil)
+          }
+          |> Map.put(:path, path)
 
         visual_map =
           if has_visual do
@@ -1054,14 +1079,16 @@ defmodule TrifleApp.DashboardLive do
 
         has_visual = !!item["timeseries"]
 
-        value_map = %{
-          id: id,
-          subtype: "number",
-          size: size,
-          value: value,
-          has_visual: has_visual,
-          visual_type: if(has_visual, do: "sparkline", else: nil)
-        }
+        value_map =
+          %{
+            id: id,
+            subtype: "number",
+            size: size,
+            value: value,
+            has_visual: has_visual,
+            visual_type: if(has_visual, do: "sparkline", else: nil)
+          }
+          |> Map.put(:path, path)
 
         visual_map =
           if has_visual do
@@ -1482,6 +1509,113 @@ defmodule TrifleApp.DashboardLive do
     end)
   end
 
+  defp find_dashboard_widget(nil, _id), do: nil
+
+  defp find_dashboard_widget(%{payload: payload}, id) when is_map(payload) do
+    id = to_string(id)
+    grid_items = Map.get(payload, "grid") || []
+
+    Enum.find(grid_items, fn item ->
+      to_string(item["id"]) == id
+    end)
+  end
+
+  defp find_dashboard_widget(_, _id), do: nil
+
+  defp build_expanded_widget(socket, widget) when is_map(widget) do
+    id = to_string(widget["id"])
+    stats = socket.assigns[:stats]
+    type = widget_type(widget)
+    title = widget["title"] |> to_string() |> String.trim()
+
+    base = %{
+      widget_id: id,
+      title: if(title == "", do: "Untitled Widget", else: title),
+      type: type
+    }
+
+    cond do
+      is_nil(stats) ->
+        base
+
+      type == "timeseries" ->
+        widget
+        |> compute_timeseries_widgets_for(stats)
+        |> maybe_put_chart(base)
+
+      type == "category" ->
+        widget
+        |> compute_category_widgets_for(stats)
+        |> maybe_put_chart(base)
+
+      type == "kpi" ->
+        widget
+        |> compute_kpi_dataset_for(stats)
+        |> maybe_put_kpi_data(base)
+
+      type == "text" ->
+        widget
+        |> compute_text_widgets_for()
+        |> case do
+          nil -> base
+          text_data -> Map.put(base, :text_data, text_data)
+        end
+
+      true ->
+        base
+    end
+  end
+
+  defp build_expanded_widget(_socket, _widget), do: nil
+
+  defp maybe_put_chart(nil, base), do: base
+  defp maybe_put_chart(chart_map, base), do: Map.put(base, :chart_data, chart_map)
+
+  defp maybe_put_kpi_data(nil, base), do: base
+
+  defp maybe_put_kpi_data({value_map, visual_map}, base) do
+    base
+    |> Map.put(:chart_data, value_map)
+    |> Map.put(:visual_data, visual_map)
+  end
+
+  defp compute_kpi_dataset_for(widget, stats) do
+    build_kpi_dataset(stats, widget)
+  end
+
+  defp compute_timeseries_widgets_for(widget, stats) do
+    compute_timeseries_widgets(stats, [widget]) |> List.first()
+  end
+
+  defp compute_category_widgets_for(widget, stats) do
+    compute_category_widgets(stats, [widget]) |> List.first()
+  end
+
+  defp compute_text_widgets_for(widget) do
+    compute_text_widgets([widget])
+    |> Enum.find(fn item -> item.id == to_string(widget["id"]) end)
+  end
+
+  defp widget_type(widget) do
+    widget
+    |> Map.get("type", "kpi")
+    |> to_string()
+    |> String.downcase()
+  end
+
+  defp maybe_refresh_expanded_widget(socket) do
+    case socket.assigns[:expanded_widget] do
+      %{widget_id: widget_id} ->
+        case find_dashboard_widget(socket.assigns.dashboard, widget_id) do
+          nil -> assign(socket, :expanded_widget, nil)
+          widget -> assign(socket, :expanded_widget, build_expanded_widget(socket, widget))
+        end
+
+      _ ->
+        socket
+    end
+  end
+
   defp normalize_number(%Decimal{} = d), do: Decimal.to_float(d)
   defp normalize_number(v) when is_number(v), do: v * 1.0
   defp normalize_number(_), do: 0.0
@@ -1609,6 +1743,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:show_export_dropdown, false)
     |> assign(:widget_path_options, [])
     |> assign(:widget_path_options_loaded, false)
+    |> assign(:expanded_widget, nil)
     |> assign_dashboard_permissions()
   end
 
@@ -2656,6 +2791,7 @@ defmodule TrifleApp.DashboardLive do
        end
      end)
      |> assign(load_duration_microseconds: load_duration)
+     |> maybe_refresh_expanded_widget()
      |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
      |> push_event("dashboard_grid_kpi_visual", %{items: kpi_visuals})
      |> push_event("dashboard_grid_timeseries", %{items: ts_items})
@@ -5037,6 +5173,58 @@ defmodule TrifleApp.DashboardLive do
                       Delete Widget
                     </button>
                   </div>
+                </div>
+              </div>
+            </:body>
+          </.app_modal>
+        <% end %>
+        
+    <!-- Expanded Widget Modal -->
+        <%= if @expanded_widget do %>
+          <.app_modal
+            id="widget-expand-modal"
+            show={true}
+            size="full"
+            on_cancel={JS.push("close_expanded_widget")}
+          >
+            <:title>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <div class="flex items-center gap-3">
+                  <span>{@expanded_widget.title}</span>
+                  <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
+                    {String.capitalize(@expanded_widget.type || "widget")}
+                  </span>
+                </div>
+              </div>
+            </:title>
+            <:body>
+              <div
+                id={"expanded-widget-#{@expanded_widget.widget_id}"}
+                class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
+                phx-hook="ExpandedWidgetView"
+                data-type={@expanded_widget.type}
+                data-title={@expanded_widget.title}
+                data-colors={ChartColors.json_palette()}
+                data-chart={
+                  if @expanded_widget[:chart_data],
+                    do: Jason.encode!(@expanded_widget.chart_data)
+                }
+                data-visual={
+                  if @expanded_widget[:visual_data],
+                    do: Jason.encode!(@expanded_widget.visual_data)
+                }
+                data-text={
+                  if @expanded_widget[:text_data],
+                    do: Jason.encode!(@expanded_widget.text_data)
+                }
+              >
+                <div class="flex-1 min-h-[500px]">
+                  <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                    <div data-role="chart" class="h-full w-full"></div>
+                  </div>
+                </div>
+                <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                  <div data-role="table-root" class="h-full w-full overflow-auto"></div>
                 </div>
               </div>
             </:body>

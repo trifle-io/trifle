@@ -762,6 +762,13 @@ Hooks.DashboardGrid = {
 
     // Handle edit button clicks inside grid
     this._gridClick = (e) => {
+      const expandBtn = e.target && (e.target.closest && e.target.closest('.grid-widget-expand'));
+      if (expandBtn) {
+        e.preventDefault();
+        const id = expandBtn.getAttribute('data-widget-id');
+        if (id) this.pushEvent('expand_widget', { id });
+        return;
+      }
       const editBtn = e.target && (e.target.closest && e.target.closest('.grid-widget-edit'));
       if (editBtn) {
         e.preventDefault();
@@ -1642,15 +1649,27 @@ Hooks.DashboardGrid = {
     const content = document.createElement('div');
     content.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col';
     const titleText = item.title || `Widget ${String(item.id || '').slice(0,6)}`;
+    const widgetId = el.getAttribute('gs-id');
+    const expandBtn = `
+      <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${widgetId}\" title=\"Expand widget\">
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
+        </svg>
+      </button>`;
     const editBtn = this.editable ? `
-      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${el.getAttribute('gs-id')}\" title=\"Edit widget\"> 
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${widgetId}\" title=\"Edit widget\"> 
         <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
         </svg>
       </button>` : '';
+    const actionButtons = `
+      <div class=\"grid-widget-actions flex items-center gap-1\">
+        ${expandBtn}
+        ${editBtn}
+      </div>`;
     content.innerHTML = `
-      <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${editBtn}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
+      <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${actionButtons}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
     el.appendChild(content);
     this.el.appendChild(el);
   },
@@ -1676,12 +1695,19 @@ Hooks.DashboardGrid = {
       contentEl.innerHTML = `
         <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\"> 
           <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">New Widget</div></div> 
-          <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Edit widget\"> 
-          <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" /> 
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" /> 
-          </svg> 
-          </button> 
+          <div class=\"grid-widget-actions flex items-center gap-1\">
+            <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Expand widget\">
+              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
+              </svg>
+            </button>
+            <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Edit widget\"> 
+              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
+                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" /> 
+                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" /> 
+              </svg> 
+            </button> 
+          </div>
         </div>
         <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\"> 
           Chart is coming soon 
@@ -1792,6 +1818,744 @@ Hooks.DashboardGrid = {
   },
 }
 
+Hooks.ExpandedWidgetView = {
+  mounted() {
+    this.chartTarget = this.el.querySelector('[data-role="chart"]');
+    this.tableRoot = this.el.querySelector('[data-role="table-root"]');
+    this.chart = null;
+    this.chartElement = null;
+    this.chartTheme = null;
+    this.lastPayloadKey = null;
+    this.retryTimer = null;
+    this._sparklineTimer = null;
+    this.colors = [];
+    this.handleResize = () => {
+      if (this.chart && typeof this.chart.resize === 'function') {
+        try { this.chart.resize(); } catch (_) {}
+      }
+    };
+    this.handleThemeChange = () => this.render(true);
+    window.addEventListener('resize', this.handleResize);
+    window.addEventListener('trifle:theme-changed', this.handleThemeChange);
+    this.render();
+  },
+
+  updated() {
+    this.render();
+  },
+
+  destroyed() {
+    this.disposeChart();
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    window.removeEventListener('resize', this.handleResize);
+    window.removeEventListener('trifle:theme-changed', this.handleThemeChange);
+  },
+
+  parseJsonString(str) {
+    if (!str) return null;
+    try { return JSON.parse(str); } catch (_) { return null; }
+  },
+
+  getTheme() {
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  },
+
+  disposeChart() {
+    if (this.chart && typeof this.chart.dispose === 'function') {
+      try { this.chart.dispose(); } catch (_) {}
+    }
+    this.chart = null;
+    this.chartElement = null;
+    this.chartTheme = null;
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    if (this._sparklineTimer) {
+      clearTimeout(this._sparklineTimer);
+      this._sparklineTimer = null;
+    }
+  },
+
+  ensureChart(opts = {}) {
+    const container = this.chartTarget;
+    if (!container) return null;
+    if (container.clientWidth === 0 || container.clientHeight === 0) {
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => this.render(true), 140);
+      return null;
+    }
+    const theme = this.getTheme();
+    if (this.chart && (this.chartElement !== container || this.chartTheme !== theme)) {
+      this.disposeChart();
+    }
+    if (!this.chart) {
+      container.innerHTML = '';
+      this.chart = echarts.init(container, theme === 'dark' ? 'dark' : undefined, withChartOpts(opts));
+      this.chartTheme = theme;
+      this.chartElement = container;
+    }
+    return this.chart;
+  },
+
+  render(force = false) {
+    const type = (this.el.dataset.type || '').toLowerCase();
+    const chartRaw = this.el.dataset.chart || '';
+    const paletteRaw = this.el.dataset.colors || '';
+    const visualRaw = this.el.dataset.visual || '';
+    const textRaw = this.el.dataset.text || '';
+    const key = [type, chartRaw, paletteRaw, visualRaw, textRaw].join('||');
+    if (!force && key === this.lastPayloadKey) {
+      if (this.chart && typeof this.chart.resize === 'function') {
+        try { this.chart.resize(); } catch (_) {}
+      }
+      return;
+    }
+    this.lastPayloadKey = key;
+    this.disposeChart();
+    this.colors = this.parseJsonString(paletteRaw) || [];
+    const chartData = this.parseJsonString(chartRaw);
+    const visualData = this.parseJsonString(visualRaw);
+    const textData = this.parseJsonString(textRaw);
+
+    if (type === 'timeseries') {
+      this.renderTimeseries(chartData);
+      return;
+    }
+
+    if (type === 'category') {
+      this.renderCategory(chartData);
+      return;
+    }
+
+    if (type === 'kpi') {
+      this.renderKpi(chartData, visualData);
+      return;
+    }
+
+    if (type === 'text') {
+      this.renderText(textData);
+      this.showTablePlaceholder('Series summary is not available for text widgets.');
+      return;
+    }
+
+    this.showChartPlaceholder('Expanded view is currently available for chart widgets.');
+    this.showTablePlaceholder('No additional data available.');
+  },
+
+  seriesColor(index) {
+    if (Array.isArray(this.colors) && this.colors.length) {
+      return this.colors[index % this.colors.length];
+    }
+    const fallback = ['#14b8a6', '#6366f1', '#f59e0b', '#ec4899', '#3b82f6', '#10b981', '#f97316', '#8b5cf6'];
+    return fallback[index % fallback.length];
+  },
+
+  renderTimeseries(data) {
+    if (!data || !Array.isArray(data.series) || data.series.length === 0) {
+      this.showChartPlaceholder('No chart data available yet.');
+      this.showTablePlaceholder('No series data available yet.');
+      return;
+    }
+
+    const chart = this.ensureChart();
+    if (!chart) return;
+
+    const theme = this.getTheme();
+    const isDarkMode = theme === 'dark';
+    const chartType = String(data.chart_type || 'line').toLowerCase();
+    const stacked = !!data.stacked;
+    const normalized = !!data.normalized;
+    const showLegend = !!data.legend;
+    const bottomPadding = showLegend ? 64 : 36;
+
+    const series = (data.series || []).map((s, idx) => {
+      const color = this.seriesColor(idx);
+      const cfg = {
+        name: s.name || `Series ${idx + 1}`,
+        type: chartType === 'area' ? 'line' : chartType,
+        data: s.data || [],
+        showSymbol: false,
+        smooth: chartType !== 'bar',
+        itemStyle: { color }
+      };
+      if (stacked) cfg.stack = 'total';
+      if (chartType === 'area' || chartType === 'line') {
+        cfg.lineStyle = { width: 2, color };
+      }
+      if (chartType === 'area') cfg.areaStyle = { opacity: 0.18 };
+      return cfg;
+    });
+
+    const textColor = isDarkMode ? '#CBD5F5' : '#4B5563';
+    const axisLineColor = isDarkMode ? '#334155' : '#E5E7EB';
+    const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
+    const legendText = isDarkMode ? '#E2E8F0' : '#1F2937';
+
+    const yAxis = {
+      type: 'value',
+      min: 0,
+      name: normalized ? (data.y_label || 'Percentage') : (data.y_label || ''),
+      nameLocation: 'middle',
+      nameGap: 48,
+      nameTextStyle: { color: textColor },
+      axisLine: { lineStyle: { color: axisLineColor } },
+      axisLabel: {
+        color: textColor,
+        margin: 12,
+        formatter: (value) => {
+          if (normalized) return `${value}%`;
+          return formatCompactNumber(value);
+        }
+      },
+      splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
+    };
+
+    if (normalized) yAxis.max = 100;
+
+    chart.setOption({
+      backgroundColor: 'transparent',
+      color: this.colors.length ? this.colors : undefined,
+      grid: { top: 20, bottom: bottomPadding, left: 72, right: 28, containLabel: true },
+      xAxis: {
+        type: 'time',
+        axisLine: { lineStyle: { color: axisLineColor } },
+        axisLabel: { color: textColor, margin: 12, hideOverlap: true },
+        splitLine: { show: false }
+      },
+      yAxis,
+      legend: showLegend ? { type: 'scroll', bottom: 8, textStyle: { color: legendText } } : { show: false },
+      tooltip: {
+        trigger: 'axis',
+        appendToBody: true,
+        valueFormatter: (v) => {
+          if (v == null) return '-';
+          return normalized ? `${Number(v).toFixed(2)}%` : formatCompactNumber(v);
+        }
+      },
+      series
+    }, true);
+
+    try { chart.resize(); } catch (_) {}
+    this.renderTimeseriesTable(data);
+  },
+
+  renderKpi(data, visual) {
+    if (!this.chartTarget) return;
+    this.disposeChart();
+    this.chartTarget.innerHTML = '';
+
+    if (!data) {
+      this.showChartPlaceholder('No KPI data available yet.');
+      this.showTablePlaceholder('Series summary is only available when a sparkline is enabled.');
+      return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'h-full w-full flex flex-col gap-6 p-6';
+
+    const widgetTitle = this.el.dataset.title;
+    if (widgetTitle) {
+      const titleEl = document.createElement('div');
+      titleEl.className = 'text-sm font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300';
+      titleEl.textContent = widgetTitle;
+      wrapper.appendChild(titleEl);
+    }
+
+    const headline = document.createElement('div');
+    headline.className = 'text-5xl font-semibold text-slate-900 dark:text-white';
+    headline.textContent = this.formatKpiMainValue(data);
+    wrapper.appendChild(headline);
+
+    const metaHtml = this.formatKpiMeta(data);
+    if (metaHtml) {
+      const meta = document.createElement('div');
+      meta.className = 'text-base text-slate-600 dark:text-slate-300';
+      meta.innerHTML = metaHtml;
+      wrapper.appendChild(meta);
+    }
+
+    this.chartTarget.appendChild(wrapper);
+
+    let seriesEntries = [];
+    const baseSeriesName = (data.path && String(data.path)) || this.el.dataset.title || 'Series';
+
+    if (visual && visual.type === 'sparkline' && Array.isArray(visual.data) && visual.data.length) {
+      const chartWrapper = document.createElement('div');
+      chartWrapper.className =
+        'flex-1 min-h-[240px] rounded-lg border border-gray-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/40 p-4';
+      const chartDiv = document.createElement('div');
+      chartDiv.className = 'h-full w-full';
+      chartWrapper.appendChild(chartDiv);
+      wrapper.appendChild(chartWrapper);
+
+      const theme = this.getTheme();
+      const lineColor = this.seriesColor(0);
+      const initSparkline = () => {
+        if (chartDiv.clientWidth === 0 || chartDiv.clientHeight === 0) {
+          if (this._sparklineTimer) clearTimeout(this._sparklineTimer);
+          this._sparklineTimer = setTimeout(initSparkline, 80);
+          return;
+        }
+
+        const chart = echarts.init(chartDiv, theme === 'dark' ? 'dark' : undefined, withChartOpts({ height: 240 }));
+        this.chart = chart;
+        this.chartElement = chartDiv;
+        this.chartTheme = theme;
+
+        chart.setOption({
+          backgroundColor: 'transparent',
+          grid: { top: 16, bottom: 16, left: 32, right: 32 },
+          xAxis: { type: 'time', show: false },
+          yAxis: { type: 'value', show: false },
+          tooltip: {
+            trigger: 'axis',
+            appendToBody: true,
+            valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
+          },
+          series: [{
+            type: 'line',
+            data: visual.data,
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 2, color: lineColor },
+            areaStyle: { color: lineColor, opacity: 0.18 }
+          }]
+        }, true);
+
+        try { chart.resize(); } catch (_) {}
+        if (this._sparklineTimer) {
+          clearTimeout(this._sparklineTimer);
+          this._sparklineTimer = null;
+        }
+      };
+
+      initSparkline();
+
+      seriesEntries = [{
+        name: baseSeriesName,
+        data: visual.data,
+        color: lineColor
+      }];
+    } else if (visual && visual.type === 'progress') {
+      const container = document.createElement('div');
+      container.className =
+        'flex-1 min-h-[180px] rounded-lg border border-gray-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/40 p-6 flex flex-col justify-center gap-3';
+      const label = document.createElement('div');
+      label.className = 'text-sm text-slate-600 dark:text-slate-300';
+      label.textContent = 'Progress';
+      container.appendChild(label);
+
+      const barOuter = document.createElement('div');
+      barOuter.className = 'w-full h-4 rounded-full bg-gray-200 dark:bg-slate-700';
+      const barInner = document.createElement('div');
+      const progressCurrent = Number(visual.current);
+      const target = Number(visual.target);
+      const axisMax = Math.max(target || 0, progressCurrent || 0, 1);
+      const ratio =
+        Number.isFinite(progressCurrent) && axisMax !== 0 ? Math.max(0, Math.min(1, progressCurrent / axisMax)) : 0;
+      barInner.className = 'h-4 rounded-full';
+      barInner.style.width = `${ratio * 100}%`;
+      barInner.style.background = this.getProgressColor(visual);
+      barOuter.appendChild(barInner);
+      container.appendChild(barOuter);
+
+      wrapper.appendChild(container);
+
+      if (Number.isFinite(progressCurrent)) {
+        seriesEntries = [{
+          name: baseSeriesName,
+          data: [[Date.now(), progressCurrent]],
+          color: this.seriesColor(0)
+        }];
+      }
+    }
+
+    if (!seriesEntries.length) {
+      const fallbackValue =
+        Number.isFinite(Number(data.value)) ? Number(data.value) :
+        Number.isFinite(Number(data.current)) ? Number(data.current) :
+        Number.isFinite(Number(data.previous)) ? Number(data.previous) :
+        null;
+
+      if (fallbackValue != null && Number.isFinite(fallbackValue)) {
+        seriesEntries = [{
+          name: baseSeriesName,
+          data: [[Date.now(), fallbackValue]],
+          color: this.seriesColor(0)
+        }];
+      }
+    }
+
+    if (seriesEntries.length) {
+      this.renderSeriesSummary(seriesEntries, 'No series data available yet.');
+    } else {
+      this.showTablePlaceholder('No series data available yet.');
+    }
+  },
+
+  renderText(data) {
+    if (!this.chartTarget) return;
+    this.disposeChart();
+    this.chartTarget.innerHTML = '';
+
+    if (!data) {
+      this.showChartPlaceholder('No content available yet.');
+      return;
+    }
+
+    if ((data.subtype || '').toLowerCase() === 'html' && data.payload) {
+      const html = document.createElement('div');
+      html.className = 'w-full h-full overflow-auto text-left text-slate-900 dark:text-slate-100 p-6';
+      html.innerHTML = data.payload;
+      this.chartTarget.appendChild(html);
+      return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'w-full h-full flex flex-col gap-4 justify-center items-center text-center p-8';
+
+    if (data.title) {
+      const title = document.createElement('div');
+      title.className = 'text-4xl font-semibold text-slate-900 dark:text-slate-50';
+      title.textContent = data.title;
+      wrapper.appendChild(title);
+    }
+
+    if (data.subtitle) {
+      const subtitle = document.createElement('div');
+      subtitle.className = 'text-lg text-slate-600 dark:text-slate-300 max-w-3xl whitespace-pre-line';
+      subtitle.textContent = data.subtitle;
+      wrapper.appendChild(subtitle);
+    }
+
+    this.chartTarget.appendChild(wrapper);
+  },
+
+  renderTimeseriesTable(data) {
+    if (!this.tableRoot) return;
+    const entries = Array.isArray(data?.series)
+      ? data.series.map((series, idx) => ({
+          name: series.name || `Series ${idx + 1}`,
+          data: series.data || [],
+          color: this.seriesColor(idx)
+        }))
+      : [];
+
+    this.renderSeriesSummary(entries, 'No series data available yet.');
+  },
+
+  renderSeriesSummary(seriesEntries, emptyMessage) {
+    if (!this.tableRoot) return;
+    if (!Array.isArray(seriesEntries) || seriesEntries.length === 0) {
+      this.showTablePlaceholder(emptyMessage);
+      return;
+    }
+
+    const escapeHtml = (str) => String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
+    const rows = seriesEntries.map((entry, idx) => {
+      const color = entry.color || this.seriesColor(idx);
+      const values = this.extractNumericValues(entry.data);
+      const stats = this.computeSeriesStats(values);
+      const name = escapeHtml(entry.name || `Series ${idx + 1}`);
+      const formatRaw = (value) => {
+        if (!Number.isFinite(value)) return '';
+        try { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value); }
+        catch (_) { return String(value); }
+      };
+      const formatStat = (value) => Number.isFinite(value) ? formatCompactNumber(value) : '—';
+
+      return {
+        name,
+        color,
+        min: { display: formatStat(stats.min), raw: escapeHtml(formatRaw(stats.min)) },
+        max: { display: formatStat(stats.max), raw: escapeHtml(formatRaw(stats.max)) },
+        mean: { display: formatStat(stats.mean), raw: escapeHtml(formatRaw(stats.mean)) },
+        sum: { display: formatStat(stats.sum), raw: escapeHtml(formatRaw(stats.sum)) }
+      };
+    });
+
+    const bodyHtml = rows.map((row) => `
+      <tr>
+        <td class="py-2 pr-4 pl-5 text-sm whitespace-nowrap text-gray-600 dark:text-slate-300">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex h-2.5 w-2.5 rounded-full" style="background-color: ${row.color};"></span>
+            <span class="font-medium" style="color: ${row.color};">${row.name}</span>
+          </div>
+        </td>
+        <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.min.raw}">${row.min.display}</td>
+        <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.max.raw}">${row.max.display}</td>
+        <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.mean.raw}">${row.mean.display}</td>
+        <td class="py-2 pr-5 pl-5 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.sum.raw}">${row.sum.display}</td>
+      </tr>
+    `).join('');
+
+    this.tableRoot.innerHTML = `
+      <div class="h-full overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-700">
+          <thead class="bg-white dark:bg-slate-900/60">
+            <tr>
+              <th scope="col" class="py-3.5 pr-4 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Path</th>
+              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Min</th>
+              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Max</th>
+              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Mean</th>
+              <th scope="col" class="py-3.5 pr-5 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Sum</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-900/60">
+            ${bodyHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    this.activateFastTooltips();
+  },
+
+  extractNumericValues(seriesData) {
+    if (!Array.isArray(seriesData)) return [];
+    return seriesData
+      .map((point) => {
+        if (Array.isArray(point)) return Number(point[1]);
+        if (point && typeof point === 'object') {
+          if (Array.isArray(point.value)) return Number(point.value[1]);
+          if ('value' in point) return Number(point.value);
+        }
+        return Number(point);
+      })
+      .filter((value) => Number.isFinite(value));
+  },
+
+  computeSeriesStats(values) {
+    if (!Array.isArray(values) || values.length === 0) {
+      return { min: null, max: null, mean: null, sum: null };
+    }
+    const sum = values.reduce((acc, value) => acc + value, 0);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const mean = sum / values.length;
+    return { min, max, mean, sum };
+  },
+
+  formatKpiMainValue(data) {
+    const subtype = String(data.subtype || 'number').toLowerCase();
+    const formatMaybe = (value) => (Number.isFinite(value) ? formatCompactNumber(value) : '—');
+
+    switch (subtype) {
+      case 'split':
+        return formatMaybe(Number(data.current));
+      case 'goal':
+        return formatMaybe(Number(data.value));
+      default:
+        return formatMaybe(Number(data.value));
+    }
+  },
+
+  formatKpiMeta(data) {
+    const subtype = String(data.subtype || 'number').toLowerCase();
+    const formatMaybe = (value) => (Number.isFinite(value) ? formatCompactNumber(value) : '—');
+
+    if (subtype === 'split') {
+      const current = Number(data.current);
+      const previous = Number(data.previous);
+      const diff = Number.isFinite(current) && Number.isFinite(previous) ? current - previous : null;
+      const diffPct =
+        Number.isFinite(current) && Number.isFinite(previous) && previous !== 0
+          ? ((current - previous) / Math.abs(previous)) * 100
+          : null;
+
+      let diffFragment = '';
+      if (data.show_diff && diffPct != null) {
+        const formatted = `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%`;
+        diffFragment = ` · <span class="${diff >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${formatted}</span>`;
+      }
+
+      return `Current: <strong>${formatMaybe(current)}</strong> · Previous: <span class="opacity-80">${formatMaybe(previous)}</span>${diffFragment}`;
+    }
+
+    if (subtype === 'goal') {
+      const value = Number(data.value);
+      const target = Number(data.target);
+      const ratio =
+        Number.isFinite(value) && Number.isFinite(target) && target !== 0 ? (value / target) * 100 : null;
+      const ratioText = ratio != null ? `${ratio.toFixed(1)}%` : '—';
+
+      return `Target: <span class="opacity-80">${formatMaybe(target)}</span> · Progress: <strong>${ratioText}</strong>`;
+    }
+
+    return '';
+  },
+
+  getProgressColor(visual) {
+    if (!visual) return '#14b8a6';
+    const ratio = Number.isFinite(Number(visual.ratio)) ? Number(visual.ratio) : null;
+    if (ratio == null) return '#14b8a6';
+    if (visual.invert) {
+      return ratio <= 1 ? '#14b8a6' : '#ef4444';
+    }
+    return ratio >= 1 ? '#22c55e' : '#14b8a6';
+  },
+
+  renderCategory(data) {
+    if (!data || !Array.isArray(data.data) || data.data.length === 0) {
+      this.showChartPlaceholder('No category data available yet.');
+      this.showTablePlaceholder('No categories available yet.');
+      return;
+    }
+    const chart = this.ensureChart();
+    if (!chart) return;
+
+    const theme = this.getTheme();
+    const isDarkMode = theme === 'dark';
+    const type = String(data.chart_type || 'bar').toLowerCase();
+
+    let option;
+    if (type === 'pie' || type === 'donut') {
+      const labelColor = isDarkMode ? '#E2E8F0' : '#1F2937';
+      const labelLineColor = isDarkMode ? '#475569' : '#94A3B8';
+      option = {
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'item',
+          appendToBody: true,
+          textStyle: { color: isDarkMode ? '#F8FAFC' : '#1F2937' },
+          backgroundColor: isDarkMode ? '#111827' : '#FFFFFF',
+          borderColor: isDarkMode ? '#334155' : '#E5E7EB'
+        },
+        color: this.colors.length ? this.colors : undefined,
+        series: [{
+          type: 'pie',
+          radius: type === 'donut' ? ['50%', '72%'] : '70%',
+          data: data.data,
+          label: { color: labelColor },
+          labelLine: { lineStyle: { color: labelLineColor } },
+          itemStyle: {
+            color: (params) => this.seriesColor(params.dataIndex)
+          }
+        }]
+      };
+    } else {
+      option = {
+        backgroundColor: 'transparent',
+        grid: { top: 20, bottom: 40, left: 80, right: 36 },
+        xAxis: { type: 'category', data: data.data.map((d) => d.name) },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          axisLabel: { formatter: (v) => formatCompactNumber(v) }
+        },
+        tooltip: { trigger: 'axis', appendToBody: true },
+        series: [{
+          type: 'bar',
+          data: data.data.map((d) => d.value),
+          itemStyle: {
+            color: (params) => this.seriesColor(params.dataIndex)
+          }
+        }]
+      };
+    }
+
+    chart.setOption(option, true);
+    try { chart.resize(); } catch (_) {}
+
+    this.renderCategoryTable(data);
+  },
+
+  showChartPlaceholder(message) {
+    if (!this.chartTarget) return;
+    this.disposeChart();
+    this.chartTarget.innerHTML = '';
+    const placeholder = document.createElement('div');
+    placeholder.className = 'w-full h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center px-6';
+    placeholder.textContent = message;
+    this.chartTarget.appendChild(placeholder);
+  },
+
+  showTablePlaceholder(message) {
+    if (!this.tableRoot) return;
+    this.tableRoot.innerHTML = `
+      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+        ${message}
+      </div>
+    `;
+  },
+
+  renderCategoryTable(data) {
+    if (!this.tableRoot) return;
+    const items = Array.isArray(data?.data) ? data.data : [];
+    if (!items.length) {
+      this.showTablePlaceholder('No categories available yet.');
+      return;
+    }
+
+    const escapeHtml = (str) => String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
+    const formatRaw = (value) => {
+      if (!Number.isFinite(value)) return '';
+      try {
+        return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
+      } catch (_) {
+        return String(value);
+      }
+    };
+
+    const rows = items.map((item, idx) => {
+      const name = escapeHtml(String(item.name ?? `Item ${idx + 1}`));
+      const value = Number(item.value);
+      const color = this.seriesColor(idx);
+      const formatted = Number.isFinite(value) ? formatCompactNumber(value) : '—';
+      const raw = escapeHtml(formatRaw(value));
+
+      return `
+        <tr>
+          <td class="py-2 pr-4 pl-5 text-sm whitespace-nowrap text-gray-600 dark:text-slate-300">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex h-2.5 w-2.5 rounded-full" style="background-color: ${color};"></span>
+              <span class="font-medium" style="color: ${color};">${name}</span>
+            </div>
+          </td>
+          <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${raw}">${formatted}</td>
+        </tr>
+      `;
+    }).join('');
+
+    this.tableRoot.innerHTML = `
+      <div class="h-full overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-700">
+          <thead class="bg-white dark:bg-slate-900/60">
+            <tr>
+              <th scope="col" class="py-3.5 pr-4 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Category</th>
+              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Value</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-900/60">
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    this.activateFastTooltips();
+  },
+
+  activateFastTooltips() {
+    if (!this.tableRoot) return;
+    const fastTooltip = Hooks.FastTooltip;
+    if (!fastTooltip || typeof fastTooltip.initTooltips !== 'function') return;
+    const context = {
+      el: this.tableRoot,
+      showTooltip: fastTooltip.showTooltip.bind(fastTooltip),
+      hideTooltip: fastTooltip.hideTooltip.bind(fastTooltip)
+    };
+    requestAnimationFrame(() => {
+      try {
+        fastTooltip.initTooltips.call(context);
+      } catch (_) {}
+    });
+  }
+};
 // Generic file download handler via pushEvent
 Hooks.FileDownload = {
   mounted() {
