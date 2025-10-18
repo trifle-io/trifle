@@ -1525,15 +1525,19 @@ Hooks.DashboardGrid = {
         header.style.borderColor = 'transparent';
         header.style.marginBottom = '0';
         header.style.paddingBottom = '0';
+        header.style.minHeight = '1.75rem';
       }
 
       const titleBar = content.querySelector('.grid-widget-title');
       if (titleBar) {
-        titleBar.textContent = '';
+        const originalTitle = it.title || '';
+        titleBar.dataset.originalTitle = originalTitle;
+        titleBar.textContent = '\u00A0';
         titleBar.setAttribute('aria-hidden', 'true');
         titleBar.style.opacity = '0';
         titleBar.style.pointerEvents = 'none';
-        titleBar.dataset.originalTitle = it.title || '';
+        titleBar.style.minHeight = '1.25rem';
+        titleBar.style.display = 'block';
       }
 
       body.className = 'grid-widget-body flex-1 flex text-widget-body flex-col gap-2 px-4 pt-0 pb-4';
@@ -1597,14 +1601,21 @@ Hooks.DashboardGrid = {
       header.style.borderColor = '';
       header.style.marginBottom = '';
       header.style.paddingBottom = '';
+      header.style.minHeight = '';
     }
 
     const titleBar = content.querySelector('.grid-widget-title');
     if (titleBar) {
+      const originalTitle = titleBar.dataset.originalTitle;
+      if (originalTitle !== undefined) {
+        titleBar.textContent = originalTitle;
+      }
       delete titleBar.dataset.originalTitle;
       titleBar.removeAttribute('aria-hidden');
       titleBar.style.opacity = '';
       titleBar.style.pointerEvents = '';
+      titleBar.style.minHeight = '';
+      titleBar.style.display = '';
     }
 
     const body = content.querySelector('.grid-widget-body');
@@ -1647,7 +1658,7 @@ Hooks.DashboardGrid = {
     el.setAttribute('gs-y', item.y || 0);
     el.setAttribute('gs-id', item.id || (item.id = this.genId()));
     const content = document.createElement('div');
-    content.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col';
+    content.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col group';
     const titleText = item.title || `Widget ${String(item.id || '').slice(0,6)}`;
     const widgetId = el.getAttribute('gs-id');
     const expandBtn = `
@@ -1664,12 +1675,12 @@ Hooks.DashboardGrid = {
         </svg>
       </button>` : '';
     const actionButtons = `
-      <div class=\"grid-widget-actions flex items-center gap-1\">
+      <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
         ${expandBtn}
         ${editBtn}
       </div>`;
     content.innerHTML = `
-      <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${actionButtons}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
+      <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${actionButtons}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
     el.appendChild(content);
     this.el.appendChild(el);
   },
@@ -1691,11 +1702,11 @@ Hooks.DashboardGrid = {
     const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
     const contentEl = el && el.querySelector('.grid-stack-item-content');
     if (contentEl) {
-      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col';
+      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col group';
       contentEl.innerHTML = `
         <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\"> 
-          <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">New Widget</div></div> 
-          <div class=\"grid-widget-actions flex items-center gap-1\">
+          <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">New Widget</div></div> 
+          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
             <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Expand widget\">
               <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
                 <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />

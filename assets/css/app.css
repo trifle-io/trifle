@@ -39,6 +39,13 @@ textarea.bg-transparent {
   background-color: transparent !important;
 }
 
+/* Ensure widget controls stay visible on touch devices without hover support */
+@media (hover: none) {
+  .grid-widget-actions {
+    opacity: 1 !important;
+  }
+}
+
 .dark textarea.bg-transparent {
   background-color: transparent !important;
 }
