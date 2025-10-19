@@ -74,6 +74,13 @@ config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 config :trifle, Trifle.Chat.Agent, history_limit: 40
 config :trifle, Trifle.Chat.OpenAIClient, model: "gpt-5"
 
+config :trifle, :slack,
+  client_id: nil,
+  client_secret: nil,
+  signing_secret: nil,
+  redirect_uri: nil,
+  scopes: ~w(chat:write chat:write.public channels:read groups:read incoming-webhook)
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

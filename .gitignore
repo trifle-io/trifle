@@ -39,3 +39,5 @@ npm-debug.log
 
 trifle_stats_joined.sqlite
 trifle_stats_separated.sqlite
+.env
+.env.*

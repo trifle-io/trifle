@@ -27,6 +27,12 @@ app:
   openai:
     apiKey: ""
     model: "gpt-5"
+  slack:
+    clientId: ""
+    clientSecret: ""
+    signingSecret: ""
+    redirectUri: "https://trifle.yourdomain.com/integrations/slack/oauth/callback"
+    scopes: "chat:write,chat:write.public,channels:read,groups:read,incoming-webhook"
   mailer:
     adapter: "smtp"
     from:
