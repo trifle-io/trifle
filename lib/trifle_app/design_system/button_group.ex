@@ -47,7 +47,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
         {@label}
       </label>
       <div
-        class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600"
+        class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 backdrop-blur-xl"
         role="group"
       >
         <%= for {button, index} <- Enum.with_index(@button) do %>
@@ -105,7 +105,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
       if Map.get(button, :selected, false) do
         "bg-white dark:bg-slate-800 text-teal-500 dark:text-teal-300 font-semibold border-b-2 border-b-teal-500 dark:border-b-teal-400"
       else
-        "bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gradient-to-t hover:from-gray-200/80 hover:to-transparent dark:hover:from-slate-700/80 dark:hover:to-transparent"
+        "bg-white dark:bg-slate-800/80 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700"
       end
 
     separator_classes =

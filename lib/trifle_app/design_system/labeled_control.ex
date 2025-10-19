@@ -42,6 +42,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
   attr :placeholder, :string, default: ""
   attr :type, :string, default: "text"
   attr :class, :string, default: ""
+  attr :input_class, :string, default: nil
   attr :rest, :global, include: ~w(phx-change phx-keydown phx-key phx-focus phx-blur phx-hook)
 
   slot :suffix
@@ -65,6 +66,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
           placeholder={@placeholder}
           class={[
             "block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
+            @input_class,
             if(@badge != [] || @suffix != [], do: "pr-20", else: "")
           ]}
           {@rest}
