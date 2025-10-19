@@ -13,7 +13,7 @@ defmodule TrifleApp.Components.FilterBar do
   def render(assigns) do
     ~H"""
     <div class="sticky top-0 z-50 mb-6">
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+      <div class="rounded-2xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 p-4 shadow-lg dark:shadow-none backdrop-blur-xl transition-colors">
         <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
           
     <!-- Source Dropdown (optional; only if >1 source) -->
@@ -28,7 +28,7 @@ defmodule TrifleApp.Components.FilterBar do
                   type="button"
                   phx-target={@myself}
                   phx-click="toggle_source_dropdown"
-                  class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:hover:bg-slate-700"
                 >
                   <div class="flex items-center justify-between">
                     <span class="truncate">
@@ -302,7 +302,7 @@ defmodule TrifleApp.Components.FilterBar do
                   type="button"
                   phx-target={@myself}
                   phx-click="toggle_granularity_dropdown"
-                  class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:hover:bg-slate-700"
                 >
                   <div class="flex items-center justify-between">
                     <span>{granularity_display_name(@granularity)}</span>
@@ -728,7 +728,7 @@ defmodule TrifleApp.Components.FilterBar do
                 do:
                   "bg-white dark:bg-slate-800 text-teal-500 dark:text-teal-300 font-semibold border-b-2 border-b-teal-500 dark:border-b-teal-400",
                 else:
-                  "bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gradient-to-t hover:from-gray-200/80 hover:to-transparent dark:hover:from-slate-700/80 dark:hover:to-transparent"
+                  "bg-white dark:bg-slate-800/80 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700"
               ),
               case position do
                 :first -> ""
