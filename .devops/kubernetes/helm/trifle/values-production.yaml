@@ -66,6 +66,13 @@ app:
     sendgrid:
       apiKey: "CHANGE_ME_IN_PRODUCTION"
 
+  slack:
+    clientId: ""
+    clientSecret: ""
+    signingSecret: ""
+    redirectUri: "https://trifle.yourdomain.com/integrations/slack/oauth/callback"
+    scopes: "chat:write,chat:write.public,channels:read,groups:read,incoming-webhook"
+
   openai:
     apiKey: "CHANGE_ME_WITH_OPENAI_KEY"
     model: "gpt-5"

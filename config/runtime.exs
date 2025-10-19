@@ -1,5 +1,21 @@
 import Config
 
+if config_env() in [:dev, :test] do
+  dotenv_files =
+    [System.get_env("DOTENV_PATH"), ".env", ".env.#{config_env()}", ".env.local"]
+    |> Enum.filter(fn
+      nil -> false
+      "" -> false
+      value -> String.trim(value) != ""
+    end)
+    |> Enum.map(&Path.expand/1)
+    |> Enum.filter(&File.exists?/1)
+
+  if function_exported?(Dotenvy, :load!, 1) do
+    Dotenvy.load!(dotenv_files)
+  end
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -170,6 +186,13 @@ if config_env() == :prod do
     config :swoosh, api_client: Swoosh.ApiClient.Finch, finch_name: Trifle.Finch
   end
 
+  to_map = fn
+    nil -> %{}
+    value when is_map(value) -> value
+    value when is_list(value) -> Map.new(value)
+    value -> value
+  end
+
   case mailer_adapter do
     "local" ->
       config :trifle, Trifle.Mailer, adapter: Swoosh.Adapters.Local
@@ -258,6 +281,39 @@ if config_env() == :prod do
       raise ArgumentError,
             "Unsupported MAILER_ADAPTER '#{other}'. Valid options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo."
   end
+
+  base_slack_config =
+    Application.get_env(:trifle, :slack, %{})
+    |> to_map.()
+
+  env_scopes =
+    case System.get_env("SLACK_SCOPES") do
+      nil -> nil
+      "" -> []
+      value ->
+        value
+        |> String.split(~r/[, ]+/, trim: true)
+        |> Enum.reject(&(&1 == ""))
+    end
+
+  slack_overrides =
+    %{
+      client_id: System.get_env("SLACK_CLIENT_ID"),
+      client_secret: System.get_env("SLACK_CLIENT_SECRET"),
+      signing_secret: System.get_env("SLACK_SIGNING_SECRET"),
+      redirect_uri: System.get_env("SLACK_REDIRECT_URI")
+    }
+    |> Enum.filter(fn {_key, value} -> not is_nil(value) and String.trim(value) != "" end)
+    |> Map.new()
+
+  slack_overrides =
+    if env_scopes do
+      Map.put(slack_overrides, :scopes, env_scopes)
+    else
+      slack_overrides
+    end
+
+  config :trifle, :slack, Map.merge(base_slack_config, slack_overrides)
 
   openai_model = System.get_env("OPENAI_MODEL", "gpt-5")
 

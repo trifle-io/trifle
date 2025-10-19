@@ -101,6 +101,13 @@ app:
     apiKey: ""
     model: "gpt-5"
 
+  slack:
+    clientId: ""
+    clientSecret: ""
+    signingSecret: ""
+    redirectUri: ""
+    scopes: "chat:write,chat:write.public,channels:read,groups:read,incoming-webhook"
+
   mailer:
     adapter: "local" # Options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo
     from:

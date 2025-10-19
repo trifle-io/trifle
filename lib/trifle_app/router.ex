@@ -77,6 +77,7 @@ defmodule TrifleApp.Router do
       live "/organization", OrganizationRedirectLive, :index
       live "/organization/profile", OrganizationProfileLive, :show
       live "/organization/users", OrganizationUsersLive, :index
+      live "/organization/delivery", OrganizationDeliveryLive, :show
       live "/organization/billing", OrganizationBillingLive, :show
       live "/dbs", DatabasesLive, :index
       live "/dbs/new", DatabasesLive, :new
@@ -94,6 +95,8 @@ defmodule TrifleApp.Router do
       live "/dashboards/:id/configure", DashboardLive, :configure
       live "/chat", ChatLive, :show
     end
+
+    get "/integrations/slack/oauth/callback", Integrations.SlackController, :callback
   end
 
   scope "/", TrifleApp do

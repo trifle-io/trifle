@@ -185,6 +185,32 @@ spec:
                   name: {{ include "trifle.fullname" $ }}-secret
                   key: sendinblue-api-key
             {{- end }}
+            {{- with .Values.app.slack.clientId }}
+            - name: SLACK_CLIENT_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.slack.clientSecret }}
+            - name: SLACK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: slack-client-secret
+            {{- end }}
+            {{- with .Values.app.slack.signingSecret }}
+            - name: SLACK_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: slack-signing-secret
+            {{- end }}
+            {{- with .Values.app.slack.redirectUri }}
+            - name: SLACK_REDIRECT_URI
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.slack.scopes }}
+            - name: SLACK_SCOPES
+              value: {{ . | quote }}
+            {{- end }}
           {{- if .Values.healthCheck.enabled }}
           livenessProbe:
             httpGet:

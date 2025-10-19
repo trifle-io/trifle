@@ -36,15 +36,17 @@ defmodule TrifleApp.OrganizationUsersLive do
       <%= if @current_membership do %>
         <Navigation.nav active_tab={@active_tab} />
 
-        <div class="bg-white dark:bg-slate-800 shadow-sm border border-gray-200 dark:border-slate-700 rounded-lg">
-          <div class="px-6 py-4 border-b border-gray-200 dark:border-slate-700 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Users & Invitations</h2>
-              <p class="text-sm text-gray-500 dark:text-slate-400">
-                Pending invitations appear at the top until they are accepted or cancelled.
-              </p>
-            </div>
-            <%= if @can_manage do %>
+        <div class="sm:flex sm:items-center">
+          <div class="sm:flex-auto">
+            <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
+              Users & Invitations
+            </h1>
+            <p class="mt-2 text-sm text-gray-500 dark:text-slate-400">
+              Pending invitations appear at the top until they are accepted or cancelled.
+            </p>
+          </div>
+          <%= if @can_manage do %>
+            <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
               <.primary_button
                 type="button"
                 phx-click="open_invite_modal"
@@ -68,98 +70,108 @@ defmodule TrifleApp.OrganizationUsersLive do
                 </svg>
                 <span class="hidden md:inline">Invite</span>
               </.primary_button>
-            <% end %>
-          </div>
+            </div>
+          <% end %>
+        </div>
 
-          <div
-            id="organization-users-list"
-            class="divide-y divide-gray-200 dark:divide-slate-700"
-            phx-hook="FastTooltip"
-          >
-            <%= if Enum.empty?(@pending_invitations) and Enum.empty?(@members) do %>
-              <div class="px-6 py-8 text-center text-sm text-gray-500 dark:text-slate-400">
-                No members or pending invitations yet.
-              </div>
-            <% else %>
-              <%= for invitation <- @pending_invitations do %>
-                <div class="px-6 py-4">
-                  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div id="organization-users-list" class="mt-6 space-y-3" phx-hook="FastTooltip">
+          <%= if Enum.empty?(@pending_invitations) and Enum.empty?(@members) do %>
+            <div class="px-6 py-8 text-center text-sm text-gray-500 dark:text-slate-400">
+              No members or pending invitations yet.
+            </div>
+          <% else %>
+            <%= for invitation <- @pending_invitations do %>
+              <div class="group rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-4 sm:px-6 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/40">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div class="flex items-center gap-3">
+                    <img
+                      src={gravatar_url(invitation.email)}
+                      alt={"Gravatar for #{invitation.email}"}
+                      class="h-10 w-10 rounded-full border border-gray-200 dark:border-slate-600"
+                    />
                     <div>
-                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-300">
                         {invitation.email}
                       </div>
                       <div class="text-xs text-gray-500 dark:text-slate-400">
                         Pending invitation • Expires {relative_time(invitation.expires_at)}
                       </div>
                     </div>
-                    <div class="flex items-center justify-end gap-3">
-                      <div class="flex items-center gap-2">
-                        <%= if @can_manage do %>
-                          <button
-                            type="button"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-800"
-                            phx-click="resend_invitation"
-                            phx-value-id={invitation.id}
-                            data-tooltip="Resend invitation"
-                            aria-label="Resend invitation"
+                  </div>
+                  <div class="flex items-center justify-end gap-3">
+                    <div class="flex items-center gap-2">
+                      <%= if @can_manage do %>
+                        <button
+                          type="button"
+                          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-800"
+                          phx-click="resend_invitation"
+                          phx-value-id={invitation.id}
+                          data-tooltip="Resend invitation"
+                          aria-label="Resend invitation"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-4 w-4"
+                            aria-hidden="true"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              class="h-4 w-4"
-                              aria-hidden="true"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
-                              />
-                            </svg>
-                            <span class="sr-only">Resend invitation</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-500/10 dark:focus:ring-offset-slate-800"
-                            phx-click="cancel_invitation"
-                            phx-value-id={invitation.id}
-                            data-tooltip="Cancel invitation"
-                            aria-label="Cancel invitation"
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+                            />
+                          </svg>
+                          <span class="sr-only">Resend invitation</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-500/10 dark:focus:ring-offset-slate-800"
+                          phx-click="cancel_invitation"
+                          phx-value-id={invitation.id}
+                          data-tooltip="Cancel invitation"
+                          aria-label="Cancel invitation"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-4 w-4"
+                            aria-hidden="true"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              class="h-4 w-4"
-                              aria-hidden="true"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                              />
-                            </svg>
-                            <span class="sr-only">Cancel invitation</span>
-                          </button>
-                        <% end %>
-                      </div>
-                      <span class="inline-flex h-8 w-32 items-center justify-start rounded-md bg-gray-100 dark:bg-slate-700 px-3 text-sm font-medium text-gray-600 dark:text-slate-200">
-                        {String.capitalize(invitation.role)}
-                      </span>
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                            />
+                          </svg>
+                          <span class="sr-only">Cancel invitation</span>
+                        </button>
+                      <% end %>
                     </div>
+                    <span class="inline-flex h-8 w-32 items-center justify-start rounded-md bg-gray-100 dark:bg-slate-700 px-3 text-sm font-medium text-gray-600 dark:text-slate-200">
+                      {String.capitalize(invitation.role)}
+                    </span>
                   </div>
                 </div>
-              <% end %>
+              </div>
+            <% end %>
 
-              <%= for member <- @members do %>
-                <div class="px-6 py-4">
-                  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <%= for member <- @members do %>
+              <div class="group rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-4 sm:px-6 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/40">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div class="flex items-center gap-3">
+                    <img
+                      src={gravatar_url(member.user.email)}
+                      alt={"Gravatar for #{member.user.email}"}
+                      class="h-10 w-10 rounded-full border border-gray-200 dark:border-slate-600"
+                    />
                     <div>
-                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-300">
                         {member.user.email}
                         <%= if member.id == @current_membership.id do %>
                           <span class="ml-2 inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
@@ -171,76 +183,76 @@ defmodule TrifleApp.OrganizationUsersLive do
                         Last active: {last_active_label(member.last_active_at)}
                       </div>
                     </div>
-                    <div class="flex items-center justify-end gap-3">
-                      <div class="flex items-center gap-2">
-                        <%= if @can_manage and member.id != @current_membership.id do %>
-                          <button
-                            type="button"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-500/10 dark:focus:ring-offset-slate-800"
-                            phx-click="remove_member"
-                            phx-value-id={member.id}
-                            data-confirm="Are you sure you want to remove this member?"
-                            data-tooltip="Remove member"
-                            aria-label="Remove member"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke-width="1.5"
-                              stroke="currentColor"
-                              class="h-4 w-4"
-                              aria-hidden="true"
-                            >
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M22 10.5h-6m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z"
-                              />
-                            </svg>
-                            <span class="sr-only">Remove member</span>
-                          </button>
-                        <% end %>
-                      </div>
+                  </div>
+                  <div class="flex items-center justify-end gap-3">
+                    <div class="flex items-center gap-2">
                       <%= if @can_manage and member.id != @current_membership.id do %>
-                        <form phx-change="update_role" phx-value-id={member.id}>
-                          <div class="relative w-32">
-                            <select
-                              class="block w-full appearance-none rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-0 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                              name="role"
-                            >
-                              <%= for role <- @roles do %>
-                                <option value={role} selected={role == member.role}>
-                                  {String.capitalize(role)}
-                                </option>
-                              <% end %>
-                            </select>
-                            <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400 dark:text-slate-400">
-                              <svg
-                                class="h-3.5 w-3.5"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 20 20"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                aria-hidden="true"
-                              >
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 8l4 4 4-4" />
-                              </svg>
-                            </div>
-                          </div>
-                        </form>
-                      <% else %>
-                        <span class="inline-flex h-8 w-32 items-center justify-start rounded-md bg-gray-100 dark:bg-slate-700 px-3 text-sm font-medium text-gray-600 dark:text-slate-200">
-                          {String.capitalize(member.role)}
-                        </span>
+                        <button
+                          type="button"
+                          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-500/10 dark:focus:ring-offset-slate-800"
+                          phx-click="remove_member"
+                          phx-value-id={member.id}
+                          data-confirm="Are you sure you want to remove this member?"
+                          data-tooltip="Remove member"
+                          aria-label="Remove member"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-4 w-4"
+                            aria-hidden="true"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M22 10.5h-6m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z"
+                            />
+                          </svg>
+                          <span class="sr-only">Remove member</span>
+                        </button>
                       <% end %>
                     </div>
+                    <%= if @can_manage and member.id != @current_membership.id do %>
+                      <form phx-change="update_role" phx-value-id={member.id}>
+                        <div class="relative w-32">
+                          <select
+                            class="block w-full appearance-none rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-0 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            name="role"
+                          >
+                            <%= for role <- @roles do %>
+                              <option value={role} selected={role == member.role}>
+                                {String.capitalize(role)}
+                              </option>
+                            <% end %>
+                          </select>
+                          <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400 dark:text-slate-400">
+                            <svg
+                              class="h-3.5 w-3.5"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 20 20"
+                              stroke="currentColor"
+                              stroke-width="1.5"
+                              aria-hidden="true"
+                            >
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M6 8l4 4 4-4" />
+                            </svg>
+                          </div>
+                        </div>
+                      </form>
+                    <% else %>
+                      <span class="inline-flex h-8 w-32 items-center justify-start rounded-md bg-gray-100 dark:bg-slate-700 px-3 text-sm font-medium text-gray-600 dark:text-slate-200">
+                        {String.capitalize(member.role)}
+                      </span>
+                    <% end %>
                   </div>
                 </div>
-              <% end %>
+              </div>
             <% end %>
-          </div>
+          <% end %>
         </div>
 
         <.app_modal
@@ -305,6 +317,19 @@ defmodule TrifleApp.OrganizationUsersLive do
     </div>
     """
   end
+
+  defp gravatar_url(email, size \\ 80)
+
+  defp gravatar_url(email, size) when is_binary(email) do
+    email
+    |> String.trim()
+    |> String.downcase()
+    |> :erlang.md5()
+    |> Base.encode16(case: :lower)
+    |> then(fn hash -> "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=identicon" end)
+  end
+
+  defp gravatar_url(_email, size), do: "https://www.gravatar.com/avatar/?s=#{size}&d=identicon"
 
   def handle_event("open_invite_modal", _params, %{assigns: %{can_manage: true}} = socket) do
     {:noreply, assign(socket, :show_invite_modal, true)}
