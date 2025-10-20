@@ -214,58 +214,62 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
                   </div>
                   <div :if={total_count > 0} class="divide-y divide-gray-200 dark:divide-slate-700">
                     <%= for channel <- installation.channels || [] do %>
-                      <div class="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="space-y-1">
-                          <p class="text-sm font-medium text-gray-800 dark:text-white flex items-center gap-2">
-                            <span class="text-gray-500 dark:text-slate-300">#</span>
-                            {channel.name}
-                            <span class={[
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                              channel.enabled &&
-                                "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200",
-                              !channel.enabled &&
-                                "bg-gray-100 text-gray-600 dark:bg-slate-700/70 dark:text-slate-300"
-                            ]}>
-                              {channel_status(channel.enabled)}
-                            </span>
-                          </p>
-                          <p class="text-xs text-gray-500 dark:text-slate-400">
-                            Deliver with:
-                            <code class="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs text-gray-700 dark:text-slate-200">
-                              {channel_reference(installation, channel)}
-                            </code>
-                          </p>
-                          <p class="text-xs text-gray-400 dark:text-slate-500">
-                            {format_channel_type(channel)}
-                          </p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                          <%= if @can_manage do %>
-                            <button
-                              type="button"
-                              class={[
-                                "inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2",
-                                channel.enabled &&
-                                  "border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-emerald-500 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-emerald-500 dark:focus:ring-offset-slate-900",
-                                !channel.enabled &&
-                                  "border-emerald-300 text-emerald-700 hover:bg-emerald-50 focus:ring-emerald-500 dark:border-emerald-500/50 dark:text-emerald-200 dark:hover:bg-emerald-500/10 dark:focus:ring-emerald-500 dark:focus:ring-offset-slate-900"
-                              ]}
-                              phx-click="toggle_slack_channel"
-                              phx-value-id={channel.id}
-                              phx-value-next={toggle_value(channel.enabled)}
-                              phx-value-installation-id={installation.id}
-                            >
-                              <%= if channel.enabled do %>
-                                Disable
+                      <div class="px-4 py-3">
+                        <div class="flex gap-3">
+                          <div class={channel_indicator_class(channel)} aria-hidden="true"></div>
+                          <div class="flex-1 space-y-2 sm:flex sm:items-center sm:justify-between sm:space-y-0">
+                            <div class="space-y-1">
+                              <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-sm font-medium text-gray-800 dark:text-white flex items-center gap-2">
+                                  <span class="text-gray-500 dark:text-slate-300">#</span>
+                                  {channel.name}
+                                </span>
+                                <span class={[
+                                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-gray-200 dark:border-slate-700",
+                                  channel_type_class(channel)
+                                ]}>
+                                  {channel_type_label(channel)}
+                                </span>
+                              </div>
+                              <p class="text-xs text-gray-500 dark:text-slate-400">
+                                Deliver with:
+                                <code class="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs text-gray-700 dark:text-slate-200">
+                                  {channel_reference(installation, channel)}
+                                </code>
+                              </p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                              <span class={channel_status_class(channel.enabled)}>
+                                {channel_status(channel.enabled)}
+                              </span>
+                              <%= if @can_manage do %>
+                                <button
+                                  type="button"
+                                  class={[
+                                    "inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2",
+                                    channel.enabled &&
+                                      "border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-emerald-500 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-emerald-500 dark:focus:ring-offset-slate-900",
+                                    !channel.enabled &&
+                                      "border-emerald-300 text-emerald-700 hover:bg-emerald-50 focus:ring-emerald-500 dark:border-emerald-500/50 dark:text-emerald-200 dark:hover:bg-emerald-500/10 dark:focus:ring-emerald-500 dark:focus:ring-offset-slate-900"
+                                  ]}
+                                  phx-click="toggle_slack_channel"
+                                  phx-value-id={channel.id}
+                                  phx-value-next={toggle_value(channel.enabled)}
+                                  phx-value-installation-id={installation.id}
+                                >
+                                  <%= if channel.enabled do %>
+                                    Disable
+                                  <% else %>
+                                    Enable
+                                  <% end %>
+                                </button>
                               <% else %>
-                                Enable
+                                <span class="text-xs text-gray-500 dark:text-slate-400">
+                                  Ask an admin to change access.
+                                </span>
                               <% end %>
-                            </button>
-                          <% else %>
-                            <span class="text-xs text-gray-500 dark:text-slate-400">
-                              Ask an admin to change access.
-                            </span>
-                          <% end %>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     <% end %>
@@ -305,15 +309,78 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
 
   defp status_label(:ok), do: "Ready"
   defp status_label(:warning), do: "Needs configuration"
-  defp status_label(:error), do: "Attention"
+  defp status_label(:error), do: "Not connected"
 
   defp reference_prefix(installation), do: "slack_#{installation.reference}"
 
   defp channel_reference(installation, channel),
     do: "#{reference_prefix(installation)}##{channel.name}"
 
+  defp channel_indicator_class(%{enabled: true}),
+    do: "flex-none h-10 w-1.5 rounded bg-emerald-500/90 dark:bg-emerald-400/80"
+
+  defp channel_indicator_class(_),
+    do: "flex-none h-10 w-1.5 rounded bg-gray-300 dark:bg-slate-600"
+
+  defp channel_status_class(true),
+    do:
+      "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+
+  defp channel_status_class(false),
+    do:
+      "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-100 text-gray-600 dark:bg-slate-700/70 dark:text-slate-300"
+
   defp channel_status(true), do: "Enabled"
   defp channel_status(false), do: "Disabled"
+
+  defp channel_type_label(%{channel_type: type, is_private: true}) when type in [nil, ""],
+    do: "Private"
+
+  defp channel_type_label(%{channel_type: "private_channel"}), do: "Private"
+  defp channel_type_label(%{channel_type: "group"}), do: "Private"
+  defp channel_type_label(%{channel_type: "public_channel"}), do: "Public"
+  defp channel_type_label(%{channel_type: "im"}), do: "Direct"
+
+  defp channel_type_label(%{channel_type: other}) when is_binary(other) do
+    other
+    |> String.replace("_", " ")
+    |> String.downcase()
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp channel_type_label(_), do: "Channel"
+
+  defp channel_type_class(%{channel_type: type, is_private: true}) when type in [nil, ""],
+    do: "bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-200"
+
+  defp channel_type_class(%{channel_type: "private_channel"}),
+    do: "bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-200"
+
+  defp channel_type_class(%{channel_type: "group"}),
+    do: "bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-200"
+
+  defp channel_type_class(%{channel_type: "public_channel"}),
+    do: "bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-200"
+
+  defp channel_type_class(%{channel_type: "im"}),
+    do: "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200"
+
+  defp channel_type_class(%{channel_type: other}) when is_binary(other) do
+    downcased = String.downcase(other || "")
+
+    cond do
+      String.contains?(downcased, "private") ->
+        "bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-200"
+
+      true ->
+        "bg-slate-100 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300"
+    end
+  end
+
+  defp channel_type_class(_),
+    do: "bg-slate-100 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300"
 
   defp toggle_value(true), do: "false"
   defp toggle_value(false), do: "true"
@@ -327,22 +394,4 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
   rescue
     _ -> "Last synced recently"
   end
-
-  defp format_channel_type(%{channel_type: type, is_private: true}) when type in [nil, ""],
-    do: "Private channel"
-
-  defp format_channel_type(%{channel_type: "private_channel"}), do: "Private channel"
-  defp format_channel_type(%{channel_type: "public_channel"}), do: "Public channel"
-  defp format_channel_type(%{channel_type: "group"}), do: "Private group"
-  defp format_channel_type(%{channel_type: "im"}), do: "Direct message"
-
-  defp format_channel_type(%{channel_type: other}) when is_binary(other) do
-    other
-    |> String.replace("_", " ")
-    |> String.downcase()
-    |> String.trim()
-    |> String.capitalize()
-  end
-
-  defp format_channel_type(_), do: "Channel"
 end

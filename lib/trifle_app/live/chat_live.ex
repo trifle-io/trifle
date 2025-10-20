@@ -890,7 +890,7 @@ defmodule TrifleApp.ChatLive do
             <textarea
               name="chat[message]"
               rows="3"
-              placeholder="Ask about your metrics..."
+              placeholder="Ask me about your metrics..."
               class="flex-1 bg-transparent text-slate-900 dark:text-slate-100 text-sm px-4 py-4 resize-none border-0 focus:ring-0 focus:border-0"
               required
               disabled={@selected_source == nil or @sending}
