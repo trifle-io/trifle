@@ -11,8 +11,12 @@ if config_env() in [:dev, :test] do
     |> Enum.map(&Path.expand/1)
     |> Enum.filter(&File.exists?/1)
 
-  if function_exported?(Dotenvy, :load!, 1) do
-    Dotenvy.load!(dotenv_files)
+  if function_exported?(Dotenvy, :source!, 1) do
+    Enum.each(dotenv_files, fn file ->
+      file
+      |> Dotenvy.source!()
+      |> Enum.each(fn {key, value} -> System.put_env(key, value) end)
+    end)
   end
 end
 
@@ -288,8 +292,12 @@ if config_env() == :prod do
 
   env_scopes =
     case System.get_env("SLACK_SCOPES") do
-      nil -> nil
-      "" -> []
+      nil ->
+        nil
+
+      "" ->
+        []
+
       value ->
         value
         |> String.split(~r/[, ]+/, trim: true)

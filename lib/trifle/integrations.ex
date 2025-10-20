@@ -16,8 +16,45 @@ defmodule Trifle.Integrations do
   ## Slack configuration helpers
 
   def slack_config do
-    Application.get_env(:trifle, :slack, %{})
-    |> to_map()
+    base =
+      Application.get_env(:trifle, :slack, %{})
+      |> to_map()
+
+    env_overrides =
+      %{
+        client_id: System.get_env("SLACK_CLIENT_ID"),
+        client_secret: System.get_env("SLACK_CLIENT_SECRET"),
+        signing_secret: System.get_env("SLACK_SIGNING_SECRET"),
+        redirect_uri: System.get_env("SLACK_REDIRECT_URI"),
+        scopes: System.get_env("SLACK_SCOPES")
+      }
+      |> Enum.reduce(%{}, fn
+        {:scopes, nil}, acc ->
+          acc
+
+        {:scopes, ""}, acc ->
+          Map.put(acc, :scopes, [])
+
+        {:scopes, scopes}, acc when is_binary(scopes) ->
+          parsed =
+            scopes
+            |> String.split(~r/[, ]+/, trim: true)
+            |> Enum.reject(&(&1 == ""))
+
+          Map.put(acc, :scopes, parsed)
+
+        {key, value}, acc when is_binary(value) ->
+          if String.trim(value) == "" do
+            acc
+          else
+            Map.put(acc, key, value)
+          end
+
+        _ignored, acc ->
+          acc
+      end)
+
+    Map.merge(base, env_overrides)
   end
 
   def slack_scopes do
@@ -82,7 +119,7 @@ defmodule Trifle.Integrations do
     query =
       if Keyword.get(opts, :preload_channels, false) do
         channels_query = from(c in SlackChannel, order_by: [asc: c.name])
-        preload(query, [channels: ^channels_query])
+        preload(query, channels: ^channels_query)
       else
         query
       end
@@ -98,7 +135,7 @@ defmodule Trifle.Integrations do
     query =
       if Keyword.get(opts, :preload_channels, false) do
         channels_query = from(c in SlackChannel, order_by: [asc: c.name])
-        preload(query, [channels: ^channels_query])
+        preload(query, channels: ^channels_query)
       else
         query
       end
@@ -185,7 +222,8 @@ defmodule Trifle.Integrations do
 
   def sync_slack_channels(%SlackInstallation{} = installation) do
     with {:ok, channels} <- Client.list_channels(installation.bot_access_token) do
-      timestamp = DateTime.utc_now() |> DateTime.truncate(:second)
+      timestamp = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
       filtered_channels =
         channels
         |> Enum.filter(fn channel -> present?(Map.get(channel, "id")) end)
@@ -208,8 +246,7 @@ defmodule Trifle.Integrations do
 
             Multi.insert(acc, multi_key, changeset,
               on_conflict:
-                {:replace,
-                 [:name, :channel_type, :is_private, :metadata, :updated_at]},
+                {:replace, [:name, :channel_type, :is_private, :metadata, :updated_at]},
               conflict_target: [:slack_installation_id, :channel_id]
             )
           end)
@@ -217,7 +254,8 @@ defmodule Trifle.Integrations do
         |> Multi.run(:prune_channels, fn repo, _changes ->
           prune_query =
             from c in SlackChannel,
-              where: c.slack_installation_id == ^installation.id and c.channel_id not in ^channel_ids
+              where:
+                c.slack_installation_id == ^installation.id and c.channel_id not in ^channel_ids
 
           {deleted_count, _} = repo.delete_all(prune_query)
           {:ok, deleted_count}
@@ -313,10 +351,14 @@ defmodule Trifle.Integrations do
     ensure_unique_reference(organization_id, base, 0)
   end
 
-  defp ensure_alpha_prefix("", team_id), do: "slack_" <> String.slice(String.downcase(team_id), 0, 8)
+  defp ensure_alpha_prefix("", team_id),
+    do: "slack_" <> String.slice(String.downcase(team_id), 0, 8)
+
   defp ensure_alpha_prefix(<<"_", rest::binary>>, team_id), do: ensure_alpha_prefix(rest, team_id)
-  defp ensure_alpha_prefix(<<digit, _::binary>> = value, team_id) when digit >= ?0 and digit <= ?9,
-    do: "slack_" <> value
+
+  defp ensure_alpha_prefix(<<digit, _::binary>> = value, team_id)
+       when digit >= ?0 and digit <= ?9,
+       do: "slack_" <> value
 
   defp ensure_alpha_prefix(value, _team_id), do: value
 

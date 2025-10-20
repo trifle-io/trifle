@@ -48,8 +48,7 @@ defmodule TrifleApp.OrganizationDeliveryLive do
               Delivery Options
             </h2>
             <p class="mt-1 text-sm text-gray-600 dark:text-slate-300">
-              Configure outbound delivery channels for this organization. References use the pattern
-              <code class="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs">@type#target</code>.
+              Configure outbound delivery channels for this organization. References use the pattern <code class="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs">@type#target</code>.
             </p>
             <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
               Future integrations will appear here as additional panels.
@@ -80,9 +79,17 @@ defmodule TrifleApp.OrganizationDeliveryLive do
   end
 
   @impl true
-  def handle_event("connect_slack", _params, %{assigns: %{slack_info: %{configured?: false}}} = socket) do
+  def handle_event(
+        "connect_slack",
+        _params,
+        %{assigns: %{slack_info: %{configured?: false}}} = socket
+      ) do
     {:noreply,
-     put_flash(socket, :error, "Slack integration is not configured. Update the Helm values and redeploy.")}
+     put_flash(
+       socket,
+       :error,
+       "Slack integration is not configured. Update the Helm values and redeploy."
+     )}
   end
 
   def handle_event("connect_slack", _params, %{assigns: %{current_membership: nil}} = socket) do
@@ -128,7 +135,8 @@ defmodule TrifleApp.OrganizationDeliveryLive do
            |> reload_slack_installations()}
 
         {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Unable to sync Slack channels: #{format_reason(reason)}")}
+          {:noreply,
+           put_flash(socket, :error, "Unable to sync Slack channels: #{format_reason(reason)}")}
       end
     else
       nil ->
@@ -150,7 +158,11 @@ defmodule TrifleApp.OrganizationDeliveryLive do
          true <- Organizations.membership_admin?(membership),
          {:ok, enabled} <- parse_boolean(next_value),
          {:ok, _channel} <-
-           Integrations.update_slack_channel_enabled(membership.organization_id, channel_id, enabled) do
+           Integrations.update_slack_channel_enabled(
+             membership.organization_id,
+             channel_id,
+             enabled
+           ) do
       message =
         if enabled do
           "Channel enabled for delivery."
@@ -205,7 +217,11 @@ defmodule TrifleApp.OrganizationDeliveryLive do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
-         put_flash(socket, :error, "Unable to disconnect workspace: #{changeset_error(changeset)}")}
+         put_flash(
+           socket,
+           :error,
+           "Unable to disconnect workspace: #{changeset_error(changeset)}"
+         )}
     end
   end
 
@@ -213,6 +229,7 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     email_info = email_info()
     slack_info = slack_info(membership.organization_id)
     can_manage = Organizations.membership_admin?(membership)
+
     slack_installations =
       Integrations.list_slack_installations_for_org(membership.organization_id,
         preload_channels: true
@@ -239,8 +256,12 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     }
   end
 
-  defp extract_adapter(config) when is_list(config), do: Keyword.get(config, :adapter, Swoosh.Adapters.Local)
-  defp extract_adapter(config) when is_map(config), do: Map.get(config, :adapter, Swoosh.Adapters.Local)
+  defp extract_adapter(config) when is_list(config),
+    do: Keyword.get(config, :adapter, Swoosh.Adapters.Local)
+
+  defp extract_adapter(config) when is_map(config),
+    do: Map.get(config, :adapter, Swoosh.Adapters.Local)
+
   defp extract_adapter(_), do: Swoosh.Adapters.Local
 
   defp adapter_label(nil), do: "unknown"
@@ -278,7 +299,16 @@ defmodule TrifleApp.OrganizationDeliveryLive do
   defp slack_status(_info, installations) do
     installations = installations || []
 
-    if Enum.any?(installations, &slack_installation_error?/1), do: :error, else: :ok
+    cond do
+      Enum.any?(installations, &slack_installation_error?/1) ->
+        :error
+
+      installations == [] ->
+        :error
+
+      true ->
+        :ok
+    end
   end
 
   defp slack_installation_error?(installation) do
@@ -301,7 +331,9 @@ defmodule TrifleApp.OrganizationDeliveryLive do
 
   defp build_slack_authorize_url(settings, membership, user) do
     client_id = blank_to_nil(settings.client_id)
-    redirect_uri = blank_to_nil(settings.redirect_uri || Integrations.default_slack_redirect_uri())
+
+    redirect_uri =
+      blank_to_nil(settings.redirect_uri || Integrations.default_slack_redirect_uri())
 
     cond do
       is_nil(client_id) ->
