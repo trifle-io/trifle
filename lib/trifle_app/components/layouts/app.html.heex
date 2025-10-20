@@ -28,6 +28,7 @@
             <div class="hidden md:block">
               <div class="ml-10 flex items-baseline space-x-4">
                 {live_active_link(@socket, :dashboards, "Dashboards", to: ~p"/dashboards")}
+                {live_active_link(@socket, :monitors, "Monitors", to: ~p"/monitors")}
                 {live_active_link(@socket, :explore, "Explore", to: ~p"/explore")}
                 <%= if Trifle.Config.projects_enabled?() do %>
                   {live_active_link(@socket, :projects, "Projects", to: ~p"/projects")}
@@ -189,6 +190,7 @@
             to: ~p"/dashboards",
             variant: :mobile
           )}
+          {live_active_link(@socket, :monitors, "Monitors", to: ~p"/monitors", variant: :mobile)}
           {live_active_link(@socket, :explore, "Explore", to: ~p"/explore", variant: :mobile)}
           <%= if Trifle.Config.projects_enabled?() do %>
             {live_active_link(@socket, :projects, "Projects", to: ~p"/projects", variant: :mobile)}

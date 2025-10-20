@@ -54,6 +54,12 @@ defmodule TrifleApp.Layouts do
       {:dashboards, TrifleApp.DashboardLive} ->
         true
 
+      {:monitors, TrifleApp.MonitorsLive} ->
+        true
+
+      {:monitors, TrifleApp.MonitorLive} ->
+        true
+
       {:explore, TrifleApp.ExploreLive} ->
         true
 
@@ -83,6 +89,9 @@ defmodule TrifleApp.Layouts do
 
       {:chat, TrifleApp.ChatLive} ->
         true
+
+      {:monitors, _} ->
+        Map.get(socket.assigns, :nav_section) == :monitors
 
       {:projects, _} ->
         Map.get(socket.assigns, :nav_section) == :projects
