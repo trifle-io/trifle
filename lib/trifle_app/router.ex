@@ -93,6 +93,10 @@ defmodule TrifleApp.Router do
       live "/dashboards/:id", DashboardLive, :show
       live "/dashboards/:id/edit", DashboardLive, :edit
       live "/dashboards/:id/configure", DashboardLive, :configure
+      live "/monitors", MonitorsLive, :index
+      live "/monitors/new", MonitorsLive, :new
+      live "/monitors/:id", MonitorLive, :show
+      live "/monitors/:id/configure", MonitorLive, :configure
       live "/chat", ChatLive, :show
     end
 

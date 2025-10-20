@@ -24,6 +24,7 @@ import topbar from "../vendor/topbar"
 import Sortable from "sortablejs"
 import * as echarts from "echarts"
 import { GridStack } from "gridstack"
+import "./components/delivery_selector"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 

@@ -1,0 +1,230 @@
+defmodule Trifle.Monitors.Monitor do
+  @moduledoc """
+  Represents a monitor definition that can be configured to emit report or alert events.
+  """
+  use Ecto.Schema
+
+  import Ecto.Changeset
+
+  alias Trifle.Accounts.User
+  alias Trifle.Monitors.Execution
+  alias Trifle.Organizations.{Dashboard, Organization}
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
+  @type_values [:report, :alert]
+  @status_values [:active, :paused]
+
+  schema "monitors" do
+    field :name, :string
+    field :description, :string
+    field :type, Ecto.Enum, values: @type_values
+    field :status, Ecto.Enum, values: @status_values, default: :active
+    field :target, :map, default: %{}
+
+    embeds_one :report_settings, ReportSettings, on_replace: :update do
+      field :frequency, Ecto.Enum,
+        values: [:daily, :weekly, :monthly, :custom],
+        default: :daily
+
+      field :timeframe, :string
+      field :granularity, :string
+      field :custom_cron, :string
+    end
+
+    embeds_one :alert_settings, AlertSettings, on_replace: :update do
+      field :metric_key, :string
+      field :metric_path, :string
+      field :timeframe, :string
+      field :granularity, :string
+      field :analysis_strategy, Ecto.Enum,
+        values: [:threshold, :range, :anomaly_detection],
+        default: :threshold
+
+      field :threshold_settings, :map, default: %{}
+    end
+
+    embeds_many :delivery_channels, DeliveryChannel, on_replace: :delete do
+      field :channel, Ecto.Enum,
+        values: [:email, :slack_webhook, :webhook, :custom],
+        default: :email
+
+      field :label, :string
+      field :target, :string
+      field :config, :map, default: %{}
+    end
+
+    belongs_to :organization, Organization
+    belongs_to :dashboard, Dashboard
+    belongs_to :created_by, User, foreign_key: :created_by_id
+
+    has_many :executions, Execution
+
+    timestamps()
+  end
+
+  @doc """
+  Returns a base changeset for monitors.
+  """
+  def changeset(monitor, attrs) do
+    monitor
+    |> cast(attrs, [
+      :organization_id,
+      :created_by_id,
+      :dashboard_id,
+      :name,
+      :description,
+      :type,
+      :status,
+      :target
+    ])
+    |> cast_embed(:report_settings, with: &report_settings_changeset/2, required: false)
+    |> cast_embed(:alert_settings, with: &alert_settings_changeset/2, required: false)
+    |> cast_embed(:delivery_channels, with: &delivery_channel_changeset/2, required: false)
+    |> sanitize_target()
+    |> validate_required([:organization_id, :name, :type, :status])
+    |> validate_length(:name, min: 1, max: 255)
+    |> maybe_require_dashboard()
+    |> maybe_require_alert_target()
+    |> maybe_sync_dashboard_reference()
+  end
+
+  defp report_settings_changeset(settings, attrs) do
+    settings
+    |> cast(attrs, [:frequency, :timeframe, :granularity, :custom_cron])
+    |> validate_required([:frequency])
+    |> validate_length(:timeframe, max: 64)
+    |> validate_length(:granularity, max: 32)
+    |> validate_custom_cron()
+  end
+
+  defp alert_settings_changeset(settings, attrs) do
+    settings
+    |> cast(attrs, [
+      :metric_key,
+      :metric_path,
+      :timeframe,
+      :granularity,
+      :analysis_strategy,
+      :threshold_settings
+    ])
+    |> validate_required([:metric_key, :metric_path])
+    |> validate_length(:metric_key, max: 255)
+    |> validate_length(:metric_path, max: 255)
+  end
+
+  defp delivery_channel_changeset(channel, attrs) do
+    channel
+    |> cast(attrs, [:channel, :label, :target, :config])
+    |> validate_required([:channel, :target])
+    |> validate_length(:label, max: 120)
+    |> validate_length(:target, max: 255)
+    |> update_change(:config, &normalize_map(&1 || %{}, %{}))
+  end
+
+  defp sanitize_target(%Ecto.Changeset{} = changeset) do
+    case fetch_change(changeset, :target) do
+      :error -> changeset
+      {:ok, nil} -> put_change(changeset, :target, %{})
+      {:ok, target} when is_map(target) -> put_change(changeset, :target, normalize_map(target, %{}))
+      {:ok, target} when is_binary(target) -> normalize_target_from_string(changeset, target)
+      {:ok, _} -> add_error(changeset, :target, "must be a map or JSON object")
+    end
+  end
+
+  defp normalize_target_from_string(changeset, target) do
+    case Jason.decode(target) do
+      {:ok, parsed} when is_map(parsed) ->
+        put_change(changeset, :target, normalize_map(parsed, %{}))
+
+      {:ok, _other} ->
+        add_error(changeset, :target, "must be a JSON object")
+
+      {:error, %Jason.DecodeError{} = error} ->
+        add_error(changeset, :target, "invalid JSON: #{Exception.message(error)}")
+
+      {:error, error} ->
+        add_error(changeset, :target, "invalid target: #{inspect(error)}")
+    end
+  end
+
+  defp normalize_map(map, default) when is_map(map) do
+    Enum.reduce(map, %{}, fn
+      {key, value}, acc when is_map(value) ->
+        Map.put(acc, normalize_key(key), normalize_map(value, %{}))
+
+      {key, value}, acc ->
+        Map.put(acc, normalize_key(key), value)
+    end)
+  end
+
+  defp normalize_map(_map, default), do: default
+
+  defp normalize_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp normalize_key(key) when is_binary(key), do: key
+  defp normalize_key(key), do: to_string(key)
+
+  defp validate_custom_cron(%Ecto.Changeset{} = changeset) do
+    frequency = get_field(changeset, :frequency)
+    cron = get_field(changeset, :custom_cron)
+
+    case {frequency, cron} do
+      {:custom, nil} -> add_error(changeset, :custom_cron, "is required for custom frequency")
+      {:custom, ""} -> add_error(changeset, :custom_cron, "is required for custom frequency")
+      _ -> changeset
+    end
+  end
+
+  defp maybe_require_dashboard(%Ecto.Changeset{} = changeset) do
+    case get_field(changeset, :type) do
+      :report ->
+        validate_required(changeset, [:dashboard_id])
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp maybe_require_alert_target(%Ecto.Changeset{} = changeset) do
+    case get_field(changeset, :type) do
+      :alert ->
+        case get_field(changeset, :alert_settings) do
+          nil ->
+            add_error(changeset, :alert_settings, "must be provided for alert monitors")
+
+          %{} ->
+            changeset
+
+          _ ->
+            add_error(changeset, :alert_settings, "must be provided for alert monitors")
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp maybe_sync_dashboard_reference(%Ecto.Changeset{} = changeset) do
+    if get_field(changeset, :type) == :report do
+      dashboard_id = get_field(changeset, :dashboard_id)
+      target = get_field(changeset, :target) || %{}
+
+      cond do
+        dashboard_id ->
+          put_change(changeset, :target, Map.put(target, "dashboard_id", dashboard_id))
+
+        Map.has_key?(target, "dashboard_id") ->
+          put_change(changeset, :dashboard_id, Map.get(target, "dashboard_id"))
+
+        Map.has_key?(target, :dashboard_id) ->
+          put_change(changeset, :dashboard_id, Map.get(target, :dashboard_id))
+
+        true ->
+          changeset
+      end
+    else
+      changeset
+    end
+  end
+end
