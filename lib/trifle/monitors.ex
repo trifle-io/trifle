@@ -5,9 +5,9 @@ defmodule Trifle.Monitors do
   import Ecto.Query, warn: false
 
   alias Trifle.Accounts.User
-alias Trifle.Integrations
-alias Trifle.Monitors.{Execution, Monitor}
-alias Trifle.Organizations.OrganizationMembership
+  alias Trifle.Integrations
+  alias Trifle.Monitors.{Execution, Monitor}
+  alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Repo
 
   @default_execution_limit 25
@@ -26,7 +26,11 @@ alias Trifle.Organizations.OrganizationMembership
   @doc """
   Lists monitors visible to the provided membership.
   """
-  def list_monitors_for_membership(%User{} = _user, %OrganizationMembership{} = membership, opts \\ []) do
+  def list_monitors_for_membership(
+        %User{} = _user,
+        %OrganizationMembership{} = membership,
+        opts \\ []
+      ) do
     scoped_monitors_query(membership)
     |> preload(^monitor_preloads(opts))
     |> Repo.all()
@@ -165,9 +169,34 @@ alias Trifle.Organizations.OrganizationMembership
     |> Enum.sort_by(&normalise_sort_key(Map.get(&1, :label, &1.handle)))
   end
 
-  def delivery_channels_from_handles(handles, %OrganizationMembership{} = membership) when is_list(handles) do
+  def delivery_channels_from_handles(handles, membership, existing_channels \\ [])
+
+  def delivery_channels_from_handles(
+        handles,
+        %OrganizationMembership{} = membership,
+        existing_channels
+      )
+      when is_list(handles) do
     options = delivery_options_for_membership(membership)
     index = Map.new(options, &{&1.handle, &1})
+
+    existing_index =
+      existing_channels
+      |> List.wrap()
+      |> Enum.reduce({%{}, MapSet.new()}, fn channel, {acc, seen} ->
+        case channel_to_handle(channel) do
+          nil ->
+            {acc, seen}
+
+          handle ->
+            if MapSet.member?(seen, handle) do
+              {acc, seen}
+            else
+              {Map.put(acc, handle, channel), MapSet.put(seen, handle)}
+            end
+        end
+      end)
+      |> elem(0)
 
     Enum.reduce(handles, {[], []}, fn handle, {channels, invalid} ->
       case Map.get(index, handle) do
@@ -175,14 +204,14 @@ alias Trifle.Organizations.OrganizationMembership
           {channels, [handle | invalid]}
 
         option ->
-          channel_map = option_to_channel_params(option)
+          channel_map = option_to_channel_params(option, Map.get(existing_index, handle))
           {[channel_map | channels], invalid}
       end
     end)
     |> then(fn {channels, invalid} -> {Enum.reverse(channels), Enum.reverse(invalid)} end)
   end
 
-  def delivery_channels_from_handles(_handles, _membership), do: {[], []}
+  def delivery_channels_from_handles(_handles, _membership, _existing), do: {[], []}
 
   def delivery_handles_from_channels(channels) when is_list(channels) do
     channels
@@ -254,14 +283,27 @@ alias Trifle.Organizations.OrganizationMembership
     end)
   end
 
-  defp option_to_channel_params(option) do
+  defp option_to_channel_params(option, existing \\ nil) do
+    channel = Map.get(option, :channel) || Map.get(option, "channel")
+    normalized_channel = normalize_channel(channel) || :custom
+
     %{
-      "channel" => option.channel |> Atom.to_string(),
-      "label" => option.label,
-      "target" => option.target,
-      "config" => stringify_map(option.config || %{})
+      "id" =>
+        existing_id(existing) ||
+          Map.get(option, :id) ||
+          Map.get(option, "id") ||
+          Ecto.UUID.generate(),
+      "channel" => Atom.to_string(normalized_channel),
+      "label" => Map.get(option, :label) || Map.get(option, "label"),
+      "target" => Map.get(option, :target) || Map.get(option, "target"),
+      "config" => stringify_map(Map.get(option, :config) || Map.get(option, "config") || %{})
     }
   end
+
+  defp existing_id(%Monitor.DeliveryChannel{id: id}) when is_binary(id), do: id
+  defp existing_id(%{"id" => id}) when is_binary(id), do: id
+  defp existing_id(%{id: id}) when is_binary(id), do: id
+  defp existing_id(_), do: nil
 
   defp channel_to_handle(%Monitor.DeliveryChannel{} = channel) do
     do_channel_to_handle(channel.channel, channel.target, channel.config)
@@ -288,7 +330,10 @@ alias Trifle.Organizations.OrganizationMembership
 
       :slack_webhook ->
         config = config || %{}
-        reference = Map.get(config, "installation_reference") || Map.get(config, :installation_reference)
+
+        reference =
+          Map.get(config, "installation_reference") || Map.get(config, :installation_reference)
+
         channel_name = Map.get(config, "channel_name") || Map.get(config, :channel_name) || target
 
         if present?(reference) && present?(channel_name) do
@@ -306,6 +351,7 @@ alias Trifle.Organizations.OrganizationMembership
     attrs
     |> cast_enum(:type, [:report, :alert])
     |> cast_enum(:status, [:active, :paused])
+    |> cast_enum(:trigger_status, [:idle, :warning, :recovering, :alerting])
     |> update_nested(:report_settings, &normalize_report_settings/1)
     |> update_nested(:alert_settings, &normalize_alert_settings/1)
     |> update_nested_list(:delivery_channels, &normalize_delivery_channel/1)

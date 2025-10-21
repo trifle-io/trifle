@@ -85,9 +85,9 @@ defmodule TrifleApp.DatabasesLive do
 
   def render(assigns) do
     ~H"""
-    <div class="px-4 sm:px-6 lg:px-8">
-      <div class="sm:flex sm:items-center">
-        <div class="sm:flex-auto">
+    <div class="space-y-8">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
           <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
             Your Databases
           </h1>
@@ -96,18 +96,22 @@ defmodule TrifleApp.DatabasesLive do
           </p>
         </div>
         <%= if @can_manage_databases do %>
-          <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <div class="flex gap-2">
             <.link
               patch={~p"/dbs/new"}
+              aria-label="New Database"
               class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
             >
-              Add Database
+              <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+              </svg>
+              <span class="hidden md:inline">New Database</span>
             </.link>
           </div>
         <% end %>
       </div>
 
-      <div class="mt-6 space-y-3">
+      <div class="space-y-3">
         <%= for database <- @databases do %>
           <%= if is_supported_driver?(database.driver) do %>
             <div

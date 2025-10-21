@@ -1,7 +1,6 @@
 defmodule TrifleApp.MonitorsLive do
   use TrifleApp, :live_view
 
-  alias Ecto.Changeset
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Organizations
@@ -13,8 +12,13 @@ defmodule TrifleApp.MonitorsLive do
     {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
-  def mount(_params, _session, %{assigns: %{current_user: user, current_membership: membership}} = socket) do
+  def mount(
+        _params,
+        _session,
+        %{assigns: %{current_user: user, current_membership: membership}} = socket
+      ) do
     Logger.debug("[MonitorsLive] mount for membership=#{membership.id}")
+
     {:ok,
      socket
      |> assign(:page_title, "Monitors")
@@ -62,40 +66,12 @@ defmodule TrifleApp.MonitorsLive do
   end
 
   @impl true
-  def handle_event("delete_monitor", %{"id" => id}, socket) do
-    membership = socket.assigns.current_membership
-    user = socket.assigns.current_user
-
-    monitor =
-      socket.assigns.monitors
-      |> Enum.find(&(&1.id == id))
-      |> case do
-        nil -> Monitors.get_monitor_for_membership!(membership, id)
-        monitor -> monitor
-      end
-
-    case Monitors.delete_monitor_for_membership(monitor, membership) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Monitor deleted")
-         |> assign(:monitors, load_monitors(user, membership))}
-
-      {:error, :unauthorized} ->
-        {:noreply, put_flash(socket, :error, "You do not have permission to delete this monitor")}
-
-      {:error, %Changeset{} = changeset} ->
-        {:noreply,
-         put_flash(socket, :error, "Unable to delete monitor: #{changeset_error_message(changeset)}")}
-    end
-  end
-
-  @impl true
   def handle_info({FormComponent, {:saved, _monitor}}, socket) do
     membership = socket.assigns.current_membership
     user = socket.assigns.current_user
 
     Logger.debug("[MonitorsLive] received saved message, reloading monitors")
+
     {:noreply,
      socket
      |> put_flash(:info, "Monitor saved")
@@ -130,62 +106,74 @@ defmodule TrifleApp.MonitorsLive do
     assign(socket, :delivery_options, opts)
   end
 
-  defp changeset_error_message(%Changeset{} = changeset) do
-    changeset.errors
-    |> Enum.map(fn {field, {message, _opts}} ->
-      "#{Phoenix.Naming.humanize(field)} #{message}"
-    end)
-    |> Enum.join(", ")
+  defp monitor_schedule_label(%Monitor{type: :report, report_settings: settings}) do
+    label =
+      settings
+      |> fetch_setting(:frequency, "weekly")
+      |> format_setting_label()
+
+    "#{label} schedule"
   end
 
-  defp type_label(:report), do: "Report"
-  defp type_label(:alert), do: "Alert"
-  defp type_label(other) when is_atom(other), do: other |> Atom.to_string() |> Phoenix.Naming.humanize()
-  defp type_label(other) when is_binary(other), do: other
+  defp monitor_schedule_label(%Monitor{type: :alert, alert_settings: settings}) do
+    label =
+      settings
+      |> fetch_setting(:analysis_strategy, "threshold")
+      |> format_setting_label()
 
-  defp delivery_channel_badge(channel) do
-    channel
-    |> channel_as_atom()
-    |> case do
-      :email -> "EMAIL"
-      :slack_webhook -> "SLACK"
-      :webhook -> "WEBHOOK"
-      :custom -> "CUSTOM"
-      _ -> "CHANNEL"
-    end
+    "#{label} analysis"
   end
 
-  defp delivery_channel_handle(channel) do
-    channel
-    |> List.wrap()
-    |> Monitors.delivery_handles_from_channels()
-    |> List.first()
+  defp monitor_schedule_label(_), do: nil
+
+  defp fetch_setting(settings, key, default) when is_map(settings) do
+    Map.get(settings, key) || Map.get(settings, Atom.to_string(key)) || default
   end
 
-  defp channel_as_atom(%{} = channel) do
-    value = Map.get(channel, :channel) || Map.get(channel, "channel")
+  defp fetch_setting(_, _, default), do: default
+
+  defp format_setting_label(value) when is_atom(value) do
+    value |> Atom.to_string() |> format_setting_label()
+  end
+
+  defp format_setting_label(value) when is_binary(value) do
+    value
+    |> String.replace("_", " ")
+    |> String.trim()
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp format_setting_label(_), do: "Custom"
+
+  defp format_metric_path(%{metric_key: key, metric_path: path}) do
+    format_metric_path(%{"metric_key" => key, "metric_path" => path})
+  end
+
+  defp format_metric_path(%{"metric_key" => key, "metric_path" => path}) do
+    key = blank_if_nil(key)
+    path = blank_if_nil(path)
 
     cond do
-      is_atom(value) ->
-        value
-
-      is_binary(value) ->
-        value
-        |> String.trim()
-        |> String.downcase()
-        |> String.replace("-", "_")
-        |> String.to_existing_atom()
-
-      true ->
-        nil
+      key == "" and path == "" -> "—"
+      path == "" -> key
+      key == "" -> path
+      true -> "#{key}##{path}"
     end
-  rescue
-    ArgumentError -> nil
   end
+
+  defp format_metric_path(_), do: "—"
+
+  defp blank_if_nil(nil), do: ""
+  defp blank_if_nil(value), do: to_string(value)
 
   defp monitor_icon(assigns) do
     ~H"""
-    <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-teal-900/70 text-white">
+    <span class={[
+      "inline-flex h-10 w-10 items-center justify-center rounded-full text-white shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10",
+      Monitor.icon_color_class(@monitor)
+    ]}>
       <%= if @monitor.type == :report do %>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -193,7 +181,7 @@ defmodule TrifleApp.MonitorsLive do
           viewBox="0 0 24 24"
           stroke-width="1.5"
           stroke="currentColor"
-          class="h-6 w-6"
+          class="h-5 w-5"
         >
           <path
             stroke-linecap="round"
@@ -208,7 +196,7 @@ defmodule TrifleApp.MonitorsLive do
           viewBox="0 0 24 24"
           stroke-width="1.5"
           stroke="currentColor"
-          class="h-6 w-6"
+          class="h-5 w-5"
         >
           <path
             stroke-linecap="round"
@@ -227,24 +215,23 @@ defmodule TrifleApp.MonitorsLive do
     <div class="space-y-8">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Monitors</h1>
-          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
+            Your Monitors
+          </h1>
+          <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
             Define scheduled reports and flexible alerts that watch your metrics.
           </p>
         </div>
         <div class="flex gap-2">
           <.link
             patch={~p"/monitors/new"}
-            class="inline-flex items-center gap-2 rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500"
+            aria-label="New Monitor"
+            class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path
-                fill-rule="evenodd"
-                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-                clip-rule="evenodd"
-              />
+            <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
             </svg>
-            New Monitor
+            <span class="hidden md:inline">New Monitor</span>
           </.link>
         </div>
       </div>
@@ -265,92 +252,61 @@ defmodule TrifleApp.MonitorsLive do
         </.link>
       </div>
 
-      <div :if={Enum.any?(@monitors)} class="grid gap-4 lg:grid-cols-2">
-        <div
+      <div :if={Enum.any?(@monitors)} class="space-y-3">
+        <.link
           :for={monitor <- @monitors}
-          class="flex flex-col rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm transition hover:border-teal-400 hover:shadow-md"
+          class="group block rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/40"
+          navigate={~p"/monitors/#{monitor.id}"}
         >
-          <div class="flex items-start gap-4">
-            {monitor_icon(%{monitor: monitor})}
-            <div class="flex-1 space-y-1.5">
-              <div class="flex items-center justify-between gap-2">
-                <.link
-                  navigate={~p"/monitors/#{monitor.id}"}
-                  class="text-lg font-semibold text-slate-900 dark:text-white hover:text-teal-500"
-                >
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-3 py-3 sm:px-4">
+            <div class="flex min-w-0 items-center gap-3">
+              {monitor_icon(%{monitor: monitor})}
+              <div class="min-w-0">
+                <div class="truncate text-sm font-medium text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-300">
                   {monitor.name}
-                </.link>
-                <span
-                  class={[
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide",
-                    monitor.status == :active &&
-                      "bg-teal-100 text-teal-800 dark:bg-teal-500/10 dark:text-teal-200",
-                    monitor.status == :paused &&
-                      "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-                  ]}
-                >
-                  {type_label(monitor.type)}
-                </span>
-              </div>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                <%= if monitor.type == :report do %>
-                  <%= if monitor.dashboard do %>
-                    Attached to dashboard <strong class="font-semibold text-slate-900 dark:text-white">
-                      {monitor.dashboard.name}
-                    </strong>
-                  <% else %>
-                    Dashboard not available
-                  <% end %>
-                <% else %>
-                  Watching metric key
-                  <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                    {monitor.alert_settings && monitor.alert_settings.metric_key || "—"}
-                  </code>
-                  at path
-                  <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                    {monitor.alert_settings && monitor.alert_settings.metric_path || "—"}
-                  </code>
-                <% end %>
-              </p>
-              <p :if={monitor.description} class="text-sm text-slate-500 dark:text-slate-400">
-                {monitor.description}
-              </p>
-              <div class="flex flex-wrap gap-2 pt-1">
-                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800/70 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                </div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-slate-400">
                   <%= if monitor.type == :report do %>
-                    {monitor.report_settings && String.upcase(to_string(monitor.report_settings.frequency || "weekly"))} schedule
+                    <%= if monitor.dashboard do %>
+                      Attached to dashboard
+                      <strong class="font-semibold text-gray-900 dark:text-white">
+                        {monitor.dashboard.name}
+                      </strong>
+                    <% else %>
+                      Dashboard not available
+                    <% end %>
                   <% else %>
-                    {monitor.alert_settings && String.upcase(to_string(monitor.alert_settings.analysis_strategy || "threshold"))} analysis
+                    Watching metrics key path
+                    <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-[0.65rem] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                      {format_metric_path(monitor.alert_settings)}
+                    </code>
                   <% end %>
-                </span>
-                <span
-                  :for={channel <- monitor.delivery_channels || []}
-                  class="inline-flex items-center gap-1 rounded-md bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-200 px-2 py-1 text-xs font-medium"
-                >
-                  {delivery_channel_badge(channel)}
-                  <%= if handle = delivery_channel_handle(channel) do %>
-                    <span class="text-[0.65rem] text-slate-500 dark:text-slate-300">
-                      {handle}
-                    </span>
-                  <% end %>
-                </span>
+                </div>
               </div>
             </div>
+            <div class="flex items-center gap-3">
+              <% schedule_label = monitor_schedule_label(monitor) %>
+              <div :if={schedule_label} class="flex items-center">
+                <span class="inline-flex h-8 items-center rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 dark:bg-slate-700 dark:text-slate-200">
+                  {schedule_label}
+                </span>
+              </div>
+              <svg
+                class="h-4 w-4 flex-shrink-0 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M13.5 4.5L21 12m0 0-7.5 7.5M21 12H3"
+                />
+              </svg>
+            </div>
           </div>
-          <div class="mt-4 flex items-center justify-between text-sm">
-            <.link navigate={~p"/monitors/#{monitor.id}"} class="text-teal-600 hover:text-teal-500 font-medium">
-              View details
-            </.link>
-            <button
-              phx-click="delete_monitor"
-              phx-value-id={monitor.id}
-              data-confirm="Are you sure you want to delete this monitor?"
-              class="text-slate-500 hover:text-rose-500 font-medium"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
+        </.link>
       </div>
 
       <.live_component

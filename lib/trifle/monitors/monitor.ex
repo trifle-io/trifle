@@ -15,6 +15,7 @@ defmodule Trifle.Monitors.Monitor do
 
   @type_values [:report, :alert]
   @status_values [:active, :paused]
+  @trigger_status_values [:idle, :warning, :recovering, :alerting]
 
   schema "monitors" do
     field :name, :string
@@ -22,6 +23,7 @@ defmodule Trifle.Monitors.Monitor do
     field :type, Ecto.Enum, values: @type_values
     field :status, Ecto.Enum, values: @status_values, default: :active
     field :target, :map, default: %{}
+    field :trigger_status, Ecto.Enum, values: @trigger_status_values, default: :idle
 
     embeds_one :report_settings, ReportSettings, on_replace: :update do
       field :frequency, Ecto.Enum,
@@ -77,7 +79,8 @@ defmodule Trifle.Monitors.Monitor do
       :description,
       :type,
       :status,
-      :target
+      :target,
+      :trigger_status
     ])
     |> cast_embed(:report_settings, with: &report_settings_changeset/2, required: false)
     |> cast_embed(:alert_settings, with: &alert_settings_changeset/2, required: false)
@@ -227,4 +230,24 @@ defmodule Trifle.Monitors.Monitor do
       changeset
     end
   end
+
+  @doc """
+  Returns the Tailwind background class for representing monitor state.
+  """
+  def icon_color_class(%__MODULE__{status: :paused}), do: "bg-slate-500"
+
+  def icon_color_class(%__MODULE__{type: :report, status: :active}), do: "bg-emerald-600"
+
+  def icon_color_class(%__MODULE__{type: :alert, status: :active, trigger_status: trigger_status}) do
+    case trigger_status do
+      :idle -> "bg-emerald-600"
+      :warning -> "bg-amber-500"
+      :recovering -> "bg-amber-500"
+      :alerting -> "bg-rose-600"
+      _ -> "bg-emerald-600"
+    end
+  end
+
+  def icon_color_class(%__MODULE__{}), do: "bg-slate-500"
+  def icon_color_class(_), do: "bg-slate-500"
 end
