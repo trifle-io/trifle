@@ -106,10 +106,7 @@ defmodule TrifleApp.MonitorComponents do
   def report_panel(assigns) do
     ~H"""
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
-      <div class="flex items-center justify-between gap-2">
-        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Report details</h3>
-        {monitor_status_badge(%{status: @monitor.status, label: "Report"})}
-      </div>
+      <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Report details</h3>
       <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">

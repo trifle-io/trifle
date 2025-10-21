@@ -374,13 +374,15 @@ defmodule TrifleApp.OrganizationProfileLive do
         <dl class="grid grid-cols-1 gap-y-6 gap-x-8 sm:grid-cols-2">
           <div class="space-y-6">
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Organization name</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                Organization name
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 {present(@organization.name)}
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
                 Registration number
               </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
@@ -388,13 +390,15 @@ defmodule TrifleApp.OrganizationProfileLive do
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">VAT number</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                VAT number
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 {present(@organization.vat_number)}
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
                 Registration country
               </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
@@ -404,7 +408,9 @@ defmodule TrifleApp.OrganizationProfileLive do
           </div>
           <div class="space-y-6">
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Address</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                Address
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 <address class="not-italic space-y-1">
                   <%= if @address_lines == [] do %>
@@ -418,25 +424,33 @@ defmodule TrifleApp.OrganizationProfileLive do
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">City</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                City
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 {present(@organization.city)}
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Postal code</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                Postal code
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 {present(@organization.postal_code)}
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">State / Region</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                State / Region
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 {formatted_state(@organization)}
               </dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-slate-400">Address country</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                Address country
+              </dt>
               <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                 {address_country_label(@organization)}
               </dd>
