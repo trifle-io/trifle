@@ -19,9 +19,9 @@ defmodule TrifleApp.ProjectsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="px-4 sm:px-6 lg:px-8">
-      <div class="sm:flex sm:items-center">
-        <div class="sm:flex-auto">
+    <div class="space-y-8">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
           <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
             Your Projects
           </h1>
@@ -29,18 +29,22 @@ defmodule TrifleApp.ProjectsLive do
             Pick a Project to configure Transponders, Access Tokens and other Settings.
           </p>
         </div>
-        <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+        <div class="flex gap-2">
           <.link
             patch={~p"/projects/new"}
+            aria-label="New Project"
             class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
           >
-            New Project
+            <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+            </svg>
+            <span class="hidden md:inline">New Project</span>
           </.link>
         </div>
       </div>
 
       <%= if Enum.empty?(@projects) do %>
-        <div class="mt-12 text-center">
+        <div class="rounded-lg border border-dashed border-slate-400/60 bg-white dark:bg-slate-800 p-8 text-center">
           <svg
             class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
             fill="none"
@@ -55,13 +59,11 @@ defmodule TrifleApp.ProjectsLive do
               d="M3 7.5A2.25 2.25 0 015.25 5.25h3.6a2.25 2.25 0 001.59-.66l1.32-1.32a2.25 2.25 0 011.59-.66h4.45A2.25 2.25 0 0120.5 4.86v12.39A2.25 2.25 0 0118.25 19.5H5.25A2.25 2.25 0 013 17.25V7.5z"
             />
           </svg>
-          <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-            No projects yet
-          </h3>
+          <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No projects yet</h3>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Create your first project to start collecting metrics and sharing dashboards.
           </p>
-          <div class="mt-6">
+          <div class="mt-4">
             <.link
               patch={~p"/projects/new"}
               class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
@@ -71,7 +73,7 @@ defmodule TrifleApp.ProjectsLive do
           </div>
         </div>
       <% else %>
-        <div class="mt-6 space-y-3">
+        <div class="space-y-3">
           <%= for project <- @projects do %>
             <div
               class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"

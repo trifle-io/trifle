@@ -135,7 +135,8 @@ defmodule Trifle.MonitorsTest do
         |> Repo.insert!()
 
       handles = ["email#" <> user.email, "slack_#{installation.reference}##{channel.name}"]
-      {channels, invalid} = Monitors.delivery_channels_from_handles(handles, membership)
+      {channels, invalid} =
+        Monitors.delivery_channels_from_handles(handles, membership, [])
 
       assert invalid == []
       assert Enum.count(channels) == 2

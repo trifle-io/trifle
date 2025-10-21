@@ -13,7 +13,11 @@ defmodule TrifleApp.MonitorLive do
     {:ok, redirect(socket, to: ~p"/organization/profile")}
   end
 
-  def mount(_params, _session, %{assigns: %{current_user: user, current_membership: membership}} = socket) do
+  def mount(
+        _params,
+        _session,
+        %{assigns: %{current_user: user, current_membership: membership}} = socket
+      ) do
     {:ok,
      socket
      |> assign(:current_user, user)
@@ -35,7 +39,7 @@ defmodule TrifleApp.MonitorLive do
       socket
       |> assign(:monitor, monitor)
       |> assign(:page_title, build_page_title(socket.assigns.live_action, monitor))
-      |> assign(:breadcrumb_links, ["Monitors", monitor.name])
+      |> assign(:breadcrumb_links, [{"Monitors", ~p"/monitors"}, monitor.name])
       |> assign(:executions, Monitors.list_recent_executions(monitor))
 
     {:noreply, apply_action(socket, socket.assigns.live_action)}
@@ -59,22 +63,7 @@ defmodule TrifleApp.MonitorLive do
 
   @impl true
   def handle_event("delete_monitor", _params, socket) do
-    %{monitor: monitor, current_membership: membership} = socket.assigns
-
-    case Monitors.delete_monitor_for_membership(monitor, membership) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Monitor deleted")
-         |> redirect(to: ~p"/monitors")}
-
-      {:error, :unauthorized} ->
-        {:noreply, put_flash(socket, :error, "You do not have permission to delete this monitor")}
-
-      {:error, %Changeset{} = changeset} ->
-        {:noreply,
-         put_flash(socket, :error, "Could not delete monitor: #{changeset_error_message(changeset)}")}
-    end
+    delete_monitor(socket, socket.assigns.monitor)
   end
 
   def handle_event("toggle_status", _params, socket) do
@@ -112,6 +101,10 @@ defmodule TrifleApp.MonitorLive do
      |> push_patch(to: ~p"/monitors/#{monitor.id}")}
   end
 
+  def handle_info({FormComponent, {:delete, monitor}}, socket) do
+    delete_monitor(socket, monitor)
+  end
+
   def handle_info({FormComponent, {:error, message}}, socket) do
     {:noreply, put_flash(socket, :error, message)}
   end
@@ -136,7 +129,10 @@ defmodule TrifleApp.MonitorLive do
 
   defp monitor_icon(assigns) do
     ~H"""
-    <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-teal-900/80 text-white">
+    <span class={[
+      "inline-flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-sm ring-1 ring-inset ring-black/10 dark:ring-white/10",
+      Monitor.icon_color_class(@monitor)
+    ]}>
       <%= if @monitor.type == :report do %>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -178,6 +174,31 @@ defmodule TrifleApp.MonitorLive do
     |> Enum.join(", ")
   end
 
+  defp delete_monitor(socket, %Monitor{} = monitor) do
+    membership = socket.assigns.current_membership
+
+    case Monitors.delete_monitor_for_membership(monitor, membership) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Monitor deleted")
+         |> redirect(to: ~p"/monitors")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to delete this monitor")}
+
+      {:error, %Changeset{} = changeset} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Could not delete monitor: #{changeset_error_message(changeset)}"
+         )}
+    end
+  end
+
+  defp delete_monitor(socket, _monitor), do: {:noreply, socket}
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -191,20 +212,25 @@ defmodule TrifleApp.MonitorLive do
               <%= if @monitor.type == :report do %>
                 Report monitor attached to
                 <%= if @monitor.dashboard do %>
-                  <.link navigate={~p"/dashboards/#{@monitor.dashboard.id}"} class="font-semibold text-teal-600 hover:text-teal-500">
+                  <.link
+                    navigate={~p"/dashboards/#{@monitor.dashboard.id}"}
+                    class="font-semibold text-teal-600 hover:text-teal-500"
+                  >
                     {@monitor.dashboard.name}
                   </.link>
                 <% else %>
-                  <span class="font-medium text-slate-500 dark:text-slate-400">unavailable dashboard</span>
+                  <span class="font-medium text-slate-500 dark:text-slate-400">
+                    unavailable dashboard
+                  </span>
                 <% end %>
               <% else %>
                 Alert monitor watching
                 <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-                  {@monitor.alert_settings && @monitor.alert_settings.metric_key || "—"}
+                  {(@monitor.alert_settings && @monitor.alert_settings.metric_key) || "—"}
                 </code>
                 at
                 <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-                  {@monitor.alert_settings && @monitor.alert_settings.metric_path || "—"}
+                  {(@monitor.alert_settings && @monitor.alert_settings.metric_path) || "—"}
                 </code>
               <% end %>
             </p>
@@ -214,37 +240,37 @@ defmodule TrifleApp.MonitorLive do
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <span
-            class={[
-              "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium uppercase tracking-wide",
-              @monitor.status == :active &&
-                "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200",
-              @monitor.status == :paused &&
-                "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
-            ]}
-          >
-            {@monitor.status |> Atom.to_string() |> String.upcase()}
-          </span>
           <.link
             patch={~p"/monitors/#{@monitor.id}/configure"}
-            class="inline-flex items-center gap-2 rounded-md border border-transparent bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+            class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
           >
-            Configure
+            <svg
+              class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            <span class="hidden md:inline">Configure</span>
           </.link>
           <button
             type="button"
             class="inline-flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/70"
             phx-click="toggle_status"
           >
-            <%= if @monitor.status == :active, do: "Pause", else: "Resume" %>
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-md border border-transparent bg-rose-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2"
-            phx-click="delete_monitor"
-            data-confirm="Delete this monitor? All trigger history will be removed."
-          >
-            Delete
+            {if @monitor.status == :active, do: "Pause", else: "Resume"}
           </button>
         </div>
       </div>
@@ -256,7 +282,6 @@ defmodule TrifleApp.MonitorLive do
           <% else %>
             <MonitorComponents.alert_panel monitor={@monitor} />
           <% end %>
-          <MonitorComponents.delivery_panel monitor={@monitor} />
         </div>
         <div class="lg:col-span-1">
           <MonitorComponents.trigger_history monitor={@monitor} executions={@executions} />

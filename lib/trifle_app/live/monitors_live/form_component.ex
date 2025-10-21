@@ -9,7 +9,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   @impl true
   def update(assigns, socket) do
-    Logger.debug("[MonitorForm] update action=#{assigns[:action]} handles=#{inspect(assigns[:monitor] && assigns.monitor.delivery_channels)}")
+    Logger.debug(
+      "[MonitorForm] update action=#{assigns[:action]} handles=#{inspect(assigns[:monitor] && assigns.monitor.delivery_channels)}"
+    )
+
     monitor = ensure_monitor_struct(assigns.monitor, assigns.current_membership)
 
     {:ok,
@@ -19,7 +22,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign_new(:delivery_options, fn -> assigns.delivery_options || [] end)
      |> assign_new(:delivery_handles, fn -> [] end)
      |> assign(assigns)
-     |> assign(:monitor, monitor)
+     |> assign(:persisted_monitor, monitor)
      |> assign(:action, assigns[:action] || derive_action(monitor))
      |> assign(:delivery_handle_error, nil)
      |> assign_form(assigns.changeset || Monitors.change_monitor(monitor, %{}))}
@@ -29,7 +32,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <.app_modal id="monitor-modal" show on_cancel={JS.patch(@patch)} size="xl">
+      <.app_modal id="monitor-modal" show on_cancel={JS.patch(@patch)} size="md">
         <:title>{@title}</:title>
         <:body>
           <.simple_form
@@ -39,179 +42,217 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
             phx-change="validate"
             phx-submit="save"
           >
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div class="col-span-1 md:col-span-2">
-              <.input field={@form[:name]} label="Monitor name" required />
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div class="col-span-1 md:col-span-2">
+                <.input field={@form[:name]} label="Monitor name" required />
+              </div>
+              <div>
+                <.input
+                  field={@form[:type]}
+                  type="select"
+                  label="Monitor type"
+                  options={[{"Report monitor", "report"}, {"Alert monitor", "alert"}]}
+                />
+              </div>
+              <div class="col-span-1 md:col-span-2">
+                <.input
+                  field={@form[:description]}
+                  type="textarea"
+                  label="Description"
+                  placeholder="Let teammates know what this monitor does."
+                />
+              </div>
             </div>
-            <div>
-              <.input
-                field={@form[:type]}
-                type="select"
-                label="Monitor type"
-                options={[{"Report monitor", "report"}, {"Alert monitor", "alert"}]}
-              />
-            </div>
-            <div>
-              <.input
-                field={@form[:status]}
-                type="select"
-                label="Status"
-                options={[{"Active", "active"}, {"Paused", "paused"}]}
-              />
-            </div>
-            <div class="col-span-1 md:col-span-2">
-              <.input
-                field={@form[:description]}
-                type="textarea"
-                label="Description"
-                placeholder="Let teammates know what this monitor does."
-              />
-            </div>
-          </div>
 
-          <% type = @monitor.type || :report %>
+            <% type = @monitor.type || :report %>
 
-          <div class="mt-6 space-y-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
-              <%= if type == :report, do: "Report configuration", else: "Alert configuration" %>
-            </h3>
+            <div class="mt-6 space-y-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
+              <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
+                {if type == :report, do: "Report configuration", else: "Alert configuration"}
+              </h3>
 
-            <%= if type == :report do %>
-              <.inputs_for :let={report_form} field={@form[:report_settings]}>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
-                      Attach to dashboard
-                    </label>
-                    <select
-                      name={@form[:dashboard_id].name}
-                      id={@form[:dashboard_id].id}
-                      class="block w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                    >
-                      <option value="">Select dashboard...</option>
-                      <%= for dashboard <- @available_dashboards do %>
-                        <option value={dashboard.id} selected={dashboard.id == @form[:dashboard_id].value}>
-                          {dashboard.name}
-                        </option>
+              <%= if type == :report do %>
+                <.inputs_for :let={report_form} field={@form[:report_settings]}>
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                        Attach to dashboard
+                      </label>
+                      <select
+                        name={@form[:dashboard_id].name}
+                        id={@form[:dashboard_id].id}
+                        class="block w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      >
+                        <option value="">Select dashboard...</option>
+                        <%= for dashboard <- @available_dashboards do %>
+                          <option
+                            value={dashboard.id}
+                            selected={dashboard.id == @form[:dashboard_id].value}
+                          >
+                            {dashboard.name}
+                          </option>
+                        <% end %>
+                      </select>
+                      <%= for error <- @form[:dashboard_id].errors do %>
+                        <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                          {translate_error(error)}
+                        </p>
                       <% end %>
-                    </select>
-                    <%= for error <- @form[:dashboard_id].errors do %>
-                      <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">{translate_error(error)}</p>
-                    <% end %>
-                    <%= if @available_dashboards == [] do %>
-                      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                        No dashboards found. Create a dashboard first to connect report monitors.
-                      </p>
-                    <% end %>
+                      <%= if @available_dashboards == [] do %>
+                        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          No dashboards found. Create a dashboard first to connect report monitors.
+                        </p>
+                      <% end %>
+                    </div>
+                    <div>
+                      <.input
+                        field={report_form[:frequency]}
+                        type="select"
+                        label="Delivery cadence"
+                        options={[
+                          {"Daily", "daily"},
+                          {"Weekly", "weekly"},
+                          {"Monthly", "monthly"},
+                          {"Custom (CRON)", "custom"}
+                        ]}
+                      />
+                    </div>
+                    <div>
+                      <.input
+                        field={report_form[:timeframe]}
+                        label="Timeframe window"
+                        placeholder="e.g. 7d, 30d"
+                      />
+                    </div>
+                    <div>
+                      <.input
+                        field={report_form[:granularity]}
+                        label="Granularity"
+                        placeholder="e.g. 1h, 1d"
+                      />
+                    </div>
+                    <% frequency_value = report_form[:frequency].value %>
+                    <div :if={frequency_value in [:custom, "custom"]}>
+                      <.input
+                        field={report_form[:custom_cron]}
+                        label="CRON expression"
+                        placeholder="0 7 * * MON"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <.input
-                      field={report_form[:frequency]}
-                      type="select"
-                      label="Delivery cadence"
-                      options={[
-                        {"Daily", "daily"},
-                        {"Weekly", "weekly"},
-                        {"Monthly", "monthly"},
-                        {"Custom (CRON)", "custom"}
-                      ]}
-                    />
+                </.inputs_for>
+              <% else %>
+                <.inputs_for :let={alert_form} field={@form[:alert_settings]}>
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <.input
+                        field={alert_form[:metric_key]}
+                        label="Metric key"
+                        placeholder="e.g. app.signups.total"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <.input
+                        field={alert_form[:metric_path]}
+                        label="Metric path"
+                        placeholder="e.g. $.country.US"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <.input
+                        field={alert_form[:timeframe]}
+                        label="Evaluation timeframe"
+                        placeholder="e.g. 1h"
+                      />
+                    </div>
+                    <div>
+                      <.input
+                        field={alert_form[:granularity]}
+                        label="Evaluation granularity"
+                        placeholder="e.g. 5m"
+                      />
+                    </div>
+                    <div>
+                      <.input
+                        field={alert_form[:analysis_strategy]}
+                        type="select"
+                        label="Analysis strategy"
+                        options={[
+                          {"Threshold", "threshold"},
+                          {"Range", "range"},
+                          {"Anomaly detection", "anomaly_detection"}
+                        ]}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <.input
-                      field={report_form[:timeframe]}
-                      label="Timeframe window"
-                      placeholder="e.g. 7d, 30d"
-                    />
-                  </div>
-                  <div>
-                    <.input
-                      field={report_form[:granularity]}
-                      label="Granularity"
-                      placeholder="e.g. 1h, 1d"
-                    />
-                  </div>
-                  <% frequency_value = report_form[:frequency].value %>
-                  <div :if={frequency_value in [:custom, "custom"]}>
-                    <.input
-                      field={report_form[:custom_cron]}
-                      label="CRON expression"
-                      placeholder="0 7 * * MON"
-                    />
-                  </div>
-                </div>
-              </.inputs_for>
-            <% else %>
-              <.inputs_for :let={alert_form} field={@form[:alert_settings]}>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <.input
-                      field={alert_form[:metric_key]}
-                      label="Metric key"
-                      placeholder="e.g. app.signups.total"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <.input
-                      field={alert_form[:metric_path]}
-                      label="Metric path"
-                      placeholder="e.g. $.country.US"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <.input
-                      field={alert_form[:timeframe]}
-                      label="Evaluation timeframe"
-                      placeholder="e.g. 1h"
-                    />
-                  </div>
-                  <div>
-                    <.input
-                      field={alert_form[:granularity]}
-                      label="Evaluation granularity"
-                      placeholder="e.g. 5m"
-                    />
-                  </div>
-                  <div>
-                    <.input
-                      field={alert_form[:analysis_strategy]}
-                      type="select"
-                      label="Analysis strategy"
-                      options={[
-                        {"Threshold", "threshold"},
-                        {"Range", "range"},
-                        {"Anomaly detection", "anomaly_detection"}
-                      ]}
-                    />
-                  </div>
-                </div>
-              </.inputs_for>
-            <% end %>
-          </div>
+                </.inputs_for>
+              <% end %>
+            </div>
 
-          <div class="mt-6">
-            <.delivery_selector
-              id="monitor-delivery-selector"
-              name="monitor[delivery_handles]"
-              label="Delivery targets"
-              placeholder="Select teammates or channels..."
-              options={@delivery_options}
-              values={@delivery_handles || []}
-              error={@delivery_handle_error}
-              help="Choose where to deliver monitor notifications. Start typing to narrow down recipients."
-            />
-          </div>
+            <div class="mt-6">
+              <.delivery_selector
+                id="monitor-delivery-selector"
+                name="monitor[delivery_handles]"
+                label="Delivery targets"
+                placeholder="Select teammates or channels..."
+                options={@delivery_options}
+                values={@delivery_handles || []}
+                error={@delivery_handle_error}
+                help="Choose where to deliver monitor notifications. Start typing to narrow down recipients."
+              />
+            </div>
 
             <:actions>
-              <.button type="button" variant="ghost" phx-click={JS.patch(@patch)}>
-                Cancel
-              </.button>
-              <.button type="submit">
-                <%= if @action == :new, do: "Create monitor", else: "Save changes" %>
-              </.button>
+              <div class="flex w-full items-center justify-end gap-3">
+                <.link
+                  patch={@patch}
+                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
+                >
+                  Cancel
+                </.link>
+                <.button type="submit">
+                  {if @action == :new, do: "Create monitor", else: "Save changes"}
+                </.button>
+              </div>
             </:actions>
+
+            <div
+              :if={@persisted_monitor && @persisted_monitor.id}
+              class="mt-8 border-t border-red-200 pt-6 dark:border-red-800"
+            >
+              <div class="mb-4">
+                <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger zone</span>
+                <p class="text-xs text-red-600 dark:text-red-400">
+                  Deleting this monitor cannot be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="delete_monitor"
+                phx-target={@myself}
+                data-confirm="Are you sure you want to delete this monitor? This action cannot be undone."
+                class="w-full inline-flex items-center justify-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+              >
+                <svg
+                  class="-ml-0.5 mr-1.5 h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                  />
+                </svg>
+                <span class="hidden md:inline">Delete monitor</span>
+                <span class="md:hidden">Delete</span>
+              </button>
+            </div>
           </.simple_form>
         </:body>
       </.app_modal>
@@ -221,7 +262,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   @impl true
   def handle_event("validate", %{"monitor" => monitor_params}, socket) do
-    Logger.debug("[MonitorForm] validate event - delivery_handles: #{inspect(monitor_params["delivery_handles"])}")
+    Logger.debug(
+      "[MonitorForm] validate event - delivery_handles: #{inspect(monitor_params["delivery_handles"])}"
+    )
+
     {prepared_params, handles, invalid} = normalize_delivery_params(monitor_params, socket)
 
     changeset =
@@ -256,6 +300,14 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end
   end
 
+  def handle_event("delete_monitor", _params, socket) do
+    if socket.assigns.persisted_monitor && socket.assigns.persisted_monitor.id do
+      notify_parent({:delete, socket.assigns.persisted_monitor})
+    end
+
+    {:noreply, socket}
+  end
+
   defp save_monitor(socket, :new, monitor_params, handles) do
     case Monitors.create_monitor_for_membership(
            socket.assigns.current_user,
@@ -267,6 +319,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
         {:noreply,
          socket
+         |> assign(:persisted_monitor, monitor)
          |> assign(:monitor, monitor)
          |> assign(:delivery_handle_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
@@ -281,7 +334,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp save_monitor(socket, :edit, monitor_params, handles) do
     case Monitors.update_monitor_for_membership(
-           socket.assigns.monitor,
+           socket.assigns.persisted_monitor,
            socket.assigns.current_membership,
            monitor_params
          ) do
@@ -290,6 +343,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
         {:noreply,
          socket
+         |> assign(:persisted_monitor, monitor)
          |> assign(:monitor, monitor)
          |> assign(:delivery_handle_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
@@ -319,7 +373,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     |> assign(:delivery_handles, handles)
   end
 
-  defp ensure_monitor_struct(%Monitor{} = monitor, _membership), do: populate_missing_embeds(monitor)
+  defp ensure_monitor_struct(%Monitor{} = monitor, _membership),
+    do: populate_missing_embeds(monitor)
 
   defp ensure_monitor_struct(nil, membership) do
     %Monitor{organization_id: membership.organization_id, status: :active, type: :report}
@@ -356,7 +411,14 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   defp normalize_delivery_params(params, socket) do
     membership = socket.assigns.current_membership
     handles = params |> Map.get("delivery_handles", "") |> parse_handles()
-    {channels, invalid} = Monitors.delivery_channels_from_handles(handles, membership)
+    base_monitor = socket.assigns.persisted_monitor || %Monitor{}
+
+    {channels, invalid} =
+      Monitors.delivery_channels_from_handles(
+        handles,
+        membership,
+        base_monitor.delivery_channels || []
+      )
 
     prepared_params =
       params
