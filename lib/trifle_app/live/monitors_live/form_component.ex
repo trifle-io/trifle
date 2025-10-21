@@ -42,166 +42,171 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
             phx-change="validate"
             phx-submit="save"
           >
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div class="col-span-1 md:col-span-2">
-                <.input field={@form[:name]} label="Monitor name" required />
+            <div class="space-y-6">
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div class="col-span-1 md:col-span-2">
+                  <.input field={@form[:name]} label="Monitor name" required />
+                </div>
+                <div>
+                  <.input
+                    field={@form[:type]}
+                    type="select"
+                    label="Monitor type"
+                    options={[{"Report monitor", "report"}, {"Alert monitor", "alert"}]}
+                  />
+                </div>
+                <div class="col-span-1 md:col-span-2">
+                  <.input
+                    field={@form[:description]}
+                    type="textarea"
+                    label="Description"
+                    placeholder="Let teammates know what this monitor does."
+                  />
+                </div>
               </div>
-              <div>
-                <.input
-                  field={@form[:type]}
-                  type="select"
-                  label="Monitor type"
-                  options={[{"Report monitor", "report"}, {"Alert monitor", "alert"}]}
-                />
-              </div>
-              <div class="col-span-1 md:col-span-2">
-                <.input
-                  field={@form[:description]}
-                  type="textarea"
-                  label="Description"
-                  placeholder="Let teammates know what this monitor does."
-                />
-              </div>
-            </div>
 
-            <% type = @monitor.type || :report %>
+              <% type = @monitor.type || :report %>
 
-            <div class="mt-6 space-y-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
-              <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
-                {if type == :report, do: "Report configuration", else: "Alert configuration"}
-              </h3>
-
-              <%= if type == :report do %>
-                <.inputs_for :let={report_form} field={@form[:report_settings]}>
-                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
-                        Attach to dashboard
-                      </label>
-                      <select
-                        name={@form[:dashboard_id].name}
-                        id={@form[:dashboard_id].id}
-                        class="block w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                      >
-                        <option value="">Select dashboard...</option>
-                        <%= for dashboard <- @available_dashboards do %>
-                          <option
-                            value={dashboard.id}
-                            selected={dashboard.id == @form[:dashboard_id].value}
+              <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
+                  {if type == :report, do: "Report configuration", else: "Alert configuration"}
+                </h3>
+                <div class="mt-4">
+                  <%= if type == :report do %>
+                    <.inputs_for :let={report_form} field={@form[:report_settings]}>
+                      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div class="md:col-span-2">
+                          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Attach to dashboard
+                          </label>
+                          <select
+                            name={@form[:dashboard_id].name}
+                            id={@form[:dashboard_id].id}
+                            class="block w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                           >
-                            {dashboard.name}
-                          </option>
-                        <% end %>
-                      </select>
-                      <%= for error <- @form[:dashboard_id].errors do %>
-                        <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
-                          {translate_error(error)}
-                        </p>
-                      <% end %>
-                      <%= if @available_dashboards == [] do %>
-                        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          No dashboards found. Create a dashboard first to connect report monitors.
-                        </p>
-                      <% end %>
-                    </div>
-                    <div>
-                      <.input
-                        field={report_form[:frequency]}
-                        type="select"
-                        label="Delivery cadence"
-                        options={[
-                          {"Daily", "daily"},
-                          {"Weekly", "weekly"},
-                          {"Monthly", "monthly"},
-                          {"Custom (CRON)", "custom"}
-                        ]}
-                      />
-                    </div>
-                    <div>
-                      <.input
-                        field={report_form[:timeframe]}
-                        label="Timeframe window"
-                        placeholder="e.g. 7d, 30d"
-                      />
-                    </div>
-                    <div>
-                      <.input
-                        field={report_form[:granularity]}
-                        label="Granularity"
-                        placeholder="e.g. 1h, 1d"
-                      />
-                    </div>
-                    <% frequency_value = report_form[:frequency].value %>
-                    <div :if={frequency_value in [:custom, "custom"]}>
-                      <.input
-                        field={report_form[:custom_cron]}
-                        label="CRON expression"
-                        placeholder="0 7 * * MON"
-                      />
-                    </div>
-                  </div>
-                </.inputs_for>
-              <% else %>
-                <.inputs_for :let={alert_form} field={@form[:alert_settings]}>
-                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <.input
-                        field={alert_form[:metric_key]}
-                        label="Metric key"
-                        placeholder="e.g. app.signups.total"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <.input
-                        field={alert_form[:metric_path]}
-                        label="Metric path"
-                        placeholder="e.g. $.country.US"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <.input
-                        field={alert_form[:timeframe]}
-                        label="Evaluation timeframe"
-                        placeholder="e.g. 1h"
-                      />
-                    </div>
-                    <div>
-                      <.input
-                        field={alert_form[:granularity]}
-                        label="Evaluation granularity"
-                        placeholder="e.g. 5m"
-                      />
-                    </div>
-                    <div>
-                      <.input
-                        field={alert_form[:analysis_strategy]}
-                        type="select"
-                        label="Analysis strategy"
-                        options={[
-                          {"Threshold", "threshold"},
-                          {"Range", "range"},
-                          {"Anomaly detection", "anomaly_detection"}
-                        ]}
-                      />
-                    </div>
-                  </div>
-                </.inputs_for>
-              <% end %>
-            </div>
+                            <option value="">Select dashboard...</option>
+                            <%= for dashboard <- @available_dashboards do %>
+                              <option value={dashboard.id} selected={dashboard.id == @form[:dashboard_id].value}>
+                                {dashboard.name}
+                              </option>
+                            <% end %>
+                          </select>
+                          <%= for error <- @form[:dashboard_id].errors do %>
+                            <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                              {translate_error(error)}
+                            </p>
+                          <% end %>
+                          <%= if @available_dashboards == [] do %>
+                            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                              No dashboards found. Create a dashboard first to connect report monitors.
+                            </p>
+                          <% end %>
+                        </div>
+                        <div>
+                          <.input
+                            field={report_form[:frequency]}
+                            type="select"
+                            label="Delivery cadence"
+                            options={[
+                              {"Daily", "daily"},
+                              {"Weekly", "weekly"},
+                              {"Monthly", "monthly"},
+                              {"Custom (CRON)", "custom"}
+                            ]}
+                          />
+                        </div>
+                        <div>
+                          <.input
+                            field={report_form[:timeframe]}
+                            label="Timeframe window"
+                            placeholder="e.g. 7d, 30d"
+                          />
+                        </div>
+                        <div>
+                          <.input
+                            field={report_form[:granularity]}
+                            label="Granularity"
+                            placeholder="e.g. 1h, 1d"
+                          />
+                        </div>
+                        <% frequency_value = report_form[:frequency].value %>
+                        <div :if={frequency_value in [:custom, "custom"]}>
+                          <.input
+                            field={report_form[:custom_cron]}
+                            label="CRON expression"
+                            placeholder="0 7 * * MON"
+                          />
+                        </div>
+                      </div>
+                    </.inputs_for>
+                  <% else %>
+                    <.inputs_for :let={alert_form} field={@form[:alert_settings]}>
+                      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <.input
+                            field={alert_form[:metric_key]}
+                            label="Metric key"
+                            placeholder="e.g. app.signups.total"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <.input
+                            field={alert_form[:metric_path]}
+                            label="Metric path"
+                            placeholder="e.g. $.country.US"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <.input
+                            field={alert_form[:timeframe]}
+                            label="Evaluation timeframe"
+                            placeholder="e.g. 1h"
+                          />
+                        </div>
+                        <div>
+                          <.input
+                            field={alert_form[:granularity]}
+                            label="Evaluation granularity"
+                            placeholder="e.g. 5m"
+                          />
+                        </div>
+                        <div>
+                          <.input
+                            field={alert_form[:analysis_strategy]}
+                            type="select"
+                            label="Analysis strategy"
+                            options={[
+                              {"Threshold", "threshold"},
+                              {"Range", "range"},
+                              {"Anomaly detection", "anomaly_detection"}
+                            ]}
+                          />
+                        </div>
+                      </div>
+                    </.inputs_for>
+                  <% end %>
+                </div>
+              </div>
 
-            <div class="mt-6">
-              <.delivery_selector
-                id="monitor-delivery-selector"
-                name="monitor[delivery_handles]"
-                label="Delivery targets"
-                placeholder="Select teammates or channels..."
-                options={@delivery_options}
-                values={@delivery_handles || []}
-                error={@delivery_handle_error}
-                help="Choose where to deliver monitor notifications. Start typing to narrow down recipients."
-              />
+              <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Delivery targets</h3>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Choose the channels or teammates that should receive this monitor.
+                </p>
+                <div class="mt-4">
+                  <.delivery_selector
+                    id="monitor-delivery-selector"
+                    name="monitor[delivery_handles]"
+                    placeholder="Select teammates or channels..."
+                    options={@delivery_options}
+                    values={@delivery_handles || []}
+                    error={@delivery_handle_error}
+                    help="Start typing to narrow down recipients."
+                  />
+                </div>
+              </div>
             </div>
 
             <:actions>

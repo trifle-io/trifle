@@ -276,14 +276,24 @@ defmodule TrifleApp.MonitorLive do
       </div>
 
       <div class="grid gap-6 lg:grid-cols-3">
-        <div class="lg:col-span-2 space-y-6">
+        <div class="lg:col-span-2">
+          <div class="flex h-full min-h-[16rem] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-700 dark:bg-slate-800/40">
+            <div>
+              <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Monitor insights
+              </h3>
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Additional visualizations and summaries will appear here soon.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-6">
           <%= if @monitor.type == :report do %>
             <MonitorComponents.report_panel monitor={@monitor} dashboard={@monitor.dashboard} />
           <% else %>
             <MonitorComponents.alert_panel monitor={@monitor} />
           <% end %>
-        </div>
-        <div class="lg:col-span-1">
           <MonitorComponents.trigger_history monitor={@monitor} executions={@executions} />
         </div>
       </div>
