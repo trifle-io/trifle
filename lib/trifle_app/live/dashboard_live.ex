@@ -10,6 +10,7 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.{Kpi, Timeseries, Category, Text}
   require Logger
 
   @capture_group_regex ~r/\((?:\\.|[^()])*\)/
@@ -389,9 +390,9 @@ defmodule TrifleApp.DashboardLive do
 
             socket =
               if socket.assigns[:stats] do
-                {kpi_items, kpi_visuals} = compute_kpi_datasets(socket.assigns.stats, items)
-                ts_items = compute_timeseries_widgets(socket.assigns.stats, items)
-                cat_items = compute_category_widgets(socket.assigns.stats, items)
+                {kpi_items, kpi_visuals} = Kpi.datasets(socket.assigns.stats, items)
+                ts_items = Timeseries.datasets(socket.assigns.stats, items)
+                cat_items = Category.datasets(socket.assigns.stats, items)
 
                 socket
                 |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
@@ -402,7 +403,7 @@ defmodule TrifleApp.DashboardLive do
                 socket
               end
 
-            text_items = compute_text_widgets(items)
+            text_items = Text.widgets(items)
             socket = push_event(socket, "dashboard_grid_text", %{items: text_items})
 
             {:noreply, socket}
@@ -675,9 +676,9 @@ defmodule TrifleApp.DashboardLive do
             socket =
               if socket.assigns[:stats] do
                 items = dashboard.payload["grid"] || []
-                {kpi_items, kpi_visuals} = compute_kpi_datasets(socket.assigns.stats, items)
-                ts_items = compute_timeseries_widgets(socket.assigns.stats, items)
-                cat_items = compute_category_widgets(socket.assigns.stats, items)
+                {kpi_items, kpi_visuals} = Kpi.datasets(socket.assigns.stats, items)
+                ts_items = Timeseries.datasets(socket.assigns.stats, items)
+                cat_items = Category.datasets(socket.assigns.stats, items)
 
                 socket
                 |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
@@ -885,556 +886,6 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp compute_kpi_values(series_struct, grid_items) do
-    compute_kpi_datasets(series_struct, grid_items) |> elem(0)
-  end
-
-  defp compute_kpi_visuals(series_struct, grid_items) do
-    compute_kpi_datasets(series_struct, grid_items) |> elem(1)
-  end
-
-  defp compute_kpi_datasets(series_struct, grid_items) do
-    grid_items
-    |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "kpi")) == "kpi" end)
-    |> Enum.reduce({[], []}, fn item, {values, visuals} ->
-      case build_kpi_dataset(series_struct, item) do
-        nil -> {values, visuals}
-        {value_map, nil} -> {[value_map | values], visuals}
-        {value_map, visual_map} -> {[value_map | values], [visual_map | visuals]}
-      end
-    end)
-    |> then(fn {vals, vis} -> {Enum.reverse(vals), Enum.reverse(vis)} end)
-  end
-
-  defp build_kpi_dataset(series_struct, item) do
-    id = to_string(item["id"])
-    path = to_string(item["path"] || "")
-    func = String.downcase(to_string(item["function"] || "mean"))
-    size = to_string(item["size"] || "m")
-    subtype = DashboardWidgetHelpers.normalize_kpi_subtype(item["subtype"], item)
-
-    case subtype do
-      "split" ->
-        list = aggregate_for_function(series_struct, path, func, 2) |> List.wrap()
-        len = length(list)
-        prev = if len >= 2, do: Enum.at(list, len - 2), else: nil
-        curr = if len >= 1, do: Enum.at(list, len - 1), else: nil
-        current = to_number(curr)
-        previous = to_number(prev)
-        show_diff = !!item["diff"]
-        has_visual = !!item["timeseries"]
-
-        value_map =
-          %{
-            id: id,
-            subtype: "split",
-            size: size,
-            current: current,
-            previous: previous,
-            show_diff: show_diff,
-            has_visual: has_visual,
-            visual_type: if(has_visual, do: "sparkline", else: nil)
-          }
-          |> Map.put(:path, path)
-
-        visual_map =
-          if has_visual do
-            %{id: id, type: "sparkline", data: build_kpi_timeline(series_struct, path)}
-          end
-
-        {value_map, visual_map}
-
-      "goal" ->
-        value =
-          aggregate_for_function(series_struct, path, func, 1)
-          |> List.wrap()
-          |> List.first()
-          |> to_number()
-
-        target = to_number(item["goal_target"])
-
-        progress_enabled = !!item["goal_progress"]
-        invert_goal = !!item["goal_invert"]
-
-        ratio =
-          if is_number(value) and is_number(target) and target != 0, do: value / target, else: nil
-
-        has_visual = progress_enabled and ratio != nil
-
-        value_map =
-          %{
-            id: id,
-            subtype: "goal",
-            size: size,
-            value: value,
-            target: target,
-            progress_enabled: progress_enabled,
-            progress_ratio: ratio,
-            invert: invert_goal,
-            has_visual: has_visual,
-            visual_type: if(has_visual, do: "progress", else: nil)
-          }
-          |> Map.put(:path, path)
-
-        visual_map =
-          if has_visual do
-            %{
-              id: id,
-              type: "progress",
-              current: value || 0.0,
-              target: target,
-              ratio: ratio,
-              invert: invert_goal
-            }
-          end
-
-        {value_map, visual_map}
-
-      _ ->
-        value =
-          aggregate_for_function(series_struct, path, func, 1)
-          |> List.wrap()
-          |> List.first()
-          |> to_number()
-
-        has_visual = !!item["timeseries"]
-
-        value_map =
-          %{
-            id: id,
-            subtype: "number",
-            size: size,
-            value: value,
-            has_visual: has_visual,
-            visual_type: if(has_visual, do: "sparkline", else: nil)
-          }
-          |> Map.put(:path, path)
-
-        visual_map =
-          if has_visual do
-            %{id: id, type: "sparkline", data: build_kpi_timeline(series_struct, path)}
-          end
-
-        {value_map, visual_map}
-    end
-  end
-
-  defp build_kpi_timeline(series_struct, path) do
-    normalized_path = to_string(path || "")
-
-    timeline_map =
-      format_timeline_map(series_struct, normalized_path, 1, fn at, value ->
-        naive = DateTime.to_naive(at)
-        utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-        ts = DateTime.to_unix(utc_dt, :millisecond)
-
-        val =
-          cond do
-            match?(%Decimal{}, value) -> Decimal.to_float(value)
-            is_number(value) -> value * 1.0
-            true -> 0.0
-          end
-
-        [ts, val]
-      end)
-
-    extract_timeline_series(timeline_map, normalized_path)
-  end
-
-  defp format_timeline_map(series_struct, path, slices, callback) do
-    result = Trifle.Stats.Series.format_timeline(series_struct, path, slices, callback)
-
-    cond do
-      is_map(result) -> result
-      is_list(result) -> %{path => result}
-      true -> %{}
-    end
-  end
-
-  defp extract_timeline_series(timeline_map, path) do
-    cond do
-      timeline_map == %{} ->
-        []
-
-      Map.has_key?(timeline_map, path) ->
-        normalize_timeline_points(Map.get(timeline_map, path))
-
-      true ->
-        timeline_map
-        |> Enum.take(1)
-        |> Enum.map(fn {_k, value} -> normalize_timeline_points(value) end)
-        |> List.first()
-        |> case do
-          nil -> []
-          points -> points
-        end
-    end
-  end
-
-  defp normalize_timeline_points(nil), do: []
-  defp normalize_timeline_points(list) when is_list(list), do: list
-  defp normalize_timeline_points(other), do: List.wrap(other)
-
-  defp merge_category_formatted_with_order({acc_map, acc_order}, formatted) do
-    cond do
-      is_list(formatted) ->
-        formatted
-        |> Enum.filter(&is_map/1)
-        |> Enum.reduce({acc_map, acc_order}, &merge_category_map_with_order(&2, &1))
-
-      is_map(formatted) ->
-        merge_category_map_with_order({acc_map, acc_order}, formatted)
-
-      true ->
-        {acc_map, acc_order}
-    end
-  end
-
-  defp merge_category_map_with_order({acc_map, acc_order}, map) do
-    Enum.reduce(map, {acc_map, acc_order}, fn {key, value}, {map_acc, order_acc} ->
-      name = to_string(key)
-      number = normalize_number(value)
-      updated_map = Map.update(map_acc, name, number, fn existing -> existing + number end)
-      updated_order = if name in order_acc, do: order_acc, else: order_acc ++ [name]
-      {updated_map, updated_order}
-    end)
-  end
-
-  defp category_custom_order?(paths) do
-    sanitized =
-      paths
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-
-    case sanitized do
-      [] -> false
-      list -> length(list) > 1 and Enum.all?(list, &(not String.contains?(&1, "*")))
-    end
-  end
-
-  defp sort_category_entries(entries, encounter_order, wildcard_paths?, custom_order?) do
-    cond do
-      wildcard_paths? ->
-        Enum.sort_by(entries, fn %{name: name} -> natural_sort_key(name) end)
-
-      custom_order? and encounter_order != [] ->
-        index_map = encounter_order |> Enum.with_index() |> Map.new()
-        fallback_index = map_size(index_map)
-
-        Enum.sort_by(entries, fn %{name: name} ->
-          {Map.get(index_map, name, fallback_index), natural_sort_key(name)}
-        end)
-
-      true ->
-        Enum.sort_by(entries, fn %{name: name} -> String.downcase(name || "") end)
-    end
-  end
-
-  defp natural_sort_key(nil), do: [{:str, ""}]
-
-  defp natural_sort_key(name) when is_binary(name) do
-    case Regex.scan(~r/\d+|\D+/, name) do
-      [] ->
-        [{:str, String.downcase(name)}]
-
-      segments ->
-        segments
-        |> Enum.map(&List.first/1)
-        |> Enum.map(&natural_token/1)
-    end
-  end
-
-  defp natural_sort_key(other), do: other |> to_string() |> natural_sort_key()
-
-  defp natural_token(segment) do
-    cond do
-      segment == "" ->
-        {:str, ""}
-
-      true ->
-        case Integer.parse(segment) do
-          {int, ""} ->
-            {:num, int}
-
-          _ ->
-            case Float.parse(segment) do
-              {float, ""} -> {:num, float}
-              _ -> {:str, String.downcase(segment)}
-            end
-        end
-    end
-  end
-
-  defp aggregate_for_function(series_struct, path, func, slices) do
-    case func do
-      "sum" -> Trifle.Stats.Series.aggregate_sum(series_struct, path, slices)
-      "min" -> Trifle.Stats.Series.aggregate_min(series_struct, path, slices)
-      "max" -> Trifle.Stats.Series.aggregate_max(series_struct, path, slices)
-      _ -> Trifle.Stats.Series.aggregate_mean(series_struct, path, slices)
-    end
-  end
-
-  defp to_number(%Decimal{} = d), do: Decimal.to_float(d)
-  defp to_number(v) when is_number(v), do: v * 1.0
-
-  defp to_number(v) when is_binary(v) do
-    trimmed = String.trim(v)
-
-    case trimmed do
-      "" ->
-        nil
-
-      _ ->
-        cleaned = String.replace(trimmed, ~r/[,_\s]/, "")
-
-        case Float.parse(cleaned) do
-          {num, _} -> num
-          :error -> nil
-        end
-    end
-  end
-
-  defp to_number(_), do: nil
-
-  # Build timeseries chart data for timeseries widgets
-  defp compute_timeseries_widgets(series_struct, grid_items) do
-    items =
-      grid_items
-      |> Enum.filter(fn item ->
-        String.downcase(to_string(item["type"] || "")) == "timeseries"
-      end)
-      |> Enum.map(fn item ->
-        id = to_string(item["id"])
-
-        raw_paths =
-          case item["paths"] do
-            list when is_list(list) -> list
-            _ -> []
-          end
-
-        fallback_paths =
-          case Map.get(item, "path") do
-            nil -> []
-            "" -> []
-            value -> [value]
-          end
-
-        paths =
-          (raw_paths ++ fallback_paths)
-          |> Enum.map(&to_string/1)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-
-        chart_type = String.downcase(to_string(item["chart_type"] || "line"))
-        stacked = !!item["stacked"]
-        normalized = !!item["normalized"]
-        legend = !!item["legend"]
-        y_label = to_string(item["y_label"] || "")
-
-        # Use formatter to align timeline and values per path
-        timeline_callback = fn at, value ->
-          naive = DateTime.to_naive(at)
-          utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-          ts = DateTime.to_unix(utc_dt, :millisecond)
-
-          val =
-            case value do
-              %Decimal{} = d -> Decimal.to_float(d)
-              v when is_number(v) -> v * 1.0
-              _ -> 0.0
-            end
-
-          [ts, val]
-        end
-
-        per_path =
-          Enum.reduce(paths, [], fn path, acc ->
-            timeline_map = format_timeline_map(series_struct, path, 1, timeline_callback)
-
-            Enum.reduce(timeline_map, acc, fn {series_path, data}, inner_acc ->
-              name = to_string(series_path)
-              normalized_data = normalize_timeline_points(data)
-
-              case Enum.find_index(inner_acc, &(&1.name == name)) do
-                nil ->
-                  inner_acc ++ [%{name: name, data: normalized_data}]
-
-                idx ->
-                  List.update_at(inner_acc, idx, fn _ -> %{name: name, data: normalized_data} end)
-              end
-            end)
-          end)
-
-        series =
-          if normalized and length(per_path) > 0 do
-            # Build normalized percentages across series
-            Enum.map(per_path, fn s ->
-              values = s.data
-
-              normed =
-                Enum.with_index(values)
-                |> Enum.map(fn {point, idx} ->
-                  {ts, v} =
-                    case point do
-                      [ts0, v0] -> {ts0, v0}
-                      {ts0, v0} -> {ts0, v0}
-                      _ -> {nil, 0.0}
-                    end
-
-                  total =
-                    Enum.reduce(per_path, 0.0, fn other, acc ->
-                      ov =
-                        case Enum.at(other.data, idx) do
-                          [_, ovv] -> ovv
-                          {_, ovv} -> ovv
-                          _ -> 0.0
-                        end
-
-                      acc + (ov || 0.0)
-                    end)
-
-                  pct = if total > 0.0 and is_number(v), do: v / total * 100.0, else: 0.0
-                  [ts, pct]
-                end)
-
-              %{s | data: normed}
-            end)
-          else
-            per_path
-          end
-
-        %{
-          id: id,
-          chart_type: chart_type,
-          stacked: stacked,
-          normalized: normalized,
-          legend: legend,
-          y_label: y_label,
-          series: series
-        }
-      end)
-
-    Logger.debug(fn ->
-      summary =
-        Enum.map(items, fn i ->
-          %{
-            id: i.id,
-            series: Enum.map(i.series, fn s -> %{name: s.name, points: length(s.data)} end)
-          }
-        end)
-
-      "Timeseries widgets: " <> inspect(summary)
-    end)
-
-    items
-  end
-
-  # Build category chart data for category widgets using the formatter
-  defp compute_category_widgets(series_struct, grid_items) do
-    items =
-      grid_items
-      |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "category" end)
-      |> Enum.map(fn item ->
-        id = to_string(item["id"])
-
-        raw_paths =
-          case item["paths"] do
-            list when is_list(list) -> list
-            _ -> []
-          end
-
-        fallback_paths =
-          case Map.get(item, "path") do
-            nil -> []
-            "" -> []
-            value -> [value]
-          end
-
-        paths =
-          (raw_paths ++ fallback_paths)
-          |> Enum.map(&to_string/1)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-
-        chart_type = String.downcase(to_string(item["chart_type"] || "bar"))
-
-        slice_count =
-          series_struct
-          |> Map.get(:series, %{})
-          |> case do
-            series_map when is_map(series_map) ->
-              values = Map.get(series_map, :values) || Map.get(series_map, "values") || []
-              if is_list(values) and length(values) > 1, do: 2, else: 1
-
-            _ ->
-              1
-          end
-
-        {merged_map, encounter_order} =
-          Enum.reduce(paths, {%{}, []}, fn path, acc ->
-            formatted = Trifle.Stats.Series.format_category(series_struct, path, slice_count)
-            merge_category_formatted_with_order(acc, formatted)
-          end)
-
-        wildcard_paths? = Enum.any?(paths, &String.contains?(&1, "*"))
-        custom_order? = category_custom_order?(paths)
-
-        data =
-          merged_map
-          |> Enum.map(fn {k, v} -> %{name: to_string(k), value: normalize_number(v)} end)
-          |> sort_category_entries(encounter_order, wildcard_paths?, custom_order?)
-
-        %{
-          id: id,
-          chart_type: chart_type,
-          data: data
-        }
-      end)
-
-    Logger.debug(fn ->
-      summary = Enum.map(items, fn i -> %{id: i.id, entries: length(i.data)} end)
-      "Category widgets: " <> inspect(summary)
-    end)
-
-    items
-  end
-
-  def compute_text_widgets(grid_items) do
-    grid_items
-    |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "text" end)
-    |> Enum.map(fn item ->
-      id = to_string(item["id"])
-      subtype = DashboardWidgetHelpers.normalize_text_subtype(item["subtype"])
-      color = DashboardWidgetHelpers.resolve_text_widget_color(item["color"])
-
-      base = %{
-        id: id,
-        subtype: subtype,
-        title: to_string(item["title"] || ""),
-        color_id: color.id,
-        background_color: color.background,
-        text_color: color.text
-      }
-
-      case subtype do
-        "html" ->
-          Map.put(base, :payload, to_string(item["payload"] || ""))
-
-        _ ->
-          base
-          |> Map.put(
-            :title_size,
-            DashboardWidgetHelpers.normalize_text_title_size(item["title_size"])
-          )
-          |> Map.put(
-            :alignment,
-            DashboardWidgetHelpers.normalize_text_alignment(item["alignment"])
-          )
-          |> Map.put(:subtitle, item["subtitle"] |> to_string() |> String.trim())
-      end
-    end)
-  end
-
   defp find_dashboard_widget(nil, _id), do: nil
 
   defp find_dashboard_widget(%{payload: payload}, id) when is_map(payload) do
@@ -1465,23 +916,23 @@ defmodule TrifleApp.DashboardLive do
         base
 
       type == "timeseries" ->
-        widget
-        |> compute_timeseries_widgets_for(stats)
+        stats
+        |> Timeseries.dataset(widget)
         |> maybe_put_chart(base)
 
       type == "category" ->
-        widget
-        |> compute_category_widgets_for(stats)
+        stats
+        |> Category.dataset(widget)
         |> maybe_put_chart(base)
 
       type == "kpi" ->
-        widget
-        |> compute_kpi_dataset_for(stats)
+        stats
+        |> Kpi.dataset(widget)
         |> maybe_put_kpi_data(base)
 
       type == "text" ->
         widget
-        |> compute_text_widgets_for()
+        |> Text.widget()
         |> case do
           nil -> base
           text_data -> Map.put(base, :text_data, text_data)
@@ -1505,23 +956,6 @@ defmodule TrifleApp.DashboardLive do
     |> Map.put(:visual_data, visual_map)
   end
 
-  defp compute_kpi_dataset_for(widget, stats) do
-    build_kpi_dataset(stats, widget)
-  end
-
-  defp compute_timeseries_widgets_for(widget, stats) do
-    compute_timeseries_widgets(stats, [widget]) |> List.first()
-  end
-
-  defp compute_category_widgets_for(widget, stats) do
-    compute_category_widgets(stats, [widget]) |> List.first()
-  end
-
-  defp compute_text_widgets_for(widget) do
-    compute_text_widgets([widget])
-    |> Enum.find(fn item -> item.id == to_string(widget["id"]) end)
-  end
-
   defp widget_type(widget) do
     widget
     |> Map.get("type", "kpi")
@@ -1541,10 +975,6 @@ defmodule TrifleApp.DashboardLive do
         socket
     end
   end
-
-  defp normalize_number(%Decimal{} = d), do: Decimal.to_float(d)
-  defp normalize_number(v) when is_number(v), do: v * 1.0
-  defp normalize_number(_), do: 0.0
 
   # Filter bar message handling
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
@@ -2587,10 +2017,10 @@ defmodule TrifleApp.DashboardLive do
     # Source.fetch_series returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
     # Compute KPI values for existing widgets, if any
     grid_items = socket.assigns.dashboard.payload["grid"] || []
-    {kpi_items, kpi_visuals} = compute_kpi_datasets(result.series, grid_items)
-    ts_items = compute_timeseries_widgets(result.series, grid_items)
-    cat_items = compute_category_widgets(result.series, grid_items)
-    text_items = compute_text_widgets(grid_items)
+    {kpi_items, kpi_visuals} = Kpi.datasets(result.series, grid_items)
+    ts_items = Timeseries.datasets(result.series, grid_items)
+    cat_items = Category.datasets(result.series, grid_items)
+    text_items = Text.widgets(grid_items)
 
     {:noreply,
      socket
@@ -3295,8 +2725,8 @@ defmodule TrifleApp.DashboardLive do
         (sources ++ [source])
         |> Enum.reject(&is_nil/1)
         |> Enum.sort_by(fn s ->
-        {source_sort_key(Source.type(s)), String.downcase(Source.display_name(s))}
-      end)
+          {source_sort_key(Source.type(s)), String.downcase(Source.display_name(s))}
+        end)
     end
   end
 

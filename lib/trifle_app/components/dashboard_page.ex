@@ -5,17 +5,18 @@ defmodule TrifleApp.Components.DashboardPage do
   use TrifleApp, :html
 
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
+
   import TrifleApp.DashboardLive,
     only: [
       dashboard_has_key?: 1,
       build_url_params: 1,
-      compute_text_widgets: 1,
       get_summary_stats: 1
     ]
 
   alias Trifle.Stats.Source
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
+  alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
 
   def dashboard(assigns) do
     ~H"""
@@ -509,7 +510,7 @@ defmodule TrifleApp.Components.DashboardPage do
         <% raw_grid_items = (@dashboard.payload || %{})["grid"] %>
         <% grid_items = if is_list(raw_grid_items), do: raw_grid_items, else: [] %>
         <% has_grid_items = grid_items != [] %>
-        <% text_items = compute_text_widgets(grid_items) %>
+        <% text_items = TextWidgets.widgets(grid_items) %>
         
     <!-- Grid Layout -->
         <div class={[
@@ -1457,7 +1458,6 @@ defmodule TrifleApp.Components.DashboardPage do
       <% end %>
     </div>
     """
-
   end
 
   defp group_sources_for_select(sources) do
