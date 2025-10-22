@@ -10,17 +10,10 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
   require Logger
-
-  @text_widget_colors [
-    %{id: "default", label: "Default (white)", background: "#ffffff", text: "#0f172a"},
-    %{id: "slate", label: "Slate", background: "#0f172a", text: "#f8fafc"},
-    %{id: "teal", label: "Teal", background: "#0f766e", text: "#ecfdf5"},
-    %{id: "amber", label: "Amber", background: "#f59e0b", text: "#1f2937"},
-    %{id: "emerald", label: "Emerald", background: "#10b981", text: "#064e3b"},
-    %{id: "rose", label: "Rose", background: "#f43f5e", text: "#fff1f2"}
-  ]
 
   @capture_group_regex ~r/\((?:\\.|[^()])*\)/
   @noncapturing_prefixes ["?:", "?=", "?!", "?<=", "?<!"]
@@ -508,7 +501,11 @@ defmodule TrifleApp.DashboardLive do
 
               case type do
                 "kpi" ->
-                  subtype = normalize_kpi_subtype(Map.get(params, "kpi_subtype"), i)
+                  subtype =
+                    DashboardWidgetHelpers.normalize_kpi_subtype(
+                      Map.get(params, "kpi_subtype"),
+                      i
+                    )
 
                   base =
                     base
@@ -552,7 +549,7 @@ defmodule TrifleApp.DashboardLive do
                   paths =
                     params
                     |> Map.get("ts_paths", Map.get(params, "ts_paths[]", []))
-                    |> normalize_timeseries_paths_param()
+                    |> DashboardWidgetHelpers.normalize_timeseries_paths_param()
 
                   base
                   |> Map.put("paths", auto_expand_path_wildcards(paths, path_options))
@@ -567,7 +564,8 @@ defmodule TrifleApp.DashboardLive do
                     params
                     |> Map.get("cat_paths", Map.get(params, "cat_paths[]", []))
 
-                  cat_paths = normalize_category_paths_param(cat_paths_param)
+                  cat_paths =
+                    DashboardWidgetHelpers.normalize_category_paths_param(cat_paths_param)
 
                   fallback_path =
                     params
@@ -597,10 +595,11 @@ defmodule TrifleApp.DashboardLive do
                 "text" ->
                   subtype =
                     Map.get(params, "text_subtype", i["subtype"] || "header")
-                    |> normalize_text_subtype()
+                    |> DashboardWidgetHelpers.normalize_text_subtype()
 
                   color_id =
-                    Map.get(params, "text_color", i["color"]) |> normalize_text_color_id()
+                    Map.get(params, "text_color", i["color"])
+                    |> DashboardWidgetHelpers.normalize_text_color_id()
 
                   base =
                     base
@@ -636,12 +635,12 @@ defmodule TrifleApp.DashboardLive do
                       |> Map.put(
                         "title_size",
                         Map.get(params, "text_title_size", i["title_size"] || "large")
-                        |> normalize_text_title_size()
+                        |> DashboardWidgetHelpers.normalize_text_title_size()
                       )
                       |> Map.put(
                         "alignment",
                         Map.get(params, "text_alignment", i["alignment"] || "center")
-                        |> normalize_text_alignment()
+                        |> DashboardWidgetHelpers.normalize_text_alignment()
                       )
                       |> Map.put(
                         "subtitle",
@@ -725,7 +724,7 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("change_text_subtype", %{"widget_id" => id, "text_subtype" => subtype}, socket) do
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = normalize_text_subtype(subtype)
+    normalized = DashboardWidgetHelpers.normalize_text_subtype(subtype)
 
     w =
       w
@@ -742,7 +741,7 @@ defmodule TrifleApp.DashboardLive do
         (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
 
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = normalize_text_subtype(subtype)
+    normalized = DashboardWidgetHelpers.normalize_text_subtype(subtype)
 
     w =
       w
@@ -754,7 +753,7 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("change_text_color", %{"widget_id" => id, "color" => color_id}, socket) do
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = normalize_text_color_id(color_id)
+    normalized = DashboardWidgetHelpers.normalize_text_color_id(color_id)
     w = Map.put(w, "color", normalized)
 
     {:noreply, assign(socket, :editing_widget, w)}
@@ -767,7 +766,7 @@ defmodule TrifleApp.DashboardLive do
         (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
 
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = normalize_text_color_id(color_id)
+    normalized = DashboardWidgetHelpers.normalize_text_color_id(color_id)
     w = Map.put(w, "color", normalized)
 
     {:noreply, assign(socket, :editing_widget, w)}
@@ -775,7 +774,7 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("change_kpi_subtype", %{"widget_id" => id, "kpi_subtype" => subtype}, socket) do
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = normalize_kpi_subtype(subtype, w)
+    normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
     {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
   end
 
@@ -786,7 +785,7 @@ defmodule TrifleApp.DashboardLive do
         (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
 
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = normalize_kpi_subtype(subtype, w)
+    normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
     {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
   end
 
@@ -807,7 +806,7 @@ defmodule TrifleApp.DashboardLive do
 
       true ->
         path_options = socket.assigns[:widget_path_options] || []
-        paths = normalize_timeseries_paths_for_edit(raw_paths)
+        paths = DashboardWidgetHelpers.normalize_timeseries_paths_for_edit(raw_paths)
         expanded_paths = auto_expand_path_wildcards(paths, path_options)
         widget = Map.put(socket.assigns.editing_widget, "paths", expanded_paths)
         {:noreply, assign(socket, :editing_widget, widget)}
@@ -831,7 +830,7 @@ defmodule TrifleApp.DashboardLive do
 
       true ->
         path_options = socket.assigns[:widget_path_options] || []
-        paths = normalize_category_paths_for_edit(raw_paths)
+        paths = DashboardWidgetHelpers.normalize_category_paths_for_edit(raw_paths)
         expanded_paths = auto_expand_path_wildcards(paths, path_options)
 
         primary_path =
@@ -890,80 +889,6 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  # Compute KPI values for KPI widgets from current series
-  defp normalize_kpi_subtype(value, item \\ %{}) do
-    raw =
-      case value do
-        nil -> ""
-        v -> to_string(v)
-      end
-      |> String.downcase()
-
-    cond do
-      raw in ["number", "split", "goal"] -> raw
-      !!item["split"] -> "split"
-      true -> "number"
-    end
-  end
-
-  defp text_widget_color_options, do: @text_widget_colors
-
-  defp default_text_widget_color do
-    @text_widget_colors |> List.first()
-  end
-
-  defp resolve_text_widget_color(color_id) do
-    id =
-      case color_id do
-        nil -> ""
-        v -> to_string(v)
-      end
-      |> String.downcase()
-
-    Enum.find(@text_widget_colors, &(&1.id == id)) || default_text_widget_color()
-  end
-
-  defp normalize_text_subtype(value) do
-    value
-    |> to_string()
-    |> String.downcase()
-    |> case do
-      "html" -> "html"
-      "header" -> "header"
-      _ -> "header"
-    end
-  end
-
-  defp normalize_text_alignment(value) do
-    value
-    |> to_string()
-    |> String.downcase()
-    |> case do
-      "left" -> "left"
-      "right" -> "right"
-      _ -> "center"
-    end
-  end
-
-  defp normalize_text_title_size(value) do
-    value
-    |> to_string()
-    |> String.downcase()
-    |> case do
-      "small" -> "small"
-      "medium" -> "medium"
-      "large" -> "large"
-      "s" -> "small"
-      "m" -> "medium"
-      "l" -> "large"
-      _ -> "large"
-    end
-  end
-
-  defp normalize_text_color_id(value) do
-    resolve_text_widget_color(value).id
-  end
-
   defp compute_kpi_values(series_struct, grid_items) do
     compute_kpi_datasets(series_struct, grid_items) |> elem(0)
   end
@@ -990,7 +915,7 @@ defmodule TrifleApp.DashboardLive do
     path = to_string(item["path"] || "")
     func = String.downcase(to_string(item["function"] || "mean"))
     size = to_string(item["size"] || "m")
-    subtype = normalize_kpi_subtype(item["subtype"], item)
+    subtype = DashboardWidgetHelpers.normalize_kpi_subtype(item["subtype"], item)
 
     case subtype do
       "split" ->
@@ -1483,8 +1408,8 @@ defmodule TrifleApp.DashboardLive do
     |> Enum.filter(fn item -> String.downcase(to_string(item["type"] || "")) == "text" end)
     |> Enum.map(fn item ->
       id = to_string(item["id"])
-      subtype = normalize_text_subtype(item["subtype"])
-      color = resolve_text_widget_color(item["color"])
+      subtype = DashboardWidgetHelpers.normalize_text_subtype(item["subtype"])
+      color = DashboardWidgetHelpers.resolve_text_widget_color(item["color"])
 
       base = %{
         id: id,
@@ -1501,8 +1426,14 @@ defmodule TrifleApp.DashboardLive do
 
         _ ->
           base
-          |> Map.put(:title_size, normalize_text_title_size(item["title_size"]))
-          |> Map.put(:alignment, normalize_text_alignment(item["alignment"]))
+          |> Map.put(
+            :title_size,
+            DashboardWidgetHelpers.normalize_text_title_size(item["title_size"])
+          )
+          |> Map.put(
+            :alignment,
+            DashboardWidgetHelpers.normalize_text_alignment(item["alignment"])
+          )
           |> Map.put(:subtitle, item["subtitle"] |> to_string() |> String.trim())
       end
     end)
@@ -1910,104 +1841,6 @@ defmodule TrifleApp.DashboardLive do
 
   defp build_widget_path_options(_assigns), do: []
 
-  defp timeseries_paths_for_form(nil), do: [""]
-
-  defp timeseries_paths_for_form(paths) when is_list(paths) do
-    cleaned = Enum.map(paths, &to_string/1)
-
-    case cleaned do
-      [] -> [""]
-      list -> list
-    end
-  end
-
-  defp timeseries_paths_for_form(path), do: timeseries_paths_for_form([path])
-
-  attr(:id, :string, required: true)
-  attr(:name, :string, required: true)
-  attr(:value, :string, default: "")
-  attr(:placeholder, :string, default: "")
-  attr(:path_options, :list, default: [])
-
-  attr(:input_class, :string,
-    default:
-      "block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-  )
-
-  defp path_autocomplete_input(assigns) do
-    assigns = assign(assigns, :options_json, Jason.encode!(assigns.path_options))
-
-    ~H"""
-    <div id={"#{@id}-wrapper"} class="relative" phx-hook="PathAutocomplete" data-paths={@options_json}>
-      <input
-        id={@id}
-        type="text"
-        name={@name}
-        value={@value}
-        placeholder={@placeholder}
-        class={@input_class}
-        autocomplete="off"
-        spellcheck="false"
-        data-role="path-input"
-      />
-      <div
-        id={"#{@id}-suggestions"}
-        data-role="suggestions"
-        phx-update="ignore"
-        class="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
-      >
-      </div>
-    </div>
-    """
-  end
-
-  defp normalize_timeseries_paths_param(value) do
-    value
-    |> case do
-      nil -> []
-      list when is_list(list) -> list
-      other -> [other]
-    end
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
-
-  defp normalize_timeseries_paths_for_edit(paths) do
-    cleaned =
-      paths
-      |> case do
-        nil -> []
-        list when is_list(list) -> list
-        other -> [other]
-      end
-      |> Enum.map(&to_string/1)
-
-    case cleaned do
-      [] -> [""]
-      list -> list
-    end
-  end
-
-  defp normalize_category_paths_param(value), do: normalize_timeseries_paths_param(value)
-  defp normalize_category_paths_for_edit(paths), do: normalize_timeseries_paths_for_edit(paths)
-
-  defp category_paths_for_form(%{} = widget) do
-    paths = normalize_category_paths_for_edit(widget["paths"])
-
-    has_populated_path =
-      paths
-      |> Enum.map(&String.trim/1)
-      |> Enum.any?(&(&1 != ""))
-
-    cond do
-      has_populated_path -> paths
-      true -> normalize_category_paths_for_edit(widget["path"])
-    end
-  end
-
-  defp category_paths_for_form(paths), do: normalize_category_paths_for_edit(paths)
-
   defp maybe_auto_expand_widget_paths(widget, options) when is_map(widget) do
     type = widget["type"] |> to_string() |> String.downcase()
 
@@ -2016,7 +1849,7 @@ defmodule TrifleApp.DashboardLive do
         paths =
           widget
           |> Map.get("paths", widget["path"])
-          |> normalize_timeseries_paths_for_edit()
+          |> DashboardWidgetHelpers.normalize_timeseries_paths_for_edit()
 
         expanded = auto_expand_path_wildcards(paths, options)
         Map.put(widget, "paths", expanded)
@@ -2025,7 +1858,7 @@ defmodule TrifleApp.DashboardLive do
         paths =
           widget
           |> Map.get("paths", widget["path"])
-          |> normalize_category_paths_for_edit()
+          |> DashboardWidgetHelpers.normalize_category_paths_for_edit()
           |> auto_expand_path_wildcards(options)
 
         primary =
@@ -4538,596 +4371,7 @@ defmodule TrifleApp.DashboardLive do
                     />
                   </div>
 
-                  <%= case (@editing_widget["type"] || "kpi") do %>
-                    <% "kpi" -> %>
-                      <% subtype = normalize_kpi_subtype(@editing_widget["subtype"], @editing_widget) %>
-                      <% fnv = @editing_widget["function"] || "mean" %>
-                      <% fnv = if fnv == "avg", do: "mean", else: fnv %>
-                      <% sz = @editing_widget["size"] || "m" %>
-                      <% diff_checked = !!@editing_widget["diff"] %>
-                      <% timeseries_checked = !!@editing_widget["timeseries"] %>
-                      <% goal_progress_checked = !!@editing_widget["goal_progress"] %>
-                      <% goal_invert_checked = !!@editing_widget["goal_invert"] %>
-                      <input type="hidden" name="kpi_subtype" value={subtype} />
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="sm:col-span-2">
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Path
-                          </label>
-                          <.path_autocomplete_input
-                            id="widget-kpi-path"
-                            name="kpi_path"
-                            value={@editing_widget["path"] || ""}
-                            placeholder="e.g. sales.total"
-                            path_options={@widget_path_options}
-                          />
-                        </div>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Function
-                          </label>
-                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                            <select
-                              name="kpi_function"
-                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                            >
-                              <option value="max" selected={fnv == "max"}>max</option>
-                              <option value="min" selected={fnv == "min"}>min</option>
-                              <option value="mean" selected={fnv == "mean"}>mean</option>
-                              <option value="sum" selected={fnv == "sum"}>sum</option>
-                            </select>
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                              data-slot="icon"
-                              aria-hidden="true"
-                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                            >
-                              <path
-                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Size
-                          </label>
-                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                            <select
-                              name="kpi_size"
-                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                            >
-                              <option value="s" selected={sz == "s"}>Small</option>
-                              <option value="m" selected={sz == "m"}>Medium</option>
-                              <option value="l" selected={sz == "l"}>Large</option>
-                            </select>
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                              data-slot="icon"
-                              aria-hidden="true"
-                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                            >
-                              <path
-                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                        <div>
-                          <label
-                            for="kpi_subtype"
-                            class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1"
-                          >
-                            KPI Type
-                          </label>
-                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                            <select
-                              id="kpi_subtype"
-                              name="kpi_subtype"
-                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                              phx-change="change_kpi_subtype"
-                              phx-value-widget-id={@editing_widget["id"]}
-                            >
-                              <option value="number" selected={subtype == "number"}>Number</option>
-                              <option value="split" selected={subtype == "split"}>Split</option>
-                              <option value="goal" selected={subtype == "goal"}>Goal</option>
-                            </select>
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                              data-slot="icon"
-                              aria-hidden="true"
-                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                            >
-                              <path
-                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                        <%= if subtype == "goal" do %>
-                          <div class="sm:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                              Target value
-                            </label>
-                            <input
-                              type="text"
-                              name="kpi_goal_target"
-                              value={@editing_widget["goal_target"] || ""}
-                              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                              placeholder="e.g. 1200"
-                            />
-                          </div>
-                        <% end %>
-                      </div>
-                      <%= case subtype do %>
-                        <% "split" -> %>
-                          <div class="space-y-2">
-                            <p class="text-sm text-gray-700 dark:text-slate-300">
-                              Split timeframe by half is enabled for this subtype.
-                            </p>
-                            <div class="flex flex-wrap items-center gap-4">
-                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                                <input type="checkbox" name="kpi_diff" checked={diff_checked} />
-                                Difference between splits
-                              </label>
-                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                                <input
-                                  type="checkbox"
-                                  name="kpi_timeseries"
-                                  checked={timeseries_checked}
-                                /> Show timeseries
-                              </label>
-                            </div>
-                            <p class="text-xs text-gray-500 dark:text-slate-400">
-                              Shows percent change between halves: (Now − Prev) / |Prev| × 100. Hidden when Prev is missing or zero.
-                            </p>
-                          </div>
-                        <% "goal" -> %>
-                          <div class="space-y-2">
-                            <div class="flex flex-wrap items-center gap-4">
-                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                                <input
-                                  type="checkbox"
-                                  name="kpi_goal_progress"
-                                  checked={goal_progress_checked}
-                                /> Show progress bar
-                              </label>
-                              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                                <input
-                                  type="checkbox"
-                                  name="kpi_goal_invert"
-                                  checked={goal_invert_checked}
-                                /> Invert goal (lower is better)
-                              </label>
-                            </div>
-                            <p class="text-xs text-gray-500 dark:text-slate-400">
-                              Progress bar illustrates progress toward the target.
-                            </p>
-                            <p class="text-xs text-gray-500 dark:text-slate-400">
-                              When inverted, staying at or below the target is considered success; exceeding it turns the progress indicator red.
-                            </p>
-                          </div>
-                        <% _ -> %>
-                          <div class="flex items-center gap-4">
-                            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                              <input
-                                type="checkbox"
-                                name="kpi_timeseries"
-                                checked={timeseries_checked}
-                              /> Show timeseries
-                            </label>
-                          </div>
-                      <% end %>
-                    <% "timeseries" -> %>
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="sm:col-span-2">
-                          <% paths = timeseries_paths_for_form(@editing_widget["paths"]) %>
-                          <% paths_length = length(paths) %>
-                          <div
-                            id={"widget-#{@editing_widget["id"]}-timeseries-paths"}
-                            phx-hook="TimeseriesPaths"
-                            data-widget-id={@editing_widget["id"]}
-                            class="space-y-3"
-                          >
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
-                              Paths
-                            </label>
-                            <div class="space-y-2">
-                              <%= for {path, index} <- Enum.with_index(paths) do %>
-                                <div class="flex items-center gap-2">
-                                  <div class="flex-1 min-w-0">
-                                    <.path_autocomplete_input
-                                      id={"widget-ts-path-#{@editing_widget["id"]}-#{index}"}
-                                      name="ts_paths[]"
-                                      value={path}
-                                      placeholder="metrics.sales"
-                                      path_options={@widget_path_options}
-                                      input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                                    />
-                                  </div>
-                                  <button
-                                    type="button"
-                                    data-action="remove"
-                                    data-index={index}
-                                    class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
-                                    aria-label="Remove path"
-                                    disabled={paths_length == 1}
-                                  >
-                                    &minus;
-                                  </button>
-                                </div>
-                              <% end %>
-                            </div>
-                            <button
-                              type="button"
-                              data-action="add"
-                              class="inline-flex items-center gap-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
-                            >
-                              <span aria-hidden="true">+</span>
-                              <span class="sr-only">Add path</span>
-                            </button>
-                            <p class="text-xs text-gray-500 dark:text-slate-400">
-                              Use <code>*</code>
-                              to include nested keys (for example <code>breakdown.*</code>). Parent paths automatically expand when matching children exist.
-                            </p>
-                          </div>
-                        </div>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Y-axis label
-                          </label>
-                          <input
-                            type="text"
-                            name="ts_y_label"
-                            value={@editing_widget["y_label"] || ""}
-                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                            placeholder="e.g., Revenue ($), Orders, Errors (%)"
-                          />
-                        </div>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Chart Type
-                          </label>
-                          <% ctype = @editing_widget["chart_type"] || "line" %>
-                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                            <select
-                              name="ts_chart_type"
-                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                            >
-                              <option value="line" selected={ctype == "line"}>Line</option>
-                              <option value="area" selected={ctype == "area"}>Area</option>
-                              <option value="bar" selected={ctype == "bar"}>Bar</option>
-                            </select>
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                              data-slot="icon"
-                              aria-hidden="true"
-                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                            >
-                              <path
-                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                        <div class="flex items-center gap-4 sm:col-span-2">
-                          <% stacked = @editing_widget["stacked"] || false %>
-                          <% normalized = @editing_widget["normalized"] || false %>
-                          <% legend = @editing_widget["legend"] || false %>
-                          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                            <input type="checkbox" name="ts_stacked" checked={stacked} /> Stacked
-                          </label>
-                          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                            <input type="checkbox" name="ts_normalized" checked={normalized} />
-                            Normalized
-                          </label>
-                          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-                            <input type="checkbox" name="ts_legend" checked={legend} /> Show legend
-                          </label>
-                        </div>
-                      </div>
-                    <% "text" -> %>
-                      <% subtype = normalize_text_subtype(@editing_widget["subtype"]) %>
-                      <% color_id = normalize_text_color_id(@editing_widget["color"]) %>
-                      <% size = normalize_text_title_size(@editing_widget["title_size"]) %>
-                      <% alignment = normalize_text_alignment(@editing_widget["alignment"]) %>
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Content Type
-                          </label>
-                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                            <select
-                              name="text_subtype"
-                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                              phx-change="change_text_subtype"
-                              phx-value-widget-id={@editing_widget["id"]}
-                            >
-                              <option value="header" selected={subtype == "header"}>Header</option>
-                              <option value="html" selected={subtype == "html"}>HTML</option>
-                            </select>
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                              data-slot="icon"
-                              aria-hidden="true"
-                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                            >
-                              <path
-                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Background color
-                          </label>
-                          <% selected_color = resolve_text_widget_color(color_id) %>
-                          <div x-data="{ open: false }" class="relative mt-2 sm:max-w-xs" x-cloak>
-                            <input type="hidden" name="text_color" value={color_id} />
-                            <button
-                              type="button"
-                              class="w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                              x-on:click="open = !open"
-                              x-bind:aria-expanded="open"
-                              aria-haspopup="listbox"
-                            >
-                              <div class="flex items-center justify-between">
-                                <span>{selected_color.label}</span>
-                                <span class="inline-flex items-center gap-2">
-                                  <span
-                                    class="inline-block h-5 w-5 rounded-md border border-white/80 shadow-sm"
-                                    style={"background-color: #{selected_color.background};"}
-                                    aria-hidden="true"
-                                  >
-                                  </span>
-                                </span>
-                              </div>
-                              <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                                <svg
-                                  class="h-5 w-5 text-gray-400"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M19 9l-7 7-7-7"
-                                  />
-                                </svg>
-                              </span>
-                            </button>
-
-                            <div
-                              x-show="open"
-                              x-on:click.away="open = false"
-                              class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
-                              role="listbox"
-                            >
-                              <%= for color <- text_widget_color_options() do %>
-                                <button
-                                  type="button"
-                                  phx-click="change_text_color"
-                                  phx-value-widget-id={@editing_widget["id"]}
-                                  phx-value-color={color.id}
-                                  x-on:click="open = false"
-                                  class={[
-                                    "w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-slate-600 cursor-pointer",
-                                    if(color_id == color.id, do: "bg-gray-100 dark:bg-slate-700")
-                                  ]}
-                                  role="option"
-                                  aria-selected={color_id == color.id}
-                                >
-                                  <div class="flex items-center justify-between">
-                                    <span class="text-sm text-gray-900 dark:text-white">
-                                      {color.label}
-                                    </span>
-                                    <span class="inline-flex items-center">
-                                      <span
-                                        class="inline-block h-5 w-5 rounded-md border border-white/80 shadow-sm"
-                                        style={"background-color: #{color.background};"}
-                                        aria-hidden="true"
-                                      >
-                                      </span>
-                                    </span>
-                                  </div>
-                                </button>
-                              <% end %>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <%= if subtype == "html" do %>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            HTML Content
-                          </label>
-                          <textarea
-                            name="text_payload"
-                            rows="6"
-                            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                            placeholder="<h2>Hello world</h2>"
-                          ><%= @editing_widget["payload"] || "" %></textarea>
-                          <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                            Raw HTML is inserted as-is. Make sure it comes from a trusted source.
-                          </p>
-                        </div>
-                      <% else %>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                              Title Size
-                            </label>
-                            <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                              <select
-                                name="text_title_size"
-                                class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                              >
-                                <option value="large" selected={size == "large"}>Large</option>
-                                <option value="medium" selected={size == "medium"}>Medium</option>
-                                <option value="small" selected={size == "small"}>Small</option>
-                              </select>
-                              <svg
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                data-slot="icon"
-                                aria-hidden="true"
-                                class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                              >
-                                <path
-                                  d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                  clip-rule="evenodd"
-                                  fill-rule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          </div>
-                          <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                              Alignment
-                            </label>
-                            <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                              <select
-                                name="text_alignment"
-                                class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                              >
-                                <option value="left" selected={alignment == "left"}>Left</option>
-                                <option value="center" selected={alignment == "center"}>
-                                  Center
-                                </option>
-                                <option value="right" selected={alignment == "right"}>Right</option>
-                              </select>
-                              <svg
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                data-slot="icon"
-                                aria-hidden="true"
-                                class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                              >
-                                <path
-                                  d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                  clip-rule="evenodd"
-                                  fill-rule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          </div>
-                          <div class="sm:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                              Subtitle
-                            </label>
-                            <textarea
-                              name="text_subtitle"
-                              rows="3"
-                              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                              placeholder="Optional supporting text"
-                            ><%= @editing_widget["subtitle"] || "" %></textarea>
-                          </div>
-                        </div>
-                      <% end %>
-                    <% "category" -> %>
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="sm:col-span-2">
-                          <% cat_paths = category_paths_for_form(@editing_widget || %{}) %>
-                          <% cat_paths_length = length(cat_paths) %>
-                          <div
-                            id={"widget-#{@editing_widget["id"]}-category-paths"}
-                            phx-hook="CategoryPaths"
-                            data-widget-id={@editing_widget["id"]}
-                            class="space-y-3"
-                          >
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
-                              Paths
-                            </label>
-                            <div class="space-y-2">
-                              <%= for {path, index} <- Enum.with_index(cat_paths) do %>
-                                <div class="flex items-center gap-2">
-                                  <div class="flex-1 min-w-0">
-                                    <.path_autocomplete_input
-                                      id={"widget-cat-path-#{@editing_widget["id"]}-#{index}"}
-                                      name="cat_paths[]"
-                                      value={path}
-                                      placeholder="metrics.category"
-                                      path_options={@widget_path_options}
-                                      input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                                    />
-                                  </div>
-                                  <button
-                                    type="button"
-                                    data-action="remove"
-                                    data-index={index}
-                                    class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
-                                    aria-label="Remove path"
-                                    disabled={cat_paths_length == 1}
-                                  >
-                                    &minus;
-                                  </button>
-                                </div>
-                              <% end %>
-                            </div>
-                            <button
-                              type="button"
-                              data-action="add"
-                              class="inline-flex items-center gap-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
-                            >
-                              <span aria-hidden="true">+</span>
-                              <span class="sr-only">Add path</span>
-                            </button>
-                            <p class="text-xs text-gray-500 dark:text-slate-400">
-                              Use <code>*</code>
-                              to include nested keys (for example <code>breakdown.*</code>). Parent paths automatically expand when matching children exist.
-                            </p>
-                          </div>
-                        </div>
-                        <div>
-                          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                            Chart Type
-                          </label>
-                          <% ctype = @editing_widget["chart_type"] || "bar" %>
-                          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                            <select
-                              name="cat_chart_type"
-                              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                            >
-                              <option value="bar" selected={ctype == "bar"}>Bar</option>
-                              <option value="pie" selected={ctype == "pie"}>Pie</option>
-                              <option value="donut" selected={ctype == "donut"}>Donut</option>
-                            </select>
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                              data-slot="icon"
-                              aria-hidden="true"
-                              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                            >
-                              <path
-                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
-                  <% end %>
+                  <WidgetEditor.editor widget={@editing_widget} path_options={@widget_path_options} />
 
                   <div class="flex items-center justify-end gap-3 pt-2">
                     <button
