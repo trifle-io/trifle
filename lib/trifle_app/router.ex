@@ -150,7 +150,7 @@ defmodule TrifleApp.Router do
 
     live_session :public_dashboard,
       on_mount: [{TrifleApp.UserAuth, :mount_current_user}] do
-      live "/:dashboard_id", DashboardLive, :public
+      live "/:dashboard_id", DashboardPublicLive, :public
     end
   end
 
