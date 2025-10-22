@@ -102,12 +102,21 @@ defmodule TrifleApp.MonitorComponents do
 
   attr :monitor, Monitor, required: true
   attr :dashboard, :any, default: nil
+  attr :source_label, :string, default: nil
 
   def report_panel(assigns) do
     ~H"""
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
       <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Report details</h3>
       <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Source
+          </dt>
+          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+            {@source_label || default_source_label(@monitor)}
+          </dd>
+        </div>
         <div>
           <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Dashboard
@@ -164,6 +173,7 @@ defmodule TrifleApp.MonitorComponents do
   end
 
   attr :monitor, Monitor, required: true
+  attr :source_label, :string, default: nil
 
   def alert_panel(assigns) do
     ~H"""
@@ -171,6 +181,14 @@ defmodule TrifleApp.MonitorComponents do
       <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Alert details</h3>
 
       <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Source
+          </dt>
+          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+            {@source_label || default_source_label(@monitor)}
+          </dd>
+        </div>
         <div>
           <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Metric key
@@ -320,4 +338,23 @@ defmodule TrifleApp.MonitorComponents do
     |> Monitors.delivery_handles_from_channels()
     |> List.first()
   end
+
+  defp default_source_label(%Monitor{source_type: nil}), do: "—"
+
+  defp default_source_label(%Monitor{} = monitor) do
+    type_label = source_type_label(monitor.source_type)
+
+    case monitor.source_id do
+      nil -> type_label
+      id -> "#{type_label} · #{id}"
+    end
+  end
+
+  defp source_type_label(:database), do: "Database"
+  defp source_type_label(:project), do: "Project"
+  defp source_type_label(value) when is_atom(value) do
+    value |> Atom.to_string() |> String.capitalize()
+  end
+
+  defp source_type_label(value), do: to_string(value)
 end
