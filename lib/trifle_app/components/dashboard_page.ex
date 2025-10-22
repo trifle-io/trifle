@@ -15,7 +15,7 @@ defmodule TrifleApp.Components.DashboardPage do
 
   alias Trifle.Stats.Source
   alias TrifleApp.DesignSystem.ChartColors
-  alias TrifleApp.Components.DashboardWidgets.WidgetEditor
+  alias TrifleApp.Components.DashboardWidgets.{WidgetEditor, WidgetDataBridge}
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
 
   def dashboard(assigns) do
@@ -538,6 +538,17 @@ defmodule TrifleApp.Components.DashboardPage do
             data-public-token={@public_token}
           >
           </div>
+        </div>
+
+        <div class="hidden" aria-hidden="true">
+          <%= for widget <- grid_items do %>
+            <.live_component
+              module={WidgetDataBridge}
+              id={"widget-data-#{widget["id"]}"}
+              widget={widget}
+              stats={@stats}
+            />
+          <% end %>
         </div>
         
     <!-- Configure Modal -->

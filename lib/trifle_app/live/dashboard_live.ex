@@ -388,24 +388,6 @@ defmodule TrifleApp.DashboardLive do
 
             items = updated_dashboard.payload["grid"] || []
 
-            socket =
-              if socket.assigns[:stats] do
-                {kpi_items, kpi_visuals} = Kpi.datasets(socket.assigns.stats, items)
-                ts_items = Timeseries.datasets(socket.assigns.stats, items)
-                cat_items = Category.datasets(socket.assigns.stats, items)
-
-                socket
-                |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
-                |> push_event("dashboard_grid_kpi_visual", %{items: kpi_visuals})
-                |> push_event("dashboard_grid_timeseries", %{items: ts_items})
-                |> push_event("dashboard_grid_category", %{items: cat_items})
-              else
-                socket
-              end
-
-            text_items = Text.widgets(items)
-            socket = push_event(socket, "dashboard_grid_text", %{items: text_items})
-
             {:noreply, socket}
 
           {:error, _} ->
@@ -673,22 +655,6 @@ defmodule TrifleApp.DashboardLive do
               |> assign(:editing_widget, nil)
               |> maybe_refresh_expanded_widget()
 
-            socket =
-              if socket.assigns[:stats] do
-                items = dashboard.payload["grid"] || []
-                {kpi_items, kpi_visuals} = Kpi.datasets(socket.assigns.stats, items)
-                ts_items = Timeseries.datasets(socket.assigns.stats, items)
-                cat_items = Category.datasets(socket.assigns.stats, items)
-
-                socket
-                |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
-                |> push_event("dashboard_grid_kpi_visual", %{items: kpi_visuals})
-                |> push_event("dashboard_grid_timeseries", %{items: ts_items})
-                |> push_event("dashboard_grid_category", %{items: cat_items})
-              else
-                socket
-              end
-
             {:noreply,
              socket
              |> push_event("dashboard_grid_widget_updated", %{id: id, title: title})}
@@ -873,12 +839,17 @@ defmodule TrifleApp.DashboardLive do
                %{payload: payload}
              ) do
           {:ok, dashboard} ->
-            {:noreply,
-             socket
-             |> assign_dashboard(dashboard)
-             |> assign(:editing_widget, nil)
-             |> maybe_refresh_expanded_widget()
-             |> push_event("dashboard_grid_widget_deleted", %{id: id})}
+            widget_id = to_string(id)
+
+            socket =
+              socket
+              |> assign_dashboard(dashboard)
+              |> assign(:editing_widget, nil)
+              |> maybe_refresh_expanded_widget()
+              |> push_event("dashboard_grid_widget_deleted", %{id: widget_id})
+              |> remove_widget_from_datasets(widget_id)
+
+            {:noreply, socket}
 
           {:error, _} ->
             {:noreply, socket}
@@ -1100,6 +1071,11 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_path_options, [])
     |> assign(:widget_path_options_loaded, false)
     |> assign(:expanded_widget, nil)
+    |> assign(:widget_kpi_values, %{})
+    |> assign(:widget_kpi_visuals, %{})
+    |> assign(:widget_timeseries, %{})
+    |> assign(:widget_category, %{})
+    |> assign(:widget_text, %{})
     |> assign_dashboard_permissions()
   end
 
@@ -2016,36 +1992,28 @@ defmodule TrifleApp.DashboardLive do
 
     # Source.fetch_series returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
     # Compute KPI values for existing widgets, if any
-    grid_items = socket.assigns.dashboard.payload["grid"] || []
-    {kpi_items, kpi_visuals} = Kpi.datasets(result.series, grid_items)
-    ts_items = Timeseries.datasets(result.series, grid_items)
-    cat_items = Category.datasets(result.series, grid_items)
-    text_items = Text.widgets(grid_items)
+    socket =
+      socket
+      |> assign(loading: false)
+      |> assign(loading_chunks: false)
+      |> assign(loading_progress: nil)
+      |> assign(transponding: false)
+      |> assign(stats: result.series)
+      |> assign(transponder_results: result.transponder_results)
+      |> assign(widget_path_options: [])
+      |> assign(widget_path_options_loaded: false)
+      |> then(fn socket ->
+        if socket.assigns.editing_widget do
+          ensure_widget_path_options(socket)
+        else
+          socket
+        end
+      end)
+      |> assign(load_duration_microseconds: load_duration)
+      |> reset_widget_datasets()
+      |> maybe_refresh_expanded_widget()
 
-    {:noreply,
-     socket
-     |> assign(loading: false)
-     |> assign(loading_chunks: false)
-     |> assign(loading_progress: nil)
-     |> assign(transponding: false)
-     |> assign(stats: result.series)
-     |> assign(transponder_results: result.transponder_results)
-     |> assign(widget_path_options: [])
-     |> assign(widget_path_options_loaded: false)
-     |> then(fn socket ->
-       if socket.assigns.editing_widget do
-         ensure_widget_path_options(socket)
-       else
-         socket
-       end
-     end)
-     |> assign(load_duration_microseconds: load_duration)
-     |> maybe_refresh_expanded_widget()
-     |> push_event("dashboard_grid_kpi_values", %{items: kpi_items})
-     |> push_event("dashboard_grid_kpi_visual", %{items: kpi_visuals})
-     |> push_event("dashboard_grid_timeseries", %{items: ts_items})
-     |> push_event("dashboard_grid_category", %{items: cat_items})
-     |> push_event("dashboard_grid_text", %{items: text_items})}
+    {:noreply, socket}
   end
 
   def handle_async(:dashboard_data_task, {:error, error}, socket) do
@@ -2059,6 +2027,7 @@ defmodule TrifleApp.DashboardLive do
      |> assign(transponding: false)
      |> assign(stats: nil)
      |> assign(load_duration_microseconds: load_duration)
+     |> reset_widget_datasets()
      |> put_flash(:error, "Failed to load dashboard data: #{inspect(error)}")}
   end
 
@@ -2066,6 +2035,120 @@ defmodule TrifleApp.DashboardLive do
     IO.inspect(reason, label: "Dashboard data fetch failed")
     {:noreply, assign(socket, loading: false)}
   end
+
+  def handle_info({:widget_data, :kpi, widget_id, {value_map, visual_map}}, socket) do
+    socket =
+      socket
+      |> update_widget_map(:widget_kpi_values, widget_id, value_map)
+      |> update_widget_map(:widget_kpi_visuals, widget_id, visual_map)
+      |> push_kpi_events()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:widget_data, :timeseries, widget_id, dataset}, socket) do
+    socket =
+      socket
+      |> update_widget_map(:widget_timeseries, widget_id, dataset)
+      |> push_timeseries_event()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:widget_data, :category, widget_id, dataset}, socket) do
+    socket =
+      socket
+      |> update_widget_map(:widget_category, widget_id, dataset)
+      |> push_category_event()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:widget_data, :text, widget_id, dataset}, socket) do
+    socket =
+      socket
+      |> update_widget_map(:widget_text, widget_id, dataset)
+      |> push_text_event()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:widget_data, _type, _widget_id, _payload}, socket) do
+    {:noreply, socket}
+  end
+
+  defp reset_widget_datasets(socket) do
+    socket =
+      socket
+      |> assign(:widget_kpi_values, %{})
+      |> assign(:widget_kpi_visuals, %{})
+      |> assign(:widget_timeseries, %{})
+      |> assign(:widget_category, %{})
+      |> assign(:widget_text, %{})
+
+    socket
+    |> push_event("dashboard_grid_kpi_values", %{items: []})
+    |> push_event("dashboard_grid_kpi_visual", %{items: []})
+    |> push_event("dashboard_grid_timeseries", %{items: []})
+    |> push_event("dashboard_grid_category", %{items: []})
+    |> push_event("dashboard_grid_text", %{items: []})
+  end
+
+  defp remove_widget_from_datasets(socket, widget_id) do
+    socket
+    |> update_widget_map(:widget_kpi_values, widget_id, nil)
+    |> update_widget_map(:widget_kpi_visuals, widget_id, nil)
+    |> update_widget_map(:widget_timeseries, widget_id, nil)
+    |> update_widget_map(:widget_category, widget_id, nil)
+    |> update_widget_map(:widget_text, widget_id, nil)
+    |> push_kpi_events()
+    |> push_timeseries_event()
+    |> push_category_event()
+    |> push_text_event()
+  end
+
+  defp update_widget_map(socket, key, widget_id, nil) do
+    current = Map.get(socket.assigns, key, %{})
+    updated = Map.delete(current, widget_id)
+    assign(socket, key, updated)
+  end
+
+  defp update_widget_map(socket, key, widget_id, value) do
+    current = Map.get(socket.assigns, key, %{})
+    assign(socket, key, Map.put(current, widget_id, value))
+  end
+
+  defp push_kpi_events(socket) do
+    values = sorted_widget_values(socket.assigns.widget_kpi_values)
+    visuals = sorted_widget_values(socket.assigns.widget_kpi_visuals)
+
+    socket
+    |> push_event("dashboard_grid_kpi_values", %{items: values})
+    |> push_event("dashboard_grid_kpi_visual", %{items: visuals})
+  end
+
+  defp push_timeseries_event(socket) do
+    items = sorted_widget_values(socket.assigns.widget_timeseries)
+    push_event(socket, "dashboard_grid_timeseries", %{items: items})
+  end
+
+  defp push_category_event(socket) do
+    items = sorted_widget_values(socket.assigns.widget_category)
+    push_event(socket, "dashboard_grid_category", %{items: items})
+  end
+
+  defp push_text_event(socket) do
+    items = sorted_widget_values(socket.assigns.widget_text)
+    push_event(socket, "dashboard_grid_text", %{items: items})
+  end
+
+  defp sorted_widget_values(map) when is_map(map) do
+    map
+    |> Map.values()
+    |> Enum.sort_by(& &1.id)
+  end
+
+  defp sorted_widget_values(_), do: []
 
   defp gravatar_url(email) do
     hash =
