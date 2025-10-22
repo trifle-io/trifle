@@ -1,9 +1,11 @@
 defmodule TrifleApp.MonitorsLive do
   use TrifleApp, :live_view
 
+  alias Ecto.Changeset
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Organizations
+  alias Trifle.Stats.Source, as: StatsSource
   alias TrifleApp.MonitorsLive.FormComponent
   require Logger
 
@@ -26,6 +28,7 @@ defmodule TrifleApp.MonitorsLive do
      |> assign(:nav_section, :monitors)
      |> assign(:current_membership, membership)
      |> assign(:current_user, user)
+     |> assign(:sources, load_sources(membership))
      |> assign(:monitors, load_monitors(user, membership))
      |> assign(:modal_monitor, nil)
      |> assign(:modal_changeset, nil)
@@ -76,6 +79,7 @@ defmodule TrifleApp.MonitorsLive do
      socket
      |> put_flash(:info, "Monitor saved")
      |> assign(:monitors, load_monitors(user, membership))
+     |> assign(:sources, load_sources(membership))
      |> fetch_delivery_options()
      |> assign(:modal_monitor, nil)
      |> assign(:modal_changeset, nil)
@@ -96,6 +100,10 @@ defmodule TrifleApp.MonitorsLive do
 
   defp load_dashboards(user, membership) do
     Organizations.list_dashboards_for_membership(user, membership)
+  end
+
+  defp load_sources(membership) do
+    StatsSource.list_for_membership(membership)
   end
 
   defp fetch_delivery_options(socket) do
@@ -125,6 +133,36 @@ defmodule TrifleApp.MonitorsLive do
   end
 
   defp monitor_schedule_label(_), do: nil
+
+  defp monitor_source_label(%Monitor{} = monitor, sources) do
+    with {:ok, type, id} <- monitor_source_tuple(monitor),
+         %StatsSource{} = source <- StatsSource.find_in_list(sources, type, id) do
+      "#{source_type_label(type)} · #{StatsSource.display_name(source)}"
+    else
+      {:error, :missing} ->
+        "Not set"
+
+      _ ->
+        case monitor_source_tuple(monitor) do
+          {:ok, type, _id} -> "#{source_type_label(type)}"
+          _ -> "Unknown"
+        end
+    end
+  end
+
+  defp monitor_source_tuple(%Monitor{source_type: type, source_id: id})
+       when not is_nil(type) and not is_nil(id) do
+    {:ok, type, id}
+  end
+
+  defp monitor_source_tuple(_), do: {:error, :missing}
+
+  defp source_type_label(:database), do: "Database"
+  defp source_type_label(:project), do: "Project"
+  defp source_type_label(value) when is_atom(value) do
+    value |> Atom.to_string() |> String.capitalize()
+  end
+  defp source_type_label(value), do: to_string(value)
 
   defp fetch_setting(settings, key, default) when is_map(settings) do
     Map.get(settings, key) || Map.get(settings, Atom.to_string(key)) || default
@@ -272,14 +310,16 @@ defmodule TrifleApp.MonitorsLive do
                       <strong class="font-semibold text-gray-900 dark:text-white">
                         {monitor.dashboard.name}
                       </strong>
+                      from {monitor_source_label(monitor, @sources)}
                     <% else %>
-                      Dashboard not available
+                      Attached to dashboard (unavailable) from {monitor_source_label(monitor, @sources)}
                     <% end %>
                   <% else %>
                     Watching metrics key path
                     <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-[0.65rem] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
                       {format_metric_path(monitor.alert_settings)}
                     </code>
+                    from {monitor_source_label(monitor, @sources)}
                   <% end %>
                 </div>
               </div>
@@ -316,6 +356,7 @@ defmodule TrifleApp.MonitorsLive do
         monitor={@modal_monitor}
         changeset={@modal_changeset}
         dashboards={@dashboards}
+        sources={@sources}
         current_user={@current_user}
         current_membership={@current_membership}
         delivery_options={@delivery_options}

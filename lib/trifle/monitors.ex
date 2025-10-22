@@ -4,10 +4,12 @@ defmodule Trifle.Monitors do
   """
   import Ecto.Query, warn: false
 
+  alias Ecto.Changeset
   alias Trifle.Accounts.User
   alias Trifle.Integrations
   alias Trifle.Monitors.{Execution, Monitor}
   alias Trifle.Organizations.OrganizationMembership
+  alias Trifle.Organizations
   alias Trifle.Repo
 
   @default_execution_limit 25
@@ -60,9 +62,13 @@ defmodule Trifle.Monitors do
       |> Map.put("organization_id", membership.organization_id)
       |> Map.put("created_by_id", user.id)
 
-    %Monitor{}
-    |> Monitor.changeset(attrs)
-    |> Repo.insert()
+    monitor = %Monitor{organization_id: membership.organization_id}
+
+    with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor) do
+      monitor
+      |> Monitor.changeset(stringify_keys(attrs))
+      |> Repo.insert()
+    end
   end
 
   @doc """
@@ -78,9 +84,11 @@ defmodule Trifle.Monitors do
     else
       attrs = normalize_monitor_attrs(attrs)
 
-      monitor
-      |> Monitor.changeset(attrs)
-      |> Repo.update()
+      with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor) do
+        monitor
+        |> Monitor.changeset(stringify_keys(attrs))
+        |> Repo.update()
+      end
     end
   end
 
@@ -352,6 +360,7 @@ defmodule Trifle.Monitors do
     |> cast_enum(:type, [:report, :alert])
     |> cast_enum(:status, [:active, :paused])
     |> cast_enum(:trigger_status, [:idle, :warning, :recovering, :alerting])
+    |> cast_enum(:source_type, [:database, :project])
     |> update_nested(:report_settings, &normalize_report_settings/1)
     |> update_nested(:alert_settings, &normalize_alert_settings/1)
     |> update_nested_list(:delivery_channels, &normalize_delivery_channel/1)
@@ -365,6 +374,204 @@ defmodule Trifle.Monitors do
   end
 
   defp normalize_execution_attrs(attrs), do: attrs
+
+  defp ensure_source_reference(attrs, membership, monitor) do
+    case resolve_source_reference(attrs) do
+      {:ok, {type, id}} ->
+        coerce_source(attrs, membership, monitor, type, id)
+
+      :none ->
+        cond do
+          dashboard_id = fetch_attr(attrs, :dashboard_id) ->
+            coerce_source_from_dashboard(attrs, membership, monitor, dashboard_id)
+
+          monitor_has_source?(monitor) ->
+            {:ok, attrs}
+
+          true ->
+            {:error, source_error_changeset(monitor, attrs, "Source selection is required")}
+        end
+
+      {:error, message} ->
+        {:error, source_error_changeset(monitor, attrs, message)}
+    end
+  end
+
+  defp resolve_source_reference(attrs) do
+    case fetch_attr(attrs, :source) do
+      %{} = source_map ->
+        normalize_source_tuple(fetch_attr(source_map, :type), fetch_attr(source_map, :id))
+
+      _ ->
+        type = fetch_attr(attrs, :source_type)
+        id = fetch_attr(attrs, :source_id)
+
+        cond do
+          present?(type) and present?(id) ->
+            normalize_source_tuple(type, id)
+
+          present?(type) or present?(id) ->
+            {:error, "Source selection is incomplete"}
+
+          true ->
+            :none
+        end
+    end
+  end
+
+  defp normalize_source_tuple(type, id) do
+    type =
+      case type do
+        nil -> nil
+        value -> value |> to_string() |> String.trim() |> String.downcase()
+      end
+
+    id =
+      case id do
+        nil -> nil
+        value -> value |> to_string() |> String.trim()
+      end
+
+    cond do
+      type in ["database", "project"] and present?(id) ->
+        {:ok, {String.to_existing_atom(type), id}}
+
+      type in ["database", "project"] ->
+        {:error, "Source identifier is required"}
+
+      true ->
+        {:error, "Invalid source selection"}
+    end
+  rescue
+    ArgumentError ->
+      {:error, "Invalid source selection"}
+  end
+
+  defp coerce_source(attrs, membership, monitor, :database, id) do
+    case ensure_database_access(membership, id) do
+      :ok ->
+        {:ok,
+         attrs
+         |> drop_source_param()
+         |> put_attr(:source_type, :database)
+         |> put_attr(:source_id, id)}
+
+      {:error, message} ->
+        {:error, source_error_changeset(monitor, attrs, message)}
+    end
+  end
+
+  defp coerce_source(attrs, membership, monitor, :project, id) do
+    case ensure_project_access(membership, id) do
+      :ok ->
+        {:ok,
+         attrs
+         |> drop_source_param()
+         |> put_attr(:source_type, :project)
+         |> put_attr(:source_id, id)}
+
+      {:error, message} ->
+        {:error, source_error_changeset(monitor, attrs, message)}
+    end
+  end
+
+  defp coerce_source_from_dashboard(attrs, membership, monitor, dashboard_id) do
+    case fetch_dashboard_source(membership, dashboard_id) do
+      {:ok, {type, id}} ->
+        coerce_source(attrs, membership, monitor, type, id)
+
+      {:error, message} ->
+        {:error, source_error_changeset(monitor, attrs, message, :dashboard_id)}
+    end
+  end
+
+  defp ensure_database_access(%OrganizationMembership{} = membership, id) when is_binary(id) do
+    try do
+      _ = Organizations.get_database_for_org!(membership.organization_id, id)
+      :ok
+    rescue
+      Ecto.NoResultsError ->
+        {:error, "Database is not part of this organization"}
+    end
+  end
+
+  defp ensure_project_access(%OrganizationMembership{} = membership, id) when is_binary(id) do
+    try do
+      project = Organizations.get_project!(id)
+
+      if project.user_id == membership.user_id do
+        :ok
+      else
+        {:error, "Project is not available to this user"}
+      end
+    rescue
+      Ecto.NoResultsError ->
+        {:error, "Project not found"}
+    end
+  end
+
+  defp fetch_dashboard_source(%OrganizationMembership{} = membership, dashboard_id)
+       when is_binary(dashboard_id) do
+    try do
+      dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
+      normalize_source_tuple(dashboard.source_type, dashboard.source_id)
+    rescue
+      Ecto.NoResultsError ->
+        {:error, "Dashboard not found"}
+    end
+  end
+
+  defp fetch_attr(attrs, key) when is_atom(key) do
+    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  end
+
+  defp fetch_attr(attrs, key) when is_binary(key) do
+    Map.get(attrs, key) || Map.get(attrs, String.to_existing_atom(key))
+  rescue
+    ArgumentError -> Map.get(attrs, key)
+  end
+
+  defp put_attr(attrs, key, value) when is_atom(key) do
+    string_key = Atom.to_string(key)
+
+    attrs
+    |> Map.put(string_key, value)
+    |> Map.delete(key)
+  end
+
+  defp drop_source_param(attrs) do
+    attrs
+    |> Map.delete(:source)
+    |> Map.delete("source")
+  end
+
+  defp source_error_changeset(monitor, attrs, message, field \\ :source_id) do
+    monitor
+    |> Monitor.changeset(attrs)
+    |> Changeset.add_error(field, message)
+  end
+
+  defp monitor_has_source?(%Monitor{source_type: source_type, source_id: source_id}) do
+    not is_nil(source_type) and not is_nil(source_id)
+  end
+
+  defp monitor_has_source?(_), do: false
+
+  defp stringify_keys(value) when is_map(value) do
+    Enum.reduce(value, %{}, fn {key, val}, acc ->
+      string_key =
+        cond do
+          is_atom(key) -> Atom.to_string(key)
+          is_binary(key) -> key
+          true -> to_string(key)
+        end
+
+      Map.put(acc, string_key, stringify_keys(val))
+    end)
+  end
+
+  defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
+  defp stringify_keys(value), do: value
 
   defp monitor_preloads(opts) do
     case Keyword.get(opts, :preload, []) do

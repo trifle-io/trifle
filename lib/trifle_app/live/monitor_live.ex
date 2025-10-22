@@ -5,6 +5,7 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Organizations
+  alias Trifle.Stats.Source, as: StatsSource
   alias TrifleApp.MonitorComponents
   alias TrifleApp.MonitorsLive.FormComponent
 
@@ -26,6 +27,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:monitor, nil)
      |> assign(:executions, [])
      |> assign(:dashboards, load_dashboards(user, membership))
+     |> assign(:sources, load_sources(membership))
      |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
      |> assign(:modal_monitor, nil)
      |> assign(:modal_changeset, nil)}
@@ -97,6 +99,7 @@ defmodule TrifleApp.MonitorLive do
      |> put_flash(:info, "Monitor updated")
      |> assign(:monitor, refreshed)
      |> assign(:executions, Monitors.list_recent_executions(refreshed))
+     |> assign(:sources, load_sources(membership))
      |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
      |> push_patch(to: ~p"/monitors/#{monitor.id}")}
   end
@@ -123,9 +126,44 @@ defmodule TrifleApp.MonitorLive do
     Organizations.list_dashboards_for_membership(user, membership)
   end
 
+  defp load_sources(membership) do
+    StatsSource.list_for_membership(membership)
+  end
+
   defp status_label(:active), do: "enabled"
   defp status_label(:paused), do: "paused"
   defp status_label(_), do: "updated"
+
+  defp monitor_source_label(%Monitor{} = monitor, sources) do
+    with {:ok, type, id} <- monitor_source_tuple(monitor),
+         %StatsSource{} = source <- StatsSource.find_in_list(sources, type, id) do
+      "#{source_type_label(type)} · #{StatsSource.display_name(source)}"
+    else
+      {:error, :missing} ->
+        "Not set"
+
+      _ ->
+        case monitor_source_tuple(monitor) do
+          {:ok, type, _} -> source_type_label(type)
+          _ -> "Unknown"
+        end
+    end
+  end
+
+  defp monitor_source_tuple(%Monitor{source_type: type, source_id: id})
+       when not is_nil(type) and not is_nil(id) do
+    {:ok, type, id}
+  end
+
+  defp monitor_source_tuple(_), do: {:error, :missing}
+
+  defp source_type_label(:database), do: "Database"
+  defp source_type_label(:project), do: "Project"
+  defp source_type_label(value) when is_atom(value) do
+    value |> Atom.to_string() |> String.capitalize()
+  end
+
+  defp source_type_label(value), do: to_string(value)
 
   defp monitor_icon(assigns) do
     ~H"""
@@ -234,6 +272,10 @@ defmodule TrifleApp.MonitorLive do
                 </code>
               <% end %>
             </p>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <span class="font-semibold text-slate-600 dark:text-slate-300">Source:</span>
+              {monitor_source_label(@monitor, @sources)}
+            </p>
             <p :if={@monitor.description} class="mt-2 text-sm text-slate-500 dark:text-slate-300">
               {@monitor.description}
             </p>
@@ -290,9 +332,16 @@ defmodule TrifleApp.MonitorLive do
         </div>
         <div class="space-y-6">
           <%= if @monitor.type == :report do %>
-            <MonitorComponents.report_panel monitor={@monitor} dashboard={@monitor.dashboard} />
+            <MonitorComponents.report_panel
+              monitor={@monitor}
+              dashboard={@monitor.dashboard}
+              source_label={monitor_source_label(@monitor, @sources)}
+            />
           <% else %>
-            <MonitorComponents.alert_panel monitor={@monitor} />
+            <MonitorComponents.alert_panel
+              monitor={@monitor}
+              source_label={monitor_source_label(@monitor, @sources)}
+            />
           <% end %>
           <MonitorComponents.trigger_history monitor={@monitor} executions={@executions} />
         </div>
@@ -305,6 +354,7 @@ defmodule TrifleApp.MonitorLive do
         monitor={@modal_monitor || @monitor}
         changeset={@modal_changeset}
         dashboards={@dashboards}
+        sources={@sources}
         current_user={@current_user}
         current_membership={@current_membership}
         delivery_options={@delivery_options}

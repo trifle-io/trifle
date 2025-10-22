@@ -14,15 +14,23 @@ defmodule Trifle.MonitorsTest do
     {:ok, organization, membership} =
       Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
 
-    %{user: user, organization: organization, membership: membership}
+    {:ok, database} =
+      Organizations.create_database_for_org(organization, %{
+        display_name: "Primary DB",
+        driver: "sqlite",
+        file_path: "metrics.sqlite"
+      })
+
+    %{user: user, organization: organization, membership: membership, database: database}
   end
 
   describe "monitors" do
     test "list_monitors_for_membership/3 returns monitors for membership", %{
       user: user,
-      membership: membership
+      membership: membership,
+      database: database
     } do
-      monitor = monitor_fixture(user, membership)
+      monitor = monitor_fixture(user, membership, database)
 
       assert [result] = Monitors.list_monitors_for_membership(user, membership)
       assert result.id == monitor.id
@@ -30,9 +38,10 @@ defmodule Trifle.MonitorsTest do
 
     test "get_monitor_for_membership!/3 retrieves monitor scoped to membership", %{
       user: user,
-      membership: membership
+      membership: membership,
+      database: database
     } do
-      monitor = monitor_fixture(user, membership)
+      monitor = monitor_fixture(user, membership, database)
 
       result = Monitors.get_monitor_for_membership!(membership, monitor.id)
       assert result.id == monitor.id
@@ -40,7 +49,8 @@ defmodule Trifle.MonitorsTest do
 
     test "create_monitor_for_membership/3 persists alert monitor", %{
       user: user,
-      membership: membership
+      membership: membership,
+      database: database
     } do
       attrs = %{
         "name" => "Error Spike",
@@ -55,7 +65,9 @@ defmodule Trifle.MonitorsTest do
         },
         "delivery_channels" => [
           %{"channel" => "email", "label" => "On-call", "target" => "oncall@example.com"}
-        ]
+        ],
+        "source_type" => "database",
+        "source_id" => database.id
       }
 
       assert {:ok, %Monitor{} = monitor} =
@@ -65,6 +77,8 @@ defmodule Trifle.MonitorsTest do
       assert monitor.alert_settings.metric_key == "errors.total"
       assert monitor.delivery_channels |> List.first() |> Map.get(:target) == "oncall@example.com"
       assert monitor.organization_id == membership.organization_id
+      assert monitor.source_type == :database
+      assert monitor.source_id == database.id
     end
 
     test "create_monitor_for_membership/3 returns error changeset when data invalid", %{
@@ -80,9 +94,10 @@ defmodule Trifle.MonitorsTest do
 
     test "update_monitor_for_membership/3 modifies an existing monitor", %{
       user: user,
-      membership: membership
+      membership: membership,
+      database: database
     } do
-      monitor = monitor_fixture(user, membership)
+      monitor = monitor_fixture(user, membership, database)
 
       assert {:ok, %Monitor{} = updated} =
                Monitors.update_monitor_for_membership(monitor, membership, %{name: "Latency Guard"})
@@ -92,9 +107,10 @@ defmodule Trifle.MonitorsTest do
 
     test "delete_monitor_for_membership/2 removes monitor", %{
       user: user,
-      membership: membership
+      membership: membership,
+      database: database
     } do
-      monitor = monitor_fixture(user, membership)
+      monitor = monitor_fixture(user, membership, database)
 
       assert {:ok, %Monitor{}} = Monitors.delete_monitor_for_membership(monitor, membership)
       assert_raise Ecto.NoResultsError, fn ->
@@ -154,9 +170,10 @@ defmodule Trifle.MonitorsTest do
   describe "monitor executions" do
     test "create_execution/2 stores trigger and list_recent_executions/2 fetches it", %{
       user: user,
-      membership: membership
+      membership: membership,
+      database: database
     } do
-      monitor = monitor_fixture(user, membership)
+      monitor = monitor_fixture(user, membership, database)
 
       {:ok, execution} =
         Monitors.create_execution(monitor, %{
@@ -173,7 +190,7 @@ defmodule Trifle.MonitorsTest do
     end
   end
 
-  defp monitor_fixture(user, membership, attrs \\ %{}) do
+  defp monitor_fixture(user, membership, database, attrs \\ %{}) do
     defaults = %{
       "name" => "Latency Watch",
       "type" => "alert",
@@ -187,7 +204,9 @@ defmodule Trifle.MonitorsTest do
       },
       "delivery_channels" => [
         %{"channel" => "email", "label" => "Primary", "target" => "alerts@example.com"}
-      ]
+      ],
+      "source_type" => "database",
+      "source_id" => database.id
     }
 
     {:ok, monitor} =

@@ -24,6 +24,8 @@ defmodule Trifle.Monitors.Monitor do
     field :status, Ecto.Enum, values: @status_values, default: :active
     field :target, :map, default: %{}
     field :trigger_status, Ecto.Enum, values: @trigger_status_values, default: :idle
+    field :source_type, Ecto.Enum, values: [:database, :project]
+    field :source_id, :binary_id
 
     embeds_one :report_settings, ReportSettings, on_replace: :update do
       field :frequency, Ecto.Enum,
@@ -80,17 +82,20 @@ defmodule Trifle.Monitors.Monitor do
       :type,
       :status,
       :target,
-      :trigger_status
+      :trigger_status,
+      :source_type,
+      :source_id
     ])
     |> cast_embed(:report_settings, with: &report_settings_changeset/2, required: false)
     |> cast_embed(:alert_settings, with: &alert_settings_changeset/2, required: false)
     |> cast_embed(:delivery_channels, with: &delivery_channel_changeset/2, required: false)
     |> sanitize_target()
-    |> validate_required([:organization_id, :name, :type, :status])
+    |> validate_required([:organization_id, :name, :type, :status, :source_type, :source_id])
     |> validate_length(:name, min: 1, max: 255)
     |> maybe_require_dashboard()
     |> maybe_require_alert_target()
     |> maybe_sync_dashboard_reference()
+    |> ensure_source_persistence()
   end
 
   defp report_settings_changeset(settings, attrs) do
@@ -227,7 +232,20 @@ defmodule Trifle.Monitors.Monitor do
           changeset
       end
     else
-      changeset
+        changeset
+    end
+  end
+
+  defp ensure_source_persistence(%Ecto.Changeset{} = changeset) do
+    source_type = get_field(changeset, :source_type) || changeset.data.source_type
+    source_id = get_field(changeset, :source_id) || changeset.data.source_id
+
+    cond do
+      is_nil(source_type) or is_nil(source_id) ->
+        add_error(changeset, :source_id, "must reference a source")
+
+      true ->
+        changeset
     end
   end
 

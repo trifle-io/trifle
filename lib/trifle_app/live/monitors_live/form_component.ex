@@ -5,6 +5,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Monitors.Monitor.{AlertSettings, DeliveryChannel, ReportSettings}
+  alias Trifle.Stats.Source
   require Logger
 
   @impl true
@@ -21,6 +22,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign_new(:available_dashboards, fn -> assigns.dashboards || [] end)
      |> assign_new(:delivery_options, fn -> assigns.delivery_options || [] end)
      |> assign_new(:delivery_handles, fn -> [] end)
+     |> assign_new(:sources, fn -> assigns.sources || [] end)
      |> assign(assigns)
      |> assign(:persisted_monitor, monitor)
      |> assign(:action, assigns[:action] || derive_action(monitor))
@@ -62,15 +64,76 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                     label="Description"
                     placeholder="Let teammates know what this monitor does."
                   />
-                </div>
               </div>
+            </div>
 
-              <% type = @monitor.type || :report %>
+            <% type = @monitor.type || :report %>
 
-              <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
-                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
-                  {if type == :report, do: "Report configuration", else: "Alert configuration"}
-                </h3>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div class="md:col-span-2">
+                <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Data source
+                </label>
+                <%= if type == :alert do %>
+                  <% grouped_sources = group_sources_for_select(@sources || []) %>
+                  <div class="grid grid-cols-1 sm:max-w-xs">
+                    <select
+                      name="monitor[source_ref]"
+                      id="monitor-source-ref"
+                      class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                      disabled={grouped_sources == []}
+                    >
+                      <option value="">Select a source...</option>
+                      <%= for {group_label, sources} <- grouped_sources do %>
+                        <optgroup label={group_label}>
+                          <%= for source <- sources do %>
+                            <% option_value = encode_source_ref(source) %>
+                            <option value={option_value} selected={source_selected?(@selected_source_ref, source)}>
+                              {Source.display_name(source)}
+                            </option>
+                          <% end %>
+                        </optgroup>
+                      <% end %>
+                    </select>
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      data-slot="icon"
+                      aria-hidden="true"
+                      class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                    >
+                      <path
+                        d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                        clip-rule="evenodd"
+                        fill-rule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <%= if grouped_sources == [] do %>
+                    <p class="mt-2 text-xs text-red-600 dark:text-red-400">
+                      No available sources. Create a database or project first.
+                    </p>
+                  <% end %>
+                <% else %>
+                  <div class="rounded-md border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+                    {monitor_source_display(@monitor, @sources)}
+                  </div>
+                  <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Source is derived from the selected dashboard.
+                  </p>
+                <% end %>
+                <%= for error <- source_errors(@form) do %>
+                  <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                    {translate_error(error)}
+                  </p>
+                <% end %>
+              </div>
+            </div>
+
+            <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
+              <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
+                {if type == :report, do: "Report configuration", else: "Alert configuration"}
+              </h3>
                 <div class="mt-4">
                   <%= if type == :report do %>
                     <.inputs_for :let={report_form} field={@form[:report_settings]}>
@@ -365,19 +428,6 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end
   end
 
-  defp assign_form(socket, %Changeset{} = changeset, opts \\ []) do
-    monitor = Changeset.apply_changes(changeset)
-
-    handles =
-      Keyword.get(opts, :handles) ||
-        Monitors.delivery_handles_from_channels(monitor.delivery_channels || [])
-
-    socket
-    |> assign(:form, to_form(changeset))
-    |> assign(:monitor, monitor)
-    |> assign(:delivery_handles, handles)
-  end
-
   defp ensure_monitor_struct(%Monitor{} = monitor, _membership),
     do: populate_missing_embeds(monitor)
 
@@ -429,6 +479,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
       params
       |> Map.delete("delivery_handles")
       |> Map.put("delivery_channels", channels)
+      |> maybe_apply_source_ref()
 
     {prepared_params, handles, invalid}
   end
@@ -468,5 +519,125 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
       {:delivery_channels, {message, _}} -> message
       _ -> nil
     end)
+  end
+
+  defp maybe_apply_source_ref(params) do
+    {ref, params} =
+      cond do
+        Map.has_key?(params, "source_ref") -> Map.pop(params, "source_ref")
+        Map.has_key?(params, :source_ref) -> Map.pop(params, :source_ref)
+        true -> {nil, params}
+      end
+
+    case ref do
+      nil ->
+        params
+
+      "" ->
+        params
+        |> Map.delete("source_type")
+        |> Map.delete(:source_type)
+        |> Map.delete("source_id")
+        |> Map.delete(:source_id)
+
+      value ->
+        case parse_source_ref(value) do
+          {:ok, {type, id}} ->
+            params
+            |> Map.delete("source_type")
+            |> Map.delete(:source_type)
+            |> Map.delete("source_id")
+            |> Map.delete(:source_id)
+            |> Map.put("source_type", Atom.to_string(type))
+            |> Map.put("source_id", id)
+
+          {:error, _reason} ->
+            params
+        end
+    end
+  end
+
+  defp parse_source_ref(nil), do: {:error, :blank}
+
+  defp parse_source_ref(ref) when is_binary(ref) do
+    case String.split(ref, ":", parts: 2) do
+      [type, id] when type in ["database", "project"] and id not in [nil, ""] ->
+        {:ok, {String.to_existing_atom(type), id}}
+
+      _ ->
+        {:error, :invalid}
+    end
+  rescue
+    ArgumentError ->
+      {:error, :invalid}
+  end
+
+  defp encode_source_ref(%Source{} = source) do
+    "#{Source.type(source)}:#{Source.id(source)}"
+  end
+
+  defp source_selected?(selected_ref, %Source{} = source) do
+    selected_ref == encode_source_ref(source)
+  end
+
+  defp monitor_source_ref(%Monitor{source_type: nil}), do: nil
+
+  defp monitor_source_ref(%Monitor{source_type: type, source_id: id})
+       when not is_nil(type) and not is_nil(id) do
+    "#{type}:#{id}"
+  end
+
+  defp monitor_source_ref(_), do: nil
+
+  defp monitor_source_display(%Monitor{} = monitor, sources) do
+    ref = monitor_source_ref(monitor)
+
+    with true <- not is_nil(ref),
+         %Source{} = source <- Enum.find(sources, &(encode_source_ref(&1) == ref)) do
+      source_option_label(source)
+    else
+      _ ->
+        case ref do
+          nil -> "Select a dashboard to determine the source"
+          value -> value
+        end
+    end
+  end
+
+  defp source_option_label(%Source{} = source) do
+    type_label =
+      case Source.type(source) do
+        :database -> "Database"
+        :project -> "Project"
+        other -> other |> Atom.to_string() |> String.capitalize()
+      end
+
+    "#{type_label} · #{Source.display_name(source)}"
+  end
+
+  defp group_sources_for_select(sources) do
+    sources
+    |> Enum.group_by(&Source.type/1)
+    |> Enum.map(fn {type, list} -> {Source.type_label(type), Enum.sort_by(list, &Source.display_name/1)} end)
+    |> Enum.sort_by(fn {label, _} -> label end)
+  end
+
+  defp source_errors(form) do
+    (form[:source_type].errors ++ form[:source_id].errors)
+    |> Enum.uniq()
+  end
+
+  defp assign_form(socket, %Changeset{} = changeset, opts \\ []) do
+    monitor = Changeset.apply_changes(changeset)
+
+    handles =
+      Keyword.get(opts, :handles) ||
+        Monitors.delivery_handles_from_channels(monitor.delivery_channels || [])
+
+    socket
+    |> assign(:form, to_form(changeset))
+    |> assign(:monitor, monitor)
+    |> assign(:delivery_handles, handles)
+    |> assign(:selected_source_ref, monitor_source_ref(monitor))
   end
 end
