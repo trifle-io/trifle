@@ -4,7 +4,6 @@ defmodule TrifleApp.ExploreLive do
   alias Decimal
   alias Trifle.Organizations
   alias Trifle.Stats.Source
-  alias Trifle.Stats.SeriesFetcher
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
 
@@ -1140,37 +1139,29 @@ defmodule TrifleApp.ExploreLive do
       end
     end
 
-    # Use SeriesFetcher for all data loading to ensure consistent transponder application
+    # Use Source.fetch_series for all data loading to ensure consistent transponder application, including transponders
     {:noreply,
      start_async(
        socket,
        :data_task,
        fn ->
          if key && key != "" do
-           # Get transponders that match the specific key
-           matching_transponders =
-             Source.transponders(source)
-             |> Enum.filter(& &1.enabled)
-             |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
-             |> Enum.sort_by(& &1.order)
-
            # Load both system key (no transponders) and specific key (with transponders)
-           case {SeriesFetcher.fetch_series(
+           case {Source.fetch_series(
                    source,
                    "__system__key__",
                    from,
                    to,
                    granularity,
-                   [],
-                   progress_callback: progress_callback
+                   progress_callback: progress_callback,
+                   transponders: :none
                  ),
-                 SeriesFetcher.fetch_series(
+                 Source.fetch_series(
                    source,
                    key,
                    from,
                    to,
                    granularity,
-                   matching_transponders,
                    progress_callback: progress_callback
                  )} do
              {{:ok, system_result}, {:ok, key_result}} ->
@@ -1188,8 +1179,14 @@ defmodule TrifleApp.ExploreLive do
            end
          else
            # Only load system key when no specific key is selected (no transponders)
-           case SeriesFetcher.fetch_series(source, "__system__key__", from, to, granularity, [],
-                  progress_callback: progress_callback
+           case Source.fetch_series(
+                  source,
+                  "__system__key__",
+                  from,
+                  to,
+                  granularity,
+                  progress_callback: progress_callback,
+                  transponders: :none
                 ) do
              {:ok, result} -> %{system: result.series}
              {:error, error} -> {:error, error}
@@ -1667,7 +1664,7 @@ defmodule TrifleApp.ExploreLive do
         # Count paths (rows)
         path_count = if stats[:paths], do: length(stats[:paths]), else: 0
 
-        # Use actual transponder results from SeriesFetcher
+        # Use actual transponder results returned by Source.fetch_series
         successful_transponders = length(key_transponder_results.successful)
         failed_transponders = length(key_transponder_results.failed)
         transponder_errors = key_transponder_results.errors
@@ -2612,18 +2609,5 @@ defmodule TrifleApp.ExploreLive do
       </div>
     <% end %>
     """
-  end
-
-  defp key_matches_pattern?(key, pattern) do
-    cond do
-      String.contains?(pattern, "^") or String.contains?(pattern, "$") ->
-        case Regex.compile(pattern) do
-          {:ok, regex} -> Regex.match?(regex, key)
-          {:error, _} -> false
-        end
-
-      true ->
-        key == pattern
-    end
   end
 end

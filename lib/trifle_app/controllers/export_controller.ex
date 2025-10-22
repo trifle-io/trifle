@@ -5,7 +5,6 @@ defmodule TrifleApp.ExportController do
   alias Trifle.Organizations
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
-  alias Trifle.Stats.SeriesFetcher
   alias Trifle.Stats.Source
   alias Trifle.Stats.Tabler
 
@@ -127,19 +126,12 @@ defmodule TrifleApp.ExportController do
 
     resolved_key = resolved_key_from_params(dashboard, params)
 
-    matching_transponders =
-      Source.transponders(source)
-      |> Enum.filter(& &1.enabled)
-      |> Enum.filter(fn t -> key_matches_pattern?(t.key, resolved_key) end)
-      |> Enum.sort_by(& &1.order)
-
-    case SeriesFetcher.fetch_series(
+    case Source.fetch_series(
            source,
            resolved_key,
            from,
            to,
            granularity,
-           matching_transponders,
            progress_callback: nil
          ) do
       {:ok, result} ->
@@ -153,17 +145,6 @@ defmodule TrifleApp.ExportController do
 
       other ->
         other
-    end
-  end
-
-  defp key_matches_pattern?(pattern, key) when is_binary(pattern) and is_binary(key) do
-    if String.contains?(pattern, "^") or String.contains?(pattern, "$") do
-      case Regex.compile(pattern) do
-        {:ok, regex} -> Regex.match?(regex, key)
-        _ -> false
-      end
-    else
-      pattern == key
     end
   end
 

@@ -64,76 +64,79 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                     label="Description"
                     placeholder="Let teammates know what this monitor does."
                   />
+                </div>
               </div>
-            </div>
 
-            <% type = @monitor.type || :report %>
+              <% type = @monitor.type || :report %>
 
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div class="md:col-span-2">
-                <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
-                  Data source
-                </label>
-                <%= if type == :alert do %>
-                  <% grouped_sources = group_sources_for_select(@sources || []) %>
-                  <div class="grid grid-cols-1 sm:max-w-xs">
-                    <select
-                      name="monitor[source_ref]"
-                      id="monitor-source-ref"
-                      class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                      disabled={grouped_sources == []}
-                    >
-                      <option value="">Select a source...</option>
-                      <%= for {group_label, sources} <- grouped_sources do %>
-                        <optgroup label={group_label}>
-                          <%= for source <- sources do %>
-                            <% option_value = encode_source_ref(source) %>
-                            <option value={option_value} selected={source_selected?(@selected_source_ref, source)}>
-                              {Source.display_name(source)}
-                            </option>
-                          <% end %>
-                        </optgroup>
-                      <% end %>
-                    </select>
-                    <svg
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                      data-slot="icon"
-                      aria-hidden="true"
-                      class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                    >
-                      <path
-                        d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                        clip-rule="evenodd"
-                        fill-rule="evenodd"
-                      />
-                    </svg>
-                  </div>
-                  <%= if grouped_sources == [] do %>
-                    <p class="mt-2 text-xs text-red-600 dark:text-red-400">
-                      No available sources. Create a database or project first.
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div class="md:col-span-2">
+                  <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Data source
+                  </label>
+                  <%= if type == :alert do %>
+                    <% grouped_sources = group_sources_for_select(@sources || []) %>
+                    <div class="grid grid-cols-1 sm:max-w-xs">
+                      <select
+                        name="monitor[source_ref]"
+                        id="monitor-source-ref"
+                        class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+                        disabled={grouped_sources == []}
+                      >
+                        <option value="">Select a source...</option>
+                        <%= for {group_label, sources} <- grouped_sources do %>
+                          <optgroup label={group_label}>
+                            <%= for source <- sources do %>
+                              <% option_value = encode_source_ref(source) %>
+                              <option
+                                value={option_value}
+                                selected={source_selected?(@selected_source_ref, source)}
+                              >
+                                {Source.display_name(source)}
+                              </option>
+                            <% end %>
+                          </optgroup>
+                        <% end %>
+                      </select>
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        data-slot="icon"
+                        aria-hidden="true"
+                        class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                      >
+                        <path
+                          d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                          clip-rule="evenodd"
+                          fill-rule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                    <%= if grouped_sources == [] do %>
+                      <p class="mt-2 text-xs text-red-600 dark:text-red-400">
+                        No available sources. Create a database or project first.
+                      </p>
+                    <% end %>
+                  <% else %>
+                    <div class="rounded-md border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+                      {monitor_source_display(@monitor, @sources)}
+                    </div>
+                    <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Source is derived from the selected dashboard.
                     </p>
                   <% end %>
-                <% else %>
-                  <div class="rounded-md border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
-                    {monitor_source_display(@monitor, @sources)}
-                  </div>
-                  <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Source is derived from the selected dashboard.
-                  </p>
-                <% end %>
-                <%= for error <- source_errors(@form) do %>
-                  <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
-                    {translate_error(error)}
-                  </p>
-                <% end %>
+                  <%= for error <- source_errors(@form) do %>
+                    <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                      {translate_error(error)}
+                    </p>
+                  <% end %>
+                </div>
               </div>
-            </div>
 
-            <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
-              <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
-                {if type == :report, do: "Report configuration", else: "Alert configuration"}
-              </h3>
+              <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
+                  {if type == :report, do: "Report configuration", else: "Alert configuration"}
+                </h3>
                 <div class="mt-4">
                   <%= if type == :report do %>
                     <.inputs_for :let={report_form} field={@form[:report_settings]}>
@@ -149,7 +152,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                           >
                             <option value="">Select dashboard...</option>
                             <%= for dashboard <- @available_dashboards do %>
-                              <option value={dashboard.id} selected={dashboard.id == @form[:dashboard_id].value}>
+                              <option
+                                value={dashboard.id}
+                                selected={dashboard.id == @form[:dashboard_id].value}
+                              >
                                 {dashboard.name}
                               </option>
                             <% end %>
@@ -618,7 +624,9 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   defp group_sources_for_select(sources) do
     sources
     |> Enum.group_by(&Source.type/1)
-    |> Enum.map(fn {type, list} -> {Source.type_label(type), Enum.sort_by(list, &Source.display_name/1)} end)
+    |> Enum.map(fn {type, list} ->
+      {Source.type_label(type), Enum.sort_by(list, &Source.display_name/1)}
+    end)
     |> Enum.sort_by(fn {label, _} -> label end)
   end
 

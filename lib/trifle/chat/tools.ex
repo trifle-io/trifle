@@ -6,7 +6,6 @@ defmodule Trifle.Chat.Tools do
   alias Decimal, as: D
   alias Trifle.Chat.Notifier
   alias Trifle.Chat.Session
-  alias Trifle.Stats.SeriesFetcher
   alias Trifle.Stats.Source
   alias TrifleApp.TimeframeParsing
 
@@ -138,14 +137,14 @@ defmodule Trifle.Chat.Tools do
               }}
            ),
          {:ok, result} <-
-           SeriesFetcher.fetch_series(
+           Source.fetch_series(
              source,
              metric_key,
              from,
              to,
              granularity,
-             [],
-             progressive: false
+             progressive: false,
+             transponders: :none
            ) do
       {:ok,
        %{
@@ -189,14 +188,14 @@ defmodule Trifle.Chat.Tools do
               }}
            ),
          {:ok, result} <-
-           SeriesFetcher.fetch_series(
+           Source.fetch_series(
              source,
              @system_key,
              from,
              to,
              granularity,
-             [],
-             progressive: false
+             progressive: false,
+             transponders: :none
            ) do
       paths =
         result.series.series

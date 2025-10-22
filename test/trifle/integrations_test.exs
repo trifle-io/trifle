@@ -9,6 +9,7 @@ defmodule Trifle.IntegrationsTest do
   describe "Slack installations" do
     setup do
       user = AccountsFixtures.user_fixture()
+
       {:ok, organization, _membership} =
         Organizations.create_organization_with_owner(%{name: "Acme Widgets"}, user)
 
@@ -40,7 +41,9 @@ defmodule Trifle.IntegrationsTest do
       organization: organization,
       user: user
     } do
-      payload = slack_payload(team_id: "T200", team_name: "Marketing Crew", access_token: "xoxb-old")
+      payload =
+        slack_payload(team_id: "T200", team_name: "Marketing Crew", access_token: "xoxb-old")
+
       {:ok, installation} =
         Integrations.create_or_update_slack_installation(organization.id, user.id, payload)
 
@@ -100,6 +103,7 @@ defmodule Trifle.IntegrationsTest do
   describe "Slack channels" do
     setup do
       user = AccountsFixtures.user_fixture()
+
       {:ok, organization, _membership} =
         Organizations.create_organization_with_owner(%{name: "Alerts"}, user)
 
@@ -141,6 +145,7 @@ defmodule Trifle.IntegrationsTest do
 
     test "update_slack_channel_enabled/3 enforces organization ownership", %{channel: channel} do
       other_user = AccountsFixtures.user_fixture()
+
       {:ok, other_org, _} =
         Organizations.create_organization_with_owner(%{name: "Other Org"}, other_user)
 

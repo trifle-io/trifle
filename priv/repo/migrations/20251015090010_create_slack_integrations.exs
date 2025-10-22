@@ -4,6 +4,7 @@ defmodule Trifle.Repo.Migrations.CreateSlackIntegrations do
   def change do
     create table(:slack_installations, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :organization_id,
           references(:organizations, type: :binary_id, on_delete: :delete_all),
           null: false
@@ -16,6 +17,7 @@ defmodule Trifle.Repo.Migrations.CreateSlackIntegrations do
       add :bot_access_token, :text, null: false
       add :scope, :string
       add :settings, :map, default: %{}
+
       add :installed_by_user_id,
           references(:users, type: :binary_id, on_delete: :nilify_all)
 
@@ -30,6 +32,7 @@ defmodule Trifle.Repo.Migrations.CreateSlackIntegrations do
 
     create table(:slack_channels, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :slack_installation_id,
           references(:slack_installations, type: :binary_id, on_delete: :delete_all),
           null: false

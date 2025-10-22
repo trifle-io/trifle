@@ -32,16 +32,22 @@ defmodule TrifleApp.Components.DeliverySelector do
     >
       <div class="flex items-center justify-between">
         <%= if @label do %>
-          <label for={"#{@id}-input"} class="block text-sm font-medium text-slate-700 dark:text-slate-200">
+          <label
+            for={"#{@id}-input"}
+            class="block text-sm font-medium text-slate-700 dark:text-slate-200"
+          >
             {@label}
           </label>
         <% end %>
-        <span class="text-xs text-slate-500 dark:text-slate-400" x-show="selected.length > 0" x-text="`${selected.length} selected`"></span>
+        <span
+          class="text-xs text-slate-500 dark:text-slate-400"
+          x-show="selected.length > 0"
+          x-text="`${selected.length} selected`"
+        >
+        </span>
       </div>
 
-      <div class="flex flex-col gap-2"
-        x-on:click.outside="closeDropdown()"
-      >
+      <div class="flex flex-col gap-2" x-on:click.outside="closeDropdown()">
         <input
           x-ref="input"
           x-model="query"
@@ -81,10 +87,15 @@ defmodule TrifleApp.Components.DeliverySelector do
                     x-on:click.prevent
                   >
                     <div class="flex items-center gap-2">
-                      <span class="text-[0.65rem] font-semibold uppercase tracking-wide text-teal-500 dark:text-teal-300" x-text="option.badge"></span>
+                      <span
+                        class="text-[0.65rem] font-semibold uppercase tracking-wide text-teal-500 dark:text-teal-300"
+                        x-text="option.badge"
+                      >
+                      </span>
                       <span class="font-medium" x-text="option.label"></span>
                     </div>
-                    <p class="text-xs text-slate-500 dark:text-slate-400" x-text="option.description"></p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400" x-text="option.description">
+                    </p>
                   </button>
                 </li>
               </template>
@@ -92,9 +103,7 @@ defmodule TrifleApp.Components.DeliverySelector do
           </div>
         </div>
 
-        <div class="flex flex-wrap gap-2 pt-2"
-          x-on:mousedown="cancelScheduledClose()"
-        >
+        <div class="flex flex-wrap gap-2 pt-2" x-on:mousedown="cancelScheduledClose()">
           <template x-for="item in selectedDetails()" x-bind:key="item.handle">
             <span class="inline-flex items-center gap-1 rounded-full bg-teal-600/10 text-teal-800 dark:text-teal-200 px-2 py-0.5 text-[0.7rem] font-semibold">
               <span class="uppercase text-teal-500 dark:text-teal-300" x-text="item.badge"></span>
@@ -104,8 +113,7 @@ defmodule TrifleApp.Components.DeliverySelector do
                 class="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-transparent text-slate-500 hover:text-rose-500"
                 x-on:click.stop="remove(item.handle)"
               >
-                <span class="sr-only">Remove</span>
-                &times;
+                <span class="sr-only">Remove</span> &times;
               </button>
             </span>
           </template>

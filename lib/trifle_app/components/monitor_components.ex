@@ -352,6 +352,7 @@ defmodule TrifleApp.MonitorComponents do
 
   defp source_type_label(:database), do: "Database"
   defp source_type_label(:project), do: "Project"
+
   defp source_type_label(value) when is_atom(value) do
     value |> Atom.to_string() |> String.capitalize()
   end
