@@ -11,6 +11,7 @@ defmodule Trifle.MonitorsTest do
 
   setup do
     user = AccountsFixtures.user_fixture()
+
     {:ok, organization, membership} =
       Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
 
@@ -100,7 +101,9 @@ defmodule Trifle.MonitorsTest do
       monitor = monitor_fixture(user, membership, database)
 
       assert {:ok, %Monitor{} = updated} =
-               Monitors.update_monitor_for_membership(monitor, membership, %{name: "Latency Guard"})
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 name: "Latency Guard"
+               })
 
       assert updated.name == "Latency Guard"
     end
@@ -113,6 +116,7 @@ defmodule Trifle.MonitorsTest do
       monitor = monitor_fixture(user, membership, database)
 
       assert {:ok, %Monitor{}} = Monitors.delete_monitor_for_membership(monitor, membership)
+
       assert_raise Ecto.NoResultsError, fn ->
         Monitors.get_monitor_for_membership!(membership, monitor.id)
       end
@@ -120,13 +124,20 @@ defmodule Trifle.MonitorsTest do
   end
 
   describe "delivery options" do
-    test "delivery_options_for_membership/1 includes organization members", %{membership: membership, user: user} do
+    test "delivery_options_for_membership/1 includes organization members", %{
+      membership: membership,
+      user: user
+    } do
       options = Monitors.delivery_options_for_membership(membership)
 
       assert Enum.any?(options, fn option -> option.handle == "email#" <> user.email end)
     end
 
-    test "delivery_channels_from_handles/2 builds channel maps", %{membership: membership, organization: organization, user: user} do
+    test "delivery_channels_from_handles/2 builds channel maps", %{
+      membership: membership,
+      organization: organization,
+      user: user
+    } do
       installation =
         %SlackInstallation{}
         |> SlackInstallation.changeset(%{
@@ -151,12 +162,16 @@ defmodule Trifle.MonitorsTest do
         |> Repo.insert!()
 
       handles = ["email#" <> user.email, "slack_#{installation.reference}##{channel.name}"]
+
       {channels, invalid} =
         Monitors.delivery_channels_from_handles(handles, membership, [])
 
       assert invalid == []
       assert Enum.count(channels) == 2
-      assert Enum.any?(channels, fn channel_map -> Map.get(channel_map, "target") == user.email end)
+
+      assert Enum.any?(channels, fn channel_map ->
+               Map.get(channel_map, "target") == user.email
+             end)
 
       slack_entry = Enum.find(channels, fn map -> Map.get(map, "channel") == "slack_webhook" end)
       assert slack_entry

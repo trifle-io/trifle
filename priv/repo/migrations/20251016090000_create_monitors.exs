@@ -4,6 +4,7 @@ defmodule Trifle.Repo.Migrations.CreateMonitors do
   def change do
     create table(:monitors, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
         null: false
 
@@ -28,7 +29,10 @@ defmodule Trifle.Repo.Migrations.CreateMonitors do
 
     create table(:monitor_executions, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :monitor_id, references(:monitors, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :monitor_id, references(:monitors, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :status, :string, null: false
       add :triggered_at, :utc_datetime_usec, null: false
       add :summary, :string

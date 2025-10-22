@@ -98,6 +98,7 @@ defmodule Trifle.Integrations.Slack.Client do
   end
 
   defp normalize_slack_response(%{"ok" => true} = payload), do: {:ok, payload}
+
   defp normalize_slack_response(%{"ok" => false, "error" => error} = payload),
     do: {:error, {:slack_error, error, payload}}
 

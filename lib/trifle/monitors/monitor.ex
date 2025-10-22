@@ -42,6 +42,7 @@ defmodule Trifle.Monitors.Monitor do
       field :metric_path, :string
       field :timeframe, :string
       field :granularity, :string
+
       field :analysis_strategy, Ecto.Enum,
         values: [:threshold, :range, :anomaly_detection],
         default: :threshold
@@ -133,11 +134,20 @@ defmodule Trifle.Monitors.Monitor do
 
   defp sanitize_target(%Ecto.Changeset{} = changeset) do
     case fetch_change(changeset, :target) do
-      :error -> changeset
-      {:ok, nil} -> put_change(changeset, :target, %{})
-      {:ok, target} when is_map(target) -> put_change(changeset, :target, normalize_map(target, %{}))
-      {:ok, target} when is_binary(target) -> normalize_target_from_string(changeset, target)
-      {:ok, _} -> add_error(changeset, :target, "must be a map or JSON object")
+      :error ->
+        changeset
+
+      {:ok, nil} ->
+        put_change(changeset, :target, %{})
+
+      {:ok, target} when is_map(target) ->
+        put_change(changeset, :target, normalize_map(target, %{}))
+
+      {:ok, target} when is_binary(target) ->
+        normalize_target_from_string(changeset, target)
+
+      {:ok, _} ->
+        add_error(changeset, :target, "must be a map or JSON object")
     end
   end
 
@@ -232,7 +242,7 @@ defmodule Trifle.Monitors.Monitor do
           changeset
       end
     else
-        changeset
+      changeset
     end
   end
 

@@ -11,6 +11,7 @@ defmodule Trifle.Stats.Source do
   alias Trifle.Organizations
   alias Trifle.Organizations.Project, as: OrgProject
   alias Trifle.Organizations.OrganizationMembership
+  alias Trifle.Stats.SeriesFetcher
   alias Trifle.Stats.Source.Database
   alias Trifle.Stats.Source.Project, as: SourceProject
 
@@ -128,6 +129,71 @@ defmodule Trifle.Stats.Source do
   def type_label(:database), do: "Databases"
   def type_label(:project), do: "Projects"
   def type_label(other), do: other |> Atom.to_string() |> String.capitalize()
+
+  @spec fetch_series(
+          t(),
+          String.t() | nil,
+          DateTime.t(),
+          DateTime.t(),
+          String.t(),
+          Keyword.t()
+        ) ::
+          {:ok, map()} | {:error, term()}
+  def fetch_series(%__MODULE__{} = source, key, from, to, granularity, opts \\ []) do
+    {transponders, opts} = resolve_transponders(source, key, opts)
+
+    SeriesFetcher.fetch_series(
+      source,
+      key || "",
+      from,
+      to,
+      granularity,
+      transponders,
+      opts
+    )
+  end
+
+  @spec matching_transponders(t(), String.t() | nil) :: list()
+  def matching_transponders(%__MODULE__{} = source, key) do
+    source
+    |> transponders()
+    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(&Map.get(&1, :enabled, false))
+    |> Enum.filter(fn transponder -> key_matches_pattern?(key, Map.get(transponder, :key)) end)
+    |> Enum.sort_by(&Map.get(&1, :order, 0))
+  end
+
+  defp resolve_transponders(source, key, opts) do
+    case Keyword.get(opts, :transponders, :auto) do
+      :auto ->
+        {matching_transponders(source, key), Keyword.delete(opts, :transponders)}
+
+      :none ->
+        {[], Keyword.delete(opts, :transponders)}
+
+      transponders when is_list(transponders) ->
+        {transponders, Keyword.delete(opts, :transponders)}
+    end
+  end
+
+  defp key_matches_pattern?(key, pattern) do
+    key = key || ""
+    pattern = pattern || ""
+
+    cond do
+      pattern == "" ->
+        key == ""
+
+      String.contains?(pattern, "^") or String.contains?(pattern, "$") ->
+        case Regex.compile(pattern) do
+          {:ok, regex} -> Regex.match?(regex, key)
+          {:error, _} -> false
+        end
+
+      true ->
+        key == pattern
+    end
+  end
 
   defp sort_sources(sources) do
     sources

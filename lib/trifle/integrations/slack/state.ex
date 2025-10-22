@@ -19,7 +19,12 @@ defmodule Trifle.Integrations.Slack.State do
 
     case Phoenix.Token.verify(TrifleWeb.Endpoint, @salt, token, max_age: max_age) do
       {:ok, %{"user_id" => user_id, "organization_id" => organization_id} = data} ->
-        {:ok, %{user_id: user_id, organization_id: organization_id, metadata: Map.drop(data, ["user_id", "organization_id"])}}
+        {:ok,
+         %{
+           user_id: user_id,
+           organization_id: organization_id,
+           metadata: Map.drop(data, ["user_id", "organization_id"])
+         }}
 
       {:ok, other} ->
         {:error, {:invalid_state, other}}

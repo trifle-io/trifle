@@ -3,7 +3,6 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Organizations.OrganizationMembership
-  alias Trifle.Stats.SeriesFetcher
   alias Trifle.Stats.Source
   alias Phoenix.HTML
   alias TrifleApp.ExploreLive
@@ -1841,7 +1840,6 @@ defmodule TrifleApp.DashboardLive do
 
       # Extract values to avoid async socket warnings
       source = socket.assigns.source
-      database = Source.record(source)
       key = socket.assigns.resolved_key || socket.assigns.dashboard.key
       key = key || ""
       granularity = socket.assigns.granularity
@@ -1851,13 +1849,6 @@ defmodule TrifleApp.DashboardLive do
       liveview_pid = self()
 
       start_async(socket, :dashboard_data_task, fn ->
-        # Get transponders that match the dashboard key
-        matching_transponders =
-          Source.transponders(source)
-          |> Enum.filter(& &1.enabled)
-          |> Enum.filter(fn transponder -> key_matches_pattern?(key, transponder.key) end)
-          |> Enum.sort_by(& &1.order)
-
         # Create progress callback to send updates back to LiveView
         progress_callback = fn progress_info ->
           case progress_info do
@@ -1872,13 +1863,12 @@ defmodule TrifleApp.DashboardLive do
           end
         end
 
-        case SeriesFetcher.fetch_series(
+        case Source.fetch_series(
                source,
                key,
                from,
                to,
                granularity,
-               matching_transponders,
                progress_callback: progress_callback
              ) do
           {:ok, result} -> result
@@ -2765,7 +2755,7 @@ defmodule TrifleApp.DashboardLive do
     # Calculate load duration
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
 
-    # SeriesFetcher now returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
+    # Source.fetch_series returns %{series: stats, transponder_results: %{successful: [...], failed: [...], errors: [...]}}
     # Compute KPI values for existing widgets, if any
     grid_items = socket.assigns.dashboard.payload["grid"] || []
     {kpi_items, kpi_visuals} = compute_kpi_datasets(result.series, grid_items)
@@ -2846,7 +2836,7 @@ defmodule TrifleApp.DashboardLive do
         # Count paths (rows)
         path_count = if stats.series[:paths], do: length(stats.series[:paths]), else: 0
 
-        # Use actual transponder results from SeriesFetcher
+        # Use actual transponder results returned by Source.fetch_series
         successful_transponders = length(transponder_results.successful)
         failed_transponders = length(transponder_results.failed)
         transponder_errors = transponder_results.errors
@@ -5322,21 +5312,6 @@ defmodule TrifleApp.DashboardLive do
       <% end %>
     </div>
     """
-  end
-
-  defp key_matches_pattern?(key, pattern) do
-    key = key || ""
-
-    cond do
-      String.contains?(pattern, "^") or String.contains?(pattern, "$") ->
-        case Regex.compile(pattern) do
-          {:ok, regex} -> Regex.match?(regex, key)
-          {:error, _} -> false
-        end
-
-      true ->
-        key == pattern
-    end
   end
 
   defp reload_current_timeframe(socket) do

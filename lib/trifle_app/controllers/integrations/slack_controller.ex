@@ -20,7 +20,11 @@ defmodule TrifleApp.Integrations.SlackController do
            Organizations.get_membership_for_user(current_user),
          {:ok, payload} <- Integrations.exchange_slack_code(code),
          {:ok, installation} <-
-           Integrations.create_or_update_slack_installation(organization_id, current_user.id, payload) do
+           Integrations.create_or_update_slack_installation(
+             organization_id,
+             current_user.id,
+             payload
+           ) do
       case Integrations.sync_slack_channels(installation) do
         {:ok, synced_installation} ->
           channel_count = length(synced_installation.channels || [])

@@ -159,9 +159,11 @@ defmodule TrifleApp.MonitorsLive do
 
   defp source_type_label(:database), do: "Database"
   defp source_type_label(:project), do: "Project"
+
   defp source_type_label(value) when is_atom(value) do
     value |> Atom.to_string() |> String.capitalize()
   end
+
   defp source_type_label(value), do: to_string(value)
 
   defp fetch_setting(settings, key, default) when is_map(settings) do
@@ -312,7 +314,10 @@ defmodule TrifleApp.MonitorsLive do
                       </strong>
                       from {monitor_source_label(monitor, @sources)}
                     <% else %>
-                      Attached to dashboard (unavailable) from {monitor_source_label(monitor, @sources)}
+                      Attached to dashboard (unavailable) from {monitor_source_label(
+                        monitor,
+                        @sources
+                      )}
                     <% end %>
                   <% else %>
                     Watching metrics key path
