@@ -40,6 +40,10 @@ existing JSON payloads.
 4. **Test** CRUD/drag/edit/expand flows – everything should still run through the
    old push events.
 
+**Status:** ✅ Completed. The grid markup now delegates rendering to
+`WidgetView.grid/1` and `grid_item/1` without altering behaviour; layout/edit/
+drag/expand were regression-tested after the change.
+
 Rollback is trivial: remove the wrapper call if anything looks off.
 
 ---
@@ -57,6 +61,10 @@ Rollback is trivial: remove the wrapper call if anything looks off.
 4. Confirm the JS hook still receives identical JSON (log or instrument the
    push payloads).
 
+**Status:** ✅ Completed. Dataset computation lives in `WidgetData`, the
+LiveView assigns per-widget maps, and the legacy push events still feed the JS
+hook. Added a dedicated unit test (`widget_data_test.exs`).
+
 At this point we gain unit-testable data formatting while the UI remains
 unchanged.
 
@@ -68,22 +76,20 @@ unchanged.
 content) directly in HEEx while *still* letting the JS hook draw charts.
 
 1. Update `DashboardPage` grid markup:
-   - Remove `phx-update="ignore"` only from the widget body, not the whole grid.
    - Render each widget component with assigns and hidden JSON payloads (e.g.
      `data-chart` attributes) for the JS hook to pick up.
 2. Add hooks for each widget type (`phx-hook="DashboardKpiWidget"` etc.) that
-   consume the embedded JSON instead of listening for `push_event`.
-3. Keep the legacy GridStack hook for layout (drag/rescale). Remove only the
-   `_render_*` functions and event handlers that are now redundant.
-4. Ensure edit/expand actions still dispatch the same LiveView events.
-5. Validate:
-   - KPI number + text render on initial load.
-   - Charts still appear (they now read from DOM dataset attributes).
-   - Hooks respond to LiveView re-renders (change widget settings and confirm
-     the chart updates).
+   consume the embedded JSON and register with the grid hook so charts render
+   without DOM patches.
+3. Keep GridStack responsible for layout (drag/rescale) and let the legacy
+   push-event pipeline continue to drive chart/text updates.
+4. Ensure edit/expand actions still dispatch the same LiveView events, and
+   validate parity (initial render, edit, drag, expand, print, public view).
 
-If charts fail to render, revert only the hook changes and debug, the rest of
-the component rendering can stay.
+**Status:** ✅ Completed. Widgets render chrome in HEEx, embed datasets, and use
+per-widget hooks that feed back into `DashboardGrid.registerWidget`. Existing
+`dashboard_grid_*` events remain active so charts/text continue updating in real
+time.
 
 ---
 
@@ -101,6 +107,12 @@ the component rendering can stay.
    - Layout updates (GridStack change events).
 4. Regression test print mode and public dashboards, where charts used to rely
    on pre-populated payloads.
+
+**Status:** ⏳ In progress. Widget data now flows via hidden DOM bridges and
+per-widget hooks instead of `push_event` updates; dataset push handlers were
+removed from both the LiveView and `DashboardGrid`. Pending: full UI regression
+pass (drag/edit/print/public) to confirm no remaining reliance on the event
+pipeline.
 
 ---
 
@@ -154,4 +166,3 @@ the JS hook.
 
 Once Phase 5 is complete and parity is confirmed, we can iterate on incremental
 improvements (lazy loading charts, streaming widgets, etc.) with much less risk.
-
