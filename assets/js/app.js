@@ -73,8 +73,18 @@ const parseJsonSafe = (value) => {
 
 const findDashboardGridHook = (el) => {
   if (!el) return null;
+  const gridId = el.dataset && el.dataset.gridId;
+  if (gridId) {
+    const direct = document.getElementById(gridId);
+    if (direct && direct.__dashboardGrid) return direct.__dashboardGrid;
+  }
   const gridEl = el.closest('#dashboard-grid') || el.closest('.grid-stack');
-  return gridEl ? gridEl.__dashboardGrid || null : null;
+  if (gridEl && gridEl.__dashboardGrid) return gridEl.__dashboardGrid;
+  if (gridId) {
+    const fallback = document.querySelector(`#${gridId}`);
+    if (fallback && fallback.__dashboardGrid) return fallback.__dashboardGrid;
+  }
+  return null;
 };
 
 Hooks.DocumentTitle = {
@@ -860,30 +870,6 @@ Hooks.DashboardGrid = {
       } else {
         this.unregisterWidget(null, id);
       }
-    });
-
-    this.handleEvent('dashboard_grid_kpi_values', ({ items }) => {
-      this._render_kpi_values(items);
-      this._seen.kpi_values = true;
-      this._scheduleReadyMark();
-    });
-
-    this.handleEvent('dashboard_grid_kpi_visual', ({ items }) => {
-      this._render_kpi_visuals(items);
-    });
-
-    this.handleEvent('dashboard_grid_timeseries', ({ items }) => {
-      this._render_timeseries(items);
-    });
-
-    this.handleEvent('dashboard_grid_category', ({ items }) => {
-      this._render_category(items);
-    });
-
-    this.handleEvent('dashboard_grid_text', ({ items }) => {
-      this._render_text(items);
-      this._seen.text = true;
-      this._scheduleReadyMark();
     });
 
   },
@@ -1993,12 +1979,12 @@ Hooks.DashboardGrid = {
   },
 }
 
-Hooks.DashboardKpiWidget = {
+Hooks.DashboardWidgetData = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId || '';
+    this.widgetType = (this.el.dataset.widgetType || '').toLowerCase();
     this._retryTimer = null;
-    this._lastValuesJson = null;
-    this._lastVisualJson = null;
+    this._lastKey = null;
     this.register();
   },
 
@@ -2013,167 +1999,61 @@ Hooks.DashboardKpiWidget = {
     }
     const gridHook = findDashboardGridHook(this.el);
     if (gridHook && this.widgetId) {
-      gridHook.unregisterWidget('kpi', this.widgetId);
+      gridHook.unregisterWidget(this.widgetType || null, this.widgetId);
     }
   },
 
   register() {
+    const dataStrings = [
+      this.el.dataset.kpiValues || this.el.dataset.kpiValuesJson || '',
+      this.el.dataset.kpiVisual || this.el.dataset.kpiVisualJson || '',
+      this.el.dataset.timeseries || this.el.dataset.timeseriesJson || '',
+      this.el.dataset.category || this.el.dataset.categoryJson || '',
+      this.el.dataset.text || this.el.dataset.textJson || ''
+    ];
+    const key = [this.widgetType, this.widgetId].concat(dataStrings).join('||');
+    if (key === this._lastKey) return;
+    this._lastKey = key;
+
     if (this._retryTimer) {
       clearTimeout(this._retryTimer);
       this._retryTimer = null;
     }
+
     const attempt = () => {
       const gridHook = findDashboardGridHook(this.el);
       if (!gridHook) {
         this._retryTimer = setTimeout(attempt, 20);
         return;
       }
-      const valuesJson = this.el.dataset.kpiValues || this.el.dataset.kpiValuesJson || '';
-      const visualJson = this.el.dataset.kpiVisual || this.el.dataset.kpiVisualJson || '';
-      if (this._lastValuesJson === valuesJson && this._lastVisualJson === visualJson) return;
-      this._lastValuesJson = valuesJson;
-      this._lastVisualJson = visualJson;
-      const value = parseJsonSafe(valuesJson);
-      if (value && value.id == null) value.id = this.widgetId;
-      const visual = parseJsonSafe(visualJson);
-      if (visual && visual.id == null) visual.id = this.widgetId;
-      gridHook.registerWidget('kpi', this.widgetId, { value, visual });
-    };
-    attempt();
-  }
-};
 
-Hooks.DashboardTimeseriesWidget = {
-  mounted() {
-    this.widgetId = this.el.dataset.widgetId || '';
-    this._retryTimer = null;
-    this._lastDataJson = null;
-    this.register();
-  },
+      const type = this.widgetType;
+      const id = this.widgetId;
+      let payload = null;
 
-  updated() {
-    this.register();
-  },
-
-  destroyed() {
-    if (this._retryTimer) {
-      clearTimeout(this._retryTimer);
-      this._retryTimer = null;
-    }
-    const gridHook = findDashboardGridHook(this.el);
-    if (gridHook && this.widgetId) {
-      gridHook.unregisterWidget('timeseries', this.widgetId);
-    }
-  },
-
-  register() {
-    if (this._retryTimer) {
-      clearTimeout(this._retryTimer);
-      this._retryTimer = null;
-    }
-    const attempt = () => {
-      const gridHook = findDashboardGridHook(this.el);
-      if (!gridHook) {
-        this._retryTimer = setTimeout(attempt, 20);
-        return;
+      if (type === 'kpi') {
+        const value = parseJsonSafe(this.el.dataset.kpiValues || this.el.dataset.kpiValuesJson || '');
+        if (value && value.id == null) value.id = id;
+        const visual = parseJsonSafe(this.el.dataset.kpiVisual || this.el.dataset.kpiVisualJson || '');
+        if (visual && visual.id == null) visual.id = id;
+        payload = { value, visual };
+      } else if (type === 'timeseries') {
+        const data = parseJsonSafe(this.el.dataset.timeseries || this.el.dataset.timeseriesJson || '');
+        if (data && data.id == null) data.id = id;
+        payload = data;
+      } else if (type === 'category') {
+        const data = parseJsonSafe(this.el.dataset.category || this.el.dataset.categoryJson || '');
+        if (data && data.id == null) data.id = id;
+        payload = data;
+      } else if (type === 'text') {
+        const data = parseJsonSafe(this.el.dataset.text || this.el.dataset.textJson || '');
+        if (data && data.id == null) data.id = id;
+        payload = data;
       }
-      const dataJson = this.el.dataset.timeseries || this.el.dataset.timeseriesJson || '';
-      if (this._lastDataJson === dataJson) return;
-      this._lastDataJson = dataJson;
-      let data = parseJsonSafe(dataJson);
-      if (data && data.id == null) data.id = this.widgetId;
-      gridHook.registerWidget('timeseries', this.widgetId, data);
+
+      gridHook.registerWidget(type || null, id, payload);
     };
-    attempt();
-  }
-};
 
-Hooks.DashboardCategoryWidget = {
-  mounted() {
-    this.widgetId = this.el.dataset.widgetId || '';
-    this._retryTimer = null;
-    this._lastDataJson = null;
-    this.register();
-  },
-
-  updated() {
-    this.register();
-  },
-
-  destroyed() {
-    if (this._retryTimer) {
-      clearTimeout(this._retryTimer);
-      this._retryTimer = null;
-    }
-    const gridHook = findDashboardGridHook(this.el);
-    if (gridHook && this.widgetId) {
-      gridHook.unregisterWidget('category', this.widgetId);
-    }
-  },
-
-  register() {
-    if (this._retryTimer) {
-      clearTimeout(this._retryTimer);
-      this._retryTimer = null;
-    }
-    const attempt = () => {
-      const gridHook = findDashboardGridHook(this.el);
-      if (!gridHook) {
-        this._retryTimer = setTimeout(attempt, 20);
-        return;
-      }
-      const dataJson = this.el.dataset.category || this.el.dataset.categoryJson || '';
-      if (this._lastDataJson === dataJson) return;
-      this._lastDataJson = dataJson;
-      let data = parseJsonSafe(dataJson);
-      if (data && data.id == null) data.id = this.widgetId;
-      gridHook.registerWidget('category', this.widgetId, data);
-    };
-    attempt();
-  }
-};
-
-Hooks.DashboardTextWidget = {
-  mounted() {
-    this.widgetId = this.el.dataset.widgetId || '';
-    this._retryTimer = null;
-    this._lastDataJson = null;
-    this.register();
-  },
-
-  updated() {
-    this.register();
-  },
-
-  destroyed() {
-    if (this._retryTimer) {
-      clearTimeout(this._retryTimer);
-      this._retryTimer = null;
-    }
-    const gridHook = findDashboardGridHook(this.el);
-    if (gridHook && this.widgetId) {
-      gridHook.unregisterWidget('text', this.widgetId);
-    }
-  },
-
-  register() {
-    if (this._retryTimer) {
-      clearTimeout(this._retryTimer);
-      this._retryTimer = null;
-    }
-    const attempt = () => {
-      const gridHook = findDashboardGridHook(this.el);
-      if (!gridHook) {
-        this._retryTimer = setTimeout(attempt, 20);
-        return;
-      }
-      const dataJson = this.el.dataset.text || this.el.dataset.textJson || '';
-      if (this._lastDataJson === dataJson) return;
-      this._lastDataJson = dataJson;
-      let data = parseJsonSafe(dataJson);
-      if (data && data.id == null) data.id = this.widgetId;
-      gridHook.registerWidget('text', this.widgetId, data);
-    };
     attempt();
   }
 };

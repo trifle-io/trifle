@@ -2053,60 +2053,16 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_timeseries, dataset_maps.timeseries)
     |> assign(:widget_category, dataset_maps.category)
     |> assign(:widget_text, dataset_maps.text)
-    |> push_kpi_events()
-    |> push_timeseries_event()
-    |> push_category_event()
-    |> push_text_event()
   end
 
   defp reset_widget_datasets(socket) do
-    socket =
-      socket
-      |> assign(:widget_kpi_values, %{})
-      |> assign(:widget_kpi_visuals, %{})
-      |> assign(:widget_timeseries, %{})
-      |> assign(:widget_category, %{})
-      |> assign(:widget_text, %{})
-
     socket
-    |> push_event("dashboard_grid_kpi_values", %{items: []})
-    |> push_event("dashboard_grid_kpi_visual", %{items: []})
-    |> push_event("dashboard_grid_timeseries", %{items: []})
-    |> push_event("dashboard_grid_category", %{items: []})
-    |> push_event("dashboard_grid_text", %{items: []})
+    |> assign(:widget_kpi_values, %{})
+    |> assign(:widget_kpi_visuals, %{})
+    |> assign(:widget_timeseries, %{})
+    |> assign(:widget_category, %{})
+    |> assign(:widget_text, %{})
   end
-
-  defp push_kpi_events(socket) do
-    values = sorted_widget_values(socket.assigns.widget_kpi_values)
-    visuals = sorted_widget_values(socket.assigns.widget_kpi_visuals)
-
-    socket
-    |> push_event("dashboard_grid_kpi_values", %{items: values})
-    |> push_event("dashboard_grid_kpi_visual", %{items: visuals})
-  end
-
-  defp push_timeseries_event(socket) do
-    items = sorted_widget_values(socket.assigns.widget_timeseries)
-    push_event(socket, "dashboard_grid_timeseries", %{items: items})
-  end
-
-  defp push_category_event(socket) do
-    items = sorted_widget_values(socket.assigns.widget_category)
-    push_event(socket, "dashboard_grid_category", %{items: items})
-  end
-
-  defp push_text_event(socket) do
-    items = sorted_widget_values(socket.assigns.widget_text)
-    push_event(socket, "dashboard_grid_text", %{items: items})
-  end
-
-  defp sorted_widget_values(map) when is_map(map) do
-    map
-    |> Map.values()
-    |> Enum.sort_by(& &1.id)
-  end
-
-  defp sorted_widget_values(_), do: []
 
   defp gravatar_url(email) do
     hash =
