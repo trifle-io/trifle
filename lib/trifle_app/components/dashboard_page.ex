@@ -521,6 +521,11 @@ defmodule TrifleApp.Components.DashboardPage do
           public_token={@public_token}
           grid_items={grid_items}
           text_items={text_items}
+          kpi_values={@widget_kpi_values || %{}}
+          kpi_visuals={@widget_kpi_visuals || %{}}
+          timeseries={@widget_timeseries || %{}}
+          category={@widget_category || %{}}
+          text_widgets={@widget_text || %{}}
         />
         
     <!-- Configure Modal -->

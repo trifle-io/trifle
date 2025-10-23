@@ -53,7 +53,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
     }
   end
 
-  def dataset_maps(_other), do: dataset_maps(%{kpi_values: [], kpi_visuals: [], timeseries: [], category: [], text: []})
+  def dataset_maps(_other),
+    do: dataset_maps(%{kpi_values: [], kpi_visuals: [], timeseries: [], category: [], text: []})
 
   defp to_map(list) when is_list(list) do
     list

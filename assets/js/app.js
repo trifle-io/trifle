@@ -62,6 +62,21 @@ const formatCompactNumber = (value) => {
 
 let Hooks = {}
 
+const parseJsonSafe = (value) => {
+  if (value == null || value === '') return null;
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return null;
+  }
+};
+
+const findDashboardGridHook = (el) => {
+  if (!el) return null;
+  const gridEl = el.closest('#dashboard-grid') || el.closest('.grid-stack');
+  return gridEl ? gridEl.__dashboardGrid || null : null;
+};
+
 Hooks.DocumentTitle = {
   mounted() {
     // Create bound event handler so we can properly remove it
@@ -648,6 +663,14 @@ Hooks.DashboardGrid = {
     } catch (_) {
       this.initialItems = [];
     }
+    this._widgetRegistry = {
+      kpiValues: {},
+      kpiVisuals: {},
+      timeseries: {},
+      category: {},
+      text: {}
+    };
+    this.el.__dashboardGrid = this;
 
     // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
     const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
@@ -657,6 +680,7 @@ Hooks.DashboardGrid = {
     };
 
     this.initGrid();
+    this.syncServerRenderedItems();
 
     // Ensure multi-column layout during export (print mode)
     try {
@@ -828,40 +852,51 @@ Hooks.DashboardGrid = {
     this.handleEvent('dashboard_grid_widget_deleted', ({ id }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
       if (item) {
+        const content = item.querySelector('.grid-stack-item-content');
+        const type = content && content.dataset && content.dataset.widgetType;
         this.grid.removeWidget(item);
+        this.unregisterWidget(type || null, id);
         this.saveLayout();
+      } else {
+        this.unregisterWidget(null, id);
       }
     });
 
-    // Update KPI numeric values inside widgets
     this.handleEvent('dashboard_grid_kpi_values', ({ items }) => {
       this._render_kpi_values(items);
       this._seen.kpi_values = true;
       this._scheduleReadyMark();
     });
 
-    // Draw/update sparkline charts for KPI widgets
     this.handleEvent('dashboard_grid_kpi_visual', ({ items }) => {
       this._render_kpi_visuals(items);
     });
 
-    // Draw/update per-widget timeseries charts
     this.handleEvent('dashboard_grid_timeseries', ({ items }) => {
       this._render_timeseries(items);
     });
 
-    // Draw/update per-widget category charts
     this.handleEvent('dashboard_grid_category', ({ items }) => {
       this._render_category(items);
     });
+
     this.handleEvent('dashboard_grid_text', ({ items }) => {
       this._render_text(items);
       this._seen.text = true;
       this._scheduleReadyMark();
     });
+
+  },
+
+  updated() {
+    this.syncServerRenderedItems();
   },
 
   destroyed() {
+    if (this.el && this.el.__dashboardGrid === this) {
+      delete this.el.__dashboardGrid;
+    }
+    this._widgetRegistry = null;
     if (this.grid && this.grid.destroy) {
       this.grid.destroy(false);
     }
@@ -910,8 +945,9 @@ Hooks.DashboardGrid = {
   },
 
   initGrid() {
-    // Pre-populate items into DOM so GridStack can pick them up
-    if (Array.isArray(this.initialItems) && this.initialItems.length > 0) {
+    const hasServerRenderedItems = !!this.el.querySelector('.grid-stack-item');
+    // Pre-populate items into DOM only when server hasn’t rendered them
+    if (!hasServerRenderedItems && Array.isArray(this.initialItems) && this.initialItems.length > 0) {
       this.initialItems.forEach((item) => this.addGridItemEl(item));
     }
 
@@ -1749,6 +1785,133 @@ Hooks.DashboardGrid = {
     this.pushEvent('dashboard_grid_changed', { items });
   },
 
+  syncServerRenderedItems() {
+    if (!this.grid) return;
+    const nodes = Array.from(this.el.querySelectorAll('.grid-stack-item'));
+    nodes.forEach((node) => {
+      if (!node.gridstackNode) {
+        try { this.grid.makeWidget(node); } catch (_) {}
+      }
+    });
+    if (typeof this.grid.batchUpdate === 'function') {
+      this.grid.batchUpdate();
+    }
+    nodes.forEach((node) => {
+      if (!node.gridstackNode) {
+        try { this.grid.makeWidget(node); } catch (_) {}
+      }
+      const gsNode = node.gridstackNode;
+      if (!gsNode) return;
+      const target = {
+        x: parseInt(node.getAttribute('gs-x') || gsNode.x || 0, 10),
+        y: parseInt(node.getAttribute('gs-y') || gsNode.y || 0, 10),
+        w: parseInt(node.getAttribute('gs-w') || gsNode.w || 1, 10),
+        h: parseInt(node.getAttribute('gs-h') || gsNode.h || 1, 10)
+      };
+      try {
+        this.grid.update(gsNode, target);
+      } catch (_) {}
+    });
+    if (typeof this.grid.commit === 'function') {
+      try { this.grid.commit(); } catch (_) {}
+    }
+  },
+
+  registerWidget(type, id, payload = null) {
+    if (!id) return;
+    const normalizedId = String(id);
+    const registry = this._widgetRegistry || (this._widgetRegistry = {
+      kpiValues: {},
+      kpiVisuals: {},
+      timeseries: {},
+      category: {},
+      text: {}
+    });
+
+    if (type === 'kpi') {
+      const value = payload && payload.value ? Object.assign({}, payload.value, { id: payload.value.id || normalizedId }) : null;
+      const visual = payload && payload.visual ? Object.assign({}, payload.visual, { id: payload.visual.id || normalizedId }) : null;
+      if (value) {
+        registry.kpiValues[normalizedId] = value;
+      } else {
+        delete registry.kpiValues[normalizedId];
+      }
+      if (visual) {
+        registry.kpiVisuals[normalizedId] = visual;
+      } else {
+        delete registry.kpiVisuals[normalizedId];
+      }
+      this._render_kpi_values(this._sortedWidgetValues(registry.kpiValues));
+      this._seen.kpi_values = true;
+      this._scheduleReadyMark();
+      this._render_kpi_visuals(this._sortedWidgetValues(registry.kpiVisuals));
+      return;
+    }
+
+    if (type === 'timeseries') {
+      if (payload) {
+        registry.timeseries[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+      } else {
+        delete registry.timeseries[normalizedId];
+      }
+      this._render_timeseries(this._sortedWidgetValues(registry.timeseries));
+      return;
+    }
+
+    if (type === 'category') {
+      if (payload) {
+        registry.category[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+      } else {
+        delete registry.category[normalizedId];
+      }
+      this._render_category(this._sortedWidgetValues(registry.category));
+      return;
+    }
+
+    if (type === 'text') {
+      if (payload) {
+        registry.text[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+      } else {
+        delete registry.text[normalizedId];
+      }
+      this._render_text(this._sortedWidgetValues(registry.text));
+      this._seen.text = true;
+      this._scheduleReadyMark();
+      return;
+    }
+
+    // Unknown type: ensure removal from all registries
+    delete registry.kpiValues[normalizedId];
+    delete registry.kpiVisuals[normalizedId];
+    delete registry.timeseries[normalizedId];
+    delete registry.category[normalizedId];
+    delete registry.text[normalizedId];
+  },
+
+  unregisterWidget(type, id) {
+    if (!id) return;
+    if (!type) {
+      this.registerWidget('kpi', id, null);
+      this.registerWidget('timeseries', id, null);
+      this.registerWidget('category', id, null);
+      this.registerWidget('text', id, null);
+      return;
+    }
+    this.registerWidget(type, id, null);
+  },
+
+  _sortedWidgetValues(map) {
+    return Object.values(map || {})
+      .filter((item) => item && item.id !== undefined && item.id !== null)
+      .sort((a, b) => {
+        const idA = String(a.id);
+        const idB = String(b.id);
+        if (idA < idB) return -1;
+        if (idA > idB) return 1;
+        return 0;
+      });
+  },
+
   _applyThemeToCharts(isDarkMode) {
     const themeIsDark = typeof isDarkMode === 'boolean' ? isDarkMode : document.documentElement.classList.contains('dark');
     this._currentThemeIsDark = themeIsDark;
@@ -1829,6 +1992,191 @@ Hooks.DashboardGrid = {
     return String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
   },
 }
+
+Hooks.DashboardKpiWidget = {
+  mounted() {
+    this.widgetId = this.el.dataset.widgetId || '';
+    this._retryTimer = null;
+    this._lastValuesJson = null;
+    this._lastVisualJson = null;
+    this.register();
+  },
+
+  updated() {
+    this.register();
+  },
+
+  destroyed() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const gridHook = findDashboardGridHook(this.el);
+    if (gridHook && this.widgetId) {
+      gridHook.unregisterWidget('kpi', this.widgetId);
+    }
+  },
+
+  register() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const attempt = () => {
+      const gridHook = findDashboardGridHook(this.el);
+      if (!gridHook) {
+        this._retryTimer = setTimeout(attempt, 20);
+        return;
+      }
+      const valuesJson = this.el.dataset.kpiValues || this.el.dataset.kpiValuesJson || '';
+      const visualJson = this.el.dataset.kpiVisual || this.el.dataset.kpiVisualJson || '';
+      if (this._lastValuesJson === valuesJson && this._lastVisualJson === visualJson) return;
+      this._lastValuesJson = valuesJson;
+      this._lastVisualJson = visualJson;
+      const value = parseJsonSafe(valuesJson);
+      if (value && value.id == null) value.id = this.widgetId;
+      const visual = parseJsonSafe(visualJson);
+      if (visual && visual.id == null) visual.id = this.widgetId;
+      gridHook.registerWidget('kpi', this.widgetId, { value, visual });
+    };
+    attempt();
+  }
+};
+
+Hooks.DashboardTimeseriesWidget = {
+  mounted() {
+    this.widgetId = this.el.dataset.widgetId || '';
+    this._retryTimer = null;
+    this._lastDataJson = null;
+    this.register();
+  },
+
+  updated() {
+    this.register();
+  },
+
+  destroyed() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const gridHook = findDashboardGridHook(this.el);
+    if (gridHook && this.widgetId) {
+      gridHook.unregisterWidget('timeseries', this.widgetId);
+    }
+  },
+
+  register() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const attempt = () => {
+      const gridHook = findDashboardGridHook(this.el);
+      if (!gridHook) {
+        this._retryTimer = setTimeout(attempt, 20);
+        return;
+      }
+      const dataJson = this.el.dataset.timeseries || this.el.dataset.timeseriesJson || '';
+      if (this._lastDataJson === dataJson) return;
+      this._lastDataJson = dataJson;
+      let data = parseJsonSafe(dataJson);
+      if (data && data.id == null) data.id = this.widgetId;
+      gridHook.registerWidget('timeseries', this.widgetId, data);
+    };
+    attempt();
+  }
+};
+
+Hooks.DashboardCategoryWidget = {
+  mounted() {
+    this.widgetId = this.el.dataset.widgetId || '';
+    this._retryTimer = null;
+    this._lastDataJson = null;
+    this.register();
+  },
+
+  updated() {
+    this.register();
+  },
+
+  destroyed() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const gridHook = findDashboardGridHook(this.el);
+    if (gridHook && this.widgetId) {
+      gridHook.unregisterWidget('category', this.widgetId);
+    }
+  },
+
+  register() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const attempt = () => {
+      const gridHook = findDashboardGridHook(this.el);
+      if (!gridHook) {
+        this._retryTimer = setTimeout(attempt, 20);
+        return;
+      }
+      const dataJson = this.el.dataset.category || this.el.dataset.categoryJson || '';
+      if (this._lastDataJson === dataJson) return;
+      this._lastDataJson = dataJson;
+      let data = parseJsonSafe(dataJson);
+      if (data && data.id == null) data.id = this.widgetId;
+      gridHook.registerWidget('category', this.widgetId, data);
+    };
+    attempt();
+  }
+};
+
+Hooks.DashboardTextWidget = {
+  mounted() {
+    this.widgetId = this.el.dataset.widgetId || '';
+    this._retryTimer = null;
+    this._lastDataJson = null;
+    this.register();
+  },
+
+  updated() {
+    this.register();
+  },
+
+  destroyed() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const gridHook = findDashboardGridHook(this.el);
+    if (gridHook && this.widgetId) {
+      gridHook.unregisterWidget('text', this.widgetId);
+    }
+  },
+
+  register() {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    const attempt = () => {
+      const gridHook = findDashboardGridHook(this.el);
+      if (!gridHook) {
+        this._retryTimer = setTimeout(attempt, 20);
+        return;
+      }
+      const dataJson = this.el.dataset.text || this.el.dataset.textJson || '';
+      if (this._lastDataJson === dataJson) return;
+      this._lastDataJson = dataJson;
+      let data = parseJsonSafe(dataJson);
+      if (data && data.id == null) data.id = this.widgetId;
+      gridHook.registerWidget('text', this.widgetId, data);
+    };
+    attempt();
+  }
+};
 
 Hooks.ExpandedWidgetView = {
   mounted() {

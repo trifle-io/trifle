@@ -4,9 +4,25 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
   alias TrifleApp.Components.DashboardWidgets.WidgetData
 
   @grid_items [
-    %{"id" => "kpi-1", "type" => "kpi", "path" => "metrics.count", "function" => "mean", "timeseries" => true},
-    %{"id" => "ts-1", "type" => "timeseries", "paths" => ["metrics.count"], "chart_type" => "line"},
-    %{"id" => "cat-1", "type" => "category", "paths" => ["metrics.category"], "chart_type" => "bar"},
+    %{
+      "id" => "kpi-1",
+      "type" => "kpi",
+      "path" => "metrics.count",
+      "function" => "mean",
+      "timeseries" => true
+    },
+    %{
+      "id" => "ts-1",
+      "type" => "timeseries",
+      "paths" => ["metrics.count"],
+      "chart_type" => "line"
+    },
+    %{
+      "id" => "cat-1",
+      "type" => "category",
+      "paths" => ["metrics.category"],
+      "chart_type" => "bar"
+    },
     %{"id" => "text-1", "type" => "text", "title" => "Hello World"}
   ]
 

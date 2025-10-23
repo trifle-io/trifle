@@ -13,6 +13,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :can_edit_dashboard, :boolean, default: false
   attr :is_public_access, :boolean, default: false
   attr :public_token, :string, default: nil
+  attr :kpi_values, :map, default: %{}
+  attr :kpi_visuals, :map, default: %{}
+  attr :timeseries, :map, default: %{}
+  attr :category, :map, default: %{}
+  attr :text_widgets, :map, default: %{}
 
   def grid(assigns) do
     assigns =
@@ -52,21 +57,42 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-dashboard-id={@dashboard.id}
         data-public-token={@public_token}
       >
+        <%= for widget <- @grid_items do %>
+          <.grid_item
+            widget={widget}
+            editable={!@is_public_access && @current_user && @can_edit_dashboard}
+            kpi_values={@kpi_values}
+            kpi_visuals={@kpi_visuals}
+            timeseries={@timeseries}
+            category={@category}
+            text_widgets={@text_widgets}
+          />
+        <% end %>
       </div>
     </div>
-
     """
   end
 
   attr :widget, :map, required: true
   attr :editable, :boolean, default: false
+  attr :kpi_values, :map, default: %{}
+  attr :kpi_visuals, :map, default: %{}
+  attr :timeseries, :map, default: %{}
+  attr :category, :map, default: %{}
+  attr :text_widgets, :map, default: %{}
 
   def grid_item(assigns) do
+    widget_type = widget_type(assigns.widget)
+
     assigns =
       assigns
       |> assign(:widget_id, widget_id(assigns.widget))
       |> assign(:grid, grid_position(assigns.widget))
       |> assign(:title, widget_title(assigns.widget))
+      |> assign(:widget_type, widget_type)
+      |> assign(:hook_name, widget_hook(widget_type))
+
+    assigns = assign(assigns, :dataset_attrs, dataset_attributes(assigns))
 
     ~H"""
     <div
@@ -77,11 +103,18 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       gs-y={@grid.y}
       gs-id={@widget_id}
     >
-      <div class="grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col group">
+      <div
+        class="grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col group"
+        id={"grid-widget-content-#{@widget_id}"}
+        phx-hook={@hook_name}
+        data-widget-id={@widget_id}
+        data-widget-type={@widget_type}
+        {@dataset_attrs}
+      >
         <div class="grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60">
           <div class="grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0">
             <div class="grid-widget-title font-semibold truncate text-gray-900 dark:text-white">
-              <%= @title %>
+              {@title}
             </div>
           </div>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
@@ -144,10 +177,90 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     """
   end
 
+  defp dataset_attributes(%{widget_type: "kpi"} = assigns) do
+    value =
+      assigns.kpi_values
+      |> map_get(assigns.widget_id)
+      |> ensure_id(assigns.widget_id)
+
+    visual =
+      assigns.kpi_visuals
+      |> map_get(assigns.widget_id)
+      |> ensure_id(assigns.widget_id)
+
+    %{}
+    |> maybe_put_attr("data-kpi-values", encode_dataset(value))
+    |> maybe_put_attr("data-kpi-visual", encode_dataset(visual))
+  end
+
+  defp dataset_attributes(%{widget_type: "timeseries"} = assigns) do
+    assigns.timeseries
+    |> map_get(assigns.widget_id)
+    |> ensure_id(assigns.widget_id)
+    |> encode_dataset()
+    |> then(fn encoded -> maybe_put_attr(%{}, "data-timeseries", encoded) end)
+  end
+
+  defp dataset_attributes(%{widget_type: "category"} = assigns) do
+    assigns.category
+    |> map_get(assigns.widget_id)
+    |> ensure_id(assigns.widget_id)
+    |> encode_dataset()
+    |> then(fn encoded -> maybe_put_attr(%{}, "data-category", encoded) end)
+  end
+
+  defp dataset_attributes(%{widget_type: "text"} = assigns) do
+    assigns.text_widgets
+    |> map_get(assigns.widget_id)
+    |> ensure_id(assigns.widget_id)
+    |> encode_dataset()
+    |> then(fn encoded -> maybe_put_attr(%{}, "data-text", encoded) end)
+  end
+
+  defp dataset_attributes(_assigns), do: %{}
+
+  defp maybe_put_attr(map, _key, nil), do: map
+  defp maybe_put_attr(map, key, value), do: Map.put(map, key, value)
+
+  defp map_get(map, key) do
+    map = map || %{}
+    Map.get(map, key) || Map.get(map, to_string(key))
+  end
+
+  defp encode_dataset(nil), do: nil
+  defp encode_dataset(data), do: Jason.encode!(data)
+
+  defp ensure_id(nil, _id), do: nil
+
+  defp ensure_id(%{} = data, id) do
+    cond do
+      Map.has_key?(data, :id) -> data
+      Map.has_key?(data, "id") -> data
+      true -> Map.put(data, :id, to_string(id))
+    end
+  end
+
+  defp ensure_id(other, _id), do: other
+
+  defp widget_type(widget) do
+    widget
+    |> Map.get("type", "kpi")
+    |> to_string()
+    |> String.downcase()
+  end
+
+  defp widget_hook("kpi"), do: "DashboardKpiWidget"
+  defp widget_hook("timeseries"), do: "DashboardTimeseriesWidget"
+  defp widget_hook("category"), do: "DashboardCategoryWidget"
+  defp widget_hook("text"), do: "DashboardTextWidget"
+  defp widget_hook(_), do: nil
+
   defp widget_id(widget) do
     widget
-    |> Map.get("id") || widget |> Map.get(:id) || widget |> Map.get("uuid") || widget |> Map.get(:uuid)
-    |> to_string()
+    |> Map.get("id") || widget |> Map.get(:id) || widget |> Map.get("uuid") ||
+      widget
+      |> Map.get(:uuid)
+      |> to_string()
   end
 
   defp grid_position(widget) do
