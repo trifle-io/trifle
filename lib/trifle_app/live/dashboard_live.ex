@@ -10,7 +10,7 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
-  alias TrifleApp.Components.DashboardWidgets.{Kpi, Timeseries, Category, Text}
+  alias TrifleApp.Components.DashboardWidgets.{Kpi, Timeseries, Category, Text, WidgetData}
   require Logger
 
   @capture_group_regex ~r/\((?:\\.|[^()])*\)/
@@ -654,6 +654,7 @@ defmodule TrifleApp.DashboardLive do
               |> assign_dashboard(dashboard)
               |> assign(:editing_widget, nil)
               |> maybe_refresh_expanded_widget()
+              |> refresh_widget_datasets()
 
             {:noreply,
              socket
@@ -846,8 +847,8 @@ defmodule TrifleApp.DashboardLive do
               |> assign_dashboard(dashboard)
               |> assign(:editing_widget, nil)
               |> maybe_refresh_expanded_widget()
+              |> refresh_widget_datasets()
               |> push_event("dashboard_grid_widget_deleted", %{id: widget_id})
-              |> remove_widget_from_datasets(widget_id)
 
             {:noreply, socket}
 
@@ -2010,7 +2011,7 @@ defmodule TrifleApp.DashboardLive do
         end
       end)
       |> assign(load_duration_microseconds: load_duration)
-      |> reset_widget_datasets()
+      |> refresh_widget_datasets()
       |> maybe_refresh_expanded_widget()
 
     {:noreply, socket}
@@ -2036,45 +2037,26 @@ defmodule TrifleApp.DashboardLive do
     {:noreply, assign(socket, loading: false)}
   end
 
-  def handle_info({:widget_data, :kpi, widget_id, {value_map, visual_map}}, socket) do
-    socket =
-      socket
-      |> update_widget_map(:widget_kpi_values, widget_id, value_map)
-      |> update_widget_map(:widget_kpi_visuals, widget_id, visual_map)
-      |> push_kpi_events()
-
-    {:noreply, socket}
+  defp refresh_widget_datasets(%{assigns: %{dashboard: nil}} = socket) do
+    reset_widget_datasets(socket)
   end
 
-  def handle_info({:widget_data, :timeseries, widget_id, dataset}, socket) do
-    socket =
-      socket
-      |> update_widget_map(:widget_timeseries, widget_id, dataset)
-      |> push_timeseries_event()
+  defp refresh_widget_datasets(socket) do
+    stats = Map.get(socket.assigns, :stats)
+    dashboard = Map.get(socket.assigns, :dashboard)
+    datasets = WidgetData.datasets_from_dashboard(stats, dashboard)
+    dataset_maps = WidgetData.dataset_maps(datasets)
 
-    {:noreply, socket}
-  end
-
-  def handle_info({:widget_data, :category, widget_id, dataset}, socket) do
-    socket =
-      socket
-      |> update_widget_map(:widget_category, widget_id, dataset)
-      |> push_category_event()
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:widget_data, :text, widget_id, dataset}, socket) do
-    socket =
-      socket
-      |> update_widget_map(:widget_text, widget_id, dataset)
-      |> push_text_event()
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:widget_data, _type, _widget_id, _payload}, socket) do
-    {:noreply, socket}
+    socket
+    |> assign(:widget_kpi_values, dataset_maps.kpi_values)
+    |> assign(:widget_kpi_visuals, dataset_maps.kpi_visuals)
+    |> assign(:widget_timeseries, dataset_maps.timeseries)
+    |> assign(:widget_category, dataset_maps.category)
+    |> assign(:widget_text, dataset_maps.text)
+    |> push_kpi_events()
+    |> push_timeseries_event()
+    |> push_category_event()
+    |> push_text_event()
   end
 
   defp reset_widget_datasets(socket) do
@@ -2092,30 +2074,6 @@ defmodule TrifleApp.DashboardLive do
     |> push_event("dashboard_grid_timeseries", %{items: []})
     |> push_event("dashboard_grid_category", %{items: []})
     |> push_event("dashboard_grid_text", %{items: []})
-  end
-
-  defp remove_widget_from_datasets(socket, widget_id) do
-    socket
-    |> update_widget_map(:widget_kpi_values, widget_id, nil)
-    |> update_widget_map(:widget_kpi_visuals, widget_id, nil)
-    |> update_widget_map(:widget_timeseries, widget_id, nil)
-    |> update_widget_map(:widget_category, widget_id, nil)
-    |> update_widget_map(:widget_text, widget_id, nil)
-    |> push_kpi_events()
-    |> push_timeseries_event()
-    |> push_category_event()
-    |> push_text_event()
-  end
-
-  defp update_widget_map(socket, key, widget_id, nil) do
-    current = Map.get(socket.assigns, key, %{})
-    updated = Map.delete(current, widget_id)
-    assign(socket, key, updated)
-  end
-
-  defp update_widget_map(socket, key, widget_id, value) do
-    current = Map.get(socket.assigns, key, %{})
-    assign(socket, key, Map.put(current, widget_id, value))
   end
 
   defp push_kpi_events(socket) do
