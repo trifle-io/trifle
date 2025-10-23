@@ -14,9 +14,9 @@ defmodule TrifleApp.Components.DashboardPage do
     ]
 
   alias Trifle.Stats.Source
+  alias TrifleApp.Components.DashboardWidgets.WidgetView
+  alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   alias TrifleApp.DesignSystem.ChartColors
-  alias TrifleApp.Components.DashboardWidgets.{WidgetEditor, WidgetDataBridge}
-  alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
 
   def dashboard(assigns) do
     ~H"""
@@ -507,49 +507,21 @@ defmodule TrifleApp.Components.DashboardPage do
           </div>
         <% end %>
 
-        <% raw_grid_items = (@dashboard.payload || %{})["grid"] %>
-        <% grid_items = if is_list(raw_grid_items), do: raw_grid_items, else: [] %>
+        <% grid_items = WidgetView.grid_items(@dashboard) %>
         <% has_grid_items = grid_items != [] %>
-        <% text_items = TextWidgets.widgets(grid_items) %>
-        
-    <!-- Grid Layout -->
-        <div class={[
-          "mb-6",
-          if(has_grid_items, do: nil, else: "hidden")
-        ]}>
-          <div
-            id="dashboard-grid"
-            class="grid-stack"
-            phx-update="ignore"
-            phx-hook="DashboardGrid"
-            data-print-mode={if @print_mode, do: "true", else: "false"}
-            data-editable={
-              if !@is_public_access && @current_user && @can_edit_dashboard,
-                do: "true",
-                else: "false"
-            }
-            data-cols="12"
-            data-min-rows="8"
-            data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
-            data-colors={ChartColors.json_palette()}
-            data-initial-grid={Jason.encode!(grid_items)}
-            data-initial-text={Jason.encode!(text_items)}
-            data-dashboard-id={@dashboard.id}
-            data-public-token={@public_token}
-          >
-          </div>
-        </div>
+        <% text_items = WidgetView.text_items(grid_items) %>
 
-        <div class="hidden" aria-hidden="true">
-          <%= for widget <- grid_items do %>
-            <.live_component
-              module={WidgetDataBridge}
-              id={"widget-data-#{widget["id"]}"}
-              widget={widget}
-              stats={@stats}
-            />
-          <% end %>
-        </div>
+        <WidgetView.grid
+          dashboard={@dashboard}
+          stats={@stats}
+          print_mode={@print_mode}
+          current_user={@current_user}
+          can_edit_dashboard={@can_edit_dashboard}
+          is_public_access={@is_public_access}
+          public_token={@public_token}
+          grid_items={grid_items}
+          text_items={text_items}
+        />
         
     <!-- Configure Modal -->
         <%= if !@is_public_access && @live_action == :configure do %>
