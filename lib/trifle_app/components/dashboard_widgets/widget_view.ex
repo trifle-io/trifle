@@ -4,7 +4,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   use TrifleApp, :html
 
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
-  alias TrifleApp.Components.DashboardWidgets.WidgetDataBridge
   alias TrifleApp.DesignSystem.ChartColors
 
   attr :dashboard, :map, required: true
@@ -56,16 +55,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       </div>
     </div>
 
-    <div class="hidden" aria-hidden="true">
-      <%= for widget <- @grid_items do %>
-        <.live_component
-          module={WidgetDataBridge}
-          id={"widget-data-#{widget["id"]}"}
-          widget={widget}
-          stats={@stats}
-        />
-      <% end %>
-    </div>
     """
   end
 
