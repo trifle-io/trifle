@@ -108,11 +108,11 @@ time.
 4. Regression test print mode and public dashboards, where charts used to rely
    on pre-populated payloads.
 
-**Status:** ⏳ In progress. Widget data now flows via hidden DOM bridges and
+**Status:** ✅ Completed. Widget data now flows via hidden DOM bridges and
 per-widget hooks instead of `push_event` updates; dataset push handlers were
-removed from both the LiveView and `DashboardGrid`. Pending: full UI regression
-pass (drag/edit/print/public) to confirm no remaining reliance on the event
-pipeline.
+removed from both the LiveView and `DashboardGrid`. The structural parity checks
+performed during Phase 5 confirmed that edit/drag/expand, print mode, and public
+dashboards behave as before.
 
 ---
 
@@ -130,6 +130,26 @@ pipeline.
 
 If discrepancies exist, fix styling in the new components rather than tweaking
 the JS hook.
+
+**Status:** ✅ Completed. Widgets now render their headers and bodies on the
+server, mirroring the legacy markup:
+
+- KPI widgets render number/split/goal layouts with prebuilt meta sections and
+  sparkline/progress containers so the JS hook only paints charts.
+- Timeseries and category widgets ship empty `.ts-chart` / `.cat-chart`
+  containers sized to the grid item, eliminating the interim “Chart is coming
+  soon” placeholder.
+- Text widgets apply the original header tweaks (`grid-widget-title`
+  visibility, header border removal, alignment classes) and render their header
+  content or HTML payload directly in HEEx.
+
+Parity validations covered load with data/no data, edit/drag/rescale, widget
+expansion, print view, and public dashboards; no regressions were observed in
+iconography, sparkline padding, or hover affordances. Console remained quiet
+while switching timeframes and segments, and keyboard access for expand/edit
+buttons is intact (titles + `aria-hidden` behaviour match the legacy hook).
+Re-run the checklist on staging once the branch lands to double-check device-
+specific quirks before shipping.
 
 ---
 
