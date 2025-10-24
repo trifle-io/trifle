@@ -162,6 +162,14 @@ specific quirks before shipping.
    changed.
 4. Confirm `mix format`, `mix compile`, and `mix test` all pass.
 
+**Status:** 🟡 In progress. Early cleanup removed legacy JSON fallbacks from the
+`DashboardWidgetData` hook and tightened print-mode bootstrapping, and the new
+`WidgetView` component tests assert that server-rendered chrome and hidden data
+nodes stay in sync with widget datasets. Formatting/tests still need to run once
+Mix.PubSub can open a socket in this environment (`:eperm` today), and we should
+do a pass for any remaining JS helpers that only exist for the pre-refactor flow
+before calling the phase done.
+
 ---
 
 ## Contingency / Rollback Strategy
