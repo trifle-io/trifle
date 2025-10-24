@@ -742,8 +742,6 @@ Hooks.DashboardGrid = {
     try {
       if (this.el.dataset.initialKpiVisual) {
         this.initialKpiVisual = JSON.parse(this.el.dataset.initialKpiVisual);
-      } else if (this.el.dataset.initialKpiSpark) {
-        this.initialKpiVisual = JSON.parse(this.el.dataset.initialKpiSpark);
       } else {
         this.initialKpiVisual = [];
       }
@@ -2005,11 +2003,11 @@ Hooks.DashboardWidgetData = {
 
   register() {
     const dataStrings = [
-      this.el.dataset.kpiValues || this.el.dataset.kpiValuesJson || '',
-      this.el.dataset.kpiVisual || this.el.dataset.kpiVisualJson || '',
-      this.el.dataset.timeseries || this.el.dataset.timeseriesJson || '',
-      this.el.dataset.category || this.el.dataset.categoryJson || '',
-      this.el.dataset.text || this.el.dataset.textJson || ''
+      this.el.dataset.kpiValues || '',
+      this.el.dataset.kpiVisual || '',
+      this.el.dataset.timeseries || '',
+      this.el.dataset.category || '',
+      this.el.dataset.text || ''
     ];
     const key = [this.widgetType, this.widgetId].concat(dataStrings).join('||');
     if (key === this._lastKey) return;
@@ -2032,21 +2030,21 @@ Hooks.DashboardWidgetData = {
       let payload = null;
 
       if (type === 'kpi') {
-        const value = parseJsonSafe(this.el.dataset.kpiValues || this.el.dataset.kpiValuesJson || '');
+        const value = parseJsonSafe(this.el.dataset.kpiValues || '');
         if (value && value.id == null) value.id = id;
-        const visual = parseJsonSafe(this.el.dataset.kpiVisual || this.el.dataset.kpiVisualJson || '');
+        const visual = parseJsonSafe(this.el.dataset.kpiVisual || '');
         if (visual && visual.id == null) visual.id = id;
         payload = { value, visual };
       } else if (type === 'timeseries') {
-        const data = parseJsonSafe(this.el.dataset.timeseries || this.el.dataset.timeseriesJson || '');
+        const data = parseJsonSafe(this.el.dataset.timeseries || '');
         if (data && data.id == null) data.id = id;
         payload = data;
       } else if (type === 'category') {
-        const data = parseJsonSafe(this.el.dataset.category || this.el.dataset.categoryJson || '');
+        const data = parseJsonSafe(this.el.dataset.category || '');
         if (data && data.id == null) data.id = id;
         payload = data;
       } else if (type === 'text') {
-        const data = parseJsonSafe(this.el.dataset.text || this.el.dataset.textJson || '');
+        const data = parseJsonSafe(this.el.dataset.text || '');
         if (data && data.id == null) data.id = id;
         payload = data;
       }
