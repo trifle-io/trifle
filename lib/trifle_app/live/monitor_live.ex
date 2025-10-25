@@ -1,6 +1,7 @@
 defmodule TrifleApp.MonitorLive do
   use TrifleApp, :live_view
 
+  alias Phoenix.LiveView.JS
   alias Ecto.Changeset
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
@@ -10,6 +11,8 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Stats.Source, as: StatsSource
   alias Trifle.Stats.Tabler
+  alias TrifleApp.Components.DashboardWidgets.{Category, Kpi, Text, Timeseries, WidgetData, WidgetView}
+  alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.MonitorComponents
   alias TrifleApp.MonitorsLive.FormComponent
   alias TrifleApp.TimeframeParsing
@@ -54,6 +57,13 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:stats, nil)
      |> assign(:transponder_results, default_transponder_results())
      |> assign(:selected_source_ref, nil)
+     |> assign(:insights_dashboard, nil)
+     |> assign(:insights_kpi_values, %{})
+     |> assign(:insights_kpi_visuals, %{})
+     |> assign(:insights_timeseries, %{})
+     |> assign(:insights_category, %{})
+     |> assign(:insights_text_widgets, %{})
+     |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
      |> assign(:show_error_modal, false)}
   end
@@ -101,6 +111,22 @@ defmodule TrifleApp.MonitorLive do
 
   def handle_event("hide_transponder_errors", _params, socket) do
     {:noreply, assign(socket, :show_error_modal, false)}
+  end
+
+  def handle_event("expand_widget", %{"id" => id}, socket) do
+    expanded =
+      socket.assigns.insights_dashboard
+      |> find_monitor_widget(id)
+      |> case do
+        nil -> nil
+        widget -> build_monitor_expanded_widget(socket, widget)
+      end
+
+    {:noreply, assign(socket, :expanded_widget, expanded)}
+  end
+
+  def handle_event("close_expanded_widget", _params, socket) do
+    {:noreply, assign(socket, :expanded_widget, nil)}
   end
 
   def handle_event("toggle_status", _params, socket) do
@@ -182,7 +208,9 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:transponding, false)
      |> assign(:stats, stats)
      |> assign(:transponder_results, transponder_results)
-     |> assign(:load_duration_microseconds, load_duration)}
+     |> assign(:load_duration_microseconds, load_duration)
+     |> assign_monitor_widget_datasets(stats)
+     |> maybe_refresh_expanded_widget()}
   end
 
   @impl true
@@ -201,6 +229,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:stats, nil)
      |> assign(:transponder_results, default_transponder_results())
      |> assign(:load_duration_microseconds, load_duration)
+     |> reset_monitor_widget_datasets()
      |> put_flash(:error, "Failed to load monitor data: #{inspect(error)}")}
   end
 
@@ -213,6 +242,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:transponding, false)
      |> assign(:stats, nil)
      |> assign(:transponder_results, default_transponder_results())
+     |> reset_monitor_widget_datasets()
      |> put_flash(:error, "Monitor data task crashed: #{inspect(reason)}")}
   end
 
@@ -257,6 +287,8 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:use_fixed_display, use_fixed_display)
     |> assign(:resolved_key, resolved_key)
     |> assign(:selected_source_ref, component_source_ref(source))
+    |> assign(:insights_dashboard, build_monitor_insights_dashboard(monitor))
+    |> reset_monitor_widget_datasets()
   end
 
   defp handle_filter_change(socket, changes) when is_map(changes) do
@@ -811,6 +843,244 @@ defmodule TrifleApp.MonitorLive do
 
   defp series_counts(_), do: {0, 0}
 
+  defp assign_monitor_widget_datasets(socket, stats) do
+    monitor = socket.assigns.monitor
+
+    dashboard =
+      case socket.assigns[:insights_dashboard] do
+        nil -> build_monitor_insights_dashboard(monitor)
+        existing -> existing
+      end
+
+    datasets = dataset_maps_for_dashboard(stats, dashboard)
+
+    socket
+    |> assign(:insights_dashboard, dashboard)
+    |> assign(:insights_kpi_values, datasets.kpi_values)
+    |> assign(:insights_kpi_visuals, datasets.kpi_visuals)
+    |> assign(:insights_timeseries, datasets.timeseries)
+    |> assign(:insights_category, datasets.category)
+    |> assign(:insights_text_widgets, datasets.text)
+  end
+
+  defp reset_monitor_widget_datasets(socket) do
+    datasets = empty_widget_dataset_maps()
+
+    socket
+    |> assign(:insights_kpi_values, datasets.kpi_values)
+    |> assign(:insights_kpi_visuals, datasets.kpi_visuals)
+    |> assign(:insights_timeseries, datasets.timeseries)
+    |> assign(:insights_category, datasets.category)
+    |> assign(:insights_text_widgets, datasets.text)
+  end
+
+  defp empty_widget_dataset_maps do
+    %{kpi_values: %{}, kpi_visuals: %{}, timeseries: %{}, category: %{}, text: %{}}
+  end
+
+  defp dataset_maps_for_dashboard(_stats, dashboard) when not is_map(dashboard) do
+    empty_widget_dataset_maps()
+  end
+
+  defp dataset_maps_for_dashboard(stats, dashboard) do
+    stats
+    |> WidgetData.datasets_from_dashboard(dashboard)
+    |> WidgetData.dataset_maps()
+  end
+
+  defp build_monitor_insights_dashboard(%Monitor{type: :report, dashboard: %{} = dashboard}),
+    do: dashboard
+
+  defp build_monitor_insights_dashboard(%Monitor{type: :report} = monitor) do
+    %{
+      id: "#{monitor.id}-report-preview",
+      key: nil,
+      name: monitor.name,
+      payload: %{"grid" => []}
+    }
+  end
+
+  defp build_monitor_insights_dashboard(%Monitor{type: :alert} = monitor) do
+    build_alert_preview_dashboard(monitor)
+  end
+
+  defp build_monitor_insights_dashboard(%Monitor{} = monitor) do
+    %{
+      id: "#{monitor.id}-preview",
+      key: nil,
+      name: monitor.name,
+      payload: %{"grid" => []}
+    }
+  end
+
+  defp build_alert_preview_dashboard(%Monitor{} = monitor) do
+    settings = monitor.alert_settings || %{}
+
+    metric_path =
+      settings
+      |> Map.get(:metric_path) || ""
+      |> to_string()
+      |> String.trim()
+
+    widget_items =
+      if metric_path == "" do
+        []
+      else
+        [
+          alert_preview_widget(
+            monitor,
+            metric_path,
+            settings
+          )
+        ]
+      end
+
+    %{
+      id: "#{monitor.id}-alert-preview",
+      key: settings |> Map.get(:metric_key),
+      name: monitor.name,
+      payload: %{"grid" => widget_items}
+    }
+  end
+
+  defp alert_preview_widget(monitor, metric_path, settings) do
+    base_id = to_string(monitor.id || "monitor")
+    chart_title =
+      settings
+      |> Map.get(:metric_key)
+      |> case do
+        nil -> monitor.name
+        "" -> monitor.name
+        value -> value
+      end
+
+    %{
+      "id" => "#{base_id}-alert-series",
+      "type" => "timeseries",
+      "title" => chart_title || "Alert series",
+      "chart_type" => "line",
+      "legend" => false,
+      "stacked" => false,
+      "normalized" => false,
+      "paths" => [metric_path],
+      "y_label" => Map.get(settings, :metric_path) || metric_path,
+      "w" => 12,
+      "h" => 5,
+      "x" => 0,
+      "y" => 0
+    }
+  end
+
+  defp find_monitor_widget(nil, _id), do: nil
+
+  defp find_monitor_widget(%{payload: payload}, id) when is_map(payload) do
+    id = to_string(id)
+
+    payload
+    |> Map.get("grid", [])
+    |> case do
+      [] ->
+        payload
+        |> Map.get(:grid, [])
+
+      list ->
+        list
+    end
+    |> Enum.find(fn item ->
+      widget_id =
+        item
+        |> Map.get("id") ||
+          item
+          |> Map.get(:id)
+
+      to_string(widget_id) == id
+    end)
+  end
+
+  defp find_monitor_widget(_, _id), do: nil
+
+  defp build_monitor_expanded_widget(socket, widget) when is_map(widget) do
+    id = widget |> Map.get("id") |> to_string()
+    stats = socket.assigns[:stats]
+    type = monitor_widget_type(widget)
+    title = widget |> Map.get("title", "") |> to_string() |> String.trim()
+
+    base = %{
+      widget_id: id,
+      title: if(title == "", do: "Untitled Widget", else: title),
+      type: type
+    }
+
+    cond do
+      is_nil(stats) ->
+        base
+
+      type == "timeseries" ->
+        stats
+        |> Timeseries.dataset(widget)
+        |> maybe_put_chart(base)
+
+      type == "category" ->
+        stats
+        |> Category.dataset(widget)
+        |> maybe_put_chart(base)
+
+      type == "kpi" ->
+        stats
+        |> Kpi.dataset(widget)
+        |> maybe_put_kpi_data(base)
+
+      type == "text" ->
+        widget
+        |> Text.widget()
+        |> case do
+          nil -> base
+          text_data -> Map.put(base, :text_data, text_data)
+        end
+
+      true ->
+        base
+    end
+  end
+
+  defp build_monitor_expanded_widget(_socket, _widget), do: nil
+
+  defp monitor_widget_type(widget) do
+    widget
+    |> Map.get("type", "kpi")
+    |> to_string()
+    |> String.downcase()
+  end
+
+  defp maybe_put_chart(nil, base), do: base
+  defp maybe_put_chart(chart_map, base), do: Map.put(base, :chart_data, chart_map)
+
+  defp maybe_put_kpi_data(nil, base), do: base
+
+  defp maybe_put_kpi_data({value_map, visual_map}, base) do
+    base
+    |> Map.put(:chart_data, value_map)
+    |> Map.put(:visual_data, visual_map)
+  end
+
+  defp maybe_refresh_expanded_widget(socket) do
+    case socket.assigns[:expanded_widget] do
+      %{widget_id: widget_id} ->
+        refreshed =
+          socket.assigns.insights_dashboard
+          |> find_monitor_widget(widget_id)
+          |> case do
+            nil -> nil
+            widget -> build_monitor_expanded_widget(socket, widget)
+          end
+
+        assign(socket, :expanded_widget, refreshed)
+
+      _ ->
+        socket
+    end
+  end
+
   defp monitor_footer_resource(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
   defp monitor_footer_resource(%Monitor{id: id}), do: %{id: id}
   defp monitor_footer_resource(_), do: %{id: nil}
@@ -948,17 +1218,77 @@ defmodule TrifleApp.MonitorLive do
       />
 
       <div class="grid gap-6 lg:grid-cols-3">
-        <div class="lg:col-span-2">
-          <div class="flex h-full min-h-[16rem] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-700 dark:bg-slate-800/40">
-            <div>
-              <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Monitor insights
-              </h3>
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Additional visualizations and summaries will appear here soon.
-              </p>
-            </div>
-          </div>
+        <div class="lg:col-span-2 space-y-4">
+          <h3 class="text-base font-semibold text-slate-900 dark:text-white">
+            Monitor insights
+          </h3>
+
+          <%
+            dashboard_for_render =
+              @insights_dashboard ||
+                %{payload: %{"grid" => []}}
+
+            grid_items = WidgetView.grid_items(dashboard_for_render)
+            report_missing_dashboard? = @monitor.type == :report && is_nil(@monitor.dashboard)
+
+            alert_settings = @monitor.alert_settings || %{}
+            alert_path_missing? =
+              @monitor.type == :alert &&
+                (alert_settings
+                 |> Map.get(:metric_path)
+                 |> to_string()
+                 |> String.trim() == "")
+          %>
+
+          <%= cond do %>
+            <% report_missing_dashboard? -> %>
+              <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
+                <div class="max-w-sm space-y-2">
+                  <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Dashboard not available
+                  </p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Attach a dashboard to this report monitor to preview its widgets here.
+                  </p>
+                </div>
+              </div>
+            <% alert_path_missing? -> %>
+              <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-amber-300 bg-amber-50 text-center dark:border-amber-600/60 dark:bg-amber-900/20">
+                <div class="max-w-sm space-y-2">
+                  <p class="text-sm font-semibold text-amber-700 dark:text-amber-200">
+                    Metric path required
+                  </p>
+                  <p class="text-xs text-amber-700/80 dark:text-amber-100/80">
+                    Configure a metric key and path for this alert to generate a chart preview.
+                  </p>
+                </div>
+              </div>
+            <% grid_items == [] -> %>
+              <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
+                <div class="max-w-sm space-y-2">
+                  <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    No widgets detected
+                  </p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Add at least one widget to the dashboard to populate this preview.
+                  </p>
+                </div>
+              </div>
+            <% true -> %>
+              <WidgetView.grid
+                dashboard={dashboard_for_render}
+                stats={@stats}
+                current_user={@current_user}
+                can_edit_dashboard={false}
+                is_public_access={true}
+                print_mode={false}
+                kpi_values={@insights_kpi_values}
+                kpi_visuals={@insights_kpi_visuals}
+                timeseries={@insights_timeseries}
+                category={@insights_category}
+                text_widgets={@insights_text_widgets}
+              />
+          <% end %>
         </div>
         <div class="space-y-6">
           <%= if @monitor.type == :report do %>
@@ -987,6 +1317,57 @@ defmodule TrifleApp.MonitorLive do
           export_params={%{}}
           export_menu?={false}
         />
+      <% end %>
+
+      <%= if @expanded_widget do %>
+        <.app_modal
+          id="monitor-widget-expand-modal"
+          show={true}
+          size="full"
+          on_cancel={JS.push("close_expanded_widget")}
+        >
+          <:title>
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div class="flex items-center gap-3">
+                <span>{@expanded_widget.title}</span>
+                <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
+                  {String.capitalize(@expanded_widget.type || "widget")}
+                </span>
+              </div>
+            </div>
+          </:title>
+          <:body>
+            <div
+              id={"expanded-widget-#{@expanded_widget.widget_id}"}
+              class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
+              phx-hook="ExpandedWidgetView"
+              data-type={@expanded_widget.type}
+              data-title={@expanded_widget.title}
+              data-colors={ChartColors.json_palette()}
+              data-chart={
+                if @expanded_widget[:chart_data],
+                  do: Jason.encode!(@expanded_widget.chart_data)
+              }
+              data-visual={
+                if @expanded_widget[:visual_data],
+                  do: Jason.encode!(@expanded_widget.visual_data)
+              }
+              data-text={
+                if @expanded_widget[:text_data],
+                  do: Jason.encode!(@expanded_widget.text_data)
+              }
+            >
+              <div class="flex-1 min-h-[500px]">
+                <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                  <div data-role="chart" class="h-full w-full"></div>
+                </div>
+              </div>
+              <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+              </div>
+            </div>
+          </:body>
+        </.app_modal>
       <% end %>
 
       <%= if @show_error_modal && summary && length(summary.transponder_errors) > 0 do %>
