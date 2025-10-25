@@ -1360,11 +1360,10 @@ defmodule Trifle.Organizations do
     |> String.downcase()
   end
 
-  def list_dashboards_for_membership(
-        %User{} = user,
-        %OrganizationMembership{} = membership,
-        group_id \\ nil
-      ) do
+  defp dashboards_base_query(
+         %User{} = user,
+         %OrganizationMembership{} = membership
+       ) do
     base =
       from(d in Dashboard,
         where: d.organization_id == ^membership.organization_id,
@@ -1372,12 +1371,19 @@ defmodule Trifle.Organizations do
         preload: [:user, :database]
       )
 
-    base =
-      case membership.role do
-        "owner" -> base
-        "admin" -> base
-        _ -> from(d in base, where: d.user_id == ^user.id or d.visibility == true)
-      end
+    case membership.role do
+      "owner" -> base
+      "admin" -> base
+      _ -> from(d in base, where: d.user_id == ^user.id or d.visibility == true)
+    end
+  end
+
+  def list_dashboards_for_membership(
+        %User{} = user,
+        %OrganizationMembership{} = membership,
+        group_id \\ nil
+      ) do
+    base = dashboards_base_query(user, membership)
 
     query =
       case group_id do
@@ -1386,6 +1392,14 @@ defmodule Trifle.Organizations do
       end
 
     Repo.all(query)
+  end
+
+  def list_all_dashboards_for_membership(
+        %User{} = user,
+        %OrganizationMembership{} = membership
+      ) do
+    dashboards_base_query(user, membership)
+    |> Repo.all()
   end
 
   def count_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
