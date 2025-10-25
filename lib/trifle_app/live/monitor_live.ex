@@ -5,9 +5,17 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Organizations
+  alias Trifle.Stats.Configuration
+  alias Trifle.Stats.Nocturnal
+  alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Stats.Source, as: StatsSource
+  alias Trifle.Stats.Tabler
   alias TrifleApp.MonitorComponents
   alias TrifleApp.MonitorsLive.FormComponent
+  alias TrifleApp.TimeframeParsing
+  import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
+
+  @default_granularities ["15m", "1h", "6h", "1d", "1w", "1mo"]
 
   @impl true
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
@@ -30,7 +38,24 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:sources, load_sources(membership))
      |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
      |> assign(:modal_monitor, nil)
-     |> assign(:modal_changeset, nil)}
+     |> assign(:modal_changeset, nil)
+     |> assign(:source, nil)
+     |> assign(:stats_config, nil)
+     |> assign(:available_granularities, [])
+     |> assign(:from, nil)
+     |> assign(:to, nil)
+     |> assign(:granularity, nil)
+     |> assign(:smart_timeframe_input, nil)
+     |> assign(:use_fixed_display, false)
+     |> assign(:loading, false)
+     |> assign(:loading_progress, nil)
+     |> assign(:transponding, false)
+     |> assign(:load_duration_microseconds, nil)
+     |> assign(:stats, nil)
+     |> assign(:transponder_results, default_transponder_results())
+     |> assign(:selected_source_ref, nil)
+     |> assign(:show_export_dropdown, false)
+     |> assign(:show_error_modal, false)}
   end
 
   @impl true
@@ -43,6 +68,7 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:page_title, build_page_title(socket.assigns.live_action, monitor))
       |> assign(:breadcrumb_links, [{"Monitors", ~p"/monitors"}, monitor.name])
       |> assign(:executions, Monitors.list_recent_executions(monitor))
+      |> initialize_monitor_context()
 
     {:noreply, apply_action(socket, socket.assigns.live_action)}
   end
@@ -51,6 +77,7 @@ defmodule TrifleApp.MonitorLive do
     socket
     |> assign(:modal_monitor, nil)
     |> assign(:modal_changeset, nil)
+    |> load_monitor_data()
   end
 
   defp apply_action(socket, :configure) do
@@ -66,6 +93,14 @@ defmodule TrifleApp.MonitorLive do
   @impl true
   def handle_event("delete_monitor", _params, socket) do
     delete_monitor(socket, socket.assigns.monitor)
+  end
+
+  def handle_event("show_transponder_errors", _params, socket) do
+    {:noreply, assign(socket, :show_error_modal, true)}
+  end
+
+  def handle_event("hide_transponder_errors", _params, socket) do
+    {:noreply, assign(socket, :show_error_modal, false)}
   end
 
   def handle_event("toggle_status", _params, socket) do
@@ -112,7 +147,74 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, put_flash(socket, :error, message)}
   end
 
+  def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
+    {:noreply, handle_filter_change(socket, changes)}
+  end
+
+  def handle_info({:loading_progress, progress_map}, socket) do
+    {:noreply, assign(socket, :loading_progress, progress_map)}
+  end
+
+  def handle_info({:transponding, state}, socket) do
+    {:noreply, assign(socket, :transponding, state)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_async(:monitor_data_task, {:ok, result}, socket) do
+    load_duration =
+      case socket.assigns[:load_start_time] do
+        nil -> nil
+        started -> System.monotonic_time(:microsecond) - started
+      end
+
+    stats = Map.get(result, :series)
+    transponder_results =
+      result
+      |> Map.get(:transponder_results, %{})
+      |> normalize_transponder_results()
+
+    {:noreply,
+     socket
+     |> assign(:loading, false)
+     |> assign(:loading_progress, nil)
+     |> assign(:transponding, false)
+     |> assign(:stats, stats)
+     |> assign(:transponder_results, transponder_results)
+     |> assign(:load_duration_microseconds, load_duration)}
+  end
+
+  @impl true
+  def handle_async(:monitor_data_task, {:error, error}, socket) do
+    load_duration =
+      case socket.assigns[:load_start_time] do
+        nil -> nil
+        started -> System.monotonic_time(:microsecond) - started
+      end
+
+    {:noreply,
+     socket
+     |> assign(:loading, false)
+     |> assign(:loading_progress, nil)
+     |> assign(:transponding, false)
+     |> assign(:stats, nil)
+     |> assign(:transponder_results, default_transponder_results())
+     |> assign(:load_duration_microseconds, load_duration)
+     |> put_flash(:error, "Failed to load monitor data: #{inspect(error)}")}
+  end
+
+  @impl true
+  def handle_async(:monitor_data_task, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:loading, false)
+     |> assign(:loading_progress, nil)
+     |> assign(:transponding, false)
+     |> assign(:stats, nil)
+     |> assign(:transponder_results, default_transponder_results())
+     |> put_flash(:error, "Monitor data task crashed: #{inspect(reason)}")}
+  end
 
   defp load_monitor(socket, id) do
     membership = socket.assigns.current_membership
@@ -128,6 +230,471 @@ defmodule TrifleApp.MonitorLive do
 
   defp load_sources(membership) do
     StatsSource.list_for_membership(membership)
+  end
+
+  defp initialize_monitor_context(socket) do
+    monitor = socket.assigns.monitor
+    sources = socket.assigns[:sources] || []
+    source = resolve_monitor_source(sources, monitor)
+    updated_sources = ensure_source_in_list(sources, source)
+    config = source_stats_config(source)
+    granularities = available_granularity_options(source)
+
+    {from, to, granularity, timeframe_input, use_fixed_display} =
+      monitor_timeframe_defaults(monitor, source, config, granularities)
+
+    resolved_key = resolve_monitor_key(monitor)
+
+    socket
+    |> assign(:source, source)
+    |> assign(:sources, updated_sources)
+    |> assign(:stats_config, config)
+    |> assign(:available_granularities, granularities)
+    |> assign(:granularity, granularity)
+    |> assign(:from, from)
+    |> assign(:to, to)
+    |> assign(:smart_timeframe_input, timeframe_input)
+    |> assign(:use_fixed_display, use_fixed_display)
+    |> assign(:resolved_key, resolved_key)
+    |> assign(:selected_source_ref, component_source_ref(source))
+  end
+
+  defp handle_filter_change(socket, changes) when is_map(changes) do
+    socket =
+      socket
+      |> maybe_assign_change(:smart_timeframe_input, Map.get(changes, :smart_timeframe_input))
+      |> maybe_assign_change(:use_fixed_display, Map.get(changes, :use_fixed_display))
+      |> maybe_assign_change(:from, Map.get(changes, :from))
+      |> maybe_assign_change(:to, Map.get(changes, :to))
+
+    socket =
+      case Map.fetch(changes, :granularity) do
+        {:ok, granularity} -> assign_granularity(socket, granularity)
+        :error -> socket
+      end
+
+    socket =
+      if should_align_timeframe?(changes, socket) do
+        assign_timeframe_from_input(socket, socket.assigns.smart_timeframe_input || "24h")
+      else
+        socket
+      end
+
+    socket
+    |> load_monitor_data()
+  end
+
+  defp maybe_assign_change(socket, _key, nil), do: socket
+  defp maybe_assign_change(socket, key, value), do: assign(socket, key, value)
+
+  defp assign_granularity(socket, nil), do: socket
+
+  defp assign_granularity(socket, granularity) do
+    available = socket.assigns[:available_granularities] || []
+    fallback =
+      case socket.assigns[:source] do
+        nil -> nil
+        source -> StatsSource.default_granularity(source)
+      end
+
+    normalized = normalize_granularity(granularity, available, fallback)
+    assign(socket, :granularity, normalized)
+  end
+
+  defp should_align_timeframe?(changes, socket) do
+    explicit_range? = Map.has_key?(changes, :from) || Map.has_key?(changes, :to)
+
+    cond do
+      Map.get(changes, :use_fixed_display) == false ->
+        true
+
+      Map.has_key?(changes, :smart_timeframe_input) and !explicit_range? ->
+        true
+
+      Map.get(changes, :reload) && socket.assigns.use_fixed_display == false ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  defp assign_timeframe_from_input(socket, timeframe_input) do
+    monitor = socket.assigns.monitor
+    config = socket.assigns[:stats_config] || source_stats_config(nil)
+
+    case monitor do
+      %Monitor{type: :report} ->
+        case compute_report_time_range(monitor, timeframe_input, config) do
+          {:ok, from, to} ->
+            socket
+            |> assign(:from, from)
+            |> assign(:to, to)
+
+          :error ->
+            socket
+        end
+
+      %Monitor{type: :alert} ->
+        case parse_timeframe_range(timeframe_input, config) do
+          {:ok, from, to} ->
+            socket
+            |> assign(:from, from)
+            |> assign(:to, to)
+
+          :error ->
+            socket
+        end
+
+      _ ->
+        case parse_timeframe_range(timeframe_input, config) do
+          {:ok, from, to} ->
+            socket
+            |> assign(:from, from)
+            |> assign(:to, to)
+
+          :error ->
+            socket
+        end
+    end
+  end
+
+  defp compute_report_time_range(%Monitor{} = monitor, timeframe_input, config) do
+    settings = monitor.report_settings || %{}
+    frequency = Map.get(settings, :frequency)
+    now = timezone_now(config)
+
+    cond do
+      frequency == :daily ->
+        from = floor_time(now, 1, :day, config)
+        {:ok, from, now}
+
+      frequency == :weekly ->
+        from = floor_time(now, 1, :week, config)
+        {:ok, from, now}
+
+      frequency == :monthly ->
+        from = floor_time(now, 1, :month, config)
+        {:ok, from, now}
+
+      true ->
+        parse_timeframe_range(timeframe_input, config)
+    end
+  end
+
+  defp parse_timeframe_range(timeframe_input, config) do
+    case TimeframeParsing.parse_smart_timeframe(timeframe_input || "24h", config) do
+      {:ok, from, to, _smart, _fixed} -> {:ok, from, to}
+      {:error, _reason} ->
+        case TimeframeParsing.parse_smart_timeframe("24h", config) do
+          {:ok, from, to, _smart, _fixed} -> {:ok, from, to}
+          _ -> :error
+        end
+    end
+  end
+
+  defp timezone_now(config) do
+    DateTime.utc_now()
+    |> DateTime.shift_zone!(config.time_zone || "UTC")
+  end
+
+  defp floor_time(datetime, offset, unit, config) do
+    datetime
+    |> Nocturnal.new(config)
+    |> Nocturnal.floor(offset, unit)
+  end
+
+  defp monitor_timeframe_defaults(%Monitor{type: :report} = monitor, source, config, granularities) do
+    report_timeframe_defaults(monitor, source, config, granularities)
+  end
+
+  defp monitor_timeframe_defaults(%Monitor{type: :alert} = monitor, source, config, granularities) do
+    alert_timeframe_defaults(monitor, source, config, granularities)
+  end
+
+  defp monitor_timeframe_defaults(_monitor, _source, config, _granularities) do
+    case parse_timeframe_range("24h", config) do
+      {:ok, from, to} -> {from, to, "1h", "24h", false}
+      :error -> {nil, nil, nil, "24h", false}
+    end
+  end
+
+  defp report_timeframe_defaults(%Monitor{} = monitor, source, config, granularities) do
+    settings = monitor.report_settings || %{}
+    frequency = Map.get(settings, :frequency, :weekly)
+    timeframe_input = resolve_report_timeframe(settings.timeframe, frequency, source)
+
+    {from, to} =
+      case compute_report_time_range(monitor, timeframe_input, config) do
+        {:ok, from, to} -> {from, to}
+        :error ->
+          case parse_timeframe_range("24h", config) do
+            {:ok, fallback_from, fallback_to} -> {fallback_from, fallback_to}
+            :error -> {nil, nil}
+          end
+      end
+
+    fallback_granularity =
+      case source do
+        nil -> nil
+        src -> StatsSource.default_granularity(src)
+      end
+
+    granularity =
+      normalize_granularity(settings.granularity, granularities, fallback_granularity)
+
+    {from, to, granularity, timeframe_input, false}
+  end
+
+  defp resolve_report_timeframe(timeframe, frequency, source) do
+    cond do
+      is_binary(timeframe) and String.trim(timeframe) != "" ->
+        timeframe
+
+      frequency == :daily ->
+        "1d"
+
+      frequency == :weekly ->
+        "7d"
+
+      frequency == :monthly ->
+        "1mo"
+
+      source ->
+        StatsSource.default_timeframe(source) || "24h"
+
+      true ->
+        "24h"
+    end
+  end
+
+  defp alert_timeframe_defaults(%Monitor{} = monitor, source, config, granularities) do
+    settings = monitor.alert_settings || %{}
+    evaluation_timeframe = settings.timeframe || StatsSource.default_timeframe(source) || "1h"
+    display_timeframe = multiply_timeframe(evaluation_timeframe, 4)
+
+    {from, to} =
+      case parse_timeframe_range(display_timeframe, config) do
+        {:ok, from, to} -> {from, to}
+        :error ->
+          case parse_timeframe_range("24h", config) do
+            {:ok, fallback_from, fallback_to} -> {fallback_from, fallback_to}
+            :error -> {nil, nil}
+          end
+      end
+
+    fallback_granularity =
+      settings.granularity ||
+        case source do
+          nil -> nil
+          src -> StatsSource.default_granularity(src)
+        end
+
+    granularity = normalize_granularity(settings.granularity, granularities, fallback_granularity)
+    {from, to, granularity, display_timeframe, false}
+  end
+
+  defp multiply_timeframe(timeframe, multiplier) when is_binary(timeframe) and multiplier >= 1 do
+    parser = Parser.new(timeframe)
+
+    if Parser.valid?(parser) do
+      offset = parser.offset * multiplier
+      "#{offset}#{timeframe_unit_suffix(parser.unit)}"
+    else
+      timeframe
+    end
+  end
+
+  defp multiply_timeframe(_timeframe, _multiplier), do: "24h"
+
+  defp timeframe_unit_suffix(:second), do: "s"
+  defp timeframe_unit_suffix(:minute), do: "m"
+  defp timeframe_unit_suffix(:hour), do: "h"
+  defp timeframe_unit_suffix(:day), do: "d"
+  defp timeframe_unit_suffix(:week), do: "w"
+  defp timeframe_unit_suffix(:month), do: "mo"
+  defp timeframe_unit_suffix(:quarter), do: "q"
+  defp timeframe_unit_suffix(:year), do: "y"
+  defp timeframe_unit_suffix(_), do: ""
+
+  defp normalize_granularity(value, available, fallback) do
+    cond do
+      is_binary(value) and value in available ->
+        value
+
+      is_binary(fallback) and fallback in available ->
+        fallback
+
+      available != [] ->
+        hd(available)
+
+      true ->
+        value
+    end
+  end
+
+  defp source_stats_config(nil) do
+    Configuration.configure(
+      nil,
+      time_zone: "UTC",
+      time_zone_database: Tzdata.TimeZoneDatabase,
+      beginning_of_week: :monday,
+      track_granularities: @default_granularities
+    )
+  end
+
+  defp source_stats_config(source), do: StatsSource.stats_config(source)
+
+  defp available_granularity_options(nil), do: @default_granularities
+
+  defp available_granularity_options(source) do
+    case StatsSource.available_granularities(source) do
+      list when is_list(list) and list != [] ->
+        list
+
+      _ ->
+        @default_granularities
+    end
+  end
+
+  defp resolve_monitor_key(%Monitor{type: :report, dashboard: %{key: key}}), do: key
+
+  defp resolve_monitor_key(%Monitor{type: :alert, alert_settings: settings}) do
+    settings && settings.metric_key
+  end
+
+  defp resolve_monitor_key(_), do: nil
+
+  defp resolve_monitor_source(sources, monitor) do
+    case monitor_source_tuple(monitor) do
+      {:ok, type, id} -> StatsSource.find_in_list(sources, type, id)
+      _ -> nil
+    end
+  end
+
+  defp ensure_source_in_list(sources, source) do
+    cond do
+      is_nil(source) ->
+        sources
+
+      Enum.any?(sources, &source_same?(&1, source)) ->
+        sources
+
+      true ->
+        (sources ++ [source])
+        |> Enum.reject(&is_nil/1)
+        |> Enum.sort_by(fn s ->
+          {source_sort_key(StatsSource.type(s)), String.downcase(StatsSource.display_name(s))}
+        end)
+    end
+  end
+
+  defp source_same?(a, b) do
+    StatsSource.type(a) == StatsSource.type(b) &&
+      to_string(StatsSource.id(a)) == to_string(StatsSource.id(b))
+  end
+
+  defp source_sort_key(:database), do: 0
+  defp source_sort_key(:project), do: 1
+  defp source_sort_key(_other), do: 2
+
+  defp component_source_ref(nil), do: nil
+
+  defp component_source_ref(source) do
+    %{type: StatsSource.type(source), id: to_string(StatsSource.id(source))}
+  end
+
+  defp default_transponder_results do
+    %{successful: [], failed: [], errors: []}
+  end
+
+  defp normalize_transponder_results(results) when is_map(results) do
+    successful =
+      results
+      |> Map.get(:successful, Map.get(results, "successful"))
+      |> List.wrap()
+
+    failed =
+      results
+      |> Map.get(:failed, Map.get(results, "failed"))
+      |> List.wrap()
+
+    errors =
+      results
+      |> Map.get(:errors, Map.get(results, "errors"))
+      |> List.wrap()
+
+    %{
+      successful: successful,
+      failed: failed,
+      errors: errors
+    }
+  end
+
+  defp normalize_transponder_results(_), do: default_transponder_results()
+
+  defp load_monitor_data(socket) do
+    cond do
+      !monitor_has_key?(socket) ->
+        socket
+
+      is_nil(socket.assigns[:source]) ->
+        socket
+
+      is_nil(socket.assigns[:from]) or is_nil(socket.assigns[:to]) ->
+        socket
+
+      is_nil(socket.assigns[:granularity]) ->
+        socket
+
+      true ->
+        source = socket.assigns.source
+        key = socket.assigns.resolved_key || ""
+        granularity = socket.assigns.granularity
+        from = socket.assigns.from
+        to = socket.assigns.to
+        liveview_pid = self()
+
+        socket =
+          socket
+          |> assign(:load_start_time, System.monotonic_time(:microsecond))
+          |> assign(:loading, true)
+          |> assign(:loading_progress, nil)
+          |> assign(:transponding, false)
+
+        start_async(socket, :monitor_data_task, fn ->
+          progress_callback = fn
+            {:chunk_progress, current, total} ->
+              send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+
+            {:transponder_progress, :starting} ->
+              send(liveview_pid, {:transponding, true})
+
+            {:transponder_progress, :finished} ->
+              send(liveview_pid, {:transponding, false})
+
+            _ ->
+              :ok
+          end
+
+          case StatsSource.fetch_series(
+                 source,
+                 key,
+                 from,
+                 to,
+                 granularity,
+                 progress_callback: progress_callback
+               ) do
+            {:ok, result} -> result
+            {:error, error} -> {:error, error}
+          end
+        end)
+    end
+  end
+
+  defp monitor_has_key?(socket) do
+    key = socket.assigns[:resolved_key]
+    is_binary(key) && String.trim(key) != ""
   end
 
   defp status_label(:active), do: "enabled"
@@ -207,6 +774,47 @@ defmodule TrifleApp.MonitorLive do
     """
   end
 
+  def monitor_summary_stats(assigns) do
+    key = assigns[:resolved_key] || resolve_monitor_key(assigns[:monitor])
+
+    cond do
+      !is_binary(key) || String.trim(key) == "" ->
+        nil
+
+      true ->
+        {column_count, path_count} = series_counts(assigns[:stats])
+        transponder_results =
+          assigns[:transponder_results]
+          |> normalize_transponder_results()
+
+        successful = length(transponder_results.successful)
+        failed = length(transponder_results.failed)
+
+        %{
+          key: key,
+          column_count: column_count,
+          path_count: path_count,
+          matching_transponders: successful + failed,
+          successful_transponders: successful,
+          failed_transponders: failed,
+          transponder_errors: transponder_results.errors
+        }
+    end
+  end
+
+  defp series_counts(%Trifle.Stats.Series{series: series_map}) when is_map(series_map) do
+    table = Tabler.tabulize(series_map)
+    column_count = table[:at] |> List.wrap() |> length()
+    path_count = table[:paths] |> List.wrap() |> length()
+    {column_count, path_count}
+  end
+
+  defp series_counts(_), do: {0, 0}
+
+  defp monitor_footer_resource(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
+  defp monitor_footer_resource(%Monitor{id: id}), do: %{id: id}
+  defp monitor_footer_resource(_), do: %{id: nil}
+
   defp changeset_error_message(%Changeset{} = changeset) do
     changeset.errors
     |> Enum.map(fn {field, {message, _}} -> "#{Phoenix.Naming.humanize(field)} #{message}" end)
@@ -280,7 +888,7 @@ defmodule TrifleApp.MonitorLive do
             <p :if={@monitor.description} class="mt-2 text-sm text-slate-500 dark:text-slate-300">
               {@monitor.description}
             </p>
-          </div>
+      </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <.link
@@ -318,6 +926,27 @@ defmodule TrifleApp.MonitorLive do
         </div>
       </div>
 
+      <% summary = monitor_summary_stats(assigns) %>
+
+      <.live_component
+        module={TrifleApp.Components.FilterBar}
+        id="monitor_filter_bar"
+        config={@stats_config}
+        from={@from}
+        to={@to}
+        granularity={@granularity}
+        smart_timeframe_input={@smart_timeframe_input}
+        use_fixed_display={@use_fixed_display}
+        available_granularities={@available_granularities}
+        show_controls={true}
+        show_timeframe_dropdown={false}
+        show_granularity_dropdown={false}
+        force_granularity_dropdown={false}
+        sources={@sources || []}
+        selected_source={@selected_source_ref}
+        source_locked={true}
+      />
+
       <div class="grid gap-6 lg:grid-cols-3">
         <div class="lg:col-span-2">
           <div class="flex h-full min-h-[16rem] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-700 dark:bg-slate-800/40">
@@ -347,6 +976,94 @@ defmodule TrifleApp.MonitorLive do
           <MonitorComponents.trigger_history monitor={@monitor} executions={@executions} />
         </div>
       </div>
+
+      <%= if summary do %>
+        <.dashboard_footer
+          class="mt-8"
+          summary={summary}
+          load_duration_microseconds={@load_duration_microseconds}
+          show_export_dropdown={false}
+          dashboard={monitor_footer_resource(@monitor)}
+          export_params={%{}}
+          export_menu?={false}
+        />
+      <% end %>
+
+      <%= if @show_error_modal && summary && length(summary.transponder_errors) > 0 do %>
+        <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
+          <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"></div>
+
+            <div
+              class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6"
+              phx-click-away="hide_transponder_errors"
+            >
+              <div class="sm:flex sm:items-start">
+                <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
+                  <svg
+                    class="h-6 w-6 text-red-600 dark:text-red-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+                    />
+                  </svg>
+                </div>
+                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                  <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                    Transponder Errors
+                  </h3>
+                  <div class="mt-4">
+                    <div class="space-y-4">
+                      <%= for error <- summary.transponder_errors do %>
+                        <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
+                          <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-medium text-red-800 dark:text-red-300">
+                              {(error.transponder && (error.transponder.name || error.transponder.key)) || "Transponder"}
+                            </h4>
+                            <span class="text-xs text-slate-500 dark:text-slate-400">
+                              {error.transponder && error.transponder.key}
+                            </span>
+                          </div>
+                          <p class="text-sm text-red-700 dark:text-red-200">
+                            {error.message || "Error executing transponder"}
+                          </p>
+                          <%= if error.details do %>
+                            <pre class="mt-2 rounded bg-slate-900/5 dark:bg-slate-900/60 p-3 text-xs text-slate-700 dark:text-slate-200 overflow-x-auto">
+{inspect(error.details, pretty: true)}
+                            </pre>
+                          <% end %>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                  <div class="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse">
+                    <button
+                      type="button"
+                      class="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto"
+                      phx-click="hide_transponder_errors"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600 sm:mt-0 sm:w-auto"
+                      phx-click="hide_transponder_errors"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
 
       <.live_component
         :if={@live_action == :configure}
