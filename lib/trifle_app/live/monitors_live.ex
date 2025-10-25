@@ -99,7 +99,7 @@ defmodule TrifleApp.MonitorsLive do
   end
 
   defp load_dashboards(user, membership) do
-    Organizations.list_dashboards_for_membership(user, membership)
+    Organizations.list_all_dashboards_for_membership(user, membership)
   end
 
   defp load_sources(membership) do

@@ -255,7 +255,7 @@ defmodule TrifleApp.MonitorLive do
   defp build_page_title(_action, monitor), do: "#{monitor.name} · Monitor"
 
   defp load_dashboards(user, membership) do
-    Organizations.list_dashboards_for_membership(user, membership)
+    Organizations.list_all_dashboards_for_membership(user, membership)
   end
 
   defp load_sources(membership) do
