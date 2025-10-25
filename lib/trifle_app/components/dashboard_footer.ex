@@ -15,6 +15,7 @@ defmodule TrifleApp.Components.DashboardFooter do
   attr :dashboard, :map, required: true
   attr :export_params, :map, required: true
   attr :class, :string, default: nil
+  attr :export_menu?, :boolean, default: true
   attr :rest, :global
 
   def dashboard_footer(assigns) do
@@ -168,54 +169,55 @@ defmodule TrifleApp.Components.DashboardFooter do
           </div>
         <% end %>
 
-        <div
-          id="dashboard-download-menu"
-          class="ml-auto relative"
-          data-default-label="Export"
-          phx-hook="DownloadMenu"
-        >
-          <button
-            type="button"
-            phx-click="toggle_export_dropdown"
-            data-role="download-button"
-            class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+        <%= if @export_menu? do %>
+          <div
+            id="dashboard-download-menu"
+            class="ml-auto relative"
+            data-default-label="Export"
+            phx-hook="DownloadMenu"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
+            <button
+              type="button"
+              phx-click="toggle_export_dropdown"
+              data-role="download-button"
+            class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-              />
-            </svg>
-            <span class="inline" data-role="download-text">Export</span>
-            <svg
-              class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 0 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                />
+              </svg>
+              <span class="inline" data-role="download-text">Export</span>
+              <svg
+                class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 0 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
 
-          <%= if @show_export_dropdown do %>
-            <% export_params = @export_params %>
-            <div
-              data-role="download-dropdown"
-              class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40"
-              phx-click-away="hide_export_dropdown"
-            >
+            <%= if @show_export_dropdown do %>
+              <% export_params = @export_params %>
+              <div
+                data-role="download-dropdown"
+                class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40"
+                phx-click-away="hide_export_dropdown"
+              >
               <a
                 data-export-link
                 onclick="(function(el){var m=el.closest('#dashboard-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
@@ -346,8 +348,9 @@ defmodule TrifleApp.Components.DashboardFooter do
                 </span>
               </a>
             </div>
-          <% end %>
-        </div>
+            <% end %>
+          </div>
+        <% end %>
       </div>
     </div>
     """
