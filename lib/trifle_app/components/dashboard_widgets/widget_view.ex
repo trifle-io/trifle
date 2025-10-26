@@ -111,8 +111,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     size = value_for(kpi_value, :size) || "m"
     size_class = kpi_size_class(size)
     has_visual = truthy?(value_for(kpi_value, :has_visual)) || truthy?(value_for(kpi_visual, :id))
-    visual_type = (value_for(kpi_value, :visual_type) || value_for(kpi_visual, :type) || "sparkline") |> String.downcase()
-    gap = if subtype == "goal" and has_visual and visual_type == "progress", do: "6px", else: "12px"
+
+    visual_type =
+      (value_for(kpi_value, :visual_type) || value_for(kpi_visual, :type) || "sparkline")
+      |> String.downcase()
+
+    gap =
+      if subtype == "goal" and has_visual and visual_type == "progress", do: "6px", else: "12px"
 
     meta = kpi_meta(kpi_value, kpi_visual, subtype, has_visual, visual_type)
 
@@ -129,16 +134,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col items-stretch">
-      <div class="kpi-wrap w-full flex flex-col flex-1 grow" style={"min-height: 0; gap: #{@kpi_gap};"}>
+      <div
+        class="kpi-wrap w-full flex flex-col flex-1 grow"
+        style={"min-height: 0; gap: #{@kpi_gap};"}
+      >
         <div class="kpi-top">
-          <%= render_kpi_top(assigns) %>
+          {render_kpi_top(assigns)}
         </div>
-        <div
-          class="kpi-meta"
-          style={kpi_meta_style(@kpi_meta)}
-        >
+        <div class="kpi-meta" style={kpi_meta_style(@kpi_meta)}>
           <%= if @kpi_meta do %>
-            <%= Phoenix.HTML.raw(@kpi_meta) %>
+            {Phoenix.HTML.raw(@kpi_meta)}
           <% end %>
         </div>
         <div
@@ -156,7 +161,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp render_kpi_top(%{kpi_subtype: "split"} = assigns) do
     current = value_for(assigns.kpi_value, :current)
     previous = value_for(assigns.kpi_value, :previous)
-    show_diff = truthy?(value_for(assigns.kpi_value, :show_diff)) and previous not in [nil, 0] and is_number(previous) and is_number(current)
+
+    show_diff =
+      truthy?(value_for(assigns.kpi_value, :show_diff)) and previous not in [nil, 0] and
+        is_number(previous) and is_number(current)
 
     diff_badge =
       if show_diff do
@@ -164,6 +172,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         pct = if previous != 0, do: delta / abs(previous) * 100, else: nil
         pct_text = format_percentage_value(pct)
         up = delta >= 0
+
         color_class =
           if up,
             do: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -196,14 +205,18 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     ~H"""
     <div class="w-full">
       <div class="flex items-baseline justify-between w-full">
-        <div class={["flex flex-wrap items-baseline gap-x-2", @kpi_size_class, "font-bold text-gray-900 dark:text-white"]}>
-          <span><%= @current_label %></span>
+        <div class={[
+          "flex flex-wrap items-baseline gap-x-2",
+          @kpi_size_class,
+          "font-bold text-gray-900 dark:text-white"
+        ]}>
+          <span>{@current_label}</span>
           <span class="text-sm font-medium text-gray-500 dark:text-slate-400">
-            from <%= @previous_label %>
+            from {@previous_label}
           </span>
         </div>
         <%= if @diff_badge do %>
-          <%= @diff_badge %>
+          {@diff_badge}
         <% end %>
       </div>
     </div>
@@ -224,8 +237,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     ~H"""
     <div class="w-full">
       <div class="flex items-baseline justify-between w-full">
-        <div class={["flex flex-wrap items-baseline gap-x-2", @kpi_size_class, "font-bold text-gray-900 dark:text-white"]}>
-          <span><%= @value_label %></span>
+        <div class={[
+          "flex flex-wrap items-baseline gap-x-2",
+          @kpi_size_class,
+          "font-bold text-gray-900 dark:text-white"
+        ]}>
+          <span>{@value_label}</span>
         </div>
         <%= if @target_label != "" do %>
           <div class="flex flex-col items-end gap-1 text-right">
@@ -234,7 +251,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             </span>
             <%= unless @show_progress do %>
               <span class="text-sm font-medium text-gray-500 dark:text-slate-400">
-                <%= @target_label %>
+                {@target_label}
               </span>
             <% end %>
           </div>
@@ -253,13 +270,14 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class={[@kpi_size_class, "font-bold text-gray-900 dark:text-white"]}>
-      <%= @value_label %>
+      {@value_label}
     </div>
     """
   end
 
-  defp kpi_meta(_kpi_value, _kpi_visual, subtype, _has_visual, _visual_type) when subtype != "goal",
-    do: nil
+  defp kpi_meta(_kpi_value, _kpi_visual, subtype, _has_visual, _visual_type)
+       when subtype != "goal",
+       do: nil
 
   defp kpi_meta(kpi_value, kpi_visual, "goal", has_visual, visual_type) do
     ratio = value_for(kpi_value, :progress_ratio) || value_for(kpi_visual, :ratio)
@@ -298,17 +316,23 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp kpi_meta_style(nil), do: "display: none;"
 
   defp kpi_meta_style(_meta),
-    do: "display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: auto; margin-bottom: -8px;"
+    do:
+      "display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: auto; margin-bottom: -8px;"
 
   defp kpi_visual_class("progress"), do: "kpi-progress"
   defp kpi_visual_class(_), do: "kpi-spark"
 
   defp kpi_visual_style(false, _type), do: "display: none;" <> sparkline_default_style()
-  defp kpi_visual_style(true, "progress"), do: "margin-top: 4px; height: 20px; width: 100%; margin-left: 0; margin-right: 0; margin-bottom: 0;"
+
+  defp kpi_visual_style(true, "progress"),
+    do:
+      "margin-top: 4px; height: 20px; width: 100%; margin-left: 0; margin-right: 0; margin-bottom: 0;"
+
   defp kpi_visual_style(true, _), do: sparkline_default_style()
 
   defp sparkline_default_style,
-    do: "margin-top: auto; height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -12px;"
+    do:
+      "margin-top: auto; height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -12px;"
 
   defp kpi_size_class("s"), do: "text-2xl"
   defp kpi_size_class("l"), do: "text-4xl"
@@ -333,8 +357,19 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp render_text_body(assigns) do
     dataset = assigns.text_dataset || %{}
     subtype = value_for(dataset, :subtype) || "header"
+
     body_classes =
-      ["grid-widget-body", "flex-1", "flex", "text-widget-body", "flex-col", "gap-2", "px-4", "pt-0", "pb-4"]
+      [
+        "grid-widget-body",
+        "flex-1",
+        "flex",
+        "text-widget-body",
+        "flex-col",
+        "gap-2",
+        "px-4",
+        "pt-0",
+        "pb-4"
+      ]
       |> Enum.concat(assigns.text_alignment_classes)
 
     assigns =
@@ -354,7 +389,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     >
       <%= if @text_subtype == "html" do %>
         <div class="text-widget-html w-full leading-relaxed">
-          <%= text_widget_html(@text_html) %>
+          {text_widget_html(@text_html)}
         </div>
       <% else %>
         <div class="text-widget-header-content w-full flex flex-col gap-2">
@@ -362,12 +397,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <%= if String.trim(@text_title) == "" do %>
               <span>&nbsp;</span>
             <% else %>
-              <%= @text_title %>
+              {@text_title}
             <% end %>
           </div>
           <%= if String.trim(@text_subtitle) != "" do %>
             <div class="text-widget-subtitle text-base leading-relaxed opacity-80">
-              <%= text_widget_subtitle(@text_subtitle) %>
+              {text_widget_subtitle(@text_subtitle)}
             </div>
           <% end %>
         </div>
@@ -505,7 +540,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp text_alignment_classes(_, _), do: []
 
-  defp text_body_style("html"), do: "justify-content: flex-start; align-items: stretch; text-align: left; overflow-y: auto;"
+  defp text_body_style("html"),
+    do: "justify-content: flex-start; align-items: stretch; text-align: left; overflow-y: auto;"
+
   defp text_body_style("header"), do: "justify-content: center;"
   defp text_body_style(_), do: nil
 
@@ -544,6 +581,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp format_number(nil), do: "—"
   defp format_number(%Decimal{} = decimal), do: decimal |> Decimal.to_float() |> format_number()
+
   defp format_number(value) when is_binary(value) do
     trimmed = String.trim(value)
     if trimmed == "", do: "—", else: trimmed
@@ -617,8 +655,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     |> String.trim()
     |> String.downcase()
     |> case do
-      <<"#", rest::binary>> -> color_dark?(rest)
-      <<r1::binary-size(1), r2::binary-size(1), g1::binary-size(1), g2::binary-size(1), b1::binary-size(1), b2::binary-size(1)>> = hex ->
+      <<"#", rest::binary>> ->
+        color_dark?(rest)
+
+      <<r1::binary-size(1), r2::binary-size(1), g1::binary-size(1), g2::binary-size(1),
+        b1::binary-size(1), b2::binary-size(1)>> = hex ->
         with {r, ""} <- Integer.parse(r1 <> r2, 16),
              {g, ""} <- Integer.parse(g1 <> g2, 16),
              {b, ""} <- Integer.parse(b1 <> b2, 16) do
@@ -696,7 +737,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               data-original-title={@title}
               {@title_attrs}
             >
-              <%= title_content(@widget_type, @title) %>
+              {title_content(@widget_type, @title)}
             </div>
           </div>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
@@ -751,7 +792,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <% end %>
           </div>
         </div>
-        <%= render_widget_body(assigns) %>
+        {render_widget_body(assigns)}
       </div>
     </div>
     """

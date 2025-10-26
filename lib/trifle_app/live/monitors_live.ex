@@ -49,6 +49,7 @@ defmodule TrifleApp.MonitorsLive do
 
   defp apply_action(socket, :new, _params) do
     membership = socket.assigns.current_membership
+    alert_defaults = Monitors.default_alert_settings()
 
     monitor =
       %Monitor{organization_id: membership.organization_id, status: :active, type: :report}
@@ -56,7 +57,10 @@ defmodule TrifleApp.MonitorsLive do
         status: :active,
         type: :report,
         report_settings: Monitors.default_report_settings(),
-        alert_settings: Monitors.default_alert_settings()
+        alert_metric_key: alert_defaults.alert_metric_key,
+        alert_metric_path: alert_defaults.alert_metric_path,
+        alert_timeframe: alert_defaults.alert_timeframe,
+        alert_granularity: alert_defaults.alert_granularity
       })
       |> Changeset.apply_changes()
 
@@ -123,13 +127,21 @@ defmodule TrifleApp.MonitorsLive do
     "#{label} schedule"
   end
 
-  defp monitor_schedule_label(%Monitor{type: :alert, alert_settings: settings}) do
-    label =
-      settings
-      |> fetch_setting(:analysis_strategy, "threshold")
-      |> format_setting_label()
+  defp monitor_schedule_label(%Monitor{type: :alert} = monitor) do
+    timeframe =
+      case monitor.alert_timeframe do
+        value when is_binary(value) ->
+          trimmed = String.trim(value)
+          if trimmed == "", do: nil, else: trimmed
 
-    "#{label} analysis"
+        _ ->
+          nil
+      end
+
+    case timeframe do
+      nil -> "Alert monitor"
+      value -> "Alert · #{value}"
+    end
   end
 
   defp monitor_schedule_label(_), do: nil
@@ -186,6 +198,13 @@ defmodule TrifleApp.MonitorsLive do
   end
 
   defp format_setting_label(_), do: "Custom"
+
+  defp format_metric_path(%Monitor{} = monitor) do
+    format_metric_path(%{
+      metric_key: monitor.alert_metric_key,
+      metric_path: monitor.alert_metric_path
+    })
+  end
 
   defp format_metric_path(%{metric_key: key, metric_path: path}) do
     format_metric_path(%{"metric_key" => key, "metric_path" => path})
@@ -322,7 +341,7 @@ defmodule TrifleApp.MonitorsLive do
                   <% else %>
                     Watching metrics key path
                     <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-[0.65rem] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                      {format_metric_path(monitor.alert_settings)}
+                      {format_metric_path(monitor)}
                     </code>
                     from {monitor_source_label(monitor, @sources)}
                   <% end %>

@@ -7,7 +7,7 @@ defmodule Trifle.Monitors.Monitor do
   import Ecto.Changeset
 
   alias Trifle.Accounts.User
-  alias Trifle.Monitors.Execution
+  alias Trifle.Monitors.{Alert, Execution}
   alias Trifle.Organizations.{Dashboard, Organization}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -26,6 +26,10 @@ defmodule Trifle.Monitors.Monitor do
     field :trigger_status, Ecto.Enum, values: @trigger_status_values, default: :idle
     field :source_type, Ecto.Enum, values: [:database, :project]
     field :source_id, :binary_id
+    field :alert_metric_key, :string
+    field :alert_metric_path, :string
+    field :alert_timeframe, :string
+    field :alert_granularity, :string
 
     embeds_one :report_settings, ReportSettings, on_replace: :update do
       field :frequency, Ecto.Enum,
@@ -35,19 +39,6 @@ defmodule Trifle.Monitors.Monitor do
       field :timeframe, :string
       field :granularity, :string
       field :custom_cron, :string
-    end
-
-    embeds_one :alert_settings, AlertSettings, on_replace: :update do
-      field :metric_key, :string
-      field :metric_path, :string
-      field :timeframe, :string
-      field :granularity, :string
-
-      field :analysis_strategy, Ecto.Enum,
-        values: [:threshold, :range, :anomaly_detection],
-        default: :threshold
-
-      field :threshold_settings, :map, default: %{}
     end
 
     embeds_many :delivery_channels, DeliveryChannel, on_replace: :delete do
@@ -64,6 +55,7 @@ defmodule Trifle.Monitors.Monitor do
     belongs_to :dashboard, Dashboard
     belongs_to :created_by, User, foreign_key: :created_by_id
 
+    has_many :alerts, Alert
     has_many :executions, Execution
 
     timestamps()
@@ -85,10 +77,13 @@ defmodule Trifle.Monitors.Monitor do
       :target,
       :trigger_status,
       :source_type,
-      :source_id
+      :source_id,
+      :alert_metric_key,
+      :alert_metric_path,
+      :alert_timeframe,
+      :alert_granularity
     ])
     |> cast_embed(:report_settings, with: &report_settings_changeset/2, required: false)
-    |> cast_embed(:alert_settings, with: &alert_settings_changeset/2, required: false)
     |> cast_embed(:delivery_channels, with: &delivery_channel_changeset/2, required: false)
     |> sanitize_target()
     |> validate_required([:organization_id, :name, :type, :status, :source_type, :source_id])
@@ -106,21 +101,6 @@ defmodule Trifle.Monitors.Monitor do
     |> validate_length(:timeframe, max: 64)
     |> validate_length(:granularity, max: 32)
     |> validate_custom_cron()
-  end
-
-  defp alert_settings_changeset(settings, attrs) do
-    settings
-    |> cast(attrs, [
-      :metric_key,
-      :metric_path,
-      :timeframe,
-      :granularity,
-      :analysis_strategy,
-      :threshold_settings
-    ])
-    |> validate_required([:metric_key, :metric_path])
-    |> validate_length(:metric_key, max: 255)
-    |> validate_length(:metric_path, max: 255)
   end
 
   defp delivery_channel_changeset(channel, attrs) do
@@ -207,16 +187,10 @@ defmodule Trifle.Monitors.Monitor do
   defp maybe_require_alert_target(%Ecto.Changeset{} = changeset) do
     case get_field(changeset, :type) do
       :alert ->
-        case get_field(changeset, :alert_settings) do
-          nil ->
-            add_error(changeset, :alert_settings, "must be provided for alert monitors")
-
-          %{} ->
-            changeset
-
-          _ ->
-            add_error(changeset, :alert_settings, "must be provided for alert monitors")
-        end
+        changeset
+        |> validate_required([:alert_metric_key, :alert_metric_path])
+        |> validate_length(:alert_metric_key, max: 255)
+        |> validate_length(:alert_metric_path, max: 255)
 
       _ ->
         changeset

@@ -103,6 +103,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     {:ok, document} = Floki.parse_document(html)
 
     [{"div", kpi_attrs, _}] = Floki.find(document, "#widget-data-kpi-1")
+
     kpi_payload =
       kpi_attrs
       |> Keyword.fetch!("data-kpi-values")
@@ -112,6 +113,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert is_number(kpi_payload["value"])
 
     [{"div", text_attrs, _}] = Floki.find(document, "#widget-data-text-1")
+
     text_payload =
       text_attrs
       |> Keyword.fetch!("data-text")
@@ -168,4 +170,3 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert String.contains?(classes, "text-widget-body")
   end
 end
-
