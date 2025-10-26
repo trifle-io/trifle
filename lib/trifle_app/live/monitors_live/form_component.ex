@@ -4,7 +4,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Ecto.Changeset
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
-  alias Trifle.Monitors.Monitor.{AlertSettings, DeliveryChannel, ReportSettings}
+  alias Trifle.Monitors.Monitor.{DeliveryChannel, ReportSettings}
   alias Trifle.Stats.Source
   require Logger
 
@@ -209,52 +209,38 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                       </div>
                     </.inputs_for>
                   <% else %>
-                    <.inputs_for :let={alert_form} field={@form[:alert_settings]}>
-                      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <.input
-                            field={alert_form[:metric_key]}
-                            label="Metric key"
-                            placeholder="e.g. app.signups.total"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <.input
-                            field={alert_form[:metric_path]}
-                            label="Metric path"
-                            placeholder="e.g. $.country.US"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <.input
-                            field={alert_form[:timeframe]}
-                            label="Evaluation timeframe"
-                            placeholder="e.g. 1h"
-                          />
-                        </div>
-                        <div>
-                          <.input
-                            field={alert_form[:granularity]}
-                            label="Evaluation granularity"
-                            placeholder="e.g. 5m"
-                          />
-                        </div>
-                        <div>
-                          <.input
-                            field={alert_form[:analysis_strategy]}
-                            type="select"
-                            label="Analysis strategy"
-                            options={[
-                              {"Threshold", "threshold"},
-                              {"Range", "range"},
-                              {"Anomaly detection", "anomaly_detection"}
-                            ]}
-                          />
-                        </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <.input
+                          field={@form[:alert_metric_key]}
+                          label="Metric key"
+                          placeholder="e.g. app.signups.total"
+                          required
+                        />
                       </div>
-                    </.inputs_for>
+                      <div>
+                        <.input
+                          field={@form[:alert_metric_path]}
+                          label="Metric path"
+                          placeholder="e.g. $.country.US"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <.input
+                          field={@form[:alert_timeframe]}
+                          label="Evaluation timeframe"
+                          placeholder="e.g. 1h"
+                        />
+                      </div>
+                      <div>
+                        <.input
+                          field={@form[:alert_granularity]}
+                          label="Evaluation granularity"
+                          placeholder="e.g. 5m"
+                        />
+                      </div>
+                    </div>
                   <% end %>
                 </div>
               </div>
@@ -443,15 +429,17 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   end
 
   defp populate_missing_embeds(monitor) do
+    alert_defaults = Monitors.default_alert_settings()
+
     monitor
     |> Map.update(:report_settings, struct(ReportSettings, %{}), fn
       %ReportSettings{} = settings -> settings
       value when is_map(value) -> struct(ReportSettings, value)
     end)
-    |> Map.update(:alert_settings, struct(AlertSettings, %{}), fn
-      %AlertSettings{} = settings -> settings
-      value when is_map(value) -> struct(AlertSettings, value)
-    end)
+    |> Map.put_new(:alert_metric_key, alert_defaults.alert_metric_key)
+    |> Map.put_new(:alert_metric_path, alert_defaults.alert_metric_path)
+    |> Map.put_new(:alert_timeframe, alert_defaults.alert_timeframe)
+    |> Map.put_new(:alert_granularity, alert_defaults.alert_granularity)
     |> Map.update(:delivery_channels, [], fn
       [] ->
         []

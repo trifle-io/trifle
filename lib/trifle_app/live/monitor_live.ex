@@ -4,16 +4,26 @@ defmodule TrifleApp.MonitorLive do
   alias Phoenix.LiveView.JS
   alias Ecto.Changeset
   alias Trifle.Monitors
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Organizations
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Stats.Source, as: StatsSource
   alias Trifle.Stats.Tabler
-  alias TrifleApp.Components.DashboardWidgets.{Category, Kpi, Text, Timeseries, WidgetData, WidgetView}
+
+  alias TrifleApp.Components.DashboardWidgets.{
+    Category,
+    Kpi,
+    Text,
+    Timeseries,
+    WidgetData,
+    WidgetView
+  }
+
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.MonitorComponents
+  alias TrifleApp.MonitorAlertFormComponent
   alias TrifleApp.MonitorsLive.FormComponent
   alias TrifleApp.TimeframeParsing
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
@@ -57,6 +67,10 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:stats, nil)
      |> assign(:transponder_results, default_transponder_results())
      |> assign(:selected_source_ref, nil)
+     |> assign(:alerts, [])
+     |> assign(:alert_modal, nil)
+     |> assign(:alert_modal_changeset, nil)
+     |> assign(:alert_modal_action, nil)
      |> assign(:insights_dashboard, nil)
      |> assign(:insights_kpi_values, %{})
      |> assign(:insights_kpi_visuals, %{})
@@ -111,6 +125,47 @@ defmodule TrifleApp.MonitorLive do
 
   def handle_event("hide_transponder_errors", _params, socket) do
     {:noreply, assign(socket, :show_error_modal, false)}
+  end
+
+  def handle_event(
+        "new_alert",
+        _params,
+        %{assigns: %{monitor: %{type: :alert} = monitor}} = socket
+      ) do
+    alert = %Alert{monitor_id: monitor.id}
+    changeset = Monitors.change_alert(alert, %{})
+
+    {:noreply,
+     socket
+     |> assign(:alert_modal, alert)
+     |> assign(:alert_modal_changeset, changeset)
+     |> assign(:alert_modal_action, :new)}
+  end
+
+  def handle_event("new_alert", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "edit_alert",
+        %{"id" => id},
+        %{assigns: %{monitor: %{type: :alert} = monitor}} = socket
+      ) do
+    case find_alert(monitor, id) do
+      nil ->
+        {:noreply, socket}
+
+      %Alert{} = alert ->
+        {:noreply,
+         socket
+         |> assign(:alert_modal, alert)
+         |> assign(:alert_modal_changeset, Monitors.change_alert(alert, %{}))
+         |> assign(:alert_modal_action, :edit)}
+    end
+  end
+
+  def handle_event("edit_alert", _params, socket), do: {:noreply, socket}
+
+  def handle_event("close_alert_modal", _params, socket) do
+    {:noreply, clear_alert_modal(socket)}
   end
 
   def handle_event("expand_widget", %{"id" => id}, socket) do
@@ -173,6 +228,28 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, put_flash(socket, :error, message)}
   end
 
+  def handle_info({MonitorAlertFormComponent, {:saved, _alert, action}}, socket) do
+    message = if action == :new, do: "Alert created", else: "Alert updated"
+
+    {:noreply,
+     socket
+     |> refresh_monitor_assigns()
+     |> clear_alert_modal()
+     |> put_flash(:info, message)}
+  end
+
+  def handle_info({MonitorAlertFormComponent, {:deleted, _alert}}, socket) do
+    {:noreply,
+     socket
+     |> refresh_monitor_assigns()
+     |> clear_alert_modal()
+     |> put_flash(:info, "Alert deleted")}
+  end
+
+  def handle_info({MonitorAlertFormComponent, {:error, message}}, socket) do
+    {:noreply, put_flash(socket, :error, message)}
+  end
+
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     {:noreply, handle_filter_change(socket, changes)}
   end
@@ -196,6 +273,7 @@ defmodule TrifleApp.MonitorLive do
       end
 
     stats = Map.get(result, :series)
+
     transponder_results =
       result
       |> Map.get(:transponder_results, %{})
@@ -287,6 +365,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:use_fixed_display, use_fixed_display)
     |> assign(:resolved_key, resolved_key)
     |> assign(:selected_source_ref, component_source_ref(source))
+    |> assign(:alerts, monitor.alerts || [])
     |> assign(:insights_dashboard, build_monitor_insights_dashboard(monitor))
     |> reset_monitor_widget_datasets()
   end
@@ -323,6 +402,7 @@ defmodule TrifleApp.MonitorLive do
 
   defp assign_granularity(socket, granularity) do
     available = socket.assigns[:available_granularities] || []
+
     fallback =
       case socket.assigns[:source] do
         nil -> nil
@@ -416,7 +496,9 @@ defmodule TrifleApp.MonitorLive do
 
   defp parse_timeframe_range(timeframe_input, config) do
     case TimeframeParsing.parse_smart_timeframe(timeframe_input || "24h", config) do
-      {:ok, from, to, _smart, _fixed} -> {:ok, from, to}
+      {:ok, from, to, _smart, _fixed} ->
+        {:ok, from, to}
+
       {:error, _reason} ->
         case TimeframeParsing.parse_smart_timeframe("24h", config) do
           {:ok, from, to, _smart, _fixed} -> {:ok, from, to}
@@ -436,7 +518,12 @@ defmodule TrifleApp.MonitorLive do
     |> Nocturnal.floor(offset, unit)
   end
 
-  defp monitor_timeframe_defaults(%Monitor{type: :report} = monitor, source, config, granularities) do
+  defp monitor_timeframe_defaults(
+         %Monitor{type: :report} = monitor,
+         source,
+         config,
+         granularities
+       ) do
     report_timeframe_defaults(monitor, source, config, granularities)
   end
 
@@ -458,7 +545,9 @@ defmodule TrifleApp.MonitorLive do
 
     {from, to} =
       case compute_report_time_range(monitor, timeframe_input, config) do
-        {:ok, from, to} -> {from, to}
+        {:ok, from, to} ->
+          {from, to}
+
         :error ->
           case parse_timeframe_range("24h", config) do
             {:ok, fallback_from, fallback_to} -> {fallback_from, fallback_to}
@@ -501,13 +590,16 @@ defmodule TrifleApp.MonitorLive do
   end
 
   defp alert_timeframe_defaults(%Monitor{} = monitor, source, config, granularities) do
-    settings = monitor.alert_settings || %{}
-    evaluation_timeframe = settings.timeframe || StatsSource.default_timeframe(source) || "1h"
+    evaluation_timeframe =
+      monitor.alert_timeframe || StatsSource.default_timeframe(source) || "1h"
+
     display_timeframe = multiply_timeframe(evaluation_timeframe, 4)
 
     {from, to} =
       case parse_timeframe_range(display_timeframe, config) do
-        {:ok, from, to} -> {from, to}
+        {:ok, from, to} ->
+          {from, to}
+
         :error ->
           case parse_timeframe_range("24h", config) do
             {:ok, fallback_from, fallback_to} -> {fallback_from, fallback_to}
@@ -516,13 +608,15 @@ defmodule TrifleApp.MonitorLive do
       end
 
     fallback_granularity =
-      settings.granularity ||
+      monitor.alert_granularity ||
         case source do
           nil -> nil
           src -> StatsSource.default_granularity(src)
         end
 
-    granularity = normalize_granularity(settings.granularity, granularities, fallback_granularity)
+    granularity =
+      normalize_granularity(monitor.alert_granularity, granularities, fallback_granularity)
+
     {from, to, granularity, display_timeframe, false}
   end
 
@@ -591,8 +685,8 @@ defmodule TrifleApp.MonitorLive do
 
   defp resolve_monitor_key(%Monitor{type: :report, dashboard: %{key: key}}), do: key
 
-  defp resolve_monitor_key(%Monitor{type: :alert, alert_settings: settings}) do
-    settings && settings.metric_key
+  defp resolve_monitor_key(%Monitor{type: :alert} = monitor) do
+    monitor.alert_metric_key
   end
 
   defp resolve_monitor_key(_), do: nil
@@ -815,6 +909,7 @@ defmodule TrifleApp.MonitorLive do
 
       true ->
         {column_count, path_count} = series_counts(assigns[:stats])
+
         transponder_results =
           assigns[:transponder_results]
           |> normalize_transponder_results()
@@ -914,11 +1009,8 @@ defmodule TrifleApp.MonitorLive do
   end
 
   defp build_alert_preview_dashboard(%Monitor{} = monitor) do
-    settings = monitor.alert_settings || %{}
-
     metric_path =
-      settings
-      |> Map.get(:metric_path) || ""
+      monitor.alert_metric_path
       |> to_string()
       |> String.trim()
 
@@ -929,26 +1021,24 @@ defmodule TrifleApp.MonitorLive do
         [
           alert_preview_widget(
             monitor,
-            metric_path,
-            settings
+            metric_path
           )
         ]
       end
 
     %{
       id: "#{monitor.id}-alert-preview",
-      key: settings |> Map.get(:metric_key),
+      key: monitor.alert_metric_key,
       name: monitor.name,
       payload: %{"grid" => widget_items}
     }
   end
 
-  defp alert_preview_widget(monitor, metric_path, settings) do
+  defp alert_preview_widget(monitor, metric_path) do
     base_id = to_string(monitor.id || "monitor")
+
     chart_title =
-      settings
-      |> Map.get(:metric_key)
-      |> case do
+      case monitor.alert_metric_key do
         nil -> monitor.name
         "" -> monitor.name
         value -> value
@@ -963,7 +1053,7 @@ defmodule TrifleApp.MonitorLive do
       "stacked" => false,
       "normalized" => false,
       "paths" => [metric_path],
-      "y_label" => Map.get(settings, :metric_path) || metric_path,
+      "y_label" => metric_path,
       "w" => 12,
       "h" => 5,
       "x" => 0,
@@ -1081,9 +1171,65 @@ defmodule TrifleApp.MonitorLive do
     end
   end
 
+  defp refresh_monitor_assigns(socket) do
+    monitor = load_monitor(socket, socket.assigns.monitor.id)
+
+    socket
+    |> assign(:monitor, monitor)
+    |> initialize_monitor_context()
+  end
+
+  defp clear_alert_modal(socket) do
+    socket
+    |> assign(:alert_modal, nil)
+    |> assign(:alert_modal_changeset, nil)
+    |> assign(:alert_modal_action, nil)
+  end
+
+  defp find_alert(%Monitor{} = monitor, id) do
+    id = to_string(id)
+
+    monitor.alerts
+    |> List.wrap()
+    |> Enum.find(fn
+      %Alert{id: alert_id} -> to_string(alert_id) == id
+      _ -> false
+    end)
+  end
+
   defp monitor_footer_resource(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
   defp monitor_footer_resource(%Monitor{id: id}), do: %{id: id}
   defp monitor_footer_resource(_), do: %{id: nil}
+
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(value) when is_atom(value), do: blank?(Atom.to_string(value))
+  defp blank?(nil), do: true
+  defp blank?(_), do: false
+
+  defp value_or_dash(value) do
+    cond do
+      blank?(value) -> "—"
+      is_binary(value) -> String.trim(value)
+      true -> to_string(value)
+    end
+  end
+
+  defp humanize_analysis_strategy(strategy) do
+    strategy
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+
+  defp format_alert_timestamp(nil), do: "—"
+
+  defp format_alert_timestamp(datetime) do
+    datetime
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> Calendar.strftime("%b %-d, %Y · %H:%M UTC")
+  rescue
+    _ -> "—"
+  end
 
   defp changeset_error_message(%Changeset{} = changeset) do
     changeset.errors
@@ -1143,11 +1289,11 @@ defmodule TrifleApp.MonitorLive do
               <% else %>
                 Alert monitor watching
                 <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-                  {(@monitor.alert_settings && @monitor.alert_settings.metric_key) || "—"}
+                  {value_or_dash(@monitor.alert_metric_key)}
                 </code>
                 at
                 <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-                  {(@monitor.alert_settings && @monitor.alert_settings.metric_path) || "—"}
+                  {value_or_dash(@monitor.alert_metric_path)}
                 </code>
               <% end %>
             </p>
@@ -1158,7 +1304,7 @@ defmodule TrifleApp.MonitorLive do
             <p :if={@monitor.description} class="mt-2 text-sm text-slate-500 dark:text-slate-300">
               {@monitor.description}
             </p>
-      </div>
+          </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <.link
@@ -1223,22 +1369,16 @@ defmodule TrifleApp.MonitorLive do
             Monitor insights
           </h3>
 
-          <%
-            dashboard_for_render =
-              @insights_dashboard ||
-                %{payload: %{"grid" => []}}
+          <% dashboard_for_render =
+            @insights_dashboard ||
+              %{payload: %{"grid" => []}}
 
-            grid_items = WidgetView.grid_items(dashboard_for_render)
-            report_missing_dashboard? = @monitor.type == :report && is_nil(@monitor.dashboard)
+          grid_items = WidgetView.grid_items(dashboard_for_render)
+          report_missing_dashboard? = @monitor.type == :report && is_nil(@monitor.dashboard)
 
-            alert_settings = @monitor.alert_settings || %{}
-            alert_path_missing? =
-              @monitor.type == :alert &&
-                (alert_settings
-                 |> Map.get(:metric_path)
-                 |> to_string()
-                 |> String.trim() == "")
-          %>
+          alert_path_missing? =
+            @monitor.type == :alert &&
+              blank?(@monitor.alert_metric_path) %>
 
           <%= cond do %>
             <% report_missing_dashboard? -> %>
@@ -1302,6 +1442,61 @@ defmodule TrifleApp.MonitorLive do
               monitor={@monitor}
               source_label={monitor_source_label(@monitor, @sources)}
             />
+            <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Alerts</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Configure one or more alert strategies for this monitor.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
+                  phx-click="new_alert"
+                >
+                  <.icon name="hero-plus" class="h-4 w-4" /> Add alert
+                </button>
+              </div>
+              <div class="mt-4">
+                <%= if Enum.empty?(@alerts || []) do %>
+                  <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center dark:border-slate-700 dark:bg-slate-800/60">
+                    <p class="text-sm font-medium text-slate-600 dark:text-slate-300">
+                      No alerts defined yet.
+                    </p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Add an alert to start monitoring this metric.
+                    </p>
+                  </div>
+                <% else %>
+                  <ul class="mt-2 space-y-3">
+                    <li
+                      :for={alert <- @alerts}
+                      class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold text-slate-900 dark:text-white">
+                          {humanize_analysis_strategy(alert.analysis_strategy || :threshold)}
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          Updated {format_alert_timestamp(alert.updated_at || alert.inserted_at)}
+                        </p>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                          phx-click="edit_alert"
+                          phx-value-id={alert.id}
+                        >
+                          <.icon name="hero-pencil-square" class="h-4 w-4" /> Edit
+                        </button>
+                      </div>
+                    </li>
+                  </ul>
+                <% end %>
+              </div>
+            </div>
           <% end %>
           <MonitorComponents.trigger_history monitor={@monitor} executions={@executions} />
         </div>
@@ -1373,7 +1568,8 @@ defmodule TrifleApp.MonitorLive do
       <%= if @show_error_modal && summary && length(summary.transponder_errors) > 0 do %>
         <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
           <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"></div>
+            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75">
+            </div>
 
             <div
               class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6"
@@ -1405,7 +1601,8 @@ defmodule TrifleApp.MonitorLive do
                         <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
                           <div class="flex items-center justify-between mb-2">
                             <h4 class="font-medium text-red-800 dark:text-red-300">
-                              {(error.transponder && (error.transponder.name || error.transponder.key)) || "Transponder"}
+                              {(error.transponder && (error.transponder.name || error.transponder.key)) ||
+                                "Transponder"}
                             </h4>
                             <span class="text-xs text-slate-500 dark:text-slate-400">
                               {error.transponder && error.transponder.key}
@@ -1416,7 +1613,7 @@ defmodule TrifleApp.MonitorLive do
                           </p>
                           <%= if error.details do %>
                             <pre class="mt-2 rounded bg-slate-900/5 dark:bg-slate-900/60 p-3 text-xs text-slate-700 dark:text-slate-200 overflow-x-auto">
-{inspect(error.details, pretty: true)}
+    {inspect(error.details, pretty: true)}
                             </pre>
                           <% end %>
                         </div>
@@ -1445,6 +1642,16 @@ defmodule TrifleApp.MonitorLive do
           </div>
         </div>
       <% end %>
+
+      <.live_component
+        :if={@alert_modal}
+        module={MonitorAlertFormComponent}
+        id={"monitor-alert-form-#{@monitor.id}"}
+        monitor={@monitor}
+        alert={@alert_modal}
+        action={@alert_modal_action}
+        changeset={@alert_modal_changeset}
+      />
 
       <.live_component
         :if={@live_action == :configure}

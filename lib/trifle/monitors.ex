@@ -7,7 +7,7 @@ defmodule Trifle.Monitors do
   alias Ecto.Changeset
   alias Trifle.Accounts.User
   alias Trifle.Integrations
-  alias Trifle.Monitors.{Execution, Monitor}
+  alias Trifle.Monitors.{Alert, Execution, Monitor}
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations
   alias Trifle.Repo
@@ -110,6 +110,61 @@ defmodule Trifle.Monitors do
     Monitor.changeset(monitor, normalize_monitor_attrs(attrs))
   end
 
+  ## Alerts
+
+  @doc """
+  Lists alerts belonging to the given monitor.
+  """
+  def list_alerts(%Monitor{} = monitor) do
+    monitor
+    |> Ecto.assoc(:alerts)
+    |> Repo.all()
+  end
+
+  @doc """
+  Fetches an alert belonging to the given monitor.
+  """
+  def get_alert!(%Monitor{} = monitor, id) do
+    monitor
+    |> Ecto.assoc(:alerts)
+    |> Repo.get!(id)
+  end
+
+  @doc """
+  Builds an alert changeset for forms.
+  """
+  def change_alert(%Alert{} = alert, attrs \\ %{}) do
+    Alert.changeset(alert, attrs)
+  end
+
+  @doc """
+  Creates an alert under the provided monitor.
+  """
+  def create_alert(%Monitor{} = monitor, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> stringify_keys()
+      |> Map.put("monitor_id", monitor.id)
+
+    %Alert{monitor_id: monitor.id}
+    |> Alert.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates an existing alert.
+  """
+  def update_alert(%Alert{} = alert, attrs) do
+    alert
+    |> Alert.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes an alert.
+  """
+  def delete_alert(%Alert{} = alert), do: Repo.delete(alert)
+
   ## Executions
 
   @doc """
@@ -156,10 +211,10 @@ defmodule Trifle.Monitors do
 
   def default_alert_settings do
     %{
-      timeframe: "1h",
-      granularity: "5m",
-      analysis_strategy: :threshold,
-      threshold_settings: %{}
+      alert_timeframe: "1h",
+      alert_granularity: "5m",
+      alert_metric_key: "",
+      alert_metric_path: ""
     }
   end
 
@@ -363,6 +418,8 @@ defmodule Trifle.Monitors do
     |> cast_enum(:source_type, [:database, :project])
     |> update_nested(:report_settings, &normalize_report_settings/1)
     |> update_nested(:alert_settings, &normalize_alert_settings/1)
+    |> apply_alert_settings()
+    |> normalize_alert_fields()
     |> update_nested_list(:delivery_channels, &normalize_delivery_channel/1)
   end
 
@@ -574,11 +631,15 @@ defmodule Trifle.Monitors do
   defp stringify_keys(value), do: value
 
   defp monitor_preloads(opts) do
-    case Keyword.get(opts, :preload, []) do
-      true -> [:executions, :dashboard, :organization]
-      list when is_list(list) -> list
-      _ -> []
-    end
+    base =
+      case Keyword.get(opts, :preload, []) do
+        true -> [:executions, :dashboard, :organization]
+        list when is_list(list) -> list
+        _ -> []
+      end
+
+    [:alerts | List.wrap(base)]
+    |> Enum.uniq()
   end
 
   defp cast_enum(attrs, key, valid) do
@@ -627,6 +688,40 @@ defmodule Trifle.Monitors do
   defp normalize_alert_settings(settings) when is_map(settings), do: settings
   defp normalize_alert_settings(_), do: default_alert_settings()
 
+  defp apply_alert_settings(attrs) do
+    {settings, attrs} =
+      cond do
+        Map.has_key?(attrs, :alert_settings) ->
+          Map.pop(attrs, :alert_settings)
+
+        Map.has_key?(attrs, "alert_settings") ->
+          Map.pop(attrs, "alert_settings")
+
+        true ->
+          {nil, attrs}
+      end
+
+    case settings do
+      %{} = settings_map ->
+        attrs
+        |> put_unless_present(:alert_metric_key, fetch_string(settings_map, ["metric_key"]))
+        |> put_unless_present(:alert_metric_path, fetch_string(settings_map, ["metric_path"]))
+        |> put_unless_present(:alert_timeframe, fetch_string(settings_map, ["timeframe"]))
+        |> put_unless_present(:alert_granularity, fetch_string(settings_map, ["granularity"]))
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp normalize_alert_fields(attrs) do
+    attrs
+    |> normalize_string_field(:alert_metric_key)
+    |> normalize_string_field(:alert_metric_path)
+    |> normalize_string_field(:alert_timeframe)
+    |> normalize_string_field(:alert_granularity)
+  end
+
   defp normalize_delivery_channel(channel) when is_map(channel) do
     channel
     |> cast_enum(:channel, [:email, :slack_webhook, :webhook, :custom])
@@ -658,6 +753,67 @@ defmodule Trifle.Monitors do
   end
 
   defp normalize_enum_value(_value, _valid), do: :error
+
+  defp put_unless_present(attrs, key, nil), do: attrs
+
+  defp put_unless_present(attrs, key, value) do
+    case Map.fetch(attrs, key) do
+      {:ok, existing} when existing not in [nil, ""] -> attrs
+      _ -> Map.put(attrs, key, value)
+    end
+  end
+
+  defp fetch_string(map, keys) do
+    Enum.find_value(keys, fn key ->
+      cond do
+        Map.has_key?(map, key) ->
+          Map.get(map, key)
+
+        is_binary(key) ->
+          atom_key = safe_to_existing_atom(key)
+
+          if atom_key && Map.has_key?(map, atom_key) do
+            Map.get(map, atom_key)
+          else
+            nil
+          end
+
+        is_atom(key) ->
+          string_key = Atom.to_string(key)
+
+          if Map.has_key?(map, string_key) do
+            Map.get(map, string_key)
+          else
+            nil
+          end
+
+        true ->
+          nil
+      end
+    end)
+    |> normalize_string()
+  end
+
+  defp normalize_string_field(attrs, key) do
+    case Map.fetch(attrs, key) do
+      {:ok, value} -> Map.put(attrs, key, normalize_string(value))
+      :error -> attrs
+    end
+  end
+
+  defp normalize_string(value) when is_binary(value), do: String.trim(value)
+  defp normalize_string(value) when is_atom(value), do: value |> Atom.to_string() |> String.trim()
+  defp normalize_string(_value), do: nil
+
+  defp safe_to_existing_atom(value) when is_binary(value) do
+    try do
+      String.to_existing_atom(value)
+    rescue
+      ArgumentError -> nil
+    end
+  end
+
+  defp safe_to_existing_atom(_), do: nil
 
   defp normalize_channel(nil), do: nil
   defp normalize_channel(value) when is_atom(value), do: value

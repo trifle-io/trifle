@@ -195,7 +195,7 @@ defmodule TrifleApp.MonitorComponents do
           </dt>
           <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
             <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-              {(@monitor.alert_settings && @monitor.alert_settings.metric_key) || "—"}
+              {present_or_dash(@monitor.alert_metric_key)}
             </code>
           </dd>
         </div>
@@ -205,7 +205,7 @@ defmodule TrifleApp.MonitorComponents do
           </dt>
           <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
             <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-              {(@monitor.alert_settings && @monitor.alert_settings.metric_path) || "—"}
+              {present_or_dash(@monitor.alert_metric_path)}
             </code>
           </dd>
         </div>
@@ -214,7 +214,7 @@ defmodule TrifleApp.MonitorComponents do
             Evaluation timeframe
           </dt>
           <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {@monitor.alert_settings && (@monitor.alert_settings.timeframe || "defaults to monitor")}
+            {@monitor.alert_timeframe || "Defaults to monitor"}
           </dd>
         </div>
         <div>
@@ -222,21 +222,10 @@ defmodule TrifleApp.MonitorComponents do
             Granularity
           </dt>
           <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {@monitor.alert_settings && (@monitor.alert_settings.granularity || "Auto")}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Analysis strategy
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            {format_analysis_strategy(@monitor.alert_settings)}
+            {@monitor.alert_granularity || "Auto"}
           </dd>
         </div>
       </dl>
-      <div class="mt-4 rounded-md border border-dashed border-amber-300 bg-amber-50/70 dark:border-amber-400/50 dark:bg-amber-500/10 p-4 text-xs text-amber-900 dark:text-amber-200">
-        Threshold configuration will arrive soon. Define the structure now so we can extend it with concrete rules later.
-      </div>
     </div>
     """
   end
@@ -282,15 +271,14 @@ defmodule TrifleApp.MonitorComponents do
 
   defp format_frequency(_), do: "Weekly"
 
-  defp format_analysis_strategy(%Monitor.AlertSettings{analysis_strategy: strategy})
-       when not is_nil(strategy) do
-    strategy
-    |> Atom.to_string()
-    |> String.replace("_", " ")
-    |> String.capitalize()
+  defp present_or_dash(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: "—", else: trimmed
   end
 
-  defp format_analysis_strategy(_), do: "Threshold"
+  defp present_or_dash(value) when is_atom(value), do: present_or_dash(Atom.to_string(value))
+  defp present_or_dash(nil), do: "—"
+  defp present_or_dash(value), do: to_string(value)
 
   defp delivery_target_badges(channels) do
     channels

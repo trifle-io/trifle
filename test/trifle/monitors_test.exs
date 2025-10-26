@@ -57,13 +57,10 @@ defmodule Trifle.MonitorsTest do
         "name" => "Error Spike",
         "type" => "alert",
         "description" => "Alerts when error count spikes",
-        "alert_settings" => %{
-          "metric_key" => "errors.total",
-          "metric_path" => "$.service.api",
-          "timeframe" => "30m",
-          "granularity" => "5m",
-          "analysis_strategy" => "threshold"
-        },
+        "alert_metric_key" => "errors.total",
+        "alert_metric_path" => "$.service.api",
+        "alert_timeframe" => "30m",
+        "alert_granularity" => "5m",
         "delivery_channels" => [
           %{"channel" => "email", "label" => "On-call", "target" => "oncall@example.com"}
         ],
@@ -75,7 +72,7 @@ defmodule Trifle.MonitorsTest do
                Monitors.create_monitor_for_membership(user, membership, attrs)
 
       assert monitor.name == "Error Spike"
-      assert monitor.alert_settings.metric_key == "errors.total"
+      assert monitor.alert_metric_key == "errors.total"
       assert monitor.delivery_channels |> List.first() |> Map.get(:target) == "oncall@example.com"
       assert monitor.organization_id == membership.organization_id
       assert monitor.source_type == :database
@@ -210,13 +207,10 @@ defmodule Trifle.MonitorsTest do
       "name" => "Latency Watch",
       "type" => "alert",
       "description" => "Keeps an eye on API latency",
-      "alert_settings" => %{
-        "metric_key" => "latency.p95",
-        "metric_path" => "$.global",
-        "timeframe" => "15m",
-        "granularity" => "5m",
-        "analysis_strategy" => "threshold"
-      },
+      "alert_metric_key" => "latency.p95",
+      "alert_metric_path" => "$.global",
+      "alert_timeframe" => "15m",
+      "alert_granularity" => "5m",
       "delivery_channels" => [
         %{"channel" => "email", "label" => "Primary", "target" => "alerts@example.com"}
       ],
