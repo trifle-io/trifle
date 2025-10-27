@@ -128,7 +128,11 @@ defmodule Trifle.MonitorsTest do
 
       {:ok, _alert} =
         Monitors.create_alert(monitor, %{
-          "analysis_strategy" => "range"
+          "analysis_strategy" => "range",
+          "settings" => %{
+            "range_min_value" => "10",
+            "range_max_value" => "20"
+          }
         })
 
       assert {:ok, %Monitor{}} = Monitors.delete_monitor_for_membership(monitor, membership)

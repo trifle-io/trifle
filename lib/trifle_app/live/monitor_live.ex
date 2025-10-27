@@ -1347,22 +1347,108 @@ defmodule TrifleApp.MonitorLive do
     end
   end
 
-  defp humanize_analysis_strategy(strategy) do
+  defp humanize_analysis_strategy(nil), do: "Threshold"
+
+  defp humanize_analysis_strategy(:threshold), do: "Threshold"
+  defp humanize_analysis_strategy(:range), do: "Range"
+  defp humanize_analysis_strategy(:hampel), do: "Hampel (Robust Outlier)"
+  defp humanize_analysis_strategy(:cusum), do: "CUSUM (Level Shift)"
+
+  defp humanize_analysis_strategy(strategy) when is_atom(strategy) do
     strategy
-    |> to_string()
+    |> Atom.to_string()
+    |> humanize_analysis_strategy()
+  end
+
+  defp humanize_analysis_strategy(strategy) when is_binary(strategy) do
+    strategy
     |> String.replace("_", " ")
     |> String.capitalize()
   end
 
-  defp format_alert_timestamp(nil), do: "—"
+  defp humanize_analysis_strategy(_), do: "Threshold"
 
-  defp format_alert_timestamp(datetime) do
-    datetime
-    |> DateTime.shift_zone!("Etc/UTC")
-    |> Calendar.strftime("%b %-d, %Y · %H:%M UTC")
-  rescue
-    _ -> "—"
+  defp alert_primary_label(%Alert{} = alert) do
+    label = humanize_analysis_strategy(alert.analysis_strategy || :threshold)
+
+    case alert_configuration_summary(alert) do
+      nil -> label
+      summary -> "#{label} · #{summary}"
+    end
   end
+
+  defp alert_configuration_summary(%Alert{} = alert) do
+    case {alert.analysis_strategy || :threshold, alert.settings} do
+      {:threshold, %Alert.Settings{} = settings} ->
+        case settings.threshold_value do
+          value when is_number(value) ->
+            comparator =
+              case settings.threshold_direction || :above do
+                :below -> "<="
+                _ -> ">="
+              end
+
+            "#{comparator} #{format_number(value)}"
+
+          _ ->
+            nil
+        end
+
+      {:range, %Alert.Settings{} = settings} ->
+        min_value = settings.range_min_value
+        max_value = settings.range_max_value
+
+        if is_number(min_value) and is_number(max_value) do
+          "#{format_number(min_value)} - #{format_number(max_value)}"
+        else
+          nil
+        end
+
+      {:hampel, %Alert.Settings{} = settings} ->
+        ["window", "k", "MAD floor"]
+        |> Enum.zip([
+          settings.hampel_window_size,
+          settings.hampel_k,
+          settings.hampel_mad_floor
+        ])
+        |> Enum.map(fn {label, value} -> format_pair(label, value) end)
+        |> Enum.reject(&is_nil/1)
+        |> case do
+          [] -> nil
+          parts -> Enum.join(parts, ", ")
+        end
+
+      {:cusum, %Alert.Settings{} = settings} ->
+        ["k", "H"]
+        |> Enum.zip([settings.cusum_k, settings.cusum_h])
+        |> Enum.map(fn {label, value} -> format_pair(label, value) end)
+        |> Enum.reject(&is_nil/1)
+        |> case do
+          [] -> nil
+          parts -> Enum.join(parts, ", ")
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp format_pair(_label, value) when not is_number(value), do: nil
+  defp format_pair(label, value), do: "#{label} #{format_number(value)}"
+
+  defp format_number(nil), do: nil
+  defp format_number(value) when is_integer(value), do: Integer.to_string(value)
+
+  defp format_number(value) when is_float(value) do
+    value
+    |> Float.round(6)
+    |> :erlang.float_to_binary(decimals: 6)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
+  end
+
+  defp format_number(value) when is_binary(value), do: value
+  defp format_number(value), do: to_string(value)
 
   defp changeset_error_message(%Changeset{} = changeset) do
     changeset.errors
@@ -1816,10 +1902,7 @@ defmodule TrifleApp.MonitorLive do
                     >
                       <div class="min-w-0">
                         <p class="text-sm font-semibold text-slate-900 dark:text-white">
-                          {humanize_analysis_strategy(alert.analysis_strategy || :threshold)}
-                        </p>
-                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          Updated {format_alert_timestamp(alert.updated_at || alert.inserted_at)}
+                          {alert_primary_label(alert)}
                         </p>
                       </div>
                       <div class="flex items-center gap-2">

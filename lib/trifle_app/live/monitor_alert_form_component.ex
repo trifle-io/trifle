@@ -2,6 +2,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   @moduledoc false
   use TrifleApp, :live_component
 
+  alias Ecto.Changeset
   alias Phoenix.LiveView.JS
   alias Trifle.Monitors
   alias Trifle.Monitors.Alert
@@ -15,8 +16,8 @@ defmodule TrifleApp.MonitorAlertFormComponent do
      socket
      |> assign(assigns)
      |> assign(:alert, alert)
-     |> assign(:changeset, changeset)
-     |> assign(:action, assigns[:action] || :new)}
+     |> assign(:action, assigns[:action] || :new)
+     |> put_changeset(changeset)}
   end
 
   @impl true
@@ -45,10 +46,164 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                 options={[
                   {"Threshold", "threshold"},
                   {"Range", "range"},
-                  {"Anomaly detection", "anomaly_detection"}
+                  {"Hampel (Robust Outlier)", "hampel"},
+                  {"CUSUM (Level Shift)", "cusum"}
                 ]}
                 required
               />
+
+              <.inputs_for :let={settings_form} field={f[:settings]}>
+                <%= case @strategy do %>
+                  <% :threshold -> %>
+                    <div class="space-y-3">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Threshold alerts fire when the metric crosses a single fixed boundary. Choose whether you want to be warned about surges or drops in the tracked value.
+                      </p>
+                      <.input
+                        field={settings_form[:threshold_direction]}
+                        type="select"
+                        label="Trigger when value is"
+                        options={[
+                          {"Above threshold", "above"},
+                          {"Below threshold", "below"}
+                        ]}
+                      />
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Direction decides if the alert triggers on upward movement (above) or downward movement (below).
+                      </p>
+                      <.input
+                        field={settings_form[:threshold_value]}
+                        type="number"
+                        step="any"
+                        label="Threshold value"
+                        placeholder="e.g. 120"
+                        required
+                      />
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Threshold value is the numeric boundary; the alert fires as soon as any point crosses it in the chosen direction.
+                      </p>
+                    </div>
+                  <% :range -> %>
+                    <div class="space-y-3">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Range alerts track when the metric escapes a safe band between two limits. We notify you the moment values drift below the minimum or above the maximum.
+                      </p>
+                      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <.input
+                          field={settings_form[:range_min_value]}
+                          type="number"
+                          step="any"
+                          label="Minimum"
+                          placeholder="e.g. 25"
+                          required
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+                          Minimum is the lower boundary; anything lower triggers an alert.
+                        </p>
+                        <.input
+                          field={settings_form[:range_max_value]}
+                          type="number"
+                          step="any"
+                          label="Maximum"
+                          placeholder="e.g. 45"
+                          required
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+                          Maximum is the upper boundary; readings above it also trigger alerts.
+                        </p>
+                      </div>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Keep the range tight for sensitive monitoring or widen it for tolerant alerting.
+                      </p>
+                    </div>
+                  <% :hampel -> %>
+                    <div class="space-y-3">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Hampel alerts detect robust outliers by comparing each point to the rolling median and scaled median absolute deviation (MAD). It’s ideal for spotting spikes while ignoring gradual trends.
+                      </p>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Tune the window, K multiplier, and MAD floor to control sensitivity in noisy data.
+                      </p>
+                      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <.input
+                          field={settings_form[:hampel_window_size]}
+                          type="number"
+                          step="1"
+                          min="1"
+                          label="Window size"
+                          placeholder="e.g. 7"
+                          required
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-3">
+                          Window size is the number of recent points used to compute the rolling median; larger windows smooth more volatility.
+                        </p>
+                        <.input
+                          field={settings_form[:hampel_k]}
+                          type="number"
+                          step="0.1"
+                          label="K threshold"
+                          placeholder="e.g. 3.0"
+                          required
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-3">
+                          K threshold scales the MAD; higher values make the detector less sensitive to moderate deviations.
+                        </p>
+                        <.input
+                          field={settings_form[:hampel_mad_floor]}
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          label="MAD floor"
+                          placeholder="e.g. 0.1"
+                          required
+                        />
+                      </div>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        MAD floor prevents the detector from collapsing when variance is near zero by enforcing a minimum spread.
+                      </p>
+                    </div>
+                  <% :cusum -> %>
+                    <div class="space-y-3">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        CUSUM alerts accumulate small deviations over time and trigger when the shift indicates a sustained level change. It excels at catching subtle drifts that wouldn’t cross a single threshold.
+                      </p>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Balance the drift allowance and alarm threshold to set how quickly CUSUM reacts.
+                      </p>
+                      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <.input
+                          field={settings_form[:cusum_k]}
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          label="K (drift allowance)"
+                          placeholder="e.g. 0.5"
+                          required
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+                          K (drift allowance) defines the size of deviation ignored in each step; larger values tolerate gradual changes longer.
+                        </p>
+                        <.input
+                          field={settings_form[:cusum_h]}
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          label="H threshold"
+                          placeholder="e.g. 5.0"
+                          required
+                        />
+                      </div>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        H threshold is the cumulative score that must be exceeded before an alert fires; lower values trigger sooner.
+                      </p>
+                    </div>
+                  <% _ -> %>
+                    <div class="text-xs text-slate-500 dark:text-slate-400">
+                      Select an analysis strategy to configure its parameters.
+                    </div>
+                <% end %>
+              </.inputs_for>
+
               <div class="flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -108,7 +263,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
       |> Monitors.change_alert(params)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, :changeset, changeset)}
+    {:noreply, put_changeset(socket, changeset)}
   end
 
   def handle_event("save", %{"alert" => params}, socket) do
@@ -136,7 +291,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
         {:noreply, socket}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :changeset, changeset)}
+        {:noreply, put_changeset(socket, changeset)}
     end
   end
 
@@ -147,9 +302,19 @@ defmodule TrifleApp.MonitorAlertFormComponent do
         {:noreply, socket}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :changeset, changeset)}
-    end
+        {:noreply, put_changeset(socket, changeset)}
+  end
   end
 
   defp notify_parent(message), do: send(self(), {__MODULE__, message})
+
+  defp put_changeset(socket, %Changeset{} = changeset) do
+    strategy =
+      Changeset.get_field(changeset, :analysis_strategy) ||
+        socket.assigns.alert.analysis_strategy || :threshold
+
+    socket
+    |> assign(:changeset, changeset)
+    |> assign(:strategy, strategy)
+  end
 end
