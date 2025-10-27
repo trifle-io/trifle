@@ -507,6 +507,25 @@ defmodule TrifleApp.Components.DashboardPage do
           </div>
         <% end %>
 
+        <% export_params =
+          build_url_params(%{
+            granularity: @granularity,
+            smart_timeframe_input: @smart_timeframe_input,
+            use_fixed_display: @use_fixed_display,
+            from: @from,
+            to: @to,
+            segment_values: @segment_values
+          })
+          |> then(fn params ->
+            cond do
+              is_binary(@resolved_key) and @resolved_key != "" ->
+                Map.put(params, "key", @resolved_key)
+
+              true ->
+                params
+            end
+          end) %>
+
         <% grid_items = WidgetView.grid_items(@dashboard) %>
         <% has_grid_items = grid_items != [] %>
         <% text_items = WidgetView.text_items(grid_items) %>
@@ -526,6 +545,7 @@ defmodule TrifleApp.Components.DashboardPage do
           timeseries={@widget_timeseries || %{}}
           category={@widget_category || %{}}
           text_widgets={@widget_text || %{}}
+          export_params={export_params}
         />
         
     <!-- Configure Modal -->
@@ -1422,25 +1442,7 @@ defmodule TrifleApp.Components.DashboardPage do
             load_duration_microseconds={@load_duration_microseconds}
             show_export_dropdown={@show_export_dropdown}
             dashboard={@dashboard}
-            export_params={
-              build_url_params(%{
-                granularity: @granularity,
-                smart_timeframe_input: @smart_timeframe_input,
-                use_fixed_display: @use_fixed_display,
-                from: @from,
-                to: @to,
-                segment_values: @segment_values
-              })
-              |> then(fn params ->
-                cond do
-                  is_binary(@resolved_key) and @resolved_key != "" ->
-                    Map.put(params, "key", @resolved_key)
-
-                  true ->
-                    params
-                end
-              end)
-            }
+            export_params={export_params}
           />
         <% end %>
       <% end %>

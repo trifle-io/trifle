@@ -3057,6 +3057,119 @@ Hooks.DownloadMenu = {
   }
 }
 
+// Widget export dropdown helpers (non-LiveView toggled)
+window.TrifleDownloads = window.TrifleDownloads || {};
+(function (scope) {
+  const HIDDEN_CLASS = 'hidden';
+
+  const queryDropdown = (menu) => (menu ? menu.querySelector('[data-widget-dropdown]') : null);
+  const queryButton = (menu) => (menu ? menu.querySelector('[data-role="download-button"]') : null);
+  const queryLabel = (menu) => (menu ? menu.querySelector('[data-role="download-text"]') : null);
+
+  const setButtonLoading = (menu, loading) => {
+    if (!menu) return;
+    const button = queryButton(menu);
+    const label = queryLabel(menu);
+    const defaultLabel = menu.dataset.defaultLabel || 'Export';
+    if (!button) return;
+    if (loading) {
+      button.disabled = true;
+      button.classList.add('opacity-70', 'cursor-wait');
+      button.setAttribute('aria-busy', 'true');
+      if (label) label.textContent = 'Generating...';
+    } else {
+      button.disabled = false;
+      button.classList.remove('opacity-70', 'cursor-wait');
+      button.removeAttribute('aria-busy');
+      if (label) label.textContent = defaultLabel;
+    }
+  };
+
+  scope.closeWidgetMenu = function closeWidgetMenu(menu) {
+    if (!menu) return;
+    const dropdown = queryDropdown(menu);
+    if (dropdown) {
+      dropdown.classList.add(HIDDEN_CLASS);
+      dropdown.setAttribute('aria-hidden', 'true');
+    }
+    setButtonLoading(menu, false);
+    const button = queryButton(menu);
+    if (button) button.setAttribute('aria-expanded', 'false');
+    menu.dataset.open = 'false';
+  };
+
+  scope.closeAllWidgetMenus = function closeAllWidgetMenus(exceptMenu) {
+    document
+      .querySelectorAll('[data-widget-download-menu][data-open="true"]')
+      .forEach((menu) => {
+        if (exceptMenu && menu === exceptMenu) return;
+        scope.closeWidgetMenu(menu);
+      });
+  };
+
+  scope.toggleWidgetMenu = function toggleWidgetMenu(button) {
+    if (!button) return;
+    const menu = button.closest('[data-widget-download-menu]');
+    if (!menu) return;
+    const dropdown = queryDropdown(menu);
+    if (!dropdown) return;
+    const isOpen = menu.dataset.open === 'true';
+    if (isOpen) {
+      scope.closeWidgetMenu(menu);
+      return;
+    }
+    scope.closeAllWidgetMenus(menu);
+    dropdown.classList.remove(HIDDEN_CLASS);
+    dropdown.setAttribute('aria-hidden', 'false');
+    menu.dataset.open = 'true';
+    button.setAttribute('aria-expanded', 'true');
+  };
+
+  scope.handleWidgetExportClick = function handleWidgetExportClick(link) {
+    if (!link) return;
+    const menu = link.closest('[data-widget-download-menu]');
+    if (menu) {
+      const dropdown = queryDropdown(menu);
+      if (dropdown) {
+        dropdown.classList.add(HIDDEN_CLASS);
+        dropdown.setAttribute('aria-hidden', 'true');
+      }
+      menu.dataset.open = 'false';
+      const button = queryButton(menu);
+      if (button) {
+        button.setAttribute('aria-expanded', 'false');
+      }
+      // Reset loading state so button stays interactive
+      setButtonLoading(menu, false);
+    }
+    try {
+      const url = new URL(link.getAttribute('href') || '', window.location.origin);
+      if (!url.searchParams.get('download_token')) {
+        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        window.__downloadToken = token;
+        url.searchParams.set('download_token', token);
+        link.href = url.toString();
+      }
+    } catch (_) {
+      // ignore malformed URLs
+    }
+  };
+
+  document.addEventListener('click', (event) => {
+    if (event.defaultPrevented) return;
+    const menu = event.target.closest('[data-widget-download-menu]');
+    if (!menu) {
+      scope.closeAllWidgetMenus();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      scope.closeAllWidgetMenus();
+    }
+  });
+})(window.TrifleDownloads);
+
 Hooks.PathAutocomplete = {
   mounted() {
     this.input = this.el.querySelector('[data-role="path-input"]');

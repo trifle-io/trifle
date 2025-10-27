@@ -2,11 +2,14 @@ defmodule TrifleApp.ExportController do
   use TrifleApp, :controller
 
   alias TrifleApp.Exporters.ChromeExporter
+  alias Trifle.Exports.Series, as: SeriesExport
+  alias TrifleApp.Exports.{DashboardLayout, MonitorLayout}
+  alias Trifle.Monitors
   alias Trifle.Organizations
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Trifle.Stats.Source
-  alias Trifle.Stats.Tabler
+  alias Ecto.NoResultsError
 
   def dashboard_pdf(conn, %{"id" => id} = params) do
     # Basic access check: ensure dashboard exists (ownership/visibility can be added later)
@@ -73,9 +76,87 @@ defmodule TrifleApp.ExportController do
     end
   end
 
+  def dashboard_widget_pdf(conn, %{"id" => id, "widget_id" => widget_id} = params) do
+    export_params =
+      Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
+
+    case TrifleApp.Exports.DashboardLayout.build_widget_from_id(
+           id,
+           widget_id,
+           params: export_params,
+           theme: :light,
+           viewport: %{width: 1920, height: 1080}
+         ) do
+      {:ok, layout} ->
+        case ChromeExporter.export_layout_pdf(layout) do
+          {:ok, bin} ->
+            filename =
+              params["filename"] ||
+                default_widget_filename("dashboard-widget", id, widget_id, ".pdf")
+
+            conn
+            |> put_download_token_cookie(params)
+            |> send_download({:binary, bin}, filename: filename, content_type: "application/pdf")
+
+          {:error, reason} ->
+            send_resp(conn, error_status(reason), widget_error_message(reason))
+        end
+
+      {:error, :widget_not_found} ->
+        send_resp(conn, 404, "Widget not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), widget_error_message(reason))
+    end
+  end
+
+  def dashboard_widget_png(conn, %{"id" => id, "widget_id" => widget_id} = params) do
+    theme =
+      case params["theme"] do
+        "dark" -> :dark
+        _ -> :light
+      end
+
+    export_params =
+      Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
+
+    case TrifleApp.Exports.DashboardLayout.build_widget_from_id(
+           id,
+           widget_id,
+           params: export_params,
+           theme: theme
+         ) do
+      {:ok, layout} ->
+        case ChromeExporter.export_layout_png(layout, theme: theme) do
+          {:ok, bin} ->
+            filename =
+              params["filename"] ||
+                default_widget_filename(
+                  "dashboard-widget-" <> Atom.to_string(theme),
+                  id,
+                  widget_id,
+                  ".png"
+                )
+
+            conn
+            |> put_download_token_cookie(params)
+            |> send_download({:binary, bin}, filename: filename, content_type: "image/png")
+
+          {:error, reason} ->
+            send_resp(conn, error_status(reason), widget_error_message(reason))
+        end
+
+      {:error, :widget_not_found} ->
+        send_resp(conn, 404, "Widget not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), widget_error_message(reason))
+    end
+  end
+
   def dashboard_csv(conn, %{"id" => id} = params) do
-    with {:ok, series} <- fetch_series_for_export(id, params) do
-      csv = series_to_csv(series)
+    with {:ok, export} <- fetch_series_for_export(id, params) do
+      csv = SeriesExport.to_csv(export)
       filename = params["filename"] || default_filename("dashboard", id, ".csv")
 
       conn
@@ -88,10 +169,8 @@ defmodule TrifleApp.ExportController do
   end
 
   def dashboard_json(conn, %{"id" => id} = params) do
-    with {:ok, series} <- fetch_series_for_export(id, params) do
-      at = (series[:at] || []) |> Enum.map(&DateTime.to_iso8601/1)
-      values = series[:values] || []
-      json = Jason.encode!(%{at: at, values: values})
+    with {:ok, export} <- fetch_series_for_export(id, params) do
+      json = SeriesExport.to_json(export)
       filename = params["filename"] || default_filename("dashboard", id, ".json")
 
       conn
@@ -100,6 +179,143 @@ defmodule TrifleApp.ExportController do
     else
       {:error, :no_data} -> send_resp(conn, 400, "No data to export")
       {:error, reason} -> send_resp(conn, 500, "JSON export failed: #{inspect(reason)}")
+    end
+  end
+
+  def monitor_pdf(conn, %{"id" => id} = params) do
+    with {:ok, monitor} <- fetch_monitor(conn, id),
+         export_params <- monitor_export_params(params),
+         {:ok, layout} <-
+           MonitorLayout.build(monitor,
+             params: export_params,
+             theme: :light,
+             viewport: %{width: 1920, height: 1080}
+           ),
+         {:ok, bin} <- ChromeExporter.export_layout_pdf(layout) do
+      filename =
+        params["filename"] ||
+          monitor_default_filename("monitor", monitor, ".pdf")
+
+      conn
+      |> put_download_token_cookie(params)
+      |> send_download({:binary, bin}, filename: filename, content_type: "application/pdf")
+    else
+      {:error, :unauthorized} ->
+        send_resp(conn, 403, "Unauthorized")
+
+      {:error, :not_found} ->
+        send_resp(conn, 404, "Monitor not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), monitor_error_message(reason))
+    end
+  end
+
+  def monitor_png(conn, %{"id" => id} = params) do
+    theme =
+      case params["theme"] do
+        "dark" -> :dark
+        _ -> :light
+      end
+
+    with {:ok, monitor} <- fetch_monitor(conn, id),
+         export_params <- monitor_export_params(params),
+         {:ok, layout} <-
+           MonitorLayout.build(monitor,
+             params: export_params,
+             theme: theme
+           ),
+         {:ok, bin} <- ChromeExporter.export_layout_png(layout) do
+      filename =
+        params["filename"] ||
+          monitor_default_filename("monitor-" <> Atom.to_string(theme), monitor, ".png")
+
+      conn
+      |> put_download_token_cookie(params)
+      |> send_download({:binary, bin}, filename: filename, content_type: "image/png")
+    else
+      {:error, :unauthorized} ->
+        send_resp(conn, 403, "Unauthorized")
+
+      {:error, :not_found} ->
+        send_resp(conn, 404, "Monitor not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), monitor_error_message(reason))
+    end
+  end
+
+  def monitor_widget_pdf(conn, %{"id" => id, "widget_id" => widget_id} = params) do
+    with {:ok, monitor} <- fetch_monitor(conn, id),
+         export_params <- monitor_export_params(params),
+         {:ok, layout} <-
+           MonitorLayout.build_widget(monitor, widget_id,
+             params: export_params,
+             theme: :light,
+             viewport: %{width: 1920, height: 1080}
+           ),
+         {:ok, bin} <- ChromeExporter.export_layout_pdf(layout) do
+      filename =
+        params["filename"] ||
+          monitor_widget_filename("monitor-widget", monitor, widget_id, ".pdf")
+
+      conn
+      |> put_download_token_cookie(params)
+      |> send_download({:binary, bin}, filename: filename, content_type: "application/pdf")
+    else
+      {:error, :unauthorized} ->
+        send_resp(conn, 403, "Unauthorized")
+
+      {:error, :not_found} ->
+        send_resp(conn, 404, "Monitor not found")
+
+      {:error, :widget_not_found} ->
+        send_resp(conn, 404, "Widget not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), widget_error_message(reason))
+    end
+  end
+
+  def monitor_widget_png(conn, %{"id" => id, "widget_id" => widget_id} = params) do
+    theme =
+      case params["theme"] do
+        "dark" -> :dark
+        _ -> :light
+      end
+
+    with {:ok, monitor} <- fetch_monitor(conn, id),
+         export_params <- monitor_export_params(params),
+         {:ok, layout} <-
+           MonitorLayout.build_widget(monitor, widget_id,
+             params: export_params,
+             theme: theme
+           ),
+         {:ok, bin} <- ChromeExporter.export_layout_png(layout, theme: theme) do
+      filename =
+        params["filename"] ||
+          monitor_widget_filename(
+            "monitor-widget-" <> Atom.to_string(theme),
+            monitor,
+            widget_id,
+            ".png"
+          )
+
+      conn
+      |> put_download_token_cookie(params)
+      |> send_download({:binary, bin}, filename: filename, content_type: "image/png")
+    else
+      {:error, :unauthorized} ->
+        send_resp(conn, 403, "Unauthorized")
+
+      {:error, :not_found} ->
+        send_resp(conn, 404, "Monitor not found")
+
+      {:error, :widget_not_found} ->
+        send_resp(conn, 404, "Widget not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), widget_error_message(reason))
     end
   end
 
@@ -126,26 +342,14 @@ defmodule TrifleApp.ExportController do
 
     resolved_key = resolved_key_from_params(dashboard, params)
 
-    case Source.fetch_series(
-           source,
-           resolved_key,
-           from,
-           to,
-           granularity,
-           progress_callback: nil
-         ) do
-      {:ok, result} ->
-        s = normalize_series(result.series)
-
-        if is_map(s) and (s[:at] || []) != [] do
-          {:ok, s}
-        else
-          {:error, :no_data}
-        end
-
-      other ->
-        other
-    end
+    SeriesExport.fetch(
+      source,
+      resolved_key,
+      from,
+      to,
+      granularity,
+      progress_callback: nil
+    )
   end
 
   defp resolved_key_from_params(dashboard, params) do
@@ -155,45 +359,25 @@ defmodule TrifleApp.ExportController do
     end
   end
 
-  defp series_to_csv(series) do
-    # Accept either a plain series map (%{at: [], values: []}) or a Trifle.Stats.Series struct
-    series_map = normalize_series(series)
-    table = Tabler.tabulize(series_map)
-    at = Enum.reverse(table[:at] || [])
-    paths = table[:paths] || []
-    values_map = table[:values] || %{}
-    header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
-
-    rows =
-      Enum.map(paths, fn path ->
-        [path | Enum.map(at, fn t -> Map.get(values_map, {path, t}) || 0 end)]
-      end)
-
-    to_csv([header | rows])
-  end
-
-  defp normalize_series(%Trifle.Stats.Series{series: inner}) when is_map(inner), do: inner
-  defp normalize_series(%{} = series_map), do: series_map
-  defp normalize_series(other), do: other
-
-  defp to_csv(rows) do
-    rows
-    |> Enum.map(fn cols -> cols |> Enum.map(&csv_escape/1) |> Enum.join(",") end)
-    |> Enum.join("\n")
-  end
-
-  defp csv_escape(v) when is_binary(v) do
-    escaped = String.replace(v, "\"", "\"\"")
-    "\"" <> escaped <> "\""
-  end
-
-  defp csv_escape(nil), do: ""
-  defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
-  defp csv_escape(v), do: csv_escape(to_string(v))
-
   defp default_filename(prefix, id, ext) do
     ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
     "#{prefix}-#{id}-#{ts}#{ext}"
+  end
+
+  defp default_widget_filename(prefix, dashboard_id, widget_id, ext) do
+    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
+
+    base =
+      [prefix, dashboard_id, widget_id]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&sanitize_filename_component/1)
+      |> Enum.join("-")
+
+    if base == "" do
+      "#{prefix}-#{ts}#{ext}"
+    else
+      base <> "-" <> ts <> ext
+    end
   end
 
   defp put_download_token_cookie(conn, params) do
@@ -209,4 +393,86 @@ defmodule TrifleApp.ExportController do
       path: "/"
     )
   end
+
+  defp fetch_monitor(conn, id) do
+    membership = conn.assigns[:current_membership]
+
+    cond do
+      is_nil(membership) ->
+        {:error, :unauthorized}
+
+      true ->
+        try do
+          {:ok, Monitors.get_monitor_for_membership!(membership, id, preload: [:dashboard])}
+        rescue
+          NoResultsError -> {:error, :not_found}
+        end
+    end
+  end
+
+  defp monitor_export_params(params) do
+    Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
+  end
+
+  defp monitor_default_filename(prefix, monitor, ext) do
+    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
+
+    base =
+      [prefix, monitor.name]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&sanitize_filename_component/1)
+      |> Enum.join("-")
+
+    if base == "" do
+      prefix <> "-" <> ts <> ext
+    else
+      base <> "-" <> ts <> ext
+    end
+  end
+
+  defp monitor_widget_filename(prefix, monitor, widget_id, ext) do
+    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
+
+    base =
+      [prefix, monitor.name, widget_id]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&sanitize_filename_component/1)
+      |> Enum.join("-")
+
+    if base == "" do
+      prefix <> "-" <> ts <> ext
+    else
+      base <> "-" <> ts <> ext
+    end
+  end
+
+  defp sanitize_filename_component(value) do
+    value
+    |> to_string()
+    |> String.replace(~r/[^a-zA-Z0-9_-]+/, "-")
+  end
+
+  defp monitor_error_message(:no_widgets), do: "Monitor has no widgets to export"
+  defp monitor_error_message(:widget_not_found), do: "Widget not found"
+  defp monitor_error_message(:no_data), do: "No data to export"
+  defp monitor_error_message(:source_not_configured), do: "Monitor source is not configured"
+  defp monitor_error_message(:source_not_found), do: "Monitor source could not be found"
+  defp monitor_error_message(:chrome_not_found), do: "Chrome binary not found"
+  defp monitor_error_message({:error, reason}), do: "Monitor export failed: #{inspect(reason)}"
+  defp monitor_error_message(reason), do: "Monitor export failed: #{inspect(reason)}"
+
+  defp widget_error_message(:widget_not_found), do: "Widget not found"
+  defp widget_error_message(:no_widgets), do: "Widget not found"
+  defp widget_error_message(:chrome_not_found), do: "Chrome binary not found"
+  defp widget_error_message({:error, reason}), do: "Widget export failed: #{inspect(reason)}"
+  defp widget_error_message(reason), do: "Widget export failed: #{inspect(reason)}"
+
+  defp error_status({:error, _}), do: 500
+  defp error_status(:chrome_not_found), do: 500
+  defp error_status(:source_not_found), do: 404
+  defp error_status(:no_widgets), do: 400
+  defp error_status(:no_data), do: 400
+  defp error_status(:source_not_configured), do: 400
+  defp error_status(:widget_not_found), do: 404
+  defp error_status(_), do: 500
 end

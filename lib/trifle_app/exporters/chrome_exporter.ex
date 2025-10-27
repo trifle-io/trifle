@@ -10,6 +10,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   """
 
   alias Trifle.Organizations
+  alias TrifleApp.Exports.{DashboardLayout, Layout, LayoutSession}
   alias TrifleWeb.Endpoint
   require Logger
 
@@ -21,31 +22,33 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   Export the dashboard to a PDF. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_pdf(dashboard_id, opts \\ []) do
-    with {:ok, url, cleanup} <-
-           public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
-         # Prefer CDP (wait-for-ready) exporter for determinism
-         {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts) do
-      cleanup.()
-      {:ok, bin}
-    else
-      {:error, reason} ->
-        Logger.warn("ChromeExporter CDP PDF failed: #{inspect(reason)} — falling back to CLI")
-        # Fallback to CLI flags
-        with {:ok, url, cleanup} <-
-               public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
-             {:ok, chrome} <- find_chrome_binary(),
-             {:ok, tmpfile} <- tmp_path(".pdf"),
-             _ = Logger.debug("ChromeExporter PDF start url=#{url} out=#{tmpfile}"),
-             {:ok, _} <- run_chrome(chrome, :pdf, url, tmpfile, opts),
-             {:ok, bin} <- File.read(tmpfile) do
-          Logger.debug("ChromeExporter PDF ok size=#{byte_size(bin)} url=#{url} out=#{tmpfile}")
-          File.rm(tmpfile)
-          cleanup.()
-          {:ok, bin}
-        else
-          {:error, reason} = err -> err
-          other -> {:error, other}
+    params = Keyword.get(opts, :params, %{})
+    viewport = Keyword.get(opts, :viewport, viewport_from_size(@default_pdf_window_size))
+
+    case DashboardLayout.build_from_id(dashboard_id,
+           params: params,
+           theme: :light,
+           viewport: viewport
+         ) do
+      {:ok, layout} ->
+        case export_layout(:pdf, layout, opts) do
+          {:ok, bin} ->
+            {:ok, bin}
+
+          {:error, reason} ->
+            Logger.warn(
+              "ChromeExporter layout PDF failed: #{inspect(reason)} — falling back to legacy pipeline"
+            )
+
+            legacy_export_dashboard_pdf(dashboard_id, opts)
         end
+
+      {:error, reason} ->
+        Logger.warn(
+          "ChromeExporter layout build failed for dashboard #{dashboard_id}: #{inspect(reason)} — falling back to legacy pipeline"
+        )
+
+        legacy_export_dashboard_pdf(dashboard_id, opts)
     end
   end
 
@@ -53,30 +56,49 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   Export the dashboard to a PNG screenshot. Returns {:ok, binary} or {:error, reason}.
   """
   def export_dashboard_png(dashboard_id, opts \\ []) do
-    with {:ok, url, cleanup} <-
-           public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
-         {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_png(url, opts) do
-      cleanup.()
-      {:ok, bin}
-    else
-      {:error, reason} ->
-        Logger.warn("ChromeExporter CDP PNG failed: #{inspect(reason)} — falling back to CLI")
+    params = Keyword.get(opts, :params, %{})
+    theme = Keyword.get(opts, :theme, :light)
+    viewport = Keyword.get(opts, :viewport, viewport_from_size(@default_window_size))
 
-        with {:ok, url, cleanup} <-
-               public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
-             {:ok, chrome} <- find_chrome_binary(),
-             {:ok, tmpfile} <- tmp_path(".png"),
-             _ = Logger.debug("ChromeExporter PNG start url=#{url} out=#{tmpfile}"),
-             {:ok, _} <- run_chrome(chrome, :png, url, tmpfile, opts),
-             {:ok, bin} <- File.read(tmpfile) do
-          File.rm(tmpfile)
-          cleanup.()
-          {:ok, bin}
-        else
-          {:error, reason} = err -> err
-          other -> {:error, other}
+    case DashboardLayout.build_from_id(dashboard_id,
+           params: params,
+           theme: theme,
+           viewport: viewport
+         ) do
+      {:ok, layout} ->
+        case export_layout(:png, layout, Keyword.put(opts, :theme, theme)) do
+          {:ok, bin} ->
+            {:ok, bin}
+
+          {:error, reason} ->
+            Logger.warn(
+              "ChromeExporter layout PNG failed: #{inspect(reason)} — falling back to legacy pipeline"
+            )
+
+            legacy_export_dashboard_png(dashboard_id, opts)
         end
+
+      {:error, reason} ->
+        Logger.warn(
+          "ChromeExporter layout build failed for dashboard #{dashboard_id}: #{inspect(reason)} — falling back to legacy pipeline"
+        )
+
+        legacy_export_dashboard_png(dashboard_id, opts)
     end
+  end
+
+  @doc """
+  Exports a pre-built layout to PDF.
+  """
+  def export_layout_pdf(%Layout{} = layout, opts \\ []) do
+    export_layout(:pdf, layout, opts)
+  end
+
+  @doc """
+  Exports a pre-built layout to PNG.
+  """
+  def export_layout_png(%Layout{} = layout, opts \\ []) do
+    export_layout(:png, layout, opts)
   end
 
   defp public_url_for_dashboard(dashboard_id, opts) do
@@ -195,6 +217,118 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   # Public helper to build the public dashboard URL for debugging
   def public_dashboard_url(dashboard_id, opts \\ []),
     do: public_url_for_dashboard(dashboard_id, opts)
+
+  defp legacy_export_dashboard_pdf(dashboard_id, opts) do
+    with {:ok, url, cleanup} <-
+           public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+         {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts) do
+      cleanup.()
+      {:ok, bin}
+    else
+      {:error, reason} ->
+        Logger.warn("ChromeExporter CDP PDF failed: #{inspect(reason)} — falling back to CLI")
+
+        with {:ok, url, cleanup} <-
+               public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+             {:ok, chrome} <- find_chrome_binary(),
+             {:ok, tmpfile} <- tmp_path(".pdf"),
+             _ = Logger.debug("ChromeExporter PDF start url=#{url} out=#{tmpfile}"),
+             {:ok, _} <- run_chrome(chrome, :pdf, url, tmpfile, opts),
+             {:ok, bin} <- File.read(tmpfile) do
+          Logger.debug("ChromeExporter PDF ok size=#{byte_size(bin)} url=#{url} out=#{tmpfile}")
+          File.rm(tmpfile)
+          cleanup.()
+          {:ok, bin}
+        else
+          {:error, reason} = err -> err
+          other -> {:error, other}
+        end
+    end
+  end
+
+  defp legacy_export_dashboard_png(dashboard_id, opts) do
+    with {:ok, url, cleanup} <-
+           public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+         {:ok, bin} <- TrifleApp.Exporters.ChromeCDP.export_png(url, opts) do
+      cleanup.()
+      {:ok, bin}
+    else
+      {:error, reason} ->
+        Logger.warn("ChromeExporter CDP PNG failed: #{inspect(reason)} — falling back to CLI")
+
+        with {:ok, url, cleanup} <-
+               public_url_for_dashboard(dashboard_id, Keyword.merge([print: true], opts)),
+             {:ok, chrome} <- find_chrome_binary(),
+             {:ok, tmpfile} <- tmp_path(".png"),
+             _ = Logger.debug("ChromeExporter PNG start url=#{url} out=#{tmpfile}"),
+             {:ok, _} <- run_chrome(chrome, :png, url, tmpfile, opts),
+             {:ok, bin} <- File.read(tmpfile) do
+          File.rm(tmpfile)
+          cleanup.()
+          {:ok, bin}
+        else
+          {:error, reason} = err -> err
+          other -> {:error, other}
+        end
+    end
+  end
+
+  defp export_layout(:pdf, layout, opts) do
+    opts =
+      Keyword.put_new(
+        opts,
+        :window_size,
+        window_size_from_layout(layout, @default_pdf_window_size)
+      )
+
+    with {:ok, url, cleanup} <- layout_export_url(layout, opts) do
+      try do
+        TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts)
+      after
+        cleanup.()
+      end
+    end
+  end
+
+  defp export_layout(:png, layout, opts) do
+    opts =
+      Keyword.put_new(opts, :window_size, window_size_from_layout(layout, @default_window_size))
+
+    with {:ok, url, cleanup} <- layout_export_url(layout, opts) do
+      try do
+        TrifleApp.Exporters.ChromeCDP.export_png(url, opts)
+      after
+        cleanup.()
+      end
+    end
+  end
+
+  defp layout_export_url(layout, opts) do
+    ttl = Keyword.get(opts, :token_ttl, 120_000)
+    token = LayoutSession.sign(layout, ttl: ttl)
+    base = base_url()
+    url = base <> "/export/layouts/" <> token
+
+    cleanup = fn ->
+      _ = LayoutSession.consume(token)
+      :ok
+    end
+
+    {:ok, url, cleanup}
+  end
+
+  defp viewport_from_size({w, h}) when is_integer(w) and is_integer(h) do
+    %{width: w, height: h}
+  end
+
+  defp viewport_from_size(_), do: %{width: 1366, height: 900}
+
+  defp window_size_from_layout(%Layout{viewport: %{width: w, height: h}}, default)
+       when is_integer(w) and is_integer(h) do
+    {w, h}
+  end
+
+  defp window_size_from_layout(_layout, default), do: default
 
   defp run_chrome(chrome_bin, :pdf, url, out_path, opts) do
     {w, h} = Keyword.get(opts, :window_size, @default_pdf_window_size)

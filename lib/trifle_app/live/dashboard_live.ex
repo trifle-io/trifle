@@ -4,6 +4,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations.Database
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Stats.Source
+  alias Trifle.Exports.Series, as: SeriesExport
   alias Phoenix.HTML
   alias TrifleApp.ExploreLive
   alias TrifleApp.TimeframeParsing
@@ -2145,51 +2146,14 @@ defmodule TrifleApp.DashboardLive do
   end
 
   # Export helpers
-  defp series_from_assigns(assigns) do
-    s = assigns[:stats]
-
-    cond do
-      is_map(s) and Map.has_key?(s, :series) -> s.series
-      is_map(s) -> s
-      true -> nil
-    end
-  end
-
-  defp csv_escape(v) when is_binary(v) do
-    escaped = String.replace(v, "\"", "\"\"")
-    "\"" <> escaped <> "\""
-  end
-
-  defp csv_escape(nil), do: ""
-  defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
-  defp csv_escape(v), do: csv_escape(to_string(v))
-
-  defp dashboard_table_to_csv(assigns) do
-    case series_from_assigns(assigns) do
-      nil ->
-        ""
-
-      series ->
-        table = Trifle.Stats.Tabler.tabulize(series)
-        at = Enum.reverse(table[:at] || [])
-        paths = table[:paths] || []
-        values_map = table[:values] || %{}
-        header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
-
-        rows =
-          Enum.map(paths, fn path ->
-            [path | Enum.map(at, fn t -> Map.get(values_map, {path, t}) || 0 end)]
-          end)
-
-        [header | rows]
-        |> Enum.map(fn cols -> cols |> Enum.map(&csv_escape/1) |> Enum.join(",") end)
-        |> Enum.join("\n")
-    end
-  end
+  defp series_from_assigns(assigns), do: SeriesExport.extract_series(assigns[:stats])
 
   def handle_event("toggle_export_dropdown", _params, socket) do
+    current = socket.assigns[:show_export_dropdown] || false
+
     {:noreply,
-     assign(socket, :show_export_dropdown, !(socket.assigns[:show_export_dropdown] || false))}
+     socket
+     |> assign(:show_export_dropdown, !current)}
   end
 
   def handle_event("hide_export_dropdown", _params, socket) do
@@ -2199,26 +2163,22 @@ defmodule TrifleApp.DashboardLive do
   def handle_event("download_dashboard_csv", _params, socket) do
     series = series_from_assigns(socket.assigns)
 
-    if is_nil(series) do
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    else
-      csv = dashboard_table_to_csv(socket.assigns)
+    if SeriesExport.has_data?(series) do
+      csv = SeriesExport.to_csv(series)
       fname = export_filename("dashboard", socket.assigns, ".csv")
 
       {:noreply,
        push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
     end
   end
 
   def handle_event("download_dashboard_json", _params, socket) do
     series = series_from_assigns(socket.assigns)
 
-    if is_nil(series) do
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    else
-      at = (series[:at] || []) |> Enum.map(&DateTime.to_iso8601/1)
-      values = series[:values] || []
-      json = Jason.encode!(%{at: at, values: values})
+    if SeriesExport.has_data?(series) do
+      json = SeriesExport.to_json(series)
       fname = export_filename("dashboard", socket.assigns, ".json")
 
       {:noreply,
@@ -2227,6 +2187,8 @@ defmodule TrifleApp.DashboardLive do
          filename: fname,
          type: "application/json"
        })}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
     end
   end
 

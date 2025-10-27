@@ -18,6 +18,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :timeseries, :map, default: %{}
   attr :category, :map, default: %{}
   attr :text_widgets, :map, default: %{}
+  attr :export_params, :map, default: %{}
+  attr :widget_export, :map, default: %{type: :dashboard}
 
   def grid(assigns) do
     assigns =
@@ -31,6 +33,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     assigns =
       assigns
       |> assign_new(:text_items, fn -> text_items(assigns.grid_items) end)
+      |> assign_new(:export_params, fn -> %{} end)
+      |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
       |> assign(:grid_dom_id, "dashboard-grid")
 
     ~H"""
@@ -67,6 +71,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             timeseries={@timeseries}
             category={@category}
             text_widgets={@text_widgets}
+            export_params={@export_params}
+            print_mode={@print_mode}
+            dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
+            dashboard={@dashboard}
+            widget_export={@widget_export}
           />
         <% end %>
       </div>
@@ -676,6 +685,62 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp color_dark?(_), do: false
 
+  defp normalize_export_params(params) when is_map(params), do: params
+
+  defp normalize_export_params(params) when is_binary(params) do
+    URI.decode_query(params)
+  rescue
+    _ -> %{}
+  end
+
+  defp normalize_export_params(_), do: %{}
+
+  defp normalize_widget_export(%{type: :monitor, monitor_id: id} = config) when is_binary(id) do
+    Map.put(config, :type, :monitor)
+  end
+
+  defp normalize_widget_export(%{type: :dashboard} = config),
+    do: Map.put(config, :type, :dashboard)
+
+  defp normalize_widget_export(_), do: %{type: :dashboard}
+
+  defp widget_export_links(%{type: :dashboard}, dashboard_id, widget_id, params)
+       when is_binary(dashboard_id) do
+    export_params = params || %{}
+
+    links = %{
+      pdf: ~p"/export/dashboards/#{dashboard_id}/widgets/#{widget_id}/pdf?#{export_params}",
+      png_light:
+        ~p"/export/dashboards/#{dashboard_id}/widgets/#{widget_id}/png?#{Map.put(export_params, "theme", "light")}",
+      png_dark:
+        ~p"/export/dashboards/#{dashboard_id}/widgets/#{widget_id}/png?#{Map.put(export_params, "theme", "dark")}"
+    }
+
+    {:ok, links}
+  end
+
+  defp widget_export_links(
+         %{type: :monitor, monitor_id: monitor_id},
+         _dashboard_id,
+         widget_id,
+         params
+       )
+       when is_binary(monitor_id) do
+    export_params = params || %{}
+
+    links = %{
+      pdf: ~p"/export/monitors/#{monitor_id}/widgets/#{widget_id}/pdf?#{export_params}",
+      png_light:
+        ~p"/export/monitors/#{monitor_id}/widgets/#{widget_id}/png?#{Map.put(export_params, "theme", "light")}",
+      png_dark:
+        ~p"/export/monitors/#{monitor_id}/widgets/#{widget_id}/png?#{Map.put(export_params, "theme", "dark")}"
+    }
+
+    {:ok, links}
+  end
+
+  defp widget_export_links(_, _, _, _), do: :error
+
   attr :widget, :map, required: true
   attr :editable, :boolean, default: false
   attr :kpi_values, :map, default: %{}
@@ -683,6 +748,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :timeseries, :map, default: %{}
   attr :category, :map, default: %{}
   attr :text_widgets, :map, default: %{}
+  attr :export_params, :map, default: %{}
+  attr :print_mode, :boolean, default: false
+  attr :dashboard_id, :string, default: nil
+  attr :dashboard, :map, required: true
+  attr :widget_export, :map, default: %{type: :dashboard}
 
   def grid_item(assigns) do
     widget_type = widget_type(assigns.widget)
@@ -709,6 +779,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:title_classnames, title_classnames(widget_type))
       |> assign(:title_attrs, title_attrs(widget_type))
       |> assign(:text_alignment_classes, text_alignment_classes(widget_type, text_dataset))
+      |> assign(:export_params, normalize_export_params(assigns.export_params || %{}))
+      |> assign(:print_mode, Map.get(assigns, :print_mode, false))
+      |> assign(:widget_export, normalize_widget_export(Map.get(assigns, :widget_export)))
 
     ~H"""
     <div
@@ -741,6 +814,137 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             </div>
           </div>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+            <%= unless @print_mode do %>
+              <%= with {:ok, links} <-
+                      widget_export_links(@widget_export, @dashboard_id, @widget_id, @export_params) do %>
+                <div
+                  id={"widget-download-menu-#{@widget_id}"}
+                  class="relative"
+                  data-widget-download-menu
+                  data-widget-id={@widget_id}
+                  data-default-label="Export"
+                  data-open="false"
+                  phx-hook="DownloadMenu"
+                >
+                  <button
+                    type="button"
+                    data-role="download-button"
+                    class="inline-flex items-center p-1 rounded group"
+                    aria-label="Export widget"
+                    aria-haspopup="menu"
+                    aria-expanded="false"
+                    onclick="window.TrifleDownloads && window.TrifleDownloads.toggleWidgetMenu(this);"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                      class="h-4 w-4 text-teal-600 dark:text-teal-300 transition-colors group-hover:text-teal-700 dark:group-hover:text-teal-200"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                    <span class="sr-only" data-role="download-text">Export</span>
+                  </button>
+
+                  <div
+                    data-role="download-dropdown"
+                    data-widget-dropdown
+                    class="absolute right-0 top-7 w-44 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-50 hidden"
+                    role="menu"
+                    aria-hidden="true"
+                  >
+                    <a
+                      data-export-link
+                      onclick="window.TrifleDownloads && window.TrifleDownloads.handleWidgetExportClick(this);"
+                      href={links.pdf}
+                      target="download_iframe"
+                      class="flex items-center px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      title="Export PDF"
+                      role="menuitem"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-300"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375H8.625A3.375 3.375 0 0 0 5.25 11.625v4.5A3.375 3.375 0 0 0 8.625 19.5H12"
+                        />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M16.5 16.5a3 3 0 1 1 3 3h-3v-3Z"
+                        />
+                      </svg>
+                      PDF (print)
+                    </a>
+
+                    <a
+                      data-export-link
+                      onclick="window.TrifleDownloads && window.TrifleDownloads.handleWidgetExportClick(this);"
+                      href={links.png_light}
+                      target="download_iframe"
+                      class="flex items-center px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      title="Export PNG (light)"
+                      role="menuitem"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                        />
+                      </svg>
+                      PNG (light)
+                    </a>
+
+                    <a
+                      data-export-link
+                      onclick="window.TrifleDownloads && window.TrifleDownloads.handleWidgetExportClick(this);"
+                      href={links.png_dark}
+                      target="download_iframe"
+                      class="flex items-center px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      title="Export PNG (dark)"
+                      role="menuitem"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                        />
+                      </svg>
+                      PNG (dark)
+                    </a>
+                  </div>
+                </div>
+              <% end %>
+            <% end %>
             <button
               type="button"
               class="grid-widget-expand inline-flex items-center p-1 rounded group"

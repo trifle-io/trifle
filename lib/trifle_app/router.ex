@@ -126,8 +126,14 @@ defmodule TrifleApp.Router do
 
     get "/export/dashboards/:id/pdf", ExportController, :dashboard_pdf
     get "/export/dashboards/:id/png", ExportController, :dashboard_png
+    get "/export/dashboards/:id/widgets/:widget_id/pdf", ExportController, :dashboard_widget_pdf
+    get "/export/dashboards/:id/widgets/:widget_id/png", ExportController, :dashboard_widget_png
     get "/export/dashboards/:id/csv", ExportController, :dashboard_csv
     get "/export/dashboards/:id/json", ExportController, :dashboard_json
+    get "/export/monitors/:id/pdf", ExportController, :monitor_pdf
+    get "/export/monitors/:id/png", ExportController, :monitor_png
+    get "/export/monitors/:id/widgets/:widget_id/pdf", ExportController, :monitor_widget_pdf
+    get "/export/monitors/:id/widgets/:widget_id/png", ExportController, :monitor_widget_png
   end
 
   scope "/", TrifleApp do
@@ -135,6 +141,7 @@ defmodule TrifleApp.Router do
 
     get "/invitations/:token", InvitationController, :show
     post "/invitations/:token/accept", InvitationController, :accept
+    live "/export/layouts/:token", ExportLayoutLive, :show
 
     delete "/users/log_out", UserSessionController, :delete
 

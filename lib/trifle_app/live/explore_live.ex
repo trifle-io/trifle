@@ -4,6 +4,7 @@ defmodule TrifleApp.ExploreLive do
   alias Decimal
   alias Trifle.Organizations
   alias Trifle.Stats.Source
+  alias Trifle.Exports.Series, as: SeriesExport
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
 
@@ -1503,37 +1504,6 @@ defmodule TrifleApp.ExploreLive do
     Source.type(a) == Source.type(b) && to_string(Source.id(a)) == to_string(Source.id(b))
   end
 
-  defp csv_escape(v) when is_binary(v) do
-    escaped = String.replace(v, "\"", "\"\"")
-    "\"" <> escaped <> "\""
-  end
-
-  defp csv_escape(nil), do: ""
-  defp csv_escape(v) when is_integer(v) or is_float(v), do: to_string(v)
-  defp csv_escape(v), do: csv_escape(to_string(v))
-
-  defp explore_table_to_csv(%{stats: stats} = assigns) when is_map(stats) do
-    at = Enum.reverse(stats[:at] || [])
-    paths = stats[:paths] || []
-    values = stats[:values] || %{}
-
-    header = ["Path" | Enum.map(at, &DateTime.to_iso8601/1)]
-
-    rows =
-      Enum.map(paths, fn path ->
-        row_values = Enum.map(at, fn t -> Map.get(values, {path, t}) || 0 end)
-        [path | row_values]
-      end)
-
-    lines = [header | rows]
-
-    lines
-    |> Enum.map(fn cols -> cols |> Enum.map(&csv_escape/1) |> Enum.join(",") end)
-    |> Enum.join("\n")
-  end
-
-  defp explore_table_to_csv(_), do: ""
-
   def series_from(series_input, path) when is_list(path) do
     path = Enum.join(path, ".")
     series_struct = ensure_series_struct(series_input)
@@ -1713,26 +1683,30 @@ defmodule TrifleApp.ExploreLive do
   end
 
   def handle_event("download_explore_csv", _params, socket) do
-    if is_nil(socket.assigns[:stats]) do
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    else
-      csv = explore_table_to_csv(socket.assigns)
+    series = SeriesExport.extract_series(socket.assigns[:stats])
+
+    if SeriesExport.has_data?(series) do
+      csv = SeriesExport.to_csv(series)
       fname = export_filename("explore", socket.assigns, ".csv")
 
       {:noreply,
        push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
     end
   end
 
   def handle_event("download_explore_json", _params, socket) do
-    raw = socket.assigns[:series_raw]
+    raw =
+      socket.assigns[:series_raw]
+      |> case do
+        nil -> socket.assigns[:stats]
+        other -> other
+      end
+      |> SeriesExport.extract_series()
 
-    if is_nil(raw) do
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    else
-      at = (raw[:at] || []) |> Enum.map(&DateTime.to_iso8601/1)
-      values = raw[:values] || []
-      json = Jason.encode!(%{at: at, values: values})
+    if SeriesExport.has_data?(raw) do
+      json = SeriesExport.to_json(raw)
       fname = export_filename("explore", socket.assigns, ".json")
 
       {:noreply,
@@ -1741,6 +1715,8 @@ defmodule TrifleApp.ExploreLive do
          filename: fname,
          type: "application/json"
        })}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
     end
   end
 
