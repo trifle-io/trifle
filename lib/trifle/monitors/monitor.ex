@@ -55,7 +55,7 @@ defmodule Trifle.Monitors.Monitor do
     belongs_to :dashboard, Dashboard
     belongs_to :created_by, User, foreign_key: :created_by_id
 
-    has_many :alerts, Alert
+    has_many :alerts, Alert, on_delete: :delete_all
     has_many :executions, Execution
 
     timestamps()

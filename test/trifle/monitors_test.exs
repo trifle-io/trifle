@@ -3,7 +3,7 @@ defmodule Trifle.MonitorsTest do
 
   alias Trifle.AccountsFixtures
   alias Trifle.Monitors
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Organizations
   alias Trifle.Integrations.SlackChannel
   alias Trifle.Integrations.SlackInstallation
@@ -117,6 +117,23 @@ defmodule Trifle.MonitorsTest do
       assert_raise Ecto.NoResultsError, fn ->
         Monitors.get_monitor_for_membership!(membership, monitor.id)
       end
+    end
+
+    test "delete_monitor_for_membership/2 removes associated alerts", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      {:ok, _alert} =
+        Monitors.create_alert(monitor, %{
+          "analysis_strategy" => "range"
+        })
+
+      assert {:ok, %Monitor{}} = Monitors.delete_monitor_for_membership(monitor, membership)
+
+      refute Repo.get_by(Alert, monitor_id: monitor.id)
     end
   end
 

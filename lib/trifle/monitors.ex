@@ -5,6 +5,7 @@ defmodule Trifle.Monitors do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
+  alias Ecto.Multi
   alias Trifle.Accounts.User
   alias Trifle.Integrations
   alias Trifle.Monitors.{Alert, Execution, Monitor}
@@ -99,7 +100,20 @@ defmodule Trifle.Monitors do
     if monitor.organization_id != membership.organization_id do
       {:error, :unauthorized}
     else
-      Repo.delete(monitor)
+      Multi.new()
+      |> Multi.delete_all(:alerts, from(a in Alert, where: a.monitor_id == ^monitor.id))
+      |> Multi.delete(:monitor, monitor)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{monitor: monitor}} ->
+          {:ok, monitor}
+
+        {:error, :monitor, changeset, _} ->
+          {:error, changeset}
+
+        {:error, :alerts, reason, _} ->
+          {:error, reason}
+      end
     end
   end
 
