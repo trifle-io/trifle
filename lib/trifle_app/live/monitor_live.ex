@@ -9,6 +9,7 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
+  alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Stats.Source, as: StatsSource
   alias Trifle.Stats.Tabler
 
@@ -26,6 +27,7 @@ defmodule TrifleApp.MonitorLive do
   alias TrifleApp.MonitorAlertFormComponent
   alias TrifleApp.MonitorsLive.FormComponent
   alias TrifleApp.TimeframeParsing
+  alias TrifleApp.Exports.MonitorLayout
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
 
   @default_granularities ["15m", "1h", "6h", "1d", "1w", "1mo"]
@@ -166,6 +168,52 @@ defmodule TrifleApp.MonitorLive do
 
   def handle_event("close_alert_modal", _params, socket) do
     {:noreply, clear_alert_modal(socket)}
+  end
+
+  def handle_event("toggle_export_dropdown", _params, socket) do
+    current = socket.assigns[:show_export_dropdown] || false
+
+    {:noreply, assign(socket, :show_export_dropdown, !current)}
+  end
+
+  def handle_event("hide_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_export_dropdown, false)}
+  end
+
+  def handle_event("download_monitor_csv", _params, socket) do
+    series = SeriesExport.extract_series(socket.assigns[:stats])
+
+    if SeriesExport.has_data?(series) do
+      csv = SeriesExport.to_csv(series)
+      fname = monitor_export_filename("monitor", socket.assigns.monitor, ".csv")
+
+      {:noreply,
+       socket
+       |> assign(:show_export_dropdown, false)
+       |> push_event("file_download", %{content: csv, filename: fname, type: "text/csv"})}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    end
+  end
+
+  def handle_event("download_monitor_json", _params, socket) do
+    series = SeriesExport.extract_series(socket.assigns[:stats])
+
+    if SeriesExport.has_data?(series) do
+      json = SeriesExport.to_json(series)
+      fname = monitor_export_filename("monitor", socket.assigns.monitor, ".json")
+
+      {:noreply,
+       socket
+       |> assign(:show_export_dropdown, false)
+       |> push_event("file_download", %{
+         content: json,
+         filename: fname,
+         type: "application/json"
+       })}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    end
   end
 
   def handle_event("expand_widget", %{"id" => id}, socket) do
@@ -1015,15 +1063,12 @@ defmodule TrifleApp.MonitorLive do
       |> String.trim()
 
     widget_items =
-      if metric_path == "" do
-        []
-      else
-        [
-          alert_preview_widget(
-            monitor,
-            metric_path
-          )
-        ]
+      monitor
+      |> MonitorLayout.alert_widgets()
+      |> case do
+        [] when metric_path == "" -> []
+        [] -> [alert_preview_widget(monitor, metric_path)]
+        list -> list
       end
 
     %{
@@ -1201,6 +1246,68 @@ defmodule TrifleApp.MonitorLive do
   defp monitor_footer_resource(%Monitor{id: id}), do: %{id: id}
   defp monitor_footer_resource(_), do: %{id: nil}
 
+  defp build_monitor_export_params(assigns) when is_map(assigns) do
+    granularity =
+      Map.get(assigns, :granularity) ||
+        Map.get(assigns, "granularity") || "1h"
+
+    timeframe =
+      Map.get(assigns, :smart_timeframe_input) ||
+        Map.get(assigns, "smart_timeframe_input") ||
+        Map.get(assigns, :timeframe) ||
+        Map.get(assigns, "timeframe") || "24h"
+
+    params = %{"granularity" => granularity, "timeframe" => timeframe}
+
+    params =
+      case Map.get(assigns, :use_fixed_display) || Map.get(assigns, "use_fixed_display") do
+        true ->
+          params
+          |> maybe_put_formatted("from", Map.get(assigns, :from) || Map.get(assigns, "from"))
+          |> maybe_put_formatted("to", Map.get(assigns, :to) || Map.get(assigns, "to"))
+
+        _ ->
+          params
+      end
+
+    case Map.get(assigns, :resolved_key) || Map.get(assigns, "key") do
+      key when is_binary(key) and key != "" -> Map.put(params, "key", key)
+      _ -> params
+    end
+  end
+
+  defp maybe_put_formatted(params, _key, nil), do: params
+
+  defp maybe_put_formatted(params, key, %DateTime{} = value) do
+    Map.put(params, key, TimeframeParsing.format_for_datetime_input(value))
+  end
+
+  defp maybe_put_formatted(params, key, value) do
+    Map.put(params, key, value)
+  end
+
+  defp monitor_export_filename(prefix, %Monitor{} = monitor, ext) do
+    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
+
+    base =
+      [prefix, monitor.name]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&sanitize_filename_component/1)
+      |> Enum.join("-")
+
+    if base == "" do
+      prefix <> "-" <> ts <> ext
+    else
+      base <> "-" <> ts <> ext
+    end
+  end
+
+  defp sanitize_filename_component(value) do
+    value
+    |> to_string()
+    |> String.replace(~r/[^a-zA-Z0-9_-]+/, "-")
+  end
+
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(value) when is_atom(value), do: blank?(Atom.to_string(value))
   defp blank?(nil), do: true
@@ -1265,7 +1372,32 @@ defmodule TrifleApp.MonitorLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@monitor} class="space-y-8">
+    <div :if={@monitor} id="monitor-page-root" phx-hook="FileDownload" class="space-y-8">
+      <iframe
+        name="download_iframe"
+        style="display:none"
+        aria-hidden="true"
+        onload="(function(){['dashboard-download-menu','explore-download-menu','monitor-download-menu'].forEach(function(id){var m=document.getElementById(id); if(!m) return; var b=m.querySelector('[data-role=download-button]'); var t=m.querySelector('[data-role=download-text]'); var d=(m.dataset&&m.dataset.defaultLabel)||'Download'; if(b){b.disabled=false; b.classList.remove('opacity-70','cursor-wait');} if(t){t.textContent=d;}})})()"
+      >
+      </iframe>
+      <script>
+        window.__downloadPoller = window.__downloadPoller || setInterval(function(){
+          try {
+            var m = document.cookie.match(/(?:^|; )download_token=([^;]+)/);
+            if (m) {
+              document.cookie = 'download_token=; Max-Age=0; path=/';
+              ['dashboard-download-menu','explore-download-menu','monitor-download-menu'].forEach(function(id){
+                var menu=document.getElementById(id); if(!menu) return;
+                var btn=menu.querySelector('[data-role=download-button]');
+                var txt=menu.querySelector('[data-role=download-text]');
+                var defaultLabel=(menu.dataset&&menu.dataset.defaultLabel)||'Download';
+                if(btn){btn.disabled=false; btn.classList.remove('opacity-70','cursor-wait');}
+                if(txt){txt.textContent=defaultLabel;}
+              });
+            }
+          } catch (e) {}
+        }, 500);
+      </script>
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex items-start gap-4">
           {monitor_icon(%{monitor: @monitor})}
@@ -1365,9 +1497,179 @@ defmodule TrifleApp.MonitorLive do
 
       <div class="grid gap-6 lg:grid-cols-3">
         <div class="lg:col-span-2 space-y-4">
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white">
-            Monitor insights
-          </h3>
+          <% export_params = build_monitor_export_params(assigns) %>
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-base font-semibold text-slate-900 dark:text-white">
+              Monitor insights
+            </h3>
+            <div
+              id="monitor-download-menu"
+              class="relative"
+              data-default-label="Export"
+              phx-hook="DownloadMenu"
+            >
+              <button
+                type="button"
+                phx-click="toggle_export_dropdown"
+                data-role="download-button"
+                class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                  />
+                </svg>
+                <span class="inline" data-role="download-text">Export</span>
+                <svg
+                  class="ml-1 h-3 w-3 text-slate-500 dark:text-slate-400"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 0 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              <%= if @show_export_dropdown do %>
+                <div
+                  data-role="download-dropdown"
+                  class="absolute right-0 z-40 mt-2 w-48 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg py-1"
+                  phx-click-away="hide_export_dropdown"
+                >
+                  <button
+                    type="button"
+                    phx-click="download_monitor_csv"
+                    data-export-trigger="csv"
+                    class="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+                  >
+                    <svg
+                      class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
+                      />
+                    </svg>
+                    CSV (table)
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="download_monitor_json"
+                    data-export-trigger="json"
+                    class="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+                  >
+                    <svg
+                      class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
+                      />
+                    </svg>
+                    JSON (raw)
+                  </button>
+                  <a
+                    data-export-link
+                    onclick="(function(el){var m=el.closest('#monitor-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
+                    href={~p"/export/monitors/#{@monitor.id}/pdf?#{export_params}"}
+                    target="download_iframe"
+                    class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+                  >
+                    <svg
+                      class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                    PDF (print)
+                  </a>
+                  <a
+                    data-export-link
+                    onclick="(function(el){var m=el.closest('#monitor-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
+                    href={
+                      ~p"/export/monitors/#{@monitor.id}/png?#{Map.put(export_params, "theme", "light")}"
+                    }
+                    target="download_iframe"
+                    class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+                  >
+                    <svg
+                      class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                    PNG (light)
+                  </a>
+                  <a
+                    data-export-link
+                    onclick="(function(el){var m=el.closest('#monitor-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
+                    href={
+                      ~p"/export/monitors/#{@monitor.id}/png?#{Map.put(export_params, "theme", "dark")}"
+                    }
+                    target="download_iframe"
+                    class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+                  >
+                    <svg
+                      class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                    PNG (dark)
+                  </a>
+                </div>
+              <% end %>
+            </div>
+          </div>
 
           <% dashboard_for_render =
             @insights_dashboard ||
@@ -1427,6 +1729,8 @@ defmodule TrifleApp.MonitorLive do
                 timeseries={@insights_timeseries}
                 category={@insights_category}
                 text_widgets={@insights_text_widgets}
+                export_params={export_params}
+                widget_export={%{type: :monitor, monitor_id: @monitor.id}}
               />
           <% end %>
         </div>
