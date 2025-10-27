@@ -485,7 +485,9 @@ defmodule TrifleApp.MonitorLive do
 
     case monitor do
       %Monitor{type: :report} ->
-        case compute_report_time_range(monitor, timeframe_input, config) do
+        source = socket.assigns[:source]
+
+        case compute_report_time_range(monitor, timeframe_input, config, source) do
           {:ok, from, to} ->
             socket
             |> assign(:from, from)
@@ -519,26 +521,47 @@ defmodule TrifleApp.MonitorLive do
     end
   end
 
-  defp compute_report_time_range(%Monitor{} = monitor, timeframe_input, config) do
+  defp compute_report_time_range(%Monitor{} = monitor, timeframe_input, config, source) do
     settings = monitor.report_settings || %{}
     frequency = Map.get(settings, :frequency)
     now = timezone_now(config)
 
+    effective_input =
+      case timeframe_input do
+        "c" -> resolve_report_timeframe(settings.timeframe, frequency, source)
+        other -> other
+      end
+
     cond do
       frequency == :daily ->
         from = floor_time(now, 1, :day, config)
-        {:ok, from, now}
+        to = Nocturnal.new(from, config) |> Nocturnal.add(1, :day)
+        {:ok, from, to}
 
       frequency == :weekly ->
         from = floor_time(now, 1, :week, config)
-        {:ok, from, now}
+        to = Nocturnal.new(from, config) |> Nocturnal.add(1, :week)
+        {:ok, from, to}
 
       frequency == :monthly ->
         from = floor_time(now, 1, :month, config)
-        {:ok, from, now}
+        to = Nocturnal.new(from, config) |> Nocturnal.add(1, :month)
+        {:ok, from, to}
 
       true ->
-        parse_timeframe_range(timeframe_input, config)
+        parser = Parser.new(effective_input || "24h")
+
+        if Parser.valid?(parser) do
+          from = floor_time(now, parser.offset, parser.unit, config)
+          to =
+            from
+            |> Nocturnal.new(config)
+            |> Nocturnal.add(parser.offset, parser.unit)
+
+          {:ok, from, to}
+        else
+          parse_timeframe_range(effective_input, config)
+        end
     end
   end
 
@@ -589,15 +612,15 @@ defmodule TrifleApp.MonitorLive do
   defp report_timeframe_defaults(%Monitor{} = monitor, source, config, granularities) do
     settings = monitor.report_settings || %{}
     frequency = Map.get(settings, :frequency, :weekly)
-    timeframe_input = resolve_report_timeframe(settings.timeframe, frequency, source)
+    timeframe_hint = resolve_report_timeframe(settings.timeframe, frequency, source)
 
     {from, to} =
-      case compute_report_time_range(monitor, timeframe_input, config) do
+      case compute_report_time_range(monitor, timeframe_hint, config, source) do
         {:ok, from, to} ->
           {from, to}
 
         :error ->
-          case parse_timeframe_range("24h", config) do
+          case parse_timeframe_range(timeframe_hint, config) do
             {:ok, fallback_from, fallback_to} -> {fallback_from, fallback_to}
             :error -> {nil, nil}
           end
@@ -612,7 +635,10 @@ defmodule TrifleApp.MonitorLive do
     granularity =
       normalize_granularity(settings.granularity, granularities, fallback_granularity)
 
-    {from, to, granularity, timeframe_input, false}
+    use_fixed_display = not is_nil(from) and not is_nil(to)
+    smart_input = if use_fixed_display, do: "c", else: timeframe_hint
+
+    {from, to, granularity, smart_input, use_fixed_display}
   end
 
   defp resolve_report_timeframe(timeframe, frequency, source) do
