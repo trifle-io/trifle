@@ -1343,6 +1343,8 @@ Hooks.DashboardGrid = {
           return base;
         });
         const overlay = it.alert_overlay || null;
+        const alertStrategy = String(it.alert_strategy || '').toLowerCase();
+        const shouldApplyAlertAxis = !!overlay && (alertStrategy === 'threshold' || alertStrategy === 'range');
         if (overlay && series.length) {
           const primarySeries = series[0];
           const markAreas = [];
@@ -1501,44 +1503,53 @@ Hooks.DashboardGrid = {
             }
           }
         }
-        const extractPointValue = (point) => {
-          if (Array.isArray(point)) return Number(point[1]);
-          if (point && typeof point === 'object') {
-            if (Array.isArray(point.value)) return Number(point.value[1]);
-            if ('value' in point) return Number(point.value);
+        let alertAxis = null;
+        if (shouldApplyAlertAxis) {
+          const extractPointValue = (point) => {
+            if (Array.isArray(point)) return Number(point[1]);
+            if (point && typeof point === 'object') {
+              if (Array.isArray(point.value)) return Number(point.value[1]);
+              if ('value' in point) return Number(point.value);
+            }
+            if (Number.isFinite(point)) return Number(point);
+            return null;
+          };
+          const updateBounds = (bounds, value) => {
+            if (!Number.isFinite(value)) return;
+            if (value < bounds.min) bounds.min = value;
+            if (value > bounds.max) bounds.max = value;
+          };
+          const seriesBounds = { min: Infinity, max: -Infinity };
+          series.forEach((s) => {
+            (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
+          });
+          const overlayBounds = { min: Infinity, max: -Infinity };
+          if (overlay) {
+            if (Array.isArray(overlay.reference_lines)) {
+              overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
+            }
+            if (Array.isArray(overlay.bands)) {
+              overlay.bands.forEach((band) => {
+                updateBounds(overlayBounds, Number(band.min));
+                updateBounds(overlayBounds, Number(band.max));
+              });
+            }
+            if (Array.isArray(overlay.points)) {
+              overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
+            }
           }
-          if (Number.isFinite(point)) return Number(point);
-          return null;
-        };
-        const updateBounds = (bounds, value) => {
-          if (!Number.isFinite(value)) return;
-          if (value < bounds.min) bounds.min = value;
-          if (value > bounds.max) bounds.max = value;
-        };
-        const seriesBounds = { min: Infinity, max: -Infinity };
-        series.forEach((s) => {
-          (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
-        });
-        const overlayBounds = { min: Infinity, max: -Infinity };
-        if (overlay) {
-          if (Array.isArray(overlay.reference_lines)) {
-            overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
-          }
-          if (Array.isArray(overlay.bands)) {
-            overlay.bands.forEach((band) => {
-              updateBounds(overlayBounds, Number(band.min));
-              updateBounds(overlayBounds, Number(band.max));
-            });
-          }
-          if (Array.isArray(overlay.points)) {
-            overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
+          const minCandidates = [seriesBounds.min, overlayBounds.min].filter(Number.isFinite);
+          const maxCandidates = [seriesBounds.max, overlayBounds.max].filter(Number.isFinite);
+          const positiveOnly = minCandidates.length === 0 || minCandidates.every((value) => value >= 0);
+          let axisMinCandidate = minCandidates.length ? Math.min(...minCandidates) : (positiveOnly ? 0 : -1);
+          let axisMaxCandidate = maxCandidates.length ? Math.max(...maxCandidates) : (axisMinCandidate > 0 ? axisMinCandidate : 1);
+          if (Number.isFinite(axisMaxCandidate)) {
+            if (!Number.isFinite(axisMinCandidate)) {
+              axisMinCandidate = positiveOnly ? 0 : axisMaxCandidate;
+            }
+            alertAxis = { positiveOnly, axisMinCandidate, axisMaxCandidate };
           }
         }
-        const minCandidates = [seriesBounds.min, overlayBounds.min].filter(Number.isFinite);
-        const maxCandidates = [seriesBounds.max, overlayBounds.max].filter(Number.isFinite);
-        const positiveOnly = minCandidates.length === 0 || minCandidates.every((value) => value >= 0);
-        let axisMinCandidate = minCandidates.length ? Math.min(...minCandidates) : (positiveOnly ? 0 : -1);
-        let axisMaxCandidate = maxCandidates.length ? Math.max(...maxCandidates) : (axisMinCandidate > 0 ? axisMinCandidate : 1);
         const yName = normalized ? (it.y_label || 'Percentage') : (it.y_label || '');
         const yAxis = {
           type: 'value',
@@ -1552,28 +1563,34 @@ Hooks.DashboardGrid = {
           splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
         };
         if (normalized) {
-          const normalizedMax = Math.max(axisMaxCandidate, 100);
-          const topPad = normalizedMax * 0.05 || 5;
-          yAxis.min = 0;
-          yAxis.max = normalizedMax + topPad;
           yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, { formatter: (v) => `${v}%` });
+          if (alertAxis) {
+            const normalizedMax = Math.max(alertAxis.axisMaxCandidate, 100);
+            const topPad = normalizedMax * 0.05 || 5;
+            yAxis.min = 0;
+            yAxis.max = normalizedMax + topPad;
+          } else {
+            yAxis.max = 100;
+          }
         } else {
-          let axisMin = positiveOnly ? 0 : axisMinCandidate;
-          let axisMax = Math.max(axisMaxCandidate, axisMin + 1);
-          if (!Number.isFinite(axisMin)) axisMin = 0;
-          if (!Number.isFinite(axisMax)) axisMax = axisMin + 1;
-          if (axisMax <= axisMin) axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
-          const span = axisMax - axisMin;
-          const topPad = span * 0.12 || Math.max(Math.abs(axisMax), 1) * 0.12;
-          const bottomPad = positiveOnly ? 0 : (span * 0.05 || topPad * 0.5);
-          axisMax += topPad;
-          axisMin -= bottomPad;
-          if (positiveOnly && axisMin < 0) axisMin = 0;
-          yAxis.min = axisMin;
-          yAxis.max = axisMax;
           yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, {
             formatter: (v) => formatCompactNumber(v)
           });
+          if (alertAxis) {
+            let axisMin = alertAxis.positiveOnly ? 0 : alertAxis.axisMinCandidate;
+            let axisMax = Math.max(alertAxis.axisMaxCandidate, axisMin + 1);
+            if (!Number.isFinite(axisMin)) axisMin = 0;
+            if (!Number.isFinite(axisMax)) axisMax = axisMin + 1;
+            if (axisMax <= axisMin) axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
+            const span = axisMax - axisMin;
+            const topPad = span * 0.12 || Math.max(Math.abs(axisMax), 1) * 0.12;
+            const bottomPad = alertAxis.positiveOnly ? 0 : (span * 0.05 || topPad * 0.5);
+            axisMax += topPad;
+            axisMin -= bottomPad;
+            if (alertAxis.positiveOnly && axisMin < 0) axisMin = 0;
+            yAxis.min = axisMin;
+            yAxis.max = axisMax;
+          }
         }
         chart.setOption({
           backgroundColor: 'transparent',
@@ -2450,6 +2467,8 @@ Hooks.ExpandedWidgetView = {
     });
 
     const overlay = data.alert_overlay || null;
+    const alertStrategy = String(data.alert_strategy || '').toLowerCase();
+    const shouldApplyAlertAxis = !!overlay && (alertStrategy === 'threshold' || alertStrategy === 'range');
     if (overlay && series.length) {
       const primarySeries = series[0];
       const markAreas = [];
@@ -2614,44 +2633,53 @@ Hooks.ExpandedWidgetView = {
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
     const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
     const legendText = isDarkMode ? '#D1D5DB' : '#374151';
-    const extractPointValue = (point) => {
-      if (Array.isArray(point)) return Number(point[1]);
-      if (point && typeof point === 'object') {
-        if (Array.isArray(point.value)) return Number(point.value[1]);
-        if ('value' in point) return Number(point.value);
+    let alertAxis = null;
+    if (shouldApplyAlertAxis) {
+      const extractPointValue = (point) => {
+        if (Array.isArray(point)) return Number(point[1]);
+        if (point && typeof point === 'object') {
+          if (Array.isArray(point.value)) return Number(point.value[1]);
+          if ('value' in point) return Number(point.value);
+        }
+        if (Number.isFinite(point)) return Number(point);
+        return null;
+      };
+      const updateBounds = (bounds, value) => {
+        if (!Number.isFinite(value)) return;
+        if (value < bounds.min) bounds.min = value;
+        if (value > bounds.max) bounds.max = value;
+      };
+      const seriesBounds = { min: Infinity, max: -Infinity };
+      series.forEach((s) => {
+        (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
+      });
+      const overlayBounds = { min: Infinity, max: -Infinity };
+      if (overlay) {
+        if (Array.isArray(overlay.reference_lines)) {
+          overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
+        }
+        if (Array.isArray(overlay.bands)) {
+          overlay.bands.forEach((band) => {
+            updateBounds(overlayBounds, Number(band.min));
+            updateBounds(overlayBounds, Number(band.max));
+          });
+        }
+        if (Array.isArray(overlay.points)) {
+          overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
+        }
       }
-      if (Number.isFinite(point)) return Number(point);
-      return null;
-    };
-    const updateBounds = (bounds, value) => {
-      if (!Number.isFinite(value)) return;
-      if (value < bounds.min) bounds.min = value;
-      if (value > bounds.max) bounds.max = value;
-    };
-    const seriesBounds = { min: Infinity, max: -Infinity };
-    series.forEach((s) => {
-      (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
-    });
-    const overlayBounds = { min: Infinity, max: -Infinity };
-    if (overlay) {
-      if (Array.isArray(overlay.reference_lines)) {
-        overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
-      }
-      if (Array.isArray(overlay.bands)) {
-        overlay.bands.forEach((band) => {
-          updateBounds(overlayBounds, Number(band.min));
-          updateBounds(overlayBounds, Number(band.max));
-        });
-      }
-      if (Array.isArray(overlay.points)) {
-        overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
+      const minCandidates = [seriesBounds.min, overlayBounds.min].filter(Number.isFinite);
+      const maxCandidates = [seriesBounds.max, overlayBounds.max].filter(Number.isFinite);
+      const positiveOnly = minCandidates.length === 0 || minCandidates.every((value) => value >= 0);
+      let axisMinCandidate = minCandidates.length ? Math.min(...minCandidates) : (positiveOnly ? 0 : -1);
+      let axisMaxCandidate = maxCandidates.length ? Math.max(...maxCandidates) : (axisMinCandidate > 0 ? axisMinCandidate : 1);
+      if (Number.isFinite(axisMaxCandidate)) {
+        if (!Number.isFinite(axisMinCandidate)) {
+          axisMinCandidate = positiveOnly ? 0 : axisMaxCandidate;
+        }
+        alertAxis = { positiveOnly, axisMinCandidate, axisMaxCandidate };
       }
     }
-    const minCandidates = [seriesBounds.min, overlayBounds.min].filter(Number.isFinite);
-    const maxCandidates = [seriesBounds.max, overlayBounds.max].filter(Number.isFinite);
-    const positiveOnly = minCandidates.length === 0 || minCandidates.every((value) => value >= 0);
-    let axisMinCandidate = minCandidates.length ? Math.min(...minCandidates) : (positiveOnly ? 0 : -1);
-    let axisMaxCandidate = maxCandidates.length ? Math.max(...maxCandidates) : (axisMinCandidate > 0 ? axisMinCandidate : 1);
 
     const yAxis = {
       type: 'value',
@@ -2665,34 +2693,40 @@ Hooks.ExpandedWidgetView = {
         color: textColor,
         margin: 10,
         hideOverlap: true,
-        fontFamily: chartFontFamily,
-        formatter: (value) => {
-          if (normalized) return `${value}%`;
-          return formatCompactNumber(value);
-        }
+        fontFamily: chartFontFamily
       },
       splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
     };
 
     if (normalized) {
-      const normalizedMax = Math.max(axisMaxCandidate, 100);
-      const topPad = normalizedMax * 0.05 || 5;
-      yAxis.min = 0;
-      yAxis.max = normalizedMax + topPad;
+      yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, { formatter: (v) => `${v}%` });
+      if (alertAxis) {
+        const normalizedMax = Math.max(alertAxis.axisMaxCandidate, 100);
+        const topPad = normalizedMax * 0.05 || 5;
+        yAxis.min = 0;
+        yAxis.max = normalizedMax + topPad;
+      } else {
+        yAxis.max = 100;
+      }
     } else {
-      let axisMin = positiveOnly ? 0 : axisMinCandidate;
-      let axisMax = Math.max(axisMaxCandidate, axisMin + 1);
-      if (!Number.isFinite(axisMin)) axisMin = 0;
-      if (!Number.isFinite(axisMax)) axisMax = axisMin + 1;
-      if (axisMax <= axisMin) axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
-      const span = axisMax - axisMin;
-      const topPad = span * 0.12 || Math.max(Math.abs(axisMax), 1) * 0.12;
-      const bottomPad = positiveOnly ? 0 : (span * 0.05 || topPad * 0.5);
-      axisMax += topPad;
-      axisMin -= bottomPad;
-      if (positiveOnly && axisMin < 0) axisMin = 0;
-      yAxis.min = axisMin;
-      yAxis.max = axisMax;
+      yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, {
+        formatter: (value) => formatCompactNumber(value)
+      });
+      if (alertAxis) {
+        let axisMin = alertAxis.positiveOnly ? 0 : alertAxis.axisMinCandidate;
+        let axisMax = Math.max(alertAxis.axisMaxCandidate, axisMin + 1);
+        if (!Number.isFinite(axisMin)) axisMin = 0;
+        if (!Number.isFinite(axisMax)) axisMax = axisMin + 1;
+        if (axisMax <= axisMin) axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
+        const span = axisMax - axisMin;
+        const topPad = span * 0.12 || Math.max(Math.abs(axisMax), 1) * 0.12;
+        const bottomPad = alertAxis.positiveOnly ? 0 : (span * 0.05 || topPad * 0.5);
+        axisMax += topPad;
+        axisMin -= bottomPad;
+        if (alertAxis.positiveOnly && axisMin < 0) axisMin = 0;
+        yAxis.min = axisMin;
+        yAxis.max = axisMax;
+      }
     }
 
     chart.setOption({
