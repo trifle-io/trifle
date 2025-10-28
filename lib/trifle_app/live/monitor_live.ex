@@ -285,6 +285,7 @@ defmodule TrifleApp.MonitorLive do
      socket
      |> refresh_monitor_assigns()
      |> clear_alert_modal()
+     |> load_monitor_data()
      |> put_flash(:info, message)}
   end
 
@@ -293,6 +294,7 @@ defmodule TrifleApp.MonitorLive do
      socket
      |> refresh_monitor_assigns()
      |> clear_alert_modal()
+     |> load_monitor_data()
      |> put_flash(:info, "Alert deleted")}
   end
 
