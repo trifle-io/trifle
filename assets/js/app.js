@@ -1339,6 +1339,123 @@ Hooks.DashboardGrid = {
           if (colors.length) base.itemStyle = { color: colors[idx % colors.length] };
           return base;
         });
+        const overlay = it.alert_overlay || null;
+        if (overlay && series.length) {
+          const primarySeries = series[0];
+          const markAreas = [];
+          const defaultSegmentColor = 'rgba(248,113,113,0.22)';
+          const defaultBandColor = 'rgba(16,185,129,0.08)';
+          const defaultLineColor = '#f87171';
+          const defaultPointColor = '#f97316';
+          const isoValue = (iso, ts) => {
+            if (iso) return iso;
+            if (typeof ts === 'number') {
+              const dt = new Date(ts);
+              if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+            }
+            return null;
+          };
+          if (Array.isArray(overlay.segments)) {
+            overlay.segments.forEach((seg, index) => {
+              const startIso = isoValue(seg.from_iso, seg.from_ts);
+              let endIso = isoValue(seg.to_iso, seg.to_ts);
+              if (startIso && endIso && startIso === endIso) {
+                const adjusted = new Date(startIso);
+                if (!Number.isNaN(adjusted.getTime())) {
+                  adjusted.setMinutes(adjusted.getMinutes() + 1);
+                  endIso = adjusted.toISOString();
+                }
+              }
+              if (startIso && endIso) {
+                const itemStyle = seg.color ? { color: seg.color } : { color: defaultSegmentColor };
+                const label = seg.label || `Alert window #${index + 1}`;
+                markAreas.push([
+                  {
+                    name: label,
+                    xAxis: startIso,
+                    itemStyle,
+                    label: { color: itemStyle.color || defaultSegmentColor }
+                  },
+                  {
+                    xAxis: endIso
+                  }
+                ]);
+              }
+            });
+          }
+          if (Array.isArray(overlay.bands)) {
+            overlay.bands.forEach((band) => {
+              if (typeof band.min === 'number' && typeof band.max === 'number') {
+                const itemStyle = band.color ? { color: band.color } : { color: defaultBandColor };
+                const label = band.label || 'Target band';
+                markAreas.push([
+                  {
+                    name: label,
+                    yAxis: band.min,
+                    xAxis: 'min',
+                    itemStyle,
+                    label: { color: '#0f766e' }
+                  },
+                  {
+                    yAxis: band.max,
+                    xAxis: 'max'
+                  }
+                ]);
+              }
+            });
+          }
+          if (markAreas.length) {
+            primarySeries.markArea = { data: markAreas };
+          }
+          if (Array.isArray(overlay.reference_lines) && overlay.reference_lines.length) {
+            primarySeries.markLine = {
+              symbol: 'none',
+              silent: true,
+              data: overlay.reference_lines
+                .filter((line) => typeof line.value === 'number')
+                .map((line) => ({
+                  yAxis: line.value,
+                  name: line.label || formatCompactNumber(line.value),
+                  lineStyle: {
+                    color: line.color || defaultLineColor,
+                    type: 'dashed',
+                    width: 1.2
+                  },
+                  label: {
+                    formatter: line.label || formatCompactNumber(line.value),
+                    color: line.color || defaultLineColor
+                  }
+                }))
+            };
+          }
+          if (Array.isArray(overlay.points)) {
+            const markPoints = overlay.points
+              .filter((point) => typeof point.value === 'number')
+              .map((point, idx) => {
+                const coordX = isoValue(point.at_iso, point.ts);
+                if (!coordX) return null;
+                const color = point.color || defaultPointColor;
+                return {
+                  coord: [coordX, point.value],
+                  value: point.value,
+                  name: point.label || `Alert point #${idx + 1}`,
+                  itemStyle: { color },
+                  label: {
+                    color,
+                    formatter: point.label || formatCompactNumber(point.value)
+                  }
+                };
+              })
+              .filter(Boolean);
+            if (markPoints.length) {
+              primarySeries.markPoint = {
+                symbol: 'circle',
+                symbolSize: 32,
+                data: markPoints
+              };
+            }
+          }
+        }
         const yName = normalized ? (it.y_label || 'Percentage') : (it.y_label || '');
         const yAxis = {
           type: 'value',

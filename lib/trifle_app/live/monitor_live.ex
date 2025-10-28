@@ -4,12 +4,14 @@ defmodule TrifleApp.MonitorLive do
   alias Phoenix.LiveView.JS
   alias Ecto.Changeset
   alias Trifle.Monitors
+  alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Organizations
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Exports.Series, as: SeriesExport
+  alias Trifle.Stats.Series
   alias Trifle.Stats.Source, as: StatsSource
   alias Trifle.Stats.Tabler
 
@@ -79,6 +81,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:insights_timeseries, %{})
      |> assign(:insights_category, %{})
      |> assign(:insights_text_widgets, %{})
+     |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
      |> assign(:show_error_modal, false)}
@@ -1022,14 +1025,17 @@ defmodule TrifleApp.MonitorLive do
       end
 
     datasets = dataset_maps_for_dashboard(stats, dashboard)
+    {timeseries_with_overlays, alert_evaluations} =
+      build_alert_visual_context(socket, datasets.timeseries, stats)
 
     socket
     |> assign(:insights_dashboard, dashboard)
     |> assign(:insights_kpi_values, datasets.kpi_values)
     |> assign(:insights_kpi_visuals, datasets.kpi_visuals)
-    |> assign(:insights_timeseries, datasets.timeseries)
+    |> assign(:insights_timeseries, timeseries_with_overlays)
     |> assign(:insights_category, datasets.category)
     |> assign(:insights_text_widgets, datasets.text)
+    |> assign(:alert_evaluations, alert_evaluations)
   end
 
   defp reset_monitor_widget_datasets(socket) do
@@ -1041,6 +1047,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_timeseries, datasets.timeseries)
     |> assign(:insights_category, datasets.category)
     |> assign(:insights_text_widgets, datasets.text)
+    |> assign(:alert_evaluations, %{})
   end
 
   defp empty_widget_dataset_maps do
@@ -1088,7 +1095,7 @@ defmodule TrifleApp.MonitorLive do
       |> to_string()
       |> String.trim()
 
-    widget_items =
+    base_widgets =
       monitor
       |> MonitorLayout.alert_widgets()
       |> case do
@@ -1096,6 +1103,11 @@ defmodule TrifleApp.MonitorLive do
         [] -> [alert_preview_widget(monitor, metric_path)]
         list -> list
       end
+
+    alert_widgets =
+      build_alert_visual_widgets(monitor, metric_path, length(base_widgets))
+
+    widget_items = base_widgets ++ alert_widgets
 
     %{
       id: "#{monitor.id}-alert-preview",
@@ -1131,6 +1143,100 @@ defmodule TrifleApp.MonitorLive do
       "y" => 0
     }
   end
+
+  defp build_alert_visual_widgets(_monitor, "", _offset), do: []
+
+  defp build_alert_visual_widgets(%Monitor{} = monitor, metric_path, offset) do
+    monitor.alerts
+    |> List.wrap()
+    |> Enum.with_index()
+    |> Enum.map(fn {alert, idx} ->
+      alert_visual_widget(monitor, alert, metric_path, offset + idx)
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp alert_visual_widget(_monitor, %Alert{id: nil}, _metric_path, _index), do: nil
+
+  defp alert_visual_widget(%Monitor{} = monitor, %Alert{} = alert, metric_path, index) do
+    %{
+      "id" => alert_widget_dom_id(monitor, alert),
+      "type" => "timeseries",
+      "title" => alert_visual_title(alert),
+      "chart_type" => "line",
+      "legend" => false,
+      "stacked" => false,
+      "normalized" => false,
+      "paths" => [metric_path],
+      "y_label" => metric_path,
+      "w" => 12,
+      "h" => 5,
+      "x" => 0,
+      "y" => max(index, 0) * 6,
+      "alert_ref" => to_string(alert.id),
+      "alert_strategy" =>
+        alert.analysis_strategy
+        |> Kernel.||(:threshold)
+        |> to_string()
+    }
+  end
+
+  defp alert_visual_title(%Alert{} = alert), do: alert_primary_label(alert)
+
+  defp alert_widget_dom_id(%Monitor{id: monitor_id}, %Alert{id: alert_id}) do
+    "#{monitor_id}-alert-#{alert_id}-chart"
+  end
+
+  defp build_alert_visual_context(_socket, timeseries_map, %Series{} = _stats)
+       when timeseries_map == %{} do
+    {timeseries_map, %{}}
+  end
+
+  defp build_alert_visual_context(socket, timeseries_map, %Series{} = stats) do
+    monitor = socket.assigns.monitor
+    alerts = monitor.alerts || []
+
+    metric_path =
+      monitor.alert_metric_path
+      |> to_string()
+      |> String.trim()
+
+    if metric_path == "" or alerts == [] do
+      {timeseries_map, %{}}
+    else
+      Enum.reduce(alerts, {timeseries_map, %{}}, fn alert, {acc_map, evaluations} ->
+        case AlertEvaluator.evaluate(alert, stats, metric_path) do
+          {:ok, result} ->
+            overlay = AlertEvaluator.overlay(result)
+            widget_id = alert_widget_dom_id(monitor, alert)
+
+            updated_map =
+              case Map.fetch(acc_map, widget_id) do
+                {:ok, dataset} ->
+                  dataset =
+                    dataset
+                    |> Map.put(:alert_overlay, overlay)
+                    |> Map.put(:alert_triggered, result.triggered?)
+                    |> Map.put(:alert_summary, result.summary)
+                    |> Map.put(:alert_meta, result.meta)
+
+                  Map.put(acc_map, widget_id, dataset)
+
+                :error ->
+                  acc_map
+              end
+
+            {updated_map, Map.put(evaluations, alert.id, result)}
+
+          {:error, _reason} ->
+            {acc_map, evaluations}
+        end
+      end)
+    end
+  end
+
+  defp build_alert_visual_context(_socket, timeseries_map, _stats),
+    do: {timeseries_map || %{}, %{}}
 
   defp find_monitor_widget(nil, _id), do: nil
 
@@ -1375,6 +1481,21 @@ defmodule TrifleApp.MonitorLive do
       nil -> label
       summary -> "#{label} · #{summary}"
     end
+  end
+
+  defp alert_evaluation_summary(nil), do: "Awaiting recent data."
+
+  defp alert_evaluation_summary(%AlertEvaluator.Result{summary: summary, triggered?: triggered?})
+       when is_binary(summary) and summary != "" do
+    summary
+  end
+
+  defp alert_evaluation_summary(%AlertEvaluator.Result{triggered?: true}) do
+    "Triggered in the latest evaluation window."
+  end
+
+  defp alert_evaluation_summary(%AlertEvaluator.Result{triggered?: false}) do
+    "No recent breaches detected."
   end
 
   defp alert_configuration_summary(%Alert{} = alert) do
@@ -1903,6 +2024,10 @@ defmodule TrifleApp.MonitorLive do
                       <div class="min-w-0">
                         <p class="text-sm font-semibold text-slate-900 dark:text-white">
                           {alert_primary_label(alert)}
+                        </p>
+                        <% evaluation = Map.get(@alert_evaluations || %{}, alert.id) %>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          {alert_evaluation_summary(evaluation)}
                         </p>
                       </div>
                       <div class="flex items-center gap-2">
