@@ -1311,9 +1311,15 @@ defmodule TrifleApp.MonitorLive do
     end
   end
 
+  defp monitor_download_handler(menu_id) when is_binary(menu_id) do
+    "(function(el){var m=el.closest('#" <>
+      menu_id <>
+      "');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
+  end
+
   defp alert_evaluation_summary(nil), do: "Awaiting recent data."
 
-  defp alert_evaluation_summary(%AlertEvaluator.Result{summary: summary, triggered?: triggered?})
+  defp alert_evaluation_summary(%AlertEvaluator.Result{summary: summary, triggered?: _triggered?})
        when is_binary(summary) and summary != "" do
     summary
   end
@@ -1486,177 +1492,10 @@ defmodule TrifleApp.MonitorLive do
       <div class="grid gap-6 lg:grid-cols-3">
         <div class="lg:col-span-2 space-y-4">
           <% export_params = build_monitor_export_params(assigns) %>
-          <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
             <h3 class="text-base font-semibold text-slate-900 dark:text-white">
               Monitor insights
             </h3>
-            <div
-              id="monitor-download-menu"
-              class="relative"
-              data-default-label="Export"
-              phx-hook="DownloadMenu"
-            >
-              <button
-                type="button"
-                phx-click="toggle_export_dropdown"
-                data-role="download-button"
-                class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                  />
-                </svg>
-                <span class="inline" data-role="download-text">Export</span>
-                <svg
-                  class="ml-1 h-3 w-3 text-slate-500 dark:text-slate-400"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 0 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </button>
-
-              <%= if @show_export_dropdown do %>
-                <div
-                  data-role="download-dropdown"
-                  class="absolute right-0 z-40 mt-2 w-48 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg py-1"
-                  phx-click-away="hide_export_dropdown"
-                >
-                  <button
-                    type="button"
-                    phx-click="download_monitor_csv"
-                    data-export-trigger="csv"
-                    class="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
-                  >
-                    <svg
-                      class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
-                      />
-                    </svg>
-                    CSV (table)
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="download_monitor_json"
-                    data-export-trigger="json"
-                    class="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
-                  >
-                    <svg
-                      class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
-                      />
-                    </svg>
-                    JSON (raw)
-                  </button>
-                  <a
-                    data-export-link
-                    onclick="(function(el){var m=el.closest('#monitor-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
-                    href={~p"/export/monitors/#{@monitor.id}/pdf?#{export_params}"}
-                    target="download_iframe"
-                    class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
-                  >
-                    <svg
-                      class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                      />
-                    </svg>
-                    PDF (print)
-                  </a>
-                  <a
-                    data-export-link
-                    onclick="(function(el){var m=el.closest('#monitor-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
-                    href={
-                      ~p"/export/monitors/#{@monitor.id}/png?#{Map.put(export_params, "theme", "light")}"
-                    }
-                    target="download_iframe"
-                    class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
-                  >
-                    <svg
-                      class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                      />
-                    </svg>
-                    PNG (light)
-                  </a>
-                  <a
-                    data-export-link
-                    onclick="(function(el){var m=el.closest('#monitor-download-menu');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
-                    href={
-                      ~p"/export/monitors/#{@monitor.id}/png?#{Map.put(export_params, "theme", "dark")}"
-                    }
-                    target="download_iframe"
-                    class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
-                  >
-                    <svg
-                      class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                      />
-                    </svg>
-                    PNG (dark)
-                  </a>
-                </div>
-              <% end %>
-            </div>
           </div>
 
           <% dashboard_for_render =
@@ -1829,11 +1668,129 @@ defmodule TrifleApp.MonitorLive do
           class="mt-8"
           summary={summary}
           load_duration_microseconds={@load_duration_microseconds}
-          show_export_dropdown={false}
+          show_export_dropdown={@show_export_dropdown}
           dashboard={monitor_footer_resource(@monitor)}
-          export_params={%{}}
-          export_menu?={false}
-        />
+          export_params={export_params}
+          download_menu_id="monitor-download-menu"
+        >
+          <:export_menu :let={slot_assigns}>
+            <% menu_id = slot_assigns[:download_menu_id] || "monitor-download-menu" %>
+            <% params = slot_assigns[:export_params] || %{} %>
+            <button
+              type="button"
+              phx-click="download_monitor_csv"
+              data-export-trigger="csv"
+              class="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+            >
+              <svg
+                class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
+                />
+              </svg>
+              CSV (table)
+            </button>
+            <button
+              type="button"
+              phx-click="download_monitor_json"
+              data-export-trigger="json"
+              class="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+            >
+              <svg
+                class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 16.5V3m0 13.5L8.25 12M12 16.5l3.75-4.5M3 21h18"
+                />
+              </svg>
+              JSON (raw)
+            </button>
+            <a
+              data-export-link
+              onclick={monitor_download_handler(menu_id)}
+              href={~p"/export/monitors/#{@monitor.id}/pdf?#{params}"}
+              target="download_iframe"
+              class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+            >
+              <svg
+                class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                />
+              </svg>
+              PDF (print)
+            </a>
+            <a
+              data-export-link
+              onclick={monitor_download_handler(menu_id)}
+              href={~p"/export/monitors/#{@monitor.id}/png?#{Map.put(params, "theme", "light")}"}
+              target="download_iframe"
+              class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+            >
+              <svg
+                class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                />
+              </svg>
+              PNG (light)
+            </a>
+            <a
+              data-export-link
+              onclick={monitor_download_handler(menu_id)}
+              href={~p"/export/monitors/#{@monitor.id}/png?#{Map.put(params, "theme", "dark")}"}
+              target="download_iframe"
+              class="block px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+            >
+              <svg
+                class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                />
+              </svg>
+              PNG (dark)
+            </a>
+          </:export_menu>
+        </.dashboard_footer>
       <% end %>
 
       <%= if @expanded_widget do %>
