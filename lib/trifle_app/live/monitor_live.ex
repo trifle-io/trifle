@@ -555,6 +555,7 @@ defmodule TrifleApp.MonitorLive do
 
         if Parser.valid?(parser) do
           from = floor_time(now, parser.offset, parser.unit, config)
+
           to =
             from
             |> Nocturnal.new(config)
@@ -1610,10 +1611,10 @@ defmodule TrifleApp.MonitorLive do
                     </p>
                   </div>
                 <% else %>
-                  <ul class="mt-2 space-y-3">
+                  <ul class="mt-2 space-y-2">
                     <li
                       :for={alert <- @alerts}
-                      class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800"
+                      class="flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800"
                     >
                       <div class="min-w-0">
                         <p class="text-sm font-semibold text-slate-900 dark:text-white">
