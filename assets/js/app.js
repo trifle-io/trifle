@@ -2372,42 +2372,208 @@ Hooks.ExpandedWidgetView = {
     const stacked = !!data.stacked;
     const normalized = !!data.normalized;
     const showLegend = !!data.legend;
-    const bottomPadding = showLegend ? 64 : 36;
+    const bottomPadding = showLegend ? 56 : 28;
+    const palette = Array.isArray(this.colors) ? this.colors : [];
+    const chartFontFamily =
+      'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
+    const overlayLabelText = isDarkMode ? '#F8FAFC' : '#0F172A';
 
     const series = (data.series || []).map((s, idx) => {
-      const color = this.seriesColor(idx);
-      const cfg = {
+      const base = {
         name: s.name || `Series ${idx + 1}`,
         type: chartType === 'area' ? 'line' : chartType,
-        data: s.data || [],
-        showSymbol: false,
-        smooth: chartType !== 'bar',
-        itemStyle: { color }
+        data: Array.isArray(s.data) ? s.data : [],
+        showSymbol: false
       };
-      if (stacked) cfg.stack = 'total';
-      if (chartType === 'area' || chartType === 'line') {
-        cfg.lineStyle = { width: 2, color };
+      if (stacked) base.stack = 'total';
+      if (chartType === 'area') base.areaStyle = { opacity: 0.1 };
+      if (palette.length) {
+        const color = palette[idx % palette.length];
+        base.itemStyle = { color };
       }
-      if (chartType === 'area') cfg.areaStyle = { opacity: 0.18 };
-      return cfg;
+      return base;
     });
 
-    const textColor = isDarkMode ? '#CBD5F5' : '#4B5563';
-    const axisLineColor = isDarkMode ? '#334155' : '#E5E7EB';
+    const overlay = data.alert_overlay || null;
+    if (overlay && series.length) {
+      const primarySeries = series[0];
+      const markAreas = [];
+      const defaultSegmentColor = 'rgba(248,113,113,0.22)';
+      const defaultBandColor = 'rgba(16,185,129,0.08)';
+      const defaultLineColor = '#f87171';
+      const defaultPointColor = '#f97316';
+      const isoValue = (iso, ts) => {
+        if (iso) return iso;
+        if (typeof ts === 'number') {
+          const dt = new Date(ts);
+          if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+        }
+        return null;
+      };
+
+      if (Array.isArray(overlay.segments)) {
+        overlay.segments.forEach((segment, index) => {
+          const startIso = isoValue(segment.from_iso, segment.from_ts);
+          let endIso = isoValue(segment.to_iso, segment.to_ts);
+          if (startIso && endIso && startIso === endIso) {
+            const adjusted = new Date(startIso);
+            if (!Number.isNaN(adjusted.getTime())) {
+              adjusted.setMinutes(adjusted.getMinutes() + 1);
+              endIso = adjusted.toISOString();
+            }
+          }
+          if (startIso && endIso) {
+            const itemStyle = segment.color ? { color: segment.color } : { color: defaultSegmentColor };
+            const label = segment.label || `Alert window #${index + 1}`;
+            markAreas.push([
+              {
+                name: label,
+                xAxis: startIso,
+                itemStyle,
+                label: {
+                  color: overlayLabelText,
+                  fontFamily: chartFontFamily,
+                  position: 'insideTop',
+                  distance: 6,
+                  overflow: 'break',
+                  align: 'left',
+                  backgroundColor: overlayLabelBackground,
+                  padding: [2, 6],
+                  borderRadius: 4
+                },
+                emphasis: { disabled: true }
+              },
+              { xAxis: endIso }
+            ]);
+          }
+        });
+      }
+
+      if (Array.isArray(overlay.bands)) {
+        overlay.bands.forEach((band) => {
+          if (typeof band.min === 'number' && typeof band.max === 'number') {
+            const itemStyle = band.color ? { color: band.color } : { color: defaultBandColor };
+            const label = band.label || 'Target band';
+            markAreas.push([
+              {
+                name: label,
+                yAxis: band.min,
+                xAxis: 'min',
+                itemStyle,
+                label: {
+                  color: overlayLabelText,
+                  fontFamily: chartFontFamily,
+                  position: 'insideTop',
+                  distance: 6,
+                  overflow: 'break',
+                  align: 'left',
+                  backgroundColor: overlayLabelBackground,
+                  padding: [2, 6],
+                  borderRadius: 4
+                },
+                emphasis: { disabled: true }
+              },
+              { yAxis: band.max, xAxis: 'max' }
+            ]);
+          }
+        });
+      }
+
+      if (markAreas.length) {
+        primarySeries.markArea = { data: markAreas, silent: true, emphasis: { disabled: true } };
+      }
+
+      if (Array.isArray(overlay.reference_lines) && overlay.reference_lines.length) {
+        primarySeries.markLine = {
+          symbol: 'none',
+          silent: true,
+          animation: false,
+          emphasis: { disabled: true },
+          data: overlay.reference_lines
+            .filter((line) => typeof line.value === 'number')
+            .map((line) => ({
+              yAxis: line.value,
+              name: line.label || formatCompactNumber(line.value),
+              lineStyle: {
+                color: line.color || defaultLineColor,
+                type: 'dashed',
+                width: 1.2
+              },
+              label: {
+                formatter: line.label || formatCompactNumber(line.value),
+                color: overlayLabelText,
+                fontFamily: chartFontFamily,
+                position: 'insideEndTop',
+                distance: 8,
+                overflow: 'break',
+                backgroundColor: overlayLabelBackground,
+                padding: [2, 6],
+                borderRadius: 4
+              },
+              emphasis: { disabled: true }
+            }))
+        };
+      }
+
+      if (Array.isArray(overlay.points)) {
+        const markPoints = overlay.points
+          .filter((point) => typeof point.value === 'number')
+          .map((point, idx) => {
+            const coordX = isoValue(point.at_iso, point.ts);
+            if (!coordX) return null;
+            const color = point.color || defaultPointColor;
+            return {
+              coord: [coordX, point.value],
+              value: point.value,
+              name: point.label || `Alert point #${idx + 1}`,
+              itemStyle: { color },
+              label: {
+                color: overlayLabelText,
+                formatter: point.label || formatCompactNumber(point.value),
+                fontFamily: chartFontFamily,
+                position: 'top',
+                distance: 10,
+                backgroundColor: overlayLabelBackground,
+                padding: [2, 6],
+                borderRadius: 4,
+                overflow: 'truncate'
+              }
+            };
+          })
+          .filter(Boolean);
+
+        if (markPoints.length) {
+          primarySeries.markPoint = {
+            symbol: 'circle',
+            symbolSize: 16,
+            animation: false,
+            silent: true,
+            emphasis: { disabled: true },
+            data: markPoints
+          };
+        }
+      }
+    }
+
+    const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
+    const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
     const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
-    const legendText = isDarkMode ? '#E2E8F0' : '#1F2937';
+    const legendText = isDarkMode ? '#D1D5DB' : '#374151';
 
     const yAxis = {
       type: 'value',
       min: 0,
       name: normalized ? (data.y_label || 'Percentage') : (data.y_label || ''),
       nameLocation: 'middle',
-      nameGap: 48,
-      nameTextStyle: { color: textColor },
+      nameGap: 44,
+      nameTextStyle: { color: textColor, fontFamily: chartFontFamily },
       axisLine: { lineStyle: { color: axisLineColor } },
       axisLabel: {
         color: textColor,
-        margin: 12,
+        margin: 10,
+        hideOverlap: true,
+        fontFamily: chartFontFamily,
         formatter: (value) => {
           if (normalized) return `${value}%`;
           return formatCompactNumber(value);
@@ -2420,19 +2586,26 @@ Hooks.ExpandedWidgetView = {
 
     chart.setOption({
       backgroundColor: 'transparent',
-      color: this.colors.length ? this.colors : undefined,
-      grid: { top: 20, bottom: bottomPadding, left: 72, right: 28, containLabel: true },
+      textStyle: { fontFamily: chartFontFamily },
+      color: palette.length ? palette : undefined,
+      grid: { top: 12, bottom: bottomPadding, left: 56, right: 24, containLabel: true },
       xAxis: {
         type: 'time',
         axisLine: { lineStyle: { color: axisLineColor } },
-        axisLabel: { color: textColor, margin: 12, hideOverlap: true },
+        axisLabel: {
+          color: textColor,
+          margin: 10,
+          hideOverlap: true,
+          fontFamily: chartFontFamily
+        },
         splitLine: { show: false }
       },
       yAxis,
-      legend: showLegend ? { type: 'scroll', bottom: 8, textStyle: { color: legendText } } : { show: false },
+      legend: showLegend ? { type: 'scroll', bottom: 6, textStyle: { color: legendText, fontFamily: chartFontFamily } } : { show: false },
       tooltip: {
         trigger: 'axis',
         appendToBody: true,
+        textStyle: { fontFamily: chartFontFamily },
         valueFormatter: (v) => {
           if (v == null) return '-';
           return normalized ? `${Number(v).toFixed(2)}%` : formatCompactNumber(v);
