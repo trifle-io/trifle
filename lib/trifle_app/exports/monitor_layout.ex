@@ -5,9 +5,10 @@ defmodule TrifleApp.Exports.MonitorLayout do
   """
 
   alias Ecto.NoResultsError
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{Alert, Monitor}
+  alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Organizations
-  alias Trifle.Stats.Source
+  alias Trifle.Stats.{Series, Source}
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Exports.Series, as: SeriesExport
@@ -24,7 +25,20 @@ defmodule TrifleApp.Exports.MonitorLayout do
   """
   @spec alert_widgets(Monitor.t()) :: list()
   def alert_widgets(%Monitor{} = monitor) do
-    monitor_alert_widgets(monitor) || []
+    metric_path =
+      monitor.alert_metric_path
+      |> to_string()
+      |> String.trim()
+
+    base_widgets =
+      case monitor_alert_widgets(monitor) do
+        nil -> build_default_alert_widgets(monitor, metric_path)
+        [] -> build_default_alert_widgets(monitor, metric_path)
+        list -> list
+      end
+
+    overlay_widgets = alert_overlay_widgets(monitor, metric_path, length(base_widgets || []))
+    (base_widgets || []) ++ overlay_widgets
   end
 
   @doc """
@@ -301,6 +315,9 @@ defmodule TrifleApp.Exports.MonitorLayout do
           |> WidgetData.dataset_maps()
           |> maybe_prune_dataset_maps(Enum.map(grid_items, &widget_id/1))
 
+        {datasets, _alert_evaluations} =
+          inject_alert_overlay(datasets, monitor, stats_struct)
+
         render_assigns =
           %{
             dashboard: %{
@@ -359,12 +376,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
       |> to_string()
       |> String.trim()
 
-    widgets =
-      case monitor_alert_widgets(monitor) do
-        nil -> build_default_alert_widgets(monitor, metric_path)
-        [] -> []
-        list -> list
-      end
+    widgets = alert_widgets(monitor)
 
     %{
       id: "#{monitor.id}-alert-preview",
@@ -424,6 +436,134 @@ defmodule TrifleApp.Exports.MonitorLayout do
         |> Enum.map(&build_alert_widget(monitor, &1))
         |> Enum.reject(&is_nil/1)
     end
+  end
+
+  defp monitor_alerts(%Monitor{alerts: %Ecto.Association.NotLoaded{}}), do: []
+  defp monitor_alerts(%Monitor{alerts: nil}), do: []
+  defp monitor_alerts(%Monitor{alerts: alerts}) when is_list(alerts), do: alerts
+  defp monitor_alerts(_), do: []
+
+  @spec alert_widget_id(Monitor.t(), Alert.t()) :: String.t() | nil
+  def alert_widget_id(%Monitor{id: monitor_id}, %Alert{id: alert_id})
+      when not is_nil(monitor_id) and not is_nil(alert_id) do
+    "#{monitor_id}-alert-#{alert_id}-chart"
+  end
+
+  def alert_widget_id(_, _), do: nil
+
+  @spec alert_label(Alert.t()) :: String.t()
+  def alert_label(%Alert{} = alert) do
+    label = humanize_analysis_strategy(alert.analysis_strategy || :threshold)
+
+    case alert_configuration_summary(alert) do
+      nil -> label
+      summary -> "#{label} · #{summary}"
+    end
+  end
+
+  def inject_alert_overlay(datasets, %Monitor{} = monitor, %Series{} = stats) do
+    metric_path =
+      monitor.alert_metric_path
+      |> to_string()
+      |> String.trim()
+
+    if metric_path == "" do
+      {datasets, %{}}
+    else
+      {overlay_map, evaluations} = build_alert_overlay_map(monitor, stats, metric_path)
+
+      updated_timeseries =
+        Enum.reduce(overlay_map, Map.get(datasets, :timeseries, %{}), fn {widget_id, extras},
+                                                                          acc ->
+          if Map.has_key?(acc, widget_id) do
+            Map.update!(acc, widget_id, &Map.merge(&1, extras))
+          else
+            acc
+          end
+        end)
+
+      datasets =
+        datasets
+        |> Map.put(:timeseries, updated_timeseries)
+
+      {datasets, evaluations}
+    end
+  end
+
+  def inject_alert_overlay(datasets, _monitor, _stats), do: {datasets, %{}}
+
+  defp build_alert_overlay_map(%Monitor{} = monitor, %Series{} = stats, metric_path) do
+    monitor
+    |> monitor_alerts()
+    |> Enum.reduce({%{}, %{}}, fn
+      %Alert{id: nil}, acc ->
+        acc
+
+      %Alert{id: alert_id} = alert, {overlay_map, evaluations} ->
+        widget_id = alert_widget_id(monitor, alert)
+
+        with widget_id when is_binary(widget_id) <- widget_id,
+             {:ok, result} <- AlertEvaluator.evaluate(alert, stats, metric_path) do
+          overlay = AlertEvaluator.overlay(result)
+
+          dataset_extras = %{
+            alert_overlay: overlay,
+            alert_triggered: result.triggered?,
+            alert_summary: result.summary,
+            alert_meta: result.meta || %{},
+            alert_ref: to_string(alert_id),
+            alert_strategy: alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
+          }
+
+          {
+            Map.put(overlay_map, widget_id, dataset_extras),
+            Map.put(evaluations, alert_id, result)
+          }
+        else
+          _ -> {overlay_map, evaluations}
+        end
+    end)
+  end
+
+  defp alert_overlay_widgets(_monitor, "", _offset), do: []
+
+  defp alert_overlay_widgets(%Monitor{} = monitor, metric_path, offset) do
+    monitor
+    |> monitor_alerts()
+    |> Enum.reject(fn
+      %Alert{id: nil} -> true
+      _ -> false
+    end)
+    |> Enum.with_index(offset)
+    |> Enum.map(fn {alert, idx} ->
+      case alert_widget_id(monitor, alert) do
+        nil ->
+          nil
+
+        widget_id ->
+          %{
+            "id" => widget_id,
+            "type" => "timeseries",
+            "title" => alert_label(alert),
+            "chart_type" => "line",
+            "legend" => false,
+            "stacked" => false,
+            "normalized" => false,
+            "paths" => [metric_path],
+            "y_label" => metric_path,
+            "w" => 12,
+            "h" => 5,
+            "x" => 0,
+            "y" => idx * 6,
+            "alert_ref" => to_string(alert.id),
+            "alert_strategy" =>
+              alert.analysis_strategy
+              |> Kernel.||(:threshold)
+              |> to_string()
+          }
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 
   defp extract_target_widgets(%{"widgets" => widgets}) when is_list(widgets), do: widgets
@@ -731,6 +871,99 @@ defmodule TrifleApp.Exports.MonitorLayout do
         parse_timeframe_range(timeframe_input, config)
     end
   end
+
+  defp humanize_analysis_strategy(nil), do: "Threshold"
+  defp humanize_analysis_strategy(:threshold), do: "Threshold"
+  defp humanize_analysis_strategy(:range), do: "Range"
+  defp humanize_analysis_strategy(:hampel), do: "Hampel (Robust Outlier)"
+  defp humanize_analysis_strategy(:cusum), do: "CUSUM (Level Shift)"
+
+  defp humanize_analysis_strategy(strategy) when is_atom(strategy) do
+    strategy
+    |> Atom.to_string()
+    |> humanize_analysis_strategy()
+  end
+
+  defp humanize_analysis_strategy(strategy) when is_binary(strategy) do
+    strategy
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+
+  defp humanize_analysis_strategy(_), do: "Threshold"
+
+  defp alert_configuration_summary(%Alert{} = alert) do
+    case {alert.analysis_strategy || :threshold, alert.settings} do
+      {:threshold, %Alert.Settings{} = settings} ->
+        case settings.threshold_value do
+          value when is_number(value) ->
+            comparator =
+              case settings.threshold_direction || :above do
+                :below -> "≤"
+                _ -> "≥"
+              end
+
+            "𝑥 #{comparator} #{format_number(value)}"
+
+          _ ->
+            nil
+        end
+
+      {:range, %Alert.Settings{} = settings} ->
+        min_value = settings.range_min_value
+        max_value = settings.range_max_value
+
+        if is_number(min_value) and is_number(max_value) do
+          "#{format_number(min_value)} ≤ 𝑥 ≤ #{format_number(max_value)}"
+        else
+          nil
+        end
+
+      {:hampel, %Alert.Settings{} = settings} ->
+        ["𝑤", "𝑘", "𝑚"]
+        |> Enum.zip([
+          settings.hampel_window_size,
+          settings.hampel_k,
+          settings.hampel_mad_floor
+        ])
+        |> Enum.map(fn {label, value} -> format_pair(label, value) end)
+        |> Enum.reject(&is_nil/1)
+        |> case do
+          [] -> nil
+          parts -> Enum.join(parts, ", ")
+        end
+
+      {:cusum, %Alert.Settings{} = settings} ->
+        ["𝑘", "𝐻"]
+        |> Enum.zip([settings.cusum_k, settings.cusum_h])
+        |> Enum.map(fn {label, value} -> format_pair(label, value) end)
+        |> Enum.reject(&is_nil/1)
+        |> case do
+          [] -> nil
+          parts -> Enum.join(parts, ", ")
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp format_pair(_label, value) when not is_number(value), do: nil
+  defp format_pair(label, value), do: "#{label}=#{format_number(value)}"
+
+  defp format_number(nil), do: nil
+  defp format_number(value) when is_integer(value), do: Integer.to_string(value)
+
+  defp format_number(value) when is_float(value) do
+    value
+    |> Float.round(6)
+    |> :erlang.float_to_binary(decimals: 6)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
+  end
+
+  defp format_number(value) when is_binary(value), do: value
+  defp format_number(value), do: to_string(value)
 
   defp parse_timeframe_range(timeframe_input, config) do
     case TimeframeParsing.parse_smart_timeframe(timeframe_input || "24h", config) do
