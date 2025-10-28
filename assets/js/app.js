@@ -1332,7 +1332,7 @@ Hooks.DashboardGrid = {
         const legendText = isDarkMode ? '#D1D5DB' : '#374151';
         const showLegend = !!it.legend;
         const bottomPadding = showLegend ? 56 : 28;
-        const monoFontFamily = 'Operator Mono, "Fira Code", "JetBrains Mono", "Source Code Pro", "SFMono-Regular", "Menlo", monospace';
+        const chartFontFamily = 'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
         const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
         const overlayLabelText = isDarkMode ? '#F8FAFC' : '#0F172A';
         const series = (it.series || []).map((s, idx) => {
@@ -1379,7 +1379,7 @@ Hooks.DashboardGrid = {
                     itemStyle,
                     label: {
                       color: overlayLabelText,
-                      fontFamily: monoFontFamily,
+                      fontFamily: chartFontFamily,
                       position: 'insideTop',
                       distance: 6,
                       overflow: 'break',
@@ -1410,7 +1410,7 @@ Hooks.DashboardGrid = {
                     itemStyle,
                     label: {
                       color: overlayLabelText,
-                      fontFamily: monoFontFamily,
+                      fontFamily: chartFontFamily,
                       position: 'insideTop',
                       distance: 6,
                       overflow: 'break',
@@ -1451,7 +1451,7 @@ Hooks.DashboardGrid = {
                   label: {
                     formatter: line.label || formatCompactNumber(line.value),
                     color: overlayLabelText,
-                    fontFamily: monoFontFamily,
+                    fontFamily: chartFontFamily,
                     position: 'insideEndTop',
                     distance: 8,
                     overflow: 'break',
@@ -1478,7 +1478,7 @@ Hooks.DashboardGrid = {
                   label: {
                     color: overlayLabelText,
                     formatter: point.label || formatCompactNumber(point.value),
-                    fontFamily: monoFontFamily,
+                    fontFamily: chartFontFamily,
                     position: 'top',
                     distance: 10,
                     backgroundColor: overlayLabelBackground,
@@ -1490,14 +1490,14 @@ Hooks.DashboardGrid = {
               })
               .filter(Boolean);
             if (markPoints.length) {
-            primarySeries.markPoint = {
-              symbol: 'circle',
-              symbolSize: 16,
-              animation: false,
-              silent: true,
-              emphasis: { disabled: true },
-              data: markPoints
-            };
+              primarySeries.markPoint = {
+                symbol: 'circle',
+                symbolSize: 16,
+                animation: false,
+                silent: true,
+                emphasis: { disabled: true },
+                data: markPoints
+              };
             }
           }
         }
@@ -1508,9 +1508,9 @@ Hooks.DashboardGrid = {
           name: yName,
           nameLocation: 'middle',
           nameGap: 40,
-          nameTextStyle: { color: textColor, fontFamily: monoFontFamily },
+          nameTextStyle: { color: textColor, fontFamily: chartFontFamily },
           axisLine: { lineStyle: { color: axisLineColor } },
-          axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: monoFontFamily },
+          axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: chartFontFamily },
           splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
         };
         if (normalized) {
@@ -1523,20 +1523,20 @@ Hooks.DashboardGrid = {
         }
         chart.setOption({
           backgroundColor: 'transparent',
-          textStyle: { fontFamily: monoFontFamily },
+          textStyle: { fontFamily: chartFontFamily },
           grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true },
           xAxis: {
             type: 'time',
             axisLine: { lineStyle: { color: axisLineColor } },
-            axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: monoFontFamily },
+            axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: chartFontFamily },
             splitLine: { show: false }
           },
           yAxis,
-          legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: monoFontFamily } } : { show: false },
+          legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: chartFontFamily } } : { show: false },
           tooltip: {
             trigger: 'axis',
             appendToBody: true,
-            textStyle: { fontFamily: monoFontFamily },
+            textStyle: { fontFamily: chartFontFamily },
             valueFormatter: (v) => {
               if (v == null) return '-';
               if (normalized) {
