@@ -37,7 +37,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
         list -> list
       end
 
-    overlay_widgets = alert_overlay_widgets(monitor, metric_path, length(base_widgets || []))
+    overlay_widgets = alert_overlay_widgets(monitor, metric_path, base_widgets || [])
     (base_widgets || []) ++ overlay_widgets
   end
 
@@ -506,7 +506,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
       updated_timeseries =
         Enum.reduce(overlay_map, Map.get(datasets, :timeseries, %{}), fn {widget_id, extras},
-                                                                          acc ->
+                                                                         acc ->
           if Map.has_key?(acc, widget_id) do
             Map.update!(acc, widget_id, &Map.merge(&1, extras))
           else
@@ -557,22 +557,30 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end)
   end
 
-  defp alert_overlay_widgets(_monitor, "", _offset), do: []
+  defp alert_overlay_widgets(_monitor, "", _base_widgets), do: []
 
-  defp alert_overlay_widgets(%Monitor{} = monitor, metric_path, offset) do
+  defp alert_overlay_widgets(%Monitor{} = monitor, metric_path, base_widgets) do
+    base_rows =
+      base_widgets
+      |> List.wrap()
+      |> Enum.reduce(0, fn widget, acc -> acc + widget_height(widget) end)
+
     monitor
     |> monitor_alerts()
     |> Enum.reject(fn
       %Alert{id: nil} -> true
       _ -> false
     end)
-    |> Enum.with_index(offset)
-    |> Enum.map(fn {alert, idx} ->
+    |> Enum.with_index()
+    |> Enum.map(fn {alert, order} ->
       case alert_widget_id(monitor, alert) do
         nil ->
           nil
 
         widget_id ->
+          overlay_height = 4
+          y_offset = base_rows + order * overlay_height
+
           %{
             "id" => widget_id,
             "type" => "timeseries",
@@ -584,9 +592,9 @@ defmodule TrifleApp.Exports.MonitorLayout do
             "paths" => [metric_path],
             "y_label" => metric_path,
             "w" => 12,
-            "h" => 5,
+            "h" => overlay_height,
             "x" => 0,
-            "y" => idx * 6,
+            "y" => y_offset,
             "alert_ref" => to_string(alert.id),
             "alert_strategy" =>
               alert.analysis_strategy
@@ -697,16 +705,24 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp extract_widget_layout(widget, index) do
     layout = widget["layout"] || %{}
 
+    width = coerce_int(layout["w"] || layout["width"] || widget["w"] || widget["width"], 12)
+    raw_height = coerce_int(layout["h"] || layout["height"] || widget["h"] || widget["height"], 4)
+    height = clamp_height(raw_height, index)
+
     %{
-      "w" => coerce_int(layout["w"] || layout["width"] || widget["w"] || widget["width"], 12),
-      "h" => coerce_int(layout["h"] || layout["height"] || widget["h"] || widget["height"], 5),
+      "w" => width,
+      "h" => height,
       "x" => coerce_int(layout["x"] || layout["column"] || widget["x"], default_x(index)),
-      "y" => coerce_int(layout["y"] || layout["row"] || widget["y"], default_y(index))
+      "y" => coerce_int(layout["y"] || layout["row"] || widget["y"], default_y(index, height))
     }
   end
 
-  defp default_x(index), do: rem(index, 2) * 6
-  defp default_y(index), do: div(index, 2) * 6
+  defp default_x(_index), do: 0
+  defp default_y(index, height \\ 4), do: index * height
+
+  defp clamp_height(_value, _index), do: 4
+
+  defp widget_height(_), do: 4
 
   defp apply_type_specific_defaults(widget, "timeseries" = _type, original, dataset, monitor) do
     paths =
@@ -874,7 +890,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
         "paths" => [metric_path],
         "y_label" => metric_path,
         "w" => 12,
-        "h" => 5,
+        "h" => 4,
         "x" => 0,
         "y" => 0
       }

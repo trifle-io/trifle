@@ -221,10 +221,10 @@ defmodule TrifleApp.Components.DashboardFooter do
                 phx-click-away="hide_export_dropdown"
               >
                 <%= if @export_menu != [] do %>
-                  <%= render_slot(@export_menu,
+                  {render_slot(@export_menu,
                     download_menu_id: @download_menu_id,
                     export_params: export_params
-                  ) %>
+                  )}
                 <% else %>
                   <a
                     data-export-link

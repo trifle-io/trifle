@@ -136,7 +136,20 @@ defmodule Trifle.Monitors.AlertEvaluator do
       strategy: result.strategy,
       triggered: result.triggered?,
       summary: result.summary,
-      segments: Enum.map(result.segments, &Map.take(&1, [:from_iso, :to_iso, :from_ts, :to_ts, :severity, :label, :color, :direction])),
+      segments:
+        Enum.map(
+          result.segments,
+          &Map.take(&1, [
+            :from_iso,
+            :to_iso,
+            :from_ts,
+            :to_ts,
+            :severity,
+            :label,
+            :color,
+            :direction
+          ])
+        ),
       points:
         Enum.map(result.points, fn point ->
           Map.take(point, [:at_iso, :ts, :index, :value, :label, :color, :severity])
@@ -234,10 +247,13 @@ defmodule Trifle.Monitors.AlertEvaluator do
       end
 
     comparator = if direction == :below, do: "≤", else: "≥"
+
     base =
       "Latest reading 𝑥=#{format_number(value)}#{timestamp}; threshold demands 𝑥 #{comparator} #{format_number(threshold)}."
 
-    if triggered?, do: base <> " Threshold breached in the latest window.", else: base <> " Threshold not breached recently."
+    if triggered?,
+      do: base <> " Threshold breached in the latest window.",
+      else: base <> " Threshold not breached recently."
   end
 
   # -- Range -----------------------------------------------------------------
@@ -281,8 +297,18 @@ defmodule Trifle.Monitors.AlertEvaluator do
             triggered?: triggered?,
             segments: segments,
             reference_lines: [
-              %{value: min_value, label: "Min #{format_number(min_value)}", color: @range_line_color, direction: :lower},
-              %{value: max_value, label: "Max #{format_number(max_value)}", color: @range_line_color, direction: :upper}
+              %{
+                value: min_value,
+                label: "Min #{format_number(min_value)}",
+                color: @range_line_color,
+                direction: :lower
+              },
+              %{
+                value: max_value,
+                label: "Max #{format_number(max_value)}",
+                color: @range_line_color,
+                direction: :upper
+              }
             ],
             bands: [
               %{min: min_value, max: max_value, label: "Target range", color: @range_band_color}
@@ -312,7 +338,9 @@ defmodule Trifle.Monitors.AlertEvaluator do
     base =
       "Latest reading 𝑥=#{format_number(value)}#{timestamp}; target window #{target_range}."
 
-    if triggered?, do: base <> " Range breach detected in the latest window.", else: base <> " No recent range breach."
+    if triggered?,
+      do: base <> " Range breach detected in the latest window.",
+      else: base <> " No recent range breach."
   end
 
   # -- Hampel ----------------------------------------------------------------
@@ -447,7 +475,9 @@ defmodule Trifle.Monitors.AlertEvaluator do
     base =
       "Latest reading 𝑥=#{format_number(value)}#{timestamp}; Hampel window 𝑤=#{window_size}, 𝑘=#{format_number(k)}, 𝑚=#{format_number(mad_floor)}."
 
-    if triggered?, do: base <> " Outlier detected in the latest window.", else: base <> " No recent outliers."
+    if triggered?,
+      do: base <> " Outlier detected in the latest window.",
+      else: base <> " No recent outliers."
   end
 
   # -- CUSUM -----------------------------------------------------------------
@@ -520,12 +550,13 @@ defmodule Trifle.Monitors.AlertEvaluator do
 
           {segments, indexes, pos, pos_start} =
             if pos > h do
-              segment = build_segment(points, pos_start || idx, idx,
-                severity: :shift,
-                label: "Positive shift",
-                color: @cusum_positive_color,
-                direction: :positive
-              )
+              segment =
+                build_segment(points, pos_start || idx, idx,
+                  severity: :shift,
+                  label: "Positive shift",
+                  color: @cusum_positive_color,
+                  direction: :positive
+                )
 
               indexes = MapSet.put(acc.indexes, idx)
               {[segment | acc.segments], indexes, 0.0, nil}
@@ -535,12 +566,13 @@ defmodule Trifle.Monitors.AlertEvaluator do
 
           {segments, indexes, neg, neg_start} =
             if abs(neg) > h do
-              segment = build_segment(points, neg_start || idx, idx,
-                severity: :shift,
-                label: "Negative shift",
-                color: @cusum_negative_color,
-                direction: :negative
-              )
+              segment =
+                build_segment(points, neg_start || idx, idx,
+                  severity: :shift,
+                  label: "Negative shift",
+                  color: @cusum_negative_color,
+                  direction: :negative
+                )
 
               indexes = MapSet.put(indexes, idx)
               {[segment | segments], indexes, 0.0, nil}
@@ -585,7 +617,9 @@ defmodule Trifle.Monitors.AlertEvaluator do
     base =
       "Latest reading 𝑥=#{format_number(value)}#{timestamp}; CUSUM baseline μ=#{format_number(mean)}, 𝑘=#{format_number(k)}, 𝐻=#{format_number(h)}."
 
-    if triggered?, do: base <> " Level shift detected in the latest window.", else: base <> " No recent level shift detected."
+    if triggered?,
+      do: base <> " Level shift detected in the latest window.",
+      else: base <> " No recent level shift detected."
   end
 
   # -- Shared helpers --------------------------------------------------------
@@ -606,8 +640,11 @@ defmodule Trifle.Monitors.AlertEvaluator do
       else
         segments =
           case current do
-            nil -> segments
-            %{start: start, finish: finish} -> [build_segment(points, start, finish, opts) | segments]
+            nil ->
+              segments
+
+            %{start: start, finish: finish} ->
+              [build_segment(points, start, finish, opts) | segments]
           end
 
         {nil, segments, indexes}
@@ -616,8 +653,11 @@ defmodule Trifle.Monitors.AlertEvaluator do
     |> then(fn {current, segments, indexes} ->
       segments =
         case current do
-          nil -> segments
-          %{start: start, finish: finish} -> [build_segment(points, start, finish, opts) | segments]
+          nil ->
+            segments
+
+          %{start: start, finish: finish} ->
+            [build_segment(points, start, finish, opts) | segments]
         end
 
       {Enum.reverse(segments), indexes}
@@ -665,7 +705,9 @@ defmodule Trifle.Monitors.AlertEvaluator do
     end
   end
 
-  defp normalize_window(nil, %Alert{analysis_strategy: :hampel} = alert), do: sanitize_window_size(alert.settings && alert.settings.hampel_window_size || 5)
+  defp normalize_window(nil, %Alert{analysis_strategy: :hampel} = alert),
+    do: sanitize_window_size((alert.settings && alert.settings.hampel_window_size) || 5)
+
   defp normalize_window(nil, %Alert{}), do: 1
   defp normalize_window(value, _alert) when is_integer(value) and value > 0, do: value
   defp normalize_window(_other, _alert), do: 1
@@ -674,8 +716,10 @@ defmodule Trifle.Monitors.AlertEvaluator do
   defp sanitize_window_size(_), do: 5
 
   defp average([]), do: nil
+
   defp average(values) do
     cleaned = Enum.filter(values, &is_number/1)
+
     case cleaned do
       [] -> nil
       _ -> Enum.sum(cleaned) / length(cleaned)
@@ -687,6 +731,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   defp timeline_points(%Series{} = series, path) do
     callback = fn at, value ->
       dt = normalize_datetime(at)
+
       %{
         at: dt,
         at_iso: dt && DateTime.to_iso8601(dt),

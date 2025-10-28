@@ -303,7 +303,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, put_changeset(socket, changeset)}
-  end
+    end
   end
 
   defp notify_parent(message), do: send(self(), {__MODULE__, message})
