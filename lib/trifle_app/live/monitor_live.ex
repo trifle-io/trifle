@@ -1142,8 +1142,17 @@ defmodule TrifleApp.MonitorLive do
         base
 
       type == "timeseries" ->
-        stats
-        |> Timeseries.dataset(widget)
+        chart_map =
+          case socket.assigns[:insights_timeseries] do
+            %{} = timeseries_map -> Map.get(timeseries_map, id)
+            _ -> nil
+          end
+          |> case do
+            nil -> Timeseries.dataset(stats, widget)
+            existing -> existing
+          end
+
+        chart_map
         |> maybe_put_chart(base)
 
       type == "category" ->
