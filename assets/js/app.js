@@ -1333,6 +1333,8 @@ Hooks.DashboardGrid = {
         const showLegend = !!it.legend;
         const bottomPadding = showLegend ? 56 : 28;
         const monoFontFamily = 'Operator Mono, "Fira Code", "JetBrains Mono", "Source Code Pro", "SFMono-Regular", "Menlo", monospace';
+        const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
+        const overlayLabelText = isDarkMode ? '#F8FAFC' : '#0F172A';
         const series = (it.series || []).map((s, idx) => {
           const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
           if (stacked) base.stack = 'total';
@@ -1375,7 +1377,17 @@ Hooks.DashboardGrid = {
                     name: label,
                     xAxis: startIso,
                     itemStyle,
-                    label: { color: itemStyle.color || defaultSegmentColor, fontFamily: monoFontFamily }
+                    label: {
+                      color: overlayLabelText,
+                      fontFamily: monoFontFamily,
+                      position: 'insideTop',
+                      distance: 6,
+                      overflow: 'break',
+                      align: 'left',
+                      backgroundColor: overlayLabelBackground,
+                      padding: [2, 6],
+                      borderRadius: 4
+                    }
                   },
                   {
                     xAxis: endIso
@@ -1395,7 +1407,17 @@ Hooks.DashboardGrid = {
                     yAxis: band.min,
                     xAxis: 'min',
                     itemStyle,
-                    label: { color: '#0f766e', fontFamily: monoFontFamily }
+                    label: {
+                      color: overlayLabelText,
+                      fontFamily: monoFontFamily,
+                      position: 'insideTop',
+                      distance: 6,
+                      overflow: 'break',
+                      align: 'left',
+                      backgroundColor: overlayLabelBackground,
+                      padding: [2, 6],
+                      borderRadius: 4
+                    }
                   },
                   {
                     yAxis: band.max,
@@ -1424,8 +1446,14 @@ Hooks.DashboardGrid = {
                   },
                   label: {
                     formatter: line.label || formatCompactNumber(line.value),
-                    color: line.color || defaultLineColor,
-                    fontFamily: monoFontFamily
+                    color: overlayLabelText,
+                    fontFamily: monoFontFamily,
+                    position: 'insideEndTop',
+                    distance: 8,
+                    overflow: 'break',
+                    backgroundColor: overlayLabelBackground,
+                    padding: [2, 6],
+                    borderRadius: 4
                   }
                 }))
             };
@@ -1443,9 +1471,15 @@ Hooks.DashboardGrid = {
                   name: point.label || `Alert point #${idx + 1}`,
                   itemStyle: { color },
                   label: {
-                    color,
+                    color: overlayLabelText,
                     formatter: point.label || formatCompactNumber(point.value),
-                    fontFamily: monoFontFamily
+                    fontFamily: monoFontFamily,
+                    position: 'top',
+                    distance: 10,
+                    backgroundColor: overlayLabelBackground,
+                    padding: [2, 6],
+                    borderRadius: 4,
+                    overflow: 'truncate'
                   }
                 };
               })

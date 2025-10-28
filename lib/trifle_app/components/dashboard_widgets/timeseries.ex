@@ -63,9 +63,23 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
     y_label = to_string(item["y_label"] || "")
 
     timeline_callback = fn at, value ->
-      naive = DateTime.to_naive(at)
-      utc_dt = DateTime.from_naive!(naive, "Etc/UTC")
-      ts = DateTime.to_unix(utc_dt, :millisecond)
+      utc_dt =
+        cond do
+          match?(%DateTime{}, at) ->
+            DateTime.shift_zone!(at, "Etc/UTC")
+
+          match?(%NaiveDateTime{}, at) ->
+            DateTime.from_naive!(at, "Etc/UTC")
+
+          true ->
+            nil
+        end
+
+      ts =
+        case utc_dt do
+          %DateTime{} = dt -> DateTime.to_unix(dt, :millisecond)
+          _ -> nil
+        end
 
       val =
         case value do
@@ -74,7 +88,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
           _ -> 0.0
         end
 
-      [ts, val]
+      [ts || 0, val]
     end
 
     per_path =

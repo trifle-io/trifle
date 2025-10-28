@@ -398,7 +398,9 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp maybe_filter_widgets(items, nil), do: items
 
   defp maybe_filter_widgets(items, widget_id) do
-    Enum.filter(items, fn item -> widget_id(item) == widget_id end)
+    items
+    |> Enum.filter(fn item -> widget_id(item) == widget_id end)
+    |> normalize_single_widget_layout()
   end
 
   defp maybe_prune_dataset_maps(datasets, widget_ids) do
@@ -415,6 +417,36 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp widget_id(%{"id" => id}), do: to_string(id)
   defp widget_id(%{id: id}), do: to_string(id)
   defp widget_id(_), do: nil
+
+  defp normalize_single_widget_layout([item]) do
+    item = ensure_string_keys(item)
+
+    item =
+      item
+      |> Map.put("x", 0)
+      |> Map.put("y", 0)
+      |> Map.put("w", 12)
+      |> Map.put("h", Map.get(item, "h") || 6)
+
+    [item]
+  end
+
+  defp normalize_single_widget_layout(items), do: items
+
+  defp ensure_string_keys(%{} = map) do
+    Enum.reduce(map, %{}, fn {key, value}, acc ->
+      string_key =
+        cond do
+          is_binary(key) -> key
+          is_atom(key) -> Atom.to_string(key)
+          true -> to_string(key)
+        end
+
+      Map.put(acc, string_key, value)
+    end)
+  end
+
+  defp ensure_string_keys(other), do: other
 
   defp maybe_put_widget_meta(layout, nil), do: layout
 
