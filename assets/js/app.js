@@ -1387,7 +1387,8 @@ Hooks.DashboardGrid = {
                       backgroundColor: overlayLabelBackground,
                       padding: [2, 6],
                       borderRadius: 4
-                    }
+                    },
+                    emphasis: { disabled: true }
                   },
                   {
                     xAxis: endIso
@@ -1417,7 +1418,8 @@ Hooks.DashboardGrid = {
                       backgroundColor: overlayLabelBackground,
                       padding: [2, 6],
                       borderRadius: 4
-                    }
+                    },
+                    emphasis: { disabled: true }
                   },
                   {
                     yAxis: band.max,
@@ -1428,12 +1430,14 @@ Hooks.DashboardGrid = {
             });
           }
           if (markAreas.length) {
-            primarySeries.markArea = { data: markAreas };
+            primarySeries.markArea = { data: markAreas, silent: true, emphasis: { disabled: true } };
           }
           if (Array.isArray(overlay.reference_lines) && overlay.reference_lines.length) {
             primarySeries.markLine = {
               symbol: 'none',
               silent: true,
+              animation: false,
+              emphasis: { disabled: true },
               data: overlay.reference_lines
                 .filter((line) => typeof line.value === 'number')
                 .map((line) => ({
@@ -1454,7 +1458,8 @@ Hooks.DashboardGrid = {
                     backgroundColor: overlayLabelBackground,
                     padding: [2, 6],
                     borderRadius: 4
-                  }
+                  },
+                  emphasis: { disabled: true }
                 }))
             };
           }
@@ -1485,11 +1490,14 @@ Hooks.DashboardGrid = {
               })
               .filter(Boolean);
             if (markPoints.length) {
-              primarySeries.markPoint = {
-                symbol: 'circle',
-                symbolSize: 32,
-                data: markPoints
-              };
+            primarySeries.markPoint = {
+              symbol: 'circle',
+              symbolSize: 16,
+              animation: false,
+              silent: true,
+              emphasis: { disabled: true },
+              data: markPoints
+            };
             }
           }
         }
