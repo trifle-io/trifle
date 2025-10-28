@@ -540,6 +540,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
           dataset_extras = %{
             alert_overlay: overlay,
+            alert_baseline_series: Map.get(overlay, :baseline_series, []),
             alert_triggered: result.triggered?,
             alert_summary: result.summary,
             alert_meta: result.meta || %{},

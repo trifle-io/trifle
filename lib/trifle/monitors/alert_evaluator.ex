@@ -59,6 +59,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
       points: [],
       reference_lines: [],
       bands: [],
+      baseline_series: [],
       trigger_indexes: MapSet.new(),
       meta: %{}
     ]
@@ -76,9 +77,14 @@ defmodule Trifle.Monitors.AlertEvaluator do
   @range_band_color "rgba(16,185,129,0.08)"
   @range_line_color "#0f766e"
   @hampel_point_color "#f97316"
+  @hampel_median_color "#0ea5e9"
+  @hampel_upper_line_color "#f97316"
+  @hampel_lower_line_color "#6366f1"
   @cusum_positive_color "rgba(250,204,21,0.28)"
   @cusum_negative_color "rgba(59,130,246,0.28)"
-  @cusum_line_color "#facc15"
+  @cusum_positive_line_color "#facc15"
+  @cusum_negative_line_color "#60a5fa"
+  @cusum_mean_line_color "#475569"
 
   @doc """
   Evaluates the given `alert` against the provided timeseries `series`.
@@ -132,7 +138,49 @@ defmodule Trifle.Monitors.AlertEvaluator do
   defp maybe_trim_recent(points, false), do: points
 
   defp maybe_trim_recent(points, true) do
-    Enum.drop(points, -1)
+    case Enum.drop(points, -1) do
+      [] -> points
+      trimmed -> trimmed
+    end
+  end
+
+  defp maybe_add_series(series, point, value) when is_number(value) do
+    case point_timestamp(point) do
+      ts when is_number(ts) -> [[ts, value] | series]
+      _ -> series
+    end
+  end
+
+  defp maybe_add_series(series, _point, _value), do: series
+
+  defp point_timestamp(%{ts: ts}) when is_integer(ts) or is_float(ts), do: ts
+
+  defp point_timestamp(%{at: %DateTime{} = at}), do: DateTime.to_unix(at, :millisecond)
+
+  defp point_timestamp(%{at_iso: iso}) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, dt, _offset} -> DateTime.to_unix(dt, :millisecond)
+      _ -> nil
+    end
+  end
+
+  defp point_timestamp(_), do: nil
+
+  defp baseline_entry(name, data, color, line_type, width, opacity)
+
+  defp baseline_entry(_name, data, _color, _line_type, _width, _opacity)
+       when not is_list(data) or data == [],
+       do: nil
+
+  defp baseline_entry(name, data, color, line_type, width, opacity) do
+    %{
+      name: name,
+      data: data,
+      color: color,
+      line_type: line_type,
+      width: width,
+      opacity: opacity
+    }
   end
 
   @doc """
@@ -170,6 +218,10 @@ defmodule Trifle.Monitors.AlertEvaluator do
       bands:
         Enum.map(result.bands, fn band ->
           Map.take(band, [:min, :max, :label, :color])
+        end),
+      baseline_series:
+        Enum.map(result.baseline_series, fn series ->
+          Map.take(series, [:name, :data, :color, :line_type, :width, :opacity])
         end),
       meta: %{
         window: result.window
@@ -372,11 +424,24 @@ defmodule Trifle.Monitors.AlertEvaluator do
            "Not enough data to evaluate Hampel outliers; requires window 𝑤=#{window_size} samples."
        }}
     else
-      {outlier_indexes, point_markers} = detect_hampel(points, window_size, k, mad_floor)
+      {outlier_indexes, point_markers, median_series, _upper_series, _lower_series} =
+        detect_hampel(points, window_size, k, mad_floor)
+
       triggered? = window_triggered?(outlier_indexes, length(points), window_size)
 
       summary =
         hampel_summary(List.last(points), triggered?, window_size, k, mad_floor)
+
+      baseline_series =
+        baseline_entry(
+          "Rolling median",
+          median_series,
+          @hampel_median_color,
+          "solid",
+          1.6,
+          0.95
+        )
+        |> List.wrap()
 
       result =
         %Result{
@@ -386,6 +451,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
           window: window_size,
           triggered?: triggered?,
           points: point_markers,
+          baseline_series: baseline_series,
           trigger_indexes: outlier_indexes,
           summary: summary,
           meta: %{window_size: window_size, k: k, mad_floor: mad_floor}
@@ -398,58 +464,71 @@ defmodule Trifle.Monitors.AlertEvaluator do
   defp detect_hampel(points, window_size, k, mad_floor) do
     values = Enum.map(points, & &1.value)
 
-    Enum.reduce(Enum.with_index(points), {MapSet.new(), []}, fn {point, idx},
-                                                                {index_acc, point_acc} ->
-      value = point.value
+    Enum.reduce(
+      Enum.with_index(points),
+      {MapSet.new(), [], []},
+      fn {point, idx}, {index_acc, point_acc, median_acc} ->
+        value = point.value
 
-      cond do
-        not is_number(value) ->
-          {index_acc, point_acc}
+        cond do
+          not is_number(value) ->
+            {index_acc, point_acc, median_acc}
 
-        true ->
-          window_values =
-            values
-            |> Enum.slice(max(idx - window_size + 1, 0)..idx)
-            |> Enum.filter(&is_number/1)
+          true ->
+            window_values =
+              values
+              |> Enum.slice(max(idx - window_size + 1, 0)..idx)
+              |> Enum.filter(&is_number/1)
 
-          if length(window_values) < max(3, div(window_size, 2)) do
-            {index_acc, point_acc}
-          else
-            median = median(window_values)
-            mad = mad(window_values, median)
-            scale = max(mad, mad_floor)
-            deviation = abs(value - median)
+            if length(window_values) < max(3, div(window_size, 2)) do
+              {index_acc, point_acc, median_acc}
+            else
+              median = median(window_values)
+              mad = mad(window_values, median)
+              scale = max(mad, mad_floor)
+              deviation = abs(value - median)
 
-            cond do
-              scale == 0.0 ->
-                {index_acc, point_acc}
+              median_acc = maybe_add_series(median_acc, point, median)
 
-              true ->
-                score = deviation / scale
+              cond do
+                scale == 0.0 ->
+                  {index_acc, point_acc, median_acc}
 
-                if score > k do
-                  index_acc = MapSet.put(index_acc, idx)
+                true ->
+                  score = deviation / scale
 
-                  marker =
-                    %{
-                      at_iso: point.at_iso,
-                      ts: point.ts,
-                      index: idx,
-                      value: value,
-                      label: "Outlier (score #{format_number(score)})",
-                      color: @hampel_point_color,
-                      severity: :outlier
-                    }
+                  if score > k do
+                    updated_indexes = MapSet.put(index_acc, idx)
 
-                  {index_acc, [marker | point_acc]}
-                else
-                  {index_acc, point_acc}
-                end
+                    marker =
+                      %{
+                        at_iso: point.at_iso,
+                        ts: point.ts,
+                        index: idx,
+                        value: value,
+                        label: "Outlier (score #{format_number(score)})",
+                        color: @hampel_point_color,
+                        severity: :outlier
+                      }
+
+                    {updated_indexes, [marker | point_acc], median_acc}
+                  else
+                    {index_acc, point_acc, median_acc}
+                  end
+              end
             end
-          end
+        end
       end
+    )
+    |> then(fn {indexes, markers, median_series} ->
+      {
+        indexes,
+        Enum.reverse(markers),
+        Enum.reverse(median_series),
+        [],
+        []
+      }
     end)
-    |> then(fn {indexes, markers} -> {indexes, Enum.reverse(markers)} end)
   end
 
   defp median(values) do
@@ -516,11 +595,32 @@ defmodule Trifle.Monitors.AlertEvaluator do
          }}
 
       true ->
-        {segments, indexes} = detect_cusum(points, mean, k, h)
+        {segments, indexes, pos_series, neg_series} = detect_cusum(points, mean, k, h)
         triggered? = window_triggered?(indexes, length(points), window)
 
         summary =
           cusum_summary(List.last(points), triggered?, mean, k, h)
+
+        baseline_series =
+          [
+            baseline_entry(
+              "CUSUM positive",
+              pos_series,
+              @cusum_positive_line_color,
+              "solid",
+              1.4,
+              0.9
+            ),
+            baseline_entry(
+              "CUSUM negative",
+              neg_series,
+              @cusum_negative_line_color,
+              "solid",
+              1.4,
+              0.9
+            )
+          ]
+          |> Enum.reject(&is_nil/1)
 
         result =
           %Result{
@@ -530,8 +630,16 @@ defmodule Trifle.Monitors.AlertEvaluator do
             window: window,
             triggered?: triggered?,
             segments: segments,
+            baseline_series: baseline_series,
             trigger_indexes: indexes,
             summary: summary,
+            reference_lines: [
+              %{
+                value: mean,
+                label: "μ = #{format_number(mean)}",
+                color: @cusum_mean_line_color
+              }
+            ],
             meta: %{mean: mean, k: k, h: h}
           }
 
@@ -542,7 +650,16 @@ defmodule Trifle.Monitors.AlertEvaluator do
   defp detect_cusum(points, mean, k, h) do
     Enum.with_index(points)
     |> Enum.reduce(
-      %{pos: 0.0, neg: 0.0, pos_start: nil, neg_start: nil, segments: [], indexes: MapSet.new()},
+      %{
+        pos: 0.0,
+        neg: 0.0,
+        pos_start: nil,
+        neg_start: nil,
+        segments: [],
+        indexes: MapSet.new(),
+        pos_series: [],
+        neg_series: []
+      },
       fn {point, idx}, acc ->
         value = point.value
 
@@ -595,7 +712,9 @@ defmodule Trifle.Monitors.AlertEvaluator do
             pos_start: pos_start,
             neg_start: neg_start,
             segments: segments,
-            indexes: indexes
+            indexes: indexes,
+            pos_series: maybe_add_series(acc.pos_series, point, pos),
+            neg_series: maybe_add_series(acc.neg_series, point, neg)
           }
         end
       end
@@ -606,9 +725,12 @@ defmodule Trifle.Monitors.AlertEvaluator do
         |> Enum.reverse()
         |> Enum.map(&maybe_extend_segment(&1, points))
 
-      {segments,
-       acc.indexes
-       |> MapSet.new(fn idx -> idx end)}
+      {
+        segments,
+        acc.indexes |> MapSet.new(fn idx -> idx end),
+        Enum.reverse(acc.pos_series),
+        Enum.reverse(acc.neg_series)
+      }
     end)
   end
 

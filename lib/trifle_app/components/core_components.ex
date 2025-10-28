@@ -373,6 +373,13 @@ defmodule TrifleApp.CoreComponents do
     |> Decimal.to_string(:normal)
   end
 
+  defp normalized_input_value(type, {decimal, _})
+       when type in ["number", "range"] and is_struct(decimal, Decimal) do
+    decimal
+    |> Decimal.normalize()
+    |> decimal_to_plain_string()
+  end
+
   defp normalized_input_value(type, value)
        when type in ["number", "range"] and is_binary(value) do
     value
@@ -383,8 +390,13 @@ defmodule TrifleApp.CoreComponents do
 
       trimmed ->
         case Decimal.parse(trimmed) do
-          {:ok, decimal} -> decimal |> Decimal.normalize() |> decimal_to_plain_string()
-          :error -> Phoenix.HTML.Form.normalize_value(type, value)
+          {decimal, rest} when rest in ["", nil] ->
+            decimal
+            |> Decimal.normalize()
+            |> decimal_to_plain_string()
+
+          :error ->
+            Phoenix.HTML.Form.normalize_value(type, value)
         end
     end
   end
