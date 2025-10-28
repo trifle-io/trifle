@@ -1502,6 +1502,48 @@ Hooks.DashboardGrid = {
               };
             }
           }
+          const baselineSeries = []
+            .concat(Array.isArray(it.alert_baseline_series) ? it.alert_baseline_series : [])
+            .concat(overlay && Array.isArray(overlay.baseline_series) ? overlay.baseline_series : []);
+          const seenBaselineKeys = new Set();
+          baselineSeries
+            .filter((baseline) => {
+              if (!baseline || !Array.isArray(baseline.data) || baseline.data.length === 0) return false;
+              const key = baseline.name || `${baseline.color || 'baseline'}-${baseline.line_type || 'line'}`;
+              if (seenBaselineKeys.has(key)) return false;
+              seenBaselineKeys.add(key);
+              return true;
+            })
+            .forEach((baseline) => {
+              const baselineData = Array.isArray(baseline.data) ? baseline.data : [];
+              if (!baselineData.length) return;
+              const baselineColor = baseline.color || overlayLabelText;
+              const lineType = baseline.line_type || 'dashed';
+              const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
+              const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
+              series.push({
+                name: baseline.name || 'Detection baseline',
+                type: 'line',
+                data: baselineData,
+                showSymbol: false,
+                smooth: false,
+                connectNulls: true,
+                animation: false,
+                lineStyle: {
+                  width: lineWidth,
+                  type: lineType,
+                  color: baselineColor,
+                  opacity: lineOpacity
+                },
+                itemStyle: { color: baselineColor, opacity: lineOpacity },
+                emphasis: { focus: 'series' },
+                tooltip: {
+                  valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
+                },
+                zlevel: 1,
+                z: 25
+              });
+            });
         }
         let alertAxis = null;
         if (shouldApplyAlertAxis) {
@@ -2627,6 +2669,48 @@ Hooks.ExpandedWidgetView = {
           };
         }
       }
+      const baselineSeries = []
+        .concat(Array.isArray(data.alert_baseline_series) ? data.alert_baseline_series : [])
+        .concat(overlay && Array.isArray(overlay.baseline_series) ? overlay.baseline_series : []);
+      const seenBaselineKeys = new Set();
+      baselineSeries
+        .filter((baseline) => {
+          if (!baseline || !Array.isArray(baseline.data) || baseline.data.length === 0) return false;
+          const key = baseline.name || `${baseline.color || 'baseline'}-${baseline.line_type || 'line'}`;
+          if (seenBaselineKeys.has(key)) return false;
+          seenBaselineKeys.add(key);
+          return true;
+        })
+        .forEach((baseline) => {
+          const baselineData = Array.isArray(baseline.data) ? baseline.data : [];
+          if (!baselineData.length) return;
+          const baselineColor = baseline.color || overlayLabelText;
+        const lineType = baseline.line_type || 'dashed';
+        const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
+        const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
+        series.push({
+          name: baseline.name || 'Detection baseline',
+          type: 'line',
+          data: baselineData,
+          showSymbol: false,
+          smooth: false,
+          connectNulls: true,
+          animation: false,
+          lineStyle: {
+            width: lineWidth,
+            type: lineType,
+            color: baselineColor,
+            opacity: lineOpacity
+          },
+          itemStyle: { color: baselineColor, opacity: lineOpacity },
+          emphasis: { focus: 'series' },
+          tooltip: {
+            valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
+          },
+          zlevel: 1,
+          z: 25
+        });
+      });
     }
 
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
