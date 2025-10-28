@@ -90,25 +90,28 @@ defmodule Trifle.Monitors.AlertEvaluator do
   def evaluate(%Alert{} = alert, %Series{} = series, path, opts \\ []) do
     with {:ok, resolved_path, points} <- timeline_points(series, path),
          false <- Enum.empty?(points) do
+      exclude_recent? = Keyword.get(opts, :exclude_recent, true)
+      effective_points = maybe_trim_recent(points, exclude_recent?)
+
       window =
         opts
         |> Keyword.get(:window)
         |> normalize_window(alert)
 
-      latest_point = List.last(points)
+      latest_point = List.last(effective_points) || List.last(points)
 
       case alert.analysis_strategy || :threshold do
         :threshold ->
-          evaluate_threshold(alert, resolved_path, points, window)
+          evaluate_threshold(alert, resolved_path, effective_points, window)
 
         :range ->
-          evaluate_range(alert, resolved_path, points, window)
+          evaluate_range(alert, resolved_path, effective_points, window)
 
         :hampel ->
-          evaluate_hampel(alert, resolved_path, points, window)
+          evaluate_hampel(alert, resolved_path, effective_points, window)
 
         :cusum ->
-          evaluate_cusum(alert, resolved_path, points, window)
+          evaluate_cusum(alert, resolved_path, effective_points, window)
 
         unsupported ->
           {:error, {:unsupported_strategy, unsupported}}
@@ -124,6 +127,12 @@ defmodule Trifle.Monitors.AlertEvaluator do
       true -> {:error, :no_data}
       {:error, _} = error -> error
     end
+  end
+
+  defp maybe_trim_recent(points, false), do: points
+
+  defp maybe_trim_recent(points, true) do
+    Enum.drop(points, -1)
   end
 
   @doc """
@@ -697,11 +706,16 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp window_triggered?(%MapSet{} = indexes, total_points, window) do
-    if MapSet.size(indexes) == 0 do
-      false
-    else
-      start_idx = max(total_points - window, 0)
-      Enum.any?(start_idx..(total_points - 1), fn idx -> MapSet.member?(indexes, idx) end)
+    cond do
+      total_points <= 0 ->
+        false
+
+      MapSet.size(indexes) == 0 ->
+        false
+
+      true ->
+        start_idx = max(total_points - window, 0)
+        Enum.any?(start_idx..(total_points - 1), fn idx -> MapSet.member?(indexes, idx) end)
     end
   end
 
