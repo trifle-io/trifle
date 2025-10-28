@@ -219,8 +219,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
     end
   end
 
-  defp threshold_label(:below, value), do: "≤ #{format_number(value)}"
-  defp threshold_label(_direction, value), do: "≥ #{format_number(value)}"
+  defp threshold_label(:below, value), do: "𝑥 ≤ #{format_number(value)}"
+  defp threshold_label(_direction, value), do: "𝑥 ≥ #{format_number(value)}"
 
   defp threshold_summary(nil, threshold, _direction, _triggered?) do
     "Monitor checks against threshold #{format_number(threshold)}."
@@ -234,7 +234,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
       end
 
     comparator = if direction == :below, do: "≤", else: "≥"
-    base = "Latest value #{format_number(value)}#{timestamp} compared to threshold #{format_number(threshold)} (#{comparator})."
+    base =
+      "Latest reading 𝑥=#{format_number(value)}#{timestamp}; threshold demands 𝑥 #{comparator} #{format_number(threshold)}."
 
     if triggered?, do: base <> " Threshold breached in the latest window.", else: base <> " Threshold not breached recently."
   end
@@ -258,10 +259,12 @@ defmodule Trifle.Monitors.AlertEvaluator do
           is_number(value) && (value < min_value or value > max_value)
         end
 
+        target_range_label = "#{format_number(min_value)} ≤ 𝑥 ≤ #{format_number(max_value)}"
+
         {segments, indexes} =
           gather_segments(points, condition,
             severity: :breach,
-            label: "Outside #{format_number(min_value)} - #{format_number(max_value)}",
+            label: "Outside #{target_range_label}",
             color: @threshold_segment_color
           )
 
@@ -294,7 +297,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp range_summary(nil, min_value, max_value, _triggered?) do
-    "Monitor tracks for values outside #{format_number(min_value)} - #{format_number(max_value)}."
+    "Monitor tracks for values outside #{format_number(min_value)} ≤ 𝑥 ≤ #{format_number(max_value)}."
   end
 
   defp range_summary(%{value: value} = point, min_value, max_value, triggered?) do
@@ -304,8 +307,10 @@ defmodule Trifle.Monitors.AlertEvaluator do
         _ -> ""
       end
 
+    target_range = "#{format_number(min_value)} ≤ 𝑥 ≤ #{format_number(max_value)}"
+
     base =
-      "Latest value #{format_number(value)}#{timestamp} vs allowed range #{format_number(min_value)} - #{format_number(max_value)}."
+      "Latest reading 𝑥=#{format_number(value)}#{timestamp}; target window #{target_range}."
 
     if triggered?, do: base <> " Range breach detected in the latest window.", else: base <> " No recent range breach."
   end
@@ -326,7 +331,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
          path: path,
          window: window_size,
          triggered?: false,
-         summary: "Not enough data points to evaluate Hampel outliers (requires at least #{window_size})."
+         summary:
+           "Not enough data to evaluate Hampel outliers; requires window 𝑤=#{window_size} samples."
        }}
     else
       {outlier_indexes, point_markers} = detect_hampel(points, window_size, k, mad_floor)
@@ -428,7 +434,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp hampel_summary(nil, _triggered?, window_size, k, mad_floor) do
-    "Hampel detector scanning window #{window_size} with K=#{format_number(k)} and MAD floor #{format_number(mad_floor)}."
+    "Hampel detector using window 𝑤=#{window_size}, threshold 𝑘=#{format_number(k)}, MAD floor 𝑚=#{format_number(mad_floor)}."
   end
 
   defp hampel_summary(%{value: value} = point, triggered?, window_size, k, mad_floor) do
@@ -439,7 +445,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
       end
 
     base =
-      "Latest value #{format_number(value)}#{timestamp} evaluated with Hampel (window #{window_size}, K=#{format_number(k)}, MAD floor #{format_number(mad_floor)})."
+      "Latest reading 𝑥=#{format_number(value)}#{timestamp}; Hampel window 𝑤=#{window_size}, 𝑘=#{format_number(k)}, 𝑚=#{format_number(mad_floor)}."
 
     if triggered?, do: base <> " Outlier detected in the latest window.", else: base <> " No recent outliers."
   end
@@ -566,7 +572,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp cusum_summary(nil, _triggered?, mean, k, h) do
-    "CUSUM monitors shifts around mean #{format_number(mean)} (k=#{format_number(k)}, h=#{format_number(h)})."
+    "CUSUM monitors shifts around mean μ=#{format_number(mean)} with allowance 𝑘=#{format_number(k)} and decision limit 𝐻=#{format_number(h)}."
   end
 
   defp cusum_summary(%{value: value} = point, triggered?, mean, k, h) do
@@ -577,7 +583,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
       end
 
     base =
-      "Latest value #{format_number(value)}#{timestamp} analysed with CUSUM (mean #{format_number(mean)}, k=#{format_number(k)}, h=#{format_number(h)})."
+      "Latest reading 𝑥=#{format_number(value)}#{timestamp}; CUSUM baseline μ=#{format_number(mean)}, 𝑘=#{format_number(k)}, 𝐻=#{format_number(h)}."
 
     if triggered?, do: base <> " Level shift detected in the latest window.", else: base <> " No recent level shift detected."
   end

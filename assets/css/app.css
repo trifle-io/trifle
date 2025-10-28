@@ -1,6 +1,7 @@
 @import "tailwindcss/base";
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 /* GridStack styles (imported from node_modules) */
 @import url("../node_modules/gridstack/dist/gridstack.min.css");
@@ -114,3 +115,7 @@ select[class*="grid"], select[class*="col-"] {
 }
 
 /* This file is for your main application CSS */
+.ts-chart {
+  font-family: 'Operator Mono', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'SFMono-Regular', Menlo, monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}

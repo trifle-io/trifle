@@ -1332,6 +1332,7 @@ Hooks.DashboardGrid = {
         const legendText = isDarkMode ? '#D1D5DB' : '#374151';
         const showLegend = !!it.legend;
         const bottomPadding = showLegend ? 56 : 28;
+        const monoFontFamily = 'Operator Mono, "Fira Code", "JetBrains Mono", "Source Code Pro", "SFMono-Regular", "Menlo", monospace';
         const series = (it.series || []).map((s, idx) => {
           const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
           if (stacked) base.stack = 'total';
@@ -1374,7 +1375,7 @@ Hooks.DashboardGrid = {
                     name: label,
                     xAxis: startIso,
                     itemStyle,
-                    label: { color: itemStyle.color || defaultSegmentColor }
+                    label: { color: itemStyle.color || defaultSegmentColor, fontFamily: monoFontFamily }
                   },
                   {
                     xAxis: endIso
@@ -1394,7 +1395,7 @@ Hooks.DashboardGrid = {
                     yAxis: band.min,
                     xAxis: 'min',
                     itemStyle,
-                    label: { color: '#0f766e' }
+                    label: { color: '#0f766e', fontFamily: monoFontFamily }
                   },
                   {
                     yAxis: band.max,
@@ -1423,7 +1424,8 @@ Hooks.DashboardGrid = {
                   },
                   label: {
                     formatter: line.label || formatCompactNumber(line.value),
-                    color: line.color || defaultLineColor
+                    color: line.color || defaultLineColor,
+                    fontFamily: monoFontFamily
                   }
                 }))
             };
@@ -1442,7 +1444,8 @@ Hooks.DashboardGrid = {
                   itemStyle: { color },
                   label: {
                     color,
-                    formatter: point.label || formatCompactNumber(point.value)
+                    formatter: point.label || formatCompactNumber(point.value),
+                    fontFamily: monoFontFamily
                   }
                 };
               })
@@ -1463,9 +1466,9 @@ Hooks.DashboardGrid = {
           name: yName,
           nameLocation: 'middle',
           nameGap: 40,
-          nameTextStyle: { color: textColor },
+          nameTextStyle: { color: textColor, fontFamily: monoFontFamily },
           axisLine: { lineStyle: { color: axisLineColor } },
-          axisLabel: { color: textColor, margin: 8, hideOverlap: true },
+          axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: monoFontFamily },
           splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
         };
         if (normalized) {
@@ -1478,18 +1481,20 @@ Hooks.DashboardGrid = {
         }
         chart.setOption({
           backgroundColor: 'transparent',
+          textStyle: { fontFamily: monoFontFamily },
           grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true },
           xAxis: {
             type: 'time',
             axisLine: { lineStyle: { color: axisLineColor } },
-            axisLabel: { color: textColor, margin: 8, hideOverlap: true },
+            axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: monoFontFamily },
             splitLine: { show: false }
           },
           yAxis,
-          legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText } } : { show: false },
+          legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: monoFontFamily } } : { show: false },
           tooltip: {
             trigger: 'axis',
             appendToBody: true,
+            textStyle: { fontFamily: monoFontFamily },
             valueFormatter: (v) => {
               if (v == null) return '-';
               if (normalized) {
