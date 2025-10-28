@@ -119,3 +119,17 @@ select[class*="grid"], select[class*="col-"] {
   font-family: 'Operator Mono', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'SFMono-Regular', Menlo, monospace;
   font-feature-settings: 'liga' 1, 'calt' 1;
 }
+
+.ts-chart .echarts-tooltip,
+.ts-chart .echarts-axis-label,
+.ts-chart .echarts-mark-line,
+.ts-chart .echarts-mark-point,
+.ts-chart .echarts-mark-area {
+  font-family: 'Operator Mono', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'SFMono-Regular', Menlo, monospace !important;
+}
+
+.ts-chart .echarts-mark-area,
+.ts-chart .echarts-mark-line,
+.ts-chart .echarts-mark-point {
+  overflow: visible !important;
+}
