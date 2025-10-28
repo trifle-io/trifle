@@ -17,6 +17,7 @@ defmodule TrifleApp.CoreComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
+  require Decimal
   import TrifleApp.Gettext
 
   @doc """
@@ -346,7 +347,7 @@ defmodule TrifleApp.CoreComponents do
         type={@type}
         name={@name}
         id={@id}
-        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        value={normalized_input_value(@type, @value)}
         class={[
           "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
           "phx-no-feedback:border-zinc-300 phx-no-feedback:focus:border-zinc-400",
@@ -358,6 +359,58 @@ defmodule TrifleApp.CoreComponents do
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
+  end
+
+  defp normalized_input_value(type, %Decimal{} = value) when type in ["number", "range"] do
+    value
+    |> Decimal.normalize()
+    |> decimal_to_plain_string()
+  end
+
+  defp normalized_input_value(_type, %Decimal{} = value) do
+    value
+    |> Decimal.normalize()
+    |> Decimal.to_string(:normal)
+  end
+
+  defp normalized_input_value(type, value)
+       when type in ["number", "range"] and is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" ->
+        ""
+
+      trimmed ->
+        case Decimal.parse(trimmed) do
+          {:ok, decimal} -> decimal |> Decimal.normalize() |> decimal_to_plain_string()
+          :error -> Phoenix.HTML.Form.normalize_value(type, value)
+        end
+    end
+  end
+
+  defp normalized_input_value(type, value) when type in ["number", "range"] and is_integer(value),
+    do: Integer.to_string(value)
+
+  defp normalized_input_value(type, value) when type in ["number", "range"] and is_float(value) do
+    value
+    |> Decimal.from_float()
+    |> Decimal.normalize()
+    |> decimal_to_plain_string()
+  end
+
+  defp normalized_input_value(type, value) do
+    Phoenix.HTML.Form.normalize_value(type, value)
+  end
+
+  defp decimal_to_plain_string(%Decimal{} = decimal) do
+    if Decimal.equal?(decimal, Decimal.round(decimal, 0)) do
+      decimal
+      |> Decimal.to_integer()
+      |> Integer.to_string()
+    else
+      Decimal.to_string(decimal, :normal)
+    end
   end
 
   @doc """
