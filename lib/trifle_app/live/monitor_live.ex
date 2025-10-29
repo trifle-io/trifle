@@ -5,6 +5,7 @@ defmodule TrifleApp.MonitorLive do
   alias Ecto.Changeset
   alias Trifle.Monitors
   alias Trifle.Monitors.AlertEvaluator
+  alias Trifle.Monitors.AlertAdvisor
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Organizations
   alias Trifle.Stats.Configuration
@@ -278,6 +279,17 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, put_flash(socket, :error, message)}
   end
 
+  def handle_info({MonitorAlertFormComponent, {:ai_recommendation_request, request}}, socket) do
+    case prepare_ai_request(socket, request) do
+      {:ok, updated_socket} ->
+        {:noreply, updated_socket}
+
+      {:error, message} ->
+        send_ai_error(request, message)
+        {:noreply, socket}
+    end
+  end
+
   def handle_info({MonitorAlertFormComponent, {:saved, _alert, action}}, socket) do
     message = if action == :new, do: "Alert created", else: "Alert updated"
 
@@ -376,10 +388,168 @@ defmodule TrifleApp.MonitorLive do
      |> put_flash(:error, "Monitor data task crashed: #{inspect(reason)}")}
   end
 
+  def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:error, reason}}, socket) do
+    send_ai_error(
+      %{component_id: component_id, request_id: request_id},
+      format_ai_error(reason)
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:ok, result}}, socket)
+      when is_map(result) do
+    send_update(MonitorAlertFormComponent,
+      id: component_id,
+      ai_recommendation:
+        Map.merge(result, %{
+          request_id: request_id
+        })
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:error, reason}}, socket) do
+    send_ai_error(
+      %{component_id: component_id, request_id: request_id},
+      format_ai_error(reason)
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_async({:ai_recommendation, component_id, request_id}, {:ok, result}, socket)
+      when is_map(result) do
+    send_update(MonitorAlertFormComponent,
+      id: component_id,
+      ai_recommendation:
+        Map.merge(result, %{
+          request_id: request_id
+        })
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_async({:ai_recommendation, component_id, request_id}, {:error, reason}, socket) do
+    send_ai_error(
+      %{component_id: component_id, request_id: request_id},
+      format_ai_error(reason)
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_async({:ai_recommendation, component_id, request_id}, {:exit, reason}, socket) do
+    send_ai_error(
+      %{component_id: component_id, request_id: request_id},
+      format_ai_error({:error, reason})
+    )
+
+    {:noreply, socket}
+  end
+
   defp load_monitor(socket, id) do
     membership = socket.assigns.current_membership
     Monitors.get_monitor_for_membership!(membership, id, preload: [:dashboard])
   end
+
+  defp prepare_ai_request(socket, %{component_id: id, request_id: request_id} = request) do
+    cond do
+      is_nil(id) or is_nil(request_id) ->
+        {:error, "Unable to route AI response to the form."}
+
+      is_nil(socket.assigns.monitor) ->
+        {:error, "Monitor is not loaded yet."}
+
+      !match?(%Trifle.Stats.Series{}, socket.assigns[:stats]) ->
+        {:error, "Load the metric data first, then try again."}
+
+      true ->
+        strategy = Map.get(request, :strategy) || Map.get(request, "strategy")
+        variant = Map.get(request, :variant) || Map.get(request, "variant")
+
+        socket =
+          start_async(
+            socket,
+            {:ai_recommendation, id, request_id},
+            fn ->
+              AlertAdvisor.recommend(
+                socket.assigns.monitor,
+                socket.assigns.stats,
+                strategy: strategy,
+                variant: variant
+              )
+            end
+          )
+
+        {:ok, socket}
+    end
+  end
+
+  defp prepare_ai_request(_socket, _request), do: {:error, "Unable to request recommendation."}
+
+  defp send_ai_error(%{component_id: nil}, _message), do: :ok
+
+  defp send_ai_error(%{component_id: id, request_id: request_id}, message) do
+    send_update(MonitorAlertFormComponent,
+      id: id,
+      ai_recommendation_error: %{
+        request_id: request_id,
+        message: message
+      }
+    )
+  end
+
+  defp send_ai_error(_request, _message), do: :ok
+
+  defp format_ai_error(:missing_metric_path),
+    do: "Set a metric path for this monitor before requesting recommendations."
+
+  defp format_ai_error(:no_data),
+    do: "No recent data available for this metric. Adjust the timeframe and retry."
+
+  defp format_ai_error(:unsupported_strategy),
+    do: "This alert type is not supported for AI configuration yet."
+
+  defp format_ai_error(:unsupported_variant),
+    do: "Unknown sensitivity option. Try the buttons again."
+
+  defp format_ai_error(:missing_api_key),
+    do: "OpenAI API key is not configured. Set OPENAI_API_KEY and restart the app."
+
+  defp format_ai_error({:missing_value, path}),
+    do: "AI response was incomplete. Missing #{format_path(path)}."
+
+  defp format_ai_error({:invalid_value, path}),
+    do: "AI returned an invalid value for #{format_path(path)}."
+
+  defp format_ai_error({:invalid_value, value}) when is_binary(value),
+    do: "Could not interpret AI response (#{value})."
+
+  defp format_ai_error({:http_error, status, _body}),
+    do: "OpenAI request failed with status #{status}."
+
+  defp format_ai_error({:api_error, reason}),
+    do: "OpenAI error: #{reason}."
+
+  defp format_ai_error({:error, reason}),
+    do: "OpenAI error: #{inspect(reason)}."
+
+  defp format_ai_error(%Jason.DecodeError{} = error),
+    do: "Could not decode AI response: #{Exception.message(error)}."
+
+  defp format_ai_error(reason) when is_binary(reason), do: reason
+  defp format_ai_error(reason), do: "AI recommendation failed: #{inspect(reason)}."
+
+  defp format_path(path) when is_list(path) do
+    path
+    |> Enum.map(&to_string/1)
+    |> Enum.join(".")
+  end
+
+  defp format_path(path), do: path |> to_string()
 
   defp build_page_title(:configure, monitor), do: "Configure · #{monitor.name}"
   defp build_page_title(_action, monitor), do: "#{monitor.name} · Monitor"
