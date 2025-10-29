@@ -8,7 +8,15 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   alias Trifle.Monitors
   alias Trifle.Monitors.Alert
 
-  @ai_default %{status: :idle, variant: nil, request_id: nil, message: nil}
+  @ai_default %{
+    status: :idle,
+    variant: nil,
+    request_id: nil,
+    message: nil,
+    started_at: nil,
+    tick_at: nil,
+    finished_at: nil
+  }
 
   @impl true
   def update(%{ai_recommendation: result} = assigns, socket) do
@@ -25,6 +33,15 @@ defmodule TrifleApp.MonitorAlertFormComponent do
       socket
       |> maybe_assign_id(assigns)
       |> apply_ai_error(error)
+
+    {:ok, socket}
+  end
+
+  def update(%{ai_progress: progress} = assigns, socket) do
+    socket =
+      socket
+      |> maybe_assign_id(assigns)
+      |> update_progress(progress)
 
     {:ok, socket}
   end
@@ -290,6 +307,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
          assign(socket, :ai_state, Map.merge(@ai_default, %{status: :error, message: "Choose a valid AI option."}))}
 
       variant ->
+        now = DateTime.utc_now()
         request_id = UUID.generate()
         strategy = socket.assigns.strategy || :threshold
 
@@ -297,10 +315,10 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           {:ai_recommendation_request,
            %{
              component_id: socket.assigns.id,
-             request_id: request_id,
-             variant: variant,
-             strategy: strategy
-           }}
+               request_id: request_id,
+                variant: variant,
+                strategy: strategy
+              }}
         )
 
         {:noreply,
@@ -308,8 +326,11 @@ defmodule TrifleApp.MonitorAlertFormComponent do
            status: :loading,
            variant: variant,
            request_id: request_id,
-           message: nil
-         })}
+            message: nil,
+            started_at: now,
+            tick_at: now,
+            finished_at: nil
+          })}
     end
   end
 
@@ -355,12 +376,17 @@ defmodule TrifleApp.MonitorAlertFormComponent do
         socket
 
       strategy_conflict?(socket.assigns[:strategy], result.strategy) ->
+        finished_at = DateTime.utc_now()
+
         assign(socket, :ai_state, %{
           status: :stale,
           variant: current_state.variant,
           request_id: nil,
           message:
-            "Recommendation used #{human_strategy(result.strategy)}, but the form now uses #{human_strategy(socket.assigns[:strategy])}. Request a fresh suggestion."
+            "Recommendation used #{human_strategy(result.strategy)}, but the form now uses #{human_strategy(socket.assigns[:strategy])}. Request a fresh suggestion.",
+          started_at: current_state.started_at,
+          tick_at: finished_at,
+          finished_at: finished_at
         })
 
       true ->
@@ -387,12 +413,18 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           |> Monitors.change_alert(params)
           |> Map.put(:action, :validate)
 
+        finished_at = result[:finished_at] || DateTime.utc_now()
+        started_at = result[:started_at] || current_state.started_at || finished_at
+
         socket
         |> assign(:ai_state, %{
           status: :success,
           variant: variant,
-          request_id: request_id,
-          message: safe_summary(result.summary, variant)
+          request_id: nil,
+          message: safe_summary(result.summary, variant),
+          started_at: started_at,
+          tick_at: finished_at,
+          finished_at: finished_at
         })
         |> put_changeset(changeset)
     end
@@ -400,7 +432,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
   defp apply_ai_recommendation(socket, _result), do: socket
 
-  defp apply_ai_error(socket, %{request_id: request_id, message: message}) do
+  defp apply_ai_error(socket, %{request_id: request_id, message: message} = error) do
     current_state = socket.assigns[:ai_state] || @ai_default
 
     cond do
@@ -408,16 +440,40 @@ defmodule TrifleApp.MonitorAlertFormComponent do
         socket
 
       true ->
+        finished_at = error[:finished_at] || DateTime.utc_now()
         assign(socket, :ai_state, %{
           status: :error,
           variant: current_state.variant,
           request_id: nil,
-          message: safe_error_message(message)
+          message: safe_error_message(message),
+          started_at: current_state.started_at,
+          tick_at: finished_at,
+          finished_at: finished_at
         })
     end
   end
 
   defp apply_ai_error(socket, _), do: socket
+
+  defp update_progress(socket, %{request_id: request_id} = progress) do
+    current_state = socket.assigns[:ai_state] || @ai_default
+
+    if current_state.request_id == request_id do
+      started_at = progress[:started_at] || current_state.started_at
+      tick_at = progress[:tick_at] || current_state.tick_at || DateTime.utc_now()
+      finished_at = progress[:finished_at] || current_state.finished_at
+
+      socket
+      |> assign(:ai_state, %{
+        current_state
+        | started_at: started_at || tick_at,
+          tick_at: tick_at,
+          finished_at: finished_at
+      })
+    else
+      socket
+    end
+  end
 
   defp strategy_conflict?(nil, _), do: false
   defp strategy_conflict?(_, nil), do: false
@@ -494,9 +550,6 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     end
   end
 
-  defp human_variant(nil), do: "Balanced"
-  defp human_variant(variant), do: variant_label(variant)
-
   defp create_alert(socket, params) do
     case Monitors.create_alert(socket.assigns.monitor, params) do
       {:ok, alert} ->
@@ -543,11 +596,6 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           disabled={@ai_state.status == :loading}
         >
           <.icon
-            :if={variant_loading?(@ai_state, :conservative)}
-            name="hero-arrow-path"
-            class="h-4 w-4 animate-spin"
-          />
-          <.icon
             :if={variant_success?(@ai_state, :conservative)}
             name="hero-check-mini"
             class="h-4 w-4"
@@ -563,11 +611,6 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           phx-value-variant="balanced"
           disabled={@ai_state.status == :loading}
         >
-          <.icon
-            :if={variant_loading?(@ai_state, :balanced)}
-            name="hero-arrow-path"
-            class="h-4 w-4 animate-spin"
-          />
           <.icon
             :if={variant_success?(@ai_state, :balanced)}
             name="hero-check-mini"
@@ -585,11 +628,6 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           disabled={@ai_state.status == :loading}
         >
           <.icon
-            :if={variant_loading?(@ai_state, :sensitive)}
-            name="hero-arrow-path"
-            class="h-4 w-4 animate-spin"
-          />
-          <.icon
             :if={variant_success?(@ai_state, :sensitive)}
             name="hero-check-mini"
             class="h-4 w-4"
@@ -598,33 +636,10 @@ defmodule TrifleApp.MonitorAlertFormComponent do
         </button>
       </div>
 
-      <p
-        :if={@ai_state.status == :loading}
-        class="text-xs text-slate-600 dark:text-slate-300"
-      >
-        Fetching {human_variant(@ai_state.variant)} recommendation…
-      </p>
-
-      <p
-        :if={@ai_state.status == :success}
-        class="text-xs text-emerald-600 dark:text-emerald-400"
-      >
-        {@ai_state.message || success_caption(@ai_state.variant)}
-      </p>
-
-      <p
-        :if={@ai_state.status == :error}
-        class="text-xs text-rose-600 dark:text-rose-400"
-      >
-        {@ai_state.message || "Could not fetch AI recommendation. Try again."}
-      </p>
-
-      <p
-        :if={@ai_state.status == :stale}
-        class="text-xs text-amber-600 dark:text-amber-300"
-      >
-        {@ai_state.message}
-      </p>
+      <.ai_loading_message :if={@ai_state.status == :loading} ai_state={@ai_state} />
+      <.ai_success_message :if={@ai_state.status == :success} ai_state={@ai_state} />
+      <.ai_error_message :if={@ai_state.status == :error} ai_state={@ai_state} />
+      <.ai_stale_message :if={@ai_state.status == :stale} ai_state={@ai_state} />
     </div>
     """
   end
@@ -659,9 +674,6 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     "#{base} #{color_classes}"
   end
 
-  defp variant_loading?(%{status: :loading, variant: variant}, variant), do: true
-  defp variant_loading?(_, _), do: false
-
   defp variant_success?(%{status: :success, variant: variant}, variant), do: true
   defp variant_success?(_, _), do: false
 
@@ -670,7 +682,100 @@ defmodule TrifleApp.MonitorAlertFormComponent do
        do: true
 
   defp variant_active?(_, _), do: false
+  defp ai_loading_message(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:ai_state, fn -> @ai_default end)
+      |> assign(:variant_label, variant_label(assigns.ai_state.variant || :balanced))
+      |> assign(:elapsed, running_elapsed(assigns.ai_state))
 
+    ~H"""
+    <div class="mt-3 flex justify-center">
+      <div class="chat-progress-wave inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+        Recommending {@variant_label} configuration…
+        <span :if={@elapsed} class="font-medium text-slate-700 dark:text-slate-100">{@elapsed}</span>
+      </div>
+    </div>
+    """
+  end
+
+  defp ai_success_message(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:ai_state, fn -> @ai_default end)
+      |> assign(:summary, assigns.ai_state.message || success_caption(assigns.ai_state.variant))
+      |> assign(:elapsed, finished_elapsed(assigns.ai_state))
+
+    ~H"""
+    <div class="mt-3 rounded-md border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
+      <p>{@summary}</p>
+      <p :if={@elapsed} class="mt-1 text-[11px] font-medium uppercase tracking-wide text-emerald-600/80 dark:text-emerald-300/80">
+        Completed in {@elapsed}
+      </p>
+    </div>
+    """
+  end
+
+  defp ai_error_message(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:ai_state, fn -> @ai_default end)
+      |> assign(:message, assigns.ai_state.message || "Could not fetch AI recommendation. Try again.")
+      |> assign(:elapsed, finished_elapsed(assigns.ai_state))
+
+    ~H"""
+    <div class="mt-3 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+      <p>{@message}</p>
+      <p :if={@elapsed} class="mt-1 text-[11px] font-medium uppercase tracking-wide text-rose-600/80 dark:text-rose-300/80">
+        Completed in {@elapsed}
+      </p>
+    </div>
+    """
+  end
+
+  defp ai_stale_message(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:ai_state, fn -> @ai_default end)
+      |> assign(:message, assigns.ai_state.message || "Recommendation is no longer applicable. Request a fresh suggestion.")
+
+    ~H"""
+    <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+      <p>{@message}</p>
+    </div>
+    """
+  end
+
+  defp running_elapsed(%{started_at: %DateTime{} = start, tick_at: %DateTime{} = tick}) do
+    seconds = DateTime.diff(tick, start, :second) |> max(0)
+    format_duration(seconds)
+  end
+
+  defp running_elapsed(_), do: nil
+
+  defp finished_elapsed(%{started_at: %DateTime{} = start, finished_at: %DateTime{} = finish}) do
+    seconds = DateTime.diff(finish, start, :second) |> max(0)
+    format_duration(seconds)
+  end
+
+  defp finished_elapsed(_), do: nil
+
+  defp format_duration(nil), do: nil
+
+  defp format_duration(seconds) when is_integer(seconds) and seconds >= 0 do
+    cond do
+      seconds < 60 ->
+        "#{seconds}s"
+
+      true ->
+        minutes = div(seconds, 60)
+        remaining = rem(seconds, 60)
+        "#{minutes}m#{pad_two(remaining)}s"
+    end
+  end
+
+  defp pad_two(value) when value < 10, do: "0#{value}"
+  defp pad_two(value), do: Integer.to_string(value)
 
   defp variant_label(:conservative), do: "Conservative"
   defp variant_label(:balanced), do: "Balanced"

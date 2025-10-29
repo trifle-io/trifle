@@ -84,7 +84,8 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
-     |> assign(:show_error_modal, false)}
+     |> assign(:show_error_modal, false)
+     |> assign(:ai_requests, %{})}
   end
 
   @impl true
@@ -326,6 +327,34 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, assign(socket, :transponding, state)}
   end
 
+  def handle_info({:ai_recommendation_tick, component_id, request_id}, socket) do
+    ai_requests = socket.assigns[:ai_requests] || %{}
+
+    case Map.get(ai_requests, request_id) do
+      %{component_id: ^component_id, started_at: started_at} = entry ->
+        now = DateTime.utc_now()
+
+        send_update(MonitorAlertFormComponent,
+          id: component_id,
+          ai_progress: %{
+            request_id: request_id,
+            started_at: started_at,
+            tick_at: now
+          }
+        )
+
+        updated_entry = Map.put(entry, :tick_at, now)
+        updated_requests = Map.put(ai_requests, request_id, updated_entry)
+
+        Process.send_after(self(), {:ai_recommendation_tick, component_id, request_id}, 1_000)
+
+        {:noreply, assign(socket, :ai_requests, updated_requests)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -388,17 +417,17 @@ defmodule TrifleApp.MonitorLive do
      |> put_flash(:error, "Monitor data task crashed: #{inspect(reason)}")}
   end
 
-  def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:error, reason}}, socket) do
-    send_ai_error(
-      %{component_id: component_id, request_id: request_id},
-      format_ai_error(reason)
-    )
-
-    {:noreply, socket}
-  end
-
   def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:ok, result}}, socket)
       when is_map(result) do
+    {socket, finished_at, entry} = finalize_ai_request(socket, component_id, request_id)
+
+    started_at = entry && Map.get(entry, :started_at)
+
+    result =
+      result
+      |> Map.put(:finished_at, finished_at)
+      |> maybe_put_started(started_at)
+
     send_update(MonitorAlertFormComponent,
       id: component_id,
       ai_recommendation:
@@ -411,8 +440,10 @@ defmodule TrifleApp.MonitorLive do
   end
 
   def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:error, reason}}, socket) do
+    {socket, finished_at, _entry} = finalize_ai_request(socket, component_id, request_id)
+
     send_ai_error(
-      %{component_id: component_id, request_id: request_id},
+      %{component_id: component_id, request_id: request_id, finished_at: finished_at},
       format_ai_error(reason)
     )
 
@@ -421,6 +452,15 @@ defmodule TrifleApp.MonitorLive do
 
   def handle_async({:ai_recommendation, component_id, request_id}, {:ok, result}, socket)
       when is_map(result) do
+    {socket, finished_at, entry} = finalize_ai_request(socket, component_id, request_id)
+
+    started_at = entry && Map.get(entry, :started_at)
+
+    result =
+      result
+      |> Map.put(:finished_at, finished_at)
+      |> maybe_put_started(started_at)
+
     send_update(MonitorAlertFormComponent,
       id: component_id,
       ai_recommendation:
@@ -433,8 +473,10 @@ defmodule TrifleApp.MonitorLive do
   end
 
   def handle_async({:ai_recommendation, component_id, request_id}, {:error, reason}, socket) do
+    {socket, finished_at, _entry} = finalize_ai_request(socket, component_id, request_id)
+
     send_ai_error(
-      %{component_id: component_id, request_id: request_id},
+      %{component_id: component_id, request_id: request_id, finished_at: finished_at},
       format_ai_error(reason)
     )
 
@@ -442,8 +484,10 @@ defmodule TrifleApp.MonitorLive do
   end
 
   def handle_async({:ai_recommendation, component_id, request_id}, {:exit, reason}, socket) do
+    {socket, finished_at, _entry} = finalize_ai_request(socket, component_id, request_id)
+
     send_ai_error(
-      %{component_id: component_id, request_id: request_id},
+      %{component_id: component_id, request_id: request_id, finished_at: finished_at},
       format_ai_error({:error, reason})
     )
 
@@ -470,6 +514,8 @@ defmodule TrifleApp.MonitorLive do
         strategy = Map.get(request, :strategy) || Map.get(request, "strategy")
         variant = Map.get(request, :variant) || Map.get(request, "variant")
 
+        socket = register_ai_request(socket, id, request_id)
+
         socket =
           start_async(
             socket,
@@ -492,17 +538,58 @@ defmodule TrifleApp.MonitorLive do
 
   defp send_ai_error(%{component_id: nil}, _message), do: :ok
 
-  defp send_ai_error(%{component_id: id, request_id: request_id}, message) do
+  defp send_ai_error(%{component_id: id, request_id: request_id} = attrs, message) do
+    finished_at = attrs[:finished_at] || DateTime.utc_now()
+
     send_update(MonitorAlertFormComponent,
       id: id,
       ai_recommendation_error: %{
         request_id: request_id,
-        message: message
+        message: message,
+        finished_at: finished_at
       }
     )
   end
 
   defp send_ai_error(_request, _message), do: :ok
+
+  defp register_ai_request(socket, component_id, request_id) do
+    started_at = DateTime.utc_now()
+
+    ai_requests =
+      (socket.assigns[:ai_requests] || %{})
+      |> Map.put(request_id, %{
+        component_id: component_id,
+        started_at: started_at,
+        status: :running
+      })
+
+    send_update(MonitorAlertFormComponent,
+      id: component_id,
+      ai_progress: %{
+        request_id: request_id,
+        started_at: started_at,
+        tick_at: started_at
+      }
+    )
+
+    Process.send_after(self(), {:ai_recommendation_tick, component_id, request_id}, 1_000)
+
+    assign(socket, :ai_requests, ai_requests)
+  end
+
+  defp finalize_ai_request(socket, _component_id, request_id) do
+    finished_at = DateTime.utc_now()
+    ai_requests = socket.assigns[:ai_requests] || %{}
+    {entry, remaining} = Map.pop(ai_requests, request_id)
+    {assign(socket, :ai_requests, remaining || %{}), finished_at, entry}
+  end
+
+  defp maybe_put_started(result, nil), do: result
+
+  defp maybe_put_started(result, %DateTime{} = started_at) do
+    Map.put_new(result, :started_at, started_at)
+  end
 
   defp format_ai_error(:missing_metric_path),
     do: "Set a metric path for this monitor before requesting recommendations."

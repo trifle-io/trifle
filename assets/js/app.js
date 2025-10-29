@@ -1545,26 +1545,26 @@ Hooks.DashboardGrid = {
               });
             });
         }
+        const extractPointValue = (point) => {
+          if (Array.isArray(point)) return Number(point[1]);
+          if (point && typeof point === 'object') {
+            if (Array.isArray(point.value)) return Number(point.value[1]);
+            if ('value' in point) return Number(point.value);
+          }
+          if (Number.isFinite(point)) return Number(point);
+          return null;
+        };
+        const updateBounds = (bounds, value) => {
+          if (!Number.isFinite(value)) return;
+          if (value < bounds.min) bounds.min = value;
+          if (value > bounds.max) bounds.max = value;
+        };
+        const seriesBounds = { min: Infinity, max: -Infinity };
+        series.forEach((s) => {
+          (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
+        });
         let alertAxis = null;
         if (shouldApplyAlertAxis) {
-          const extractPointValue = (point) => {
-            if (Array.isArray(point)) return Number(point[1]);
-            if (point && typeof point === 'object') {
-              if (Array.isArray(point.value)) return Number(point.value[1]);
-              if ('value' in point) return Number(point.value);
-            }
-            if (Number.isFinite(point)) return Number(point);
-            return null;
-          };
-          const updateBounds = (bounds, value) => {
-            if (!Number.isFinite(value)) return;
-            if (value < bounds.min) bounds.min = value;
-            if (value > bounds.max) bounds.max = value;
-          };
-          const seriesBounds = { min: Infinity, max: -Infinity };
-          series.forEach((s) => {
-            (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
-          });
           const overlayBounds = { min: Infinity, max: -Infinity };
           if (overlay) {
             if (Array.isArray(overlay.reference_lines)) {
@@ -1632,6 +1632,17 @@ Hooks.DashboardGrid = {
             if (alertAxis.positiveOnly && axisMin < 0) axisMin = 0;
             yAxis.min = axisMin;
             yAxis.max = axisMax;
+          } else if (Number.isFinite(seriesBounds.min) && seriesBounds.min < 0) {
+            const axisMin = seriesBounds.min;
+            const axisMaxCandidate = Number.isFinite(seriesBounds.max) ? seriesBounds.max : 0;
+            let axisMax = axisMaxCandidate;
+            if (!Number.isFinite(axisMax) || axisMax <= axisMin) {
+              axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
+            }
+            const span = axisMax - axisMin;
+            const pad = span * 0.1 || Math.max(Math.abs(axisMax), 1) * 0.1;
+            yAxis.min = axisMin - pad * 0.4;
+            yAxis.max = axisMax + pad;
           }
         }
         chart.setOption({
@@ -2717,26 +2728,30 @@ Hooks.ExpandedWidgetView = {
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
     const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
     const legendText = isDarkMode ? '#D1D5DB' : '#374151';
+
+    const extractPointValue = (point) => {
+      if (Array.isArray(point)) return Number(point[1]);
+      if (point && typeof point === 'object') {
+        if (Array.isArray(point.value)) return Number(point.value[1]);
+        if ('value' in point) return Number(point.value);
+      }
+      if (Number.isFinite(point)) return Number(point);
+      return null;
+    };
+
+    const updateBounds = (bounds, value) => {
+      if (!Number.isFinite(value)) return;
+      if (value < bounds.min) bounds.min = value;
+      if (value > bounds.max) bounds.max = value;
+    };
+
+    const seriesBounds = { min: Infinity, max: -Infinity };
+    series.forEach((s) => {
+      (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
+    });
+
     let alertAxis = null;
     if (shouldApplyAlertAxis) {
-      const extractPointValue = (point) => {
-        if (Array.isArray(point)) return Number(point[1]);
-        if (point && typeof point === 'object') {
-          if (Array.isArray(point.value)) return Number(point.value[1]);
-          if ('value' in point) return Number(point.value);
-        }
-        if (Number.isFinite(point)) return Number(point);
-        return null;
-      };
-      const updateBounds = (bounds, value) => {
-        if (!Number.isFinite(value)) return;
-        if (value < bounds.min) bounds.min = value;
-        if (value > bounds.max) bounds.max = value;
-      };
-      const seriesBounds = { min: Infinity, max: -Infinity };
-      series.forEach((s) => {
-        (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
-      });
       const overlayBounds = { min: Infinity, max: -Infinity };
       if (overlay) {
         if (Array.isArray(overlay.reference_lines)) {
@@ -2810,6 +2825,17 @@ Hooks.ExpandedWidgetView = {
         if (alertAxis.positiveOnly && axisMin < 0) axisMin = 0;
         yAxis.min = axisMin;
         yAxis.max = axisMax;
+      } else if (Number.isFinite(seriesBounds.min) && seriesBounds.min < 0) {
+        const axisMin = seriesBounds.min;
+        const rawMax = Number.isFinite(seriesBounds.max) ? seriesBounds.max : 0;
+        let axisMax = rawMax;
+        if (!Number.isFinite(axisMax) || axisMax <= axisMin) {
+          axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
+        }
+        const span = axisMax - axisMin;
+        const pad = span * 0.1 || Math.max(Math.abs(axisMax), 1) * 0.1;
+        yAxis.min = axisMin - pad * 0.4;
+        yAxis.max = axisMax + pad;
       }
     }
 
