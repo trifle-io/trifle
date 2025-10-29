@@ -85,6 +85,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
      |> assign(:show_error_modal, false)
+     |> assign(:test_delivery_state, nil)
      |> assign(:ai_requests, %{})}
   end
 
@@ -254,6 +255,48 @@ defmodule TrifleApp.MonitorLive do
 
       {:error, %Changeset{} = changeset} ->
         {:noreply, put_flash(socket, :error, changeset_error_message(changeset))}
+    end
+  end
+
+  def handle_event("test_delivery", _params, %{assigns: %{monitor: monitor}} = socket) do
+    export_params = build_monitor_export_params(socket.assigns)
+    media_types = Monitors.delivery_media_types_from_media(monitor.delivery_media || [])
+
+    socket =
+      socket
+      |> assign(:test_delivery_state, {:monitor, :running})
+      |> start_async({:test_delivery, :monitor}, fn ->
+        Monitors.test_deliver_monitor(monitor,
+          export_params: export_params,
+          media_types: media_types
+        )
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("test_alert_delivery", %{"id" => id}, socket) do
+    monitor = socket.assigns.monitor
+
+    case find_alert(monitor, id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Alert not found.")}
+
+      %Alert{} = alert ->
+        export_params = build_monitor_export_params(socket.assigns)
+        media_types = Monitors.delivery_media_types_from_media(monitor.delivery_media || [])
+
+        socket =
+          socket
+          |> assign(:test_delivery_state, {:alert, alert.id, :running})
+          |> start_async({:test_delivery, {:alert, alert.id}}, fn ->
+            Monitors.test_deliver_alert(monitor, alert,
+              export_params: export_params,
+              media_types: media_types
+            )
+          end)
+
+        {:noreply, socket}
     end
   end
 
@@ -492,6 +535,45 @@ defmodule TrifleApp.MonitorLive do
     )
 
     {:noreply, socket}
+  end
+
+  def handle_async({:test_delivery, :monitor}, {:ok, result}, socket) do
+    message = format_test_delivery_success(:monitor, socket, result)
+
+    {:noreply,
+     socket
+     |> assign(:test_delivery_state, nil)
+     |> put_flash(:info, message)}
+  end
+
+  def handle_async({:test_delivery, :monitor}, {:error, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:test_delivery_state, nil)
+     |> put_flash(:error, format_test_delivery_error(reason))}
+  end
+
+  def handle_async({:test_delivery, {:alert, alert_id}}, {:ok, result}, socket) do
+    message = format_test_delivery_success({:alert, alert_id}, socket, result)
+
+    {:noreply,
+     socket
+     |> assign(:test_delivery_state, nil)
+     |> put_flash(:info, message)}
+  end
+
+  def handle_async({:test_delivery, {:alert, _alert_id}}, {:error, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:test_delivery_state, nil)
+     |> put_flash(:error, format_test_delivery_error(reason))}
+  end
+
+  def handle_async({:test_delivery, _key}, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:test_delivery_state, nil)
+     |> put_flash(:error, format_test_delivery_error({:exit, reason}))}
   end
 
   defp load_monitor(socket, id) do
@@ -1545,6 +1627,102 @@ defmodule TrifleApp.MonitorLive do
     Map.put(params, key, value)
   end
 
+  defp format_test_delivery_success(:monitor, socket, result) do
+    monitor = socket.assigns.monitor
+    summary = Map.get(result, :summary, %{})
+    successes = summarize_handles(summary[:successes])
+    failures = summarize_failures(summary[:failures])
+
+    base =
+      case successes do
+        nil -> "Sent preview to configured monitor recipients."
+        line -> "Sent #{monitor.name} preview to #{line}."
+      end
+
+    maybe_append_failures(base, failures)
+  end
+
+  defp format_test_delivery_success({:alert, alert_id}, socket, result) do
+    monitor = socket.assigns.monitor
+    alert_label =
+      socket.assigns.alerts
+      |> List.wrap()
+      |> Enum.find_value(fn
+        %Alert{id: id} = alert ->
+          if normalize_id(id) == normalize_id(alert_id) do
+            MonitorLayout.alert_label(alert) || "Alert"
+          else
+            nil
+          end
+
+        _ ->
+          nil
+      end) || "Alert"
+
+    summary = Map.get(result, :summary, %{})
+    successes = summarize_handles(summary[:successes])
+    failures = summarize_failures(summary[:failures])
+
+    base =
+      case successes do
+        nil -> "Sent #{monitor.name} · #{alert_label} preview."
+        line -> "Sent #{monitor.name} · #{alert_label} preview to #{line}."
+      end
+
+    maybe_append_failures(base, failures)
+  end
+
+  defp format_test_delivery_error({:exit, reason}) do
+    "Delivery failed: #{inspect(reason)}"
+  end
+
+  defp format_test_delivery_error(reason) when is_binary(reason), do: reason
+  defp format_test_delivery_error(reason), do: "Delivery failed: #{inspect(reason)}"
+
+  defp summarize_handles(nil), do: nil
+  defp summarize_handles(""), do: nil
+
+  defp summarize_handles(handles) when is_binary(handles) do
+    case String.trim(handles) do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp summarize_handles(handles) when is_list(handles) do
+    handles
+    |> Enum.reject(&blank?/1)
+    |> Enum.join(", ")
+    |> summarize_handles()
+  end
+
+  defp summarize_handles(_), do: nil
+
+  defp summarize_failures(nil), do: nil
+  defp summarize_failures(""), do: nil
+
+  defp summarize_failures(failures) when is_binary(failures) do
+    case String.trim(failures) do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp summarize_failures(failures) when is_list(failures) do
+    failures
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("; ")
+    |> summarize_failures()
+  end
+
+  defp summarize_failures(_), do: nil
+
+  defp maybe_append_failures(message, nil), do: message
+  defp maybe_append_failures(message, failures), do: message <> " Failed for #{failures}."
+
+  defp normalize_id(value) when is_binary(value), do: value
+  defp normalize_id(value), do: to_string(value)
+
   defp monitor_export_filename(prefix, %Monitor{} = monitor, ext) do
     ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
 
@@ -1729,6 +1907,34 @@ defmodule TrifleApp.MonitorLive do
           </.link>
           <button
             type="button"
+            class={["inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600",
+              match?({:monitor, :running}, @test_delivery_state) && "opacity-80 cursor-wait"]}
+            phx-click="test_delivery"
+            disabled={match?({:monitor, :running}, @test_delivery_state)}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+              />
+            </svg>
+            <span class="hidden md:inline">
+              <%= if match?({:monitor, :running}, @test_delivery_state), do: "Sending…", else: "Send" %>
+            </span>
+            <span class="md:hidden">
+              <%= if match?({:monitor, :running}, @test_delivery_state), do: "Send", else: "Send" %>
+            </span>
+          </button>
+          <button
+            type="button"
             class="inline-flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/70"
             phx-click="toggle_status"
           >
@@ -1893,6 +2099,8 @@ defmodule TrifleApp.MonitorLive do
                           {alert_evaluation_summary(evaluation)}
                         </p>
                       </div>
+                      <% alert_key = normalize_id(alert.id) %>
+                      <% running_alert? = match?({:alert, ^alert_key, :running}, @test_delivery_state) %>
                       <div class="flex items-center gap-2">
                         <button
                           type="button"
@@ -1920,6 +2128,30 @@ defmodule TrifleApp.MonitorLive do
                             />
                           </svg>
                           Configure
+                        </button>
+                        <button
+                          type="button"
+                          class={["inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-gray-200 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-500 dark:hover:bg-slate-600",
+                            running_alert? && "opacity-80 cursor-wait"]}
+                          phx-click="test_alert_delivery"
+                          phx-value-id={alert.id}
+                          disabled={running_alert?}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-4 w-4"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+                            />
+                          </svg>
+                          <span><%= if running_alert?, do: "Sending…", else: "Send" %></span>
                         </button>
                       </div>
                     </li>

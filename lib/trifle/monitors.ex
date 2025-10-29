@@ -9,6 +9,7 @@ defmodule Trifle.Monitors do
   alias Trifle.Accounts.User
   alias Trifle.Integrations
   alias Trifle.Monitors.{Alert, Execution, Monitor}
+  alias Trifle.Monitors.TestDelivery
   alias Trifle.Monitors.Monitor.DeliveryMedium
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations
@@ -124,6 +125,20 @@ defmodule Trifle.Monitors do
   """
   def change_monitor(%Monitor{} = monitor, attrs \\ %{}) do
     Monitor.changeset(monitor, normalize_monitor_attrs(attrs))
+  end
+
+  @doc """
+  Triggers a one-off delivery for the given monitor using the configured delivery channels.
+  """
+  def test_deliver_monitor(%Monitor{} = monitor, opts \\ []) do
+    TestDelivery.deliver_monitor(monitor, opts)
+  end
+
+  @doc """
+  Triggers a one-off delivery for a specific alert belonging to the monitor.
+  """
+  def test_deliver_alert(%Monitor{} = monitor, %Alert{} = alert, opts \\ []) do
+    TestDelivery.deliver_alert(monitor, alert, opts)
   end
 
   ## Alerts
