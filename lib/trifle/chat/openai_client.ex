@@ -10,7 +10,7 @@ defmodule Trifle.Chat.OpenAIClient do
   @spec chat_completion(list(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def chat_completion(messages, opts \\ []) when is_list(messages) do
-    with {:ok, api_key} <- fetch_api_key(),
+    with {:ok, api_key} <- fetch_api_key(opts),
          {:ok, body} <- build_body(messages, opts),
          {:ok, response} <- perform_request(body, api_key) do
       Jason.decode(response.body)
@@ -24,6 +24,7 @@ defmodule Trifle.Chat.OpenAIClient do
         "messages" => messages
       }
       |> maybe_put(:max_completion_tokens, opts[:max_completion_tokens])
+      |> maybe_put(:response_format, opts[:response_format])
       |> maybe_put(:tools, opts[:tools])
       |> maybe_put(:tool_choice, opts[:tool_choice])
 
@@ -63,7 +64,20 @@ defmodule Trifle.Chat.OpenAIClient do
     end
   end
 
-  defp fetch_api_key do
+  defp fetch_api_key(opts) do
+    case Keyword.get(opts, :api_key) do
+      key when is_binary(key) and byte_size(key) > 0 ->
+        {:ok, key}
+
+      key when is_nil(key) or key == "" ->
+        fetch_configured_api_key()
+
+      _ ->
+        fetch_configured_api_key()
+    end
+  end
+
+  defp fetch_configured_api_key do
     case api_key() do
       key when is_binary(key) and byte_size(key) > 0 -> {:ok, key}
       _ -> {:error, :missing_api_key}
