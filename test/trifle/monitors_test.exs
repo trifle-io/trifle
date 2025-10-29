@@ -77,6 +77,7 @@ defmodule Trifle.MonitorsTest do
       assert monitor.organization_id == membership.organization_id
       assert monitor.source_type == :database
       assert monitor.source_id == database.id
+      assert Monitors.delivery_media_types_from_media(monitor.delivery_media) == [:pdf]
     end
 
     test "create_monitor_for_membership/3 returns error changeset when data invalid", %{
@@ -99,10 +100,12 @@ defmodule Trifle.MonitorsTest do
 
       assert {:ok, %Monitor{} = updated} =
                Monitors.update_monitor_for_membership(monitor, membership, %{
-                 name: "Latency Guard"
+                 name: "Latency Guard",
+                 delivery_media: [%{medium: :png_dark}]
                })
 
       assert updated.name == "Latency Guard"
+      assert Monitors.delivery_media_types_from_media(updated.delivery_media) == [:png_dark]
     end
 
     test "delete_monitor_for_membership/2 removes monitor", %{

@@ -4,7 +4,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Ecto.Changeset
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
-  alias Trifle.Monitors.Monitor.{DeliveryChannel, ReportSettings}
+  alias Trifle.Monitors.Monitor.{DeliveryChannel, DeliveryMedium, ReportSettings}
   alias Trifle.Stats.Source
   require Logger
 
@@ -21,12 +21,14 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign_new(:dashboards, fn -> assigns.dashboards || [] end)
      |> assign_new(:available_dashboards, fn -> assigns.dashboards || [] end)
      |> assign_new(:delivery_options, fn -> assigns.delivery_options || [] end)
+     |> assign_new(:delivery_media_options, fn -> Monitors.delivery_media_options() end)
      |> assign_new(:delivery_handles, fn -> [] end)
      |> assign_new(:sources, fn -> assigns.sources || [] end)
      |> assign(assigns)
      |> assign(:persisted_monitor, monitor)
      |> assign(:action, assigns[:action] || derive_action(monitor))
      |> assign(:delivery_handle_error, nil)
+     |> assign(:delivery_media_error, nil)
      |> assign_form(assigns.changeset || Monitors.change_monitor(monitor, %{}))}
   end
 
@@ -262,6 +264,56 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                   />
                 </div>
               </div>
+
+              <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Delivery media</h3>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Choose the format to send when you trigger a delivery. You can update this later.
+                </p>
+                <% selected_media = List.first(@selected_delivery_media || []) %>
+                <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                  <label
+                    :for={option <- @delivery_media_options}
+                    class={[
+                      "relative flex cursor-pointer flex-col gap-1 rounded-md border border-slate-200 bg-white p-3 text-sm shadow-sm transition hover:border-teal-500 focus-within:border-teal-500 dark:border-slate-600 dark:bg-slate-800/70 dark:hover:border-teal-400",
+                      option.value == selected_media && "border-teal-500 ring-1 ring-teal-500 dark:border-teal-400"
+                    ]}
+                  >
+                    <input
+                      type="radio"
+                      class="sr-only peer"
+                      name="monitor[delivery_media_types]"
+                      id={"monitor-delivery-media-#{option.value}"}
+                      value={Atom.to_string(option.value)}
+                      checked={option.value == selected_media}
+                    />
+                    <div class="flex items-center justify-between">
+                      <span class="font-semibold text-slate-900 dark:text-white">
+                        {option.label}
+                      </span>
+                      <.icon
+                        name="hero-check-circle"
+                        class={[
+                          "h-4 w-4 text-teal-500 opacity-0 transition-opacity peer-checked:opacity-100",
+                          option.value == selected_media && "opacity-100"
+                        ]}
+                      />
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                      {option.description}
+                    </p>
+                  </label>
+                </div>
+                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Select one format for now. Support for multiple formats is coming soon.
+                </p>
+                <p
+                  :if={@delivery_media_error}
+                  class="mt-2 text-xs text-rose-600 dark:text-rose-400"
+                >
+                  {@delivery_media_error}
+                </p>
+              </div>
             </div>
 
             <:actions>
@@ -326,37 +378,41 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
       "[MonitorForm] validate event - delivery_handles: #{inspect(monitor_params["delivery_handles"])}"
     )
 
-    {prepared_params, handles, invalid} = normalize_delivery_params(monitor_params, socket)
+    normalized = normalize_delivery_params(monitor_params, socket)
+    errors = normalized.errors
 
     changeset =
       socket.assigns.monitor
-      |> Monitors.change_monitor(prepared_params)
+      |> Monitors.change_monitor(normalized.params)
       |> Map.put(:action, :validate)
-      |> add_delivery_handle_errors(invalid)
+      |> add_delivery_errors(errors)
 
     {:noreply,
      socket
-     |> assign(:delivery_handle_error, delivery_error_message(invalid))
-     |> assign_form(changeset, handles: handles)}
+     |> assign(:delivery_handle_error, delivery_handle_error_message(errors))
+     |> assign(:delivery_media_error, delivery_media_error_message(errors))
+     |> assign_form(changeset, handles: normalized.handles)}
   end
 
   def handle_event("save", %{"monitor" => monitor_params}, socket) do
     Logger.debug("[MonitorForm] save event")
-    {prepared_params, handles, invalid} = normalize_delivery_params(monitor_params, socket)
+    normalized = normalize_delivery_params(monitor_params, socket)
+    errors = normalized.errors
 
-    if invalid != [] do
+    if delivery_errors_present?(errors) do
       changeset =
         socket.assigns.monitor
-        |> Monitors.change_monitor(prepared_params)
-        |> add_delivery_handle_errors(invalid)
+        |> Monitors.change_monitor(normalized.params)
+        |> add_delivery_errors(errors)
         |> Map.put(:action, :validate)
 
       {:noreply,
        socket
-       |> assign(:delivery_handle_error, delivery_error_message(invalid))
-       |> assign_form(changeset, handles: handles)}
+       |> assign(:delivery_handle_error, delivery_handle_error_message(errors))
+       |> assign(:delivery_media_error, delivery_media_error_message(errors))
+       |> assign_form(changeset, handles: normalized.handles)}
     else
-      save_monitor(socket, socket.assigns.action, prepared_params, handles)
+      save_monitor(socket, socket.assigns.action, normalized.params, normalized.handles)
     end
   end
 
@@ -382,12 +438,16 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:persisted_monitor, monitor)
          |> assign(:monitor, monitor)
          |> assign(:delivery_handle_error, nil)
+         |> assign(:delivery_media_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
 
       {:error, %Changeset{} = changeset} ->
+        delivery_errors = delivery_errors_from_changeset(changeset)
+
         {:noreply,
          socket
-         |> assign(:delivery_handle_error, delivery_error_from_changeset(changeset))
+         |> assign(:delivery_handle_error, Map.get(delivery_errors, :handles))
+         |> assign(:delivery_media_error, Map.get(delivery_errors, :media))
          |> assign_form(Map.put(changeset, :action, :validate), handles: handles)}
     end
   end
@@ -406,6 +466,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:persisted_monitor, monitor)
          |> assign(:monitor, monitor)
          |> assign(:delivery_handle_error, nil)
+         |> assign(:delivery_media_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
 
       {:error, :unauthorized} ->
@@ -413,9 +474,12 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
         {:noreply, socket}
 
       {:error, %Changeset{} = changeset} ->
+        delivery_errors = delivery_errors_from_changeset(changeset)
+
         {:noreply,
          socket
-         |> assign(:delivery_handle_error, delivery_error_from_changeset(changeset))
+         |> assign(:delivery_handle_error, Map.get(delivery_errors, :handles))
+         |> assign(:delivery_media_error, Map.get(delivery_errors, :media))
          |> assign_form(Map.put(changeset, :action, :validate), handles: handles)}
     end
   end
@@ -430,6 +494,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp populate_missing_embeds(monitor) do
     alert_defaults = Monitors.default_alert_settings()
+    default_media = Monitors.default_delivery_media()
 
     monitor
     |> Map.update(:report_settings, struct(ReportSettings, %{}), fn
@@ -450,6 +515,23 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
           value when is_map(value) -> struct(DeliveryChannel, value)
         end)
     end)
+    |> Map.update(:delivery_media, default_media, fn
+      [] ->
+        default_media
+        |> Enum.map(&coerce_delivery_medium_struct/1)
+
+      nil ->
+        default_media
+        |> Enum.map(&coerce_delivery_medium_struct/1)
+
+      media when is_list(media) ->
+        Enum.map(media, &coerce_delivery_medium_struct/1)
+
+      other ->
+        other
+        |> List.wrap()
+        |> Enum.map(&coerce_delivery_medium_struct/1)
+    end)
   end
 
   defp derive_action(%Monitor{id: nil}), do: :new
@@ -459,23 +541,66 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp normalize_delivery_params(params, socket) do
     membership = socket.assigns.current_membership
-    handles = params |> Map.get("delivery_handles", "") |> parse_handles()
+    handles =
+      params
+      |> fetch_param("delivery_handles")
+      |> parse_handles()
+
+    media_inputs =
+      params
+      |> fetch_param("delivery_media_types")
+      |> parse_media_types()
+
     base_monitor = socket.assigns.persisted_monitor || %Monitor{}
 
-    {channels, invalid} =
+    {channels, invalid_handles} =
       Monitors.delivery_channels_from_handles(
         handles,
         membership,
         base_monitor.delivery_channels || []
       )
 
+    {media, invalid_media} =
+      Monitors.delivery_media_from_types(
+        media_inputs,
+        base_monitor.delivery_media || []
+      )
+
     prepared_params =
       params
       |> Map.delete("delivery_handles")
+      |> Map.delete(:delivery_handles)
+      |> Map.delete("delivery_media_types")
+      |> Map.delete(:delivery_media_types)
       |> Map.put("delivery_channels", channels)
+      |> Map.put("delivery_media", media)
       |> maybe_apply_source_ref()
 
-    {prepared_params, handles, invalid}
+    %{
+      params: prepared_params,
+      handles: handles,
+      media: Monitors.delivery_media_types_from_media(media),
+      errors: %{
+        handles: invalid_handles,
+        media: invalid_media
+      }
+    }
+  end
+
+  defp fetch_param(params, key) do
+    case Map.fetch(params, key) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        try do
+          atom_key = String.to_existing_atom(key)
+          Map.get(params, atom_key)
+        rescue
+          ArgumentError ->
+            nil
+        end
+    end
   end
 
   defp parse_handles(nil), do: []
@@ -484,13 +609,136 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   defp parse_handles(value) when is_binary(value) do
     value
     |> String.split(~r/[\s,]+/, trim: true)
+    |> Enum.reject(&(&1 == ""))
     |> Enum.uniq()
   end
 
   defp parse_handles(list) when is_list(list) do
     list
     |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
     |> Enum.uniq()
+  end
+
+  defp parse_handles(%{} = map) do
+    map
+    |> Enum.sort_by(fn {key, _} -> parse_media_index(key) end)
+    |> Enum.map(fn {_k, v} -> v end)
+    |> parse_handles()
+  end
+
+  defp parse_handles(other), do: parse_handles(to_string(other))
+
+  defp parse_media_types(nil), do: []
+  defp parse_media_types(""), do: []
+
+  defp parse_media_types(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: [], else: [trimmed]
+  end
+
+  defp parse_media_types(list) when is_list(list) do
+    list
+    |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp parse_media_types(%{} = map) do
+    map
+    |> Enum.sort_by(fn {key, _} -> parse_media_index(key) end)
+    |> Enum.map(fn {_k, v} -> v end)
+    |> parse_media_types()
+  end
+
+  defp parse_media_types(other), do: parse_media_types(to_string(other))
+
+  defp parse_media_index(key) when is_integer(key), do: key
+
+  defp parse_media_index(key) when is_binary(key) do
+    case Integer.parse(key) do
+      {int, _} -> int
+      :error -> key
+    end
+  end
+
+  defp parse_media_index(key) when is_atom(key) do
+    key
+    |> Atom.to_string()
+    |> parse_media_index()
+  end
+
+  defp parse_media_index(key), do: key
+
+  defp coerce_delivery_medium_struct(%DeliveryMedium{} = medium), do: medium
+
+  defp coerce_delivery_medium_struct(value) when is_map(value) do
+    try do
+      attrs =
+        Enum.reduce(value, %{}, fn
+          {key, val}, acc when is_atom(key) ->
+            Map.put(acc, key, val)
+
+          {key, val}, acc when is_binary(key) ->
+            atom_key =
+              case key do
+                "medium" -> :medium
+                "id" -> :id
+                other -> String.to_atom(other)
+              end
+
+            Map.put(acc, atom_key, val)
+
+          {key, val}, acc ->
+            Map.put(acc, key, val)
+        end)
+
+      medium_input = Map.get(attrs, :medium)
+
+      medium_value =
+        case normalize_medium_atom(medium_input) do
+          nil when is_atom(medium_input) -> medium_input
+          nil -> nil
+          normalized -> normalized
+        end
+
+      attrs
+      |> Map.put(:medium, medium_value)
+      |> then(&struct(DeliveryMedium, &1))
+    rescue
+      ArgumentError ->
+        struct(DeliveryMedium, %{})
+    end
+  end
+
+  defp coerce_delivery_medium_struct(_), do: struct(DeliveryMedium, %{})
+
+  defp normalize_medium_atom(value) when is_atom(value) do
+    if value in [:pdf, :png_light, :png_dark], do: value, else: nil
+  end
+
+  defp normalize_medium_atom(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace("-", "_")
+    |> String.replace(" ", "_")
+    |> case do
+      "pdf" -> :pdf
+      "png_light" -> :png_light
+      "png_dark" -> :png_dark
+      _ -> nil
+    end
+  end
+
+  defp normalize_medium_atom(_), do: nil
+
+  defp add_delivery_errors(%Changeset{} = changeset, errors) when is_map(errors) do
+    changeset
+    |> add_delivery_handle_errors(Map.get(errors, :handles, []))
+    |> add_delivery_media_errors(Map.get(errors, :media, []))
   end
 
   defp add_delivery_handle_errors(%Changeset{} = changeset, []), do: changeset
@@ -501,17 +749,57 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end)
   end
 
-  defp delivery_error_message([]), do: nil
+  defp add_delivery_media_errors(%Changeset{} = changeset, []), do: changeset
 
-  defp delivery_error_message(invalid) do
-    "Unknown delivery targets: " <> Enum.join(invalid, ", ")
+  defp add_delivery_media_errors(%Changeset{} = changeset, invalid_media) do
+    Enum.reduce(invalid_media, changeset, fn medium, acc ->
+      Changeset.add_error(acc, :delivery_media, "unknown delivery medium: #{medium}")
+    end)
   end
 
-  defp delivery_error_from_changeset(%Changeset{} = changeset) do
-    changeset.errors
-    |> Enum.find_value(fn
-      {:delivery_channels, {message, _}} -> message
-      _ -> nil
+  defp delivery_errors_present?(errors) when is_map(errors) do
+    errors
+    |> Map.values()
+    |> Enum.any?(fn
+      [_ | _] -> true
+      _ -> false
+    end)
+  end
+
+  defp delivery_errors_present?(_), do: false
+
+  defp delivery_handle_error_message(%{handles: []}), do: nil
+
+  defp delivery_handle_error_message(%{handles: handles}) do
+    case handles do
+      [] -> nil
+      list -> "Unknown delivery targets: " <> Enum.join(list, ", ")
+    end
+  end
+
+  defp delivery_handle_error_message(_), do: nil
+
+  defp delivery_media_error_message(%{media: []}), do: nil
+
+  defp delivery_media_error_message(%{media: media}) do
+    case media do
+      [] -> nil
+      list -> "Unknown delivery media types: " <> Enum.join(list, ", ")
+    end
+  end
+
+  defp delivery_media_error_message(_), do: nil
+
+  defp delivery_errors_from_changeset(%Changeset{} = changeset) do
+    Enum.reduce(changeset.errors, %{handles: nil, media: nil}, fn
+      {:delivery_channels, {message, _}}, acc ->
+        Map.update(acc, :handles, message, &(&1 || message))
+
+      {:delivery_media, {message, _}}, acc ->
+        Map.update(acc, :media, message, &(&1 || message))
+
+      _, acc ->
+        acc
     end)
   end
 
@@ -630,10 +918,15 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
       Keyword.get(opts, :handles) ||
         Monitors.delivery_handles_from_channels(monitor.delivery_channels || [])
 
+    media =
+      Keyword.get(opts, :media) ||
+        Monitors.delivery_media_types_from_media(monitor.delivery_media || [])
+
     socket
     |> assign(:form, to_form(changeset))
     |> assign(:monitor, monitor)
     |> assign(:delivery_handles, handles)
+    |> assign(:selected_delivery_media, media)
     |> assign(:selected_source_ref, monitor_source_ref(monitor))
   end
 end

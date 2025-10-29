@@ -28,6 +28,7 @@ defmodule TrifleApp.MonitorComponents do
     ~H"""
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
       <% targets = delivery_target_badges(@monitor.delivery_channels) %>
+      <% media = delivery_media_badges(@monitor.delivery_media) %>
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Delivery</h3>
         <span class="text-xs text-slate-500 dark:text-slate-400">Up to 25 most recent events</span>
@@ -47,6 +48,24 @@ defmodule TrifleApp.MonitorComponents do
         </div>
         <p :if={Enum.empty?(targets)} class="mt-3 text-xs text-slate-500 dark:text-slate-400">
           No delivery targets configured.
+        </p>
+      </div>
+      <div class="mt-6">
+        <h4 class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Delivery media
+        </h4>
+        <div :if={Enum.any?(media)} class="mt-3 flex flex-wrap gap-2">
+          <span
+            :for={entry <- media}
+            class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[0.7rem] font-semibold text-slate-800 dark:bg-slate-700/70 dark:text-slate-100"
+            title={entry.description}
+          >
+            <span class="uppercase text-slate-500 dark:text-slate-300">{entry.badge}</span>
+            <span>{entry.label}</span>
+          </span>
+        </div>
+        <p :if={Enum.empty?(media)} class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          No delivery media selected.
         </p>
       </div>
       <div class="mt-6">
@@ -286,6 +305,44 @@ defmodule TrifleApp.MonitorComponents do
     |> Enum.map(&delivery_target_from_channel/1)
     |> Enum.reject(&is_nil/1)
   end
+
+  defp delivery_media_badges(media) do
+    option_map = Monitors.delivery_media_option_map()
+
+    media
+    |> Monitors.delivery_media_types_from_media()
+    |> Enum.uniq()
+    |> Enum.map(fn medium ->
+      option = Map.get(option_map, medium, %{})
+
+      %{
+        badge: delivery_media_badge(medium),
+        label: option[:label] || default_media_label(medium),
+        description: option[:description] || default_media_label(medium)
+      }
+    end)
+  end
+
+  defp default_media_label(medium) when is_atom(medium) do
+    medium
+    |> Atom.to_string()
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp default_media_label(value), do: to_string(value)
+
+  defp delivery_media_badge(:pdf), do: "PDF"
+  defp delivery_media_badge(:png_light), do: "PNG"
+  defp delivery_media_badge(:png_dark), do: "PNG"
+
+  defp delivery_media_badge(value) when is_atom(value) do
+    value |> Atom.to_string() |> String.upcase()
+  end
+
+  defp delivery_media_badge(value), do: to_string(value)
 
   defp delivery_target_from_channel(nil), do: nil
 

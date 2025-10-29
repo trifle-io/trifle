@@ -16,6 +16,7 @@ defmodule Trifle.Monitors.Monitor do
   @type_values [:report, :alert]
   @status_values [:active, :paused]
   @trigger_status_values [:idle, :warning, :recovering, :alerting]
+  @delivery_media_values [:pdf, :png_light, :png_dark]
 
   schema "monitors" do
     field :name, :string
@@ -49,6 +50,10 @@ defmodule Trifle.Monitors.Monitor do
       field :label, :string
       field :target, :string
       field :config, :map, default: %{}
+    end
+
+    embeds_many :delivery_media, DeliveryMedium, on_replace: :delete do
+      field :medium, Ecto.Enum, values: [:pdf, :png_light, :png_dark], default: :pdf
     end
 
     belongs_to :organization, Organization
@@ -85,6 +90,7 @@ defmodule Trifle.Monitors.Monitor do
     ])
     |> cast_embed(:report_settings, with: &report_settings_changeset/2, required: false)
     |> cast_embed(:delivery_channels, with: &delivery_channel_changeset/2, required: false)
+    |> cast_embed(:delivery_media, with: &delivery_media_changeset/2, required: false)
     |> sanitize_target()
     |> validate_required([:organization_id, :name, :type, :status, :source_type, :source_id])
     |> validate_length(:name, min: 1, max: 255)
@@ -110,6 +116,13 @@ defmodule Trifle.Monitors.Monitor do
     |> validate_length(:label, max: 120)
     |> validate_length(:target, max: 255)
     |> update_change(:config, &normalize_map(&1 || %{}, %{}))
+  end
+
+  defp delivery_media_changeset(media, attrs) do
+    media
+    |> cast(attrs, [:medium])
+    |> validate_required([:medium])
+    |> validate_inclusion(:medium, @delivery_media_values)
   end
 
   defp sanitize_target(%Ecto.Changeset{} = changeset) do
@@ -147,7 +160,7 @@ defmodule Trifle.Monitors.Monitor do
     end
   end
 
-  defp normalize_map(map, default) when is_map(map) do
+  defp normalize_map(map, _default) when is_map(map) do
     Enum.reduce(map, %{}, fn
       {key, value}, acc when is_map(value) ->
         Map.put(acc, normalize_key(key), normalize_map(value, %{}))

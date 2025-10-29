@@ -9,11 +9,13 @@ defmodule Trifle.Monitors do
   alias Trifle.Accounts.User
   alias Trifle.Integrations
   alias Trifle.Monitors.{Alert, Execution, Monitor}
+  alias Trifle.Monitors.Monitor.DeliveryMedium
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations
   alias Trifle.Repo
 
   @default_execution_limit 25
+  @delivery_media_types [:pdf, :png_light, :png_dark]
 
   ## Query helpers
 
@@ -232,12 +234,33 @@ defmodule Trifle.Monitors do
     }
   end
 
+  def default_delivery_medium do
+    %{medium: :pdf}
+  end
+
+  def default_delivery_media do
+    [default_delivery_medium()]
+  end
+
   def default_delivery_channel do
     %{
       channel: :email,
       label: "Primary channel",
       target: ""
     }
+  end
+
+  def delivery_media_options do
+    [
+      %{value: :pdf, label: "PDF", description: "Downloadable report with multiple widgets"},
+      %{value: :png_light, label: "PNG (light)", description: "Image snapshot using light theme"},
+      %{value: :png_dark, label: "PNG (dark)", description: "Image snapshot using dark theme"}
+    ]
+  end
+
+  def delivery_media_option_map do
+    delivery_media_options()
+    |> Map.new(fn option -> {option.value, option} end)
   end
 
   def delivery_options_for_membership(%OrganizationMembership{} = membership) do
@@ -302,6 +325,56 @@ defmodule Trifle.Monitors do
   end
 
   def delivery_handles_from_channels(_), do: []
+
+  def delivery_media_from_types(types, existing_media \\ [])
+
+  def delivery_media_from_types(types, existing_media) when is_list(types) do
+    {valid, invalid} =
+      types
+      |> Enum.reduce({[], []}, fn value, {accepted, rejected} ->
+        case normalize_delivery_media_type(value) do
+          {:ok, medium} -> {[medium | accepted], rejected}
+          :error -> {accepted, [format_invalid_medium(value) | rejected]}
+        end
+      end)
+
+    normalized =
+      valid
+      |> Enum.reverse()
+      |> Enum.uniq()
+
+    existing_index =
+      existing_media
+      |> List.wrap()
+      |> Enum.reduce(%{}, fn entry, acc ->
+        case fetch_delivery_medium(entry) do
+          {:ok, medium} -> Map.put_new(acc, medium, entry)
+          :error -> acc
+        end
+      end)
+
+    media =
+      Enum.map(normalized, fn medium ->
+        delivery_medium_params(medium, Map.get(existing_index, medium))
+      end)
+
+    {media, Enum.reverse(invalid)}
+  end
+
+  def delivery_media_from_types(_types, _existing_media), do: {[], []}
+
+  def delivery_media_types_from_media(media) when is_list(media) do
+    media
+    |> Enum.reduce([], fn entry, acc ->
+      case fetch_delivery_medium(entry) do
+        {:ok, medium} -> [medium | acc]
+        :error -> acc
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  def delivery_media_types_from_media(_), do: []
 
   defp email_delivery_options(%OrganizationMembership{} = membership) do
     from(m in OrganizationMembership,
@@ -378,6 +451,7 @@ defmodule Trifle.Monitors do
   end
 
   defp existing_id(%Monitor.DeliveryChannel{id: id}) when is_binary(id), do: id
+  defp existing_id(%DeliveryMedium{id: id}) when is_binary(id), do: id
   defp existing_id(%{"id" => id}) when is_binary(id), do: id
   defp existing_id(%{id: id}) when is_binary(id), do: id
   defp existing_id(_), do: nil
@@ -434,6 +508,8 @@ defmodule Trifle.Monitors do
     |> update_nested(:alert_settings, &normalize_alert_settings/1)
     |> apply_alert_settings()
     |> normalize_alert_fields()
+    |> update_nested_list(:delivery_media, &normalize_delivery_medium/1)
+    |> ensure_delivery_media_default()
     |> update_nested_list(:delivery_channels, &normalize_delivery_channel/1)
   end
 
@@ -736,6 +812,36 @@ defmodule Trifle.Monitors do
     |> normalize_string_field(:alert_granularity)
   end
 
+  defp normalize_delivery_medium(media) when is_map(media) do
+    media
+    |> cast_enum(:medium, @delivery_media_types)
+  end
+
+  defp normalize_delivery_medium(_), do: default_delivery_medium()
+
+  defp ensure_delivery_media_default(attrs) when is_map(attrs) do
+    media = fetch_attr(attrs, :delivery_media)
+
+    cond do
+      is_list(media) and Enum.reject(media, &empty_media_entry?/1) != [] ->
+        attrs
+
+      is_list(media) ->
+        put_attr(attrs, :delivery_media, default_delivery_media())
+
+      is_map(media) ->
+        attrs
+
+      media in [nil, "", %{}] ->
+        put_attr(attrs, :delivery_media, default_delivery_media())
+
+      true ->
+        attrs
+    end
+  end
+
+  defp ensure_delivery_media_default(attrs), do: attrs
+
   defp normalize_delivery_channel(channel) when is_map(channel) do
     channel
     |> cast_enum(:channel, [:email, :slack_webhook, :webhook, :custom])
@@ -743,6 +849,63 @@ defmodule Trifle.Monitors do
   end
 
   defp normalize_delivery_channel(_), do: default_delivery_channel()
+
+  defp empty_media_entry?(nil), do: true
+
+  defp empty_media_entry?(value) when is_map(value) do
+    medium = Map.get(value, :medium) || Map.get(value, "medium")
+
+    case normalize_delivery_media_type(medium) do
+      {:ok, _} -> false
+      :error -> true
+    end
+  end
+
+  defp empty_media_entry?(_), do: false
+
+  defp normalize_delivery_media_type(value) do
+    case normalize_enum_value(value, @delivery_media_types) do
+      {:ok, medium} -> {:ok, medium}
+      :error -> :error
+    end
+  end
+
+  defp format_invalid_medium(value) when is_binary(value), do: value
+  defp format_invalid_medium(value) when is_atom(value), do: Atom.to_string(value)
+  defp format_invalid_medium(value), do: inspect(value)
+
+  defp fetch_delivery_medium(%DeliveryMedium{medium: medium}) when not is_nil(medium),
+    do: {:ok, medium}
+
+  defp fetch_delivery_medium(%{"medium" => medium}) do
+    normalize_delivery_media_type(medium)
+  end
+
+  defp fetch_delivery_medium(%{medium: medium}) do
+    normalize_delivery_media_type(medium)
+  end
+
+  defp fetch_delivery_medium(_), do: :error
+
+  defp delivery_medium_params(medium, existing \\ nil) do
+    base =
+      existing
+      |> existing_medium_map()
+      |> stringify_map()
+
+    base
+    |> Map.put("id", existing_id(existing) || Ecto.UUID.generate())
+    |> Map.put("medium", Atom.to_string(medium))
+  end
+
+  defp existing_medium_map(%DeliveryMedium{} = medium) do
+    medium
+    |> Map.from_struct()
+    |> Map.delete(:__meta__)
+  end
+
+  defp existing_medium_map(%{} = map), do: map
+  defp existing_medium_map(_), do: %{}
 
   defp normalize_enum_value(value, valid) when is_atom(value) do
     if value in valid do
