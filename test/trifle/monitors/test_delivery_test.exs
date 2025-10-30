@@ -7,6 +7,7 @@ defmodule Trifle.Monitors.TestDeliveryTest do
   alias Trifle.Organizations
   alias Trifle.Monitors.Monitor.DeliveryChannel
   alias Swoosh.Email
+  alias Swoosh.Attachment
 
   defmodule FakeLayoutBuilder do
     alias TrifleApp.Exports.Layout
@@ -78,12 +79,50 @@ defmodule Trifle.Monitors.TestDeliveryTest do
                mailer: FakeMailer
              )
 
-    assert [%{handle: handle, type: :email}] = result.successes
+    assert [
+             %{
+               handle: handle,
+               type: :email,
+               attachments: [
+                 %{
+                   medium: :pdf,
+                   content_type: "application/pdf",
+                   size: 3,
+                   filename: result_filename
+                 }
+               ]
+             }
+           ] = result.successes
+
     assert handle =~ "email#"
     assert result.failures == []
 
     assert_received {:delivered_email, %Email{} = email}
     assert email.subject =~ "Monitor preview"
+    assert is_binary(email.text_body)
+    assert [%Attachment{filename: attachment_filename, content_type: "application/pdf"}] =
+             email.attachments
+
+    assert is_binary(attachment_filename)
+    assert result_filename == attachment_filename
+
+    assert [
+             %{
+               handle: ^handle,
+               type: :email,
+               files: [
+                 %{
+                   medium: :pdf,
+                   content_type: "application/pdf",
+                   size: 3,
+                   filename: filename
+                 }
+               ]
+             }
+           ] = result.summary.attachments
+
+    assert is_binary(filename)
+    assert filename == result_filename
   end
 
   defp simple_monitor_fixture(user, membership, database) do
