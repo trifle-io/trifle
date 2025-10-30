@@ -1,6 +1,8 @@
 defmodule Trifle.Monitors.TestDelivery do
   @moduledoc false
 
+  require Logger
+
   alias Trifle.Integrations
   alias Trifle.Integrations.Slack.Client, as: SlackClient
   alias Trifle.Monitors
@@ -79,16 +81,25 @@ defmodule Trifle.Monitors.TestDelivery do
 
     case Monitors.delivery_media_from_types(List.wrap(media_types), []) do
       {media, _invalid} when media != [] ->
-        media
+        media_atoms = Monitors.delivery_media_types_from_media(media)
 
-      _ ->
-        monitor
-        |> Map.get(:delivery_media, [])
-        |> Monitors.delivery_media_types_from_media()
-        |> case do
-          [] -> @default_media
+        case media_atoms do
+          [] -> fallback_media(monitor)
           list -> list
         end
+
+      _ ->
+        fallback_media(monitor)
+    end
+  end
+
+  defp fallback_media(%Monitor{} = monitor) do
+    monitor
+    |> Map.get(:delivery_media, [])
+    |> Monitors.delivery_media_types_from_media()
+    |> case do
+      [] -> @default_media
+      list -> list
     end
   end
 
@@ -120,7 +131,15 @@ defmodule Trifle.Monitors.TestDelivery do
     exporter_opts = Keyword.get(opts, :exporter_opts, [])
 
     Enum.reduce_while(media, {:ok, []}, fn medium, {:ok, acc} ->
-      case build_alert_export(monitor, alert, medium, params, layout_builder, exporter, exporter_opts) do
+      case build_alert_export(
+             monitor,
+             alert,
+             medium,
+             params,
+             layout_builder,
+             exporter,
+             exporter_opts
+           ) do
         {:ok, export} -> {:cont, {:ok, [export | acc]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -377,7 +396,8 @@ defmodule Trifle.Monitors.TestDelivery do
     token = fetch_slack_token(organization_id, installation_id, reference)
     slack_client = slack_client(opts)
     slack_opts = Keyword.get(opts, :slack_client_opts, [])
-    channel_id = config_value(config, :channel_id) || channel_field(channel, :target)
+
+    channel_id = resolve_slack_channel_id(channel, config, monitor)
 
     cond do
       blank?(token) ->
@@ -393,75 +413,234 @@ defmodule Trifle.Monitors.TestDelivery do
          %{
            handle: handle,
            type: :slack_webhook,
-           reason: "Slack channel identifier is missing."
+           reason:
+             "Slack channel identifier is missing or invalid. Refresh Slack channels from Delivery settings and re-save this monitor."
          }}
 
       true ->
         message = slack_message(monitor, alert, params)
 
-        with {:ok, _} <- slack_client.chat_post_message(token, channel_id, message, slack_opts),
-             :ok <-
-               upload_slack_exports(
-                 slack_client,
-                 token,
-                 channel_id,
-                 exports,
-                 monitor,
-                 alert,
-                 slack_opts
-               ) do
-          {:ok,
-           %{
-             handle: handle,
-             type: :slack_webhook
-           }}
-        else
-          {:error, reason} ->
+        case upload_slack_exports(
+               slack_client,
+               token,
+               channel_id,
+               exports,
+               monitor,
+               alert,
+               message,
+               slack_opts
+             ) do
+          {:ok, %{files: attachments}} ->
+            {:ok,
+             %{
+               handle: handle,
+               type: :slack_webhook,
+               attachments: attachments
+             }}
+
+          {:error, reason, attachments} ->
             {:error,
              %{
                handle: handle,
                type: :slack_webhook,
-               reason: format_error(reason)
+               reason: format_error(reason),
+               attachments: attachments,
+               error: reason
              }}
         end
     end
   end
 
-  defp upload_slack_exports(_client, _token, _channel_id, [], _monitor, _alert, _opts), do: :ok
+  defp upload_slack_exports(_client, _token, _channel_id, [], _monitor, _alert, _message, _opts),
+    do: {:ok, %{files: []}}
 
-  defp upload_slack_exports(client, token, channel_id, exports, monitor, alert, opts) do
-    Enum.reduce_while(Enum.with_index(exports, 1), :ok, fn {export, index}, :ok ->
-      comment = if index == 1, do: nil, else: nil
+  defp upload_slack_exports(client, token, channel_id, exports, monitor, alert, message, opts) do
+    Enum.reduce_while(Enum.with_index(exports, 1), {:ok, []}, fn {export, index}, {:ok, acc} ->
+      comment = if index == 1 && present?(message), do: message, else: nil
       title = slack_export_title(monitor, alert, export)
 
-      case client.upload_file(
-             token,
-             channel_id,
-             export.binary,
-             %{
-               filename: export.filename,
-               content_type: export.content_type,
-               title: title,
-               initial_comment: comment
-             },
-             opts
-           ) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
+      metadata = %{
+        filename: export.filename,
+        content_type: export.content_type,
+        title: title,
+        initial_comment: comment
+      }
+
+      case client.upload_file(token, channel_id, export.binary, metadata, opts) do
+        {:ok, upload} ->
+          attachment = build_slack_attachment(channel_id, export, title, upload)
+          {:cont, {:ok, [attachment | acc]}}
+
+        {:error, {:slack_error, "missing_scope", payload}} ->
+          {:halt, {:missing_scope, payload, acc}}
+
+        {:error, {:slack_error, "method_deprecated", payload}} ->
+          {:halt, {:method_deprecated, payload, acc}}
+
+        {:error, {:slack_error, "invalid_arguments", payload}} ->
+          {:halt, {:invalid_arguments, payload, acc}}
+
+        {:error, {:slack_error, "not_in_channel", payload}} ->
+          {:halt, {:not_in_channel, payload, acc}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason, acc}}
       end
     end)
-    |> case do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
+    |> finalize_slack_uploads(client, token, channel_id, message, opts)
+  end
+
+  defp maybe_post_fallback_message(_client, _token, _channel_id, message, _opts)
+       when message in [nil, ""] do
+    :ok
+  end
+
+  defp maybe_post_fallback_message(client, token, channel_id, message, opts) do
+    case client.chat_post_message(token, channel_id, message, opts) do
+      {:ok, _} -> :ok
+      {:error, _} -> :ok
     end
   end
+
+  defp finalize_slack_uploads({:ok, attachments}, _client, _token, _channel_id, _message, _opts) do
+    {:ok, %{files: Enum.reverse(attachments)}}
+  end
+
+  defp finalize_slack_uploads(
+         {:missing_scope, payload, attachments},
+         client,
+         token,
+         channel_id,
+         message,
+         opts
+       ) do
+    Logger.warning(
+      "Slack upload aborted (missing_scope) for channel #{channel_id}: #{inspect(payload)}"
+    )
+
+    maybe_post_fallback_message(client, token, channel_id, message, opts)
+    {:error, {:slack_missing_scope, payload}, Enum.reverse(attachments)}
+  end
+
+  defp finalize_slack_uploads(
+         {:method_deprecated, payload, attachments},
+         client,
+         token,
+         channel_id,
+         message,
+         opts
+       ) do
+    Logger.warning(
+      "Slack upload aborted (method_deprecated) for channel #{channel_id}: #{inspect(payload)}"
+    )
+
+    maybe_post_fallback_message(client, token, channel_id, message, opts)
+    {:error, {:slack_method_deprecated, payload}, Enum.reverse(attachments)}
+  end
+
+  defp finalize_slack_uploads(
+         {:invalid_arguments, payload, attachments},
+         client,
+         token,
+         channel_id,
+         message,
+         opts
+       ) do
+    Logger.warning(
+      "Slack upload rejected (invalid_arguments) for channel #{channel_id}: #{inspect(payload)}"
+    )
+
+    maybe_post_fallback_message(client, token, channel_id, message, opts)
+    {:error, {:slack_error, "invalid_arguments", payload}, Enum.reverse(attachments)}
+  end
+
+  defp finalize_slack_uploads(
+         {:not_in_channel, payload, attachments},
+         client,
+         token,
+         channel_id,
+         message,
+         opts
+       ) do
+    Logger.info(
+      "Slack upload failed (not_in_channel) for channel #{channel_id}: #{inspect(payload)}"
+    )
+
+    maybe_post_fallback_message(client, token, channel_id, message, opts)
+    {:error, {:slack_error, "not_in_channel", payload}, Enum.reverse(attachments)}
+  end
+
+  defp finalize_slack_uploads(
+         {:error, reason, attachments},
+         client,
+         token,
+         channel_id,
+         message,
+         opts
+       ) do
+    Logger.warning(
+      "Slack upload failed for channel #{channel_id}: #{inspect(reason)}"
+    )
+
+    maybe_post_fallback_message(client, token, channel_id, message, opts)
+    {:error, reason, Enum.reverse(attachments)}
+  end
+
+  defp build_slack_attachment(channel_id, export, title, upload) do
+    slack_file = sanitize_slack_file_metadata(Map.get(upload, :file))
+
+    %{
+      channel_id: channel_id,
+      medium: export.medium,
+      filename: export.filename,
+      content_type: export.content_type,
+      title: title,
+      file_id: Map.get(upload, :file_id),
+      slack_file: slack_file,
+      permalink:
+        case slack_file do
+          %{} = file ->
+            Map.get(file, "permalink") ||
+              Map.get(file, "permalink_public") ||
+              Map.get(file, "url_private")
+
+          _ ->
+            nil
+        end
+    }
+  end
+
+  defp sanitize_slack_file_metadata(%{} = file) do
+    allowed =
+      ~w(id name title mimetype filetype size permalink permalink_public url_private url_private_download)
+
+    file
+    |> Enum.filter(fn {key, _value} -> key in allowed end)
+    |> Map.new()
+  end
+
+  defp sanitize_slack_file_metadata(_), do: nil
 
   defp finalize_results(%{successes: [], failures: failures}, _media) do
     {:error, failure_summary(failures)}
   end
 
   defp finalize_results(%{successes: successes, failures: failures} = results, media) do
-    {:ok, Map.merge(results, %{media: media, summary: success_summary(successes, failures)})}
+    attachments =
+      successes
+      |> Enum.flat_map(fn success ->
+        success
+        |> Map.get(:attachments, [])
+        |> Enum.map(&Map.put(&1, :handle, success.handle))
+      end)
+
+    summary = success_summary(successes, failures)
+
+    extras =
+      %{media: media, summary: summary}
+      |> maybe_put_non_empty(:attachments, attachments)
+
+    {:ok, Map.merge(results, extras)}
   end
 
   defp success_summary(successes, failures) do
@@ -475,10 +654,58 @@ defmodule Trifle.Monitors.TestDelivery do
       |> Enum.map(fn failure -> "#{failure.handle} (#{failure.reason})" end)
       |> Enum.join(", ")
 
+    attachments =
+      successes
+      |> Enum.map(fn success ->
+        success
+        |> Map.get(:attachments, [])
+        |> case do
+          [] ->
+            nil
+
+          files ->
+            %{
+              handle: success.handle,
+              type: success.type,
+              files: files
+            }
+            |> prune_empty_values()
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    error_details =
+      failures
+      |> Enum.map(fn failure ->
+        %{
+          handle: failure.handle,
+          type: failure.type,
+          reason: failure.reason,
+          error: Map.get(failure, :error),
+          files: Map.get(failure, :attachments, [])
+        }
+        |> prune_empty_values()
+      end)
+      |> Enum.reject(&(&1 == %{}))
+
     %{
       successes: success_handles,
       failures: failure_handles
     }
+    |> maybe_put_non_empty(:attachments, attachments)
+    |> maybe_put_non_empty(:error_details, error_details)
+  end
+
+  defp maybe_put_non_empty(map, _key, value) when value in [nil, "", []], do: map
+  defp maybe_put_non_empty(map, key, value), do: Map.put(map, key, value)
+
+  defp prune_empty_values(map) when is_map(map) do
+    map
+    |> Enum.reject(fn
+      {_key, value} when value in [nil, "", []] -> true
+      _ -> false
+    end)
+    |> Map.new()
   end
 
   defp failure_summary(failures) do
@@ -516,11 +743,12 @@ defmodule Trifle.Monitors.TestDelivery do
   end
 
   defp email_body(%Monitor{} = monitor, nil, params) do
-    timeframe = timeframe_label(params)
+    detail = window_details(params)
+    window_line = window_detail_line(detail)
 
     [
       "Heads-up! Here's the latest snapshot for #{monitor.name}.",
-      (if timeframe, do: "Window: #{timeframe}", else: nil),
+      window_line,
       "",
       "Preview attached. — Trifle"
     ]
@@ -530,11 +758,12 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp email_body(%Monitor{} = monitor, %Alert{} = alert, params) do
     label = MonitorLayout.alert_label(alert) || "Alert"
-    timeframe = timeframe_label(params)
+    detail = window_details(params)
+    window_line = window_detail_line(detail)
 
     [
       "Quick pulse on #{monitor.name} · #{label}.",
-      (if timeframe, do: "Window: #{timeframe}", else: nil),
+      window_line,
       "",
       "Preview attached. — Trifle"
     ]
@@ -543,27 +772,25 @@ defmodule Trifle.Monitors.TestDelivery do
   end
 
   defp slack_message(%Monitor{} = monitor, nil, params) do
-    timeframe = timeframe_label(params)
+    detail = window_details(params)
+    window_line = window_detail_line(detail)
+    base = "Here's the #{monitor.name} snapshot."
 
-    cond do
-      timeframe ->
-        "Here's the #{monitor.name} snapshot for #{timeframe}. 🚀"
-
-      true ->
-        "Here's the latest #{monitor.name} snapshot. 🚀"
+    case window_line do
+      nil -> base <> " 🚀"
+      line -> base <> "\n" <> line <> " 🚀"
     end
   end
 
   defp slack_message(%Monitor{} = monitor, %Alert{} = alert, params) do
     label = MonitorLayout.alert_label(alert) || "Alert"
-    timeframe = timeframe_label(params)
+    detail = window_details(params)
+    window_line = window_detail_line(detail)
+    base = "Alert preview: #{label} on #{monitor.name}."
 
-    cond do
-      timeframe ->
-        "Alert preview: #{label} on #{monitor.name} (#{timeframe}). ⚡"
-
-      true ->
-        "Alert preview: #{label} on #{monitor.name}. ⚡"
+    case window_line do
+      nil -> base <> " ⚡"
+      line -> base <> "\n" <> line <> " ⚡"
     end
   end
 
@@ -581,39 +808,79 @@ defmodule Trifle.Monitors.TestDelivery do
   defp medium_label(:png_dark), do: "PNG (dark)"
   defp medium_label(other), do: to_string(other)
 
-  defp timeframe_label(params) when is_map(params) do
-    timeframe =
-      params
-      |> Map.get("timeframe") ||
-        params
-        |> Map.get(:timeframe)
+  defp window_details(params) when is_map(params) do
+    timeframe = fetch_param(params, "timeframe")
 
-    from = params |> Map.get("from") || Map.get(params, :from)
-    to = params |> Map.get("to") || Map.get(params, :to)
+    cond do
+      window = window_label_from_params(params) -> {:window, window}
+      present?(timeframe) -> {:timeframe, timeframe}
+      true -> nil
+    end
+  end
+
+  defp window_details(_), do: nil
+
+  defp window_label_from_params(params) when is_map(params) do
+    from = fetch_param(params, "from")
+    to = fetch_param(params, "to")
 
     cond do
       present?(from) && present?(to) ->
-        "#{format_datetime(from)} – #{format_datetime(to)}"
-
-      present?(timeframe) ->
-        timeframe
+        "#{format_datetime(from)} → #{format_datetime(to)}"
 
       true ->
         nil
     end
   end
 
-  defp timeframe_label(_), do: nil
+  defp window_label_from_params(_), do: nil
+
+  defp window_detail_line({:window, value}), do: "Window: #{value}"
+  defp window_detail_line({:timeframe, value}), do: "Window: #{value}"
+  defp window_detail_line(_), do: nil
+
+  defp fetch_param(params, key) when is_map(params) do
+    Map.get(params, key) ||
+      case key do
+        binary when is_binary(binary) ->
+          case existing_atom(binary) do
+            nil -> nil
+            atom_key -> Map.get(params, atom_key)
+          end
+
+        atom when is_atom(atom) ->
+          Map.get(params, Atom.to_string(atom))
+
+        _ ->
+          nil
+      end
+  end
+
+  defp fetch_param(_params, _key), do: nil
+
+  defp existing_atom(key) when is_binary(key) do
+    try do
+      String.to_existing_atom(key)
+    rescue
+      ArgumentError -> nil
+    end
+  end
+
+  defp existing_atom(_), do: nil
 
   defp format_datetime(%DateTime{} = dt) do
-    dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    dt
+    |> DateTime.truncate(:minute)
+    |> Calendar.strftime("%Y-%m-%d %H:%M %Z")
+  rescue
+    _ -> DateTime.to_iso8601(dt)
   end
 
   defp format_datetime(value) when is_binary(value) do
-    value
-    |> String.split(~r/[T ]/)
-    |> Enum.take(2)
-    |> Enum.join(" ")
+    case DateTime.from_iso8601(value) do
+      {:ok, dt, _offset} -> format_datetime(dt)
+      {:error, _} -> value
+    end
   end
 
   defp format_datetime(value), do: to_string(value)
@@ -621,6 +888,7 @@ defmodule Trifle.Monitors.TestDelivery do
   defp build_filename(:monitor, %Monitor{} = monitor, medium) do
     slug = slugify(monitor.name || "monitor")
     timestamp = current_timestamp()
+
     suffix =
       case medium do
         :pdf -> "preview"
@@ -642,6 +910,7 @@ defmodule Trifle.Monitors.TestDelivery do
     monitor_slug = slugify(monitor.name || "monitor")
     alert_slug = slugify(MonitorLayout.alert_label(alert) || "alert")
     timestamp = current_timestamp()
+
     suffix =
       case medium do
         :pdf -> "preview"
@@ -724,14 +993,16 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp fetch_slack_token(_organization_id, nil, nil), do: nil
 
-  defp fetch_slack_token(organization_id, installation_id, _reference) when is_binary(installation_id) do
+  defp fetch_slack_token(organization_id, installation_id, _reference)
+       when is_binary(installation_id) do
     case Integrations.get_slack_installation(organization_id, installation_id) do
       %{bot_access_token: token} -> token
       _ -> nil
     end
   end
 
-  defp fetch_slack_token(organization_id, _installation_id, reference) when is_binary(reference) do
+  defp fetch_slack_token(organization_id, _installation_id, reference)
+       when is_binary(reference) do
     organization_id
     |> Integrations.list_slack_installations_for_org()
     |> Enum.find(fn installation -> installation.reference == reference end)
@@ -743,17 +1014,226 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp fetch_slack_token(_, _, _), do: nil
 
+  defp resolve_slack_channel_id(channel, config, %Monitor{} = monitor) do
+    candidates = [
+      channel_field(channel, :target),
+      config_value(config, :slack_channel_id),
+      config_value(config, :channel_slack_id)
+    ]
+
+    case Enum.find(candidates, &valid_slack_channel_id?/1) do
+      nil ->
+        fallback_slack_channel_id(channel, config, monitor)
+
+      id ->
+        id
+    end
+  end
+
+  defp fallback_slack_channel_id(channel, config, %Monitor{} = monitor) do
+    channel_db_id =
+      config_value(config, :channel_id) ||
+        config_value(config, :channel_db_id)
+
+    cond do
+      valid_slack_channel_id?(channel_db_id) ->
+        channel_db_id
+
+      is_binary(channel_db_id) ->
+        fetch_slack_channel_id_from_db(
+          monitor.organization_id,
+          channel_db_id,
+          config_value(config, :installation_id)
+        )
+
+      true ->
+        case parse_slack_handle(channel_handle(channel)) do
+          {reference, channel_name} ->
+            fetch_slack_channel_id_by_name(monitor.organization_id, reference, channel_name)
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  defp fetch_slack_channel_id_from_db(_organization_id, nil, _installation_id), do: nil
+
+  defp fetch_slack_channel_id_from_db(organization_id, channel_db_id, installation_id) do
+    installations =
+      cond do
+        valid_slack_channel_id?(channel_db_id) ->
+          []
+
+        present?(installation_id) ->
+          case Integrations.get_slack_installation(
+                 organization_id,
+                 installation_id,
+                 preload_channels: true
+               ) do
+            nil -> []
+            installation -> [installation]
+          end
+
+        true ->
+          Integrations.list_slack_installations_for_org(organization_id, preload_channels: true)
+      end
+
+    installations
+    |> Enum.find_value(fn installation ->
+      installation.channels
+      |> List.wrap()
+      |> Enum.find_value(fn slack_channel ->
+           cond do
+             slack_channel.id == channel_db_id ->
+               slack_channel.channel_id
+
+             slack_channel.channel_id == channel_db_id ->
+               slack_channel.channel_id
+
+             true ->
+               nil
+           end
+         end)
+    end)
+  end
+
+  defp fetch_slack_channel_id_by_name(organization_id, reference, channel_name)
+       when is_binary(reference) and is_binary(channel_name) do
+    Integrations.list_slack_installations_for_org(organization_id, preload_channels: true)
+    |> Enum.find_value(fn installation ->
+      if installation.reference == reference do
+        installation.channels
+        |> List.wrap()
+        |> Enum.find_value(fn slack_channel ->
+             if channel_name_matches?(slack_channel.name, channel_name) do
+               slack_channel.channel_id
+             else
+               nil
+             end
+           end)
+      end
+    end)
+  end
+
+  defp fetch_slack_channel_id_by_name(_, _, _), do: nil
+
+  defp parse_slack_handle(handle) when is_binary(handle) do
+    case String.split(handle, "#", parts: 2) do
+      [reference, channel_name] when reference != "" and channel_name != "" ->
+        {reference, channel_name}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_slack_handle(_), do: nil
+
+  defp channel_name_matches?(a, b) when is_binary(a) and is_binary(b) do
+    normalize_channel_name(a) == normalize_channel_name(b)
+  end
+
+  defp channel_name_matches?(_, _), do: false
+
+  defp normalize_channel_name(name) do
+    name
+    |> String.trim()
+    |> String.trim_leading("#")
+    |> String.downcase()
+  end
+
+  defp valid_slack_channel_id?(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    trimmed != "" and
+      String.length(trimmed) >= 8 and
+      Regex.match?(~r/^[A-Z0-9]+$/, trimmed)
+  end
+
+  defp valid_slack_channel_id?(_), do: false
+
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(value) when value in [nil, []], do: true
   defp blank?(_), do: false
 
   defp present?(value), do: !blank?(value)
 
+  defp format_error({:slack_missing_scope, _payload}),
+    do:
+      "Slack workspace is missing permission to upload files (files:write). Reconnect Slack from Delivery settings to grant it."
+
+  defp format_error({:slack_error, "missing_scope"}),
+    do: "Slack error: missing files:write scope."
+
+  defp format_error({:slack_error, "missing_scope", _payload}),
+    do: "Slack error: missing files:write scope."
+
+  defp format_error({:slack_method_deprecated, _payload}),
+    do:
+      "Slack API rejected the upload (method deprecated). Reconnect Slack or update the app scopes to enable file uploads."
+
+  defp format_error({:slack_error, "method_deprecated"}),
+    do:
+      "Slack API rejected the upload (method deprecated). Reconnect Slack or update the app scopes to enable file uploads."
+
+  defp format_error({:slack_error, "method_deprecated", _payload}),
+    do:
+      "Slack API rejected the upload (method deprecated). Reconnect Slack or update the app scopes to enable file uploads."
+
+  defp format_error({:slack_error, "not_in_channel"}),
+    do: "Slack app is not a member of that channel. Invite the Trifle bot (e.g. /invite @Trifle)."
+
+  defp format_error({:slack_error, "not_in_channel", _payload}),
+    do: "Slack app is not a member of that channel. Invite the Trifle bot (e.g. /invite @Trifle)."
+
+  defp format_error({:slack_error, "invalid_arguments", payload}) do
+    detail =
+      payload
+      |> slack_invalid_argument_detail()
+      |> case do
+        nil -> ""
+        message -> " (#{message})"
+      end
+
+    "Slack rejected the upload due to invalid arguments#{detail}."
+  end
+
   defp format_error({:slack_error, error}), do: "Slack error: #{inspect(error)}"
+
   defp format_error({:slack_error, error, _payload}), do: "Slack error: #{inspect(error)}"
   defp format_error({:mailer_error, reason}), do: "Mailer error: #{inspect(reason)}"
   defp format_error({:http_error, %{status: status}}), do: "HTTP error #{status}"
+  defp format_error({:upload_failed, %{status: status, body: body}})
+       when is_binary(body) and body != "" do
+    preview = String.slice(body, 0, 180)
+    "Slack storage upload failed (HTTP #{status}): #{preview}"
+  end
+
+  defp format_error({:upload_failed, %{status: status}}),
+    do: "Slack storage upload failed (HTTP #{status})."
+
+  defp format_error({:upload_failed, details}),
+    do: "Slack storage upload failed: #{inspect(details)}"
+
   defp format_error({:error, reason}), do: format_error(reason)
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(reason), do: inspect(reason)
+
+  defp slack_invalid_argument_detail(%{"errors" => [first | _]}) when is_binary(first) do
+    case first do
+      "channel_ids" -> "channel selection missing or invalid"
+      "channel_id" -> "channel ID missing or invalid"
+      "files" -> "file payload missing required fields"
+      other -> other
+    end
+  end
+
+  defp slack_invalid_argument_detail(%{"errors" => errors}) when is_list(errors) do
+    errors
+    |> Enum.map(&to_string/1)
+    |> Enum.join(", ")
+  end
+
+  defp slack_invalid_argument_detail(_), do: nil
 end
