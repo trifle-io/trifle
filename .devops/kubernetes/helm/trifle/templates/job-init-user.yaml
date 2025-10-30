@@ -53,6 +53,10 @@ spec:
               value: {{ .Values.initialUser.admin | quote }}
             - name: TRIFLE_DEPLOYMENT_MODE
               value: {{ .Values.app.deploymentMode | quote }}
+            {{- with .Values.app.logLevel }}
+            - name: LOGGER_LEVEL
+              value: {{ . | quote }}
+            {{- end }}
             - name: MAILER_ADAPTER
               value: {{ .Values.app.mailer.adapter | quote }}
             - name: MAILER_FROM_NAME

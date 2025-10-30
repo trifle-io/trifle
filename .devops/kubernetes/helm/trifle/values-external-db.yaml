@@ -23,6 +23,7 @@ externalPostgresql:
 app:
   secretKeyBase: "your-64-character-secret-key-base-here"
   host: "trifle.yourdomain.com"
+  logLevel: "info"
   deploymentMode: "self_hosted"
   openai:
     apiKey: ""
