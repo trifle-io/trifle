@@ -100,18 +100,19 @@ defmodule TrifleApp.Exports.LayoutStore do
   ## Database helpers
 
   defp persist_layout(id, layout, expires_at_ms) do
-    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    now_utc = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    now_naive = DateTime.to_naive(now_utc)
 
     record = %LayoutSessionRecord{
       id: id,
       layout: :erlang.term_to_binary(layout),
       expires_at: DateTime.from_unix!(expires_at_ms, :millisecond),
-      inserted_at: now
+      inserted_at: now_naive
     }
 
     Repo.insert(record,
       on_conflict: [
-        set: [layout: record.layout, expires_at: record.expires_at, inserted_at: now]
+        set: [layout: record.layout, expires_at: record.expires_at, inserted_at: now_naive]
       ],
       conflict_target: :id
     )
