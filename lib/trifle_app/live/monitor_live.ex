@@ -482,7 +482,11 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, socket}
   end
 
-  def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:error, reason}}, socket) do
+  def handle_async(
+        {:ai_recommendation, component_id, request_id},
+        {:ok, {:error, reason}},
+        socket
+      ) do
     {socket, finished_at, _entry} = finalize_ai_request(socket, component_id, request_id)
 
     send_ai_error(
@@ -538,12 +542,29 @@ defmodule TrifleApp.MonitorLive do
   end
 
   def handle_async({:test_delivery, :monitor}, {:ok, result}, socket) do
-    message = format_test_delivery_success(:monitor, socket, result)
+    case result do
+      {:ok, result_map} when is_map(result_map) ->
+        message = format_test_delivery_success(:monitor, socket, result_map)
 
-    {:noreply,
-     socket
-     |> assign(:test_delivery_state, nil)
-     |> put_flash(:info, message)}
+        {:noreply,
+         socket
+         |> assign(:test_delivery_state, nil)
+         |> put_flash(:info, message)}
+
+      {:error, reason} ->
+        handle_async({:test_delivery, :monitor}, {:error, reason}, socket)
+
+      result_map when is_map(result_map) ->
+        message = format_test_delivery_success(:monitor, socket, result_map)
+
+        {:noreply,
+         socket
+         |> assign(:test_delivery_state, nil)
+         |> put_flash(:info, message)}
+
+      _other ->
+        handle_async({:test_delivery, :monitor}, {:error, result}, socket)
+    end
   end
 
   def handle_async({:test_delivery, :monitor}, {:error, reason}, socket) do
@@ -554,12 +575,29 @@ defmodule TrifleApp.MonitorLive do
   end
 
   def handle_async({:test_delivery, {:alert, alert_id}}, {:ok, result}, socket) do
-    message = format_test_delivery_success({:alert, alert_id}, socket, result)
+    case result do
+      {:ok, result_map} when is_map(result_map) ->
+        message = format_test_delivery_success({:alert, alert_id}, socket, result_map)
 
-    {:noreply,
-     socket
-     |> assign(:test_delivery_state, nil)
-     |> put_flash(:info, message)}
+        {:noreply,
+         socket
+         |> assign(:test_delivery_state, nil)
+         |> put_flash(:info, message)}
+
+      {:error, reason} ->
+        handle_async({:test_delivery, {:alert, alert_id}}, {:error, reason}, socket)
+
+      result_map when is_map(result_map) ->
+        message = format_test_delivery_success({:alert, alert_id}, socket, result_map)
+
+        {:noreply,
+         socket
+         |> assign(:test_delivery_state, nil)
+         |> put_flash(:info, message)}
+
+      _other ->
+        handle_async({:test_delivery, {:alert, alert_id}}, {:error, result}, socket)
+    end
   end
 
   def handle_async({:test_delivery, {:alert, _alert_id}}, {:error, reason}, socket) do
@@ -1598,18 +1636,10 @@ defmodule TrifleApp.MonitorLive do
         Map.get(assigns, :timeframe) ||
         Map.get(assigns, "timeframe") || "24h"
 
-    params = %{"granularity" => granularity, "timeframe" => timeframe}
-
     params =
-      case Map.get(assigns, :use_fixed_display) || Map.get(assigns, "use_fixed_display") do
-        true ->
-          params
-          |> maybe_put_formatted("from", Map.get(assigns, :from) || Map.get(assigns, "from"))
-          |> maybe_put_formatted("to", Map.get(assigns, :to) || Map.get(assigns, "to"))
-
-        _ ->
-          params
-      end
+      %{"granularity" => granularity, "timeframe" => timeframe}
+      |> maybe_put_formatted("from", Map.get(assigns, :from) || Map.get(assigns, "from"))
+      |> maybe_put_formatted("to", Map.get(assigns, :to) || Map.get(assigns, "to"))
 
     case Map.get(assigns, :resolved_key) || Map.get(assigns, "key") do
       key when is_binary(key) and key != "" -> Map.put(params, "key", key)
@@ -1632,18 +1662,21 @@ defmodule TrifleApp.MonitorLive do
     summary = Map.get(result, :summary, %{})
     successes = summarize_handles(summary[:successes])
     failures = summarize_failures(summary[:failures])
+    window = delivery_window_details(socket.assigns)
 
     base =
       case successes do
         nil -> "Sent preview to configured monitor recipients."
         line -> "Sent #{monitor.name} preview to #{line}."
       end
+      |> maybe_append_window(window)
 
     maybe_append_failures(base, failures)
   end
 
   defp format_test_delivery_success({:alert, alert_id}, socket, result) do
     monitor = socket.assigns.monitor
+
     alert_label =
       socket.assigns.alerts
       |> List.wrap()
@@ -1662,12 +1695,14 @@ defmodule TrifleApp.MonitorLive do
     summary = Map.get(result, :summary, %{})
     successes = summarize_handles(summary[:successes])
     failures = summarize_failures(summary[:failures])
+    window = delivery_window_details(socket.assigns)
 
     base =
       case successes do
         nil -> "Sent #{monitor.name} · #{alert_label} preview."
         line -> "Sent #{monitor.name} · #{alert_label} preview to #{line}."
       end
+      |> maybe_append_window(window)
 
     maybe_append_failures(base, failures)
   end
@@ -1720,8 +1755,53 @@ defmodule TrifleApp.MonitorLive do
   defp maybe_append_failures(message, nil), do: message
   defp maybe_append_failures(message, failures), do: message <> " Failed for #{failures}."
 
+  defp maybe_append_window(message, nil), do: message
+  defp maybe_append_window(message, {:window, value}), do: message <> " (Window: #{value})"
+  defp maybe_append_window(message, {:timeframe, value}), do: message <> " (Window: #{value})"
+
   defp normalize_id(value) when is_binary(value), do: value
   defp normalize_id(value), do: to_string(value)
+
+  defp delivery_window_details(assigns) when is_map(assigns) do
+    from = Map.get(assigns, :from)
+    to = Map.get(assigns, :to)
+
+    cond do
+      match?(%DateTime{}, from) and match?(%DateTime{}, to) ->
+        {:window, format_delivery_datetime(from) <> " → " <> format_delivery_datetime(to)}
+
+      is_binary(from) and is_binary(to) and present?(from) and present?(to) ->
+        {:window, format_delivery_datetime(from) <> " → " <> format_delivery_datetime(to)}
+
+      timeframe =
+          Map.get(assigns, :smart_timeframe_input) ||
+            Map.get(assigns, :timeframe) ||
+            Map.get(assigns, "timeframe") ->
+        if present?(timeframe), do: {:timeframe, timeframe}, else: nil
+
+      true ->
+        nil
+    end
+  end
+
+  defp delivery_window_details(_), do: nil
+
+  defp format_delivery_datetime(%DateTime{} = dt) do
+    dt
+    |> DateTime.truncate(:minute)
+    |> Calendar.strftime("%Y-%m-%d %H:%M %Z")
+  rescue
+    _ -> DateTime.to_iso8601(dt)
+  end
+
+  defp format_delivery_datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, dt, _offset} -> format_delivery_datetime(dt)
+      {:error, _} -> value
+    end
+  end
+
+  defp format_delivery_datetime(value), do: to_string(value)
 
   defp monitor_export_filename(prefix, %Monitor{} = monitor, ext) do
     ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
@@ -1749,6 +1829,8 @@ defmodule TrifleApp.MonitorLive do
   defp blank?(value) when is_atom(value), do: blank?(Atom.to_string(value))
   defp blank?(nil), do: true
   defp blank?(_), do: false
+
+  defp present?(value), do: not blank?(value)
 
   defp value_or_dash(value) do
     cond do
@@ -1907,8 +1989,10 @@ defmodule TrifleApp.MonitorLive do
           </.link>
           <button
             type="button"
-            class={["inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600",
-              match?({:monitor, :running}, @test_delivery_state) && "opacity-80 cursor-wait"]}
+            class={[
+              "inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600",
+              match?({:monitor, :running}, @test_delivery_state) && "opacity-80 cursor-wait"
+            ]}
             phx-click="test_delivery"
             disabled={match?({:monitor, :running}, @test_delivery_state)}
           >
@@ -1927,10 +2011,10 @@ defmodule TrifleApp.MonitorLive do
               />
             </svg>
             <span class="hidden md:inline">
-              <%= if match?({:monitor, :running}, @test_delivery_state), do: "Sending…", else: "Send" %>
+              {if match?({:monitor, :running}, @test_delivery_state), do: "Sending…", else: "Send"}
             </span>
             <span class="md:hidden">
-              <%= if match?({:monitor, :running}, @test_delivery_state), do: "Send", else: "Send" %>
+              {if match?({:monitor, :running}, @test_delivery_state), do: "Send", else: "Send"}
             </span>
           </button>
           <button
@@ -2131,8 +2215,10 @@ defmodule TrifleApp.MonitorLive do
                         </button>
                         <button
                           type="button"
-                          class={["inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-gray-200 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-500 dark:hover:bg-slate-600",
-                            running_alert? && "opacity-80 cursor-wait"]}
+                          class={[
+                            "inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-gray-200 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-500 dark:hover:bg-slate-600",
+                            running_alert? && "opacity-80 cursor-wait"
+                          ]}
                           phx-click="test_alert_delivery"
                           phx-value-id={alert.id}
                           disabled={running_alert?}
@@ -2151,7 +2237,7 @@ defmodule TrifleApp.MonitorLive do
                               d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
                             />
                           </svg>
-                          <span><%= if running_alert?, do: "Sending…", else: "Send" %></span>
+                          <span>{if running_alert?, do: "Sending…", else: "Send"}</span>
                         </button>
                       </div>
                     </li>

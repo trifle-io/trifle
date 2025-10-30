@@ -51,10 +51,10 @@ defmodule Trifle.Monitors.TestDeliveryTest do
   end
 
   test "returns error when no delivery channels configured", %{
-        membership: membership,
-        user: user,
-        database: database
-      } do
+    membership: membership,
+    user: user,
+    database: database
+  } do
     monitor = simple_monitor_fixture(user, membership, database)
 
     monitor = %Monitor{monitor | delivery_channels: []}
@@ -64,10 +64,10 @@ defmodule Trifle.Monitors.TestDeliveryTest do
   end
 
   test "sends preview via email when channel configured", %{
-        membership: membership,
-        user: user,
-        database: database
-      } do
+    membership: membership,
+    user: user,
+    database: database
+  } do
     monitor = simple_monitor_fixture(user, membership, database)
 
     assert {:ok, result} =
@@ -105,10 +105,12 @@ defmodule Trifle.Monitors.TestDeliveryTest do
     {:ok, monitor} =
       Monitors.create_monitor_for_membership(user, membership, defaults)
 
-    %Monitor{monitor | delivery_channels: Enum.map(monitor.delivery_channels, &normalize_channel/1)}
+    %Monitor{
+      monitor
+      | delivery_channels: Enum.map(monitor.delivery_channels, &normalize_channel/1)
+    }
   end
 
   defp normalize_channel(%DeliveryChannel{} = channel), do: channel
   defp normalize_channel(other), do: struct(DeliveryChannel, other)
 end
-
