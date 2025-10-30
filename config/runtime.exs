@@ -142,6 +142,29 @@ if config_env() == :prod do
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
 
+  logger_level =
+    case System.get_env("LOGGER_LEVEL") do
+      nil ->
+        nil
+
+      "" ->
+        nil
+
+      level ->
+        case String.downcase(level) do
+          "debug" -> :debug
+          "info" -> :info
+          "warn" -> :warn
+          "warning" -> :warn
+          "error" -> :error
+          _ -> nil
+        end
+    end
+
+  if logger_level do
+    config :logger, level: logger_level
+  end
+
   mailer_from_name = System.get_env("MAILER_FROM_NAME") || "Trifle"
   mailer_from_email = System.get_env("MAILER_FROM_EMAIL") || "contact@example.com"
 

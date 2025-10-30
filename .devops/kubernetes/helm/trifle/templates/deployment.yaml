@@ -84,6 +84,10 @@ spec:
               value: {{ .Values.app.poolSize | quote }}
             - name: TZ
               value: {{ .Values.app.timezone | quote }}
+            {{- with .Values.app.logLevel }}
+            - name: LOGGER_LEVEL
+              value: {{ . | quote }}
+            {{- end }}
             - name: TRIFLE_DEPLOYMENT_MODE
               value: {{ .Values.app.deploymentMode | quote }}
             - name: TRIFLE_PROJECTS_ENABLED

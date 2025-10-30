@@ -45,6 +45,7 @@ Create a `values-prod.yaml` file:
 app:
   secretKeyBase: "your-64-character-secret-key"
   host: "trifle.yourdomain.com"
+  logLevel: "info"  # Accepts debug, info, warn, error
 
 # Initial user creation
 initialUser:

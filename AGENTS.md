@@ -17,3 +17,7 @@ Commit messages follow `<type>: <present-tense summary>` (see recent `feat:` and
 
 ## Environment & Data Tips
 Use `.devops/docker/local_db/docker-compose.yml` to launch Postgres and Mongo locally (`docker-compose up -d`). Version bumps belong in the root `VERSION` file. Keep large sample datasets in SQLite snapshots under the project root; regenerate from production sources only with approval.
+
+---
+
+When a shell command fails with “failed in sandbox”, use the permission request tool (with `with_escalated_permissions`) to ask the user for approval before retrying.

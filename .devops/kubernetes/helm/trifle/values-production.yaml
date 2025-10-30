@@ -52,6 +52,7 @@ app:
   port: 4000
   poolSize: 20
   timezone: "UTC"
+  logLevel: "info"
   deploymentMode: "self_hosted"  # Set to "saas" for multi-tenant mode
 
   # Third-party integrations
