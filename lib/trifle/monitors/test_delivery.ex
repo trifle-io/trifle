@@ -332,6 +332,7 @@ defmodule Trifle.Monitors.TestDelivery do
       true ->
         mailer = mailer(opts)
         mailer_opts = Keyword.get(opts, :mailer_opts, [])
+        attachments = email_attachments(exports)
 
         email =
           Email.new()
@@ -347,7 +348,8 @@ defmodule Trifle.Monitors.TestDelivery do
              %{
                handle: handle,
                type: :email
-             }}
+             }
+             |> maybe_put_non_empty(:attachments, attachments)}
 
           {:error, reason} ->
             {:error,
@@ -355,7 +357,8 @@ defmodule Trifle.Monitors.TestDelivery do
                handle: handle,
                type: :email,
                reason: format_error(reason)
-             }}
+             }
+             |> maybe_put_non_empty(:attachments, attachments)}
         end
     end
   end
@@ -372,15 +375,36 @@ defmodule Trifle.Monitors.TestDelivery do
     end)
   end
 
-  defp deliver_email_with_mailer(mailer, email, []) do
-    if function_exported?(mailer, :deliver, 1) do
-      apply(mailer, :deliver, [email])
-    else
-      {:error, :mailer_not_configured}
+  defp email_attachments(exports) when is_list(exports) do
+    exports
+    |> Enum.map(&build_email_attachment/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp email_attachments(_), do: []
+
+  defp build_email_attachment(export) when is_map(export) do
+    export
+    |> Map.take([:filename, :content_type, :medium])
+    |> maybe_put_attachment_size(Map.get(export, :binary))
+    |> prune_empty_values()
+    |> case do
+      %{} = value when map_size(value) == 0 -> nil
+      value -> value
     end
   end
 
+  defp build_email_attachment(_), do: nil
+
+  defp maybe_put_attachment_size(map, binary) when is_binary(binary) do
+    Map.put(map, :size, byte_size(binary))
+  end
+
+  defp maybe_put_attachment_size(map, _), do: map
+
   defp deliver_email_with_mailer(mailer, email, opts) do
+    _ = Code.ensure_loaded(mailer)
+
     cond do
       function_exported?(mailer, :deliver, 2) -> apply(mailer, :deliver, [email, opts])
       function_exported?(mailer, :deliver, 1) -> apply(mailer, :deliver, [email])
@@ -1203,6 +1227,9 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp format_error({:slack_error, error, _payload}), do: "Slack error: #{inspect(error)}"
   defp format_error({:mailer_error, reason}), do: "Mailer error: #{inspect(reason)}"
+  defp format_error(:mailer_not_configured),
+    do:
+      "Email delivery is not configured. Update Trifle.Mailer settings (see EMAILS.md) and try again."
   defp format_error({:http_error, %{status: status}}), do: "HTTP error #{status}"
   defp format_error({:upload_failed, %{status: status, body: body}})
        when is_binary(body) and body != "" do
