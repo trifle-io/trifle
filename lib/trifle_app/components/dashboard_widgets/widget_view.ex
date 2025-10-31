@@ -20,6 +20,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :text_widgets, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :widget_export, :map, default: %{type: :dashboard}
+  attr :print_width, :integer, default: nil
 
   def grid(assigns) do
     assigns =
@@ -36,6 +37,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
       |> assign(:grid_dom_id, "dashboard-grid")
+      |> assign_new(:print_width, fn -> nil end)
+
+    assigns = assign(assigns, :print_container_style, build_print_container_style(assigns))
 
     ~H"""
     <div class={[
@@ -45,6 +49,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       <div
         id={@grid_dom_id}
         class="grid-stack"
+        style={@print_container_style}
         phx-update="ignore"
         phx-hook="DashboardGrid"
         data-print-mode={if @print_mode, do: "true", else: "false"}
@@ -109,6 +114,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "category" -> render_category_body(assigns)
       "text" -> render_text_body(assigns)
       _ -> render_placeholder_body(assigns)
+    end
+  end
+
+  defp build_print_container_style(assigns) do
+    width = Map.get(assigns, :print_width)
+
+    cond do
+      !assigns.print_mode -> nil
+      not is_integer(width) or width <= 0 -> nil
+      true -> "width: #{width}px; max-width: 100%; margin: 0 auto;"
     end
   end
 

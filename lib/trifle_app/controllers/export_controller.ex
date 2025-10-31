@@ -10,6 +10,7 @@ defmodule TrifleApp.ExportController do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Trifle.Stats.Source
   alias Ecto.NoResultsError
+  require Logger
 
   def dashboard_pdf(conn, %{"id" => id} = params) do
     export_params =
@@ -42,6 +43,8 @@ defmodule TrifleApp.ExportController do
         "dark" -> :dark
         _ -> :light
       end
+
+    Logger.debug("dashboard_png request id=#{id} theme=#{inspect(theme)} params=#{inspect(params)}")
 
     export_params =
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
@@ -109,6 +112,8 @@ defmodule TrifleApp.ExportController do
         "dark" -> :dark
         _ -> :light
       end
+
+    Logger.debug("dashboard_widget_png request id=#{id} widget=#{widget_id} theme=#{inspect(theme)} params=#{inspect(params)}")
 
     export_params =
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
@@ -211,6 +216,8 @@ defmodule TrifleApp.ExportController do
         _ -> :light
       end
 
+    Logger.debug("monitor_png request id=#{id} theme=#{inspect(theme)} params=#{inspect(params)}")
+
     with {:ok, monitor} <- fetch_monitor(conn, id),
          export_params <- monitor_export_params(params),
          {:ok, layout} <-
@@ -218,7 +225,7 @@ defmodule TrifleApp.ExportController do
              params: export_params,
              theme: theme
            ),
-         {:ok, bin} <- ChromeExporter.export_layout_png(layout) do
+         {:ok, bin} <- ChromeExporter.export_layout_png(layout, theme: theme) do
       filename =
         params["filename"] ||
           monitor_default_filename("monitor-" <> Atom.to_string(theme), monitor, ".png")
@@ -276,6 +283,8 @@ defmodule TrifleApp.ExportController do
         "dark" -> :dark
         _ -> :light
       end
+
+    Logger.debug("monitor_widget_png request id=#{id} widget=#{widget_id} theme=#{inspect(theme)} params=#{inspect(params)}")
 
     with {:ok, monitor} <- fetch_monitor(conn, id),
          export_params <- monitor_export_params(params),

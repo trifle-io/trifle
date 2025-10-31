@@ -167,7 +167,8 @@ defmodule TrifleApp.Exports.DashboardLayout do
           category: pruned_datasets.category,
           text_widgets: pruned_datasets.text,
           export_params: %{},
-          dashboard_id: dashboard.id
+          dashboard_id: dashboard.id,
+          print_width: printable_width(viewport)
         }
 
         Layout.new(%{
@@ -215,6 +216,12 @@ defmodule TrifleApp.Exports.DashboardLayout do
     end)
   end
 
+  defp printable_width(%{width: width}) when is_integer(width) and width > 0 do
+    min(width, 1366)
+  end
+
+  defp printable_width(_), do: 1366
+
   defp widget_id(%{"id" => id}), do: to_string(id)
   defp widget_id(%{id: id}), do: to_string(id)
   defp widget_id(_), do: nil
@@ -225,14 +232,20 @@ defmodule TrifleApp.Exports.DashboardLayout do
     do: Layout.put_meta(layout, :widget, %{id: widget_id})
 
   defp normalize_single_widget_layout([item]) do
-    item = ensure_string_keys(item)
-
     item =
       item
+      |> ensure_string_keys()
       |> Map.put("x", 0)
       |> Map.put("y", 0)
       |> Map.put("w", 12)
-      |> Map.put("h", Map.get(item, "h") || 6)
+
+    base_height = derive_widget_height(item)
+    enforced_height = max(base_height, 12)
+
+    item =
+      item
+      |> Map.put("h", enforced_height)
+      |> expand_tab_children(enforced_height)
 
     [item]
   end
@@ -248,9 +261,48 @@ defmodule TrifleApp.Exports.DashboardLayout do
           true -> to_string(key)
         end
 
-      Map.put(acc, string_key, value)
+      normalized_value =
+        cond do
+          is_map(value) -> ensure_string_keys(value)
+          is_list(value) -> Enum.map(value, &ensure_string_keys/1)
+          true -> value
+        end
+
+      Map.put(acc, string_key, normalized_value)
     end)
   end
 
   defp ensure_string_keys(other), do: other
+
+  defp derive_widget_height(%{"h" => height}) when is_integer(height) and height > 0, do: height
+
+  defp derive_widget_height(%{"tabs" => %{"widgets" => widgets}}) when is_list(widgets) do
+    widgets
+    |> Enum.map(&derive_widget_height/1)
+    |> Enum.max(fn -> 6 end)
+  end
+
+  defp derive_widget_height(_), do: 6
+
+  defp expand_tab_children(%{"tabs" => %{"widgets" => widgets} = tabs} = widget, height) do
+    expanded_widgets =
+      widgets
+      |> Enum.map(&ensure_string_keys/1)
+      |> Enum.map(fn child ->
+        child
+        |> Map.put("x", 0)
+        |> Map.put("y", 0)
+        |> Map.put("w", 12)
+        |> Map.put("h", height)
+        |> expand_tab_children(height)
+      end)
+
+    updated_tabs = Map.put(tabs, "widgets", expanded_widgets)
+
+    widget
+    |> Map.put("tabs", updated_tabs)
+    |> Map.put("h", height)
+  end
+
+  defp expand_tab_children(widget, _height), do: widget
 end

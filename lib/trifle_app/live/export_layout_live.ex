@@ -42,9 +42,10 @@ defmodule TrifleApp.ExportLayoutLive do
     <div
       id="export-layout-root"
       class={[
-        "export-layout-root min-h-screen bg-white text-slate-900",
+        "export-layout-root min-h-screen text-slate-900",
         theme_root_class(@theme)
       ]}
+      style="background: transparent;"
     >
       {theme_script(@theme)}
       <div class="export-layout-canvas">
@@ -70,15 +71,19 @@ defmodule TrifleApp.ExportLayoutLive do
 
   defp layout_content(_assigns), do: Phoenix.HTML.raw("<!-- Missing render spec -->")
 
-  defp theme_root_class(:dark), do: "dark bg-slate-900 text-slate-100"
-  defp theme_root_class(_), do: "bg-white text-slate-900"
+  defp theme_root_class(:dark), do: "dark text-slate-100"
+  defp theme_root_class(_), do: "text-slate-900"
 
   defp theme_script(:dark) do
     Phoenix.HTML.raw("""
     <script>
       try {
         document.documentElement.classList.add('dark');
-        document.body && document.body.classList.add('dark');
+        if (document.body) {
+          document.body.classList.add('dark');
+          document.body.style.background = 'transparent';
+        }
+        document.documentElement.style.background = 'transparent';
       } catch (_) {}
     </script>
     """)
@@ -89,7 +94,11 @@ defmodule TrifleApp.ExportLayoutLive do
     <script>
       try {
         document.documentElement.classList.remove('dark');
-        document.body && document.body.classList.remove('dark');
+        if (document.body) {
+          document.body.classList.remove('dark');
+          document.body.style.background = 'transparent';
+        }
+        document.documentElement.style.background = 'transparent';
       } catch (_) {}
     </script>
     """)

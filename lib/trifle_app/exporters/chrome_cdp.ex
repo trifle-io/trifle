@@ -31,6 +31,8 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   @png_max_dimension 16_384
   @png_capture_scale 2.0
 
+  def default_pdf_opts, do: @default_pdf_opts
+
   def export_pdf(url, opts \\ []) do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     pdf_base = Map.merge(@default_pdf_opts, Map.new(Keyword.get(opts, :pdf, [])))
@@ -46,16 +48,22 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     w = trunc(printable_w_in * 96.0)
     h = max(trunc(printable_h_in * 96.0), 800)
 
+    theme = Keyword.get(opts, :theme, :light)
+
+    Logger.debug("CDP export_pdf setup theme=#{inspect(theme)} viewport=#{w}x#{h}")
+
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_pdf launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
-         # Always use light theme for PDF
-         {:ok, page_ws} <- open_page_ws_with_theme(state, url, :light),
+         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme),
          # Apply normalization early
-         _ = normalize_background(page_ws),
+         _ = normalize_background(page_ws, theme),
+         _ = log_theme_state(page_ws, "pdf-after-normalize"),
+         _ = set_background_override(page_ws),
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base) do
+         {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base),
+         _ <- clear_background_override(page_ws) do
       _ = close(page_ws)
       _ = kill_chrome(state)
       Logger.debug("CDP PDF captured (bytes)=#{div(byte_size(pdf_b64) * 3, 4)}")
@@ -74,14 +82,20 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     theme = Keyword.get(opts, :theme, :light)
 
+    Logger.debug("CDP export_png setup theme=#{inspect(theme)} viewport=#{w}x#{h}")
+
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
          _ = Logger.debug("CDP export_png launch bin=#{chrome} viewport=#{w}x#{h}"),
          {:ok, state} <- launch_chrome(chrome, w, h),
          {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme),
+         _ = normalize_background(page_ws, theme),
+         _ = log_theme_state(page_ws, "png-after-normalize"),
+         _ = set_background_override(page_ws),
          :ok <- wait_until_ready(page_ws, timeout_ms),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
          clip <- expand_viewport_to_content(page_ws),
-         {:ok, png_b64} <- page_capture_screenshot(page_ws, clip) do
+         {:ok, png_b64} <- page_capture_screenshot(page_ws, clip),
+         _ <- clear_background_override(page_ws) do
       _ = close(page_ws)
       _ = kill_chrome(state)
       Logger.debug("CDP PNG captured (bytes)=#{div(byte_size(png_b64) * 3, 4)}")
@@ -394,7 +408,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   end
 
   defp page_capture_screenshot(page_ws, clip) do
-    params = %{format: "png", captureBeyondViewport: true} |> maybe_put_clip(clip)
+    params = %{format: "png", captureBeyondViewport: true, omitBackground: true} |> maybe_put_clip(clip)
 
     case __MODULE__.WS.call(page_ws, "Page.captureScreenshot", params) do
       {:ok, %{"data" => b64}} -> {:ok, b64}
@@ -414,23 +428,59 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp maybe_put_clip(params, _), do: params
 
-  defp normalize_background(page_ws) do
+  defp normalize_background(page_ws, theme) do
+    theme_string =
+      case theme do
+        :dark -> "dark"
+        :light -> "light"
+        value when is_binary(value) -> value
+        _ -> "light"
+      end
+
+    Logger.debug("CDP normalize_background theme=#{theme_string}")
+
     js = """
     (function(){
+      const theme = "#{theme_string}";
       return new Promise((resolve) => {
-        try{document.documentElement && document.documentElement.classList.remove('dark');}catch(e){}
-        try{document.body && document.body.classList && document.body.classList.remove('dark');}catch(e){}
-        try{if(document.body){if(document.body.classList){document.body.classList.remove('bg-slate-100');} document.body.style.background='#ffffff'; document.body.setAttribute('data-theme','light');}}catch(e){}
         try{
-          var s=document.createElement('style');
-          s.textContent='/* Export-only normalization to avoid print artifacts */\\n .grid-stack-item, .grid-stack-item-content{background:#ffffff !important; background-clip:padding-box !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}\\n button,[role=button],.rounded-md{outline:none !important; box-shadow:none !important; background:#ffffff !important; border-color:#e5e7eb !important;}\\n #granularity-container button{background:#ffffff !important; border-color:#e5e7eb !important;}';
-          document.head.appendChild(s);
+          if(document.documentElement){
+            document.documentElement.style.background='transparent';
+            document.documentElement.dataset.exportTheme = theme;
+            if(theme === 'dark'){
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+          }
         }catch(e){}
-        try{window.dispatchEvent(new CustomEvent('trifle:theme-changed',{detail:{theme:'light'}}));}catch(e){}
-        
-        // Wait a bit for styles to apply
-        setTimeout(() => resolve(true), 100);
-      });
+        try{
+          if(document.body){
+            if(theme === 'dark'){
+              if(document.body.classList){document.body.classList.add('dark'); document.body.classList.remove('bg-slate-100');}
+            } else {
+              if(document.body.classList){document.body.classList.remove('dark'); document.body.classList.remove('bg-slate-100');}
+            }
+            document.body.style.background='transparent';
+            document.body.setAttribute('data-theme', theme);
+          }
+        }catch(e){}
+        try{
+          var style=document.getElementById('export-normalize-style');
+          if(!style){
+            style=document.createElement('style');
+            style.id='export-normalize-style';
+            if(theme === 'dark'){
+              style.textContent='/* Dark export normalization */\\n:root, body, #export-layout-root, #export-layout-root .export-layout-canvas{background:transparent !important;}\\n #export-layout-root .grid-stack{background:transparent !important;}\\n body.dark{color:#f8fafc !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}';
+            } else {
+              style.textContent='/* Light export normalization */\\n:root, body, #export-layout-root, #export-layout-root .export-layout-canvas{background:transparent !important;}\\n #export-layout-root .grid-stack{background:transparent !important;}\\n .grid-stack .gs-resize-handle, .grid-stack .ui-resizable-handle, .grid-stack-placeholder{display:none !important;}\\n *:focus{outline:none !important; box-shadow:none !important;}';
+            }
+            document.head.appendChild(style);
+          }
+        }catch(e){}
+        try{window.dispatchEvent(new CustomEvent('trifle:theme-changed',{detail:{theme:theme}}));}catch(e){}
+      setTimeout(() => resolve(true), 100);
+    });
     })()
     """
 
@@ -450,6 +500,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   end
 
   defp apply_theme_before_load(page_ws, theme) do
+    Logger.debug("CDP apply_theme_before_load theme=#{inspect(theme)}")
     # Inject a script that will apply theme immediately on page load
     js =
       case theme do
@@ -460,8 +511,12 @@ defmodule TrifleApp.Exporters.ChromeCDP do
               localStorage.setItem('theme', 'dark');
               document.addEventListener('DOMContentLoaded', function() {
                 document.documentElement.classList.add('dark');
-                document.body.classList.add('dark');
-                document.body.style.background = '#0f172a';
+                if(document.body){
+                  document.body.classList.add('dark');
+                  document.body.style.background = 'transparent';
+                  document.body.setAttribute('data-theme', 'dark');
+                }
+                document.documentElement.style.background = 'transparent';
                 document.body.setAttribute('data-theme', 'dark');
               });
             })();
@@ -474,8 +529,12 @@ defmodule TrifleApp.Exporters.ChromeCDP do
               localStorage.setItem('theme', 'light');
               document.addEventListener('DOMContentLoaded', function() {
                 document.documentElement.classList.remove('dark');
-                document.body.classList.remove('dark');
-                document.body.style.background = '#ffffff';
+                if(document.body){
+                  document.body.classList.remove('dark');
+                  document.body.style.background = 'transparent';
+                  document.body.setAttribute('data-theme', 'light');
+                }
+                document.documentElement.style.background = 'transparent';
                 document.body.setAttribute('data-theme', 'light');
               });
             })();
@@ -488,6 +547,39 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       })
 
     :ok
+  end
+
+  defp log_theme_state(page_ws, stage) do
+    expr = "(() => { const root = document.getElementById('export-layout-root'); const grid = root ? root.querySelector('.grid-stack') : null; return { htmlClass: document.documentElement ? document.documentElement.className : null, bodyClass: document.body ? document.body.className : null, bodyTheme: document.body ? document.body.getAttribute('data-theme') : null, bodyBg: window.getComputedStyle(document.body || document.documentElement).backgroundColor, rootBg: root ? window.getComputedStyle(root).backgroundColor : null, gridBg: grid ? window.getComputedStyle(grid).backgroundColor : null }; })()"
+
+    case __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: expr, returnByValue: true}, 5_000) do
+      {:ok, %{"result" => %{"value" => value}}} ->
+        Logger.debug("CDP theme_state #{stage} #{inspect(value)}")
+        :ok
+
+      other ->
+        Logger.debug("CDP theme_state #{stage} error=#{inspect(other)}")
+        :ok
+    end
+  end
+
+  defp set_background_override(page_ws) do
+    params = %{color: %{r: 0, g: 0, b: 0, a: 0}}
+    case __MODULE__.WS.call(page_ws, "Emulation.setDefaultBackgroundColorOverride", params, 5_000) do
+      {:ok, _} -> :ok
+      other ->
+        Logger.debug("CDP set_background_override error=#{inspect(other)}")
+        :ok
+    end
+  end
+
+  defp clear_background_override(page_ws) do
+    case __MODULE__.WS.call(page_ws, "Emulation.setDefaultBackgroundColorOverride", %{}, 5_000) do
+      {:ok, _} -> :ok
+      other ->
+        Logger.debug("CDP clear_background_override error=#{inspect(other)}")
+        :ok
+    end
   end
 
   defp close(page_ws) do
