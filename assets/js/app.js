@@ -3496,6 +3496,10 @@ Hooks.DownloadMenu = {
     this.bindAnchors();
     this.bindIframe();
 
+    this.handleEvent('monitor_widget_export_params', ({ params }) => {
+      this.updateExportLinks(params || {});
+    });
+
     // Global completion signal (for blob-based downloads or alternate flows)
     this._onDownloadComplete = () => this.stopLoading();
     window.addEventListener('download:complete', this._onDownloadComplete);
@@ -3528,6 +3532,36 @@ Hooks.DownloadMenu = {
     }
     // If still loading, re-apply loading UI state after LV patch
     if (this.loading) this.applyLoadingState();
+  },
+
+  updateExportLinks(params) {
+    if (!params || typeof params !== 'object') return;
+    const managedKeys = ['timeframe', 'granularity', 'from', 'to', 'segments', 'key'];
+    this.el.querySelectorAll('a[data-export-link]').forEach((a) => {
+      const href = a.getAttribute('href');
+      if (!href) return;
+      try {
+        const url = new URL(href, window.location.origin);
+        managedKeys.forEach((key) => {
+          const value = params[key];
+          if (value == null || value === '') {
+            url.searchParams.delete(key);
+          }
+        });
+        Object.entries(params).forEach(([key, value]) => {
+          if (value == null || value === '') {
+            url.searchParams.delete(key);
+          } else {
+            url.searchParams.set(key, value);
+          }
+        });
+        url.searchParams.delete('download_token');
+        a.setAttribute('href', url.toString());
+      } catch (_) {
+        // Ignore malformed hrefs
+      }
+    });
+    this.hrefSignature = this.computeHrefSignature();
   },
 
   computeHrefSignature() {

@@ -415,16 +415,22 @@ defmodule TrifleApp.MonitorLive do
       |> Map.get(:transponder_results, %{})
       |> normalize_transponder_results()
 
+    socket =
+      socket
+      |> assign(:loading, false)
+      |> assign(:loading_progress, nil)
+      |> assign(:transponding, false)
+      |> assign(:stats, stats)
+      |> assign(:transponder_results, transponder_results)
+      |> assign(:load_duration_microseconds, load_duration)
+      |> assign_monitor_widget_datasets(stats)
+      |> maybe_refresh_expanded_widget()
+
+    export_params = build_monitor_export_params(socket.assigns)
+
     {:noreply,
      socket
-     |> assign(:loading, false)
-     |> assign(:loading_progress, nil)
-     |> assign(:transponding, false)
-     |> assign(:stats, stats)
-     |> assign(:transponder_results, transponder_results)
-     |> assign(:load_duration_microseconds, load_duration)
-     |> assign_monitor_widget_datasets(stats)
-     |> maybe_refresh_expanded_widget()}
+     |> push_event("monitor_widget_export_params", %{params: export_params})}
   end
 
   @impl true
@@ -435,29 +441,41 @@ defmodule TrifleApp.MonitorLive do
         started -> System.monotonic_time(:microsecond) - started
       end
 
+    socket =
+      socket
+      |> assign(:loading, false)
+      |> assign(:loading_progress, nil)
+      |> assign(:transponding, false)
+      |> assign(:stats, nil)
+      |> assign(:transponder_results, default_transponder_results())
+      |> assign(:load_duration_microseconds, load_duration)
+      |> reset_monitor_widget_datasets()
+      |> put_flash(:error, "Failed to load monitor data: #{inspect(error)}")
+
+    export_params = build_monitor_export_params(socket.assigns)
+
     {:noreply,
      socket
-     |> assign(:loading, false)
-     |> assign(:loading_progress, nil)
-     |> assign(:transponding, false)
-     |> assign(:stats, nil)
-     |> assign(:transponder_results, default_transponder_results())
-     |> assign(:load_duration_microseconds, load_duration)
-     |> reset_monitor_widget_datasets()
-     |> put_flash(:error, "Failed to load monitor data: #{inspect(error)}")}
+     |> push_event("monitor_widget_export_params", %{params: export_params})}
   end
 
   @impl true
   def handle_async(:monitor_data_task, {:exit, reason}, socket) do
+    socket =
+      socket
+      |> assign(:loading, false)
+      |> assign(:loading_progress, nil)
+      |> assign(:transponding, false)
+      |> assign(:stats, nil)
+      |> assign(:transponder_results, default_transponder_results())
+      |> reset_monitor_widget_datasets()
+      |> put_flash(:error, "Monitor data task crashed: #{inspect(reason)}")
+
+    export_params = build_monitor_export_params(socket.assigns)
+
     {:noreply,
      socket
-     |> assign(:loading, false)
-     |> assign(:loading_progress, nil)
-     |> assign(:transponding, false)
-     |> assign(:stats, nil)
-     |> assign(:transponder_results, default_transponder_results())
-     |> reset_monitor_widget_datasets()
-     |> put_flash(:error, "Monitor data task crashed: #{inspect(reason)}")}
+     |> push_event("monitor_widget_export_params", %{params: export_params})}
   end
 
   def handle_async({:ai_recommendation, component_id, request_id}, {:ok, {:ok, result}}, socket)
@@ -820,7 +838,10 @@ defmodule TrifleApp.MonitorLive do
         socket
       end
 
+    export_params = build_monitor_export_params(socket.assigns)
+
     socket
+    |> push_event("monitor_widget_export_params", %{params: export_params})
     |> load_monitor_data()
   end
 
