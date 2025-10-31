@@ -335,7 +335,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
             category: datasets.category,
             text_widgets: datasets.text,
             export_params: %{},
-            dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id")
+            dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id"),
+            print_width: printable_width(viewport)
           }
 
         layout =
@@ -419,14 +420,20 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp widget_id(_), do: nil
 
   defp normalize_single_widget_layout([item]) do
-    item = ensure_string_keys(item)
-
     item =
       item
+      |> ensure_string_keys()
       |> Map.put("x", 0)
       |> Map.put("y", 0)
       |> Map.put("w", 12)
-      |> Map.put("h", Map.get(item, "h") || 6)
+
+    base_height = derive_widget_height(item)
+    enforced_height = max(base_height, 12)
+
+    item =
+      item
+      |> Map.put("h", enforced_height)
+      |> expand_tab_children(enforced_height)
 
     [item]
   end
@@ -442,17 +449,62 @@ defmodule TrifleApp.Exports.MonitorLayout do
           true -> to_string(key)
         end
 
-      Map.put(acc, string_key, value)
+      normalized_value =
+        cond do
+          is_map(value) -> ensure_string_keys(value)
+          is_list(value) -> Enum.map(value, &ensure_string_keys/1)
+          true -> value
+        end
+
+      Map.put(acc, string_key, normalized_value)
     end)
   end
 
   defp ensure_string_keys(other), do: other
+
+  defp derive_widget_height(%{"h" => height}) when is_integer(height) and height > 0, do: height
+
+  defp derive_widget_height(%{"tabs" => %{"widgets" => widgets}}) when is_list(widgets) do
+    widgets
+    |> Enum.map(&derive_widget_height/1)
+    |> Enum.max(fn -> 6 end)
+  end
+
+  defp derive_widget_height(_), do: 6
+
+  defp expand_tab_children(%{"tabs" => %{"widgets" => widgets} = tabs} = widget, height) do
+    expanded_widgets =
+      widgets
+      |> Enum.map(&ensure_string_keys/1)
+      |> Enum.map(fn child ->
+        child
+        |> Map.put("x", 0)
+        |> Map.put("y", 0)
+        |> Map.put("w", 12)
+        |> Map.put("h", height)
+        |> expand_tab_children(height)
+      end)
+
+    updated_tabs = Map.put(tabs, "widgets", expanded_widgets)
+
+    widget
+    |> Map.put("tabs", updated_tabs)
+    |> Map.put("h", height)
+  end
+
+  defp expand_tab_children(widget, _height), do: widget
 
   defp maybe_put_widget_meta(layout, nil), do: layout
 
   defp maybe_put_widget_meta(layout, widget_id) do
     Layout.put_meta(layout, :widget, %{id: widget_id})
   end
+
+  defp printable_width(%{width: width}) when is_integer(width) and width > 0 do
+    min(width, 1366)
+  end
+
+  defp printable_width(_), do: 1366
 
   defp monitor_alert_widgets(%Monitor{} = monitor) do
     case extract_target_widgets(monitor.target) do
