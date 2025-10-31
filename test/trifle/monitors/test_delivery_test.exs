@@ -10,6 +10,7 @@ defmodule Trifle.Monitors.TestDeliveryTest do
   alias Swoosh.Attachment
 
   defmodule FakeLayoutBuilder do
+    alias Trifle.Exports.Series.Result, as: SeriesResult
     alias TrifleApp.Exports.Layout
 
     def build(_monitor, _opts) do
@@ -18,6 +19,11 @@ defmodule Trifle.Monitors.TestDeliveryTest do
 
     def build_widget(_monitor, _widget_id, _opts) do
       {:ok, Layout.new(id: "widget", kind: :widget)}
+    end
+
+    def series_export(_monitor, _opts) do
+      export = %SeriesResult{series: %{at: [], values: []}, raw: %{series: %{}}}
+      {:ok, %{export: export, timeframe: %{}}}
     end
   end
 
@@ -124,6 +130,49 @@ defmodule Trifle.Monitors.TestDeliveryTest do
 
     assert is_binary(filename)
     assert filename == result_filename
+  end
+
+  test "supports CSV and JSON delivery media", %{
+    membership: membership,
+    user: user,
+    database: database
+  } do
+    monitor = simple_monitor_fixture(user, membership, database)
+
+    {:ok, monitor} =
+      Monitors.update_monitor_for_membership(monitor, membership, %{
+        delivery_media: [%{medium: :file_csv}, %{medium: :file_json}]
+      })
+
+    assert {:ok, result} =
+             Monitors.test_deliver_monitor(monitor,
+               export_params: %{"timeframe" => "7d"},
+               layout_builder: FakeLayoutBuilder,
+               exporter: FakeExporter,
+               mailer: FakeMailer
+             )
+
+    assert [
+             %{
+               attachments: attachments,
+               type: :email
+             }
+           ] = result.successes
+
+    assert Enum.any?(attachments, &match?(%{medium: :file_csv, content_type: "text/csv"}, &1))
+
+    assert Enum.any?(
+             attachments,
+             &match?(%{medium: :file_json, content_type: "application/json"}, &1)
+           )
+
+    assert_received {:delivered_email, %Email{} = email}
+
+    filenames = Enum.map(email.attachments, & &1.filename)
+    assert Enum.count(email.attachments) == 2
+    assert Enum.any?(email.attachments, &(&1.content_type == "text/csv"))
+    assert Enum.any?(email.attachments, &(&1.content_type == "application/json"))
+    assert Enum.all?(filenames, &is_binary/1)
   end
 
   defp simple_monitor_fixture(user, membership, database) do

@@ -337,6 +337,8 @@ defmodule TrifleApp.MonitorComponents do
   defp delivery_media_badge(:pdf), do: "PDF"
   defp delivery_media_badge(:png_light), do: "PNG"
   defp delivery_media_badge(:png_dark), do: "PNG"
+  defp delivery_media_badge(:file_csv), do: "CSV"
+  defp delivery_media_badge(:file_json), do: "JSON"
 
   defp delivery_media_badge(value) when is_atom(value) do
     value |> Atom.to_string() |> String.upcase()

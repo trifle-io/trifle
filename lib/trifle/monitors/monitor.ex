@@ -16,7 +16,7 @@ defmodule Trifle.Monitors.Monitor do
   @type_values [:report, :alert]
   @status_values [:active, :paused]
   @trigger_status_values [:idle, :warning, :recovering, :alerting]
-  @delivery_media_values [:pdf, :png_light, :png_dark]
+  @delivery_media_values [:pdf, :png_light, :png_dark, :file_csv, :file_json]
 
   schema "monitors" do
     field :name, :string
@@ -53,7 +53,9 @@ defmodule Trifle.Monitors.Monitor do
     end
 
     embeds_many :delivery_media, DeliveryMedium, on_replace: :delete do
-      field :medium, Ecto.Enum, values: [:pdf, :png_light, :png_dark], default: :pdf
+      field :medium, Ecto.Enum,
+        values: [:pdf, :png_light, :png_dark, :file_csv, :file_json],
+        default: :pdf
     end
 
     belongs_to :organization, Organization
