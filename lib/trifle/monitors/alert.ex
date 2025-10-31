@@ -29,6 +29,7 @@ defmodule Trifle.Monitors.Alert do
       field :hampel_window_size, :integer
       field :hampel_k, :float
       field :hampel_mad_floor, :float
+      field :treat_nil_as_zero, :boolean, default: false
       field :cusum_k, :float
       field :cusum_h, :float
     end
@@ -42,6 +43,7 @@ defmodule Trifle.Monitors.Alert do
     :hampel_window_size,
     :hampel_k,
     :hampel_mad_floor,
+    :treat_nil_as_zero,
     :cusum_k,
     :cusum_h
   ]
@@ -126,7 +128,13 @@ defmodule Trifle.Monitors.Alert do
         %{base | range_min_value: nil, range_max_value: nil}
 
       :hampel ->
-        %{base | hampel_window_size: nil, hampel_k: nil, hampel_mad_floor: nil}
+        %{
+          base
+          | hampel_window_size: nil,
+            hampel_k: nil,
+            hampel_mad_floor: nil,
+            treat_nil_as_zero: false
+        }
 
       :cusum ->
         %{base | cusum_k: nil, cusum_h: nil}
@@ -181,6 +189,7 @@ defmodule Trifle.Monitors.Alert do
       message: "must be zero or greater",
       greater_than_or_equal_to: 0
     )
+    |> validate_inclusion(:treat_nil_as_zero, [true, false])
   end
 
   defp apply_strategy_validations(changeset, :cusum) do

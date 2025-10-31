@@ -123,6 +123,16 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                       <p class="text-xs text-slate-500 dark:text-slate-400">
                         Threshold value is the numeric boundary; the alert fires as soon as any point crosses it in the chosen direction.
                       </p>
+                      <div class="space-y-1">
+                        <.input
+                          field={settings_form[:treat_nil_as_zero]}
+                          type="checkbox"
+                          label="Treat missing values as zero"
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 pl-7">
+                          Enable this when gaps in the data should count as zero so the alert still fires during silent metric failures.
+                        </p>
+                      </div>
                     </div>
                   <% :range -> %>
                     <div class="space-y-3">
@@ -157,6 +167,16 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                       <p class="text-xs text-slate-500 dark:text-slate-400">
                         Keep the range tight for sensitive monitoring or widen it for tolerant alerting.
                       </p>
+                      <div class="space-y-1">
+                        <.input
+                          field={settings_form[:treat_nil_as_zero]}
+                          type="checkbox"
+                          label="Treat missing values as zero"
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 pl-7">
+                          Turn this on when a missing sample should be treated as zero so range breaches still surface during outages.
+                        </p>
+                      </div>
                     </div>
                   <% :hampel -> %>
                     <div class="space-y-3">
@@ -204,6 +224,16 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                       <p class="text-xs text-slate-500 dark:text-slate-400">
                         MAD floor prevents the detector from collapsing when variance is near zero by enforcing a minimum spread.
                       </p>
+                      <div class="space-y-1">
+                        <.input
+                          field={settings_form[:treat_nil_as_zero]}
+                          type="checkbox"
+                          label="Treat missing values as zero"
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 pl-7">
+                          When enabled, empty samples are treated as zeros for Hampel calculations, ensuring sudden drop-offs that return as missing data still count as outliers.
+                        </p>
+                      </div>
                     </div>
                   <% :cusum -> %>
                     <div class="space-y-3">
@@ -240,6 +270,16 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                       <p class="text-xs text-slate-500 dark:text-slate-400">
                         H threshold is the cumulative score that must be exceeded before an alert fires; lower values trigger sooner.
                       </p>
+                      <div class="space-y-1">
+                        <.input
+                          field={settings_form[:treat_nil_as_zero]}
+                          type="checkbox"
+                          label="Treat missing values as zero"
+                        />
+                        <p class="text-xs text-slate-500 dark:text-slate-400 pl-7">
+                          Enable this to treat gaps as zero-valued samples so CUSUM detects sudden drop-offs caused by missing data.
+                        </p>
+                      </div>
                     </div>
                   <% _ -> %>
                     <div class="text-xs text-slate-500 dark:text-slate-400">
@@ -304,7 +344,11 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     case normalize_variant(variant_param) do
       nil ->
         {:noreply,
-         assign(socket, :ai_state, Map.merge(@ai_default, %{status: :error, message: "Choose a valid AI option."}))}
+         assign(
+           socket,
+           :ai_state,
+           Map.merge(@ai_default, %{status: :error, message: "Choose a valid AI option."})
+         )}
 
       variant ->
         now = DateTime.utc_now()
@@ -315,10 +359,10 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           {:ai_recommendation_request,
            %{
              component_id: socket.assigns.id,
-               request_id: request_id,
-                variant: variant,
-                strategy: strategy
-              }}
+             request_id: request_id,
+             variant: variant,
+             strategy: strategy
+           }}
         )
 
         {:noreply,
@@ -326,11 +370,11 @@ defmodule TrifleApp.MonitorAlertFormComponent do
            status: :loading,
            variant: variant,
            request_id: request_id,
-            message: nil,
-            started_at: now,
-            tick_at: now,
-            finished_at: nil
-          })}
+           message: nil,
+           started_at: now,
+           tick_at: now,
+           finished_at: nil
+         })}
     end
   end
 
@@ -441,6 +485,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
       true ->
         finished_at = error[:finished_at] || DateTime.utc_now()
+
         assign(socket, :ai_state, %{
           status: :error,
           variant: current_state.variant,
@@ -477,9 +522,12 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
   defp strategy_conflict?(nil, _), do: false
   defp strategy_conflict?(_, nil), do: false
-  defp strategy_conflict?(current, result), do: normalize_strategy_value(result) != normalize_strategy_value(current)
 
-  defp normalize_strategy_value(value) when value in [:threshold, :range, :hampel, :cusum], do: value
+  defp strategy_conflict?(current, result),
+    do: normalize_strategy_value(result) != normalize_strategy_value(current)
+
+  defp normalize_strategy_value(value) when value in [:threshold, :range, :hampel, :cusum],
+    do: value
 
   defp normalize_strategy_value(value) when is_binary(value) do
     case String.downcase(value) do
@@ -611,11 +659,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           phx-value-variant="balanced"
           disabled={@ai_state.status == :loading}
         >
-          <.icon
-            :if={variant_success?(@ai_state, :balanced)}
-            name="hero-check-mini"
-            class="h-4 w-4"
-          />
+          <.icon :if={variant_success?(@ai_state, :balanced)} name="hero-check-mini" class="h-4 w-4" />
           <span>{variant_label(:balanced)}</span>
         </button>
 
@@ -627,11 +671,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
           phx-value-variant="sensitive"
           disabled={@ai_state.status == :loading}
         >
-          <.icon
-            :if={variant_success?(@ai_state, :sensitive)}
-            name="hero-check-mini"
-            class="h-4 w-4"
-          />
+          <.icon :if={variant_success?(@ai_state, :sensitive)} name="hero-check-mini" class="h-4 w-4" />
           <span>{variant_label(:sensitive)}</span>
         </button>
       </div>
@@ -682,6 +722,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
        do: true
 
   defp variant_active?(_, _), do: false
+
   defp ai_loading_message(assigns) do
     assigns =
       assigns
@@ -709,7 +750,10 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     ~H"""
     <div class="mt-3 rounded-md border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
       <p>{@summary}</p>
-      <p :if={@elapsed} class="mt-1 text-[11px] font-medium uppercase tracking-wide text-emerald-600/80 dark:text-emerald-300/80">
+      <p
+        :if={@elapsed}
+        class="mt-1 text-[11px] font-medium uppercase tracking-wide text-emerald-600/80 dark:text-emerald-300/80"
+      >
         Completed in {@elapsed}
       </p>
     </div>
@@ -720,13 +764,19 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     assigns =
       assigns
       |> assign_new(:ai_state, fn -> @ai_default end)
-      |> assign(:message, assigns.ai_state.message || "Could not fetch AI recommendation. Try again.")
+      |> assign(
+        :message,
+        assigns.ai_state.message || "Could not fetch AI recommendation. Try again."
+      )
       |> assign(:elapsed, finished_elapsed(assigns.ai_state))
 
     ~H"""
     <div class="mt-3 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
       <p>{@message}</p>
-      <p :if={@elapsed} class="mt-1 text-[11px] font-medium uppercase tracking-wide text-rose-600/80 dark:text-rose-300/80">
+      <p
+        :if={@elapsed}
+        class="mt-1 text-[11px] font-medium uppercase tracking-wide text-rose-600/80 dark:text-rose-300/80"
+      >
         Completed in {@elapsed}
       </p>
     </div>
@@ -737,7 +787,11 @@ defmodule TrifleApp.MonitorAlertFormComponent do
     assigns =
       assigns
       |> assign_new(:ai_state, fn -> @ai_default end)
-      |> assign(:message, assigns.ai_state.message || "Recommendation is no longer applicable. Request a fresh suggestion.")
+      |> assign(
+        :message,
+        assigns.ai_state.message ||
+          "Recommendation is no longer applicable. Request a fresh suggestion."
+      )
 
     ~H"""
     <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
