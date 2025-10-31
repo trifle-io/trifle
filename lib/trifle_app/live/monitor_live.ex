@@ -8,6 +8,7 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Monitors.AlertAdvisor
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Organizations
+  alias Trifle.Organizations.DashboardSegments
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
@@ -798,7 +799,9 @@ defmodule TrifleApp.MonitorLive do
     {from, to, granularity, timeframe_input, use_fixed_display} =
       monitor_timeframe_defaults(monitor, source, config, granularities)
 
-    resolved_key = resolve_monitor_key(monitor)
+    {segment_values, monitor_segments} = monitor_segment_state(monitor)
+
+    resolved_key = resolve_monitor_key(monitor, segment_values, monitor_segments)
 
     socket
     |> assign(:source, source)
@@ -811,6 +814,8 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:smart_timeframe_input, timeframe_input)
     |> assign(:use_fixed_display, use_fixed_display)
     |> assign(:resolved_key, resolved_key)
+    |> assign(:segment_values, segment_values)
+    |> assign(:monitor_segments, monitor_segments)
     |> assign(:selected_source_ref, component_source_ref(source))
     |> assign(:alerts, monitor.alerts || [])
     |> assign(:insights_dashboard, build_monitor_insights_dashboard(monitor))
@@ -1160,13 +1165,39 @@ defmodule TrifleApp.MonitorLive do
     end
   end
 
-  defp resolve_monitor_key(%Monitor{type: :report, dashboard: %{key: key}}), do: key
+  defp monitor_segment_state(%Monitor{type: :report, dashboard: %Ecto.Association.NotLoaded{}}),
+    do: {%{}, []}
 
-  defp resolve_monitor_key(%Monitor{type: :alert} = monitor) do
+  defp monitor_segment_state(%Monitor{type: :report, dashboard: nil}), do: {%{}, []}
+
+  defp monitor_segment_state(%Monitor{type: :report, dashboard: dashboard} = monitor) do
+    segments =
+      dashboard
+      |> Map.get(:segments)
+      |> case do
+        nil -> Map.get(dashboard, "segments")
+        value -> value
+      end
+      |> case do
+        list when is_list(list) -> list
+        _ -> []
+      end
+
+    overrides = monitor.segment_values || %{}
+    DashboardSegments.compute_state(segments, overrides, %{})
+  end
+
+  defp monitor_segment_state(_), do: {%{}, []}
+
+  defp resolve_monitor_key(%Monitor{type: :report, dashboard: %{key: key}}, segment_values, segments) do
+    DashboardSegments.resolve_key(key, segments, segment_values)
+  end
+
+  defp resolve_monitor_key(%Monitor{type: :alert} = monitor, _segment_values, _segments) do
     monitor.alert_metric_key
   end
 
-  defp resolve_monitor_key(_), do: nil
+  defp resolve_monitor_key(_monitor, _segment_values, _segments), do: nil
 
   defp resolve_monitor_source(sources, monitor) do
     case monitor_source_tuple(monitor) do
@@ -1378,7 +1409,13 @@ defmodule TrifleApp.MonitorLive do
   end
 
   def monitor_summary_stats(assigns) do
-    key = assigns[:resolved_key] || resolve_monitor_key(assigns[:monitor])
+    key =
+      assigns[:resolved_key] ||
+        resolve_monitor_key(
+          assigns[:monitor],
+          assigns[:segment_values] || %{},
+          assigns[:monitor_segments] || []
+        )
 
     cond do
       !is_binary(key) || String.trim(key) == "" ->
@@ -1661,6 +1698,7 @@ defmodule TrifleApp.MonitorLive do
       %{"granularity" => granularity, "timeframe" => timeframe}
       |> maybe_put_formatted("from", Map.get(assigns, :from) || Map.get(assigns, "from"))
       |> maybe_put_formatted("to", Map.get(assigns, :to) || Map.get(assigns, "to"))
+      |> maybe_put_segments(Map.get(assigns, :segment_values) || %{})
 
     case Map.get(assigns, :resolved_key) || Map.get(assigns, "key") do
       key when is_binary(key) and key != "" -> Map.put(params, "key", key)
@@ -1677,6 +1715,11 @@ defmodule TrifleApp.MonitorLive do
   defp maybe_put_formatted(params, key, value) do
     Map.put(params, key, value)
   end
+
+  defp maybe_put_segments(params, segments) when is_map(segments) and segments != %{},
+    do: Map.put(params, "segments", segments)
+
+  defp maybe_put_segments(params, _), do: params
 
   defp format_test_delivery_success(:monitor, socket, result) do
     monitor = socket.assigns.monitor

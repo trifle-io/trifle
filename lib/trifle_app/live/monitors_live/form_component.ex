@@ -6,6 +6,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Trifle.Monitors.Monitor
   alias Trifle.Monitors.Monitor.{DeliveryChannel, DeliveryMedium, ReportSettings}
   alias Trifle.Stats.Source
+  alias Trifle.Organizations.DashboardSegments
   require Logger
 
   @impl true
@@ -171,6 +172,86 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                             <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
                               No dashboards found. Create a dashboard first to connect report monitors.
                             </p>
+                          <% end %>
+                          <%= if (@dashboard_segment_definitions || []) != [] do %>
+                            <div class="mt-4 space-y-3">
+                              <div class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Segment values
+                              </div>
+                              <div class="space-y-3">
+                                <%= for segment <- @dashboard_segment_definitions do %>
+                                  <% segment_name = segment["name"] || "" %>
+                                  <% label = segment["label"] || segment_name || "Segment" %>
+                                  <% current_value = Map.get(@dashboard_segment_values || %{}, segment_name, "") %>
+                                  <div class="space-y-1">
+                                    <label class="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                      {label}
+                                    </label>
+                                    <%= if segment["type"] == "text" do %>
+                                      <input
+                                        type="text"
+                                        name={"monitor[segment_values][#{segment_name}]"}
+                                        value={current_value}
+                                        placeholder={segment["placeholder"] || ""}
+                                        class="block w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                      />
+                                    <% else %>
+                                      <% groups = segment["groups"] || [] %>
+                                      <% has_items = Enum.any?(groups, fn group -> (group["items"] || []) != [] end) %>
+                                      <div class="grid grid-cols-1">
+                                        <select
+                                          name={"monitor[segment_values][#{segment_name}]"}
+                                          class="col-start-1 row-start-1 w-full appearance-none rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 py-2 pr-8 pl-3 text-sm text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        >
+                                          <%= for group <- groups do %>
+                                            <% group_label = group["label"] %>
+                                            <%= if group_label && group_label != "" do %>
+                                              <optgroup label={group_label}>
+                                                <%= for item <- group["items"] || [] do %>
+                                                  <% option_value = item["value"] || "" %>
+                                                  <option value={option_value} selected={option_value == current_value}>
+                                                    {item["label"] || option_value}
+                                                  </option>
+                                                <% end %>
+                                              </optgroup>
+                                            <% else %>
+                                              <%= for item <- group["items"] || [] do %>
+                                                <% option_value = item["value"] || "" %>
+                                                <option value={option_value} selected={option_value == current_value}>
+                                                  {item["label"] || option_value}
+                                                </option>
+                                              <% end %>
+                                            <% end %>
+                                          <% end %>
+                                          <%= if !has_items do %>
+                                            <option value="" selected={current_value in [nil, ""]} disabled>
+                                              No options configured
+                                            </option>
+                                          <% end %>
+                                        </select>
+                                        <svg
+                                          viewBox="0 0 16 16"
+                                          fill="currentColor"
+                                          aria-hidden="true"
+                                          class="pointer-events-none col-start-1 row-start-1 mr-2 h-4 w-4 self-center justify-self-end text-slate-500 dark:text-slate-400"
+                                        >
+                                          <path
+                                            d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                            clip-rule="evenodd"
+                                            fill-rule="evenodd"
+                                          />
+                                        </svg>
+                                      </div>
+                                    <% end %>
+                                  </div>
+                                <% end %>
+                              </div>
+                              <%= for error <- @form[:segment_values].errors do %>
+                                <p class="text-xs text-rose-600 dark:text-rose-400">
+                                  {translate_error(error)}
+                                </p>
+                              <% end %>
+                            </div>
                           <% end %>
                         </div>
                         <div>
@@ -935,12 +1016,53 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
         |> Monitors.delivery_media_types_from_media()
         |> List.first()
 
+    dashboards = socket.assigns[:available_dashboards] || []
+
+    dashboard_id =
+      cond do
+        monitor.dashboard && monitor.dashboard.id -> to_string(monitor.dashboard.id)
+        value = Changeset.get_field(changeset, :dashboard_id) -> value && to_string(value)
+        true -> nil
+      end
+
+    selected_dashboard =
+      Enum.find(dashboards, fn dashboard -> to_string(dashboard.id) == dashboard_id end)
+
+    dashboard_segments =
+      case selected_dashboard do
+        %{segments: segments} when is_list(segments) -> segments
+        _ -> []
+      end
+
+    previous_dashboard_id = socket.assigns[:selected_dashboard_id]
+
+    reset_segments? =
+      previous_dashboard_id && dashboard_id && previous_dashboard_id != dashboard_id
+
+    overrides =
+      if reset_segments?, do: %{}, else: monitor.segment_values || %{}
+
+    {segment_values, segments_with_current} =
+      DashboardSegments.compute_state(dashboard_segments, overrides, %{})
+
+    monitor = %{monitor | segment_values: segment_values}
+
+    changeset =
+      if Changeset.get_field(changeset, :segment_values) == segment_values do
+        changeset
+      else
+        Changeset.put_change(changeset, :segment_values, segment_values)
+      end
+
     socket
     |> assign(:form, to_form(changeset))
     |> assign(:monitor, monitor)
     |> assign(:delivery_handles, handles)
     |> assign(:selected_delivery_media, media)
     |> assign(:primary_delivery_medium, primary_medium)
+    |> assign(:selected_dashboard_id, dashboard_id)
+    |> assign(:dashboard_segment_definitions, segments_with_current)
+    |> assign(:dashboard_segment_values, segment_values)
     |> assign(:selected_source_ref, monitor_source_ref(monitor))
   end
 end

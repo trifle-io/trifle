@@ -8,6 +8,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Organizations
+  alias Trifle.Organizations.DashboardSegments
   alias Trifle.Stats.{Series, Source}
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
@@ -314,10 +315,48 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
       _ ->
         case monitor.type do
-          :report -> monitor.dashboard && monitor.dashboard.key
+          :report -> resolved_report_key(monitor, params)
           :alert -> monitor.alert_metric_key
           _ -> nil
         end
+    end
+  end
+
+  defp resolved_report_key(%Monitor{} = monitor, params) do
+    with %{} = dashboard <- monitor_dashboard_struct(monitor),
+         key when is_binary(key) <- Map.get(dashboard, :key) || Map.get(dashboard, "key") do
+      segments = dashboard_segments(dashboard)
+
+      overrides =
+        case Map.get(params, "segments") do
+          %{} = map -> DashboardSegments.normalize_value_map(map)
+          _ -> DashboardSegments.normalize_value_map(monitor.segment_values || %{})
+        end
+
+      {segment_values, segments_with_current} =
+        DashboardSegments.compute_state(segments, overrides, %{})
+
+      DashboardSegments.resolve_key(key, segments_with_current, segment_values)
+    else
+      _ ->
+        monitor.dashboard && monitor.dashboard.key
+    end
+  end
+
+  defp monitor_dashboard_struct(%Monitor{dashboard: %Ecto.Association.NotLoaded{}}), do: nil
+  defp monitor_dashboard_struct(%Monitor{dashboard: nil}), do: nil
+  defp monitor_dashboard_struct(%Monitor{dashboard: dashboard}), do: dashboard
+
+  defp dashboard_segments(dashboard) do
+    dashboard
+    |> Map.get(:segments)
+    |> case do
+      nil -> Map.get(dashboard, "segments")
+      value -> value
+    end
+    |> case do
+      list when is_list(list) -> list
+      _ -> []
     end
   end
 

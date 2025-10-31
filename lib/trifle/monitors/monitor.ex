@@ -8,7 +8,7 @@ defmodule Trifle.Monitors.Monitor do
 
   alias Trifle.Accounts.User
   alias Trifle.Monitors.{Alert, Execution}
-  alias Trifle.Organizations.{Dashboard, Organization}
+  alias Trifle.Organizations.{Dashboard, DashboardSegments, Organization}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -24,6 +24,7 @@ defmodule Trifle.Monitors.Monitor do
     field :type, Ecto.Enum, values: @type_values
     field :status, Ecto.Enum, values: @status_values, default: :active
     field :target, :map, default: %{}
+    field :segment_values, :map, default: %{}
     field :trigger_status, Ecto.Enum, values: @trigger_status_values, default: :idle
     field :source_type, Ecto.Enum, values: [:database, :project]
     field :source_id, :binary_id
@@ -82,6 +83,7 @@ defmodule Trifle.Monitors.Monitor do
       :type,
       :status,
       :target,
+      :segment_values,
       :trigger_status,
       :source_type,
       :source_id,
@@ -94,6 +96,7 @@ defmodule Trifle.Monitors.Monitor do
     |> cast_embed(:delivery_channels, with: &delivery_channel_changeset/2, required: false)
     |> cast_embed(:delivery_media, with: &delivery_media_changeset/2, required: false)
     |> sanitize_target()
+    |> sanitize_segment_values()
     |> validate_required([:organization_id, :name, :type, :status, :source_type, :source_id])
     |> validate_length(:name, min: 1, max: 255)
     |> maybe_require_dashboard()
@@ -143,6 +146,58 @@ defmodule Trifle.Monitors.Monitor do
 
       {:ok, _} ->
         add_error(changeset, :target, "must be a map or JSON object")
+    end
+  end
+
+  defp sanitize_segment_values(%Ecto.Changeset{} = changeset) do
+    value =
+      case fetch_change(changeset, :segment_values) do
+        {:ok, value} -> value
+        :error -> get_field(changeset, :segment_values)
+      end
+
+    cond do
+      is_nil(value) ->
+        put_change(changeset, :segment_values, %{})
+
+      is_map(value) ->
+        normalized = DashboardSegments.normalize_value_map(value)
+        put_change(changeset, :segment_values, normalized)
+
+      is_binary(value) ->
+        trimmed = String.trim(value)
+
+        if trimmed == "" do
+          put_change(changeset, :segment_values, %{})
+        else
+          case Jason.decode(trimmed) do
+            {:ok, %{} = decoded} ->
+              normalized = DashboardSegments.normalize_value_map(decoded)
+              put_change(changeset, :segment_values, normalized)
+
+            {:ok, _other} ->
+              add_error(changeset, :segment_values, "must be a JSON object")
+
+            {:error, %Jason.DecodeError{} = error} ->
+              add_error(changeset, :segment_values, "invalid JSON: #{Exception.message(error)}")
+
+            {:error, reason} ->
+              add_error(changeset, :segment_values, "invalid segment selection: #{inspect(reason)}")
+          end
+        end
+
+      is_list(value) ->
+        try do
+          map = Enum.into(value, %{})
+          normalized = DashboardSegments.normalize_value_map(map)
+          put_change(changeset, :segment_values, normalized)
+        rescue
+          _ ->
+            add_error(changeset, :segment_values, "must be a map or JSON object")
+        end
+
+      true ->
+        add_error(changeset, :segment_values, "must be a map or JSON object")
     end
   end
 
