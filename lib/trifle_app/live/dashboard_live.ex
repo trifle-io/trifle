@@ -3,6 +3,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Organizations.OrganizationMembership
+  alias Trifle.Organizations.DashboardSegments
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
   alias Phoenix.HTML
@@ -13,9 +14,6 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
   alias TrifleApp.Components.DashboardWidgets.{Kpi, Timeseries, Category, Text, WidgetData}
   require Logger
-
-  @capture_group_regex ~r/\((?:\\.|[^()])*\)/
-  @noncapturing_prefixes ["?:", "?=", "?!", "?<=", "?<!"]
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
     {:ok, redirect(socket, to: ~p"/organization/profile")}
@@ -1365,13 +1363,11 @@ defmodule TrifleApp.DashboardLive do
     raw_segments = dashboard.segments || []
     previous_values = Map.get(socket.assigns, :segment_values, %{})
 
-    overrides = normalize_segment_value_map(overrides)
-    previous_values = normalize_segment_value_map(previous_values)
-
     {segment_values, segments_with_current} =
-      compute_segment_state(raw_segments, overrides, previous_values)
+      DashboardSegments.compute_state(raw_segments, overrides, previous_values)
 
-    resolved_key = resolve_dashboard_key(dashboard.key, segments_with_current, segment_values)
+    resolved_key =
+      DashboardSegments.resolve_key(dashboard.key, segments_with_current, segment_values)
 
     socket
     |> assign(:dashboard_segments, segments_with_current)
@@ -1379,226 +1375,11 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:resolved_key, resolved_key)
   end
 
-  defp compute_segment_state(segments, overrides, previous_values) do
-    segments
-    |> Enum.reduce({%{}, []}, fn segment, {values_acc, segments_acc} ->
-      name = segment_name(segment)
-      type = segment_type(segment)
-      available_values = segment_select_values(segment)
-      override_present? = Map.has_key?(overrides, name)
-      override_value = Map.get(overrides, name)
-      previous_present? = Map.has_key?(previous_values, name)
-      previous_value = Map.get(previous_values, name)
-      default_value = Map.get(segment, "default_value")
+  defp compute_segment_state(segments, overrides, previous_values),
+    do: DashboardSegments.compute_state(segments, overrides, previous_values)
 
-      {selected_value, resolved_default} =
-        case type do
-          "text" ->
-            value =
-              cond do
-                override_present? -> sanitize_text_value(override_value)
-                previous_present? -> sanitize_text_value(previous_value)
-                not is_nil(default_value) -> sanitize_text_value(default_value)
-                true -> ""
-              end
-
-            {value, sanitize_text_value(default_value)}
-
-          _ ->
-            resolved_default = resolve_default_value(default_value, available_values)
-
-            selected =
-              cond do
-                override_present? ->
-                  value = sanitize_select_value(override_value)
-
-                  if value in available_values or available_values == [] do
-                    value
-                  else
-                    fallback_select_value(
-                      previous_present?,
-                      previous_value,
-                      resolved_default,
-                      available_values
-                    )
-                  end
-
-                previous_present? ->
-                  value = sanitize_select_value(previous_value)
-
-                  if value in available_values or available_values == [] do
-                    value
-                  else
-                    fallback_select_value(false, nil, resolved_default, available_values)
-                  end
-
-                true ->
-                  fallback_select_value(false, nil, resolved_default, available_values)
-              end
-
-            {selected, resolved_default}
-        end
-
-      updated_segment =
-        segment
-        |> Map.put("type", type)
-        |> Map.put("default_value", resolved_default)
-        |> Map.put("current_value", selected_value)
-
-      {Map.put(values_acc, name, selected_value), [updated_segment | segments_acc]}
-    end)
-    |> then(fn {values, segments_rev} ->
-      {values, Enum.reverse(segments_rev)}
-    end)
-  end
-
-  defp resolve_dashboard_key(nil, _segments, _values), do: nil
-  defp resolve_dashboard_key("", _segments, _values), do: ""
-
-  defp resolve_dashboard_key(pattern, segments, values_map) when is_binary(pattern) do
-    captures = extract_captures(pattern)
-
-    if captures == [] do
-      strip_regex_anchors(pattern)
-    else
-      values_map = normalize_segment_value_map(values_map)
-      ordered_names = Enum.map(segments, &segment_name/1)
-
-      {values, _unused} =
-        Enum.reduce(captures, {[], ordered_names}, fn capture, {acc_values, unused_names} ->
-          {value, updated_unused} = capture_value_for_segment(capture, values_map, unused_names)
-          {[value | acc_values], updated_unused}
-        end)
-
-      substituted = substitute_captures(pattern, captures, Enum.reverse(values))
-      strip_regex_anchors(substituted)
-    end
-  end
-
-  defp capture_value_for_segment(%{name: name}, values_map, unused_names) do
-    cond do
-      name && Map.has_key?(values_map, name) ->
-        value = Map.get(values_map, name, "")
-        {value, delete_first(unused_names, name)}
-
-      true ->
-        case unused_names do
-          [next_name | rest] -> {Map.get(values_map, next_name, ""), rest}
-          [] -> {"", []}
-        end
-    end
-  end
-
-  defp extract_captures(pattern) do
-    Regex.scan(@capture_group_regex, pattern, return: :index)
-    |> Enum.map(&hd/1)
-    |> Enum.reduce({[], 0}, fn {start, length}, {acc, idx} ->
-      match = binary_part(pattern, start, length)
-
-      case classify_capture(match) do
-        {:capturing, name} ->
-          info = %{index: idx, start: start, length: length, name: name, raw: match}
-          {[info | acc], idx + 1}
-
-        :noncapturing ->
-          {acc, idx}
-      end
-    end)
-    |> elem(0)
-    |> Enum.reverse()
-  end
-
-  defp substitute_captures(pattern, captures, values) do
-    {iodata, last_index} =
-      Enum.zip(captures, values)
-      |> Enum.reduce({[], 0}, fn {capture, value}, {parts, cursor} ->
-        prefix_length = capture.start - cursor
-        prefix = if prefix_length > 0, do: binary_part(pattern, cursor, prefix_length), else: ""
-
-        {[parts | [prefix, value]], capture.start + capture.length}
-      end)
-
-    flat_parts = List.flatten(iodata)
-    suffix_length = byte_size(pattern) - last_index
-    suffix = if suffix_length > 0, do: binary_part(pattern, last_index, suffix_length), else: ""
-
-    [flat_parts, suffix]
-    |> IO.iodata_to_binary()
-  end
-
-  defp classify_capture(match) do
-    inner = inner_capture_content(match)
-
-    cond do
-      String.starts_with?(inner, "?<") ->
-        name = extract_group_name(inner, 2)
-        {:capturing, name}
-
-      String.starts_with?(inner, "?P<") ->
-        name = extract_group_name(inner, 3)
-        {:capturing, name}
-
-      String.starts_with?(inner, "?") ->
-        prefix = String.slice(inner, 1, 2)
-
-        cond do
-          prefix in @noncapturing_prefixes ->
-            :noncapturing
-
-          String.starts_with?(inner, "?<") ->
-            name = extract_group_name(inner, 2)
-            {:capturing, name}
-
-          String.starts_with?(inner, "?P<") ->
-            name = extract_group_name(inner, 3)
-            {:capturing, name}
-
-          true ->
-            {:capturing, nil}
-        end
-
-      true ->
-        {:capturing, nil}
-    end
-  end
-
-  defp inner_capture_content(capture) do
-    capture
-    |> String.slice(1, max(byte_size(capture) - 2, 0))
-  end
-
-  defp extract_group_name(inner, prefix_length) do
-    rest = String.slice(inner, prefix_length, byte_size(inner) - prefix_length)
-
-    case String.split(rest, ">", parts: 2) do
-      [name | _] -> String.trim(name)
-      _ -> nil
-    end
-  end
-
-  defp strip_regex_anchors(nil), do: nil
-
-  defp strip_regex_anchors(value) when is_binary(value) do
-    value
-    |> strip_leading_anchor()
-    |> strip_trailing_anchor()
-  end
-
-  defp strip_leading_anchor(""), do: ""
-  defp strip_leading_anchor("^" <> rest), do: strip_leading_anchor(rest)
-  defp strip_leading_anchor(value), do: value
-
-  defp strip_trailing_anchor(""), do: ""
-
-  defp strip_trailing_anchor(value) do
-    if String.ends_with?(value, "$") do
-      value
-      |> String.trim_trailing("$")
-      |> strip_trailing_anchor()
-    else
-      value
-    end
-  end
+  defp resolve_dashboard_key(pattern, segments, values_map),
+    do: DashboardSegments.resolve_key(pattern, segments, values_map)
 
   defp fallback_select_value(_previous_present?, _previous_value, default_value, available_values) do
     cond do
@@ -1669,25 +1450,7 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp normalize_segment_value_map(nil), do: %{}
-
-  defp normalize_segment_value_map(values) when is_map(values) do
-    values
-    |> Enum.reduce(%{}, fn {key, value}, acc ->
-      normalized_key = key |> to_string()
-
-      normalized_value =
-        cond do
-          is_binary(value) -> value
-          is_nil(value) -> ""
-          true -> to_string(value)
-        end
-
-      Map.put(acc, normalized_key, normalized_value)
-    end)
-  end
-
-  defp normalize_segment_value_map(_other), do: %{}
+  defp normalize_segment_value_map(values), do: DashboardSegments.normalize_value_map(values)
 
   defp sanitize_select_value(nil), do: ""
   defp sanitize_select_value(value) when is_binary(value), do: value
@@ -1696,10 +1459,6 @@ defmodule TrifleApp.DashboardLive do
   defp sanitize_text_value(nil), do: ""
   defp sanitize_text_value(value) when is_binary(value), do: value
   defp sanitize_text_value(value), do: to_string(value)
-
-  defp delete_first([], _value), do: []
-  defp delete_first([value | rest], value), do: rest
-  defp delete_first([head | rest], value), do: [head | delete_first(rest, value)]
 
   defp configure_segments_from_dashboard(%{segments: segments}) when is_list(segments) do
     segments
