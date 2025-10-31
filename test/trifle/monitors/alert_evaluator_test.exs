@@ -30,6 +30,40 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
       assert length(overlay.segments) == 1
       assert match?(%{alert_id: _, strategy: :threshold}, overlay)
     end
+
+    test "optionally treats missing values as zero" do
+      base_settings = %Settings{
+        threshold_direction: :below,
+        threshold_value: 10.0,
+        treat_nil_as_zero: false
+      }
+
+      series = build_series([20.0, nil, nil, nil])
+
+      alert_without_fill = %Alert{
+        id: "alert-threshold-nil",
+        analysis_strategy: :threshold,
+        settings: base_settings
+      }
+
+      {:ok, result_without_fill} =
+        AlertEvaluator.evaluate(alert_without_fill, series, "metric", exclude_recent: false)
+
+      refute result_without_fill.triggered?
+      refute result_without_fill.meta[:treat_nil_as_zero]
+
+      alert_with_fill = %Alert{
+        id: "alert-threshold-nil-fill",
+        analysis_strategy: :threshold,
+        settings: %{base_settings | treat_nil_as_zero: true}
+      }
+
+      {:ok, result_with_fill} =
+        AlertEvaluator.evaluate(alert_with_fill, series, "metric", exclude_recent: false)
+
+      assert result_with_fill.triggered?
+      assert result_with_fill.meta[:treat_nil_as_zero]
+    end
   end
 
   describe "evaluate/4 for range alerts" do
@@ -55,6 +89,40 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
       assert overlay.triggered
       assert length(overlay.reference_lines) == 2
       assert length(overlay.bands) == 1
+    end
+
+    test "optionally treats missing values as zero" do
+      base_settings = %Settings{
+        range_min_value: 50.0,
+        range_max_value: 80.0,
+        treat_nil_as_zero: false
+      }
+
+      series = build_series([60.0, nil, nil, nil])
+
+      alert_without_fill = %Alert{
+        id: "alert-range-nil",
+        analysis_strategy: :range,
+        settings: base_settings
+      }
+
+      {:ok, result_without_fill} =
+        AlertEvaluator.evaluate(alert_without_fill, series, "metric", exclude_recent: false)
+
+      refute result_without_fill.triggered?
+      refute result_without_fill.meta[:treat_nil_as_zero]
+
+      alert_with_fill = %Alert{
+        id: "alert-range-nil-fill",
+        analysis_strategy: :range,
+        settings: %{base_settings | treat_nil_as_zero: true}
+      }
+
+      {:ok, result_with_fill} =
+        AlertEvaluator.evaluate(alert_with_fill, series, "metric", exclude_recent: false)
+
+      assert result_with_fill.triggered?
+      assert result_with_fill.meta[:treat_nil_as_zero]
     end
   end
 
@@ -103,6 +171,40 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
       assert result.triggered?
       assert Enum.any?(result.points, &match?(%{index: _}, &1))
     end
+
+    test "optionally treats missing values as zeros" do
+      base_settings = %Settings{
+        hampel_window_size: 3,
+        hampel_k: 3.0,
+        hampel_mad_floor: 0.1,
+        treat_nil_as_zero: false
+      }
+
+      values = [200.0, 210.0, nil, nil, 0.0, 0.0, 0.0]
+      series = build_series(values)
+
+      alert_without_fill = %Alert{
+        id: "alert-hampel-missing",
+        analysis_strategy: :hampel,
+        settings: base_settings
+      }
+
+      {:ok, result_without_fill} = AlertEvaluator.evaluate(alert_without_fill, series, "metric")
+      refute result_without_fill.triggered?
+      assert result_without_fill.points == []
+      refute result_without_fill.meta[:treat_nil_as_zero]
+
+      alert_with_fill = %Alert{
+        id: "alert-hampel-missing-fill",
+        analysis_strategy: :hampel,
+        settings: %{base_settings | treat_nil_as_zero: true}
+      }
+
+      {:ok, result_with_fill} = AlertEvaluator.evaluate(alert_with_fill, series, "metric")
+      assert result_with_fill.triggered?
+      assert Enum.any?(result_with_fill.points, fn point -> match?(%{value: 0.0}, point) end)
+      assert result_with_fill.meta[:treat_nil_as_zero]
+    end
   end
 
   describe "evaluate/4 for CUSUM alerts" do
@@ -146,6 +248,24 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
       assert is_boolean(result.triggered?)
       overlay = AlertEvaluator.overlay(result)
       assert is_map(overlay)
+    end
+
+    test "exposes treat missing configuration" do
+      series = build_series([100.0, nil, nil, nil])
+
+      alert =
+        %Alert{
+          id: "alert-cusum-nil",
+          analysis_strategy: :cusum,
+          settings: %Settings{
+            cusum_k: 0.1,
+            cusum_h: 0.5,
+            treat_nil_as_zero: true
+          }
+        }
+
+      {:ok, result} = AlertEvaluator.evaluate(alert, series, "metric", exclude_recent: false)
+      assert result.meta[:treat_nil_as_zero]
     end
   end
 

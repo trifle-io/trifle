@@ -41,23 +41,23 @@ defmodule Trifle.Monitors.AlertAdvisor do
   @strategy_instructions %{
     threshold: """
     The alert fires when a single metric crosses a fixed boundary.
-    Return `settings.threshold_value` (float) and `settings.threshold_direction`.
+    Return `settings.threshold_value` (float), `settings.threshold_direction`, and optional boolean `settings.treat_nil_as_zero` (default false).
     `threshold_direction` must be either "above" or "below" to indicate whether the alert triggers on upward or downward movement.
     Pick a threshold that aligns with the requested sensitivity while staying realistic for the observed data range.
     """,
     range: """
     The alert fires when the metric leaves a safe band between two limits.
-    Return `settings.range_min_value` and `settings.range_max_value` as floats.
+    Return `settings.range_min_value` and `settings.range_max_value` as floats, plus optional boolean `settings.treat_nil_as_zero` (default false).
     Ensure `range_min_value` < `range_max_value`. Use the requested sensitivity to control band tightness.
     """,
     hampel: """
     The alert uses Hampel outlier detection comparing each point to the rolling median plus K times MAD.
-    Return integer `settings.hampel_window_size`, float `settings.hampel_k`, and float `settings.hampel_mad_floor`.
+    Return integer `settings.hampel_window_size`, float `settings.hampel_k`, float `settings.hampel_mad_floor`, and boolean `settings.treat_nil_as_zero`.
     Window size controls smoothing (larger = smoother). K controls deviation tolerance. MAD floor prevents zero variance collapse.
     """,
     cusum: """
     The alert accumulates deviations over time (CUSUM) to detect level shifts.
-    Return float `settings.cusum_k` (drift allowance) and float `settings.cusum_h` (alarm threshold).
+    Return float `settings.cusum_k` (drift allowance), float `settings.cusum_h` (alarm threshold), and optional boolean `settings.treat_nil_as_zero` (default false).
     K controls tolerated per-point drift. H controls cumulative shift before triggering.
     """
   }
@@ -100,7 +100,8 @@ defmodule Trifle.Monitors.AlertAdvisor do
          :ok <- ensure_metric_path(path),
          {:ok, points} <- extract_series_points(series, path, max_points),
          {:ok, summary} <- summarise_points(points),
-         {:ok, payload_map} <- build_prompt_payload(monitor, path, strategy, variant, summary, points),
+         {:ok, payload_map} <-
+           build_prompt_payload(monitor, path, strategy, variant, summary, points),
          payload_json = Jason.encode!(payload_map),
          messages = build_messages(strategy, variant, payload_json, max_tokens),
          options = request_options(runtime_api_key, model, max_tokens),
@@ -253,7 +254,9 @@ defmodule Trifle.Monitors.AlertAdvisor do
     value
     |> String.trim()
     |> case do
-      "" -> nil
+      "" ->
+        nil
+
       trimmed ->
         case Integer.parse(trimmed) do
           {int, ""} when int > 0 -> int
@@ -514,12 +517,12 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
     user =
       """
-    Use the provided statistics and recent numeric values to recommend alert settings aligned with the requested strategy and sensitivity.
-    Ensure the suggested configuration is realistic for the data distribution and keep the explanation under 160 characters.
-    Provide only the JSON object described above; do not add wording before or after the JSON.
+      Use the provided statistics and recent numeric values to recommend alert settings aligned with the requested strategy and sensitivity.
+      Ensure the suggested configuration is realistic for the data distribution and keep the explanation under 160 characters.
+      Provide only the JSON object described above; do not add wording before or after the JSON.
 
-    #{payload_json}
-    """
+      #{payload_json}
+      """
 
     [
       %{"role" => "system", "content" => system},
@@ -577,11 +580,14 @@ defmodule Trifle.Monitors.AlertAdvisor do
       :threshold ->
         with {:ok, value} <- require_float(settings_map, ["threshold_value"]),
              {:ok, direction} <- require_direction(settings_map, ["threshold_direction"]) do
+          fill_zero = boolean_or_default(settings_map, ["treat_nil_as_zero"], false)
+
           {:ok,
            %{
              settings: %{
                "threshold_value" => value,
-               "threshold_direction" => direction
+               "threshold_direction" => direction,
+               "treat_nil_as_zero" => fill_zero
              },
              summary: summary
            }}
@@ -597,11 +603,14 @@ defmodule Trifle.Monitors.AlertAdvisor do
               {max_value, min_value}
             end
 
+          fill_zero = boolean_or_default(settings_map, ["treat_nil_as_zero"], false)
+
           {:ok,
            %{
              settings: %{
                "range_min_value" => min,
-               "range_max_value" => max
+               "range_max_value" => max,
+               "treat_nil_as_zero" => fill_zero
              },
              summary: summary
            }}
@@ -611,12 +620,15 @@ defmodule Trifle.Monitors.AlertAdvisor do
         with {:ok, window} <- require_positive_integer(settings_map, ["hampel_window_size"]),
              {:ok, k} <- require_positive_float(settings_map, ["hampel_k"]),
              {:ok, floor} <- require_non_negative_float(settings_map, ["hampel_mad_floor"]) do
+          fill_zero = boolean_or_default(settings_map, ["treat_nil_as_zero"], false)
+
           {:ok,
            %{
              settings: %{
                "hampel_window_size" => window,
                "hampel_k" => k,
-               "hampel_mad_floor" => floor
+               "hampel_mad_floor" => floor,
+               "treat_nil_as_zero" => fill_zero
              },
              summary: summary
            }}
@@ -625,11 +637,14 @@ defmodule Trifle.Monitors.AlertAdvisor do
       :cusum ->
         with {:ok, k} <- require_non_negative_float(settings_map, ["cusum_k"]),
              {:ok, h} <- require_positive_float(settings_map, ["cusum_h"]) do
+          fill_zero = boolean_or_default(settings_map, ["treat_nil_as_zero"], false)
+
           {:ok,
            %{
              settings: %{
                "cusum_k" => k,
-               "cusum_h" => h
+               "cusum_h" => h,
+               "treat_nil_as_zero" => fill_zero
              },
              summary: summary
            }}
@@ -672,6 +687,14 @@ defmodule Trifle.Monitors.AlertAdvisor do
       else
         {:error, {:invalid_value, path}}
       end
+    end
+  end
+
+  defp boolean_or_default(map, path, default) do
+    case flexible_get(map, path) do
+      value when value in [true, "true", "TRUE", "True", "1", 1] -> true
+      value when value in [false, "false", "FALSE", "False", "0", 0] -> false
+      _ -> default
     end
   end
 

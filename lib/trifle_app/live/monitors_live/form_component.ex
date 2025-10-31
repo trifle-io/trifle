@@ -276,7 +276,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                     :for={option <- @delivery_media_options}
                     class={[
                       "relative flex cursor-pointer flex-col gap-1 rounded-md border border-slate-200 bg-white p-3 text-sm shadow-sm transition hover:border-teal-500 focus-within:border-teal-500 dark:border-slate-600 dark:bg-slate-800/70 dark:hover:border-teal-400",
-                      option.value == selected_media && "border-teal-500 ring-1 ring-teal-500 dark:border-teal-400"
+                      option.value == selected_media &&
+                        "border-teal-500 ring-1 ring-teal-500 dark:border-teal-400"
                     ]}
                   >
                     <input
@@ -307,10 +308,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                 <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   Select one format for now. Support for multiple formats is coming soon.
                 </p>
-                <p
-                  :if={@delivery_media_error}
-                  class="mt-2 text-xs text-rose-600 dark:text-rose-400"
-                >
+                <p :if={@delivery_media_error} class="mt-2 text-xs text-rose-600 dark:text-rose-400">
                   {@delivery_media_error}
                 </p>
               </div>
@@ -541,6 +539,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp normalize_delivery_params(params, socket) do
     membership = socket.assigns.current_membership
+
     handles =
       params
       |> fetch_param("delivery_handles")

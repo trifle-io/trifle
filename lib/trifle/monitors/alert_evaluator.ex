@@ -96,6 +96,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
   def evaluate(%Alert{} = alert, %Series{} = series, path, opts \\ []) do
     with {:ok, resolved_path, points} <- timeline_points(series, path),
          false <- Enum.empty?(points) do
+      points = maybe_fill_missing(points, alert)
+
       exclude_recent? = Keyword.get(opts, :exclude_recent, true)
       effective_points = maybe_trim_recent(points, exclude_recent?)
 
@@ -257,6 +259,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
 
         triggered? = window_triggered?(indexes, length(points), window)
 
+        fill_zero = treat_nil_as_zero?(alert)
+
         summary =
           threshold_summary(
             List.last(points),
@@ -285,7 +289,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
             summary: summary,
             meta: %{
               threshold: threshold_value,
-              direction: direction
+              direction: direction,
+              treat_nil_as_zero: fill_zero
             }
           }
 
@@ -347,6 +352,8 @@ defmodule Trifle.Monitors.AlertEvaluator do
 
         triggered? = window_triggered?(indexes, length(points), window)
 
+        fill_zero = treat_nil_as_zero?(alert)
+
         summary = range_summary(List.last(points), min_value, max_value, triggered?)
 
         result =
@@ -376,7 +383,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
             ],
             trigger_indexes: indexes,
             summary: summary,
-            meta: %{min: min_value, max: max_value}
+            meta: %{min: min_value, max: max_value, treat_nil_as_zero: fill_zero}
           }
 
         {:ok, result}
@@ -454,7 +461,12 @@ defmodule Trifle.Monitors.AlertEvaluator do
           baseline_series: baseline_series,
           trigger_indexes: outlier_indexes,
           summary: summary,
-          meta: %{window_size: window_size, k: k, mad_floor: mad_floor}
+          meta: %{
+            window_size: window_size,
+            k: k,
+            mad_floor: mad_floor,
+            treat_nil_as_zero: treat_nil_as_zero?(alert)
+          }
         }
 
       {:ok, result}
@@ -543,6 +555,29 @@ defmodule Trifle.Monitors.AlertEvaluator do
     end
   end
 
+  defp maybe_fill_missing(points, %Alert{} = alert) do
+    if treat_nil_as_zero?(alert) do
+      Enum.map(points, fn
+        %{value: value} = point when is_number(value) ->
+          point
+
+        %{value: value} = point when value in [nil, :null] ->
+          Map.put(point, :value, 0.0)
+
+        %{value: value} = point ->
+          if is_number(value) do
+            point
+          else
+            Map.put(point, :value, 0.0)
+          end
+      end)
+    else
+      points
+    end
+  end
+
+  defp maybe_fill_missing(points, _alert), do: points
+
   defp mad(values, median) do
     values
     |> Enum.map(&abs(&1 - median))
@@ -575,6 +610,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
     k = settings.cusum_k || 0.5
     h = settings.cusum_h || 5.0
     values = Enum.map(points, & &1.value)
+    fill_zero = treat_nil_as_zero?(alert)
 
     mean =
       values
@@ -591,7 +627,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
            window: window,
            triggered?: false,
            summary: "CUSUM monitoring skipped due to missing numeric values.",
-           meta: %{mean: mean, k: k, h: h}
+           meta: %{mean: mean, k: k, h: h, treat_nil_as_zero: fill_zero}
          }}
 
       true ->
@@ -640,7 +676,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
                 color: @cusum_mean_line_color
               }
             ],
-            meta: %{mean: mean, k: k, h: h}
+            meta: %{mean: mean, k: k, h: h, treat_nil_as_zero: fill_zero}
           }
 
         {:ok, result}
@@ -921,6 +957,12 @@ defmodule Trifle.Monitors.AlertEvaluator do
   defp to_float(value) when is_integer(value), do: value * 1.0
   defp to_float(value) when is_float(value), do: value
   defp to_float(_), do: nil
+
+  defp treat_nil_as_zero?(%Alert{settings: %Alert.Settings{treat_nil_as_zero: value}})
+       when is_boolean(value),
+       do: value
+
+  defp treat_nil_as_zero?(_), do: false
 
   defp format_number(value) when is_float(value) do
     value

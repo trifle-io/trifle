@@ -100,6 +100,7 @@ defmodule Trifle.Monitors.TestDeliveryTest do
     assert_received {:delivered_email, %Email{} = email}
     assert email.subject =~ "Monitor preview"
     assert is_binary(email.text_body)
+
     assert [%Attachment{filename: attachment_filename, content_type: "application/pdf"}] =
              email.attachments
 

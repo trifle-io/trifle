@@ -7,4 +7,3 @@ defmodule Trifle.Repo.Migrations.AddDeliveryMediaToMonitors do
     end
   end
 end
-

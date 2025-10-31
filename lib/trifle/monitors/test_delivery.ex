@@ -602,9 +602,7 @@ defmodule Trifle.Monitors.TestDelivery do
          message,
          opts
        ) do
-    Logger.warning(
-      "Slack upload failed for channel #{channel_id}: #{inspect(reason)}"
-    )
+    Logger.warning("Slack upload failed for channel #{channel_id}: #{inspect(reason)}")
 
     maybe_post_fallback_message(client, token, channel_id, message, opts)
     {:error, reason, Enum.reverse(attachments)}
@@ -1108,17 +1106,17 @@ defmodule Trifle.Monitors.TestDelivery do
       installation.channels
       |> List.wrap()
       |> Enum.find_value(fn slack_channel ->
-           cond do
-             slack_channel.id == channel_db_id ->
-               slack_channel.channel_id
+        cond do
+          slack_channel.id == channel_db_id ->
+            slack_channel.channel_id
 
-             slack_channel.channel_id == channel_db_id ->
-               slack_channel.channel_id
+          slack_channel.channel_id == channel_db_id ->
+            slack_channel.channel_id
 
-             true ->
-               nil
-           end
-         end)
+          true ->
+            nil
+        end
+      end)
     end)
   end
 
@@ -1130,12 +1128,12 @@ defmodule Trifle.Monitors.TestDelivery do
         installation.channels
         |> List.wrap()
         |> Enum.find_value(fn slack_channel ->
-             if channel_name_matches?(slack_channel.name, channel_name) do
-               slack_channel.channel_id
-             else
-               nil
-             end
-           end)
+          if channel_name_matches?(slack_channel.name, channel_name) do
+            slack_channel.channel_id
+          else
+            nil
+          end
+        end)
       end
     end)
   end
@@ -1227,10 +1225,13 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp format_error({:slack_error, error, _payload}), do: "Slack error: #{inspect(error)}"
   defp format_error({:mailer_error, reason}), do: "Mailer error: #{inspect(reason)}"
+
   defp format_error(:mailer_not_configured),
     do:
       "Email delivery is not configured. Update Trifle.Mailer settings (see EMAILS.md) and try again."
+
   defp format_error({:http_error, %{status: status}}), do: "HTTP error #{status}"
+
   defp format_error({:upload_failed, %{status: status, body: body}})
        when is_binary(body) and body != "" do
     preview = String.slice(body, 0, 180)
