@@ -16,7 +16,7 @@ defmodule Trifle.Monitors do
   alias Trifle.Repo
 
   @default_execution_limit 25
-  @delivery_media_types [:pdf, :png_light, :png_dark]
+  @delivery_media_types [:pdf, :png_light, :png_dark, :file_csv, :file_json]
 
   ## Query helpers
 
@@ -269,7 +269,9 @@ defmodule Trifle.Monitors do
     [
       %{value: :pdf, label: "PDF", description: "Downloadable report with multiple widgets"},
       %{value: :png_light, label: "PNG (light)", description: "Image snapshot using light theme"},
-      %{value: :png_dark, label: "PNG (dark)", description: "Image snapshot using dark theme"}
+      %{value: :png_dark, label: "PNG (dark)", description: "Image snapshot using dark theme"},
+      %{value: :file_csv, label: "File CSV", description: "Comma-separated export of chart data"},
+      %{value: :file_json, label: "File JSON", description: "Raw series data in JSON format"}
     ]
   end
 

@@ -270,7 +270,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                 <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Choose the format to send when you trigger a delivery. You can update this later.
                 </p>
-                <% selected_media = List.first(@selected_delivery_media || []) %>
+                <% selected_media = @primary_delivery_medium %>
                 <div class="mt-4 grid gap-3 sm:grid-cols-3">
                   <label
                     :for={option <- @delivery_media_options}
@@ -389,7 +389,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      socket
      |> assign(:delivery_handle_error, delivery_handle_error_message(errors))
      |> assign(:delivery_media_error, delivery_media_error_message(errors))
-     |> assign_form(changeset, handles: normalized.handles)}
+     |> assign_form(changeset, handles: normalized.handles, media: normalized.media)}
   end
 
   def handle_event("save", %{"monitor" => monitor_params}, socket) do
@@ -408,7 +408,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
        socket
        |> assign(:delivery_handle_error, delivery_handle_error_message(errors))
        |> assign(:delivery_media_error, delivery_media_error_message(errors))
-       |> assign_form(changeset, handles: normalized.handles)}
+       |> assign_form(changeset, handles: normalized.handles, media: normalized.media)}
     else
       save_monitor(socket, socket.assigns.action, normalized.params, normalized.handles)
     end
@@ -714,8 +714,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp coerce_delivery_medium_struct(_), do: struct(DeliveryMedium, %{})
 
+  @known_media [:pdf, :png_light, :png_dark, :file_csv, :file_json]
+
   defp normalize_medium_atom(value) when is_atom(value) do
-    if value in [:pdf, :png_light, :png_dark], do: value, else: nil
+    if value in @known_media, do: value, else: nil
   end
 
   defp normalize_medium_atom(value) when is_binary(value) do
@@ -728,6 +730,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
       "pdf" -> :pdf
       "png_light" -> :png_light
       "png_dark" -> :png_dark
+      "file_csv" -> :file_csv
+      "file_json" -> :file_json
       _ -> nil
     end
   end
@@ -912,20 +916,31 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp assign_form(socket, %Changeset{} = changeset, opts \\ []) do
     monitor = Changeset.apply_changes(changeset)
+    base_monitor = changeset.data || monitor
 
     handles =
       Keyword.get(opts, :handles) ||
-        Monitors.delivery_handles_from_channels(monitor.delivery_channels || [])
+        Monitors.delivery_handles_from_channels(base_monitor.delivery_channels || [])
 
     media =
-      Keyword.get(opts, :media) ||
-        Monitors.delivery_media_types_from_media(monitor.delivery_media || [])
+      case Keyword.fetch(opts, :media) do
+        {:ok, media_types} -> List.wrap(media_types)
+        :error -> Monitors.delivery_media_types_from_media(base_monitor.delivery_media || [])
+      end
+
+    primary_medium =
+      List.first(media) ||
+        base_monitor
+        |> Map.get(:delivery_media, [])
+        |> Monitors.delivery_media_types_from_media()
+        |> List.first()
 
     socket
     |> assign(:form, to_form(changeset))
     |> assign(:monitor, monitor)
     |> assign(:delivery_handles, handles)
     |> assign(:selected_delivery_media, media)
+    |> assign(:primary_delivery_medium, primary_medium)
     |> assign(:selected_source_ref, monitor_source_ref(monitor))
   end
 end

@@ -7,6 +7,7 @@ defmodule Trifle.Monitors.TestDelivery do
   alias Trifle.Integrations.Slack.Client, as: SlackClient
   alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, Monitor}
+  alias Trifle.Exports.Series, as: SeriesExport
   alias TrifleApp.Exports.MonitorLayout
   alias TrifleApp.Exporters.ChromeExporter
   alias TrifleApp.Exports.Layout
@@ -15,6 +16,7 @@ defmodule Trifle.Monitors.TestDelivery do
   alias Swoosh.Email
 
   @default_media [:pdf]
+  @supported_media [:pdf, :png_light, :png_dark, :file_csv, :file_json]
   @default_monitor_viewport %{width: 1920, height: 1080}
 
   @spec deliver_monitor(Monitor.t(), keyword()) ::
@@ -151,8 +153,26 @@ defmodule Trifle.Monitors.TestDelivery do
   end
 
   defp build_monitor_export(_monitor, medium, _params, _builder, _exporter, _opts)
-       when medium not in [:pdf, :png_light, :png_dark] do
+       when medium not in @supported_media do
     {:error, "Unsupported delivery medium: #{inspect(medium)}"}
+  end
+
+  defp build_monitor_export(monitor, medium, params, builder, _exporter, _opts)
+       when medium in [:file_csv, :file_json] do
+    opts = [params: params]
+
+    with {:ok, %{export: export}} <- resolve_series_export(builder, monitor, opts),
+         {:ok, binary, content_type} <- encode_series_export(medium, export) do
+      filename = build_filename(:monitor, monitor, medium)
+
+      {:ok,
+       %{
+         medium: medium,
+         filename: filename,
+         content_type: content_type,
+         binary: binary
+       }}
+    end
   end
 
   defp build_monitor_export(monitor, medium, params, builder, exporter, exporter_opts) do
@@ -194,8 +214,26 @@ defmodule Trifle.Monitors.TestDelivery do
   end
 
   defp build_alert_export(_monitor, _alert, medium, _params, _builder, _exporter, _opts)
-       when medium not in [:pdf, :png_light, :png_dark] do
+       when medium not in @supported_media do
     {:error, "Unsupported delivery medium: #{inspect(medium)}"}
+  end
+
+  defp build_alert_export(monitor, alert, medium, params, builder, _exporter, _opts)
+       when medium in [:file_csv, :file_json] do
+    opts = [params: params]
+
+    with {:ok, %{export: export}} <- resolve_series_export(builder, monitor, opts),
+         {:ok, binary, content_type} <- encode_series_export(medium, export) do
+      filename = build_filename({:alert, monitor, alert}, medium)
+
+      {:ok,
+       %{
+         medium: medium,
+         filename: filename,
+         content_type: content_type,
+         binary: binary
+       }}
+    end
   end
 
   defp build_alert_export(monitor, alert, medium, params, builder, exporter, exporter_opts) do
@@ -240,6 +278,24 @@ defmodule Trifle.Monitors.TestDelivery do
          }}
       end
     end
+  end
+
+  defp resolve_series_export(builder, monitor, opts) do
+    cond do
+      function_exported?(builder, :series_export, 2) ->
+        builder.series_export(monitor, opts)
+
+      true ->
+        MonitorLayout.series_export(monitor, opts)
+    end
+  end
+
+  defp encode_series_export(:file_csv, export) do
+    {:ok, SeriesExport.to_csv(export), "text/csv"}
+  end
+
+  defp encode_series_export(:file_json, export) do
+    {:ok, SeriesExport.to_json(export), "application/json"}
   end
 
   defp export_binary(:pdf, layout, exporter, opts) do
@@ -828,6 +884,8 @@ defmodule Trifle.Monitors.TestDelivery do
   defp medium_label(:pdf), do: "PDF"
   defp medium_label(:png_light), do: "PNG (light)"
   defp medium_label(:png_dark), do: "PNG (dark)"
+  defp medium_label(:file_csv), do: "File CSV"
+  defp medium_label(:file_json), do: "File JSON"
   defp medium_label(other), do: to_string(other)
 
   defp window_details(params) when is_map(params) do
@@ -916,12 +974,16 @@ defmodule Trifle.Monitors.TestDelivery do
         :pdf -> "preview"
         :png_light -> "preview-light"
         :png_dark -> "preview-dark"
+        :file_csv -> "data-table"
+        :file_json -> "data-raw"
         other -> "preview-#{other}"
       end
 
     ext =
       case medium do
         :pdf -> ".pdf"
+        :file_csv -> ".csv"
+        :file_json -> ".json"
         _ -> ".png"
       end
 
@@ -938,12 +1000,16 @@ defmodule Trifle.Monitors.TestDelivery do
         :pdf -> "preview"
         :png_light -> "preview-light"
         :png_dark -> "preview-dark"
+        :file_csv -> "data-table"
+        :file_json -> "data-raw"
         other -> "preview-#{other}"
       end
 
     ext =
       case medium do
         :pdf -> ".pdf"
+        :file_csv -> ".csv"
+        :file_json -> ".json"
         _ -> ".png"
       end
 

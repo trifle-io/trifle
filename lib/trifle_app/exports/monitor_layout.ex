@@ -59,7 +59,34 @@ defmodule TrifleApp.Exports.MonitorLayout do
     do_build(monitor, opts)
   end
 
+  @doc """
+  Resolves the monitor dataset for CSV/JSON exports using the same parameter pipeline.
+  """
+  @spec series_export(Monitor.t(), Keyword.t()) ::
+          {:ok, %{export: SeriesExport.result(), timeframe: map()}} | {:error, term()}
+  def series_export(%Monitor{} = monitor, opts \\ []) do
+    with {:ok, context} <- build_context(monitor, opts) do
+      {:ok, %{export: context.export, timeframe: context.timeframe}}
+    end
+  end
+
   defp do_build(monitor, opts) do
+    with {:ok, context} <- build_context(monitor, opts),
+         {:ok, layout} <-
+           compose_layout(
+             monitor,
+             context.export,
+             context.timeframe,
+             context.theme,
+             context.viewport,
+             context.source,
+             context.selected_widget_id
+           ) do
+      {:ok, layout}
+    end
+  end
+
+  defp build_context(monitor, opts) do
     params = Keyword.get(opts, :params, %{})
     theme = Keyword.get(opts, :theme, :light)
     viewport = Keyword.get(opts, :viewport, @default_viewport)
@@ -79,18 +106,16 @@ defmodule TrifleApp.Exports.MonitorLayout do
              timeframe.to,
              timeframe.granularity,
              progress_callback: nil
-           ),
-         {:ok, layout} <-
-           compose_layout(
-             monitor,
-             export,
-             timeframe,
-             theme,
-             viewport,
-             source,
-             selected_widget
            ) do
-      {:ok, layout}
+      {:ok,
+       %{
+         export: export,
+         timeframe: timeframe,
+         theme: theme,
+         viewport: viewport,
+         source: source,
+         selected_widget_id: selected_widget
+       }}
     end
   end
 

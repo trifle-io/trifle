@@ -894,12 +894,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
-                          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375H8.625A3.375 3.375 0 0 0 5.25 11.625v4.5A3.375 3.375 0 0 0 8.625 19.5H12"
-                        />
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M16.5 16.5a3 3 0 1 1 3 3h-3v-3Z"
+                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
                         />
                       </svg>
                       PDF (print)
