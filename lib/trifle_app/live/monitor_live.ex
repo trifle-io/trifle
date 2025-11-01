@@ -950,17 +950,17 @@ defmodule TrifleApp.MonitorLive do
     cond do
       frequency == :daily ->
         from = floor_time(now, 1, :day, config)
-        to = Nocturnal.new(from, config) |> Nocturnal.add(1, :day)
+        to = inclusive_period_end(from, 1, :day, config)
         {:ok, from, to}
 
       frequency == :weekly ->
         from = floor_time(now, 1, :week, config)
-        to = Nocturnal.new(from, config) |> Nocturnal.add(1, :week)
+        to = inclusive_period_end(from, 1, :week, config)
         {:ok, from, to}
 
       frequency == :monthly ->
         from = floor_time(now, 1, :month, config)
-        to = Nocturnal.new(from, config) |> Nocturnal.add(1, :month)
+        to = inclusive_period_end(from, 1, :month, config)
         {:ok, from, to}
 
       true ->
@@ -973,6 +973,7 @@ defmodule TrifleApp.MonitorLive do
             from
             |> Nocturnal.new(config)
             |> Nocturnal.add(parser.offset, parser.unit)
+            |> inclusive_end(config)
 
           {:ok, from, to}
         else
@@ -1003,6 +1004,20 @@ defmodule TrifleApp.MonitorLive do
     datetime
     |> Nocturnal.new(config)
     |> Nocturnal.floor(offset, unit)
+  end
+
+  defp inclusive_period_end(from, offset, unit, config) do
+    from
+    |> Nocturnal.new(config)
+    |> Nocturnal.add(offset, unit)
+    |> inclusive_end(config)
+  end
+
+  defp inclusive_end(nil, _config), do: nil
+
+  defp inclusive_end(datetime, config) do
+    tz_database = config.time_zone_database || Tzdata.TimeZoneDatabase
+    DateTime.add(datetime, -1, :second, tz_database)
   end
 
   defp monitor_timeframe_defaults(
@@ -2114,6 +2129,7 @@ defmodule TrifleApp.MonitorLive do
         granularity={@granularity}
         smart_timeframe_input={@smart_timeframe_input}
         use_fixed_display={@use_fixed_display}
+        range_mode={:inclusive_end}
         available_granularities={@available_granularities}
         show_controls={true}
         show_timeframe_dropdown={false}
