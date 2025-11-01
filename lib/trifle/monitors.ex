@@ -149,7 +149,9 @@ defmodule Trifle.Monitors do
   def list_alerts(%Monitor{} = monitor) do
     monitor
     |> Ecto.assoc(:alerts)
+    |> order_by([a], asc: a.inserted_at, asc: a.id)
     |> Repo.all()
+    |> sort_alerts()
   end
 
   @doc """
@@ -195,6 +197,39 @@ defmodule Trifle.Monitors do
   Deletes an alert.
   """
   def delete_alert(%Alert{} = alert), do: Repo.delete(alert)
+
+  @doc """
+  Returns alerts sorted deterministically by creation time and id.
+  """
+  def sort_alerts(alerts)
+
+  def sort_alerts(alerts) when is_list(alerts) do
+    alerts
+    |> Enum.sort_by(&alert_sort_key/1)
+  end
+
+  def sort_alerts(%Ecto.Association.NotLoaded{}), do: []
+  def sort_alerts(nil), do: []
+  def sort_alerts(_), do: []
+
+  defp alert_sort_key(%Alert{} = alert) do
+    inserted_at =
+      case alert.inserted_at do
+        %NaiveDateTime{} = ts -> ts
+        %DateTime{} = dt -> DateTime.to_naive(dt)
+        _ -> ~N[1970-01-01 00:00:00]
+      end
+
+    id =
+      case alert.id do
+        nil -> ""
+        value -> to_string(value)
+      end
+
+    {inserted_at, id}
+  end
+
+  defp alert_sort_key(_), do: {~N[1970-01-01 00:00:00], ""}
 
   ## Executions
 
