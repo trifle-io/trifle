@@ -306,11 +306,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp threshold_summary(%{value: value} = point, threshold, direction, triggered?) do
-    timestamp =
-      case point do
-        %{at: %DateTime{} = at} -> " at #{DateTime.to_iso8601(at)}"
-        _ -> ""
-      end
+    timestamp = summary_timestamp(point)
 
     comparator = if direction == :below, do: "≤", else: "≥"
 
@@ -395,11 +391,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp range_summary(%{value: value} = point, min_value, max_value, triggered?) do
-    timestamp =
-      case point do
-        %{at: %DateTime{} = at} -> " at #{DateTime.to_iso8601(at)}"
-        _ -> ""
-      end
+    timestamp = summary_timestamp(point)
 
     target_range = "#{format_number(min_value)} ≤ 𝑥 ≤ #{format_number(max_value)}"
 
@@ -589,11 +581,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp hampel_summary(%{value: value} = point, triggered?, window_size, k, mad_floor) do
-    timestamp =
-      case point do
-        %{at: %DateTime{} = at} -> " at #{DateTime.to_iso8601(at)}"
-        _ -> ""
-      end
+    timestamp = summary_timestamp(point)
 
     base =
       "Latest reading 𝑥=#{format_number(value)}#{timestamp}; Hampel window 𝑤=#{window_size}, 𝑘=#{format_number(k)}, 𝑚=#{format_number(mad_floor)}."
@@ -775,11 +763,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
   end
 
   defp cusum_summary(%{value: value} = point, triggered?, mean, k, h) do
-    timestamp =
-      case point do
-        %{at: %DateTime{} = at} -> " at #{DateTime.to_iso8601(at)}"
-        _ -> ""
-      end
+    timestamp = summary_timestamp(point)
 
     base =
       "Latest reading 𝑥=#{format_number(value)}#{timestamp}; CUSUM baseline μ=#{format_number(mean)}, 𝑘=#{format_number(k)}, 𝐻=#{format_number(h)}."
@@ -963,6 +947,24 @@ defmodule Trifle.Monitors.AlertEvaluator do
        do: value
 
   defp treat_nil_as_zero?(_), do: false
+
+  defp summary_timestamp(%{at: %DateTime{} = at}) do
+    case human_timestamp(at) do
+      nil -> ""
+      formatted -> " at #{formatted}"
+    end
+  end
+
+  defp summary_timestamp(_), do: ""
+
+  defp human_timestamp(%DateTime{} = dt) do
+    dt
+    |> DateTime.to_naive()
+    |> NaiveDateTime.truncate(:second)
+    |> NaiveDateTime.to_string()
+  end
+
+  defp human_timestamp(_), do: nil
 
   defp format_number(value) when is_float(value) do
     value
