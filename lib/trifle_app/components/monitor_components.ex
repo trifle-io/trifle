@@ -128,57 +128,64 @@ defmodule TrifleApp.MonitorComponents do
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
       <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Report details</h3>
       <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Source
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            {@source_label || default_source_label(@monitor)}
-          </dd>
+        <div class="space-y-4">
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Source
+            </dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+              {@source_label || default_source_label(@monitor)}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Dashboard
+            </dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+              <%= if @dashboard do %>
+                <.link
+                  navigate={~p"/dashboards/#{@dashboard.id}"}
+                  class="text-teal-600 hover:text-teal-500"
+                >
+                  {@dashboard.name}
+                </.link>
+              <% else %>
+                <span class="text-slate-500 dark:text-slate-400">Dashboard unavailable</span>
+              <% end %>
+            </dd>
+          </div>
         </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Dashboard
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            <%= if @dashboard do %>
-              <.link
-                navigate={~p"/dashboards/#{@dashboard.id}"}
-                class="text-teal-600 hover:text-teal-500"
-              >
-                {@dashboard.name}
-              </.link>
-            <% else %>
-              <span class="text-slate-500 dark:text-slate-400">Dashboard unavailable</span>
-            <% end %>
-          </dd>
+        <div class="space-y-4">
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Delivery cadence
+            </dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+              {format_frequency(@monitor.report_settings)}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Timeframe window
+            </dt>
+            <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {(@monitor.report_settings && @monitor.report_settings.timeframe) ||
+                "Defaults to dashboard"}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Granularity
+            </dt>
+            <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {(@monitor.report_settings && @monitor.report_settings.granularity) || "Auto"}
+            </dd>
+          </div>
         </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Delivery cadence
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            {format_frequency(@monitor.report_settings)}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Timeframe window
-          </dt>
-          <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {(@monitor.report_settings && @monitor.report_settings.timeframe) ||
-              "Defaults to dashboard"}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Granularity
-          </dt>
-          <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {(@monitor.report_settings && @monitor.report_settings.granularity) || "Auto"}
-          </dd>
-        </div>
-        <div :if={@monitor.report_settings && @monitor.report_settings.frequency == :custom}>
+        <div
+          :if={@monitor.report_settings && @monitor.report_settings.frequency == :custom}
+          class="space-y-4 sm:col-span-2"
+        >
           <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             CRON expression
           </dt>
@@ -200,49 +207,53 @@ defmodule TrifleApp.MonitorComponents do
       <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Alert details</h3>
 
       <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Source
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            {@source_label || default_source_label(@monitor)}
-          </dd>
+        <div class="space-y-4">
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Source
+            </dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+              {@source_label || default_source_label(@monitor)}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Metric key
+            </dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+              <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
+                {present_or_dash(@monitor.alert_metric_key)}
+              </code>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Metric path
+            </dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+              <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
+                {present_or_dash(@monitor.alert_metric_path)}
+              </code>
+            </dd>
+          </div>
         </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Metric key
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-              {present_or_dash(@monitor.alert_metric_key)}
-            </code>
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Metric path
-          </dt>
-          <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-            <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-              {present_or_dash(@monitor.alert_metric_path)}
-            </code>
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Evaluation timeframe
-          </dt>
-          <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {@monitor.alert_timeframe || "Defaults to monitor"}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Granularity
-          </dt>
-          <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {@monitor.alert_granularity || "Auto"}
-          </dd>
+        <div class="space-y-4">
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Evaluation timeframe
+            </dt>
+            <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {@monitor.alert_timeframe || "Defaults to monitor"}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Granularity
+            </dt>
+            <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {@monitor.alert_granularity || "Auto"}
+            </dd>
+          </div>
         </div>
       </dl>
     </div>
