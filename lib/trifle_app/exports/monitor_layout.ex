@@ -5,6 +5,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   """
 
   alias Ecto.NoResultsError
+  alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Organizations
@@ -586,9 +587,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end
   end
 
-  defp monitor_alerts(%Monitor{alerts: %Ecto.Association.NotLoaded{}}), do: []
-  defp monitor_alerts(%Monitor{alerts: nil}), do: []
-  defp monitor_alerts(%Monitor{alerts: alerts}) when is_list(alerts), do: alerts
+  defp monitor_alerts(%Monitor{} = monitor), do: Monitors.sort_alerts(monitor.alerts)
   defp monitor_alerts(_), do: []
 
   @spec alert_widget_id(Monitor.t(), Alert.t()) :: String.t() | nil

@@ -635,8 +635,16 @@ defmodule TrifleApp.MonitorLive do
 
   defp load_monitor(socket, id) do
     membership = socket.assigns.current_membership
+
     Monitors.get_monitor_for_membership!(membership, id, preload: [:dashboard])
+    |> ensure_sorted_alerts()
   end
+
+  defp ensure_sorted_alerts(%Monitor{} = monitor) do
+    %{monitor | alerts: Monitors.sort_alerts(monitor.alerts)}
+  end
+
+  defp ensure_sorted_alerts(other), do: other
 
   defp prepare_ai_request(socket, %{component_id: id, request_id: request_id} = request) do
     cond do
@@ -817,7 +825,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:segment_values, segment_values)
     |> assign(:monitor_segments, monitor_segments)
     |> assign(:selected_source_ref, component_source_ref(source))
-    |> assign(:alerts, monitor.alerts || [])
+    |> assign(:alerts, Monitors.sort_alerts(monitor.alerts))
     |> assign(:insights_dashboard, build_monitor_insights_dashboard(monitor))
     |> reset_monitor_widget_datasets()
   end
