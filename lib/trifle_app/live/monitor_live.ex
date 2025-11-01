@@ -1197,7 +1197,11 @@ defmodule TrifleApp.MonitorLive do
 
   defp monitor_segment_state(_), do: {%{}, []}
 
-  defp resolve_monitor_key(%Monitor{type: :report, dashboard: %{key: key}}, segment_values, segments) do
+  defp resolve_monitor_key(
+         %Monitor{type: :report, dashboard: %{key: key}},
+         segment_values,
+         segments
+       ) do
     DashboardSegments.resolve_key(key, segments, segment_values)
   end
 
@@ -2170,54 +2174,54 @@ defmodule TrifleApp.MonitorLive do
 
             <%= cond do %>
               <% report_missing_dashboard? -> %>
-              <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
-                <div class="max-w-sm space-y-2">
-                  <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    Dashboard not available
-                  </p>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    Attach a dashboard to this report monitor to preview its widgets here.
-                  </p>
+                <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
+                  <div class="max-w-sm space-y-2">
+                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      Dashboard not available
+                    </p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                      Attach a dashboard to this report monitor to preview its widgets here.
+                    </p>
+                  </div>
                 </div>
-              </div>
               <% alert_path_missing? -> %>
-              <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-amber-300 bg-amber-50 text-center dark:border-amber-600/60 dark:bg-amber-900/20">
-                <div class="max-w-sm space-y-2">
-                  <p class="text-sm font-semibold text-amber-700 dark:text-amber-200">
-                    Metric path required
-                  </p>
-                  <p class="text-xs text-amber-700/80 dark:text-amber-100/80">
-                    Configure a metric key and path for this alert to generate a chart preview.
-                  </p>
+                <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-amber-300 bg-amber-50 text-center dark:border-amber-600/60 dark:bg-amber-900/20">
+                  <div class="max-w-sm space-y-2">
+                    <p class="text-sm font-semibold text-amber-700 dark:text-amber-200">
+                      Metric path required
+                    </p>
+                    <p class="text-xs text-amber-700/80 dark:text-amber-100/80">
+                      Configure a metric key and path for this alert to generate a chart preview.
+                    </p>
+                  </div>
                 </div>
-              </div>
               <% grid_items == [] -> %>
-              <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
-                <div class="max-w-sm space-y-2">
-                  <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    No widgets detected
-                  </p>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    Add at least one widget to the dashboard to populate this preview.
-                  </p>
+                <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
+                  <div class="max-w-sm space-y-2">
+                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      No widgets detected
+                    </p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                      Add at least one widget to the dashboard to populate this preview.
+                    </p>
+                  </div>
                 </div>
-              </div>
               <% true -> %>
-              <WidgetView.grid
-                dashboard={dashboard_for_render}
-                stats={@stats}
-                current_user={@current_user}
-                can_edit_dashboard={false}
-                is_public_access={true}
-                print_mode={false}
-                kpi_values={@insights_kpi_values}
-                kpi_visuals={@insights_kpi_visuals}
-                timeseries={@insights_timeseries}
-                category={@insights_category}
-                text_widgets={@insights_text_widgets}
-                export_params={export_params}
-                widget_export={%{type: :monitor, monitor_id: @monitor.id}}
-              />
+                <WidgetView.grid
+                  dashboard={dashboard_for_render}
+                  stats={@stats}
+                  current_user={@current_user}
+                  can_edit_dashboard={false}
+                  is_public_access={true}
+                  print_mode={false}
+                  kpi_values={@insights_kpi_values}
+                  kpi_visuals={@insights_kpi_visuals}
+                  timeseries={@insights_timeseries}
+                  category={@insights_category}
+                  text_widgets={@insights_text_widgets}
+                  export_params={export_params}
+                  widget_export={%{type: :monitor, monitor_id: @monitor.id}}
+                />
             <% end %>
           </div>
         </div>
@@ -2276,22 +2280,19 @@ defmodule TrifleApp.MonitorLive do
                       <% triggered? = match?(%AlertEvaluator.Result{triggered?: true}, evaluation) %>
                       <% alert_key = normalize_id(alert.id) %>
                       <% running_alert? = match?({:alert, ^alert_key, :running}, @test_delivery_state) %>
-                      <li
-                        class={[
-                          "flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800",
-                          triggered? && "border-rose-400/70 bg-rose-50 dark:border-rose-500/60 dark:bg-rose-500/10"
-                        ]}
-                      >
+                      <li class={[
+                        "flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800",
+                        triggered? &&
+                          "border-rose-400/70 bg-rose-50 dark:border-rose-500/60 dark:bg-rose-500/10"
+                      ]}>
                         <div class="min-w-0">
                           <p class="text-sm font-semibold text-slate-900 dark:text-white">
                             {MonitorLayout.alert_label(alert)}
                           </p>
-                          <p
-                            class={[
-                              "mt-1 text-xs text-slate-500 dark:text-slate-400",
-                              triggered? && "text-rose-700 dark:text-rose-300"
-                            ]}
-                          >
+                          <p class={[
+                            "mt-1 text-xs text-slate-500 dark:text-slate-400",
+                            triggered? && "text-rose-700 dark:text-rose-300"
+                          ]}>
                             {alert_evaluation_summary(evaluation)}
                           </p>
                         </div>
@@ -2301,28 +2302,28 @@ defmodule TrifleApp.MonitorLive do
                             class="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
                             phx-click="edit_alert"
                             phx-value-id={alert.id}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                            class="h-4 w-4"
                           >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"
-                            />
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-                            />
-                          </svg>
-                          Configure
-                        </button>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke-width="1.5"
+                              stroke="currentColor"
+                              class="h-4 w-4"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"
+                              />
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                              />
+                            </svg>
+                            Configure
+                          </button>
                           <button
                             type="button"
                             class={[

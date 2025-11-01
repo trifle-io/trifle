@@ -361,4 +361,3 @@ defmodule Trifle.Organizations.DashboardSegments do
   defp delete_first([value | rest], value), do: rest
   defp delete_first([head | rest], value), do: [head | delete_first(rest, value)]
 end
-

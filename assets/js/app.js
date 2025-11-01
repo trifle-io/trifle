@@ -660,7 +660,13 @@ Hooks.DashboardGrid = {
     };
     window.addEventListener('resize', this._onWindowResize);
     // Avoid persisting transient responsive changes when navigating away
-    this._onPageLoadingStart = () => { this._suppressSave = true; };
+    this._onPageLoadingStart = () => {
+      this._suppressSave = true;
+      if (this.el) {
+        this.el.classList.remove('opacity-100');
+        this.el.classList.add('opacity-0', 'pointer-events-none');
+      }
+    };
     window.addEventListener('phx:page-loading-start', this._onPageLoadingStart);
     this._sparkTimers = {};
     const editableAttr = this.el.dataset.editable;
@@ -691,6 +697,14 @@ Hooks.DashboardGrid = {
 
     this.initGrid();
     this.syncServerRenderedItems();
+
+    const revealGrid = () => {
+      if (!this.el) return;
+      this.el.classList.remove('opacity-0', 'pointer-events-none');
+      this.el.classList.add('opacity-100');
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(revealGrid));
 
     // Ensure multi-column layout during export (print mode)
     try {
@@ -877,6 +891,11 @@ Hooks.DashboardGrid = {
   },
 
   destroyed() {
+    if (this.el) {
+      this.el.classList.remove('opacity-100');
+      this.el.classList.add('opacity-0', 'pointer-events-none');
+    }
+
     if (this.el && this.el.__dashboardGrid === this) {
       delete this.el.__dashboardGrid;
     }

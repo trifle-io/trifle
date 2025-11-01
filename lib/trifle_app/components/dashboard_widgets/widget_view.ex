@@ -48,7 +48,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     ]}>
       <div
         id={@grid_dom_id}
-        class="grid-stack"
+        class="grid-stack opacity-0 pointer-events-none transition-opacity duration-300"
         style={@print_container_style}
         phx-update="ignore"
         phx-hook="DashboardGrid"

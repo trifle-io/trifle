@@ -182,7 +182,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                                 <%= for segment <- @dashboard_segment_definitions do %>
                                   <% segment_name = segment["name"] || "" %>
                                   <% label = segment["label"] || segment_name || "Segment" %>
-                                  <% current_value = Map.get(@dashboard_segment_values || %{}, segment_name, "") %>
+                                  <% current_value =
+                                    Map.get(@dashboard_segment_values || %{}, segment_name, "") %>
                                   <div class="space-y-1">
                                     <label class="text-xs font-semibold text-slate-600 dark:text-slate-300">
                                       {label}
@@ -197,7 +198,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                                       />
                                     <% else %>
                                       <% groups = segment["groups"] || [] %>
-                                      <% has_items = Enum.any?(groups, fn group -> (group["items"] || []) != [] end) %>
+                                      <% has_items =
+                                        Enum.any?(groups, fn group -> (group["items"] || []) != [] end) %>
                                       <div class="grid grid-cols-1">
                                         <select
                                           name={"monitor[segment_values][#{segment_name}]"}
@@ -209,7 +211,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                                               <optgroup label={group_label}>
                                                 <%= for item <- group["items"] || [] do %>
                                                   <% option_value = item["value"] || "" %>
-                                                  <option value={option_value} selected={option_value == current_value}>
+                                                  <option
+                                                    value={option_value}
+                                                    selected={option_value == current_value}
+                                                  >
                                                     {item["label"] || option_value}
                                                   </option>
                                                 <% end %>
@@ -217,14 +222,21 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                                             <% else %>
                                               <%= for item <- group["items"] || [] do %>
                                                 <% option_value = item["value"] || "" %>
-                                                <option value={option_value} selected={option_value == current_value}>
+                                                <option
+                                                  value={option_value}
+                                                  selected={option_value == current_value}
+                                                >
                                                   {item["label"] || option_value}
                                                 </option>
                                               <% end %>
                                             <% end %>
                                           <% end %>
                                           <%= if !has_items do %>
-                                            <option value="" selected={current_value in [nil, ""]} disabled>
+                                            <option
+                                              value=""
+                                              selected={current_value in [nil, ""]}
+                                              disabled
+                                            >
                                               No options configured
                                             </option>
                                           <% end %>
