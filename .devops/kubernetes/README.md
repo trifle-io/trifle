@@ -57,11 +57,11 @@ initialUser:
 # Resource limits
 resources:
   limits:
+    cpu: "3"
+    memory: 3Gi
+  requests:
     cpu: 2000m
     memory: 2Gi
-  requests:
-    cpu: 1000m
-    memory: 1Gi
 
 # Enable ingress with SSL
 ingress:
