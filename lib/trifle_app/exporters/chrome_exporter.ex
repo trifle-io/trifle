@@ -122,6 +122,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
       Logger.debug(fn ->
         "export_layout(:png) id=#{layout.id} kind=#{layout.kind} theme=#{inspect(Keyword.get(opts, :theme))} window=#{inspect(Keyword.get(opts, :window_size))}"
       end)
+
       try do
         TrifleApp.Exporters.ChromeCDP.export_png(url, opts)
       after
@@ -176,6 +177,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
         %{module: mod} = render when is_atom(mod) ->
           function = render.function || :render
           assigns = render.assigns || %{}
+
           adjusted_assigns =
             Map.update(assigns, :print_width, printable_width_px, fn existing ->
               cond do

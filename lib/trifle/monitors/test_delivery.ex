@@ -804,7 +804,8 @@ defmodule Trifle.Monitors.TestDelivery do
   defp slack_client(opts), do: Keyword.get(opts, :slack_client, SlackClient)
 
   defp email_from(opts) do
-    default_from = Application.get_env(:trifle, :mailer_from, {"Trifle Reports", "contact@example.com"})
+    default_from =
+      Application.get_env(:trifle, :mailer_from, {"Trifle Reports", "contact@example.com"})
 
     case Keyword.get(opts, :from) ||
            Application.get_env(:trifle, :monitor_delivery_from) ||

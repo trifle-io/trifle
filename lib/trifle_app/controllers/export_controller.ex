@@ -44,7 +44,9 @@ defmodule TrifleApp.ExportController do
         _ -> :light
       end
 
-    Logger.debug("dashboard_png request id=#{id} theme=#{inspect(theme)} params=#{inspect(params)}")
+    Logger.debug(
+      "dashboard_png request id=#{id} theme=#{inspect(theme)} params=#{inspect(params)}"
+    )
 
     export_params =
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
@@ -113,7 +115,9 @@ defmodule TrifleApp.ExportController do
         _ -> :light
       end
 
-    Logger.debug("dashboard_widget_png request id=#{id} widget=#{widget_id} theme=#{inspect(theme)} params=#{inspect(params)}")
+    Logger.debug(
+      "dashboard_widget_png request id=#{id} widget=#{widget_id} theme=#{inspect(theme)} params=#{inspect(params)}"
+    )
 
     export_params =
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
@@ -284,7 +288,9 @@ defmodule TrifleApp.ExportController do
         _ -> :light
       end
 
-    Logger.debug("monitor_widget_png request id=#{id} widget=#{widget_id} theme=#{inspect(theme)} params=#{inspect(params)}")
+    Logger.debug(
+      "monitor_widget_png request id=#{id} widget=#{widget_id} theme=#{inspect(theme)} params=#{inspect(params)}"
+    )
 
     with {:ok, monitor} <- fetch_monitor(conn, id),
          export_params <- monitor_export_params(params),

@@ -182,7 +182,11 @@ defmodule Trifle.Monitors.Monitor do
               add_error(changeset, :segment_values, "invalid JSON: #{Exception.message(error)}")
 
             {:error, reason} ->
-              add_error(changeset, :segment_values, "invalid segment selection: #{inspect(reason)}")
+              add_error(
+                changeset,
+                :segment_values,
+                "invalid segment selection: #{inspect(reason)}"
+              )
           end
         end
 

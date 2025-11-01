@@ -7,4 +7,3 @@ defmodule Trifle.Repo.Migrations.AddSegmentValuesToMonitors do
     end
   end
 end
-

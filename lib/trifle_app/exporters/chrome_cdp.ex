@@ -408,7 +408,8 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   end
 
   defp page_capture_screenshot(page_ws, clip) do
-    params = %{format: "png", captureBeyondViewport: true, omitBackground: true} |> maybe_put_clip(clip)
+    params =
+      %{format: "png", captureBeyondViewport: true, omitBackground: true} |> maybe_put_clip(clip)
 
     case __MODULE__.WS.call(page_ws, "Page.captureScreenshot", params) do
       {:ok, %{"data" => b64}} -> {:ok, b64}
@@ -550,9 +551,15 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   end
 
   defp log_theme_state(page_ws, stage) do
-    expr = "(() => { const root = document.getElementById('export-layout-root'); const grid = root ? root.querySelector('.grid-stack') : null; return { htmlClass: document.documentElement ? document.documentElement.className : null, bodyClass: document.body ? document.body.className : null, bodyTheme: document.body ? document.body.getAttribute('data-theme') : null, bodyBg: window.getComputedStyle(document.body || document.documentElement).backgroundColor, rootBg: root ? window.getComputedStyle(root).backgroundColor : null, gridBg: grid ? window.getComputedStyle(grid).backgroundColor : null }; })()"
+    expr =
+      "(() => { const root = document.getElementById('export-layout-root'); const grid = root ? root.querySelector('.grid-stack') : null; return { htmlClass: document.documentElement ? document.documentElement.className : null, bodyClass: document.body ? document.body.className : null, bodyTheme: document.body ? document.body.getAttribute('data-theme') : null, bodyBg: window.getComputedStyle(document.body || document.documentElement).backgroundColor, rootBg: root ? window.getComputedStyle(root).backgroundColor : null, gridBg: grid ? window.getComputedStyle(grid).backgroundColor : null }; })()"
 
-    case __MODULE__.WS.call(page_ws, "Runtime.evaluate", %{expression: expr, returnByValue: true}, 5_000) do
+    case __MODULE__.WS.call(
+           page_ws,
+           "Runtime.evaluate",
+           %{expression: expr, returnByValue: true},
+           5_000
+         ) do
       {:ok, %{"result" => %{"value" => value}}} ->
         Logger.debug("CDP theme_state #{stage} #{inspect(value)}")
         :ok
@@ -565,8 +572,11 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp set_background_override(page_ws) do
     params = %{color: %{r: 0, g: 0, b: 0, a: 0}}
+
     case __MODULE__.WS.call(page_ws, "Emulation.setDefaultBackgroundColorOverride", params, 5_000) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       other ->
         Logger.debug("CDP set_background_override error=#{inspect(other)}")
         :ok
@@ -575,7 +585,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
   defp clear_background_override(page_ws) do
     case __MODULE__.WS.call(page_ws, "Emulation.setDefaultBackgroundColorOverride", %{}, 5_000) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       other ->
         Logger.debug("CDP clear_background_override error=#{inspect(other)}")
         :ok
