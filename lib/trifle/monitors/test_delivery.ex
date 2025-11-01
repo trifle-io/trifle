@@ -804,10 +804,19 @@ defmodule Trifle.Monitors.TestDelivery do
   defp slack_client(opts), do: Keyword.get(opts, :slack_client, SlackClient)
 
   defp email_from(opts) do
-    case Keyword.get(opts, :from) || Application.get_env(:trifle, :monitor_delivery_from) do
-      {name, address} when is_binary(address) -> {name, address}
-      address when is_binary(address) -> {"Trifle Reports", address}
-      _ -> {"Trifle Reports", "contact@example.com"}
+    default_from = Application.get_env(:trifle, :mailer_from, {"Trifle Reports", "contact@example.com"})
+
+    case Keyword.get(opts, :from) ||
+           Application.get_env(:trifle, :monitor_delivery_from) ||
+           default_from do
+      {name, address} when is_binary(name) and is_binary(address) ->
+        {name, address}
+
+      address when is_binary(address) ->
+        {elem(default_from, 0), address}
+
+      _ ->
+        default_from
     end
   end
 
