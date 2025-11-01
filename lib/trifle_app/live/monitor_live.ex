@@ -2130,6 +2130,7 @@ defmodule TrifleApp.MonitorLive do
         smart_timeframe_input={@smart_timeframe_input}
         use_fixed_display={@use_fixed_display}
         range_mode={:inclusive_end}
+        clamp_to_now={false}
         available_granularities={@available_granularities}
         show_controls={true}
         show_timeframe_dropdown={false}
