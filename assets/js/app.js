@@ -2287,9 +2287,10 @@ Hooks.DashboardGrid = {
 Hooks.DashboardWidgetData = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId || '';
-    this.widgetType = (this.el.dataset.widgetType || '').toLowerCase();
+    this.widgetType = (this.el.dataset.widgetType || '').toLowerCase() || 'kpi';
     this._retryTimer = null;
     this._lastKey = null;
+    this._registeredType = null;
     this.register();
   },
 
@@ -2304,11 +2305,18 @@ Hooks.DashboardWidgetData = {
     }
     const gridHook = findDashboardGridHook(this.el);
     if (gridHook && this.widgetId) {
-      gridHook.unregisterWidget(this.widgetType || null, this.widgetId);
+      const cleanupType = this._registeredType || this.widgetType || null;
+      gridHook.unregisterWidget(cleanupType, this.widgetId);
     }
   },
 
   register() {
+    const rawType = (this.el.dataset.widgetType || '').toLowerCase();
+    const nextType = rawType || this.widgetType || 'kpi';
+    if (nextType !== this.widgetType) {
+      this.widgetType = nextType;
+    }
+
     const dataStrings = [
       this.el.dataset.kpiValues || '',
       this.el.dataset.kpiVisual || '',
@@ -2336,6 +2344,11 @@ Hooks.DashboardWidgetData = {
       const id = this.widgetId;
       let payload = null;
 
+      if (this._registeredType && this._registeredType !== type && id) {
+        gridHook.unregisterWidget(this._registeredType, id);
+        this._registeredType = null;
+      }
+
       if (type === 'kpi') {
         const value = parseJsonSafe(this.el.dataset.kpiValues || '');
         if (value && value.id == null) value.id = id;
@@ -2357,6 +2370,7 @@ Hooks.DashboardWidgetData = {
       }
 
       gridHook.registerWidget(type || null, id, payload);
+      this._registeredType = type || null;
     };
 
     attempt();
