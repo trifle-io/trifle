@@ -408,6 +408,7 @@ defmodule TrifleApp.Components.FilterBar do
       |> normalize_selected_source_ref(sources)
 
     range_mode = Map.get(assigns, :range_mode, socket.assigns[:range_mode] || :exclusive_end)
+    clamp_to_now = Map.get(assigns, :clamp_to_now, Map.get(socket.assigns, :clamp_to_now, true))
 
     socket =
       socket
@@ -416,6 +417,7 @@ defmodule TrifleApp.Components.FilterBar do
       |> assign(:sources, sources)
       |> assign(:selected_source, selected_source_ref)
       |> assign(:range_mode, range_mode)
+      |> assign(:clamp_to_now, clamp_to_now)
       |> assign(current_input_value: current_input)
 
     # Ensure source dropdown visibility flag exists (component manages it internally)
@@ -585,6 +587,7 @@ defmodule TrifleApp.Components.FilterBar do
 
   def handle_event("navigate_timeframe_forward", _params, socket) do
     range_mode = socket.assigns[:range_mode] || :exclusive_end
+    clamp_to_now = Map.get(socket.assigns, :clamp_to_now, true)
 
     # Propose next window
     {new_from, new_to} =
@@ -605,9 +608,10 @@ defmodule TrifleApp.Components.FilterBar do
       )
 
     {from, to} =
-      case DateTime.compare(new_to, now) do
-        :gt ->
+      cond do
+        clamp_to_now && DateTime.compare(new_to, now) == :gt ->
           to = now
+
           from =
             case {span_seconds, range_mode} do
               {span, :inclusive_end} when is_integer(span) and span > 0 ->
@@ -622,7 +626,7 @@ defmodule TrifleApp.Components.FilterBar do
 
           {from, to}
 
-        _ ->
+        true ->
           {new_from, new_to}
       end
 
