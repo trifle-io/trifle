@@ -2140,8 +2140,36 @@ defmodule TrifleApp.MonitorLive do
             @monitor.type == :alert &&
               blank?(@monitor.alert_metric_path) %>
 
-          <%= cond do %>
-            <% report_missing_dashboard? -> %>
+          <div class="relative">
+            <% progress = @loading_progress %>
+            <% show_overlay? = progress && progress.total && progress.total > 0 %>
+
+            <%= if show_overlay? do %>
+              <% percent = min(progress.current / progress.total * 100, 100.0) %>
+              <div class="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 dark:bg-slate-900/80">
+                <div class="flex flex-col items-center space-y-3">
+                  <div class="flex items-center space-x-2">
+                    <div class="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-teal-500 dark:border-slate-600">
+                    </div>
+                    <span class="text-sm text-gray-600 dark:text-white">
+                      Scientificating piece {progress.current} of {progress.total}...
+                    </span>
+                  </div>
+                  <div class="h-2 w-64">
+                    <div class="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-600">
+                      <div
+                        class="h-2 rounded-full bg-teal-500 transition-all duration-300"
+                        style={"width: #{Float.round(percent, 1)}%"}
+                      >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+
+            <%= cond do %>
+              <% report_missing_dashboard? -> %>
               <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
                 <div class="max-w-sm space-y-2">
                   <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -2152,7 +2180,7 @@ defmodule TrifleApp.MonitorLive do
                   </p>
                 </div>
               </div>
-            <% alert_path_missing? -> %>
+              <% alert_path_missing? -> %>
               <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-amber-300 bg-amber-50 text-center dark:border-amber-600/60 dark:bg-amber-900/20">
                 <div class="max-w-sm space-y-2">
                   <p class="text-sm font-semibold text-amber-700 dark:text-amber-200">
@@ -2163,7 +2191,7 @@ defmodule TrifleApp.MonitorLive do
                   </p>
                 </div>
               </div>
-            <% grid_items == [] -> %>
+              <% grid_items == [] -> %>
               <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
                 <div class="max-w-sm space-y-2">
                   <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -2174,7 +2202,7 @@ defmodule TrifleApp.MonitorLive do
                   </p>
                 </div>
               </div>
-            <% true -> %>
+              <% true -> %>
               <WidgetView.grid
                 dashboard={dashboard_for_render}
                 stats={@stats}
@@ -2190,7 +2218,8 @@ defmodule TrifleApp.MonitorLive do
                 export_params={export_params}
                 widget_export={%{type: :monitor, monitor_id: @monitor.id}}
               />
-          <% end %>
+            <% end %>
+          </div>
         </div>
         <div class="space-y-6">
           <%= if @monitor.type == :report do %>
