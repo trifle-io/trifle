@@ -252,20 +252,75 @@ defmodule TrifleApp.TimeframeParsing do
   @doc """
   Calculates previous timeframe based on current from/to range.
   """
-  def calculate_previous_timeframe(from, to) do
-    duration = DateTime.diff(to, from, :second)
-    new_to = from
-    new_from = DateTime.add(from, -duration, :second)
-    {new_from, new_to}
+  def calculate_previous_timeframe(from, to, mode \\ :exclusive_end)
+
+  def calculate_previous_timeframe(nil, _to, _mode), do: {nil, nil}
+  def calculate_previous_timeframe(_from, nil, _mode), do: {nil, nil}
+
+  def calculate_previous_timeframe(from, to, mode) do
+    case timeframe_span_seconds(from, to, mode) do
+      span when is_integer(span) and span > 0 ->
+        case mode do
+          :inclusive_end ->
+            new_from = DateTime.add(from, -span, :second)
+            new_to = DateTime.add(from, -1, :second)
+            {new_from, new_to}
+
+          _ ->
+            new_from = DateTime.add(from, -span, :second)
+            new_to = from
+            {new_from, new_to}
+        end
+
+      _ ->
+        {from, to}
+    end
   end
 
   @doc """
   Calculates next timeframe based on current from/to range.
   """
-  def calculate_next_timeframe(from, to) do
-    duration = DateTime.diff(to, from, :second)
-    new_from = to
-    new_to = DateTime.add(to, duration, :second)
-    {new_from, new_to}
+  def calculate_next_timeframe(from, to, mode \\ :exclusive_end)
+
+  def calculate_next_timeframe(nil, _to, _mode), do: {nil, nil}
+  def calculate_next_timeframe(_from, nil, _mode), do: {nil, nil}
+
+  def calculate_next_timeframe(from, to, mode) do
+    case timeframe_span_seconds(from, to, mode) do
+      span when is_integer(span) and span > 0 ->
+        case mode do
+          :inclusive_end ->
+            new_from = DateTime.add(to, 1, :second)
+            new_to = DateTime.add(new_from, span - 1, :second)
+            {new_from, new_to}
+
+          _ ->
+            new_from = to
+            new_to = DateTime.add(to, span, :second)
+            {new_from, new_to}
+        end
+
+      _ ->
+        {from, to}
+    end
+  end
+
+  @doc """
+  Calculates the span, in seconds, represented by the given timeframe range.
+  Returns nil when the range is invalid (e.g., `to` precedes `from`).
+  """
+  def timeframe_span_seconds(from, to, mode \\ :exclusive_end)
+
+  def timeframe_span_seconds(nil, _to, _mode), do: nil
+  def timeframe_span_seconds(_from, nil, _mode), do: nil
+
+  def timeframe_span_seconds(from, to, mode) do
+    diff = DateTime.diff(to, from, :second)
+
+    cond do
+      diff < 0 -> nil
+      mode == :inclusive_end -> diff + 1
+      true -> diff
+    end
   end
 end

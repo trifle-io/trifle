@@ -407,12 +407,15 @@ defmodule TrifleApp.Components.FilterBar do
       |> Map.get(:selected_source, socket.assigns[:selected_source])
       |> normalize_selected_source_ref(sources)
 
+    range_mode = Map.get(assigns, :range_mode, socket.assigns[:range_mode] || :exclusive_end)
+
     socket =
       socket
       |> assign(assigns)
       |> assign(:source_locked, Kernel.||(assigns[:source_locked], false))
       |> assign(:sources, sources)
       |> assign(:selected_source, selected_source_ref)
+      |> assign(:range_mode, range_mode)
       |> assign(current_input_value: current_input)
 
     # Ensure source dropdown visibility flag exists (component manages it internally)
@@ -567,28 +570,56 @@ defmodule TrifleApp.Components.FilterBar do
   end
 
   def handle_event("navigate_timeframe_backward", _params, socket) do
+    range_mode = socket.assigns[:range_mode] || :exclusive_end
+
     {from, to} =
-      TimeframeParsing.calculate_previous_timeframe(socket.assigns.from, socket.assigns.to)
+      TimeframeParsing.calculate_previous_timeframe(
+        socket.assigns.from,
+        socket.assigns.to,
+        range_mode
+      )
 
     notify_parent({:filter_changed, %{from: from, to: to, use_fixed_display: true}})
     {:noreply, socket}
   end
 
   def handle_event("navigate_timeframe_forward", _params, socket) do
+    range_mode = socket.assigns[:range_mode] || :exclusive_end
+
     # Propose next window
     {new_from, new_to} =
-      TimeframeParsing.calculate_next_timeframe(socket.assigns.from, socket.assigns.to)
+      TimeframeParsing.calculate_next_timeframe(
+        socket.assigns.from,
+        socket.assigns.to,
+        range_mode
+      )
 
     # Clamp to current time in configured timezone to avoid going into the future
     config = socket.assigns.config
     now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
-    duration = DateTime.diff(socket.assigns.to, socket.assigns.from, :second)
+    span_seconds =
+      TimeframeParsing.timeframe_span_seconds(
+        socket.assigns.from,
+        socket.assigns.to,
+        range_mode
+      )
 
     {from, to} =
       case DateTime.compare(new_to, now) do
         :gt ->
           to = now
-          from = DateTime.add(to, -duration, :second)
+          from =
+            case {span_seconds, range_mode} do
+              {span, :inclusive_end} when is_integer(span) and span > 0 ->
+                DateTime.add(to, -(span - 1), :second)
+
+              {span, _} when is_integer(span) and span > 0 ->
+                DateTime.add(to, -span, :second)
+
+              _ ->
+                new_from
+            end
+
           {from, to}
 
         _ ->
