@@ -4,6 +4,55 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
+    <script>
+      (function () {
+        try {
+          var storage = window.localStorage;
+          var storedPref = storage ? storage.getItem('trifle:theme-pref') : null;
+          var storedResolved = storage ? storage.getItem('trifle:resolved-theme') : null;
+          var pref = storedPref || 'system';
+          var isDark;
+
+          if (pref === 'dark') {
+            isDark = true;
+          } else if (pref === 'light') {
+            isDark = false;
+          } else {
+            if (storedResolved === 'dark') {
+              isDark = true;
+            } else if (storedResolved === 'light') {
+              isDark = false;
+            } else {
+              isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            }
+          }
+
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+
+          window.__TRIFLE_THEME_PRELOAD__ = {
+            pref: pref,
+            resolved: isDark ? 'dark' : 'light'
+          };
+        } catch (error) {
+          var fallbackDark = false;
+          try {
+            fallbackDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          } catch (_) {
+            fallbackDark = false;
+          }
+          if (fallbackDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          window.__TRIFLE_THEME_PRELOAD__ = { pref: 'system', resolved: fallbackDark ? 'dark' : 'light' };
+        }
+      })();
+    </script>
     <.live_title suffix=" | Trifle">
       {page_title}
     </.live_title>
