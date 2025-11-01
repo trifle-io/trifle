@@ -4372,7 +4372,8 @@ class ThemeManager {
 
   shouldUseDarkTheme(themePreference = null) {
     const body = document.body;
-    const currentTheme = themePreference || body.getAttribute('data-theme') || 'system';
+    const preload = window.__TRIFLE_THEME_PRELOAD__ || {};
+    const currentTheme = themePreference || preload.pref || body.getAttribute('data-theme') || 'system';
     
     let shouldUseDark;
     switch (currentTheme) {
@@ -4394,14 +4395,17 @@ class ThemeManager {
 
   applyTheme(themePreference = null) {
     const body = document.body;
-    const currentTheme = themePreference || body.getAttribute('data-theme') || 'system';
-    const shouldUseDark = this.shouldUseDarkTheme(themePreference);
+    const preload = window.__TRIFLE_THEME_PRELOAD__ || {};
+    const currentTheme = themePreference || preload.pref || body.getAttribute('data-theme') || 'system';
+    const shouldUseDark = this.shouldUseDarkTheme(currentTheme);
     const resolvedTheme = shouldUseDark ? 'dark' : 'light';
     const previousTheme = this._resolvedTheme;
 
     // Update data-theme attribute if preference was provided
     if (themePreference) {
       body.setAttribute('data-theme', themePreference);
+    } else if (body.getAttribute('data-theme') !== currentTheme) {
+      body.setAttribute('data-theme', currentTheme);
     }
     
     // Remove existing theme classes
@@ -4415,6 +4419,14 @@ class ThemeManager {
     }
 
     this._resolvedTheme = resolvedTheme;
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem('trifle:theme-pref', currentTheme);
+        window.localStorage.setItem('trifle:resolved-theme', resolvedTheme);
+      }
+    } catch (_) {}
+
+    window.__TRIFLE_THEME_PRELOAD__ = { pref: currentTheme, resolved: resolvedTheme };
     if (previousTheme !== resolvedTheme) {
       try {
         window.dispatchEvent(new CustomEvent('trifle:theme-changed', { detail: { theme: resolvedTheme } }));

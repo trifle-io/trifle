@@ -1030,9 +1030,16 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
     dashboards = socket.assigns[:available_dashboards] || []
 
+    dashboard_assoc =
+      case monitor do
+        %{dashboard: %Ecto.Association.NotLoaded{}} -> nil
+        %{dashboard: dashboard} -> dashboard
+        _ -> nil
+      end
+
     dashboard_id =
       cond do
-        monitor.dashboard && monitor.dashboard.id -> to_string(monitor.dashboard.id)
+        match?(%{id: _}, dashboard_assoc) -> to_string(dashboard_assoc.id)
         value = Changeset.get_field(changeset, :dashboard_id) -> value && to_string(value)
         true -> nil
       end
