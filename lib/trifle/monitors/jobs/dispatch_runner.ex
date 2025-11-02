@@ -1,0 +1,143 @@
+defmodule Trifle.Monitors.Jobs.DispatchRunner do
+  @moduledoc """
+  Cron-driven worker that periodically scans all active monitors and enqueues
+  evaluation jobs when their schedule or alert granularity demands it.
+  """
+
+  use Oban.Worker,
+    queue: :monitors,
+    max_attempts: 1,
+    unique: [period: 60, fields: [:args, :queue]]
+
+  require Logger
+
+  import Ecto.Query
+
+  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.Schedule
+  alias Trifle.Monitors.Execution
+  alias Trifle.Monitors.Jobs.EvaluateMonitor
+  alias Trifle.Repo
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: args}) do
+    now =
+      args
+      |> Map.get("dispatched_at")
+      |> parse_scheduled_at()
+
+    reports_last = last_execution_map("report")
+    alerts_last = last_execution_map("alert")
+
+    stream_monitors(fn monitor ->
+      last_triggered =
+        case monitor.type do
+          :report -> Map.get(reports_last, monitor.id)
+          :alert -> Map.get(alerts_last, monitor.id)
+          _ -> nil
+        end
+
+      case Schedule.due?(monitor, now, last_triggered) do
+        true ->
+          Logger.debug(fn ->
+            "[DispatchRunner] enqueue #{monitor.type} monitor=#{monitor.id} at=#{DateTime.to_iso8601(now)}"
+          end)
+
+          enqueue_monitor(monitor, now, last_triggered)
+
+        false ->
+          Logger.debug(fn ->
+            "[DispatchRunner] skip monitor=#{monitor.id} (type=#{monitor.type}) last_triggered=#{inspect(last_triggered)}"
+          end)
+
+          :ok
+      end
+    end)
+
+    :ok
+  end
+
+  defp parse_scheduled_at(nil), do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+  defp parse_scheduled_at(iso) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, dt, _offset} -> DateTime.truncate(dt, :second)
+      _ -> parse_scheduled_at(nil)
+    end
+  end
+
+  defp parse_scheduled_at(_other), do: parse_scheduled_at(nil)
+
+  defp stream_monitors(callback) when is_function(callback, 1) do
+    monitors_query()
+    |> Repo.all()
+    |> Enum.each(callback)
+  end
+
+  defp monitors_query do
+    from(m in Monitor,
+      where: m.status == :active,
+      order_by: [asc: m.inserted_at]
+    )
+  end
+
+  defp last_execution_map(kind) when is_binary(kind) do
+    from(e in Execution,
+      where: fragment("?->>? = ?", e.details, "kind", ^kind),
+      group_by: e.monitor_id,
+      select: {e.monitor_id, max(e.triggered_at)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp enqueue_monitor(%Monitor{id: monitor_id, type: type} = monitor, now, last_triggered) do
+    scheduled_iso =
+      now
+      |> truncate_to_minute()
+      |> DateTime.to_iso8601()
+
+    args = %{
+      "monitor_id" => monitor_id,
+      "scheduled_for" => scheduled_iso
+    }
+
+    queue =
+      case type do
+        :report -> :reports
+        :alert -> :alerts
+        _ -> :monitors
+      end
+
+    changeset = EvaluateMonitor.new(args, queue: queue)
+
+    Logger.debug(fn ->
+      "[DispatchRunner] attempt enqueue monitor=#{monitor_id} queue=#{queue} scheduled_for=#{scheduled_iso} last_triggered=#{inspect(last_triggered)}"
+    end)
+
+    case Oban.insert(changeset) do
+      {:ok, job} ->
+        Logger.debug(fn ->
+          "[DispatchRunner] job=#{job.id} state=#{job.state} scheduled_at=#{inspect(job.scheduled_at)}"
+        end)
+
+        :ok
+
+      {:error, %Ecto.Changeset{} = cs} ->
+        Logger.warning(
+          "Failed to enqueue monitor #{monitor_id}: #{inspect(Ecto.Changeset.traverse_errors(cs, fn {msg, _} -> msg end))}"
+        )
+
+        {:error, cs}
+
+      {:error, reason} ->
+        Logger.warning("Failed to enqueue monitor #{monitor_id}: #{inspect(reason)}")
+
+        {:error, reason}
+    end
+  end
+
+  defp truncate_to_minute(%DateTime{} = dt), do: %{dt | second: 0, microsecond: {0, 0}}
+  defp truncate_to_minute(%NaiveDateTime{} = dt), do: %{dt | second: 0, microsecond: {0, 0}}
+  defp truncate_to_minute(other), do: other
+end

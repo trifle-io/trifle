@@ -53,6 +53,13 @@ defmodule Trifle.Monitors.Alert do
       values: @strategy_values,
       default: :threshold
 
+    field :status, Ecto.Enum,
+      values: [:passed, :alerted, :failed],
+      default: :passed
+
+    field :last_summary, :string
+    field :last_evaluated_at, :utc_datetime
+
     embeds_one :settings, Settings, on_replace: :update
 
     belongs_to :monitor, Monitor
@@ -67,7 +74,7 @@ defmodule Trifle.Monitors.Alert do
 
     alert
     |> ensure_settings_struct(strategy)
-    |> cast(attrs, [:analysis_strategy, :monitor_id])
+    |> cast(attrs, [:analysis_strategy, :monitor_id, :status])
     |> validate_required([:analysis_strategy, :monitor_id])
     |> cast_embed(:settings,
       with: &settings_changeset(&1, &2, strategy),

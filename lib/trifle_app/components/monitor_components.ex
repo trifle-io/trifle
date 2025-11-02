@@ -23,6 +23,7 @@ defmodule TrifleApp.MonitorComponents do
 
   attr :monitor, Monitor, required: true
   attr :executions, :list, default: []
+  attr :timezone, :string, default: "UTC"
 
   def trigger_history(assigns) do
     ~H"""
@@ -83,37 +84,37 @@ defmodule TrifleApp.MonitorComponents do
             Once triggers occur, you will see a chronological log with the reason and outcome.
           </p>
         </div>
-        <dl :if={Enum.any?(@executions)} class="mt-4 space-y-4">
-          <div
+        <ul :if={Enum.any?(@executions)} class="mt-3 space-y-2">
+          <li
             :for={execution <- @executions}
-            class="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700/70 dark:bg-slate-800/70"
+            class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-200"
           >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <%= case execution.status do %>
-                  <% "delivered" -> %>
-                    <.icon name="hero-check-circle" class="h-4 w-4 text-emerald-500" />
-                  <% "failed" -> %>
-                    <.icon name="hero-x-circle" class="h-4 w-4 text-rose-500" />
-                  <% _ -> %>
-                    <.icon name="hero-bolt" class="h-4 w-4 text-amber-500" />
-                <% end %>
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">
-                  {execution.summary || humanize_status(execution.status)}
-                </p>
-              </div>
-              <span class="text-xs font-medium text-slate-500 dark:text-slate-300">
-                {format_timestamp(execution.triggered_at)}
+            <div class="flex items-center gap-2">
+              <%= case execution.status do %>
+                <% "alerted" -> %>
+                  <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4 text-red-500" />
+                <% "failed" -> %>
+                  <.icon name="hero-x-circle" class="h-4 w-4 text-red-500" />
+                <% "passed" -> %>
+                  <.icon name="hero-check-circle" class="h-4 w-4 text-emerald-500" />
+                <% "skipped" -> %>
+                  <.icon name="hero-minus-circle" class="h-4 w-4 text-slate-400" />
+                <% "partial_failure" -> %>
+                  <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4 text-amber-500" />
+                <% "ok" -> %>
+                  <.icon name="hero-check-circle" class="h-4 w-4 text-emerald-500" />
+                <% "error" -> %>
+                  <.icon name="hero-x-circle" class="h-4 w-4 text-red-500" />
+                <% _ -> %>
+                  <.icon name="hero-bolt" class="h-4 w-4 text-amber-500" />
+              <% end %>
+              <span class="uppercase tracking-wide">
+                {String.upcase(execution.status || "unknown")}
               </span>
             </div>
-            <p
-              :if={map_size(execution.details || %{}) > 0}
-              class="mt-2 text-xs text-slate-600 dark:text-slate-300"
-            >
-              {format_details(execution.details)}
-            </p>
-          </div>
-        </dl>
+            <span>{format_full_timestamp(execution.triggered_at, @timezone)}</span>
+          </li>
+        </ul>
       </div>
     </div>
     """
@@ -276,6 +277,36 @@ defmodule TrifleApp.MonitorComponents do
     |> Calendar.strftime("%b %-d, %Y · %H:%M UTC")
   rescue
     ArgumentError -> "--"
+  end
+
+  defp format_full_timestamp(nil, _timezone), do: "--"
+
+  defp format_full_timestamp(%DateTime{} = datetime, timezone) do
+    trimmed_timezone =
+      case timezone do
+        value when is_binary(value) -> String.trim(value)
+        _ -> nil
+      end
+
+    target_timezone =
+      if trimmed_timezone && trimmed_timezone != "", do: trimmed_timezone, else: "UTC"
+
+    with {:ok, shifted} <- DateTime.shift_zone(datetime, target_timezone) do
+      format_shifted_timestamp(shifted, target_timezone)
+    else
+      _ ->
+        datetime
+        |> DateTime.shift_zone!("UTC")
+        |> format_shifted_timestamp("UTC")
+    end
+  end
+
+  defp format_shifted_timestamp(%DateTime{} = datetime, "UTC") do
+    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S UTC")
+  end
+
+  defp format_shifted_timestamp(%DateTime{} = datetime, _timezone) do
+    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S")
   end
 
   defp format_details(details) when is_map(details) do
