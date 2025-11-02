@@ -35,12 +35,11 @@ defmodule Trifle.Monitors.Monitor do
 
     embeds_one :report_settings, ReportSettings, on_replace: :update do
       field :frequency, Ecto.Enum,
-        values: [:daily, :weekly, :monthly, :custom],
+        values: [:hourly, :daily, :weekly, :monthly],
         default: :daily
 
       field :timeframe, :string
       field :granularity, :string
-      field :custom_cron, :string
     end
 
     embeds_many :delivery_channels, DeliveryChannel, on_replace: :delete do
@@ -107,11 +106,10 @@ defmodule Trifle.Monitors.Monitor do
 
   defp report_settings_changeset(settings, attrs) do
     settings
-    |> cast(attrs, [:frequency, :timeframe, :granularity, :custom_cron])
+    |> cast(attrs, [:frequency, :timeframe, :granularity])
     |> validate_required([:frequency])
     |> validate_length(:timeframe, max: 64)
     |> validate_length(:granularity, max: 32)
-    |> validate_custom_cron()
   end
 
   defp delivery_channel_changeset(channel, attrs) do
@@ -236,17 +234,6 @@ defmodule Trifle.Monitors.Monitor do
   defp normalize_key(key) when is_atom(key), do: Atom.to_string(key)
   defp normalize_key(key) when is_binary(key), do: key
   defp normalize_key(key), do: to_string(key)
-
-  defp validate_custom_cron(%Ecto.Changeset{} = changeset) do
-    frequency = get_field(changeset, :frequency)
-    cron = get_field(changeset, :custom_cron)
-
-    case {frequency, cron} do
-      {:custom, nil} -> add_error(changeset, :custom_cron, "is required for custom frequency")
-      {:custom, ""} -> add_error(changeset, :custom_cron, "is required for custom frequency")
-      _ -> changeset
-    end
-  end
 
   defp maybe_require_dashboard(%Ecto.Changeset{} = changeset) do
     case get_field(changeset, :type) do

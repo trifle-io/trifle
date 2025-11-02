@@ -24,6 +24,8 @@ defmodule TrifleApp.MonitorComponents do
   attr :monitor, Monitor, required: true
   attr :executions, :list, default: []
   attr :timezone, :string, default: "UTC"
+  attr :show_details_event, :string, default: nil
+  attr :phx_target, :any, default: nil
 
   def trigger_history(assigns) do
     ~H"""
@@ -87,27 +89,34 @@ defmodule TrifleApp.MonitorComponents do
         <ul :if={Enum.any?(@executions)} class="mt-3 space-y-2">
           <li
             :for={execution <- @executions}
-            class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-200"
+            class={[
+              "flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-200",
+              @show_details_event &&
+                "cursor-pointer transition hover:border-slate-300 hover:bg-white dark:hover:border-slate-600 dark:hover:bg-slate-800"
+            ]}
+            phx-click={@show_details_event}
+            phx-value-id={execution.id}
+            phx-target={@phx_target}
+            role={if @show_details_event, do: "button", else: nil}
+            tabindex={if @show_details_event, do: 0, else: nil}
           >
             <div class="flex items-center gap-2">
-              <%= case execution.status do %>
-                <% "alerted" -> %>
-                  <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4 text-red-500" />
-                <% "failed" -> %>
-                  <.icon name="hero-x-circle" class="h-4 w-4 text-red-500" />
-                <% "passed" -> %>
-                  <.icon name="hero-check-circle" class="h-4 w-4 text-emerald-500" />
-                <% "skipped" -> %>
-                  <.icon name="hero-minus-circle" class="h-4 w-4 text-slate-400" />
-                <% "partial_failure" -> %>
-                  <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4 text-amber-500" />
-                <% "ok" -> %>
-                  <.icon name="hero-check-circle" class="h-4 w-4 text-emerald-500" />
-                <% "error" -> %>
-                  <.icon name="hero-x-circle" class="h-4 w-4 text-red-500" />
-                <% _ -> %>
-                  <.icon name="hero-bolt" class="h-4 w-4 text-amber-500" />
-              <% end %>
+              <span class={trigger_icon_class(execution.status)}>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-4 w-4"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
+                  />
+                </svg>
+              </span>
               <span class="uppercase tracking-wide">
                 {String.upcase(execution.status || "unknown")}
               </span>
@@ -182,17 +191,6 @@ defmodule TrifleApp.MonitorComponents do
               {(@monitor.report_settings && @monitor.report_settings.granularity) || "Auto"}
             </dd>
           </div>
-        </div>
-        <div
-          :if={@monitor.report_settings && @monitor.report_settings.frequency == :custom}
-          class="space-y-4 sm:col-span-2"
-        >
-          <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            CRON expression
-          </dt>
-          <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
-            {@monitor.report_settings.custom_cron}
-          </dd>
         </div>
       </dl>
     </div>
@@ -317,10 +315,7 @@ defmodule TrifleApp.MonitorComponents do
 
   defp format_details(_), do: "No additional context captured."
 
-  defp format_frequency(%Monitor.ReportSettings{frequency: :custom, custom_cron: cron})
-       when is_binary(cron) and cron != "" do
-    "Custom schedule (#{cron})"
-  end
+  defp format_frequency(%Monitor.ReportSettings{frequency: :hourly}), do: "Hourly"
 
   defp format_frequency(%Monitor.ReportSettings{frequency: frequency})
        when not is_nil(frequency) do
@@ -340,6 +335,22 @@ defmodule TrifleApp.MonitorComponents do
   defp present_or_dash(value) when is_atom(value), do: present_or_dash(Atom.to_string(value))
   defp present_or_dash(nil), do: "—"
   defp present_or_dash(value), do: to_string(value)
+
+  defp trigger_icon_class(status) do
+    case normalized_status(status) do
+      "passed" -> "text-emerald-500"
+      "ok" -> "text-emerald-500"
+      "alerted" -> "text-red-500"
+      "failed" -> "text-slate-400"
+      "error" -> "text-slate-400"
+      "partial_failure" -> "text-slate-400"
+      _ -> "text-slate-400"
+    end
+  end
+
+  defp normalized_status(status) when is_atom(status), do: Atom.to_string(status)
+  defp normalized_status(status) when is_binary(status), do: String.downcase(status)
+  defp normalized_status(_), do: ""
 
   defp delivery_target_badges(channels) do
     channels

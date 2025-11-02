@@ -6,7 +6,7 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Monitors
   alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Monitors.AlertAdvisor
-  alias Trifle.Monitors.{Alert, Monitor}
+  alias Trifle.Monitors.{Alert, Execution, Monitor}
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
   alias Trifle.Stats.Configuration
@@ -87,6 +87,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:show_export_dropdown, false)
      |> assign(:show_error_modal, false)
      |> assign(:test_delivery_state, nil)
+     |> assign(:selected_execution, nil)
      |> assign(:ai_requests, %{})}
   end
 
@@ -133,6 +134,22 @@ defmodule TrifleApp.MonitorLive do
 
   def handle_event("hide_transponder_errors", _params, socket) do
     {:noreply, assign(socket, :show_error_modal, false)}
+  end
+
+  def handle_event("show_execution_details", %{"id" => id}, socket) do
+    execution = find_execution(socket.assigns.executions, id)
+
+    case execution do
+      %Execution{} = exec ->
+        {:noreply, assign(socket, :selected_execution, exec)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("hide_execution_details", _params, socket) do
+    {:noreply, assign(socket, :selected_execution, nil)}
   end
 
   def handle_event(
@@ -953,6 +970,11 @@ defmodule TrifleApp.MonitorLive do
       end
 
     cond do
+      frequency == :hourly ->
+        from = floor_time(now, 1, :hour, config)
+        to = inclusive_period_end(from, 1, :hour, config)
+        {:ok, from, to}
+
       frequency == :daily ->
         from = floor_time(now, 1, :day, config)
         to = inclusive_period_end(from, 1, :day, config)
@@ -1081,6 +1103,9 @@ defmodule TrifleApp.MonitorLive do
     cond do
       is_binary(timeframe) and String.trim(timeframe) != "" ->
         timeframe
+
+      frequency == :hourly ->
+        "1h"
 
       frequency == :daily ->
         "1d"
@@ -1721,6 +1746,17 @@ defmodule TrifleApp.MonitorLive do
     end)
   end
 
+  defp find_execution(executions, id) do
+    id = to_string(id)
+
+    executions
+    |> List.wrap()
+    |> Enum.find(fn
+      %Execution{id: exec_id} -> to_string(exec_id) == id
+      _ -> false
+    end)
+  end
+
   defp monitor_footer_resource(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
   defp monitor_footer_resource(%Monitor{id: id}), do: %{id: id}
   defp monitor_footer_resource(_), do: %{id: nil}
@@ -1951,6 +1987,103 @@ defmodule TrifleApp.MonitorLive do
       menu_id <>
       "');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
   end
+
+  defp execution_status_class(%Execution{} = execution) do
+    status =
+      execution.status
+      |> case do
+        nil -> ""
+        value when is_atom(value) -> Atom.to_string(value)
+        value when is_binary(value) -> value
+        other -> to_string(other)
+      end
+      |> String.downcase()
+
+    cond do
+      status in ["failed", "error", "partial_failure"] ->
+        "text-red-600 dark:text-red-300"
+
+      status in ["alerted"] ->
+        "text-red-600 dark:text-red-300"
+
+      status in ["skipped"] ->
+        "text-amber-600 dark:text-amber-300"
+
+      status in ["passed", "ok", "success"] ->
+        "text-emerald-600 dark:text-emerald-300"
+
+      true ->
+        "text-slate-700 dark:text-slate-200"
+    end
+  end
+
+  defp execution_status_class(_), do: "text-slate-700 dark:text-slate-200"
+
+  defp format_execution_timestamp(%Execution{triggered_at: %DateTime{} = dt}, timezone) do
+    target_timezone =
+      case timezone do
+        value when is_binary(value) ->
+          trimmed = String.trim(value)
+          if trimmed == "", do: "UTC", else: trimmed
+
+        _ ->
+          "UTC"
+      end
+
+    with {:ok, shifted} <- DateTime.shift_zone(dt, target_timezone) do
+      Calendar.strftime(shifted, "%Y-%m-%d %H:%M:%S %Z")
+    else
+      _ ->
+        dt
+        |> DateTime.shift_zone!("UTC")
+        |> Calendar.strftime("%Y-%m-%d %H:%M:%S %Z")
+    end
+  end
+
+  defp format_execution_timestamp(_, _), do: "--"
+
+  defp format_execution_summary(%Execution{} = execution) do
+    summary =
+      execution.summary
+      |> case do
+        value when is_binary(value) -> String.trim(value)
+        _ -> ""
+      end
+
+    cond do
+      summary != "" ->
+        summary
+
+      is_map(execution.details) ->
+        execution.details
+        |> Map.get("summary")
+        |> case do
+          value when is_binary(value) ->
+            trimmed = String.trim(value)
+            if trimmed == "", do: "No additional summary captured.", else: trimmed
+
+          _ ->
+            "No additional summary captured."
+        end
+
+      true ->
+        "No additional summary captured."
+    end
+  end
+
+  defp format_execution_summary(_), do: "No additional summary captured."
+
+  defp pretty_execution_details(details) when is_map(details) or is_list(details) do
+    details
+    |> Jason.encode_to_iodata!(pretty: true)
+    |> IO.iodata_to_binary()
+  rescue
+    _ ->
+      inspect(details, pretty: true, limit: :infinity)
+  end
+
+  defp pretty_execution_details(details),
+    do: inspect(details || %{}, pretty: true, limit: :infinity)
 
   defp monitor_timezone(config) do
     timezone =
@@ -2460,6 +2593,7 @@ defmodule TrifleApp.MonitorLive do
             monitor={@monitor}
             executions={@executions}
             timezone={monitor_timezone(@stats_config)}
+            show_details_event="show_execution_details"
           />
         </div>
       </div>
@@ -2644,6 +2778,70 @@ defmodule TrifleApp.MonitorLive do
           </:body>
         </.app_modal>
       <% end %>
+
+      <.app_modal
+        :if={@selected_execution}
+        id="monitor-execution-details-modal"
+        show={!!@selected_execution}
+        size="lg"
+        on_cancel={JS.push("hide_execution_details")}
+      >
+        <:title>Trigger details</:title>
+        <:body>
+          <div class="space-y-4">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-200">
+              <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Status
+                  </dt>
+                  <dd class={[
+                    "mt-1 font-semibold",
+                    execution_status_class(@selected_execution)
+                  ]}>
+                    {String.upcase(@selected_execution.status || "unknown")}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Triggered at
+                  </dt>
+                  <dd class="mt-1">
+                    {format_execution_timestamp(@selected_execution, monitor_timezone(@stats_config))}
+                  </dd>
+                </div>
+                <div class="sm:col-span-2">
+                  <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Summary
+                  </dt>
+                  <dd class="mt-1">
+                    {format_execution_summary(@selected_execution)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <div>
+              <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Payload
+              </h4>
+              <div class="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <pre class="max-h-[320px] overflow-auto whitespace-pre-wrap">
+    {pretty_execution_details(@selected_execution.details)}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </:body>
+        <:footer>
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            phx-click="hide_execution_details"
+          >
+            Close
+          </button>
+        </:footer>
+      </.app_modal>
 
       <%= if @show_error_modal && summary && length(summary.transponder_errors) > 0 do %>
         <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">

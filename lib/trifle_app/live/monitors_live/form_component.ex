@@ -272,10 +272,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                             type="select"
                             label="Delivery cadence"
                             options={[
+                              {"Hourly", "hourly"},
                               {"Daily", "daily"},
                               {"Weekly", "weekly"},
-                              {"Monthly", "monthly"},
-                              {"Custom (CRON)", "custom"}
+                              {"Monthly", "monthly"}
                             ]}
                           />
                         </div>
@@ -291,14 +291,6 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                             field={report_form[:granularity]}
                             label="Granularity"
                             placeholder="e.g. 1h, 1d"
-                          />
-                        </div>
-                        <% frequency_value = report_form[:frequency].value %>
-                        <div :if={frequency_value in [:custom, "custom"]}>
-                          <.input
-                            field={report_form[:custom_cron]}
-                            label="CRON expression"
-                            placeholder="0 7 * * MON"
                           />
                         </div>
                       </div>

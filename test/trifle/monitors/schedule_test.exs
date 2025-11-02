@@ -32,6 +32,20 @@ defmodule Trifle.Monitors.ScheduleTest do
   end
 
   describe "due?/3 for reports" do
+    test "triggers each hour for hourly frequency" do
+      monitor = %Monitor{
+        id: "monitor-hourly",
+        status: :active,
+        type: :report,
+        report_settings: %{frequency: :hourly}
+      }
+
+      hour = utc_dt({2024, 4, 10, 12, 0})
+      assert Schedule.due?(monitor, hour, nil)
+      refute Schedule.due?(monitor, utc_dt({2024, 4, 10, 12, 30}), hour)
+      assert Schedule.due?(monitor, utc_dt({2024, 4, 10, 13, 0}), hour)
+    end
+
     test "triggers once per day for daily frequency" do
       monitor = %Monitor{
         id: "monitor-1",

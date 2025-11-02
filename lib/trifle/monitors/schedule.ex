@@ -73,6 +73,9 @@ defmodule Trifle.Monitors.Schedule do
     end
   end
 
+  defp report_boundary_reached?(:hourly, now),
+    do: now.minute == 0
+
   defp report_boundary_reached?(:daily, now),
     do: now.hour == 0 and now.minute == 0
 
@@ -87,6 +90,7 @@ defmodule Trifle.Monitors.Schedule do
   defp report_boundary_reached?(_other, now),
     do: now.hour == 0 and now.minute == 0
 
+  defp report_period_start(:hourly, now), do: Timex.beginning_of_hour(now)
   defp report_period_start(:daily, now), do: Timex.beginning_of_day(now)
   defp report_period_start(:weekly, now), do: Timex.beginning_of_week(now)
   defp report_period_start(:monthly, now), do: Timex.beginning_of_month(now)
