@@ -319,7 +319,7 @@ defmodule Trifle.Monitors.Monitor do
       :idle -> "bg-emerald-600"
       :warning -> "bg-amber-500"
       :recovering -> "bg-amber-500"
-      :alerting -> "bg-rose-600"
+      :alerting -> "bg-red-600"
       _ -> "bg-emerald-600"
     end
   end

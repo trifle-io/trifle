@@ -67,8 +67,9 @@ defmodule Trifle.MixProject do
       {:honeybadger, "~> 0.22"},
       {:appsignal_phoenix, "~> 2.0"},
       {:mint_web_socket, "~> 1.0"},
+      {:oban, "~> 2.17"},
       {:dotenvy, "~> 0.8", only: [:dev, :test], runtime: false}
-    ]
+    ] ++ oban_web_dep()
   end
 
   # Aliases are shortcuts or tasks specific to the current project.
@@ -111,5 +112,13 @@ defmodule Trifle.MixProject do
     |> Path.expand(__DIR__)
     |> File.read!()
     |> String.trim()
+  end
+
+  defp oban_web_dep do
+    case System.get_env("OBAN_WEB_LICENSE_KEY") do
+      nil -> []
+      "" -> []
+      _ -> [{:oban_web, "~> 2.17", repo: :oban}]
+    end
   end
 end

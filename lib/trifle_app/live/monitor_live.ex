@@ -425,6 +425,7 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:transponder_results, transponder_results)
       |> assign(:load_duration_microseconds, load_duration)
       |> assign_monitor_widget_datasets(stats)
+      |> assign_monitor_alerts()
       |> maybe_refresh_expanded_widget()
 
     export_params = build_monitor_export_params(socket.assigns)
@@ -451,6 +452,7 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:transponder_results, default_transponder_results())
       |> assign(:load_duration_microseconds, load_duration)
       |> reset_monitor_widget_datasets()
+      |> assign_monitor_alerts()
       |> put_flash(:error, "Failed to load monitor data: #{inspect(error)}")
 
     export_params = build_monitor_export_params(socket.assigns)
@@ -663,14 +665,17 @@ defmodule TrifleApp.MonitorLive do
 
         socket = register_ai_request(socket, id, request_id)
 
+        monitor = socket.assigns.monitor
+        stats = socket.assigns.stats
+
         socket =
           start_async(
             socket,
             {:ai_recommendation, id, request_id},
             fn ->
               AlertAdvisor.recommend(
-                socket.assigns.monitor,
-                socket.assigns.stats,
+                monitor,
+                stats,
                 strategy: strategy,
                 variant: variant
               )
@@ -1680,6 +1685,16 @@ defmodule TrifleApp.MonitorLive do
     end
   end
 
+  defp assign_monitor_alerts(%{assigns: %{monitor: %Monitor{} = monitor}} = socket) do
+    alerts = Monitors.list_alerts(monitor)
+
+    socket
+    |> assign(:monitor, %{monitor | alerts: alerts})
+    |> assign(:alerts, alerts)
+  end
+
+  defp assign_monitor_alerts(socket), do: socket
+
   defp refresh_monitor_assigns(socket) do
     monitor = load_monitor(socket, socket.assigns.monitor.id)
 
@@ -1937,20 +1952,66 @@ defmodule TrifleApp.MonitorLive do
       "');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
   end
 
-  defp alert_evaluation_summary(nil), do: "Awaiting recent data."
+  defp monitor_timezone(config) do
+    timezone =
+      cond do
+        is_map(config) or is_struct(config) ->
+          Map.get(config, :time_zone) || Map.get(config, "time_zone")
 
-  defp alert_evaluation_summary(%AlertEvaluator.Result{summary: summary, triggered?: _triggered?})
+        true ->
+          nil
+      end
+
+    case timezone do
+      value when is_binary(value) ->
+        trimmed = String.trim(value)
+        if trimmed == "", do: "UTC", else: trimmed
+
+      _ ->
+        "UTC"
+    end
+  end
+
+  defp alert_summary(%Alert{} = alert, evaluation) do
+    stored_summary =
+      case alert.last_summary do
+        summary when is_binary(summary) -> String.trim(summary)
+        _ -> nil
+      end
+
+    if present?(stored_summary) do
+      stored_summary
+    else
+      evaluation_summary(evaluation)
+    end
+  end
+
+  defp alert_summary(_alert, evaluation), do: evaluation_summary(evaluation)
+
+  defp evaluation_summary(nil), do: "Awaiting recent data."
+
+  defp evaluation_summary(%AlertEvaluator.Result{summary: summary})
        when is_binary(summary) and summary != "" do
     summary
   end
 
-  defp alert_evaluation_summary(%AlertEvaluator.Result{triggered?: true}) do
+  defp evaluation_summary(%AlertEvaluator.Result{triggered?: true}) do
     "Triggered in the latest evaluation window."
   end
 
-  defp alert_evaluation_summary(%AlertEvaluator.Result{triggered?: false}) do
+  defp evaluation_summary(%AlertEvaluator.Result{triggered?: false}) do
     "No recent breaches detected."
   end
+
+  defp evaluation_summary(%{error: reason}) do
+    "Alert evaluation failed: #{format_alert_error(reason)}"
+  end
+
+  defp evaluation_summary(_), do: "Awaiting recent data."
+
+  defp format_alert_error(%{message: message}) when is_binary(message), do: message
+  defp format_alert_error(reason) when is_binary(reason), do: reason
+  defp format_alert_error(reason), do: inspect(reason)
 
   defp changeset_error_message(%Changeset{} = changeset) do
     changeset.errors
@@ -2294,13 +2355,32 @@ defmodule TrifleApp.MonitorLive do
                   <ul class="mt-2 space-y-2">
                     <%= for alert <- @alerts do %>
                       <% evaluation = Map.get(@alert_evaluations || %{}, alert.id) %>
-                      <% triggered? = match?(%AlertEvaluator.Result{triggered?: true}, evaluation) %>
+                      <% status = alert.status || :passed %>
+                      <% status_atom =
+                        cond do
+                          is_atom(status) ->
+                            status
+
+                          is_binary(status) ->
+                            try do
+                              String.to_existing_atom(status)
+                            rescue
+                              _ -> :passed
+                            end
+
+                          true ->
+                            :passed
+                        end %>
+                      <% triggered? = status_atom == :alerted %>
+                      <% failed? = status_atom == :failed %>
                       <% alert_key = normalize_id(alert.id) %>
                       <% running_alert? = match?({:alert, ^alert_key, :running}, @test_delivery_state) %>
                       <li class={[
                         "flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800",
                         triggered? &&
-                          "border-rose-400/70 bg-rose-50 dark:border-rose-500/60 dark:bg-rose-500/10"
+                          "border-red-500 bg-red-50 dark:border-red-500 dark:bg-red-500/10",
+                        !triggered? && failed? &&
+                          "border-amber-400 bg-amber-50 dark:border-amber-500 dark:bg-amber-500/10"
                       ]}>
                         <div class="min-w-0">
                           <p class="text-sm font-semibold text-slate-900 dark:text-white">
@@ -2308,9 +2388,10 @@ defmodule TrifleApp.MonitorLive do
                           </p>
                           <p class={[
                             "mt-1 text-xs text-slate-500 dark:text-slate-400",
-                            triggered? && "text-rose-700 dark:text-rose-300"
+                            triggered? && "text-red-700 dark:text-red-300",
+                            !triggered? && failed? && "text-amber-700 dark:text-amber-300"
                           ]}>
-                            {alert_evaluation_summary(evaluation)}
+                            {alert_summary(alert, evaluation)}
                           </p>
                         </div>
                         <div class="flex flex-col items-end gap-1">
@@ -2375,7 +2456,11 @@ defmodule TrifleApp.MonitorLive do
               </div>
             </div>
           <% end %>
-          <MonitorComponents.trigger_history monitor={@monitor} executions={@executions} />
+          <MonitorComponents.trigger_history
+            monitor={@monitor}
+            executions={@executions}
+            timezone={monitor_timezone(@stats_config)}
+          />
         </div>
       </div>
 

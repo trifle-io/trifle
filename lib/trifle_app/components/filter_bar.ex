@@ -600,6 +600,7 @@ defmodule TrifleApp.Components.FilterBar do
     # Clamp to current time in configured timezone to avoid going into the future
     config = socket.assigns.config
     now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
+
     span_seconds =
       TimeframeParsing.timeframe_span_seconds(
         socket.assigns.from,

@@ -81,6 +81,21 @@ config :trifle, :slack,
   redirect_uri: nil,
   scopes: ~w(chat:write chat:write.public channels:read groups:read incoming-webhook)
 
+config :trifle, :oban_web_enabled, false
+
+config :trifle, Oban,
+  repo: Trifle.Repo,
+  queues: [
+    default: 10,
+    monitors: 5,
+    reports: 5,
+    alerts: 5
+  ],
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
+    {Oban.Plugins.Cron, crontab: [{"* * * * *", Trifle.Monitors.Jobs.DispatchRunner}]}
+  ]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

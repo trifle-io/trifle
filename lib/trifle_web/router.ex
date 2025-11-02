@@ -26,6 +26,8 @@ defmodule TrifleWeb.Router do
       live "/databases/:id/edit", DatabasesLive, :edit
       live "/databases/:id/show", DatabasesLive, :show
     end
+
+    forward "/oban", TrifleWeb.ObanDashboardRouter
   end
 
   forward "/", TrifleApp.Router

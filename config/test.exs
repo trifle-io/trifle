@@ -36,3 +36,10 @@ config :logger, level: :warning
 config :phoenix, :plug_init_mode, :runtime
 
 config :trifle, Trifle.Chat.OpenAIClient, api_key: nil, model: "gpt-5"
+
+config :trifle, Oban,
+  testing: :inline,
+  queues: false,
+  plugins: false
+
+config :trifle, :oban_web_enabled, false

@@ -23,6 +23,7 @@ defmodule Trifle.Application do
         {Phoenix.PubSub, name: Trifle.PubSub},
         # Start Finch
         {Finch, name: Trifle.Finch},
+        {Oban, Application.fetch_env!(:trifle, Oban)},
         # Start the Endpoint (http/https)
         TrifleWeb.Endpoint
         # Start a worker by calling: Trifle.Worker.start_link(arg)

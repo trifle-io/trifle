@@ -67,6 +67,23 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+oban_web_license =
+  case System.get_env("OBAN_WEB_LICENSE_KEY") do
+    nil -> nil
+    "" -> nil
+    value -> String.trim(value)
+  end
+
+if oban_web_license do
+  config :trifle, :oban_web_enabled, true
+
+  config :oban_web, Oban.Web,
+    license: oban_web_license,
+    poll_interval: :timer.seconds(10)
+else
+  config :trifle, :oban_web_enabled, false
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

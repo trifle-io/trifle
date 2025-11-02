@@ -57,6 +57,13 @@ mix phx.server
 
 Visit [`http://localhost:4000`](http://localhost:4000) to access the application.
 
+## Background Jobs & Monitors
+
+- Run `mix ecto.migrate` after pulling this branch to create the Oban jobs table.
+- Monitor schedules are orchestrated by `Trifle.Monitors.Jobs.DispatchRunner`, which runs every minute and enqueues monitor-specific jobs on the `reports` and `alerts` queues.
+- Oban Web UI is optional: authenticate `mix hex.repo add oban https://getoban.pro/api/hex` (once) and set `OBAN_WEB_LICENSE_KEY` **before** running `mix deps.get`. When the key is present the dashboard becomes available at `/admin/oban`; otherwise the route returns 404.
+- In production ensure the `OBAN_WEB_LICENSE_KEY` environment variable is present before starting the release when Oban Web is enabled.
+
 ## ChatLive Assistant
 
 ChatLive is a conversational analytics assistant that lets you query your Trifle metrics using OpenAI's GPT models. You can find it in the main navigation or directly at [`/chat`](http://localhost:4000/chat).

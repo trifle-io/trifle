@@ -668,6 +668,23 @@ Hooks.DashboardGrid = {
       }
     };
     window.addEventListener('phx:page-loading-start', this._onPageLoadingStart);
+    this._onPageLoadingStop = () => {
+      this._suppressSave = false;
+      if (this.el) {
+        this.el.classList.remove('opacity-0', 'pointer-events-none');
+        this.el.classList.add('opacity-100');
+      }
+      // ensure widgets remain in sync after LiveView patches
+      requestAnimationFrame(() => {
+        try {
+          this.syncServerRenderedItems();
+          if (typeof this._applyResponsiveGrid === 'function') {
+            this._applyResponsiveGrid();
+          }
+        } catch (_) {}
+      });
+    };
+    window.addEventListener('phx:page-loading-stop', this._onPageLoadingStop);
     this._sparkTimers = {};
     const editableAttr = this.el.dataset.editable;
     this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
@@ -922,6 +939,10 @@ Hooks.DashboardGrid = {
     if (this._onPageLoadingStart) {
       window.removeEventListener('phx:page-loading-start', this._onPageLoadingStart);
       this._onPageLoadingStart = null;
+    }
+    if (this._onPageLoadingStop) {
+      window.removeEventListener('phx:page-loading-stop', this._onPageLoadingStop);
+      this._onPageLoadingStop = null;
     }
     if (this._sparklines) {
       Object.values(this._sparklines).forEach((c) => {
