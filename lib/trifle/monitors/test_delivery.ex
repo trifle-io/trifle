@@ -10,6 +10,7 @@ defmodule Trifle.Monitors.TestDelivery do
   alias Trifle.Exports.Series, as: SeriesExport
   alias TrifleApp.Exports.MonitorLayout
   alias TrifleApp.Exporters.ChromeExporter
+  alias TrifleApp.Exporters.ExportLog
   alias TrifleApp.Exports.Layout
   alias Trifle.Mailer
   alias Swoosh.Attachment
@@ -26,23 +27,53 @@ defmodule Trifle.Monitors.TestDelivery do
     media = resolve_media_types(monitor, opts)
     export_params = normalize_export_params(opts[:export_params])
 
+    base_context =
+      monitor_log_context(monitor)
+      |> Map.merge(timeframe_context(export_params))
+
+    base_exporter_opts =
+      opts
+      |> Keyword.get(:exporter_opts, [])
+      |> put_export_log_context(base_context)
+
+    log_context = Keyword.get(base_exporter_opts, :log_context, %{})
+    log_label = ExportLog.label(log_context)
+    opts = Keyword.put(opts, :exporter_opts, base_exporter_opts)
+
     cond do
       Enum.empty?(channels) ->
         {:error, "No delivery targets configured for this monitor."}
 
       true ->
-        with {:ok, exports} <-
-               build_exports({:monitor, monitor}, media, export_params, opts),
-             results <-
-               deliver_to_channels(
-                 monitor,
-                 nil,
-                 channels,
-                 exports,
-                 export_params,
-                 opts
-               ) do
-          finalize_results(results, media)
+        Logger.info(
+          "[monitor_export #{log_label}] deliver_monitor start channels=#{length(channels)} media=#{inspect(media)} params=#{describe_export_params(export_params)}"
+        )
+
+        case build_exports({:monitor, monitor}, media, export_params, opts) do
+          {:ok, exports} ->
+            Logger.info(
+              "[monitor_export #{log_label}] exports_built count=#{length(exports)} media=#{inspect(Enum.map(exports, & &1.medium))}"
+            )
+
+            results =
+              deliver_to_channels(
+                monitor,
+                nil,
+                channels,
+                exports,
+                export_params,
+                opts
+              )
+
+            log_delivery_summary(log_label, results)
+            finalize_results(results, media)
+
+          {:error, reason} ->
+            Logger.error(
+              "[monitor_export #{log_label}] build_exports_failed reason=#{inspect(reason)}"
+            )
+
+            {:error, reason}
         end
     end
   end
@@ -54,6 +85,19 @@ defmodule Trifle.Monitors.TestDelivery do
     media = resolve_media_types(monitor, opts)
     export_params = normalize_export_params(opts[:export_params])
 
+    base_context =
+      alert_log_context(monitor, alert)
+      |> Map.merge(timeframe_context(export_params))
+
+    base_exporter_opts =
+      opts
+      |> Keyword.get(:exporter_opts, [])
+      |> put_export_log_context(base_context)
+
+    log_context = Keyword.get(base_exporter_opts, :log_context, %{})
+    log_label = ExportLog.label(log_context)
+    opts = Keyword.put(opts, :exporter_opts, base_exporter_opts)
+
     cond do
       Enum.empty?(channels) ->
         {:error, "No delivery targets configured for this monitor."}
@@ -62,18 +106,35 @@ defmodule Trifle.Monitors.TestDelivery do
         {:error, "Unable to resolve alert widget for export."}
 
       true ->
-        with {:ok, exports} <-
-               build_exports({:alert, monitor, alert}, media, export_params, opts),
-             results <-
-               deliver_to_channels(
-                 monitor,
-                 alert,
-                 channels,
-                 exports,
-                 export_params,
-                 opts
-               ) do
-          finalize_results(results, media)
+        Logger.info(
+          "[monitor_export #{log_label}] deliver_alert start channels=#{length(channels)} media=#{inspect(media)} params=#{describe_export_params(export_params)}"
+        )
+
+        case build_exports({:alert, monitor, alert}, media, export_params, opts) do
+          {:ok, exports} ->
+            Logger.info(
+              "[monitor_export #{log_label}] alert_exports_built count=#{length(exports)} media=#{inspect(Enum.map(exports, & &1.medium))}"
+            )
+
+            results =
+              deliver_to_channels(
+                monitor,
+                alert,
+                channels,
+                exports,
+                export_params,
+                opts
+              )
+
+            log_delivery_summary(log_label, results)
+            finalize_results(results, media)
+
+          {:error, reason} ->
+            Logger.error(
+              "[monitor_export #{log_label}] alert_exports_failed reason=#{inspect(reason)}"
+            )
+
+            {:error, reason}
         end
     end
   end
@@ -116,9 +177,26 @@ defmodule Trifle.Monitors.TestDelivery do
     exporter_opts = Keyword.get(opts, :exporter_opts, [])
 
     Enum.reduce_while(media, {:ok, []}, fn medium, {:ok, acc} ->
-      case build_monitor_export(monitor, medium, params, layout_builder, exporter, exporter_opts) do
-        {:ok, export} -> {:cont, {:ok, [export | acc]}}
-        {:error, reason} -> {:halt, {:error, reason}}
+      medium_opts = put_export_log_context(exporter_opts, %{medium: medium})
+      log_context = Keyword.get(medium_opts, :log_context, %{})
+      log_label = ExportLog.label(log_context)
+
+      Logger.info("[monitor_export #{log_label}] build_monitor_export start medium=#{medium}")
+
+      case build_monitor_export(monitor, medium, params, layout_builder, exporter, medium_opts) do
+        {:ok, export} ->
+          Logger.info(
+            "[monitor_export #{log_label}] build_monitor_export success medium=#{medium}"
+          )
+
+          {:cont, {:ok, [export | acc]}}
+
+        {:error, reason} ->
+          Logger.error(
+            "[monitor_export #{log_label}] build_monitor_export failed medium=#{medium} reason=#{inspect(reason)}"
+          )
+
+          {:halt, {:error, reason}}
       end
     end)
     |> case do
@@ -133,6 +211,12 @@ defmodule Trifle.Monitors.TestDelivery do
     exporter_opts = Keyword.get(opts, :exporter_opts, [])
 
     Enum.reduce_while(media, {:ok, []}, fn medium, {:ok, acc} ->
+      medium_opts = put_export_log_context(exporter_opts, %{medium: medium})
+      log_context = Keyword.get(medium_opts, :log_context, %{})
+      log_label = ExportLog.label(log_context)
+
+      Logger.info("[monitor_export #{log_label}] build_alert_export start medium=#{medium}")
+
       case build_alert_export(
              monitor,
              alert,
@@ -140,10 +224,19 @@ defmodule Trifle.Monitors.TestDelivery do
              params,
              layout_builder,
              exporter,
-             exporter_opts
+             medium_opts
            ) do
-        {:ok, export} -> {:cont, {:ok, [export | acc]}}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:ok, export} ->
+          Logger.info("[monitor_export #{log_label}] build_alert_export success medium=#{medium}")
+
+          {:cont, {:ok, [export | acc]}}
+
+        {:error, reason} ->
+          Logger.error(
+            "[monitor_export #{log_label}] build_alert_export failed medium=#{medium} reason=#{inspect(reason)}"
+          )
+
+          {:halt, {:error, reason}}
       end
     end)
     |> case do
@@ -176,6 +269,9 @@ defmodule Trifle.Monitors.TestDelivery do
   end
 
   defp build_monitor_export(monitor, medium, params, builder, exporter, exporter_opts) do
+    log_context = Keyword.get(exporter_opts, :log_context, %{})
+    log_label = ExportLog.label(log_context)
+
     theme =
       case medium do
         :png_dark -> :dark
@@ -198,18 +294,44 @@ defmodule Trifle.Monitors.TestDelivery do
           ]
       end
 
-    with {:ok, %Layout{} = layout} <- builder.build(monitor, layout_opts),
-         {:ok, binary, content_type} <-
-           export_binary(medium, layout, exporter, exporter_opts) do
-      filename = build_filename(:monitor, monitor, medium)
+    Logger.info(
+      "[monitor_export #{log_label}] layout_build start medium=#{medium} theme=#{theme}"
+    )
 
-      {:ok,
-       %{
-         medium: medium,
-         filename: filename,
-         content_type: content_type,
-         binary: binary
-       }}
+    case builder.build(monitor, layout_opts) do
+      {:ok, %Layout{} = layout} ->
+        Logger.info("[monitor_export #{log_label}] layout_build success layout_id=#{layout.id}")
+
+        case export_binary(medium, layout, exporter, exporter_opts) do
+          {:ok, binary, content_type} ->
+            Logger.info(
+              "[monitor_export #{log_label}] export_binary success medium=#{medium} bytes=#{byte_size(binary)}"
+            )
+
+            filename = build_filename(:monitor, monitor, medium)
+
+            {:ok,
+             %{
+               medium: medium,
+               filename: filename,
+               content_type: content_type,
+               binary: binary
+             }}
+
+          {:error, reason} ->
+            Logger.error(
+              "[monitor_export #{log_label}] export_binary failed medium=#{medium} reason=#{inspect(reason)}"
+            )
+
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        Logger.error(
+          "[monitor_export #{log_label}] layout_build failed medium=#{medium} reason=#{inspect(reason)}"
+        )
+
+        {:error, reason}
     end
   end
 
@@ -237,9 +359,13 @@ defmodule Trifle.Monitors.TestDelivery do
   end
 
   defp build_alert_export(monitor, alert, medium, params, builder, exporter, exporter_opts) do
+    log_context = Keyword.get(exporter_opts, :log_context, %{})
+    log_label = ExportLog.label(log_context)
     widget_id = MonitorLayout.alert_widget_id(monitor, alert)
 
     if is_nil(widget_id) do
+      Logger.error("[monitor_export #{log_label}] alert_widget_missing medium=#{medium}")
+
       {:error, "Unable to resolve alert widget for export."}
     else
       theme =
@@ -264,18 +390,46 @@ defmodule Trifle.Monitors.TestDelivery do
             ]
         end
 
-      with {:ok, %Layout{} = layout} <- builder.build_widget(monitor, widget_id, layout_opts),
-           {:ok, binary, content_type} <-
-             export_binary(medium, layout, exporter, exporter_opts) do
-        filename = build_filename({:alert, monitor, alert}, medium)
+      Logger.info(
+        "[monitor_export #{log_label}] alert_layout_build start medium=#{medium} widget=#{widget_id} theme=#{theme}"
+      )
 
-        {:ok,
-         %{
-           medium: medium,
-           filename: filename,
-           content_type: content_type,
-           binary: binary
-         }}
+      case builder.build_widget(monitor, widget_id, layout_opts) do
+        {:ok, %Layout{} = layout} ->
+          Logger.info(
+            "[monitor_export #{log_label}] alert_layout_build success layout_id=#{layout.id}"
+          )
+
+          case export_binary(medium, layout, exporter, exporter_opts) do
+            {:ok, binary, content_type} ->
+              Logger.info(
+                "[monitor_export #{log_label}] alert_export_binary success medium=#{medium} bytes=#{byte_size(binary)}"
+              )
+
+              filename = build_filename({:alert, monitor, alert}, medium)
+
+              {:ok,
+               %{
+                 medium: medium,
+                 filename: filename,
+                 content_type: content_type,
+                 binary: binary
+               }}
+
+            {:error, reason} ->
+              Logger.error(
+                "[monitor_export #{log_label}] alert_export_binary failed medium=#{medium} reason=#{inspect(reason)}"
+              )
+
+              {:error, reason}
+          end
+
+        {:error, reason} ->
+          Logger.error(
+            "[monitor_export #{log_label}] alert_layout_build failed medium=#{medium} widget=#{widget_id} reason=#{inspect(reason)}"
+          )
+
+          {:error, reason}
       end
     end
   end
@@ -322,13 +476,123 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp wrap_binary({:error, reason}, _content_type), do: {:error, format_error(reason)}
 
+  defp put_export_log_context(exporter_opts, context) do
+    merged =
+      exporter_opts
+      |> Keyword.get(:log_context, %{})
+      |> ExportLog.normalize()
+      |> Map.merge(ExportLog.normalize(context))
+
+    Keyword.put(exporter_opts, :log_context, merged)
+  end
+
+  defp monitor_log_context(%Monitor{} = monitor) do
+    %{
+      export_scope: :monitor,
+      monitor_id: monitor.id,
+      monitor_slug: Map.get(monitor, :slug),
+      monitor_name: Map.get(monitor, :name)
+    }
+  end
+
+  defp alert_log_context(%Monitor{} = monitor, %Alert{} = alert) do
+    monitor_log_context(monitor)
+    |> Map.put(:export_scope, :alert)
+    |> maybe_put_value(:alert_id, alert.id)
+    |> maybe_put_value(:alert_strategy, Map.get(alert, :analysis_strategy))
+  end
+
+  defp timeframe_context(%{} = params) do
+    %{}
+    |> maybe_put_value(:export_from, Map.get(params, :from))
+    |> maybe_put_value(:export_to, Map.get(params, :to))
+    |> maybe_put_value(:export_display, Map.get(params, :display))
+    |> maybe_put_value(:export_granularity, Map.get(params, :granularity))
+  end
+
+  defp timeframe_context(_), do: %{}
+
+  defp maybe_put_value(map, _key, nil), do: map
+  defp maybe_put_value(map, _key, ""), do: map
+  defp maybe_put_value(map, key, value), do: Map.put(map, key, value)
+
+  defp describe_export_params(%{display: display, from: from, to: to} = params) do
+    window =
+      params
+      |> Map.get(:window)
+      |> case do
+        nil -> ""
+        val -> " window=#{inspect(val)}"
+      end
+
+    "display=#{display} from=#{format_timestamp(from)} to=#{format_timestamp(to)}#{window}"
+  end
+
+  defp describe_export_params(%{} = params) when map_size(params) > 0 do
+    keys = params |> Map.keys() |> Enum.map(&to_string/1) |> Enum.join(",")
+    "keys=#{keys}"
+  end
+
+  defp describe_export_params(_), do: "none"
+
+  defp format_timestamp(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp format_timestamp(%NaiveDateTime{} = dt), do: NaiveDateTime.to_iso8601(dt)
+  defp format_timestamp(%Date{} = date), do: Date.to_iso8601(date)
+  defp format_timestamp(nil), do: "nil"
+  defp format_timestamp(other) when is_binary(other), do: other
+  defp format_timestamp(other), do: inspect(other)
+
+  defp log_delivery_summary(log_label, %{successes: successes, failures: failures}) do
+    Logger.info(
+      "[monitor_export #{log_label}] deliver_to_channels summary success=#{length(successes)} failure=#{length(failures)}"
+    )
+
+    Enum.each(successes, fn info ->
+      Logger.debug(
+        "[monitor_export #{log_label}] delivery_ok type=#{Map.get(info, :type)} handle=#{Map.get(info, :handle)}"
+      )
+    end)
+
+    Enum.each(failures, fn info ->
+      Logger.warning(
+        "[monitor_export #{log_label}] delivery_failed type=#{Map.get(info, :type)} handle=#{Map.get(info, :handle)} reason=#{inspect(Map.get(info, :reason))}"
+      )
+    end)
+  end
+
   defp deliver_to_channels(monitor, alert, channels, exports, params, opts) do
+    log_context =
+      opts
+      |> Keyword.get(:exporter_opts, [])
+      |> Keyword.get(:log_context, %{})
+
+    log_label = ExportLog.label(log_context)
+
+    Logger.info(
+      "[monitor_export #{log_label}] deliver_to_channels start channel_count=#{length(channels)}"
+    )
+
     Enum.reduce(channels, %{successes: [], failures: []}, fn channel, acc ->
+      type = channel_type(channel)
+      handle = channel_handle(channel)
+
+      Logger.info(
+        "[monitor_export #{log_label}] deliver_channel start type=#{type} handle=#{handle}"
+      )
+
       case deliver_channel(monitor, alert, channel, exports, params, opts) do
         {:ok, info} ->
+          Logger.info(
+            "[monitor_export #{log_label}] deliver_channel success type=#{info.type} handle=#{Map.get(info, :handle)}"
+          )
+
           %{acc | successes: [info | acc.successes]}
 
         {:error, info} ->
+          Logger.warning(
+            "[monitor_export #{log_label}] deliver_channel failure type=#{info.type} handle=#{Map.get(info, :handle)} reason=#{inspect(Map.get(info, :reason))}"
+          )
+
           %{acc | failures: [info | acc.failures]}
       end
     end)

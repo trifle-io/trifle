@@ -10,6 +10,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   """
 
   alias TrifleApp.Exports.{Layout, LayoutSession}
+  alias TrifleApp.Exporters.ExportLog
   alias TrifleWeb.Endpoint
 
   require Logger
@@ -101,15 +102,33 @@ defmodule TrifleApp.Exporters.ChromeExporter do
 
     opts = Keyword.put_new(opts, :theme, theme)
 
+    {opts, log_context} = prepare_export_opts(layout, opts, :pdf)
+    log_label = ExportLog.label(log_context)
+
     Logger.debug(fn ->
-      "export_layout_pdf: id=#{layout.id} kind=#{layout.kind} theme=#{inspect(theme)} viewport=#{inspect(Keyword.get(opts, :window_size))} pdf_opts=#{inspect(pdf_opts)}"
+      "export_layout_pdf: id=#{layout.id} kind=#{layout.kind} theme=#{inspect(theme)} viewport=#{inspect(Keyword.get(opts, :window_size))} pdf_opts=#{inspect(pdf_opts)} context=#{log_label}"
     end)
 
     with {:ok, url, cleanup} <- layout_export_url(layout, opts) do
-      try do
-        TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts)
-      after
-        cleanup.()
+      Logger.info(fn ->
+        "[chrome_export #{log_label}] request=pdf url=#{ExportLog.summarize_url(url)} theme=#{inspect(theme)} viewport=#{inspect(Keyword.get(opts, :window_size))}"
+      end)
+
+      result =
+        try do
+          TrifleApp.Exporters.ChromeCDP.export_pdf(url, opts)
+        after
+          cleanup.()
+        end
+
+      case result do
+        {:ok, binary} when is_binary(binary) ->
+          Logger.info("[chrome_export #{log_label}] completed=pdf bytes=#{byte_size(binary)}")
+          {:ok, binary}
+
+        {:error, reason} ->
+          Logger.error("[chrome_export #{log_label}] failed=pdf reason=#{inspect(reason)}")
+          {:error, reason}
       end
     end
   end
@@ -118,17 +137,49 @@ defmodule TrifleApp.Exporters.ChromeExporter do
     opts =
       Keyword.put_new(opts, :window_size, window_size_from_layout(layout, @default_window_size))
 
+    {opts, log_context} = prepare_export_opts(layout, opts, :png)
+    log_label = ExportLog.label(log_context)
+
+    Logger.debug(fn ->
+      "export_layout_png: id=#{layout.id} kind=#{layout.kind} theme=#{inspect(Keyword.get(opts, :theme))} viewport=#{inspect(Keyword.get(opts, :window_size))} context=#{log_label}"
+    end)
+
     with {:ok, url, cleanup} <- layout_export_url(layout, opts) do
-      Logger.debug(fn ->
-        "export_layout(:png) id=#{layout.id} kind=#{layout.kind} theme=#{inspect(Keyword.get(opts, :theme))} window=#{inspect(Keyword.get(opts, :window_size))}"
+      Logger.info(fn ->
+        "[chrome_export #{log_label}] request=png url=#{ExportLog.summarize_url(url)} theme=#{inspect(Keyword.get(opts, :theme))} viewport=#{inspect(Keyword.get(opts, :window_size))}"
       end)
 
-      try do
-        TrifleApp.Exporters.ChromeCDP.export_png(url, opts)
-      after
-        cleanup.()
+      result =
+        try do
+          TrifleApp.Exporters.ChromeCDP.export_png(url, opts)
+        after
+          cleanup.()
+        end
+
+      case result do
+        {:ok, binary} when is_binary(binary) ->
+          Logger.info("[chrome_export #{log_label}] completed=png bytes=#{byte_size(binary)}")
+          {:ok, binary}
+
+        {:error, reason} ->
+          Logger.error("[chrome_export #{log_label}] failed=png reason=#{inspect(reason)}")
+          {:error, reason}
       end
     end
+  end
+
+  defp prepare_export_opts(layout, opts, format) do
+    {existing_context, opts_without_context} = Keyword.pop(opts, :log_context, %{})
+
+    context =
+      existing_context
+      |> ExportLog.normalize()
+      |> ExportLog.ensure_ref()
+      |> ExportLog.ensure_format(format)
+      |> ExportLog.ensure_layout(layout)
+      |> Map.put_new(:layout_theme, layout.theme)
+
+    {Keyword.put(opts_without_context, :log_context, context), context}
   end
 
   defp layout_export_url(layout, opts) do

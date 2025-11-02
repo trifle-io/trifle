@@ -9,6 +9,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   """
 
   alias TrifleApp.Exporters.ChromeExporter
+  alias TrifleApp.Exporters.ExportLog
   require Logger
 
   @default_pdf_opts %{
@@ -49,29 +50,108 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     h = max(trunc(printable_h_in * 96.0), 800)
 
     theme = Keyword.get(opts, :theme, :light)
+    log_context = ExportLog.normalize(Keyword.get(opts, :log_context, %{}))
+    log_label = ExportLog.label(log_context)
+    started_ms = ExportLog.monotonic_now_ms()
 
-    Logger.debug("CDP export_pdf setup theme=#{inspect(theme)} viewport=#{w}x#{h}")
+    Logger.info(
+      "[chrome_cdp #{log_label}] start=pdf target=#{ExportLog.summarize_url(url)} theme=#{inspect(theme)} viewport=#{w}x#{h} timeout_ms=#{timeout_ms}"
+    )
 
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
-         _ = Logger.debug("CDP export_pdf launch bin=#{chrome} viewport=#{w}x#{h}"),
-         {:ok, state} <- launch_chrome(chrome, w, h),
-         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme),
+         _ = Logger.debug("[chrome_cdp #{log_label}] chrome_binary=#{chrome}"),
+         {:ok, state} <- launch_chrome(chrome, w, h, log_context),
+         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme, log_context),
          # Apply normalization early
          _ = normalize_background(page_ws, theme),
          _ = log_theme_state(page_ws, "pdf-after-normalize"),
          _ = set_background_override(page_ws),
-         :ok <- wait_until_ready(page_ws, timeout_ms),
+         :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
          {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base),
          _ <- clear_background_override(page_ws) do
       _ = close(page_ws)
       _ = kill_chrome(state)
-      Logger.debug("CDP PDF captured (bytes)=#{div(byte_size(pdf_b64) * 3, 4)}")
+      bytes = div(byte_size(pdf_b64) * 3, 4)
+
+      Logger.info(
+        "[chrome_cdp #{log_label}] success=pdf elapsed_ms=#{ExportLog.since_ms(started_ms)} bytes=#{bytes}"
+      )
+
       {:ok, Base.decode64!(pdf_b64)}
     else
       {:error, reason} = err ->
-        Logger.warning("CDP export_pdf failed: #{inspect(reason)}")
+        Logger.error(
+          "[chrome_cdp #{log_label}] failed=pdf elapsed_ms=#{ExportLog.since_ms(started_ms)} reason=#{inspect(reason)}"
+        )
+
         err
+    end
+  end
+
+  defp log_readiness_probe(page_ws, log_context) do
+    expr = """
+    (function() {
+      const readyState = document.readyState;
+      const trifleReady = !!window.TRIFLE_READY;
+      const charts = Array.from(document.querySelectorAll('.grid-stack .grid-widget-body .ts-chart, .grid-stack .grid-widget-body .cat-chart, .grid-stack .grid-widget-body .kpi-wrap'));
+
+      const sample = charts.slice(0, 5).map((chart, index) => {
+        const rect = chart.getBoundingClientRect();
+        const canvas = chart.querySelector('canvas');
+        let canvasSize = null;
+        if (canvas) {
+          canvasSize = {width: canvas.width || 0, height: canvas.height || 0};
+        }
+        const svg = chart.querySelector('svg');
+        let svgSize = null;
+        if (svg) {
+          try {
+            const box = svg.getBBox();
+            svgSize = {width: box.width || 0, height: box.height || 0};
+          } catch (_e) {
+            svgSize = null;
+          }
+        }
+
+        return {
+          idx: index,
+          className: chart.className || null,
+          rect: {width: rect.width, height: rect.height, top: rect.top, left: rect.left},
+          canvasSize: canvasSize,
+          svgSize: svgSize
+        };
+      });
+
+      return {
+        readyState: readyState,
+        trifleReady: trifleReady,
+        chartCount: charts.length,
+        sample: sample,
+        timestamp: Date.now()
+      };
+    })()
+    """
+
+    case __MODULE__.WS.call(
+           page_ws,
+           "Runtime.evaluate",
+           %{expression: expr, returnByValue: true, awaitPromise: false},
+           5_000
+         ) do
+      {:ok, %{"result" => %{"value" => value}}} ->
+        Logger.warning(
+          "[chrome_cdp #{ExportLog.label(log_context)}] readiness_probe=#{inspect(value)}"
+        )
+
+        :ok
+
+      other ->
+        Logger.warning(
+          "[chrome_cdp #{ExportLog.label(log_context)}] readiness_probe_failed=#{inspect(other)}"
+        )
+
+        :ok
     end
   end
 
@@ -81,35 +161,48 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     {w, h} = Keyword.get(opts, :window_size, @default_viewport)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     theme = Keyword.get(opts, :theme, :light)
+    log_context = ExportLog.normalize(Keyword.get(opts, :log_context, %{}))
+    log_label = ExportLog.label(log_context)
+    started_ms = ExportLog.monotonic_now_ms()
 
-    Logger.debug("CDP export_png setup theme=#{inspect(theme)} viewport=#{w}x#{h}")
+    Logger.info(
+      "[chrome_cdp #{log_label}] start=png target=#{ExportLog.summarize_url(url)} theme=#{inspect(theme)} viewport=#{w}x#{h} timeout_ms=#{timeout_ms}"
+    )
 
     with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
-         _ = Logger.debug("CDP export_png launch bin=#{chrome} viewport=#{w}x#{h}"),
-         {:ok, state} <- launch_chrome(chrome, w, h),
-         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme),
+         _ = Logger.debug("[chrome_cdp #{log_label}] chrome_binary=#{chrome}"),
+         {:ok, state} <- launch_chrome(chrome, w, h, log_context),
+         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme, log_context),
          _ = normalize_background(page_ws, theme),
          _ = log_theme_state(page_ws, "png-after-normalize"),
          _ = set_background_override(page_ws),
-         :ok <- wait_until_ready(page_ws, timeout_ms),
+         :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
          clip <- expand_viewport_to_content(page_ws),
          {:ok, png_b64} <- page_capture_screenshot(page_ws, clip),
          _ <- clear_background_override(page_ws) do
       _ = close(page_ws)
       _ = kill_chrome(state)
-      Logger.debug("CDP PNG captured (bytes)=#{div(byte_size(png_b64) * 3, 4)}")
+      bytes = div(byte_size(png_b64) * 3, 4)
+
+      Logger.info(
+        "[chrome_cdp #{log_label}] success=png elapsed_ms=#{ExportLog.since_ms(started_ms)} bytes=#{bytes}"
+      )
+
       {:ok, Base.decode64!(png_b64)}
     else
       {:error, reason} = err ->
-        Logger.warning("CDP export_png failed: #{inspect(reason)}")
+        Logger.error(
+          "[chrome_cdp #{log_label}] failed=png elapsed_ms=#{ExportLog.since_ms(started_ms)} reason=#{inspect(reason)}"
+        )
+
         err
     end
   end
 
   # --- Chrome launch + discovery ---
 
-  defp launch_chrome(chrome_bin, w, h) do
+  defp launch_chrome(chrome_bin, w, h, log_context) do
     profile_dir = Path.join(System.tmp_dir!(), unique("trifle_cdp_profile"))
     File.mkdir_p!(profile_dir)
 
@@ -128,6 +221,13 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       "--window-size=#{w},#{h}"
     ]
 
+    log_label = ExportLog.label(log_context)
+    launch_started_ms = ExportLog.monotonic_now_ms()
+
+    Logger.debug(
+      "[chrome_cdp #{log_label}] launch_chrome start bin=#{chrome_bin} profile=#{profile_dir} viewport=#{w}x#{h}"
+    )
+
     # Start chrome detached; we won't read stdout, we will poll the /json endpoints
     port_ref =
       Port.open({:spawn_executable, chrome_bin}, [
@@ -138,10 +238,16 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       ])
 
     # Discover dynamically chosen devtools port via DevToolsActivePort file
-    case wait_for_devtools_port(profile_dir, 100) do
+    case wait_for_devtools_port(profile_dir, 100, log_context) do
       {:ok, port} ->
-        case wait_for_ws_browser(port, 50) do
+        Logger.debug(
+          "[chrome_cdp #{log_label}] launch_chrome devtools_port=#{port} waited_ms=#{ExportLog.since_ms(launch_started_ms)}"
+        )
+
+        case wait_for_ws_browser(port, 50, log_context) do
           {:ok, browser_ws_url} ->
+            Logger.debug("[chrome_cdp #{log_label}] launch_chrome ws_ready=#{browser_ws_url}")
+
             {:ok,
              %{
                port_ref: port_ref,
@@ -152,16 +258,30 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
           {:error, reason} ->
             _ = File.rm_rf(profile_dir)
+
+            Logger.error(
+              "[chrome_cdp #{log_label}] launch_chrome ws_failed reason=#{inspect(reason)}"
+            )
+
             {:error, reason}
         end
 
       {:error, reason} ->
         _ = File.rm_rf(profile_dir)
+
+        Logger.error(
+          "[chrome_cdp #{log_label}] launch_chrome no_devtools reason=#{inspect(reason)} elapsed_ms=#{ExportLog.since_ms(launch_started_ms)}"
+        )
+
         {:error, reason}
     end
   end
 
-  defp wait_for_devtools_port(profile_dir, tries) when tries > 0 do
+  defp wait_for_devtools_port(profile_dir, tries, log_context) do
+    wait_for_devtools_port(profile_dir, tries, log_context, 1)
+  end
+
+  defp wait_for_devtools_port(profile_dir, tries, log_context, attempt) when tries > 0 do
     file = Path.join(profile_dir, "DevToolsActivePort")
 
     case File.read(file) do
@@ -170,40 +290,84 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
         case Integer.parse(port_line) do
           {port, _} ->
+            Logger.debug(
+              "[chrome_cdp #{ExportLog.label(log_context)}] devtools_port_found port=#{port} attempts=#{attempt}"
+            )
+
             {:ok, port}
 
           :error ->
             :timer.sleep(100)
-            wait_for_devtools_port(profile_dir, tries - 1)
+            log_devtools_wait(log_context, attempt + 1)
+            wait_for_devtools_port(profile_dir, tries - 1, log_context, attempt + 1)
         end
 
       {:error, _} ->
         :timer.sleep(100)
-        wait_for_devtools_port(profile_dir, tries - 1)
+        log_devtools_wait(log_context, attempt + 1)
+        wait_for_devtools_port(profile_dir, tries - 1, log_context, attempt + 1)
     end
   end
 
-  defp wait_for_devtools_port(_profile_dir, _tries), do: {:error, :devtools_port_not_found}
+  defp wait_for_devtools_port(_profile_dir, _tries, log_context, attempt) do
+    Logger.error(
+      "[chrome_cdp #{ExportLog.label(log_context)}] devtools_port_not_found attempts=#{attempt - 1}"
+    )
 
-  defp wait_for_ws_browser(port, tries) when tries > 0 do
+    {:error, :devtools_port_not_found}
+  end
+
+  defp log_devtools_wait(log_context, attempt) do
+    if rem(attempt, 20) == 0 do
+      Logger.debug(
+        "[chrome_cdp #{ExportLog.label(log_context)}] waiting_for_devtools attempt=#{attempt}"
+      )
+    end
+  end
+
+  defp wait_for_ws_browser(port, tries, log_context) do
+    wait_for_ws_browser(port, tries, log_context, 1)
+  end
+
+  defp wait_for_ws_browser(port, tries, log_context, attempt) when tries > 0 do
     case http_get("http://127.0.0.1:#{port}/json/version") do
       {:ok, 200, body} ->
         case Jason.decode(body) do
           {:ok, %{"webSocketDebuggerUrl" => url}} ->
+            Logger.debug(
+              "[chrome_cdp #{ExportLog.label(log_context)}] ws_browser_ready attempt=#{attempt}"
+            )
+
             {:ok, url}
 
           _ ->
             :timer.sleep(100)
-            wait_for_ws_browser(port, tries - 1)
+            log_ws_wait(log_context, attempt + 1)
+            wait_for_ws_browser(port, tries - 1, log_context, attempt + 1)
         end
 
       _ ->
         :timer.sleep(100)
-        wait_for_ws_browser(port, tries - 1)
+        log_ws_wait(log_context, attempt + 1)
+        wait_for_ws_browser(port, tries - 1, log_context, attempt + 1)
     end
   end
 
-  defp wait_for_ws_browser(_port, _tries), do: {:error, :chrome_debug_not_ready}
+  defp wait_for_ws_browser(_port, _tries, log_context, attempt) do
+    Logger.error(
+      "[chrome_cdp #{ExportLog.label(log_context)}] ws_browser_not_ready attempts=#{attempt - 1}"
+    )
+
+    {:error, :chrome_debug_not_ready}
+  end
+
+  defp log_ws_wait(log_context, attempt) do
+    if rem(attempt, 20) == 0 do
+      Logger.debug(
+        "[chrome_cdp #{ExportLog.label(log_context)}] waiting_for_ws attempt=#{attempt}"
+      )
+    end
+  end
 
   defp http_get(url) do
     :inets.start()
@@ -216,7 +380,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
-  defp open_page_ws(%{http_port: port}, url) do
+  defp open_page_ws(%{http_port: port}, url, log_context) do
+    log_label = ExportLog.label(log_context)
+
     # Prefer connecting to existing page target and navigating it
     with {:ok, 200, body} <- http_get("http://127.0.0.1:#{port}/json/list"),
          {:ok, list} <- Jason.decode(body),
@@ -228,28 +394,64 @@ defmodule TrifleApp.Exporters.ChromeCDP do
          _ <- __MODULE__.WS.call(page_ws, "Page.enable", %{}),
          _ <- __MODULE__.WS.call(page_ws, "Runtime.enable", %{}),
          {:ok, _} <- __MODULE__.WS.call(page_ws, "Page.navigate", %{url: url}, 15_000) do
+      Logger.debug(
+        "[chrome_cdp #{log_label}] open_page_ws connected port=#{port} ws_url=#{ws_url}"
+      )
+
       {:ok, page_ws}
     else
-      _ -> {:error, :target_create_failed}
+      error ->
+        Logger.error(
+          "[chrome_cdp #{log_label}] open_page_ws_failed port=#{port} target=#{ExportLog.summarize_url(url)} error=#{inspect(error)}"
+        )
+
+        {:error, :target_create_failed}
     end
   end
 
-  defp open_page_ws_with_theme(state, url, theme) do
-    with {:ok, page_ws} <- open_page_ws(state, url),
+  defp open_page_ws_with_theme(state, url, theme, log_context) do
+    log_label = ExportLog.label(log_context)
+
+    Logger.debug(
+      "[chrome_cdp #{log_label}] open_page_ws_with_theme start theme=#{inspect(theme)} target=#{ExportLog.summarize_url(url)}"
+    )
+
+    with {:ok, page_ws} <- open_page_ws(state, url, log_context),
          # Apply theme immediately after opening page but before navigation
          _ = apply_theme_before_load(page_ws, theme),
          # Re-navigate to ensure theme is applied
          {:ok, _} <- __MODULE__.WS.call(page_ws, "Page.navigate", %{url: url}, 15_000) do
+      Logger.debug(
+        "[chrome_cdp #{log_label}] open_page_ws_with_theme navigation_complete theme=#{inspect(theme)}"
+      )
+
       {:ok, page_ws}
     else
-      error -> error
+      {:error, reason} = error ->
+        Logger.error(
+          "[chrome_cdp #{log_label}] open_page_ws_with_theme_failed reason=#{inspect(reason)}"
+        )
+
+        error
+
+      error ->
+        Logger.error(
+          "[chrome_cdp #{log_label}] open_page_ws_with_theme_failed raw=#{inspect(error)}"
+        )
+
+        error
     end
   end
 
   # --- Wait logic ---
-  defp wait_until_ready(page_ws, timeout_ms) do
+  defp wait_until_ready(page_ws, timeout_ms, log_context) do
     # Hide topbar early to avoid capturing it in PNG as well
     _ = inject_css(page_ws, "#phx-topbar{display:none!important}")
+
+    log_label = ExportLog.label(log_context)
+    started_ms = ExportLog.monotonic_now_ms()
+
+    Logger.debug("[chrome_cdp #{log_label}] wait_until_ready start timeout_ms=#{timeout_ms}")
 
     # Enhanced JS that waits for both DOM and chart rendering
     js = """
@@ -313,17 +515,33 @@ defmodule TrifleApp.Exporters.ChromeCDP do
            timeout_ms + 2000
          ) do
       {:ok, %{"result" => %{"value" => true}}} ->
+        Logger.debug(
+          "[chrome_cdp #{log_label}] wait_until_ready ready elapsed_ms=#{ExportLog.since_ms(started_ms)}"
+        )
+
         # Add stabilization check after initial readiness
-        wait_for_stable_rendering(page_ws)
+        wait_for_stable_rendering(page_ws, 300, log_context)
 
       {:ok, %{"result" => %{"value" => false}}} ->
+        Logger.warning(
+          "[chrome_cdp #{log_label}] wait_until_ready timeout elapsed_ms=#{ExportLog.since_ms(started_ms)}"
+        )
+
+        log_readiness_probe(page_ws, log_context)
         {:error, :charts_not_ready_timeout}
 
       {:ok, %{"result" => result}} ->
-        Logger.warning("Unexpected readiness result: #{inspect(result)}")
+        Logger.warning(
+          "[chrome_cdp #{log_label}] wait_until_ready unexpected_result=#{inspect(result)}"
+        )
+
         :ok
 
       other ->
+        Logger.error(
+          "[chrome_cdp #{log_label}] wait_until_ready evaluation_failed=#{inspect(other)} elapsed_ms=#{ExportLog.since_ms(started_ms)}"
+        )
+
         {:error, {:evaluation_failed, other}}
     end
   end
@@ -340,7 +558,14 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     :ok
   end
 
-  defp wait_for_stable_rendering(page_ws, stability_duration_ms \\ 300) do
+  defp wait_for_stable_rendering(page_ws, stability_duration_ms \\ 300, log_context \\ %{}) do
+    log_label = ExportLog.label(log_context)
+    started_ms = ExportLog.monotonic_now_ms()
+
+    Logger.debug(
+      "[chrome_cdp #{log_label}] wait_for_stable_rendering start duration_ms=#{stability_duration_ms}"
+    )
+
     js = """
     (function() {
       return new Promise((resolve) => {
@@ -390,10 +615,17 @@ defmodule TrifleApp.Exporters.ChromeCDP do
            10_000
          ) do
       {:ok, _} ->
+        Logger.debug(
+          "[chrome_cdp #{log_label}] wait_for_stable_rendering complete elapsed_ms=#{ExportLog.since_ms(started_ms)}"
+        )
+
         :ok
 
       {:error, reason} ->
-        Logger.warning("Stability check failed: #{inspect(reason)}")
+        Logger.warning(
+          "[chrome_cdp #{log_label}] wait_for_stable_rendering_failed=#{inspect(reason)} elapsed_ms=#{ExportLog.since_ms(started_ms)}"
+        )
+
         # Continue anyway
         :ok
     end
