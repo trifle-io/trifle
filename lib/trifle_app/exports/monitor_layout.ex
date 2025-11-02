@@ -190,6 +190,9 @@ defmodule TrifleApp.Exports.MonitorLayout do
       is_binary(timeframe) and String.trim(timeframe) != "" ->
         timeframe
 
+      frequency == :hourly ->
+        "1h"
+
       frequency == :daily ->
         "1d"
 
@@ -1019,6 +1022,10 @@ defmodule TrifleApp.Exports.MonitorLayout do
     now = timezone_now(config)
 
     cond do
+      frequency == :hourly ->
+        from = floor_time(now, 1, :hour, config)
+        {:ok, from, now}
+
       frequency == :daily ->
         from = floor_time(now, 1, :day, config)
         {:ok, from, now}
