@@ -11,11 +11,11 @@ image:
 # Production resource limits
 resources:
   limits:
-    cpu: "3"
-    memory: 3Gi
+    cpu: "8"
+    memory: 12Gi
   requests:
-    cpu: 2000m
-    memory: 2Gi
+    cpu: "8"
+    memory: 8Gi
 
 # Enable autoscaling for production
 autoscaling:
