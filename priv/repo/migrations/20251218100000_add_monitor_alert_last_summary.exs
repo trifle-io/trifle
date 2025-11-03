@@ -8,4 +8,3 @@ defmodule Trifle.Repo.Migrations.AddMonitorAlertLastSummary do
     end
   end
 end
-

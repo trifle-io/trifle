@@ -226,6 +226,26 @@ if config_env() == :prod do
     end
   end
 
+  mailer_receive_timeout_ms =
+    to_int.(System.get_env("MAILER_RECEIVE_TIMEOUT_MS"), 30_000)
+
+  mailer_pool_timeout_ms =
+    to_int.(System.get_env("MAILER_POOL_TIMEOUT_MS"), 5_000)
+
+  mailer_retry_attempts =
+    to_int.(System.get_env("MAILER_RETRY_ATTEMPTS"), 2) |> max(1)
+
+  mailer_retry_backoff_ms =
+    to_int.(System.get_env("MAILER_RETRY_BACKOFF_MS"), 2_000) |> max(0)
+
+  config :trifle, :mailer_client_options,
+    receive_timeout: mailer_receive_timeout_ms,
+    pool_timeout: mailer_pool_timeout_ms
+
+  config :trifle, :mailer_retry,
+    attempts: mailer_retry_attempts,
+    backoff_ms: mailer_retry_backoff_ms
+
   docker_runtime? =
     File.exists?("/.dockerenv") ||
       case System.get_env("DOCKER") do
