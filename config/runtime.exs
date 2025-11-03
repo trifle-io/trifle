@@ -67,6 +67,27 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+# OpenAI configuration (applies to all environments)
+openai_model = System.get_env("OPENAI_MODEL", "gpt-5")
+
+openai_receive_timeout =
+  case System.get_env("OPENAI_RECEIVE_TIMEOUT_MS") do
+    nil -> 120_000
+    "" -> 120_000
+    value -> String.to_integer(value)
+  end
+
+openai_config =
+  case System.get_env("OPENAI_API_KEY") do
+    nil -> %{model: openai_model}
+    "" -> %{model: openai_model}
+    key -> %{model: openai_model, api_key: key}
+  end
+
+openai_config = Map.put(openai_config, :receive_timeout, openai_receive_timeout)
+
+config :trifle, Trifle.Chat.OpenAIClient, openai_config
+
 oban_web_license =
   case System.get_env("OBAN_WEB_LICENSE_KEY") do
     nil -> nil
@@ -405,24 +426,4 @@ if config_env() == :prod do
     end
 
   config :trifle, :slack, Map.merge(base_slack_config, slack_overrides)
-
-  openai_model = System.get_env("OPENAI_MODEL", "gpt-5")
-
-  openai_receive_timeout =
-    case System.get_env("OPENAI_RECEIVE_TIMEOUT_MS") do
-      nil -> 120_000
-      "" -> 120_000
-      value -> String.to_integer(value)
-    end
-
-  openai_config =
-    case System.get_env("OPENAI_API_KEY") do
-      nil -> %{model: openai_model}
-      "" -> %{model: openai_model}
-      key -> %{model: openai_model, api_key: key}
-    end
-
-  openai_config = Map.put(openai_config, :receive_timeout, openai_receive_timeout)
-
-  config :trifle, Trifle.Chat.OpenAIClient, openai_config
 end

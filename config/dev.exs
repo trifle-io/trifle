@@ -81,17 +81,7 @@ config :phoenix, :plug_init_mode, :runtime
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
-openai_receive_timeout =
-  case System.get_env("OPENAI_RECEIVE_TIMEOUT_MS") do
-    nil -> 120_000
-    "" -> 120_000
-    value -> String.to_integer(value)
-  end
-
-config :trifle, Trifle.Chat.OpenAIClient,
-  api_key: System.get_env("OPENAI_API_KEY"),
-  model: System.get_env("OPENAI_MODEL", "gpt-5"),
-  receive_timeout: openai_receive_timeout
+# OpenAI configuration is now in runtime.exs to support .env loading
 
 # config :trifle_stats,
 #   driver: Mongo.start_link(url: "mongodb://mongo:27017/trifle"),

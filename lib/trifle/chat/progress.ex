@@ -97,6 +97,8 @@ defmodule Trifle.Chat.Progress do
     ensure_period("Chat error: #{reason}")
   end
 
+  def text(:error, payload), do: ensure_period("Chat error: #{inspect(payload)}")
+
   def text(_, _), do: nil
 
   defp ensure_period(nil), do: nil
