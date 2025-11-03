@@ -109,6 +109,18 @@ defmodule Trifle.Chat.SessionStore do
   end
 
   @doc """
+  Restores the persisted session to match the provided snapshot.
+  """
+  @spec restore(Session.t(), Session.t()) :: {:ok, Session.t()} | {:error, term()}
+  def restore(%Session{id: id}, %Session{id: id} = snapshot) do
+    transaction(id, fn record, _current ->
+      persist_session(record, snapshot)
+    end)
+  end
+
+  def restore(_current, _snapshot), do: {:error, :mismatched_session}
+
+  @doc """
   Appends a message to the session, returning the updated session struct.
   """
   @spec append_message(Session.t(), Session.message()) ::
