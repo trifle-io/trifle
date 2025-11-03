@@ -1102,10 +1102,12 @@ defmodule TrifleApp.ChatLive do
         <div class="relative overflow-hidden rounded-2xl border border-transparent dark:border-slate-700 focus-within:border-teal-500/60 dark:focus-within:border-teal-400 bg-white/60 dark:bg-slate-900/40 backdrop-blur-xl shadow-lg dark:shadow-none">
           <div class="flex items-end">
             <textarea
+              id="chat-message-input"
               name="chat[message]"
               rows="3"
               placeholder="Ask me about your metrics..."
               class="flex-1 bg-transparent text-slate-900 dark:text-slate-100 text-sm px-4 py-4 resize-none border-0 focus:ring-0 focus:border-0"
+              phx-hook="ChatInput"
               required
               disabled={@selected_source == nil or @sending}
             ><%= Phoenix.HTML.Form.input_value(@form, :message) %></textarea>
