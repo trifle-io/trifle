@@ -15,6 +15,8 @@ defmodule Trifle.Chat.Progress do
       "thinking" -> text(:thinking, payload)
       "fetching_timeseries" -> text(:fetching_timeseries, payload)
       "listing_metrics" -> text(:listing_metrics, payload)
+      "aggregating_series" -> text(:aggregating_series, payload)
+      "formatting_series" -> text(:formatting_series, payload)
       "processing_results" -> text(:processing_results, payload)
       "responding" -> text(:responding, payload)
       "tool_error" -> text(:tool_error, payload)
@@ -67,6 +69,56 @@ defmodule Trifle.Chat.Progress do
       other -> ensure_period("Listing available Metrics Keys (#{other})")
     end
   end
+
+  def text(:aggregating_series, payload) when is_map(payload) do
+    metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)
+    value_path = Map.get(payload, "value_path") || Map.get(payload, :value_path)
+
+    aggregator =
+      payload
+      |> Map.get("aggregator", Map.get(payload, :aggregator))
+      |> case do
+        nil -> nil
+        value -> "using #{value |> to_string() |> String.upcase()}"
+      end
+
+    descriptor =
+      [metric && "Metrics Key #{metric}", value_path && "path #{value_path}", aggregator]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" • ")
+
+    case descriptor do
+      "" -> ensure_period("Aggregating series data")
+      other -> ensure_period("Aggregating series data (#{other})")
+    end
+  end
+
+  def text(:aggregating_series, _payload), do: ensure_period("Aggregating series data")
+
+  def text(:formatting_series, payload) when is_map(payload) do
+    metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)
+    value_path = Map.get(payload, "value_path") || Map.get(payload, :value_path)
+
+    formatter =
+      payload
+      |> Map.get("formatter", Map.get(payload, :formatter))
+      |> case do
+        nil -> nil
+        value -> "#{value |> to_string() |> String.capitalize()} formatter"
+      end
+
+    descriptor =
+      [formatter, metric && "Metrics Key #{metric}", value_path && "path #{value_path}"]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" • ")
+
+    case descriptor do
+      "" -> ensure_period("Formatting series output")
+      other -> ensure_period("Formatting series output (#{other})")
+    end
+  end
+
+  def text(:formatting_series, _payload), do: ensure_period("Formatting series output")
 
   def text(:processing_results, _payload), do: ensure_period("Processing tool results")
   def text(:responding, _payload), do: ensure_period("Preparing final answer")
