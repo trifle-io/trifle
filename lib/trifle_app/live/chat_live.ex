@@ -27,6 +27,7 @@ defmodule TrifleApp.ChatLive do
       |> assign(:page_title, "Trifle AI")
       |> assign(:breadcrumb_links, ["Trifle AI"])
       |> assign(:sources, sources)
+      |> assign(:grouped_sources, group_sources(sources))
       |> assign(:selected_source, selected_source)
       |> assign(:session, nil)
       |> assign(:messages, [])
@@ -36,6 +37,7 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_timer_ref, nil)
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
+      |> assign(:show_source_modal, false)
       |> assign(:form, to_form(%{"message" => ""}))
 
     {:ok, init_session(socket, selected_source)}
@@ -105,32 +107,67 @@ defmodule TrifleApp.ChatLive do
     end
   end
 
-  def handle_event("reset_chat", _params, socket) do
-    case socket.assigns.session do
-      %Session{} = session ->
-        socket = cancel_async(socket, :chat_response, @chat_cancel_reason)
+  def handle_event("open_source_modal", _params, socket) do
+    {:noreply, assign(socket, :show_source_modal, true)}
+  end
 
-        case Chat.reset(session) do
-          {:ok, reset_session} ->
+  def handle_event("close_source_modal", _params, socket) do
+    {:noreply, assign(socket, :show_source_modal, false)}
+  end
+
+  def handle_event("select_source", %{"ref" => ref}, socket) do
+    previous_ref = maybe_encode_source_ref(socket.assigns[:selected_source])
+
+    case parse_source_ref(ref, socket.assigns.sources) do
+      nil ->
+        {:noreply,
+         socket
+         |> assign(:show_source_modal, false)
+         |> put_flash(:error, "Unknown analytics source.")}
+
+      source ->
+        with {:ok, session} <-
+               Chat.ensure_session(
+                 socket.assigns.current_user,
+                 socket.assigns.current_membership,
+                 source
+               ),
+             {:ok, reset_session} <- Chat.reset(session) do
+          new_ref = encode_source_ref(source)
+
+          socket =
+            socket
+            |> cancel_async(:chat_response, @chat_cancel_reason)
+            |> cancel_progress_timer()
+            |> assign(:show_source_modal, false)
+            |> assign(:selected_source, source)
+            |> assign(:session, reset_session)
+            |> assign(:messages, Chat.renderable_messages(reset_session))
+            |> assign(:form, to_form(%{"message" => ""}))
+            |> assign(:sending, false)
+            |> assign(:progress_events, [])
+            |> assign(:progress_started_at, nil)
+            |> assign(:progress_stage_started_at, nil)
+            |> assign(:progress_tick_at, nil)
+            |> assign(:session_snapshot, nil)
+            |> assign(:pending_user_message, nil)
+            |> push_event("chat_scroll_bottom", %{})
+
+          socket =
+            if previous_ref != new_ref do
+              push_patch(socket, to: ~p"/chat?source=#{new_ref}")
+            else
+              socket
+            end
+
+          {:noreply, socket}
+        else
+          {:error, reason} ->
             {:noreply,
              socket
-             |> cancel_progress_timer()
-             |> assign(:session, reset_session)
-             |> assign(:messages, [])
-             |> assign(:progress_events, [])
-             |> assign(:progress_started_at, nil)
-             |> assign(:progress_stage_started_at, nil)
-             |> assign(:progress_tick_at, nil)
-             |> assign(:pending_user_message, nil)
-             |> assign(:session_snapshot, nil)
-             |> put_flash(:info, "Chat cleared.")}
-
-          {:error, reason} ->
-            {:noreply, put_flash(socket, :error, "Could not reset chat: #{inspect(reason)}")}
+             |> assign(:show_source_modal, false)
+             |> put_flash(:error, "Could not start chat: #{format_error(reason)}")}
         end
-
-      _ ->
-        {:noreply, socket}
     end
   end
 
@@ -383,6 +420,8 @@ defmodule TrifleApp.ChatLive do
     |> assign(:sending, false)
     |> assign(:session_snapshot, nil)
     |> assign(:pending_user_message, nil)
+    |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
+    |> assign(:show_source_modal, false)
   end
 
   defp init_session(socket, %Source{} = source) do
@@ -404,6 +443,8 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_stage_started_at, nil)
       |> assign(:session_snapshot, nil)
       |> assign(:pending_user_message, nil)
+      |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
+      |> assign(:show_source_modal, false)
       |> maybe_resume_pending()
     else
       {:error, error} ->
@@ -420,6 +461,8 @@ defmodule TrifleApp.ChatLive do
         |> assign(:sending, false)
         |> assign(:session_snapshot, nil)
         |> assign(:pending_user_message, nil)
+        |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
+        |> assign(:show_source_modal, false)
         |> put_flash(:error, "Unable to load chat session: #{format_error(error)}")
     end
   end
@@ -488,6 +531,83 @@ defmodule TrifleApp.ChatLive do
     type = source |> Source.type() |> Atom.to_string()
     id = source |> Source.id() |> to_string()
     "#{type}:#{id}"
+  end
+
+  defp maybe_encode_source_ref(nil), do: nil
+  defp maybe_encode_source_ref(%Source{} = source), do: encode_source_ref(source)
+
+  defp group_sources(sources) when is_list(sources) do
+    sources
+    |> Enum.reduce(%{}, fn source, acc ->
+      type = Source.type(source)
+      Map.update(acc, type, [source], &(&1 ++ [source]))
+    end)
+    |> build_source_groups()
+  end
+
+  defp group_sources(_), do: []
+
+  defp build_source_groups(groups) when is_map(groups) do
+    prioritized_types = [:database, :project]
+
+    other_types =
+      groups
+      |> Map.keys()
+      |> Enum.reject(&(&1 in prioritized_types))
+      |> Enum.sort()
+
+    (prioritized_types ++ other_types)
+    |> Enum.reduce([], fn type, acc ->
+      case Map.get(groups, type, []) do
+        [] ->
+          acc
+
+        list ->
+          sorted =
+            list
+            |> Enum.sort_by(&String.downcase(Source.display_name(&1)))
+
+          acc ++
+            [
+              %{
+                type: type,
+                label: Source.type_label(type),
+                sources: sorted
+              }
+            ]
+      end
+    end)
+  end
+
+  defp build_source_groups(_), do: []
+
+  defp source_selected?(%Source{} = source, %Source{} = selected) do
+    Source.type(source) == Source.type(selected) &&
+      to_string(Source.id(source)) == to_string(Source.id(selected))
+  end
+
+  defp source_selected?(_, _), do: false
+
+  defp source_option_classes(source, selected_source) do
+    base =
+      "w-full text-left rounded-xl border px-4 py-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+
+    if source_selected?(source, selected_source) do
+      base <>
+        " border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-500/10 dark:text-teal-100"
+    else
+      base <>
+        " border-slate-200 bg-white text-slate-700 hover:border-teal-400 hover:text-teal-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-teal-400 dark:hover:text-teal-200"
+    end
+  end
+
+  defp source_option_hint(%Source{} = source) do
+    [
+      Source.type_label(Source.type(source)),
+      Source.time_zone(source)
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" • ")
   end
 
   defp reload_session(nil), do: nil
@@ -903,12 +1023,22 @@ defmodule TrifleApp.ChatLive do
     ~H"""
     <div class="flex flex-col gap-4 h-full">
       <div class="flex items-center justify-between gap-3">
-        <.source_selector sources={@sources} selected={@selected_source} change="change_source" />
+        <div class="flex min-h-[48px] flex-col justify-center">
+          <span class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Source
+          </span>
+          <span class="text-sm text-slate-700 dark:text-slate-200">
+            <%= if @selected_source do %>
+              {Source.display_name(@selected_source)}
+            <% else %>
+              <span class="text-slate-400 dark:text-slate-500">Select a source to start chatting</span>
+            <% end %>
+          </span>
+        </div>
         <button
           type="button"
-          phx-click="reset_chat"
-          class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-teal-400 dark:border-teal-500 px-3 py-1 rounded disabled:opacity-50"
-          disabled={@session == nil}
+          phx-click="open_source_modal"
+          class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-teal-400 dark:border-teal-500 px-3 py-1 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1026,32 +1156,58 @@ defmodule TrifleApp.ChatLive do
           </div>
         </div>
       </.simple_form>
-    </div>
-    """
-  end
 
-  attr :sources, :list, required: true
-  attr :selected, Source
-  attr :change, :string, default: "change_source"
-
-  defp source_selector(assigns) do
-    ~H"""
-    <div class="flex items-center gap-2">
-      <label class="text-sm text-slate-600 dark:text-slate-300">Source</label>
-      <select
-        name="source"
-        phx-change={@change}
-        class="text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded px-3 py-2"
+      <.app_modal
+        id="chat-source-modal"
+        show={@show_source_modal}
+        on_cancel="close_source_modal"
+        size="md"
       >
-        <option :if={Enum.empty?(@sources)} value="">No analytics sources</option>
-        <option
-          :for={source <- @sources}
-          value={encode_source_ref(source)}
-          selected={source == @selected}
-        >
-          {Source.display_name(source)}
-        </option>
-      </select>
+        <:title>Select an analytics source</:title>
+        <:body>
+          <%= if Enum.empty?(@grouped_sources) do %>
+            <p class="text-sm text-slate-600 dark:text-slate-300">
+              Add a database or project to start chatting with Trifle AI.
+            </p>
+          <% else %>
+            <div class="space-y-6">
+              <%= for group <- @grouped_sources do %>
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {group.label}
+                  </p>
+                  <div class="mt-3 space-y-2">
+                    <%= for source <- group.sources do %>
+                      <button
+                        type="button"
+                        phx-click="select_source"
+                        phx-value-ref={encode_source_ref(source)}
+                        class={source_option_classes(source, @selected_source)}
+                      >
+                        <div class="flex items-center justify-between gap-4">
+                          <div class="flex flex-col">
+                            <span class="text-sm font-medium text-slate-900 dark:text-slate-100">
+                              {Source.display_name(source)}
+                            </span>
+                            <span class="text-xs text-slate-500 dark:text-slate-400">
+                              {source_option_hint(source)}
+                            </span>
+                          </div>
+                          <%= if source_selected?(source, @selected_source) do %>
+                            <span class="text-xs font-medium text-teal-600 dark:text-teal-300">
+                              Current
+                            </span>
+                          <% end %>
+                        </div>
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </:body>
+      </.app_modal>
     </div>
     """
   end
