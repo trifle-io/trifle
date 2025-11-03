@@ -97,6 +97,7 @@ app:
   env:
     MIX_ENV: "prod"
     PHX_SERVER: "true"
+    LOG_TO_STDOUT: "auto"
 
   openai:
     apiKey: ""
