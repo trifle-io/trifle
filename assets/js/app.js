@@ -201,6 +201,36 @@ Hooks.ChatScroll = {
   }
 }
 
+Hooks.ChatInput = {
+  mounted() {
+    this.handleKeydown = (event) => {
+      if (event.defaultPrevented || this.el.disabled || this.el.readOnly) {
+        return
+      }
+
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault()
+
+        const form = this.el.form || this.el.closest("form")
+        if (!form) return
+
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit()
+        } else {
+          const submit = form.querySelector('[type="submit"]:not([disabled])')
+          if (submit) submit.click()
+        }
+      }
+    }
+
+    this.el.addEventListener("keydown", this.handleKeydown)
+  },
+  destroyed() {
+    if (this.handleKeydown) {
+      this.el.removeEventListener("keydown", this.handleKeydown)
+    }
+  }
+}
 
 
 Hooks.DatabaseExploreChart = {
