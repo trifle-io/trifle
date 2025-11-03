@@ -8,6 +8,7 @@ defmodule Trifle.Chat.Tools do
   alias Trifle.Chat.Session
   alias Trifle.Stats.Source
   alias Trifle.Stats.Series
+  alias TrifleApp.Components.DashboardWidgets.{Timeseries, Category}
   alias TrifleApp.TimeframeParsing
 
   @default_timeframe "24h"
@@ -164,6 +165,27 @@ defmodule Trifle.Chat.Tools do
                 "description" =>
                   "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
               },
+              "chart_type" => %{
+                "type" => "string",
+                "enum" => ["line", "area", "bar"],
+                "description" => "Optional chart presentation."
+              },
+              "stacked" => %{
+                "type" => "boolean",
+                "description" => "Stack multiple series together (line/area/bar only)."
+              },
+              "normalized" => %{
+                "type" => "boolean",
+                "description" => "Convert stacked values into percentages."
+              },
+              "legend" => %{
+                "type" => "boolean",
+                "description" => "Force legend visibility (defaults to automatic)."
+              },
+              "y_label" => %{
+                "type" => "string",
+                "description" => "Optional label for the Y-axis."
+              },
               "slices" => %{
                 "type" => "integer",
                 "minimum" => 1,
@@ -210,6 +232,11 @@ defmodule Trifle.Chat.Tools do
                 "type" => "string",
                 "description" =>
                   "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
+              },
+              "chart_type" => %{
+                "type" => "string",
+                "enum" => ["bar", "pie", "donut"],
+                "description" => "Optional visualization style."
               },
               "slices" => %{
                 "type" => "integer",
@@ -344,7 +371,9 @@ defmodule Trifle.Chat.Tools do
               %{
                 metric_key: metric_key,
                 value_path: value_path,
-                aggregator: aggregator_name
+                aggregator: aggregator_name,
+                timeframe: timeframe_label,
+                granularity: granularity
               }}
            ),
          {:ok, result} <-
@@ -415,21 +444,26 @@ defmodule Trifle.Chat.Tools do
              progressive: false
            ),
          {:ok, formatted} <- format_timeline_result(result.series, value_path, slices) do
-      {:ok,
-       %{
-         status: "ok",
-         formatter: "timeline",
-         metric_key: metric_key,
-         value_path: value_path,
-         slices: slices,
-         timeframe: %{
-           from: DateTime.to_iso8601(from),
-           to: DateTime.to_iso8601(to),
-           label: timeframe_label,
-           granularity: granularity
-         },
-         result: formatted
-       }}
+      chart = build_timeseries_chart(result.series, value_path, slices, args)
+
+      payload =
+        %{
+          status: "ok",
+          formatter: "timeline",
+          metric_key: metric_key,
+          value_path: value_path,
+          slices: slices,
+          timeframe: %{
+            from: DateTime.to_iso8601(from),
+            to: DateTime.to_iso8601(to),
+            label: timeframe_label,
+            granularity: granularity
+          },
+          result: formatted
+        }
+        |> maybe_put_chart(chart)
+
+      {:ok, payload}
     else
       {:error, %{} = err} ->
         Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_timeline"}})
@@ -469,21 +503,26 @@ defmodule Trifle.Chat.Tools do
              progressive: false
            ),
          {:ok, formatted} <- format_category_result(result.series, value_path, slices) do
-      {:ok,
-       %{
-         status: "ok",
-         formatter: "category",
-         metric_key: metric_key,
-         value_path: value_path,
-         slices: slices,
-         timeframe: %{
-           from: DateTime.to_iso8601(from),
-           to: DateTime.to_iso8601(to),
-           label: timeframe_label,
-           granularity: granularity
-         },
-         result: formatted
-       }}
+      chart = build_category_chart(result.series, value_path, args)
+
+      payload =
+        %{
+          status: "ok",
+          formatter: "category",
+          metric_key: metric_key,
+          value_path: value_path,
+          slices: slices,
+          timeframe: %{
+            from: DateTime.to_iso8601(from),
+            to: DateTime.to_iso8601(to),
+            label: timeframe_label,
+            granularity: granularity
+          },
+          result: formatted
+        }
+        |> maybe_put_chart(chart)
+
+      {:ok, payload}
     else
       {:error, %{} = err} ->
         Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_category"}})
@@ -819,6 +858,12 @@ defmodule Trifle.Chat.Tools do
      }}
   end
 
+  defp maybe_put_chart(payload, nil), do: payload
+
+  defp maybe_put_chart(payload, chart) when is_map(chart) do
+    Map.put(payload, :chart, chart)
+  end
+
   defp maybe_put_primary_value(%{values: [value | _]} = payload, 1) when not is_nil(value) do
     Map.put(payload, :value, value)
   end
@@ -902,6 +947,92 @@ defmodule Trifle.Chat.Tools do
        error: "Series data unavailable."
      }}
   end
+
+  defp build_timeseries_chart(%Series{} = series_struct, value_path, slices, args) do
+    paths =
+      value_path
+      |> List.wrap()
+      |> Enum.flat_map(fn path ->
+        cond do
+          is_binary(path) -> [String.trim(path)]
+          true -> []
+        end
+      end)
+      |> Enum.reject(&(&1 == ""))
+
+    if paths == [] do
+      nil
+    else
+      chart_id = "chat-ts-" <> Integer.to_string(System.unique_integer([:positive]))
+
+      item = %{
+        "id" => chart_id,
+        "type" => "timeseries",
+        "paths" => paths,
+        "chart_type" => Map.get(args, "chart_type") || Map.get(args, :chart_type) || "line",
+        "stacked" => truthy?(Map.get(args, "stacked") || Map.get(args, :stacked)),
+        "normalized" => truthy?(Map.get(args, "normalized") || Map.get(args, :normalized)),
+        "legend" => truthy?(Map.get(args, "legend") || Map.get(args, :legend)),
+        "y_label" => Map.get(args, "y_label") || Map.get(args, :y_label) || ""
+      }
+
+      dataset = Timeseries.dataset(series_struct, item)
+
+      %{
+        "type" => "timeseries",
+        "dataset" => stringify_keys(dataset),
+        "slices" => slices,
+        "chart_type" => Map.get(item, "chart_type"),
+        "legend" => Map.get(item, "legend"),
+        "stacked" => Map.get(item, "stacked"),
+        "normalized" => Map.get(item, "normalized"),
+        "y_label" => Map.get(item, "y_label")
+      }
+    end
+  end
+
+  defp build_category_chart(%Series{} = series_struct, value_path, args) do
+    paths =
+      value_path
+      |> List.wrap()
+      |> Enum.flat_map(fn path ->
+        cond do
+          is_binary(path) -> [String.trim(path)]
+          true -> []
+        end
+      end)
+      |> Enum.reject(&(&1 == ""))
+
+    if paths == [] do
+      nil
+    else
+      chart_id = "chat-cat-" <> Integer.to_string(System.unique_integer([:positive]))
+
+      item = %{
+        "id" => chart_id,
+        "type" => "category",
+        "paths" => paths,
+        "chart_type" => Map.get(args, "chart_type") || Map.get(args, :chart_type) || "bar"
+      }
+
+      dataset = Category.dataset(series_struct, item)
+
+      %{
+        "type" => "category",
+        "dataset" => stringify_keys(dataset),
+        "chart_type" => Map.get(item, "chart_type")
+      }
+    end
+  end
+
+  defp stringify_keys(value) when is_map(value) do
+    value
+    |> Enum.map(fn {k, v} -> {to_string(k), stringify_keys(v)} end)
+    |> Map.new()
+  end
+
+  defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
+  defp stringify_keys(value), do: value
 
   defp summarise_series(%Trifle.Stats.Series{} = series) do
     data_points = series.series[:values] || []
@@ -1140,4 +1271,15 @@ defmodule Trifle.Chat.Tools do
 
   defp normalize_category_value(value) when is_map(value), do: normalize_category_map(value)
   defp normalize_category_value(value), do: convert_numeric(value) || value
+
+  defp truthy?(value) when value in [true, false], do: value
+  defp truthy?("true"), do: true
+  defp truthy?("false"), do: false
+  defp truthy?(value) when is_binary(value) do
+    normalized = String.trim(String.downcase(value))
+    normalized in ["yes", "y", "1", "true"]
+  end
+
+  defp truthy?(value) when is_integer(value), do: value != 0
+  defp truthy?(_), do: false
 end
