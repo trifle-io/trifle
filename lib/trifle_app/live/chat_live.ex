@@ -8,6 +8,8 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.SessionStore
   alias Trifle.Stats.Source
 
+  @chat_cancel_reason :chat_reset
+
   @impl true
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
     {:ok, redirect(socket, to: ~p"/organization/profile")}
@@ -104,6 +106,8 @@ defmodule TrifleApp.ChatLive do
   def handle_event("reset_chat", _params, socket) do
     case socket.assigns.session do
       %Session{} = session ->
+        socket = cancel_async(socket, :chat_response, @chat_cancel_reason)
+
         case Chat.reset(session) do
           {:ok, reset_session} ->
             {:noreply,
@@ -169,6 +173,20 @@ defmodule TrifleApp.ChatLive do
       |> assign(:session, reload_session(socket.assigns.session))
       |> put_flash(:error, format_error(reason))
       |> append_final_duration()
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:chat_response, {:exit, reason}, socket)
+      when reason in [@chat_cancel_reason, {:shutdown, :cancel}] do
+    socket =
+      socket
+      |> assign(:sending, false)
+      |> cancel_progress_timer()
+      |> assign(:progress_events, [])
+      |> assign(:progress_started_at, nil)
+      |> assign(:progress_stage_started_at, nil)
+      |> assign(:progress_tick_at, nil)
 
     {:noreply, socket}
   end
