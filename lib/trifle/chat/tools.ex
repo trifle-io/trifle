@@ -143,8 +143,7 @@ defmodule Trifle.Chat.Tools do
              from,
              to,
              granularity,
-             progressive: false,
-             transponders: :none
+             progressive: false
            ) do
       {:ok,
        %{
@@ -498,6 +497,17 @@ defmodule Trifle.Chat.Tools do
 
   defp ensure_datetime(_), do: DateTime.utc_now()
 
+  defp convert_data_map(%D{} = decimal), do: normalize_number(D.to_float(decimal))
+  defp convert_data_map(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp convert_data_map(number) when is_float(number) or is_integer(number),
+    do: normalize_number(number)
+
+  defp convert_data_map(struct) when is_struct(struct) do
+    struct
+    |> Map.from_struct()
+    |> convert_data_map()
+  end
+
   defp convert_data_map(data) when is_map(data) do
     data
     |> Enum.map(fn {k, v} -> {to_string(k), convert_data_map(v)} end)
@@ -505,19 +515,21 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp convert_data_map(list) when is_list(list), do: Enum.map(list, &convert_data_map/1)
-
-  defp convert_data_map(%D{} = decimal), do: D.to_float(decimal)
-  defp convert_data_map(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   defp convert_data_map(other), do: other
 
-  defp convert_numeric(%D{} = decimal), do: D.to_float(decimal)
-  defp convert_numeric(number) when is_number(number), do: number
+  defp convert_numeric(%D{} = decimal), do: normalize_number(D.to_float(decimal))
+
+  defp convert_numeric(number) when is_number(number), do: normalize_number(number)
   defp convert_numeric(_other), do: nil
 
   defp flatten_numeric_paths(value, prefix \\ nil)
 
-  defp flatten_numeric_paths(%D{} = decimal, prefix) when not is_nil(prefix),
-    do: %{prefix => D.to_float(decimal)}
+  defp flatten_numeric_paths(%D{} = decimal, prefix) when not is_nil(prefix) do
+    case normalize_number(D.to_float(decimal)) do
+      nil -> %{}
+      cleaned -> %{prefix => cleaned}
+    end
+  end
 
   defp flatten_numeric_paths(map, prefix) when is_map(map) and not is_struct(map) do
     Enum.reduce(map, %{}, fn {key, v}, acc ->
@@ -535,11 +547,27 @@ defmodule Trifle.Chat.Tools do
     end)
   end
 
-  defp flatten_numeric_paths(number, prefix) when is_number(number) and not is_nil(prefix),
-    do: %{prefix => number}
+  defp flatten_numeric_paths(number, prefix) when is_number(number) and not is_nil(prefix) do
+    case normalize_number(number) do
+      nil -> %{}
+      cleaned -> %{prefix => cleaned}
+    end
+  end
 
   defp flatten_numeric_paths(_other, _prefix), do: %{}
 
   defp join_path(nil, key), do: to_string(key)
   defp join_path(prefix, key), do: "#{prefix}.#{key}"
+
+  defp normalize_number(number) when is_integer(number), do: number
+
+  defp normalize_number(number) when is_float(number) do
+    if number == number do
+      number
+    else
+      nil
+    end
+  end
+
+  defp normalize_number(_other), do: nil
 end
