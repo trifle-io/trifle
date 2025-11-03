@@ -226,6 +226,29 @@ if config_env() == :prod do
     end
   end
 
+  docker_runtime? =
+    File.exists?("/.dockerenv") ||
+      case System.get_env("DOCKER") do
+        v when v in ["1", "true", "TRUE"] -> true
+        _ -> false
+      end
+
+  log_to_stdout =
+    System.get_env("LOG_TO_STDOUT")
+    |> case do
+      nil -> docker_runtime?
+      value -> truthy?.(value, docker_runtime?)
+    end
+
+  if log_to_stdout do
+    config :logger, backends: [:console]
+
+    config :logger, :console,
+      format: "$time $metadata[$level] $message\n",
+      metadata: [:request_id],
+      device: :standard_io
+  end
+
   configure_api_client = fn ->
     config :swoosh, api_client: Swoosh.ApiClient.Finch, finch_name: Trifle.Finch
   end

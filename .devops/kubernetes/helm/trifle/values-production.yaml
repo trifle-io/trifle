@@ -54,6 +54,10 @@ app:
   timezone: "UTC"
   logLevel: "info"
   deploymentMode: "self_hosted"  # Set to "saas" for multi-tenant mode
+  env:
+    MIX_ENV: "prod"
+    PHX_SERVER: "true"
+    LOG_TO_STDOUT: "true"
 
   # Third-party integrations
   honeybadger:
