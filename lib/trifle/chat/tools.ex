@@ -7,11 +7,19 @@ defmodule Trifle.Chat.Tools do
   alias Trifle.Chat.Notifier
   alias Trifle.Chat.Session
   alias Trifle.Stats.Source
+  alias Trifle.Stats.Series
   alias TrifleApp.TimeframeParsing
 
   @default_timeframe "24h"
   @default_granularity "1h"
   @system_key "__system__key__"
+  @aggregators %{
+    "sum" => &Series.aggregate_sum/3,
+    "mean" => &Series.aggregate_mean/3,
+    "min" => &Series.aggregate_min/3,
+    "max" => &Series.aggregate_max/3
+  }
+  @aggregator_names @aggregators |> Map.keys() |> Enum.sort()
 
   @type context :: %{
           required(:source) => Source.t() | nil,
@@ -26,6 +34,8 @@ defmodule Trifle.Chat.Tools do
   """
   @spec definitions(context()) :: [map()]
   def definitions(context) do
+    aggregator_options = @aggregator_names
+
     [
       %{
         "type" => "function",
@@ -61,6 +71,154 @@ defmodule Trifle.Chat.Tools do
               }
             },
             "required" => ["metric_key"]
+          }
+        }
+      },
+      %{
+        "type" => "function",
+        "function" => %{
+          "name" => "aggregate_metric_series",
+          "description" =>
+            "Aggregate timeseries values using built-in analytics aggregators (sum, mean, min, max). " <>
+              "Use this for totals, averages, and extrema instead of estimating manually.",
+          "parameters" => %{
+            "type" => "object",
+            "properties" => %{
+              "metric_key" => %{
+                "type" => "string",
+                "description" => "Metrics Key (exact path string) to query."
+              },
+              "value_path" => %{
+                "type" => "string",
+                "description" =>
+                  "Path to the numeric value inside each data point (dot notation, e.g. data.orders.sum)."
+              },
+              "aggregator" => %{
+                "type" => "string",
+                "enum" => aggregator_options,
+                "description" => "Aggregator to apply. Case-insensitive."
+              },
+              "timeframe" => %{
+                "type" => "string",
+                "description" =>
+                  "Shortcut timeframe like 24h, 7d, 1mo. Overrides from/to if present."
+              },
+              "from" => %{
+                "type" => "string",
+                "description" => "ISO8601 start timestamp (UTC)."
+              },
+              "to" => %{
+                "type" => "string",
+                "description" => "ISO8601 end timestamp (UTC)."
+              },
+              "granularity" => %{
+                "type" => "string",
+                "description" =>
+                  "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
+              },
+              "slices" => %{
+                "type" => "integer",
+                "minimum" => 1,
+                "description" =>
+                  "Optional number of equal slices to evaluate (e.g. compare halves). Defaults to 1."
+              }
+            },
+            "required" => ["metric_key", "value_path", "aggregator"]
+          }
+        }
+      },
+      %{
+        "type" => "function",
+        "function" => %{
+          "name" => "format_metric_timeline",
+          "description" =>
+            "Format timeseries data as a timeline for plotting or structured inspection. " <>
+              "Returns ISO timestamps with numeric values.",
+          "parameters" => %{
+            "type" => "object",
+            "properties" => %{
+              "metric_key" => %{
+                "type" => "string",
+                "description" => "Metrics Key (exact path string) to query."
+              },
+              "value_path" => %{
+                "type" => "string",
+                "description" =>
+                  "Path (supports wildcards) pointing to values to include, e.g. timeline.orders or timeline.*.value."
+              },
+              "timeframe" => %{
+                "type" => "string",
+                "description" =>
+                  "Shortcut timeframe like 24h, 7d, 1mo. Overrides from/to if present."
+              },
+              "from" => %{
+                "type" => "string",
+                "description" => "ISO8601 start timestamp (UTC)."
+              },
+              "to" => %{
+                "type" => "string",
+                "description" => "ISO8601 end timestamp (UTC)."
+              },
+              "granularity" => %{
+                "type" => "string",
+                "description" =>
+                  "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
+              },
+              "slices" => %{
+                "type" => "integer",
+                "minimum" => 1,
+                "description" =>
+                  "Optional number of equal slices to partition the timeline (defaults to 1)."
+              }
+            },
+            "required" => ["metric_key", "value_path"]
+          }
+        }
+      },
+      %{
+        "type" => "function",
+        "function" => %{
+          "name" => "format_metric_category",
+          "description" =>
+            "Format metric data into categorical totals (e.g. status buckets or product mix) for charting.",
+          "parameters" => %{
+            "type" => "object",
+            "properties" => %{
+              "metric_key" => %{
+                "type" => "string",
+                "description" => "Metrics Key (exact path string) to query."
+              },
+              "value_path" => %{
+                "type" => "string",
+                "description" =>
+                  "Path (supports wildcards) pointing to categorical fields, e.g. categories.*.orders."
+              },
+              "timeframe" => %{
+                "type" => "string",
+                "description" =>
+                  "Shortcut timeframe like 24h, 7d, 1mo. Overrides from/to if present."
+              },
+              "from" => %{
+                "type" => "string",
+                "description" => "ISO8601 start timestamp (UTC)."
+              },
+              "to" => %{
+                "type" => "string",
+                "description" => "ISO8601 end timestamp (UTC)."
+              },
+              "granularity" => %{
+                "type" => "string",
+                "description" =>
+                  "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
+              },
+              "slices" => %{
+                "type" => "integer",
+                "minimum" => 1,
+                "description" =>
+                  "Optional number of equal slices to compare segments over time (defaults to 1)."
+              }
+            },
+            "required" => ["metric_key", "value_path"]
           }
         }
       },
@@ -166,6 +324,173 @@ defmodule Trifle.Chat.Tools do
 
       {:error, reason} ->
         Notifier.notify(context, {:progress, :tool_error, %{tool: "fetch_metric_timeseries"}})
+        {:error, %{status: "error", error: inspect(reason)}}
+    end
+  end
+
+  def execute("aggregate_metric_series", arguments_json, context) do
+    with {:ok, args} <- decode_args(arguments_json),
+         {:ok, source} <- ensure_source(context),
+         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
+         {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
+         {:ok, {aggregator_name, aggregator_fun}} <- resolve_aggregator(args["aggregator"]),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
+         {:ok, granularity} <- resolve_granularity(args, source),
+         {:ok, slices} <- resolve_slices(args),
+         :ok <-
+           Notifier.notify(
+             context,
+             {:progress, :aggregating_series,
+              %{
+                metric_key: metric_key,
+                value_path: value_path,
+                aggregator: aggregator_name
+              }}
+           ),
+         {:ok, result} <-
+           Source.fetch_series(
+             source,
+             metric_key,
+             from,
+             to,
+             granularity,
+             progressive: false
+           ),
+         {:ok, values} <- aggregate_series(result.series, aggregator_fun, value_path, slices) do
+      payload =
+        %{
+          status: "ok",
+          aggregator: aggregator_name,
+          metric_key: metric_key,
+          value_path: value_path,
+          slices: slices,
+          values: values,
+          count: length(values),
+          timeframe: %{
+            from: DateTime.to_iso8601(from),
+            to: DateTime.to_iso8601(to),
+            label: timeframe_label,
+            granularity: granularity
+          }
+        }
+        |> maybe_put_primary_value(slices)
+
+      {:ok, payload}
+    else
+      {:error, %{} = err} ->
+        Notifier.notify(context, {:progress, :tool_error, %{tool: "aggregate_metric_series"}})
+        {:error, err}
+
+      {:error, reason} ->
+        Notifier.notify(context, {:progress, :tool_error, %{tool: "aggregate_metric_series"}})
+        {:error, %{status: "error", error: inspect(reason)}}
+    end
+  end
+
+  def execute("format_metric_timeline", arguments_json, context) do
+    with {:ok, args} <- decode_args(arguments_json),
+         {:ok, source} <- ensure_source(context),
+         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
+         {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
+         {:ok, granularity} <- resolve_granularity(args, source),
+         {:ok, slices} <- resolve_slices(args),
+         :ok <-
+           Notifier.notify(
+             context,
+             {:progress, :formatting_series,
+              %{
+                metric_key: metric_key,
+                value_path: value_path,
+                formatter: "timeline"
+              }}
+           ),
+         {:ok, result} <-
+           Source.fetch_series(
+             source,
+             metric_key,
+             from,
+             to,
+             granularity,
+             progressive: false
+           ),
+         {:ok, formatted} <- format_timeline_result(result.series, value_path, slices) do
+      {:ok,
+       %{
+         status: "ok",
+         formatter: "timeline",
+         metric_key: metric_key,
+         value_path: value_path,
+         slices: slices,
+         timeframe: %{
+           from: DateTime.to_iso8601(from),
+           to: DateTime.to_iso8601(to),
+           label: timeframe_label,
+           granularity: granularity
+         },
+         result: formatted
+       }}
+    else
+      {:error, %{} = err} ->
+        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_timeline"}})
+        {:error, err}
+
+      {:error, reason} ->
+        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_timeline"}})
+        {:error, %{status: "error", error: inspect(reason)}}
+    end
+  end
+
+  def execute("format_metric_category", arguments_json, context) do
+    with {:ok, args} <- decode_args(arguments_json),
+         {:ok, source} <- ensure_source(context),
+         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
+         {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
+         {:ok, granularity} <- resolve_granularity(args, source),
+         {:ok, slices} <- resolve_slices(args),
+         :ok <-
+           Notifier.notify(
+             context,
+             {:progress, :formatting_series,
+              %{
+                metric_key: metric_key,
+                value_path: value_path,
+                formatter: "category"
+              }}
+           ),
+         {:ok, result} <-
+           Source.fetch_series(
+             source,
+             metric_key,
+             from,
+             to,
+             granularity,
+             progressive: false
+           ),
+         {:ok, formatted} <- format_category_result(result.series, value_path, slices) do
+      {:ok,
+       %{
+         status: "ok",
+         formatter: "category",
+         metric_key: metric_key,
+         value_path: value_path,
+         slices: slices,
+         timeframe: %{
+           from: DateTime.to_iso8601(from),
+           to: DateTime.to_iso8601(to),
+           label: timeframe_label,
+           granularity: granularity
+         },
+         result: formatted
+       }}
+    else
+      {:error, %{} = err} ->
+        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_category"}})
+        {:error, err}
+
+      {:error, reason} ->
+        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_category"}})
         {:error, %{status: "error", error: inspect(reason)}}
     end
   end
@@ -428,6 +753,156 @@ defmodule Trifle.Chat.Tools do
     end
   end
 
+  defp resolve_aggregator(nil) do
+    {:error,
+     %{
+       status: "error",
+       error: "Aggregator must be provided (options: #{Enum.join(@aggregator_names, ", ")})."
+     }}
+  end
+
+  defp resolve_aggregator(value) when is_atom(value), do: resolve_aggregator(Atom.to_string(value))
+
+  defp resolve_aggregator(value) when is_binary(value) do
+    key =
+      value
+      |> String.trim()
+      |> String.downcase()
+
+    case Map.get(@aggregators, key) do
+      nil ->
+        {:error,
+         %{
+           status: "error",
+           error: "Unsupported aggregator #{inspect(value)}.",
+           allowed: @aggregator_names
+         }}
+
+      fun ->
+        {:ok, {key, fun}}
+    end
+  end
+
+  defp resolve_aggregator(_other) do
+    {:error,
+     %{
+       status: "error",
+       error: "Aggregator must be a string."
+     }}
+  end
+
+  defp aggregate_series(%Series{} = series, aggregator_fun, path, slices)
+       when is_function(aggregator_fun, 3) and is_integer(slices) and slices >= 1 do
+    try do
+      values =
+        aggregator_fun.(series, path, slices)
+        |> List.wrap()
+        |> Enum.map(&convert_numeric/1)
+        |> Enum.reject(&is_nil/1)
+
+      {:ok, values}
+    rescue
+      error ->
+        {:error,
+         %{
+           status: "error",
+           error: "Aggregator failed for #{path}: #{Exception.message(error)}"
+         }}
+    end
+  end
+
+  defp aggregate_series(_series, _fun, _path, _slices) do
+    {:error,
+     %{
+       status: "error",
+       error: "Series data unavailable."
+     }}
+  end
+
+  defp maybe_put_primary_value(%{values: [value | _]} = payload, 1) when not is_nil(value) do
+    Map.put(payload, :value, value)
+  end
+
+  defp maybe_put_primary_value(payload, _), do: payload
+
+  defp resolve_slices(args, default \\ 1) do
+    case Map.get(args, "slices") do
+      nil -> {:ok, default}
+      value -> cast_positive_integer(value)
+    end
+  end
+
+  defp cast_positive_integer(value) when is_integer(value) and value >= 1, do: {:ok, value}
+
+  defp cast_positive_integer(value) when is_float(value) and value >= 1 do
+    if value == trunc(value) do
+      {:ok, trunc(value)}
+    else
+      slices_error()
+    end
+  end
+
+  defp cast_positive_integer(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {int, ""} when int >= 1 -> {:ok, int}
+      _ -> slices_error()
+    end
+  end
+
+  defp cast_positive_integer(_), do: slices_error()
+
+  defp slices_error do
+    {:error,
+     %{
+       status: "error",
+       error: "slices must be a positive integer."
+     }}
+  end
+
+  defp format_timeline_result(%Series{} = series, path, slices) do
+    try do
+      result = Series.format_timeline(series, path, slices)
+      {:ok, normalize_timeline_output(result)}
+    rescue
+      error ->
+        {:error,
+         %{
+           status: "error",
+           error: "Timeline formatter failed for #{path}: #{Exception.message(error)}"
+         }}
+    end
+  end
+
+  defp format_timeline_result(_series, _path, _slices) do
+    {:error,
+     %{
+       status: "error",
+       error: "Series data unavailable."
+     }}
+  end
+
+  defp format_category_result(%Series{} = series, path, slices) do
+    try do
+      result = Series.format_category(series, path, slices)
+      {:ok, normalize_category_output(result)}
+    rescue
+      error ->
+        {:error,
+         %{
+           status: "error",
+           error: "Category formatter failed for #{path}: #{Exception.message(error)}"
+         }}
+    end
+  end
+
+  defp format_category_result(_series, _path, _slices) do
+    {:error,
+     %{
+       status: "error",
+       error: "Series data unavailable."
+     }}
+  end
+
   defp summarise_series(%Trifle.Stats.Series{} = series) do
     data_points = series.series[:values] || []
     flattened_rows = Enum.map(data_points, &flatten_numeric_paths/1)
@@ -570,4 +1045,99 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp normalize_number(_other), do: nil
+
+  defp normalize_timeline_output(result) when is_map(result) do
+    result
+    |> Enum.map(fn {path, entries} -> {path, normalize_timeline_entries(entries)} end)
+    |> Map.new()
+  end
+
+  defp normalize_timeline_output(result) when is_list(result) do
+    Enum.map(result, &normalize_timeline_entries/1)
+  end
+
+  defp normalize_timeline_output(other), do: other
+
+  defp normalize_timeline_entries(entries) when is_list(entries) do
+    Enum.map(entries, fn
+      %{} = entry -> normalize_timeline_entry(entry)
+      list when is_list(list) -> normalize_timeline_entries(list)
+      other -> other
+    end)
+  end
+
+  defp normalize_timeline_entries(%{} = entry), do: normalize_timeline_entry(entry)
+  defp normalize_timeline_entries(other), do: other
+
+  defp normalize_timeline_entry(entry) when is_map(entry) do
+    entry
+    |> Enum.reduce(%{}, fn {key, value}, acc ->
+      key_string = to_string(key)
+
+      normalized_value =
+        case key_string do
+          "at" -> normalize_datetime_value(value)
+          _ -> normalize_timeline_value(value)
+        end
+
+      Map.put(acc, key_string, normalized_value)
+    end)
+  end
+
+  defp normalize_timeline_value(value) when is_list(value) do
+    Enum.map(value, &normalize_timeline_value/1)
+  end
+
+  defp normalize_timeline_value(value) when is_map(value) do
+    normalize_timeline_entry(value)
+  end
+
+  defp normalize_timeline_value(value) do
+    convert_numeric(value) || value
+  end
+
+  defp normalize_datetime_value(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+
+  defp normalize_datetime_value(%NaiveDateTime{} = ndt) do
+    ndt
+    |> DateTime.from_naive!("Etc/UTC")
+    |> DateTime.to_iso8601()
+  end
+
+  defp normalize_datetime_value(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, dt, _offset} -> DateTime.to_iso8601(dt)
+      _ -> value
+    end
+  end
+
+  defp normalize_datetime_value(other), do: other
+
+  defp normalize_category_output(result) when is_map(result), do: normalize_category_map(result)
+
+  defp normalize_category_output(result) when is_list(result) do
+    Enum.map(result, fn
+      %{} = map -> normalize_category_map(map)
+      other -> other
+    end)
+  end
+
+  defp normalize_category_output(other), do: other
+
+  defp normalize_category_map(map) do
+    map
+    |> Enum.reduce(%{}, fn {key, value}, acc ->
+      normalized =
+        cond do
+          is_map(value) -> normalize_category_map(value)
+          is_list(value) -> Enum.map(value, &normalize_category_value/1)
+          true -> convert_numeric(value) || value
+        end
+
+      Map.put(acc, to_string(key), normalized)
+    end)
+  end
+
+  defp normalize_category_value(value) when is_map(value), do: normalize_category_map(value)
+  defp normalize_category_value(value), do: convert_numeric(value) || value
 end
