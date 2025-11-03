@@ -101,7 +101,7 @@ defmodule TrifleApp.Exports.LayoutStore do
 
   defp persist_layout(id, layout, expires_at_ms) do
     now_utc = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    now_naive = DateTime.to_naive(now_utc)
+    now_naive = DateTime.to_naive(now_utc) |> NaiveDateTime.truncate(:second)
 
     record = %LayoutSessionRecord{
       id: id,
