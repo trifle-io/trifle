@@ -103,10 +103,15 @@ defmodule TrifleApp.Exports.LayoutStore do
     now_utc = DateTime.utc_now() |> DateTime.truncate(:microsecond)
     now_naive = DateTime.to_naive(now_utc) |> NaiveDateTime.truncate(:second)
 
+    expires_at =
+      expires_at_ms
+      |> DateTime.from_unix!(:millisecond)
+      |> DateTime.truncate(:microsecond)
+
     record = %LayoutSessionRecord{
       id: id,
       layout: :erlang.term_to_binary(layout),
-      expires_at: DateTime.from_unix!(expires_at_ms, :millisecond),
+      expires_at: expires_at,
       inserted_at: now_naive
     }
 
