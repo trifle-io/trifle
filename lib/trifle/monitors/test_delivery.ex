@@ -15,6 +15,7 @@ defmodule Trifle.Monitors.TestDelivery do
   alias Trifle.Mailer
   alias Swoosh.Attachment
   alias Swoosh.Email
+  alias Mint.TransportError
 
   @default_media [:pdf]
   @supported_media [:pdf, :png_light, :png_dark, :file_csv, :file_json]
@@ -640,6 +641,16 @@ defmodule Trifle.Monitors.TestDelivery do
   defp deliver_email(monitor, alert, channel, exports, params, handle, opts) do
     recipient = channel_field(channel, :target)
 
+    log_context =
+      opts
+      |> Keyword.get(:exporter_opts, [])
+      |> Keyword.get(:log_context, %{})
+
+    log_label = ExportLog.label(log_context)
+    log_prefix = monitor_log_prefix(log_label)
+    client_options = mailer_client_options(opts)
+    retry_config = mailer_retry_config()
+
     cond do
       blank?(recipient) ->
         {:error,
@@ -661,8 +672,16 @@ defmodule Trifle.Monitors.TestDelivery do
           |> Email.subject(email_subject(monitor, alert))
           |> Email.text_body(email_body(monitor, alert, params))
           |> attach_exports(exports)
+          |> put_email_client_options(client_options)
 
-        case deliver_email_with_mailer(mailer, email, mailer_opts) do
+        case send_email_with_retry(
+               mailer,
+               email,
+               mailer_opts,
+               retry_config.attempts,
+               retry_config.backoff_ms,
+               log_prefix
+             ) do
           {:ok, _meta} ->
             {:ok,
              %{
@@ -729,6 +748,98 @@ defmodule Trifle.Monitors.TestDelivery do
       function_exported?(mailer, :deliver, 2) -> apply(mailer, :deliver, [email, opts])
       function_exported?(mailer, :deliver, 1) -> apply(mailer, :deliver, [email])
       true -> {:error, :mailer_not_configured}
+    end
+  end
+
+  defp mailer_client_options(opts) do
+    defaults = Application.get_env(:trifle, :mailer_client_options, [])
+    overrides = Keyword.get(opts, :mailer_client_options, [])
+    Keyword.merge(defaults, overrides)
+  end
+
+  defp mailer_retry_config do
+    config = Application.get_env(:trifle, :mailer_retry, attempts: 1, backoff_ms: 0)
+
+    attempts =
+      config
+      |> Keyword.get(:attempts, 1)
+      |> max(1)
+
+    backoff_ms =
+      config
+      |> Keyword.get(:backoff_ms, 0)
+      |> max(0)
+
+    %{attempts: attempts, backoff_ms: backoff_ms}
+  end
+
+  defp put_email_client_options(%Email{} = email, []), do: email
+
+  defp put_email_client_options(%Email{} = email, opts) do
+    existing = Map.get(email.private, :client_options, [])
+    merged = Keyword.merge(opts, existing)
+    Email.put_private(email, :client_options, merged)
+  end
+
+  defp monitor_log_prefix(""), do: ""
+  defp monitor_log_prefix(label) when is_binary(label), do: " #{label}"
+  defp monitor_log_prefix(_), do: ""
+
+  defp send_email_with_retry(mailer, email, mailer_opts, attempts, backoff_ms, log_prefix) do
+    attempts = max(attempts, 1)
+
+    do_send_email_with_retry(
+      mailer,
+      email,
+      mailer_opts,
+      attempts,
+      backoff_ms,
+      log_prefix,
+      attempts
+    )
+  end
+
+  defp do_send_email_with_retry(_mailer, _email, _mailer_opts, 0, _backoff_ms, _log_prefix, _),
+    do: {:error, :retry_exhausted}
+
+  defp do_send_email_with_retry(
+         mailer,
+         email,
+         mailer_opts,
+         attempts_left,
+         backoff_ms,
+         log_prefix,
+         total_attempts
+       ) do
+    case deliver_email_with_mailer(mailer, email, mailer_opts) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, %TransportError{} = reason} ->
+        if attempts_left > 1 do
+          Logger.warning(
+            "[monitor_export#{log_prefix}] mailer_transport_timeout attempt=#{total_attempts - attempts_left + 1} remaining=#{attempts_left - 1} reason=#{inspect(reason)}"
+          )
+
+          if backoff_ms > 0 do
+            Process.sleep(backoff_ms)
+          end
+
+          do_send_email_with_retry(
+            mailer,
+            email,
+            mailer_opts,
+            attempts_left - 1,
+            backoff_ms,
+            log_prefix,
+            total_attempts
+          )
+        else
+          {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
