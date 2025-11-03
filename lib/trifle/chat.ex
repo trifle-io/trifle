@@ -106,27 +106,38 @@ defmodule Trifle.Chat do
   def renderable_messages(nil), do: []
 
   def renderable_messages(%Session{} = session) do
-    session.messages
-    |> Enum.filter(&(&1.role in ["user", "assistant"]))
-    |> Enum.map(fn message ->
-      role = Map.get(message, :role) || Map.get(message, "role")
+    {messages, pending} =
+      Enum.reduce(session.messages, {[], []}, fn message, {acc, pending} ->
+        role = message_role(message)
 
-      content =
-        Map.get(message, :content) ||
-          Map.get(message, "content") ||
-          ""
+        cond do
+          role == "tool" ->
+            visualizations = parse_tool_visualizations(message)
+            {acc, pending ++ visualizations}
 
-      created_at =
-        Map.get(message, :created_at) ||
-          Map.get(message, "created_at")
+          role == "assistant" ->
+            entry = build_renderable_message(message)
+            entry = Map.update(entry, :visualizations, pending, &(&1 ++ pending))
+            {acc ++ [entry], []}
 
-      %{
-        role: role,
-        content: content,
-        created_at: created_at
-      }
-    end)
-    |> Enum.reject(&(&1.content in [nil, ""]))
+          role == "user" ->
+            acc = attach_visualizations_to_last(acc, pending)
+            entry = build_renderable_message(message)
+            {acc ++ [entry], []}
+
+          true ->
+            {acc, pending}
+        end
+      end)
+
+    messages =
+      if pending == [] do
+        messages
+      else
+        attach_visualizations_to_last(messages, pending)
+      end
+
+    Enum.reject(messages, &message_blank?/1)
   end
 
   defp source_ref(%Source{} = source) do
@@ -135,4 +146,99 @@ defmodule Trifle.Chat do
       id: source |> Source.id() |> to_string()
     }
   end
+
+  defp build_renderable_message(message) do
+    role = message_role(message)
+
+    content =
+      Map.get(message, :content) ||
+        Map.get(message, "content") ||
+        ""
+
+    created_at =
+      Map.get(message, :created_at) ||
+        Map.get(message, "created_at")
+
+    %{
+      role: role,
+      content: content,
+      created_at: created_at,
+      visualizations: []
+    }
+  end
+
+  defp message_role(message) do
+    Map.get(message, :role) || Map.get(message, "role") || ""
+  end
+
+  defp attach_visualizations_to_last([], _pending), do: []
+
+  defp attach_visualizations_to_last(messages, pending) when pending == [], do: messages
+
+  defp attach_visualizations_to_last(messages, pending) do
+    List.update_at(messages, -1, fn last ->
+      visuals = (Map.get(last, :visualizations, []) || []) ++ pending
+      Map.put(last, :visualizations, visuals)
+    end)
+  end
+
+  defp parse_tool_visualizations(message) do
+    content =
+      Map.get(message, :content) ||
+        Map.get(message, "content") ||
+        ""
+
+    with true <- is_binary(content),
+         {:ok, payload} <- Jason.decode(content),
+         %{"chart" => chart} <- payload,
+         true <- is_map(chart),
+         chart_type when is_binary(chart_type) <- Map.get(chart, "type") do
+      id =
+        Map.get(message, :tool_call_id) ||
+          Map.get(message, "tool_call_id") ||
+          "viz-" <> Integer.to_string(System.unique_integer([:positive]))
+
+      inserted_at =
+        Map.get(message, :created_at) ||
+          Map.get(message, "created_at")
+
+      tool =
+        Map.get(message, :name) ||
+          Map.get(message, "name")
+
+      [
+        %{
+          id: to_string(id),
+          type: chart_type,
+          chart: chart,
+          payload: payload,
+          created_at: inserted_at,
+          tool_name: tool
+        }
+      ]
+    else
+      _ -> []
+    end
+  end
+
+  defp message_blank?(%{role: "assistant"} = message) do
+    content =
+      message
+      |> Map.get(:content, "")
+      |> to_string()
+      |> String.trim()
+
+    visuals = Map.get(message, :visualizations, [])
+    content == "" and Enum.empty?(visuals || [])
+  end
+
+  defp message_blank?(%{role: "user"} = message) do
+    message
+    |> Map.get(:content, "")
+    |> to_string()
+    |> String.trim()
+    |> Kernel.==("")
+  end
+
+  defp message_blank?(_), do: false
 end

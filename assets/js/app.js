@@ -232,6 +232,336 @@ Hooks.ChatInput = {
   }
 }
 
+Hooks.ChatChart = {
+  mounted() {
+    this.chart = null;
+    this.theme = null;
+    this.retryTimer = null;
+    this.resizeObserver = null;
+    this.pendingRender = false;
+    this.resizeHandler = () => {
+      if (this.chart && typeof this.chart.resize === 'function') {
+        try { this.chart.resize(); } catch (_) {}
+      }
+    };
+    this.themeHandler = () => this.render(true);
+    this.createResizeObserver();
+    window.addEventListener('resize', this.resizeHandler);
+    window.addEventListener('trifle:theme-changed', this.themeHandler);
+    this.render();
+  },
+  updated() {
+    this.render();
+  },
+  destroyed() {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.destroyResizeObserver();
+    if (this.chart && typeof this.chart.dispose === 'function') {
+      try { this.chart.dispose(); } catch (_) {}
+    }
+    this.chart = null;
+    this.pendingRender = false;
+    window.removeEventListener('resize', this.resizeHandler);
+    window.removeEventListener('trifle:theme-changed', this.themeHandler);
+  },
+  render(force = false) {
+    const chartData = this.parseChart();
+    if (!chartData) return;
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    const width = this.el.clientWidth;
+    const height = this.el.clientHeight;
+    if (!width || !height) {
+      this.pendingRender = true;
+      if (!this.retryTimer) {
+        this.retryTimer = setTimeout(() => this.render(true), 160);
+      }
+      return;
+    }
+    const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    if (this.chart) {
+      try { this.chart.dispose(); } catch (_) {}
+      this.chart = null;
+    }
+    const chart = this.ensureChart(theme);
+    if (!chart) return;
+    const palette = this.palette();
+
+    let option;
+    if (chartData.type === 'category') {
+      option = this.categoryOption(chartData, palette, theme);
+    } else {
+      option = this.timeseriesOption(chartData, palette, theme);
+    }
+    chart.setOption(option, true);
+    requestAnimationFrame(() => {
+      if (this.chart && typeof this.chart.resize === 'function') {
+        try { this.chart.resize(); } catch (_) {}
+      }
+    });
+
+    this.pendingRender = false;
+  },
+  parseChart() {
+    const raw = this.el.dataset.chart || '';
+    if (!raw) return null;
+    try {
+      const chart = JSON.parse(raw);
+      chart.type = (chart.type || '').toLowerCase();
+      chart.dataset = chart.dataset || {};
+      return chart;
+    } catch (_) {
+      return null;
+    }
+  },
+  palette() {
+    const raw = this.el.dataset.colors || '[]';
+    try {
+      const colors = JSON.parse(raw);
+      if (Array.isArray(colors) && colors.length) return colors;
+    } catch (_) {}
+    return ["#14b8a6", "#f59e0b", "#8b5cf6", "#06b6d4", "#10b981"];
+  },
+  ensureChart(theme) {
+    if (this.chart) {
+      const hasVisual = this.el && this.el.querySelector('canvas, svg');
+      if (!hasVisual) {
+        try { this.chart.dispose(); } catch (_) {}
+        this.chart = null;
+      }
+    }
+
+    if (this.chart) {
+      try {
+        const dom = typeof this.chart.getDom === 'function' ? this.chart.getDom() : null;
+        if (!dom || dom !== this.el) {
+          this.chart.dispose();
+          this.chart = null;
+        }
+      } catch (_) {
+        this.chart = null;
+      }
+    }
+
+    if (this.chart && this.theme === theme) {
+      if (this.el.clientWidth === 0 || this.el.clientHeight === 0) {
+        this.scheduleRetry();
+        return null;
+      }
+      return this.chart;
+    }
+    if (this.chart && typeof this.chart.dispose === 'function') {
+      try { this.chart.dispose(); } catch (_) {}
+    }
+    this.chart = null;
+    if (this.el.clientWidth === 0 || this.el.clientHeight === 0) {
+      this.scheduleRetry();
+      return null;
+    }
+    this.chart = echarts.init(this.el, theme === 'dark' ? 'dark' : undefined, withChartOpts());
+    this.theme = theme;
+    return this.chart;
+  },
+  scheduleRetry() {
+    if (this.retryTimer) return;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.render(true);
+    }, 160);
+  },
+  timeseriesOption(chartData, palette, theme) {
+    const dataset = chartData.dataset || {};
+    const seriesConfig = Array.isArray(dataset.series) ? dataset.series : [];
+    const chartType = (dataset.chart_type || 'line').toLowerCase();
+    const stacked = !!dataset.stacked;
+    const showLegend = dataset.legend === undefined ? seriesConfig.length > 1 : !!dataset.legend;
+    const textColor = theme === 'dark' ? '#9CA3AF' : '#6B7280';
+    const axisLineColor = theme === 'dark' ? '#374151' : '#E5E7EB';
+    const gridLineColor = theme === 'dark' ? '#1F2937' : '#E5E7EB';
+    const legendText = theme === 'dark' ? '#D1D5DB' : '#374151';
+    const yLabel = dataset.y_label || '';
+
+    const series = seriesConfig.map((entry, idx) => {
+      const dataPoints = Array.isArray(entry.data) ? entry.data : [];
+      const sanitized = dataPoints.map((point) => {
+        const toNumber = (val) => {
+          const num = Number(val);
+          return Number.isFinite(num) ? num : 0;
+        };
+
+        if (Array.isArray(point)) {
+          const ts = toNumber(point[0]);
+          const value = toNumber(point[1]);
+          return [ts, value];
+        }
+
+        if (typeof point === 'object' && point !== null) {
+          const ts = toNumber(point.at ?? point[0]);
+          const value = toNumber(point.value ?? point[1]);
+          return [ts, value];
+        }
+
+        const ts = toNumber(point);
+        return [ts, 0];
+      });
+
+      const base = {
+        name: entry.name || `Series ${idx + 1}`,
+        type: chartType === 'bar' ? 'bar' : 'line',
+        data: sanitized,
+        smooth: chartType !== 'bar',
+        showSymbol: false,
+        emphasis: { focus: 'series' }
+      };
+
+      if (chartType === 'area') base.areaStyle = { opacity: 0.12 };
+      if (stacked) base.stack = 'total';
+      if (chartType === 'bar') base.barMaxWidth = 26;
+      if (palette.length) base.itemStyle = { color: palette[idx % palette.length] };
+
+      return base;
+    });
+
+    const gridBottom = showLegend ? 64 : 36;
+
+    return {
+      color: palette,
+      animation: false,
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: chartType === 'bar' ? 'shadow' : 'cross' }
+      },
+      legend: showLegend
+        ? { bottom: 0, textStyle: { color: legendText } }
+        : { show: false },
+      grid: { left: 48, right: 20, top: 20, bottom: gridBottom },
+      xAxis: {
+        type: 'time',
+        boundaryGap: chartType === 'bar',
+        axisLabel: { color: textColor },
+        axisLine: { lineStyle: { color: axisLineColor } },
+        splitLine: { lineStyle: { color: gridLineColor } }
+      },
+      yAxis: {
+        type: 'value',
+        name: yLabel || null,
+        nameLocation: 'end',
+        nameTextStyle: { color: textColor, padding: [0, 0, 0, 8] },
+        axisLabel: { color: textColor },
+        axisLine: { lineStyle: { color: axisLineColor } },
+        splitLine: { lineStyle: { color: gridLineColor } }
+      },
+      series
+    };
+  },
+  categoryOption(chartData, palette, theme) {
+    const dataset = chartData.dataset || {};
+    const data = Array.isArray(dataset.data) ? dataset.data : [];
+    const chartType = (dataset.chart_type || 'bar').toLowerCase();
+    const textColor = theme === 'dark' ? '#9CA3AF' : '#475569';
+    const axisLineColor = theme === 'dark' ? '#374151' : '#E5E7EB';
+
+    if (chartType === 'pie' || chartType === 'donut') {
+      return {
+        color: palette,
+        animation: false,
+        tooltip: { trigger: 'item' },
+        legend: {
+          orient: 'vertical',
+          left: 'left',
+          textStyle: { color: textColor }
+        },
+        series: [
+          {
+            type: 'pie',
+            radius: chartType === 'donut' ? ['45%', '80%'] : ['0%', '72%'],
+            center: ['55%', '55%'],
+            data: data.map((entry, idx) => {
+              const numeric = Number(entry.value ?? 0);
+              const value = Number.isFinite(numeric) ? numeric : 0;
+              return {
+                value,
+                name: entry.name || `Slice ${idx + 1}`
+              };
+            }),
+            label: { color: textColor }
+          }
+        ]
+      };
+    }
+
+    const categories = data.map((entry) => entry.name || '');
+    const values = data.map((entry, idx) => {
+      const numeric = Number(entry.value ?? 0);
+      const value = Number.isFinite(numeric) ? numeric : 0;
+      return {
+        value,
+        itemStyle: { color: palette[idx % palette.length] }
+      };
+    });
+
+    return {
+      color: palette,
+      animation: false,
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 48, right: 20, top: 20, bottom: 32 },
+      xAxis: {
+        type: 'category',
+        data: categories,
+        axisLabel: { color: textColor },
+        axisLine: { lineStyle: { color: axisLineColor } }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: textColor },
+        axisLine: { lineStyle: { color: axisLineColor } },
+        splitLine: { lineStyle: { color: axisLineColor } }
+      },
+      series: [
+        {
+          type: 'bar',
+          data: values,
+          barWidth: 32
+        }
+      ]
+    };
+  },
+  createResizeObserver() {
+    if (typeof ResizeObserver !== 'function') return;
+    if (this.resizeObserver) return;
+    this.resizeObserver = new ResizeObserver((entries) => {
+      if (!Array.isArray(entries)) return;
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect || {};
+      if (width > 0 && height > 0) {
+        if (this.pendingRender) {
+          this.pendingRender = false;
+          this.render(true);
+        } else if (this.chart && typeof this.chart.resize === 'function') {
+          try { this.chart.resize(); } catch (_) {}
+        }
+      }
+    });
+    try {
+      this.resizeObserver.observe(this.el);
+    } catch (_) {
+      this.destroyResizeObserver();
+    }
+  },
+  destroyResizeObserver() {
+    if (this.resizeObserver && typeof this.resizeObserver.disconnect === 'function') {
+      try { this.resizeObserver.disconnect(); } catch (_) {}
+    }
+    this.resizeObserver = null;
+  }
+}
+
 
 Hooks.DatabaseExploreChart = {
   _resolveTheme() {

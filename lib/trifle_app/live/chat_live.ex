@@ -7,6 +7,7 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
   alias Trifle.Stats.Source
+  alias TrifleApp.DesignSystem.ChartColors
 
   @chat_cancel_reason :chat_cancelled
 
@@ -91,7 +92,7 @@ defmodule TrifleApp.ChatLive do
           |> assign(:pending_user_message, message)
           |> cancel_progress_timer()
           |> assign(:session, in_memory_session)
-          |> assign(:messages, Chat.renderable_messages(in_memory_session))
+          |> assign_messages(in_memory_session)
           |> assign(:form, to_form(%{"message" => ""}))
           |> assign(:sending, true)
           |> assign(:progress_events, [])
@@ -142,7 +143,7 @@ defmodule TrifleApp.ChatLive do
             |> assign(:show_source_modal, false)
             |> assign(:selected_source, source)
             |> assign(:session, reset_session)
-            |> assign(:messages, Chat.renderable_messages(reset_session))
+            |> assign_messages(reset_session)
             |> assign(:form, to_form(%{"message" => ""}))
             |> assign(:sending, false)
             |> assign(:progress_events, [])
@@ -183,7 +184,7 @@ defmodule TrifleApp.ChatLive do
     socket =
       socket
       |> assign(:sending, false)
-      |> assign(:messages, Chat.renderable_messages(session))
+      |> assign_messages(session)
       |> assign(:progress_events, [])
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
@@ -212,7 +213,7 @@ defmodule TrifleApp.ChatLive do
     socket =
       socket
       |> assign(:session, session)
-      |> assign(:messages, Chat.renderable_messages(session))
+      |> assign_messages(session)
       |> assign(:sending, false)
       |> assign(:session_snapshot, nil)
       |> assign(:pending_user_message, nil)
@@ -435,7 +436,7 @@ defmodule TrifleApp.ChatLive do
       |> cancel_progress_timer()
       |> assign(:selected_source, source)
       |> assign(:session, session)
-      |> assign(:messages, Chat.renderable_messages(session))
+      |> assign_messages(session)
       |> assign(:progress_events, [])
       |> assign(:progress_tick_at, nil)
       |> assign(:progress_timer_ref, nil)
@@ -641,10 +642,235 @@ defmodule TrifleApp.ChatLive do
     end
   end
 
+  defp assign_messages(socket, %Session{} = session) do
+    assign(socket, :messages, build_renderable_messages(session))
+  end
+
+  defp assign_messages(socket, _), do: assign(socket, :messages, [])
+
+  defp build_renderable_messages(%Session{} = session) do
+    session
+    |> Chat.renderable_messages()
+    |> Enum.with_index()
+    |> Enum.map(fn {message, idx} ->
+      message
+      |> decorate_visualizations()
+      |> Map.put_new(:dom_id, message_dom_id(message, idx))
+    end)
+  end
+
+  defp build_renderable_messages(_), do: []
+
+  defp decorate_visualizations(message) do
+    visuals =
+      message
+      |> Map.get(:visualizations, [])
+      |> Enum.map(&decorate_visualization/1)
+
+    Map.put(message, :visualizations, visuals)
+  end
+
+  defp decorate_visualization(viz) do
+    dom_id =
+      viz
+      |> Map.get(:dom_id)
+      |> case do
+        nil ->
+          base_id =
+            viz
+            |> Map.get(:id)
+            |> case do
+              nil -> Integer.to_string(System.unique_integer([:positive]))
+              other -> to_string(other)
+            end
+
+          "chat-viz-" <> sanitize_dom_id(base_id)
+
+        existing ->
+          existing
+      end
+
+    Map.put(viz, :dom_id, dom_id)
+  end
+
+  defp sanitize_dom_id(id) do
+    id
+    |> to_string()
+    |> String.replace(~r/[^a-zA-Z0-9_-]/, "-")
+  end
+
+  defp message_dom_id(message, idx) do
+    created_at =
+      message
+      |> Map.get(:created_at)
+      |> case do
+        %DateTime{} = dt -> DateTime.to_iso8601(dt)
+        %NaiveDateTime{} = ndt -> NaiveDateTime.to_iso8601(ndt)
+        other -> to_string(other || idx)
+      end
+
+    base = "#{Map.get(message, :role, "message")}-#{created_at}-#{idx}"
+    sanitize_dom_id(base)
+  end
+
   defp format_error(%{error: message}), do: message
   defp format_error(%{status: _status, error: message}), do: message
   defp format_error(%{message: message}) when is_binary(message), do: message
   defp format_error(other), do: inspect(other)
+
+  defp message_has_text?(message) do
+    content = Map.get(message, :content)
+
+    cond do
+      is_binary(content) -> String.trim(content) != ""
+      true -> false
+    end
+  end
+
+  defp map_get(map, key) when is_map(map) do
+    Map.get(map, key) || Map.get(map, to_string(key))
+  end
+
+  defp map_get(_map, _key), do: nil
+
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(nil), do: true
+  defp blank?(_), do: false
+
+  defp value_path_label(value) when is_list(value) do
+    value
+    |> Enum.map(&to_string/1)
+    |> Enum.reject(&blank?/1)
+    |> Enum.join(", ")
+  end
+
+  defp value_path_label(value), do: value
+
+  defp visualization_title(viz) do
+    payload = map_get(viz, :payload) || %{}
+    metric = map_get(payload, "metric_key")
+    value_path = payload |> map_get("value_path") |> value_path_label()
+    aggregator = payload |> map_get("aggregator")
+    tool_name = map_get(viz, :tool_name)
+
+    base_parts =
+      [metric, value_path]
+      |> Enum.reject(&blank?/1)
+
+    base =
+      case base_parts do
+        [] -> nil
+        parts -> Enum.join(parts, " • ")
+      end
+
+    cond do
+      base && not blank?(aggregator) ->
+        base <> " • " <> String.upcase(to_string(aggregator))
+
+      base ->
+        base
+
+      not blank?(aggregator) ->
+        String.upcase(to_string(aggregator))
+
+      not blank?(tool_name) ->
+        to_string(tool_name)
+
+      true ->
+        "Visualization"
+    end
+  end
+
+  defp visualization_timeframe(viz) do
+    payload = map_get(viz, :payload) || %{}
+    timeframe = map_get(payload, "timeframe")
+
+    cond do
+      is_map(timeframe) ->
+        label = map_get(timeframe, "label")
+
+        cond do
+          not blank?(label) ->
+            label
+
+          true ->
+            from_iso = map_get(timeframe, "from")
+            to_iso = map_get(timeframe, "to")
+            format_timeframe_range(from_iso, to_iso)
+        end
+
+      is_binary(timeframe) and timeframe != "" ->
+        timeframe
+
+      true ->
+        nil
+    end
+  end
+
+  defp format_timeframe_range(nil, nil), do: nil
+
+  defp format_timeframe_range(from_iso, to_iso) do
+    with {:ok, from_dt, _} <- DateTime.from_iso8601(to_string(from_iso)),
+         {:ok, to_dt, _} <- DateTime.from_iso8601(to_string(to_iso)) do
+      "#{format_short_datetime(from_dt)} → #{format_short_datetime(to_dt)}"
+    else
+      _ -> nil
+    end
+  end
+
+  defp format_short_datetime(%DateTime{} = dt) do
+    Calendar.strftime(dt, "%b %-d %H:%M") <> " #{dt.time_zone}"
+  rescue
+    _ -> DateTime.to_iso8601(dt)
+  end
+
+  defp visualization_has_data?(viz) do
+    chart = map_get(viz, :chart) || %{}
+    type =
+      viz
+      |> map_get(:type)
+      |> case do
+        nil -> map_get(chart, "type")
+        other -> other
+      end
+      |> to_string()
+      |> String.downcase()
+
+    dataset = map_get(chart, "dataset") || %{}
+
+    case type do
+      "category" ->
+        dataset
+        |> map_get("data")
+        |> List.wrap()
+        |> Enum.any?(fn entry ->
+          value = map_get(entry, "value")
+
+          cond do
+            is_number(value) -> value != 0
+            is_binary(value) -> String.trim(value) != ""
+            true -> false
+          end
+        end)
+
+      _ ->
+        dataset
+        |> map_get("series")
+        |> List.wrap()
+        |> Enum.any?(fn series ->
+          map_get(series, "data")
+          |> List.wrap()
+          |> Enum.any?(fn point ->
+            cond do
+              is_list(point) and length(point) >= 2 -> true
+              is_tuple(point) and tuple_size(point) >= 2 -> true
+              is_map(point) -> true
+              true -> false
+            end
+          end)
+        end)
+    end
+  end
 
   defp maybe_flash_tool_error(socket, %{role: "tool", content: content})
        when is_binary(content) and content != "" do
@@ -1228,7 +1454,7 @@ defmodule TrifleApp.ChatLive do
 
   defp chat_message(assigns) do
     ~H"""
-    <div class={message_container_classes(@message)}>
+    <div id={"chat-message-#{@message.dom_id}"} class={message_container_classes(@message)}>
       <div :if={@message.role == "user"} class="flex-shrink-0">
         <img
           src={avatar_url(@message, @current_user)}
@@ -1247,10 +1473,67 @@ defmodule TrifleApp.ChatLive do
           </span>
         </div>
 
-        <p class={bubble_text_classes(@message)}>
+        <p :if={message_has_text?(@message)} class={bubble_text_classes(@message)}>
           {@message.content}
         </p>
+
+        <div
+          :if={Enum.any?(Map.get(@message, :visualizations, []))}
+          class="mt-3 flex flex-col gap-4"
+        >
+          <.chat_visualization :for={viz <- @message.visualizations} visualization={viz} />
+        </div>
       </div>
+    </div>
+    """
+  end
+
+  attr :visualization, :map, required: true
+
+  defp chat_visualization(assigns) do
+    visualization = assigns.visualization
+    chart = map_get(visualization, :chart) || %{}
+    chart_type =
+      visualization
+      |> map_get(:type)
+      |> case do
+        nil -> map_get(chart, "type")
+        other -> other
+      end
+      |> to_string()
+      |> String.downcase()
+
+    assigns =
+      assigns
+      |> assign(:dom_id, Map.get(visualization, :dom_id))
+      |> assign(:chart_type, chart_type)
+      |> assign(:chart_json, Jason.encode!(chart))
+      |> assign(:colors_json, ChartColors.json_palette())
+      |> assign(:title, visualization_title(visualization))
+      |> assign(:timeframe, visualization_timeframe(visualization))
+      |> assign(:has_data, visualization_has_data?(visualization))
+
+    ~H"""
+    <div class="chat-visualization border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900/70 shadow-sm px-4 py-3">
+      <div class="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+        <span class="font-semibold text-slate-600 dark:text-slate-200">{@title}</span>
+        <span :if={@timeframe}>{@timeframe}</span>
+      </div>
+      <%= if @has_data do %>
+        <div
+          id={@dom_id}
+          class="h-60 w-full"
+          data-chart-type={@chart_type}
+          data-chart={@chart_json}
+          data-colors={@colors_json}
+          phx-hook="ChatChart"
+        >
+        </div>
+      <% else %>
+        <div class="text-xs text-slate-500 dark:text-slate-400 italic">
+          Not enough data to plot this visualization.
+        </div>
+      <% end %>
     </div>
     """
   end
@@ -1290,7 +1573,7 @@ defmodule TrifleApp.ChatLive do
   end
 
   defp bubble_classes(%{role: "assistant"}) do
-    "flex flex-col w-full max-w-[60%] mr-auto leading-1.5 px-4 pb-3 pt-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 rounded-2xl rounded-es-none shadow-sm"
+    "flex flex-col w-full max-w-[70%] mr-auto leading-1.5 px-4 pb-3 pt-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 rounded-2xl rounded-es-none shadow-sm"
   end
 
   defp bubble_classes(%{role: "user"}) do
