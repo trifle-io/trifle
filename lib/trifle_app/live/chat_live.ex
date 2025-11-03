@@ -8,7 +8,7 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.SessionStore
   alias Trifle.Stats.Source
 
-  @chat_cancel_reason :chat_reset
+  @chat_cancel_reason :chat_cancelled
 
   @impl true
   def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
@@ -85,6 +85,8 @@ defmodule TrifleApp.ChatLive do
 
         socket =
           socket
+          |> assign(:session_snapshot, session)
+          |> assign(:pending_user_message, message)
           |> cancel_progress_timer()
           |> assign(:session, in_memory_session)
           |> assign(:messages, Chat.renderable_messages(in_memory_session))
@@ -119,6 +121,8 @@ defmodule TrifleApp.ChatLive do
              |> assign(:progress_started_at, nil)
              |> assign(:progress_stage_started_at, nil)
              |> assign(:progress_tick_at, nil)
+             |> assign(:pending_user_message, nil)
+             |> assign(:session_snapshot, nil)
              |> put_flash(:info, "Chat cleared.")}
 
           {:error, reason} ->
@@ -128,6 +132,30 @@ defmodule TrifleApp.ChatLive do
       _ ->
         {:noreply, socket}
     end
+  end
+
+  def handle_event("cancel_message", _params, socket) do
+    socket =
+      socket
+      |> cancel_async(:chat_response, @chat_cancel_reason)
+      |> cancel_progress_timer()
+
+    {socket, session} = restore_session_snapshot(socket)
+    message = socket.assigns[:pending_user_message] || ""
+
+    socket =
+      socket
+      |> assign(:sending, false)
+      |> assign(:messages, Chat.renderable_messages(session))
+      |> assign(:progress_events, [])
+      |> assign(:progress_started_at, nil)
+      |> assign(:progress_stage_started_at, nil)
+      |> assign(:progress_tick_at, nil)
+      |> assign(:form, to_form(%{"message" => message}))
+      |> assign(:pending_user_message, nil)
+      |> assign(:session_snapshot, nil)
+
+    {:noreply, socket}
   end
 
   def handle_event("change_source", %{"source" => source_ref}, socket) do
@@ -149,6 +177,8 @@ defmodule TrifleApp.ChatLive do
       |> assign(:session, session)
       |> assign(:messages, Chat.renderable_messages(session))
       |> assign(:sending, false)
+      |> assign(:session_snapshot, nil)
+      |> assign(:pending_user_message, nil)
       |> maybe_flash_tool_error(latest_message)
       |> append_final_duration()
 
@@ -160,6 +190,8 @@ defmodule TrifleApp.ChatLive do
       socket
       |> assign(:sending, false)
       |> assign(:session, reload_session(socket.assigns.session))
+      |> assign(:session_snapshot, nil)
+      |> assign(:pending_user_message, nil)
       |> put_flash(:error, format_error(error))
       |> append_final_duration()
 
@@ -171,6 +203,8 @@ defmodule TrifleApp.ChatLive do
       socket
       |> assign(:sending, false)
       |> assign(:session, reload_session(socket.assigns.session))
+      |> assign(:session_snapshot, nil)
+      |> assign(:pending_user_message, nil)
       |> put_flash(:error, format_error(reason))
       |> append_final_duration()
 
@@ -182,6 +216,8 @@ defmodule TrifleApp.ChatLive do
     socket =
       socket
       |> assign(:sending, false)
+      |> assign(:session_snapshot, nil)
+      |> assign(:pending_user_message, nil)
       |> cancel_progress_timer()
       |> assign(:progress_events, [])
       |> assign(:progress_started_at, nil)
@@ -195,6 +231,8 @@ defmodule TrifleApp.ChatLive do
     socket =
       socket
       |> assign(:sending, false)
+      |> assign(:session_snapshot, nil)
+      |> assign(:pending_user_message, nil)
       |> put_flash(:error, "Chat process crashed: #{inspect(reason)}")
       |> append_final_duration()
 
@@ -343,6 +381,8 @@ defmodule TrifleApp.ChatLive do
     |> assign(:progress_started_at, nil)
     |> assign(:progress_stage_started_at, nil)
     |> assign(:sending, false)
+    |> assign(:session_snapshot, nil)
+    |> assign(:pending_user_message, nil)
   end
 
   defp init_session(socket, %Source{} = source) do
@@ -362,6 +402,8 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_timer_ref, nil)
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
+      |> assign(:session_snapshot, nil)
+      |> assign(:pending_user_message, nil)
       |> maybe_resume_pending()
     else
       {:error, error} ->
@@ -376,6 +418,8 @@ defmodule TrifleApp.ChatLive do
         |> assign(:progress_started_at, nil)
         |> assign(:progress_stage_started_at, nil)
         |> assign(:sending, false)
+        |> assign(:session_snapshot, nil)
+        |> assign(:pending_user_message, nil)
         |> put_flash(:error, "Unable to load chat session: #{format_error(error)}")
     end
   end
@@ -452,6 +496,28 @@ defmodule TrifleApp.ChatLive do
     case SessionStore.get(id) do
       {:ok, session} -> session
       _ -> nil
+    end
+  end
+
+  defp restore_session_snapshot(socket) do
+    case {socket.assigns[:session], socket.assigns[:session_snapshot]} do
+      {%Session{id: id} = current, %Session{id: id} = snapshot} ->
+        case SessionStore.restore(current, snapshot) do
+          {:ok, restored} ->
+            {assign(socket, :session, restored), restored}
+
+          {:error, _reason} ->
+            case SessionStore.get(id) do
+              {:ok, reloaded} -> {assign(socket, :session, reloaded), reloaded}
+              _ -> {socket, current}
+            end
+        end
+
+      {%Session{} = current, _} ->
+        {socket, current}
+
+      _ ->
+        {socket, nil}
     end
   end
 
@@ -914,15 +980,33 @@ defmodule TrifleApp.ChatLive do
               disabled={@selected_source == nil or @sending}
             ><%= Phoenix.HTML.Form.input_value(@form, :message) %></textarea>
 
-            <button
-              type="submit"
-              class="inline-flex items-center justify-center bg-teal-600 hover:bg-teal-700 text-white px-4 py-3 mr-3 mb-3 rounded-xl text-sm disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-              disabled={@selected_source == nil or @sending}
-            >
-              <%= if @sending do %>
-                <span class="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full">
-                </span>
-              <% else %>
+            <%= if @sending do %>
+              <button
+                type="button"
+                phx-click="cancel_message"
+                class="inline-flex items-center justify-center bg-rose-500 hover:bg-rose-600 text-white px-4 py-3 mr-3 mb-3 rounded-xl text-sm shadow-sm"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-5 w-5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M6 18 18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            <% else %>
+              <button
+                type="submit"
+                class="inline-flex items-center justify-center bg-teal-600 hover:bg-teal-700 text-white px-4 py-3 mr-3 mb-3 rounded-xl text-sm disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+                disabled={@selected_source == nil}
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
@@ -937,8 +1021,8 @@ defmodule TrifleApp.ChatLive do
                     d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
                   />
                 </svg>
-              <% end %>
-            </button>
+              </button>
+            <% end %>
           </div>
         </div>
       </.simple_form>
