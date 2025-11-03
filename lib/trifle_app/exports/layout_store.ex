@@ -105,8 +105,8 @@ defmodule TrifleApp.Exports.LayoutStore do
 
     expires_at =
       expires_at_ms
-      |> DateTime.from_unix!(:millisecond)
-      |> DateTime.truncate(:microsecond)
+      |> Kernel.*(1000)
+      |> DateTime.from_unix!(:microsecond)
 
     record = %LayoutSessionRecord{
       id: id,
