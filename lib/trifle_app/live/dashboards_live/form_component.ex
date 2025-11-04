@@ -66,6 +66,7 @@ defmodule TrifleApp.DashboardsLive.FormComponent do
       |> Map.put("key", "dashboard")
       # Default to personal
       |> Map.put("visibility", false)
+      |> Map.put("locked", false)
       |> Map.put_new("default_timeframe", socket.assigns.database.default_timeframe || "24h")
       |> Map.put_new("default_granularity", socket.assigns.database.default_granularity || "1h")
 

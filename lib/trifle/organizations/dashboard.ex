@@ -10,6 +10,7 @@ defmodule Trifle.Organizations.Dashboard do
     field(:name, :string)
     # Now means Personal (false) / Everyone (true)
     field(:visibility, :boolean, default: false)
+    field(:locked, :boolean, default: false)
     # For public URL access, nullable
     field(:access_token, :string)
     field(:payload, :map, default: %{})
@@ -55,6 +56,7 @@ defmodule Trifle.Organizations.Dashboard do
       :user_id,
       :name,
       :visibility,
+      :locked,
       :access_token,
       :key,
       :default_timeframe,

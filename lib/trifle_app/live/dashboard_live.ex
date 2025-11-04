@@ -94,12 +94,6 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp apply_action(socket, :show, _params) do
-    socket =
-      socket
-      |> assign(:dashboard_changeset, nil)
-      |> assign(:dashboard_form, nil)
-
-    # Load dashboard data if key is configured
     if dashboard_has_key?(socket) do
       load_dashboard_data(socket)
     else
@@ -107,21 +101,7 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp apply_action(socket, :edit, _params) do
-    changeset = Organizations.change_dashboard(socket.assigns.dashboard)
-
-    socket
-    |> assign(:dashboard_changeset, changeset)
-    |> assign(:dashboard_form, to_form(changeset))
-  end
-
   defp apply_action(socket, :public, _params) do
-    socket =
-      socket
-      |> assign(:dashboard_changeset, nil)
-      |> assign(:dashboard_form, nil)
-
-    # Load dashboard data for public access too (if key configured)
     if dashboard_has_key?(socket) do
       load_dashboard_data(socket)
     else
@@ -138,8 +118,6 @@ defmodule TrifleApp.DashboardLive do
       |> ensure_source_in_list(socket.assigns.source)
 
     socket
-    |> assign(:dashboard_changeset, nil)
-    |> assign(:dashboard_form, nil)
     |> assign(:temp_name, socket.assigns.dashboard.name)
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, component_source_ref(socket.assigns.source))
@@ -152,7 +130,12 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("save_name", %{"name" => name}, socket) do
     if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to rename this dashboard")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to rename this dashboard")
+       )}
     else
       dashboard = socket.assigns.dashboard
       membership = socket.assigns.current_membership
@@ -183,8 +166,13 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event("toggle_visibility", _params, socket) do
-    if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to change visibility")}
+    if !socket.assigns.can_manage_dashboard do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to change visibility")
+       )}
     else
       dashboard = socket.assigns.dashboard
       membership = socket.assigns.current_membership
@@ -206,10 +194,57 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event("toggle_lock", _params, socket) do
+    error_message =
+      permission_message(socket, "You do not have permission to change the lock state")
+
+    cond do
+      !socket.assigns.can_manage_lock ->
+        {:noreply, put_flash(socket, :error, error_message)}
+
+      true ->
+        dashboard = socket.assigns.dashboard
+        membership = socket.assigns.current_membership
+        desired_state = !(dashboard.locked || false)
+
+        case Organizations.update_dashboard_for_membership(
+               dashboard,
+               membership,
+               %{locked: desired_state}
+             ) do
+          {:ok, updated_dashboard} ->
+            message =
+              if updated_dashboard.locked do
+                "Dashboard locked. Only the owner or organization admins can modify it."
+              else
+                "Dashboard unlocked. Members with access can edit it."
+              end
+
+            {:noreply,
+             socket
+             |> assign_dashboard(updated_dashboard)
+             |> put_flash(:info, message)}
+
+          {:error, :forbidden} ->
+            {:noreply, put_flash(socket, :error, error_message)}
+
+          {:error, :unauthorized} ->
+            {:noreply, put_flash(socket, :error, error_message)}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update dashboard lock state")}
+        end
+    end
+  end
+
   def handle_event("generate_public_token", _params, socket) do
-    if !socket.assigns.can_edit_dashboard do
+    if !socket.assigns.can_manage_dashboard do
       {:noreply,
-       put_flash(socket, :error, "You do not have permission to generate a public link")}
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to generate a public link")
+       )}
     else
       dashboard = socket.assigns.dashboard
 
@@ -227,9 +262,13 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event("remove_public_token", _params, socket) do
-    if !socket.assigns.can_edit_dashboard do
+    if !socket.assigns.can_manage_dashboard do
       {:noreply,
-       put_flash(socket, :error, "You do not have permission to remove the public link")}
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to remove the public link")
+       )}
     else
       dashboard = socket.assigns.dashboard
 
@@ -440,8 +479,11 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event("delete_dashboard", _params, socket) do
-    if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+    error_message =
+      permission_message(socket, "You do not have permission to delete this dashboard")
+
+    if !socket.assigns.can_manage_dashboard do
+      {:noreply, put_flash(socket, :error, error_message)}
     else
       dashboard = socket.assigns.dashboard
       membership = socket.assigns.current_membership
@@ -454,8 +496,7 @@ defmodule TrifleApp.DashboardLive do
            |> put_flash(:info, "Dashboard deleted successfully")}
 
         {:error, :forbidden} ->
-          {:noreply,
-           put_flash(socket, :error, "You do not have permission to delete this dashboard")}
+          {:noreply, put_flash(socket, :error, error_message)}
 
         {:error, _changeset} ->
           {:noreply, put_flash(socket, :error, "Failed to delete dashboard")}
@@ -512,35 +553,6 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  def handle_event("save_dashboard", %{"dashboard" => dashboard_params}, socket) do
-    if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to edit this dashboard")}
-    else
-      membership = socket.assigns.current_membership
-
-      case Organizations.update_dashboard_for_membership(
-             socket.assigns.dashboard,
-             membership,
-             dashboard_params
-           ) do
-        {:ok, dashboard} ->
-          {:noreply,
-           socket
-           |> assign_dashboard(dashboard)
-           |> assign(:dashboard_changeset, nil)
-           |> assign(:dashboard_form, nil)
-           |> push_patch(to: ~p"/dashboards/#{dashboard.id}")
-           |> put_flash(:info, "Dashboard updated successfully")}
-
-        {:error, %Ecto.Changeset{} = changeset} ->
-          {:noreply,
-           socket
-           |> assign(:dashboard_changeset, changeset)
-           |> assign(:dashboard_form, to_form(changeset))}
-      end
-    end
-  end
-
   # Persist Grid layout changes from client (GridStack)
   def handle_event("dashboard_grid_changed", %{"items" => items}, socket) do
     cond do
@@ -586,14 +598,6 @@ defmodule TrifleApp.DashboardLive do
             {:noreply, socket}
         end
     end
-  end
-
-  def handle_event("cancel_edit", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:dashboard_changeset, nil)
-     |> assign(:dashboard_form, nil)
-     |> push_patch(to: ~p"/dashboards/#{socket.assigns.dashboard.id}")}
   end
 
   # Widget editing modal controls
@@ -1533,20 +1537,38 @@ defmodule TrifleApp.DashboardLive do
     cond do
       match?(%Trifle.Organizations.Dashboard{}, dashboard) and
           match?(%Trifle.Organizations.OrganizationMembership{}, membership) ->
+        can_manage = Organizations.can_manage_dashboard?(dashboard, membership)
+
         socket
         |> assign(:can_edit_dashboard, Organizations.can_edit_dashboard?(dashboard, membership))
         |> assign(:can_clone_dashboard, Organizations.can_clone_dashboard?(dashboard, membership))
-        |> assign(
-          :can_transfer_dashboard_owner,
-          Organizations.can_manage_dashboard?(dashboard, membership)
-        )
+        |> assign(:can_manage_dashboard, can_manage)
+        |> assign(:can_manage_lock, can_manage)
+        |> assign(:can_transfer_dashboard_owner, can_manage)
 
       true ->
         socket
         |> assign(:can_edit_dashboard, false)
         |> assign(:can_clone_dashboard, false)
+        |> assign(:can_manage_dashboard, false)
+        |> assign(:can_manage_lock, false)
         |> assign(:can_transfer_dashboard_owner, false)
     end
+  end
+
+  defp permission_message(socket, default_message) do
+    if dashboard_locked_for_member?(socket) do
+      "This dashboard is locked. Only the owner or organization admins can modify it."
+    else
+      default_message
+    end
+  end
+
+  defp dashboard_locked_for_member?(%{assigns: assigns}) do
+    dashboard = Map.get(assigns, :dashboard)
+    can_manage = Map.get(assigns, :can_manage_dashboard, false)
+
+    match?(%{locked: true}, dashboard) && !can_manage
   end
 
   defp assign_dashboard(socket, dashboard) do
@@ -2408,7 +2430,12 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("save_settings", params, socket) do
     if !socket.assigns.can_edit_dashboard do
-      {:noreply, put_flash(socket, :error, "You do not have permission to update this dashboard")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to update this dashboard")
+       )}
     else
       dashboard = socket.assigns.dashboard
       name = Map.get(params, "name")
