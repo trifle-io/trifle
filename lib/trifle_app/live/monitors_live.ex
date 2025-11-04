@@ -230,7 +230,7 @@ defmodule TrifleApp.MonitorsLive do
   defp monitor_icon(assigns) do
     ~H"""
     <span class={[
-      "inline-flex h-10 w-10 items-center justify-center rounded-full text-white shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10",
+      "inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10",
       Monitor.icon_color_class(@monitor)
     ]}>
       <%= if @monitor.type == :report do %>
@@ -349,17 +349,10 @@ defmodule TrifleApp.MonitorsLive do
               </div>
             </div>
             <div class="flex items-center gap-3">
-              <div :if={monitor.user} class="flex items-center">
-                <img
-                  src={gravatar_url(monitor.user.email, 48)}
-                  alt={"Owner avatar for #{monitor.name}"}
-                  class="h-6 w-6 rounded-full border border-gray-200 dark:border-slate-600"
-                  title={"Owned by #{monitor_owner_label(monitor.user)}"}
-                />
-              </div>
               <span
                 :if={monitor.locked}
-                class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[0.7rem] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+                class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+                title="Monitor locked"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -375,14 +368,22 @@ defmodule TrifleApp.MonitorsLive do
                     d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
                   />
                 </svg>
-                Locked
               </span>
+              <div :if={monitor.user} class="flex items-center">
+                <img
+                  src={gravatar_url(monitor.user.email, 48)}
+                  alt={"Owner avatar for #{monitor.name}"}
+                  class="h-6 w-6 rounded-full border border-gray-200 dark:border-slate-600"
+                  title={"Owned by #{monitor_owner_label(monitor.user)}"}
+                />
+              </div>
               <% schedule_label = monitor_schedule_label(monitor) %>
-              <div :if={schedule_label} class="flex items-center">
-                <span class="inline-flex h-8 items-center rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 dark:bg-slate-700 dark:text-slate-200">
+              <div :if={schedule_label} class="flex items-center md:w-32 md:justify-end">
+                <span class="inline-flex h-8 items-center rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 dark:bg-slate-700 dark:text-slate-200 md:w-full md:justify-center md:truncate">
                   {schedule_label}
                 </span>
               </div>
+              <div :if={is_nil(schedule_label)} class="hidden md:block md:w-32"></div>
               <svg
                 class="h-4 w-4 flex-shrink-0 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
                 fill="none"

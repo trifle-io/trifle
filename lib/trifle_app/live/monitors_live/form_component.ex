@@ -136,48 +136,6 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                   <% end %>
                 </div>
               </div>
-              <div
-                :if={@persisted_monitor && @persisted_monitor.id}
-                class="border-t border-gray-200 pt-6 dark:border-slate-700"
-              >
-                <% locked? = @persisted_monitor.locked || false %>
-                <div class="flex items-center justify-between">
-                  <div>
-                    <span class="text-sm font-semibold text-slate-900 dark:text-white">
-                      Lock
-                    </span>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">
-                      Prevent other organization members from changing this monitor while it's locked.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    phx-click="toggle_lock"
-                    phx-target={@myself}
-                    disabled={!@can_manage_lock}
-                    class={[
-                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                      if(locked?,
-                        do: "bg-amber-500 dark:bg-amber-400",
-                        else: "bg-gray-200 dark:bg-gray-700"
-                      ),
-                      if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
-                    ]}
-                  >
-                    <span class={[
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                      if(locked?, do: "translate-x-5", else: "translate-x-0")
-                    ]}>
-                    </span>
-                  </button>
-                </div>
-                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  When locked, only the owner and organization admins can modify configuration or alerts.
-                </p>
-                <p :if={!@can_manage_lock} class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Lock state can only be changed by the monitor owner or organization admins.
-                </p>
-              </div>
 
               <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
@@ -442,19 +400,59 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
               </div>
             </div>
 
-            <:actions>
-              <div class="flex w-full items-center justify-end gap-3">
-                <.link
-                  patch={@patch}
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
+            <div class="flex w-full items-center justify-end gap-3">
+              <.link
+                patch={@patch}
+                class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
+              >
+                Cancel
+              </.link>
+              <.button type="submit">
+                {if @action == :new, do: "Create monitor", else: "Save changes"}
+              </.button>
+            </div>
+            <div
+              :if={@persisted_monitor && @persisted_monitor.id}
+              class="border-t border-gray-200 pt-6 dark:border-slate-700"
+            >
+              <% locked? = @persisted_monitor.locked || false %>
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-sm font-semibold text-slate-900 dark:text-white">
+                    Lock
+                  </span>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Prevent other organization members from changing this monitor while it's locked.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  phx-click="toggle_lock"
+                  phx-target={@myself}
+                  disabled={!@can_manage_lock}
+                  class={[
+                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                    if(locked?,
+                      do: "bg-amber-500 dark:bg-amber-400",
+                      else: "bg-gray-200 dark:bg-gray-700"
+                    ),
+                    if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                  ]}
                 >
-                  Cancel
-                </.link>
-                <.button type="submit">
-                  {if @action == :new, do: "Create monitor", else: "Save changes"}
-                </.button>
+                  <span class={[
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                    if(locked?, do: "translate-x-5", else: "translate-x-0")
+                  ]}>
+                  </span>
+                </button>
               </div>
-            </:actions>
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                When locked, only the owner and organization admins can modify configuration or alerts.
+              </p>
+              <p :if={!@can_manage_lock} class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Lock state can only be changed by the monitor owner or organization admins.
+              </p>
+            </div>
 
             <div
               :if={@persisted_monitor && @persisted_monitor.id}
@@ -558,14 +556,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
         case Monitors.update_monitor_for_membership(monitor, membership, %{locked: desired_state}) do
           {:ok, updated} ->
-            notify_parent({:saved, updated})
-
             {:noreply,
              socket
              |> assign(:persisted_monitor, updated)
              |> assign(:monitor, updated)
-             |> assign(:delivery_handle_error, nil)
-             |> assign(:delivery_media_error, nil)
              |> assign_form(Monitors.change_monitor(updated, %{}))}
 
           {:error, :forbidden} ->
