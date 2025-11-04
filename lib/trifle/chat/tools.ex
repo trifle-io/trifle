@@ -330,6 +330,9 @@ defmodule Trifle.Chat.Tools do
              granularity,
              progressive: false
            ) do
+      summary = summarise_series(result.series)
+      available = available_paths(result.series)
+
       {:ok,
        %{
          status: "ok",
@@ -341,8 +344,9 @@ defmodule Trifle.Chat.Tools do
            label: timeframe_label,
            granularity: granularity
          },
-         summary: summarise_series(result.series),
-         timeline: format_series_points(result.series)
+         summary: summary,
+         timeline: format_series_points(result.series),
+         available_paths: available
        }}
     else
       {:error, %{} = err} ->
@@ -385,26 +389,40 @@ defmodule Trifle.Chat.Tools do
              granularity,
              progressive: false
            ),
-         {:ok, values} <- aggregate_series(result.series, aggregator_fun, value_path, slices) do
-      payload =
-        %{
-          status: "ok",
-          aggregator: aggregator_name,
-          metric_key: metric_key,
-          value_path: value_path,
-          slices: slices,
-          values: values,
-          count: length(values),
-          timeframe: %{
-            from: DateTime.to_iso8601(from),
-            to: DateTime.to_iso8601(to),
-            label: timeframe_label,
-            granularity: granularity
+         paths = normalize_paths(value_path),
+         {:ok, resolved_path} <- ensure_single_path(paths),
+         available <- available_paths(result.series),
+         :ok <- ensure_paths_exist([resolved_path], available),
+         {:ok, values} <- aggregate_series(result.series, aggregator_fun, resolved_path, slices) do
+      if values == [] do
+        {:error,
+         %{
+           status: "error",
+           error: "No data available for path #{resolved_path} in the selected timeframe.",
+           available_paths: available
+         }}
+      else
+        payload =
+          %{
+            status: "ok",
+            aggregator: aggregator_name,
+            metric_key: metric_key,
+            value_path: resolved_path,
+            slices: slices,
+            values: values,
+            count: length(values),
+            timeframe: %{
+              from: DateTime.to_iso8601(from),
+              to: DateTime.to_iso8601(to),
+              label: timeframe_label,
+              granularity: granularity
+            },
+            available_paths: available
           }
-        }
-        |> maybe_put_primary_value(slices)
+          |> maybe_put_primary_value(slices)
 
-      {:ok, payload}
+        {:ok, payload}
+      end
     else
       {:error, %{} = err} ->
         Notifier.notify(context, {:progress, :tool_error, %{tool: "aggregate_metric_series"}})
@@ -443,27 +461,43 @@ defmodule Trifle.Chat.Tools do
              granularity,
              progressive: false
            ),
-         {:ok, formatted} <- format_timeline_result(result.series, value_path, slices) do
-      chart = build_timeseries_chart(result.series, value_path, slices, args)
+         paths = normalize_paths(value_path),
+         {:ok, resolved_path} <- ensure_single_path(paths),
+         available <- available_paths(result.series),
+         :ok <- ensure_paths_exist([resolved_path], available),
+         {:ok, formatted, matched_paths} <-
+           format_timeline_result(result.series, resolved_path, slices) do
+      chart = build_timeseries_chart(result.series, resolved_path, slices, args)
 
-      payload =
-        %{
-          status: "ok",
-          formatter: "timeline",
-          metric_key: metric_key,
-          value_path: value_path,
-          slices: slices,
-          timeframe: %{
-            from: DateTime.to_iso8601(from),
-            to: DateTime.to_iso8601(to),
-            label: timeframe_label,
-            granularity: granularity
-          },
-          result: formatted
-        }
-        |> maybe_put_chart(chart)
+      if matched_paths == [] do
+        {:error,
+         %{
+           status: "error",
+           error: "No matching data found for path #{resolved_path} in the selected timeframe.",
+           available_paths: available
+         }}
+      else
+        payload =
+          %{
+            status: "ok",
+            formatter: "timeline",
+            metric_key: metric_key,
+            value_path: resolved_path,
+            slices: slices,
+            timeframe: %{
+              from: DateTime.to_iso8601(from),
+              to: DateTime.to_iso8601(to),
+              label: timeframe_label,
+              granularity: granularity
+            },
+            result: formatted,
+            available_paths: available,
+            matched_paths: matched_paths
+          }
+          |> maybe_put_chart(chart)
 
-      {:ok, payload}
+        {:ok, payload}
+      end
     else
       {:error, %{} = err} ->
         Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_timeline"}})
@@ -502,27 +536,43 @@ defmodule Trifle.Chat.Tools do
              granularity,
              progressive: false
            ),
-         {:ok, formatted} <- format_category_result(result.series, value_path, slices) do
-      chart = build_category_chart(result.series, value_path, args)
+         paths = normalize_paths(value_path),
+         {:ok, resolved_path} <- ensure_single_path(paths),
+         available <- available_paths(result.series),
+         :ok <- ensure_paths_exist([resolved_path], available),
+         {:ok, formatted, matched_paths} <-
+           format_category_result(result.series, resolved_path, slices) do
+      chart = build_category_chart(result.series, resolved_path, args)
 
-      payload =
-        %{
-          status: "ok",
-          formatter: "category",
-          metric_key: metric_key,
-          value_path: value_path,
-          slices: slices,
-          timeframe: %{
-            from: DateTime.to_iso8601(from),
-            to: DateTime.to_iso8601(to),
-            label: timeframe_label,
-            granularity: granularity
-          },
-          result: formatted
-        }
-        |> maybe_put_chart(chart)
+      if matched_paths == [] do
+        {:error,
+         %{
+           status: "error",
+           error: "No matching data found for path #{resolved_path} in the selected timeframe.",
+           available_paths: available
+         }}
+      else
+        payload =
+          %{
+            status: "ok",
+            formatter: "category",
+            metric_key: metric_key,
+            value_path: resolved_path,
+            slices: slices,
+            timeframe: %{
+              from: DateTime.to_iso8601(from),
+              to: DateTime.to_iso8601(to),
+              label: timeframe_label,
+              granularity: granularity
+            },
+            result: formatted,
+            available_paths: available,
+            matched_paths: matched_paths
+          }
+          |> maybe_put_chart(chart)
 
-      {:ok, payload}
+        {:ok, payload}
+      end
     else
       {:error, %{} = err} ->
         Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_category"}})
@@ -666,6 +716,11 @@ defmodule Trifle.Chat.Tools do
 
     #{active_source_text}
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
+
+    Before attempting to aggregate, format, or visualise a metric, first call `list_available_metrics`
+    (or use prior responses) to inspect the precise paths available for the timeframe. After fetching a
+    metric, prefer the provided `available_paths` lists instead of guessing path names. If you cannot find
+    a requested path, explain that explicitly and show the real paths that exist.
 
     Output short, factual explanations. Always cite the Metrics Key and timeframe you used, and label any retrieved values as [path: ...].
     If a tool fails, report the error plainly and suggest a safe follow-up.
@@ -907,7 +962,8 @@ defmodule Trifle.Chat.Tools do
   defp format_timeline_result(%Series{} = series, path, slices) do
     try do
       result = Series.format_timeline(series, path, slices)
-      {:ok, normalize_timeline_output(result)}
+      formatted = normalize_timeline_output(result)
+      {:ok, formatted, extract_timeline_paths(result)}
     rescue
       error ->
         {:error,
@@ -929,7 +985,8 @@ defmodule Trifle.Chat.Tools do
   defp format_category_result(%Series{} = series, path, slices) do
     try do
       result = Series.format_category(series, path, slices)
-      {:ok, normalize_category_output(result)}
+      formatted = normalize_category_output(result)
+      {:ok, formatted, extract_category_paths(result)}
     rescue
       error ->
         {:error,
@@ -949,16 +1006,7 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp build_timeseries_chart(%Series{} = series_struct, value_path, slices, args) do
-    paths =
-      value_path
-      |> List.wrap()
-      |> Enum.flat_map(fn path ->
-        cond do
-          is_binary(path) -> [String.trim(path)]
-          true -> []
-        end
-      end)
-      |> Enum.reject(&(&1 == ""))
+    paths = normalize_paths(value_path)
 
     if paths == [] do
       nil
@@ -992,16 +1040,7 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp build_category_chart(%Series{} = series_struct, value_path, args) do
-    paths =
-      value_path
-      |> List.wrap()
-      |> Enum.flat_map(fn path ->
-        cond do
-          is_binary(path) -> [String.trim(path)]
-          true -> []
-        end
-      end)
-      |> Enum.reject(&(&1 == ""))
+    paths = normalize_paths(value_path)
 
     if paths == [] do
       nil
@@ -1033,6 +1072,100 @@ defmodule Trifle.Chat.Tools do
 
   defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
   defp stringify_keys(value), do: value
+
+  defp normalize_paths(value) do
+    value
+    |> List.wrap()
+    |> Enum.flat_map(fn
+      path when is_binary(path) ->
+        path
+        |> String.trim()
+        |> case do
+          "" -> []
+          cleaned -> [cleaned]
+        end
+
+      other ->
+        other
+        |> to_string()
+        |> String.trim()
+        |> case do
+          "" -> []
+          cleaned -> [cleaned]
+        end
+    end)
+  end
+
+  defp ensure_single_path([]), do: {:error, %{status: "error", error: "Value path required."}}
+
+  defp ensure_single_path([path]), do: {:ok, path}
+
+  defp ensure_single_path(paths) when is_list(paths) do
+    {:error,
+     %{
+       status: "error",
+       error: "Only a single value_path is supported for this tool.",
+       provided_paths: paths
+     }}
+  end
+
+  defp available_paths(%Series{} = series) do
+    series.series[:values]
+    |> List.wrap()
+    |> Enum.flat_map(fn row ->
+      row
+      |> flatten_numeric_paths()
+      |> Map.keys()
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp available_paths(_), do: []
+
+  defp ensure_paths_exist(paths, available) do
+    missing = Enum.reject(paths, &Enum.member?(available, &1))
+
+    case missing do
+      [] -> :ok
+      _ ->
+        {:error,
+         %{
+           status: "error",
+           error: "Unknown path(s): #{Enum.join(missing, ", ")}",
+           missing_paths: missing,
+           available_paths: available
+         }}
+    end
+  end
+
+  defp extract_timeline_paths(result) when is_map(result) do
+    result
+    |> Map.keys()
+    |> Enum.map(&to_string/1)
+  end
+
+  defp extract_timeline_paths(result) when is_list(result) do
+    result
+    |> Enum.flat_map(&extract_timeline_paths/1)
+    |> Enum.uniq()
+  end
+
+  defp extract_timeline_paths(_), do: []
+
+  defp extract_category_paths(result) when is_map(result) do
+    result
+    |> Map.keys()
+    |> Enum.map(&to_string/1)
+  end
+
+  defp extract_category_paths(result) when is_list(result) do
+    result
+    |> Enum.flat_map(&extract_category_paths/1)
+    |> Enum.uniq()
+  end
+
+  defp extract_category_paths(_), do: []
 
   defp summarise_series(%Trifle.Stats.Series{} = series) do
     data_points = series.series[:values] || []
