@@ -9,6 +9,7 @@ defmodule TrifleApp.MonitorLive do
   alias Trifle.Monitors.{Alert, Execution, Monitor}
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
+  alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Nocturnal
   alias Trifle.Stats.Nocturnal.Parser
@@ -97,7 +98,7 @@ defmodule TrifleApp.MonitorLive do
 
     socket =
       socket
-      |> assign(:monitor, monitor)
+      |> assign_monitor(monitor)
       |> assign(:page_title, build_page_title(socket.assigns.live_action, monitor))
       |> assign(:breadcrumb_links, [{"Monitors", ~p"/monitors"}, monitor.name])
       |> assign(:executions, Monitors.list_recent_executions(monitor))
@@ -117,10 +118,22 @@ defmodule TrifleApp.MonitorLive do
     monitor = socket.assigns.monitor
     changeset = Monitors.change_monitor(monitor, %{})
 
-    socket
-    |> assign(:modal_monitor, monitor)
-    |> assign(:modal_changeset, changeset)
-    |> assign(:page_title, "Configure · #{monitor.name}")
+    if socket.assigns[:can_edit_monitor] do
+      socket
+      |> assign(:modal_monitor, monitor)
+      |> assign(:modal_changeset, changeset)
+      |> assign(:page_title, "Configure · #{monitor.name}")
+    else
+      target =
+        case monitor do
+          %Monitor{id: id} -> ~p"/monitors/#{id}"
+          _ -> ~p"/monitors"
+        end
+
+      socket
+      |> put_flash(:error, "You do not have permission to configure this monitor")
+      |> push_patch(to: target)
+    end
   end
 
   @impl true
@@ -157,14 +170,28 @@ defmodule TrifleApp.MonitorLive do
         _params,
         %{assigns: %{monitor: %{type: :alert} = monitor}} = socket
       ) do
-    alert = %Alert{monitor_id: monitor.id}
-    changeset = Monitors.change_alert(alert, %{})
+    membership = socket.assigns[:current_membership]
 
-    {:noreply,
-     socket
-     |> assign(:alert_modal, alert)
-     |> assign(:alert_modal_changeset, changeset)
-     |> assign(:alert_modal_action, :new)}
+    if match?(%OrganizationMembership{}, membership) &&
+         Monitors.can_edit_monitor?(monitor, membership) do
+      alert = %Alert{monitor_id: monitor.id}
+      changeset = Monitors.change_alert(alert, %{})
+
+      {:noreply,
+       socket
+       |> assign(:alert_modal, alert)
+       |> assign(:alert_modal_changeset, changeset)
+       |> assign(:alert_modal_action, :new)}
+    else
+      message =
+        if monitor.locked do
+          "This monitor is locked. Only the owner or organization admins can add alerts."
+        else
+          "You do not have permission to add alerts for this monitor."
+        end
+
+      {:noreply, put_flash(socket, :error, message)}
+    end
   end
 
   def handle_event("new_alert", _params, socket), do: {:noreply, socket}
@@ -174,16 +201,30 @@ defmodule TrifleApp.MonitorLive do
         %{"id" => id},
         %{assigns: %{monitor: %{type: :alert} = monitor}} = socket
       ) do
-    case find_alert(monitor, id) do
-      nil ->
-        {:noreply, socket}
+    membership = socket.assigns[:current_membership]
 
-      %Alert{} = alert ->
-        {:noreply,
-         socket
-         |> assign(:alert_modal, alert)
-         |> assign(:alert_modal_changeset, Monitors.change_alert(alert, %{}))
-         |> assign(:alert_modal_action, :edit)}
+    if match?(%OrganizationMembership{}, membership) &&
+         Monitors.can_edit_monitor?(monitor, membership) do
+      case find_alert(monitor, id) do
+        nil ->
+          {:noreply, socket}
+
+        %Alert{} = alert ->
+          {:noreply,
+           socket
+           |> assign(:alert_modal, alert)
+           |> assign(:alert_modal_changeset, Monitors.change_alert(alert, %{}))
+           |> assign(:alert_modal_action, :edit)}
+      end
+    else
+      message =
+        if monitor.locked do
+          "This monitor is locked. Only the owner or organization admins can edit alerts."
+        else
+          "You do not have permission to edit alerts for this monitor."
+        end
+
+      {:noreply, put_flash(socket, :error, message)}
     end
   end
 
@@ -266,7 +307,7 @@ defmodule TrifleApp.MonitorLive do
         {:noreply,
          socket
          |> put_flash(:info, "Monitor #{status_label(updated.status)}")
-         |> assign(:monitor, refreshed)}
+         |> assign_monitor(refreshed)}
 
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "You do not have permission to update this monitor")}
@@ -326,7 +367,7 @@ defmodule TrifleApp.MonitorLive do
     {:noreply,
      socket
      |> put_flash(:info, "Monitor updated")
-     |> assign(:monitor, refreshed)
+     |> assign_monitor(refreshed)
      |> assign(:executions, Monitors.list_recent_executions(refreshed))
      |> assign(:sources, load_sources(membership))
      |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
@@ -1712,9 +1753,10 @@ defmodule TrifleApp.MonitorLive do
 
   defp assign_monitor_alerts(%{assigns: %{monitor: %Monitor{} = monitor}} = socket) do
     alerts = Monitors.list_alerts(monitor)
+    updated_monitor = %{monitor | alerts: alerts}
 
     socket
-    |> assign(:monitor, %{monitor | alerts: alerts})
+    |> assign_monitor(updated_monitor)
     |> assign(:alerts, alerts)
   end
 
@@ -1724,9 +1766,34 @@ defmodule TrifleApp.MonitorLive do
     monitor = load_monitor(socket, socket.assigns.monitor.id)
 
     socket
-    |> assign(:monitor, monitor)
+    |> assign_monitor(monitor)
     |> initialize_monitor_context()
   end
+
+  defp assign_monitor(socket, %Monitor{} = monitor) do
+    membership = socket.assigns[:current_membership]
+
+    {can_manage, can_edit} =
+      case membership do
+        %OrganizationMembership{} = member ->
+          {
+            Monitors.can_manage_monitor?(monitor, member),
+            Monitors.can_edit_monitor?(monitor, member)
+          }
+
+        _ ->
+          {false, false}
+      end
+
+    socket
+    |> assign(:monitor, monitor)
+    |> assign(:monitor_owner, monitor.user)
+    |> assign(:can_manage_monitor, can_manage)
+    |> assign(:can_manage_lock, can_manage)
+    |> assign(:can_edit_monitor, can_edit)
+  end
+
+  defp assign_monitor(socket, monitor), do: assign(socket, :monitor, monitor)
 
   defp clear_alert_modal(socket) do
     socket
@@ -1756,6 +1823,37 @@ defmodule TrifleApp.MonitorLive do
       _ -> false
     end)
   end
+
+  defp monitor_owner_label(%{name: name}) when is_binary(name) and name != "" do
+    name
+  end
+
+  defp monitor_owner_label(%{email: email}) when is_binary(email), do: email
+  defp monitor_owner_label(_), do: "Unknown owner"
+
+  defp gravatar_url(email, size \\ 64)
+
+  defp gravatar_url(email, size) when is_binary(email) do
+    trimmed =
+      email
+      |> String.trim()
+      |> String.downcase()
+
+    if trimmed == "" do
+      default_gravatar(size)
+    else
+      hash =
+        trimmed
+        |> then(fn value -> :crypto.hash(:md5, value) end)
+        |> Base.encode16(case: :lower)
+
+      "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=identicon"
+    end
+  end
+
+  defp gravatar_url(_email, size), do: default_gravatar(size)
+
+  defp default_gravatar(size), do: "https://www.gravatar.com/avatar/?s=#{size}&d=identicon"
 
   defp monitor_footer_resource(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
   defp monitor_footer_resource(%Monitor{id: id}), do: %{id: id}
@@ -2165,6 +2263,16 @@ defmodule TrifleApp.MonitorLive do
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "You do not have permission to delete this monitor")}
 
+      {:error, :forbidden} ->
+        message =
+          if monitor.locked do
+            "Monitor is locked. Only the owner or organization admins can delete it."
+          else
+            "You do not have permission to delete this monitor"
+          end
+
+        {:noreply, put_flash(socket, :error, message)}
+
       {:error, %Changeset{} = changeset} ->
         {:noreply,
          put_flash(
@@ -2244,10 +2352,67 @@ defmodule TrifleApp.MonitorLive do
             <p :if={@monitor.description} class="mt-2 text-sm text-slate-500 dark:text-slate-300">
               {@monitor.description}
             </p>
+            <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+              <div :if={@monitor.user} class="flex items-center gap-2">
+                <img
+                  src={gravatar_url(@monitor.user.email, 48)}
+                  alt="Monitor owner avatar"
+                  class="h-6 w-6 rounded-full border border-slate-200 dark:border-slate-600"
+                />
+                <span>
+                  Owned by
+                  <span class="font-semibold text-slate-600 dark:text-slate-200">
+                    {monitor_owner_label(@monitor.user)}
+                  </span>
+                </span>
+              </div>
+              <span
+                :if={@monitor.locked}
+                class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[0.7rem] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
+                  />
+                </svg>
+                Locked
+              </span>
+            </div>
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <span
+            :if={!@can_edit_monitor && @monitor.locked}
+            class="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+            title="This monitor is locked by its owner."
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
+              />
+            </svg>
+            Locked
+          </span>
           <.link
+            :if={@can_edit_monitor}
             patch={~p"/monitors/#{@monitor.id}/configure"}
             class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
           >
@@ -2457,6 +2622,7 @@ defmodule TrifleApp.MonitorLive do
                   </p>
                 </div>
                 <button
+                  :if={@can_edit_monitor}
                   type="button"
                   class="inline-flex items-center gap-1 rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-500"
                   phx-click="new_alert"
@@ -2473,6 +2639,26 @@ defmodule TrifleApp.MonitorLive do
                   </svg>
                   Add alert
                 </button>
+                <span
+                  :if={!@can_edit_monitor && @monitor.locked}
+                  class="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
+                    />
+                  </svg>
+                  Locked
+                </span>
               </div>
               <div class="mt-4">
                 <%= if Enum.empty?(@alerts || []) do %>
@@ -2529,6 +2715,7 @@ defmodule TrifleApp.MonitorLive do
                         </div>
                         <div class="flex flex-col items-end gap-1">
                           <button
+                            :if={@can_edit_monitor}
                             type="button"
                             class="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
                             phx-click="edit_alert"
@@ -2929,6 +3116,7 @@ defmodule TrifleApp.MonitorLive do
         alert={@alert_modal}
         action={@alert_modal_action}
         changeset={@alert_modal_changeset}
+        current_membership={@current_membership}
       />
 
       <.live_component
@@ -2942,6 +3130,7 @@ defmodule TrifleApp.MonitorLive do
         current_user={@current_user}
         current_membership={@current_membership}
         delivery_options={@delivery_options}
+        can_manage_lock={@can_manage_lock}
         action={:edit}
         patch={~p"/monitors/#{@monitor.id}"}
         title="Configure monitor"

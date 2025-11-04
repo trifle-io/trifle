@@ -22,9 +22,7 @@ defmodule Trifle.Organizations.OrganizationSSODomain do
     |> cast(attrs, [:organization_sso_provider_id, :domain])
     |> validate_required([:organization_sso_provider_id, :domain])
     |> update_change(:domain, &normalize_domain/1)
-    |> validate_format(:domain, ~r/^[a-z0-9.-]+\.[a-z]{2,}$/i,
-      message: "is not a valid domain"
-    )
+    |> validate_format(:domain, ~r/^[a-z0-9.-]+\.[a-z]{2,}$/i, message: "is not a valid domain")
     |> unique_constraint(:domain,
       name: :organization_sso_unique_domain_per_provider,
       message: "already added"

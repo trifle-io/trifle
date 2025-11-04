@@ -396,10 +396,17 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   end
 
   def handle_event("delete", _params, socket) do
-    case Monitors.delete_alert(socket.assigns.alert) do
+    case Monitors.delete_alert(
+           socket.assigns.monitor,
+           socket.assigns.current_membership,
+           socket.assigns.alert
+         ) do
       {:ok, alert} ->
         notify_parent({:deleted, alert})
         {:noreply, socket}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, lock_denied_message(socket))}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to delete alert: #{inspect(reason)}")}
@@ -599,10 +606,13 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   end
 
   defp create_alert(socket, params) do
-    case Monitors.create_alert(socket.assigns.monitor, params) do
+    case Monitors.create_alert(socket.assigns.monitor, socket.assigns.current_membership, params) do
       {:ok, alert} ->
         notify_parent({:saved, alert, :new})
         {:noreply, socket}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, lock_denied_message(socket))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, put_changeset(socket, changeset)}
@@ -610,10 +620,21 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   end
 
   defp update_alert(socket, params) do
-    case Monitors.update_alert(socket.assigns.alert, params) do
+    case Monitors.update_alert(
+           socket.assigns.monitor,
+           socket.assigns.current_membership,
+           socket.assigns.alert,
+           params
+         ) do
       {:ok, alert} ->
         notify_parent({:saved, alert, :edit})
         {:noreply, socket}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, lock_denied_message(socket))}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Alert could not be found")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, put_changeset(socket, changeset)}
@@ -621,6 +642,12 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   end
 
   defp notify_parent(message), do: send(self(), {__MODULE__, message})
+
+  defp lock_denied_message(%{assigns: %{monitor: %{locked: true}}}) do
+    "This monitor is locked. Only the owner or organization admins can modify alerts."
+  end
+
+  defp lock_denied_message(_), do: "You do not have permission to modify alerts for this monitor."
 
   defp ai_controls(assigns) do
     assigns =

@@ -77,6 +77,8 @@ defmodule Trifle.MonitorsTest do
       assert monitor.organization_id == membership.organization_id
       assert monitor.source_type == :database
       assert monitor.source_id == database.id
+      assert monitor.user_id == user.id
+      refute monitor.locked
       assert Monitors.delivery_media_types_from_media(monitor.delivery_media) == [:pdf]
     end
 
@@ -108,6 +110,47 @@ defmodule Trifle.MonitorsTest do
       assert Monitors.delivery_media_types_from_media(updated.delivery_media) == [:png_dark]
     end
 
+    test "update_monitor_for_membership/3 returns forbidden when monitor locked for non owner", %{
+      user: user,
+      membership: membership,
+      organization: organization,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      {:ok, monitor} =
+        Monitors.update_monitor_for_membership(monitor, membership, %{locked: true})
+
+      other_user = AccountsFixtures.user_fixture()
+
+      {:ok, other_membership} =
+        Organizations.create_membership(organization, other_user, "member")
+
+      assert {:error, :forbidden} =
+               Monitors.update_monitor_for_membership(monitor, other_membership, %{
+                 name: "Blocked"
+               })
+    end
+
+    test "update_monitor_for_membership/3 allows owner to modify when locked", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      {:ok, monitor} =
+        Monitors.update_monitor_for_membership(monitor, membership, %{locked: true})
+
+      assert {:ok, %Monitor{} = updated} =
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 description: "Still editable"
+               })
+
+      assert updated.description == "Still editable"
+      assert updated.locked
+    end
+
     test "delete_monitor_for_membership/2 removes monitor", %{
       user: user,
       membership: membership,
@@ -130,7 +173,7 @@ defmodule Trifle.MonitorsTest do
       monitor = monitor_fixture(user, membership, database)
 
       {:ok, _alert} =
-        Monitors.create_alert(monitor, %{
+        Monitors.create_alert(monitor, membership, %{
           "analysis_strategy" => "range",
           "settings" => %{
             "range_min_value" => "10",
@@ -141,6 +184,51 @@ defmodule Trifle.MonitorsTest do
       assert {:ok, %Monitor{}} = Monitors.delete_monitor_for_membership(monitor, membership)
 
       refute Repo.get_by(Alert, monitor_id: monitor.id)
+    end
+
+    test "delete_monitor_for_membership/2 returns forbidden when monitor locked for another member",
+         %{
+           user: user,
+           membership: membership,
+           organization: organization,
+           database: database
+         } do
+      monitor = monitor_fixture(user, membership, database)
+
+      {:ok, monitor} =
+        Monitors.update_monitor_for_membership(monitor, membership, %{locked: true})
+
+      other_user = AccountsFixtures.user_fixture()
+
+      {:ok, other_membership} =
+        Organizations.create_membership(organization, other_user, "member")
+
+      assert {:error, :forbidden} =
+               Monitors.delete_monitor_for_membership(monitor, other_membership)
+    end
+
+    test "create_alert/3 returns forbidden when monitor locked for another member", %{
+      user: user,
+      membership: membership,
+      organization: organization,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      {:ok, monitor} =
+        Monitors.update_monitor_for_membership(monitor, membership, %{locked: true})
+
+      other_user = AccountsFixtures.user_fixture()
+
+      {:ok, other_membership} =
+        Organizations.create_membership(organization, other_user, "member")
+
+      params = %{
+        "analysis_strategy" => "threshold",
+        "settings" => %{"threshold_direction" => "above", "threshold_value" => "10"}
+      }
+
+      assert {:error, :forbidden} = Monitors.create_alert(monitor, other_membership, params)
     end
   end
 
