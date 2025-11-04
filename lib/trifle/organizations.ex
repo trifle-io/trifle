@@ -143,6 +143,16 @@ defmodule Trifle.Organizations do
     |> Repo.one()
   end
 
+  def list_memberships_for_org_id(organization_id) when is_binary(organization_id) do
+    from(m in OrganizationMembership,
+      where: m.organization_id == ^organization_id,
+      join: u in assoc(m, :user),
+      order_by: [asc: u.email],
+      preload: [user: u]
+    )
+    |> Repo.all()
+  end
+
   def list_members(%Organization{} = organization) do
     from(m in OrganizationMembership,
       where: m.organization_id == ^organization.id,
@@ -208,6 +218,11 @@ defmodule Trifle.Organizations do
     membership.role in ["owner", "admin"]
   end
 
+  def can_manage_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
+    membership_owner?(membership) || membership_admin?(membership) ||
+      dashboard.user_id == membership.user_id
+  end
+
   def can_view_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
     cond do
       membership_owner?(membership) -> true
@@ -228,6 +243,40 @@ defmodule Trifle.Organizations do
 
   def can_clone_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
     can_view_dashboard?(dashboard, membership)
+  end
+
+  def transfer_dashboard_ownership(
+        %Dashboard{} = dashboard,
+        %OrganizationMembership{} = membership,
+        target_membership_id
+      )
+      when is_binary(target_membership_id) do
+    cond do
+      dashboard.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
+
+      not can_manage_dashboard?(dashboard, membership) ->
+        {:error, :forbidden}
+
+      true ->
+        case get_membership(target_membership_id) do
+          nil ->
+            {:error, :not_found}
+
+          %OrganizationMembership{organization_id: org_id}
+          when org_id != dashboard.organization_id ->
+            {:error, :invalid_target}
+
+          %OrganizationMembership{} = new_owner ->
+            if new_owner.user_id == dashboard.user_id do
+              {:error, :same_owner}
+            else
+              dashboard
+              |> Dashboard.changeset(%{user_id: new_owner.user_id})
+              |> Repo.update()
+            end
+        end
+    end
   end
 
   ## Organization invitations

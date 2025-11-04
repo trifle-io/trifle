@@ -6,6 +6,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Trifle.Monitors.Monitor
   alias Trifle.Monitors.Monitor.{DeliveryChannel, DeliveryMedium, ReportSettings}
   alias Trifle.Stats.Source
+  alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
   require Logger
 
@@ -31,7 +32,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign(:action, assigns[:action] || derive_action(monitor))
      |> assign(:delivery_handle_error, nil)
      |> assign(:delivery_media_error, nil)
-     |> assign_form(assigns.changeset || Monitors.change_monitor(monitor, %{}))}
+     |> assign_form(assigns.changeset || Monitors.change_monitor(monitor, %{}))
+     |> assign_transfer_state()}
   end
 
   @impl true
@@ -464,6 +466,48 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                   Deleting this monitor cannot be undone.
                 </p>
               </div>
+              <div :if={@can_manage_lock && Enum.any?(@ownership_candidates)} class="mb-6 space-y-3">
+                <div>
+                  <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+                    Transfer ownership
+                  </span>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Move ownership to another member. You may lose edit access if you are not an organization admin.
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <select
+                    name="monitor_owner_membership_id"
+                    class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                    phx-change="change_monitor_owner_selection"
+                    phx-target={@myself}
+                    value={@selected_transfer_membership_id || ""}
+                  >
+                    <option value="">Select member…</option>
+                    <%= for candidate <- @ownership_candidates do %>
+                      <option
+                        value={candidate.id}
+                        selected={@selected_transfer_membership_id == candidate.id}
+                      >
+                        {candidate.label}
+                      </option>
+                    <% end %>
+                  </select>
+                  <button
+                    type="button"
+                    class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                    phx-click="transfer_monitor_owner"
+                    phx-target={@myself}
+                    data-confirm="Transfer ownership to the selected member?"
+                    disabled={@selected_transfer_membership_id in [nil, ""]}
+                  >
+                    Transfer ownership
+                  </button>
+                </div>
+                <p :if={@ownership_transfer_error} class="text-xs text-rose-600 dark:text-rose-400">
+                  {@ownership_transfer_error}
+                </p>
+              </div>
               <button
                 type="button"
                 phx-click="delete_monitor"
@@ -560,7 +604,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
              socket
              |> assign(:persisted_monitor, updated)
              |> assign(:monitor, updated)
-             |> assign_form(Monitors.change_monitor(updated, %{}))}
+             |> assign_form(Monitors.change_monitor(updated, %{}))
+             |> assign_transfer_state()}
 
           {:error, :forbidden} ->
             notify_parent({:error, "You do not have permission to change the lock state"})
@@ -572,6 +617,94 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
           {:error, %Changeset{} = changeset} ->
             {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+        end
+    end
+  end
+
+  def handle_event(
+        "change_monitor_owner_selection",
+        %{"monitor_owner_membership_id" => membership_id},
+        socket
+      ) do
+    selection = normalize_selection(membership_id)
+
+    {:noreply,
+     socket
+     |> assign(:selected_transfer_membership_id, selection)
+     |> assign(:ownership_transfer_error, nil)}
+  end
+
+  def handle_event("transfer_monitor_owner", _params, socket) do
+    monitor = socket.assigns.persisted_monitor
+    membership = socket.assigns.current_membership
+    selection = socket.assigns[:selected_transfer_membership_id] || ""
+
+    cond do
+      is_nil(monitor) || is_nil(monitor.id) ->
+        {:noreply, socket}
+
+      selection == "" ->
+        {:noreply,
+         socket
+         |> assign(:ownership_transfer_error, "Select a member to transfer ownership")}
+
+      true ->
+        case Monitors.transfer_monitor_ownership(monitor, membership, selection) do
+          {:ok, updated} ->
+            notify_parent({:saved, updated})
+
+            {:noreply,
+             socket
+             |> assign(:persisted_monitor, updated)
+             |> assign(:monitor, updated)
+             |> assign(:selected_transfer_membership_id, "")
+             |> assign(:ownership_transfer_error, nil)
+             |> assign_transfer_state()}
+
+          {:error, :same_owner} ->
+            {:noreply,
+             socket
+             |> assign(:ownership_transfer_error, "Select a different member")
+             |> assign_transfer_state()}
+
+          {:error, :invalid_target} ->
+            {:noreply,
+             socket
+             |> assign(
+               :ownership_transfer_error,
+               "Selected member is not part of this organization"
+             )
+             |> assign_transfer_state()}
+
+          {:error, :forbidden} ->
+            {:noreply,
+             socket
+             |> assign(
+               :ownership_transfer_error,
+               "You do not have permission to transfer ownership"
+             )
+             |> assign_transfer_state()}
+
+          {:error, :unauthorized} ->
+            {:noreply,
+             socket
+             |> assign(
+               :ownership_transfer_error,
+               "You do not have permission to transfer ownership"
+             )
+             |> assign_transfer_state()}
+
+          {:error, :not_found} ->
+            {:noreply,
+             socket
+             |> assign(:ownership_transfer_error, "Selected member was not found")
+             |> assign_transfer_state()}
+
+          {:error, %Changeset{}} ->
+            {:noreply,
+             socket
+             |> assign(:ownership_transfer_error, "Unable to transfer ownership right now")
+             |> assign_transfer_state()}
         end
     end
   end
@@ -599,7 +732,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:monitor, monitor)
          |> assign(:delivery_handle_error, nil)
          |> assign(:delivery_media_error, nil)
-         |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
+         |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)
+         |> assign_transfer_state()}
 
       {:error, %Changeset{} = changeset} ->
         delivery_errors = delivery_errors_from_changeset(changeset)
@@ -608,7 +742,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          socket
          |> assign(:delivery_handle_error, Map.get(delivery_errors, :handles))
          |> assign(:delivery_media_error, Map.get(delivery_errors, :media))
-         |> assign_form(Map.put(changeset, :action, :validate), handles: handles)}
+         |> assign_form(Map.put(changeset, :action, :validate), handles: handles)
+         |> assign_transfer_state()}
     end
   end
 
@@ -627,7 +762,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:monitor, monitor)
          |> assign(:delivery_handle_error, nil)
          |> assign(:delivery_media_error, nil)
-         |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
+         |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)
+         |> assign_transfer_state()}
 
       {:error, :forbidden} ->
         message =
@@ -651,7 +787,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          socket
          |> assign(:delivery_handle_error, Map.get(delivery_errors, :handles))
          |> assign(:delivery_media_error, Map.get(delivery_errors, :media))
-         |> assign_form(Map.put(changeset, :action, :validate), handles: handles)}
+         |> assign_form(Map.put(changeset, :action, :validate), handles: handles)
+         |> assign_transfer_state()}
     end
   end
 
@@ -1086,6 +1223,63 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     (form[:source_type].errors ++ form[:source_id].errors)
     |> Enum.uniq()
   end
+
+  defp assign_transfer_state(socket) do
+    monitor = socket.assigns[:persisted_monitor]
+    membership = socket.assigns[:current_membership]
+    can_manage = socket.assigns[:can_manage_lock]
+
+    previous_selection = Map.get(socket.assigns, :selected_transfer_membership_id, "")
+    previous_error = Map.get(socket.assigns, :ownership_transfer_error, nil)
+
+    cond do
+      !can_manage || is_nil(monitor) || is_nil(monitor.id) || is_nil(membership) ->
+        socket
+        |> assign(:ownership_candidates, [])
+        |> assign(:selected_transfer_membership_id, "")
+        |> assign(:ownership_transfer_error, nil)
+
+      true ->
+        candidates =
+          Organizations.list_memberships_for_org_id(membership.organization_id)
+          |> Enum.reject(&(&1.user_id == monitor.user_id))
+          |> Enum.map(fn member ->
+            %{
+              id: member.id,
+              label: ownership_option_label(member)
+            }
+          end)
+
+        selection =
+          if Enum.any?(candidates, &(&1.id == previous_selection)) do
+            previous_selection
+          else
+            ""
+          end
+
+        socket
+        |> assign(:ownership_candidates, candidates)
+        |> assign(:selected_transfer_membership_id, selection)
+        |> assign(:ownership_transfer_error, if(candidates == [], do: nil, else: previous_error))
+    end
+  end
+
+  defp ownership_option_label(%{user: user}) when is_map(user) do
+    name = Map.get(user, :name) || Map.get(user, :full_name)
+
+    cond do
+      is_binary(name) and String.trim(name) != "" ->
+        "#{name} (#{user.email})"
+
+      true ->
+        user.email
+    end
+  end
+
+  defp ownership_option_label(_member), do: "Unknown member"
+
+  defp normalize_selection(value) when value in [nil, ""], do: ""
+  defp normalize_selection(value), do: to_string(value)
 
   defp assign_form(socket, %Changeset{} = changeset, opts \\ []) do
     monitor = Changeset.apply_changes(changeset)
