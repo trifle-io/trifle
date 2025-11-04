@@ -8,6 +8,8 @@ defmodule Trifle.Accounts do
 
   alias Trifle.Accounts.{User, UserToken, UserNotifier}
 
+  @sso_generated_password_length 32
+
   ## Database getters
 
   @doc """
@@ -77,6 +79,43 @@ defmodule Trifle.Accounts do
   def register_user(attrs) do
     %User{}
     |> User.registration_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Finds or creates a user for SSO-authenticated flows.
+  """
+  def get_or_create_user_for_sso(email) when is_binary(email) do
+    case get_user_by_email(email) do
+      %User{} = user ->
+        ensure_user_confirmed(user)
+
+      nil ->
+        create_user_for_sso(email)
+    end
+  end
+
+  defp ensure_user_confirmed(%User{} = user) do
+    if user.confirmed_at do
+      {:ok, user}
+    else
+      user
+      |> User.confirm_changeset()
+      |> Repo.update()
+    end
+  end
+
+  defp create_user_for_sso(email) do
+    password =
+      @sso_generated_password_length
+      |> :crypto.strong_rand_bytes()
+      |> Base.url_encode64(padding: false)
+
+    hashed_password = Bcrypt.hash_pwd_salt(password)
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    %User{}
+    |> User.sso_changeset(%{email: email, hashed_password: hashed_password, confirmed_at: now})
     |> Repo.insert()
   end
 

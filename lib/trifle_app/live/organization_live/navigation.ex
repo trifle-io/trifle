@@ -43,6 +43,24 @@ defmodule TrifleApp.OrganizationLive.Navigation do
           <span class="hidden sm:block">Users</span>
         </.link>
 
+        <.link navigate={~p"/organization/sso"} class={tab_link_classes(@active_tab == :sso)}>
+          <svg
+            class={tab_icon_classes(@active_tab == :sso)}
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 9v6m3-3H9m11.25 0a9.001 9.001 0 0 1-13.5 7.794 9 9 0 1 1 13.5-7.794Z"
+            />
+          </svg>
+          <span class="hidden sm:block">Single Sign-On</span>
+        </.link>
+
         <.link
           navigate={~p"/organization/delivery"}
           class={tab_link_classes(@active_tab == :delivery)}
@@ -126,6 +144,13 @@ defmodule TrifleApp.OrganizationLive.Navigation do
     [
       {"Organization", ~p"/organization/profile"},
       "Users"
+    ]
+  end
+
+  def breadcrumb(:sso) do
+    [
+      {"Organization", ~p"/organization/profile"},
+      "Single Sign-On"
     ]
   end
 

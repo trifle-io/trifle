@@ -33,6 +33,14 @@ defmodule TrifleApp.Router do
     get "/privacy", PageController, :privacy
   end
 
+  scope "/auth", TrifleApp do
+    pipe_through [:browser]
+
+    get "/:provider", GoogleAuthController, :request
+    get "/:provider/callback", GoogleAuthController, :callback
+    post "/:provider/callback", GoogleAuthController, :callback
+  end
+
   if Application.compile_env(:trifle, :dev_routes) do
     import Phoenix.LiveDashboard.Router
 
@@ -77,6 +85,7 @@ defmodule TrifleApp.Router do
       live "/organization", OrganizationRedirectLive, :index
       live "/organization/profile", OrganizationProfileLive, :show
       live "/organization/users", OrganizationUsersLive, :index
+      live "/organization/sso", OrganizationSSOLive, :show
       live "/organization/delivery", OrganizationDeliveryLive, :show
       live "/organization/billing", OrganizationBillingLive, :show
       live "/dbs", DatabasesLive, :index

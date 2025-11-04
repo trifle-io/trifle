@@ -175,6 +175,21 @@ spec:
             - name: SLACK_SCOPES
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.app.googleOAuth.clientId }}
+            - name: GOOGLE_OAUTH_CLIENT_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.googleOAuth.clientSecret }}
+            - name: GOOGLE_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: google-oauth-client-secret
+            {{- end }}
+            {{- with .Values.app.googleOAuth.redirectUri }}
+            - name: GOOGLE_OAUTH_REDIRECT_URI
+              value: {{ . | quote }}
+            {{- end }}
           resources:
             limits:
               cpu: 500m
