@@ -4,6 +4,7 @@ defmodule Trifle.Repo.Migrations.CreateOrganizationSsoProviders do
   def change do
     create table(:organization_sso_providers, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
         null: false
 
@@ -20,6 +21,7 @@ defmodule Trifle.Repo.Migrations.CreateOrganizationSsoProviders do
 
     create table(:organization_sso_domains, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :organization_sso_provider_id,
           references(:organization_sso_providers, type: :binary_id, on_delete: :delete_all),
           null: false

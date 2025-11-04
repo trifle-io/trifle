@@ -460,7 +460,7 @@ defmodule Trifle.Chat.Tools do
                 value_path: value_path,
                 formatter: "timeline"
               }}
-         ),
+           ),
          {:ok, result} <-
            Source.fetch_series(
              source,
@@ -874,7 +874,8 @@ defmodule Trifle.Chat.Tools do
      }}
   end
 
-  defp resolve_aggregator(value) when is_atom(value), do: resolve_aggregator(Atom.to_string(value))
+  defp resolve_aggregator(value) when is_atom(value),
+    do: resolve_aggregator(Atom.to_string(value))
 
   defp resolve_aggregator(value) when is_binary(value) do
     key =
@@ -988,6 +989,7 @@ defmodule Trifle.Chat.Tools do
     try do
       result = Series.format_timeline(series, path, slices)
       formatted = normalize_timeline_output(result)
+
       matched_paths =
         formatted
         |> extract_timeline_paths()
@@ -1019,6 +1021,7 @@ defmodule Trifle.Chat.Tools do
     try do
       result = Series.format_category(series, path, slices)
       formatted = normalize_category_output(result)
+
       matched_paths =
         formatted
         |> extract_category_paths()
@@ -1180,7 +1183,9 @@ defmodule Trifle.Chat.Tools do
     missing = Enum.reject(paths, &Enum.member?(available, &1))
 
     case missing do
-      [] -> :ok
+      [] ->
+        :ok
+
       _ ->
         {:error,
          %{
@@ -1291,6 +1296,7 @@ defmodule Trifle.Chat.Tools do
 
   defp convert_data_map(%D{} = decimal), do: normalize_number(D.to_float(decimal))
   defp convert_data_map(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+
   defp convert_data_map(number) when is_float(number) or is_integer(number),
     do: normalize_number(number)
 
@@ -1395,10 +1401,13 @@ defmodule Trifle.Chat.Tools do
         rows =
           Enum.map(timestamps, fn timestamp ->
             iso = ensure_datetime(timestamp) |> DateTime.to_iso8601()
-            [iso |
-              Enum.map(selected_paths, fn path ->
-                Map.get(value_lookup, {path, timestamp})
-              end)]
+
+            [
+              iso
+              | Enum.map(selected_paths, fn path ->
+                  Map.get(value_lookup, {path, timestamp})
+                end)
+            ]
           end)
 
         %{
@@ -1548,6 +1557,7 @@ defmodule Trifle.Chat.Tools do
   defp truthy?(value) when value in [true, false], do: value
   defp truthy?("true"), do: true
   defp truthy?("false"), do: false
+
   defp truthy?(value) when is_binary(value) do
     normalized = String.trim(String.downcase(value))
     normalized in ["yes", "y", "1", "true"]

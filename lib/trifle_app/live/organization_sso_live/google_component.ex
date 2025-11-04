@@ -55,8 +55,7 @@ defmodule TrifleApp.OrganizationSSOLive.GoogleComponent do
             Configure Google OAuth credentials to enable sign-in.
           </p>
           <p class="mt-2 leading-relaxed">
-            Create an OAuth 2.0 Web application in the Google Cloud Console and set the redirect URI to
-            <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-900 dark:text-amber-200">{@sso_info.redirect_uri}</code>.
+            Create an OAuth 2.0 Web application in the Google Cloud Console and set the redirect URI to <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-900 dark:text-amber-200">{@sso_info.redirect_uri}</code>.
             Provide the client ID and client secret as environment variables (see the deployment guide below).
           </p>
         </div>
@@ -80,7 +79,10 @@ defmodule TrifleApp.OrganizationSSOLive.GoogleComponent do
               >
                 <%= for domain <- @sso_info.domains do %>
                   <li class="flex items-center gap-2 text-sm text-gray-800 dark:text-slate-200">
-                    <.icon name="hero-globe-alt-mini" class="h-4 w-4 text-teal-500 dark:text-teal-300" />
+                    <.icon
+                      name="hero-globe-alt-mini"
+                      class="h-4 w-4 text-teal-500 dark:text-teal-300"
+                    />
                     {domain}
                   </li>
                 <% end %>
@@ -91,18 +93,24 @@ defmodule TrifleApp.OrganizationSSOLive.GoogleComponent do
                 Automatic membership provisioning:
                 <span class={[
                   "ml-1 font-medium",
-                  if(@sso_info.auto_provision, do: "text-emerald-600 dark:text-emerald-300", else: "text-amber-700 dark:text-amber-200")
+                  if(@sso_info.auto_provision,
+                    do: "text-emerald-600 dark:text-emerald-300",
+                    else: "text-amber-700 dark:text-amber-200"
+                  )
                 ]}>
-                  {@sso_info.auto_provision && "On" || "Off"}
+                  {(@sso_info.auto_provision && "On") || "Off"}
                 </span>
               </p>
               <p class="mt-1">
                 Provider status:
                 <span class={[
                   "ml-1 font-medium",
-                  if(@sso_info.enabled, do: "text-emerald-600 dark:text-emerald-300", else: "text-amber-700 dark:text-amber-200")
+                  if(@sso_info.enabled,
+                    do: "text-emerald-600 dark:text-emerald-300",
+                    else: "text-amber-700 dark:text-amber-200"
+                  )
                 ]}>
-                  {@sso_info.enabled && "Enabled" || "Disabled"}
+                  {(@sso_info.enabled && "Enabled") || "Disabled"}
                 </span>
               </p>
             </div>
@@ -124,7 +132,11 @@ defmodule TrifleApp.OrganizationSSOLive.GoogleComponent do
                 and create OAuth client credentials (Web application).
               </li>
               <li>
-                2. Add <code class="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs text-gray-700 dark:text-slate-200">{@sso_info.redirect_uri}</code> as an authorized redirect URI.
+                2. Add
+                <code class="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs text-gray-700 dark:text-slate-200">
+                  {@sso_info.redirect_uri}
+                </code>
+                as an authorized redirect URI.
               </li>
               <li>
                 3. Set the deployment environment variables:

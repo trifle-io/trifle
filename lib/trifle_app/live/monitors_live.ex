@@ -349,6 +349,34 @@ defmodule TrifleApp.MonitorsLive do
               </div>
             </div>
             <div class="flex items-center gap-3">
+              <div :if={monitor.user} class="flex items-center">
+                <img
+                  src={gravatar_url(monitor.user.email, 48)}
+                  alt={"Owner avatar for #{monitor.name}"}
+                  class="h-6 w-6 rounded-full border border-gray-200 dark:border-slate-600"
+                  title={"Owned by #{monitor_owner_label(monitor.user)}"}
+                />
+              </div>
+              <span
+                :if={monitor.locked}
+                class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[0.7rem] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
+                  />
+                </svg>
+                Locked
+              </span>
               <% schedule_label = monitor_schedule_label(monitor) %>
               <div :if={schedule_label} class="flex items-center">
                 <span class="inline-flex h-8 items-center rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 dark:bg-slate-700 dark:text-slate-200">
@@ -390,4 +418,35 @@ defmodule TrifleApp.MonitorsLive do
     </div>
     """
   end
+
+  defp monitor_owner_label(%{name: name}) when is_binary(name) and name != "" do
+    name
+  end
+
+  defp monitor_owner_label(%{email: email}) when is_binary(email), do: email
+  defp monitor_owner_label(_), do: "Unknown owner"
+
+  defp gravatar_url(email, size \\ 64)
+
+  defp gravatar_url(email, size) when is_binary(email) do
+    trimmed =
+      email
+      |> String.trim()
+      |> String.downcase()
+
+    if trimmed == "" do
+      default_gravatar(size)
+    else
+      hash =
+        trimmed
+        |> then(fn value -> :crypto.hash(:md5, value) end)
+        |> Base.encode16(case: :lower)
+
+      "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=identicon"
+    end
+  end
+
+  defp gravatar_url(_email, size), do: default_gravatar(size)
+
+  defp default_gravatar(size), do: "https://www.gravatar.com/avatar/?s=#{size}&d=identicon"
 end

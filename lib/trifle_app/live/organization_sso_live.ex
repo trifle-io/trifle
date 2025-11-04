@@ -74,7 +74,12 @@ defmodule TrifleApp.OrganizationSSOLive do
     >
       <:title>Manage Google SSO</:title>
       <:body>
-        <.form :if={@google_sso_form} for={@google_sso_form} phx-submit="save_google_sso" class="space-y-5">
+        <.form
+          :if={@google_sso_form}
+          for={@google_sso_form}
+          phx-submit="save_google_sso"
+          class="space-y-5"
+        >
           <.form_field
             type="checkbox"
             field={@google_sso_form[:enabled]}
@@ -99,7 +104,9 @@ defmodule TrifleApp.OrganizationSSOLive do
 
           <.form_actions>
             <.primary_button phx-disable-with="Saving...">Save changes</.primary_button>
-            <.secondary_button type="button" phx-click="close_google_sso_modal">Cancel</.secondary_button>
+            <.secondary_button type="button" phx-click="close_google_sso_modal">
+              Cancel
+            </.secondary_button>
           </.form_actions>
         </.form>
       </:body>
@@ -108,7 +115,11 @@ defmodule TrifleApp.OrganizationSSOLive do
   end
 
   @impl true
-  def handle_event("open_google_sso_modal", _params, %{assigns: %{can_manage: true, sso_info: info}} = socket)
+  def handle_event(
+        "open_google_sso_modal",
+        _params,
+        %{assigns: %{can_manage: true, sso_info: info}} = socket
+      )
       when not is_nil(info) do
     {:noreply,
      socket
@@ -133,7 +144,8 @@ defmodule TrifleApp.OrganizationSSOLive do
     with true <- assigns.can_manage and not is_nil(assigns.sso_info),
          {:ok, parsed_params, validated_changeset} <-
            validate_google_sso_params(assigns.sso_info, params),
-         {:ok, _provider} <- save_google_sso(assigns.organization, parsed_params, validated_changeset) do
+         {:ok, _provider} <-
+           save_google_sso(assigns.organization, parsed_params, validated_changeset) do
       info = google_sso_info(assigns.organization)
 
       {:noreply,
@@ -189,7 +201,8 @@ defmodule TrifleApp.OrganizationSSOLive do
     %{
       organization_id: org_id,
       credentials_present?: !!credentials_present?,
-      configured?: credentials_present? && match?(%{enabled: true}, provider) && Enum.any?(domains),
+      configured?:
+        credentials_present? && match?(%{enabled: true}, provider) && Enum.any?(domains),
       enabled: match?(%{enabled: true}, provider),
       auto_provision: match?(%{auto_provision_members: true}, provider),
       domains: domains,
@@ -224,7 +237,8 @@ defmodule TrifleApp.OrganizationSSOLive do
 
         attrs = %{
           "enabled" => data.enabled,
-          "auto_provision_members" => if(data.enabled, do: data.auto_provision_members, else: false),
+          "auto_provision_members" =>
+            if(data.enabled, do: data.auto_provision_members, else: false),
           "domains" => domains
         }
 
@@ -271,7 +285,11 @@ defmodule TrifleApp.OrganizationSSOLive do
 
     changeset =
       if Changeset.get_field(changeset, :enabled) && Enum.empty?(domains) do
-        Changeset.add_error(changeset, :domains, "add at least one domain when Google SSO is enabled")
+        Changeset.add_error(
+          changeset,
+          :domains,
+          "add at least one domain when Google SSO is enabled"
+        )
       else
         changeset
       end
@@ -332,8 +350,7 @@ defmodule TrifleApp.OrganizationSSOLive do
 
     env_overrides =
       %{
-        client_id:
-          System.get_env("GOOGLE_OAUTH_CLIENT_ID") || System.get_env("GOOGLE_CLIENT_ID"),
+        client_id: System.get_env("GOOGLE_OAUTH_CLIENT_ID") || System.get_env("GOOGLE_CLIENT_ID"),
         client_secret:
           System.get_env("GOOGLE_OAUTH_CLIENT_SECRET") || System.get_env("GOOGLE_CLIENT_SECRET"),
         redirect_uri:

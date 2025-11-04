@@ -25,10 +25,16 @@ defmodule TrifleApp.GoogleAuthController do
 
     cond do
       is_nil(email) ->
-        oauth_failure(conn, "Google did not provide an email address. Please try a different sign in method.")
+        oauth_failure(
+          conn,
+          "Google did not provide an email address. Please try a different sign in method."
+        )
 
       verified? == false ->
-        oauth_failure(conn, "Your Google email is not verified. Please verify it with Google before signing in.")
+        oauth_failure(
+          conn,
+          "Your Google email is not verified. Please verify it with Google before signing in."
+        )
 
       true ->
         with {:ok, user} <- Accounts.get_or_create_user_for_sso(email),
@@ -52,10 +58,16 @@ defmodule TrifleApp.GoogleAuthController do
             )
 
           {:error, :invalid_email_domain} ->
-            oauth_failure(conn, "We couldn't determine your email domain. Please contact support.")
+            oauth_failure(
+              conn,
+              "We couldn't determine your email domain. Please contact support."
+            )
 
           {:error, %Ecto.Changeset{} = changeset} ->
-            oauth_failure(conn, "We could not add you to the organization: #{format_changeset_errors(changeset)}")
+            oauth_failure(
+              conn,
+              "We could not add you to the organization: #{format_changeset_errors(changeset)}"
+            )
 
           {:error, reason} ->
             oauth_failure(conn, "Unable to sign you in with Google: #{inspect(reason)}")
@@ -162,8 +174,7 @@ defmodule TrifleApp.GoogleAuthController do
 
     env_overrides =
       %{
-        client_id:
-          System.get_env("GOOGLE_OAUTH_CLIENT_ID") || System.get_env("GOOGLE_CLIENT_ID"),
+        client_id: System.get_env("GOOGLE_OAUTH_CLIENT_ID") || System.get_env("GOOGLE_CLIENT_ID"),
         client_secret:
           System.get_env("GOOGLE_OAUTH_CLIENT_SECRET") || System.get_env("GOOGLE_CLIENT_SECRET"),
         redirect_uri:

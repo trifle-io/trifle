@@ -826,6 +826,7 @@ defmodule TrifleApp.ChatLive do
 
   defp visualization_has_data?(viz) do
     chart = map_get(viz, :chart) || %{}
+
     type =
       viz
       |> map_get(:type)
@@ -1257,7 +1258,9 @@ defmodule TrifleApp.ChatLive do
             <%= if @selected_source do %>
               {Source.display_name(@selected_source)}
             <% else %>
-              <span class="text-slate-400 dark:text-slate-500">Select a source to start chatting</span>
+              <span class="text-slate-400 dark:text-slate-500">
+                Select a source to start chatting
+              </span>
             <% end %>
           </span>
         </div>
@@ -1352,11 +1355,7 @@ defmodule TrifleApp.ChatLive do
                   stroke="currentColor"
                   class="h-5 w-5"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M6 18 18 6M6 6l12 12"
-                  />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
               </button>
             <% else %>
@@ -1477,10 +1476,7 @@ defmodule TrifleApp.ChatLive do
           {@message.content}
         </p>
 
-        <div
-          :if={Enum.any?(Map.get(@message, :visualizations, []))}
-          class="mt-3 flex flex-col gap-4"
-        >
+        <div :if={Enum.any?(Map.get(@message, :visualizations, []))} class="mt-3 flex flex-col gap-4">
           <.chat_visualization :for={viz <- @message.visualizations} visualization={viz} />
         </div>
       </div>
@@ -1493,6 +1489,7 @@ defmodule TrifleApp.ChatLive do
   defp chat_visualization(assigns) do
     visualization = assigns.visualization
     chart = map_get(visualization, :chart) || %{}
+
     chart_type =
       visualization
       |> map_get(:type)

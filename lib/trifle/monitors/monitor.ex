@@ -32,6 +32,7 @@ defmodule Trifle.Monitors.Monitor do
     field :alert_metric_path, :string
     field :alert_timeframe, :string
     field :alert_granularity, :string
+    field :locked, :boolean, default: false
 
     embeds_one :report_settings, ReportSettings, on_replace: :update do
       field :frequency, Ecto.Enum,
@@ -60,6 +61,7 @@ defmodule Trifle.Monitors.Monitor do
 
     belongs_to :organization, Organization
     belongs_to :dashboard, Dashboard
+    belongs_to :user, User
     belongs_to :created_by, User, foreign_key: :created_by_id
 
     has_many :alerts, Alert, on_delete: :delete_all
@@ -76,11 +78,13 @@ defmodule Trifle.Monitors.Monitor do
     |> cast(attrs, [
       :organization_id,
       :created_by_id,
+      :user_id,
       :dashboard_id,
       :name,
       :description,
       :type,
       :status,
+      :locked,
       :target,
       :segment_values,
       :trigger_status,
@@ -96,7 +100,15 @@ defmodule Trifle.Monitors.Monitor do
     |> cast_embed(:delivery_media, with: &delivery_media_changeset/2, required: false)
     |> sanitize_target()
     |> sanitize_segment_values()
-    |> validate_required([:organization_id, :name, :type, :status, :source_type, :source_id])
+    |> validate_required([
+      :organization_id,
+      :user_id,
+      :name,
+      :type,
+      :status,
+      :source_type,
+      :source_id
+    ])
     |> validate_length(:name, min: 1, max: 255)
     |> maybe_require_dashboard()
     |> maybe_require_alert_target()

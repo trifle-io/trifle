@@ -26,6 +26,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign_new(:delivery_handles, fn -> [] end)
      |> assign_new(:sources, fn -> assigns.sources || [] end)
      |> assign(assigns)
+     |> assign(:can_manage_lock, Map.get(assigns, :can_manage_lock, false))
      |> assign(:persisted_monitor, monitor)
      |> assign(:action, assigns[:action] || derive_action(monitor))
      |> assign(:delivery_handle_error, nil)
@@ -134,6 +135,48 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                     </p>
                   <% end %>
                 </div>
+              </div>
+              <div
+                :if={@persisted_monitor && @persisted_monitor.id}
+                class="border-t border-gray-200 pt-6 dark:border-slate-700"
+              >
+                <% locked? = @persisted_monitor.locked || false %>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="text-sm font-semibold text-slate-900 dark:text-white">
+                      Lock
+                    </span>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                      Prevent other organization members from changing this monitor while it's locked.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    phx-click="toggle_lock"
+                    phx-target={@myself}
+                    disabled={!@can_manage_lock}
+                    class={[
+                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                      if(locked?,
+                        do: "bg-amber-500 dark:bg-amber-400",
+                        else: "bg-gray-200 dark:bg-gray-700"
+                      ),
+                      if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                    ]}
+                  >
+                    <span class={[
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      if(locked?, do: "translate-x-5", else: "translate-x-0")
+                    ]}>
+                    </span>
+                  </button>
+                </div>
+                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  When locked, only the owner and organization admins can modify configuration or alerts.
+                </p>
+                <p :if={!@can_manage_lock} class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Lock state can only be changed by the monitor owner or organization admins.
+                </p>
               </div>
 
               <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
@@ -499,6 +542,46 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end
   end
 
+  def handle_event("toggle_lock", _params, socket) do
+    monitor = socket.assigns.persisted_monitor
+
+    cond do
+      is_nil(monitor) || is_nil(monitor.id) ->
+        {:noreply, socket}
+
+      !socket.assigns.can_manage_lock ->
+        {:noreply, socket}
+
+      true ->
+        membership = socket.assigns.current_membership
+        desired_state = !(monitor.locked || false)
+
+        case Monitors.update_monitor_for_membership(monitor, membership, %{locked: desired_state}) do
+          {:ok, updated} ->
+            notify_parent({:saved, updated})
+
+            {:noreply,
+             socket
+             |> assign(:persisted_monitor, updated)
+             |> assign(:monitor, updated)
+             |> assign(:delivery_handle_error, nil)
+             |> assign(:delivery_media_error, nil)
+             |> assign_form(Monitors.change_monitor(updated, %{}))}
+
+          {:error, :forbidden} ->
+            notify_parent({:error, "You do not have permission to change the lock state"})
+            {:noreply, socket}
+
+          {:error, :unauthorized} ->
+            notify_parent({:error, "You do not have permission to change the lock state"})
+            {:noreply, socket}
+
+          {:error, %Changeset{} = changeset} ->
+            {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+        end
+    end
+  end
+
   def handle_event("delete_monitor", _params, socket) do
     if socket.assigns.persisted_monitor && socket.assigns.persisted_monitor.id do
       notify_parent({:delete, socket.assigns.persisted_monitor})
@@ -551,6 +634,17 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:delivery_handle_error, nil)
          |> assign(:delivery_media_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)}
+
+      {:error, :forbidden} ->
+        message =
+          if socket.assigns.persisted_monitor && socket.assigns.persisted_monitor.locked do
+            "Monitor is locked. Only the owner or organization admins can update it."
+          else
+            "You do not have permission to update this monitor"
+          end
+
+        notify_parent({:error, message})
+        {:noreply, socket}
 
       {:error, :unauthorized} ->
         notify_parent({:error, "You do not have permission to update this monitor"})

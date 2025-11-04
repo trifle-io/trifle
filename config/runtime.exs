@@ -426,7 +426,6 @@ if config_env() == :prod do
     end
 
   config :trifle, :slack, Map.merge(base_slack_config, slack_overrides)
-
 end
 
 base_google_config =
@@ -440,8 +439,10 @@ base_google_config =
 google_overrides =
   %{
     client_id: System.get_env("GOOGLE_OAUTH_CLIENT_ID") || System.get_env("GOOGLE_CLIENT_ID"),
-    client_secret: System.get_env("GOOGLE_OAUTH_CLIENT_SECRET") || System.get_env("GOOGLE_CLIENT_SECRET"),
-    redirect_uri: System.get_env("GOOGLE_OAUTH_REDIRECT_URI") || System.get_env("GOOGLE_REDIRECT_URI")
+    client_secret:
+      System.get_env("GOOGLE_OAUTH_CLIENT_SECRET") || System.get_env("GOOGLE_CLIENT_SECRET"),
+    redirect_uri:
+      System.get_env("GOOGLE_OAUTH_REDIRECT_URI") || System.get_env("GOOGLE_REDIRECT_URI")
   }
   |> Enum.filter(fn {_key, value} -> not is_nil(value) and String.trim(value) != "" end)
   |> Map.new()
@@ -452,6 +453,7 @@ config :trifle, :google_oauth, google_config
 
 google_client_id = google_config[:client_id] || google_config["client_id"]
 google_client_secret = google_config[:client_secret] || google_config["client_secret"]
+
 google_redirect_uri =
   case google_config[:redirect_uri] || google_config["redirect_uri"] do
     nil ->

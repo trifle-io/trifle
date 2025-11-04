@@ -27,6 +27,28 @@ defmodule Trifle.Monitors do
     )
   end
 
+  def can_view_monitor?(%Monitor{} = monitor, %OrganizationMembership{} = membership) do
+    monitor.organization_id == membership.organization_id
+  end
+
+  def can_manage_monitor?(%Monitor{} = monitor, %OrganizationMembership{} = membership) do
+    monitor.organization_id == membership.organization_id and
+      (monitor.user_id == membership.user_id || Organizations.membership_admin?(membership))
+  end
+
+  def can_edit_monitor?(%Monitor{} = monitor, %OrganizationMembership{} = membership) do
+    cond do
+      monitor.organization_id != membership.organization_id ->
+        false
+
+      monitor.locked ->
+        can_manage_monitor?(monitor, membership)
+
+      true ->
+        true
+    end
+  end
+
   ## Monitors
 
   @doc """
@@ -65,6 +87,8 @@ defmodule Trifle.Monitors do
       |> normalize_monitor_attrs()
       |> Map.put("organization_id", membership.organization_id)
       |> Map.put("created_by_id", user.id)
+      |> Map.put("user_id", user.id)
+      |> Map.put_new("locked", false)
 
     monitor = %Monitor{organization_id: membership.organization_id}
 
@@ -83,16 +107,23 @@ defmodule Trifle.Monitors do
         %OrganizationMembership{} = membership,
         attrs
       ) do
-    if monitor.organization_id != membership.organization_id do
-      {:error, :unauthorized}
-    else
-      attrs = normalize_monitor_attrs(attrs)
+    cond do
+      monitor.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
 
-      with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor) do
-        monitor
-        |> Monitor.changeset(stringify_keys(attrs))
-        |> Repo.update()
-      end
+      not can_edit_monitor?(monitor, membership) ->
+        {:error, :forbidden}
+
+      true ->
+        can_manage? = can_manage_monitor?(monitor, membership)
+        attrs = normalize_monitor_attrs(attrs)
+
+        with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor),
+             {:ok, sanitized_attrs} <- sanitize_monitor_update_attrs(attrs, can_manage?) do
+          monitor
+          |> Monitor.changeset(stringify_keys(sanitized_attrs))
+          |> Repo.update()
+        end
     end
   end
 
@@ -100,23 +131,28 @@ defmodule Trifle.Monitors do
   Deletes the provided monitor.
   """
   def delete_monitor_for_membership(%Monitor{} = monitor, %OrganizationMembership{} = membership) do
-    if monitor.organization_id != membership.organization_id do
-      {:error, :unauthorized}
-    else
-      Multi.new()
-      |> Multi.delete_all(:alerts, from(a in Alert, where: a.monitor_id == ^monitor.id))
-      |> Multi.delete(:monitor, monitor)
-      |> Repo.transaction()
-      |> case do
-        {:ok, %{monitor: monitor}} ->
-          {:ok, monitor}
+    cond do
+      monitor.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
 
-        {:error, :monitor, changeset, _} ->
-          {:error, changeset}
+      not can_edit_monitor?(monitor, membership) ->
+        {:error, :forbidden}
 
-        {:error, :alerts, reason, _} ->
-          {:error, reason}
-      end
+      true ->
+        Multi.new()
+        |> Multi.delete_all(:alerts, from(a in Alert, where: a.monitor_id == ^monitor.id))
+        |> Multi.delete(:monitor, monitor)
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{monitor: monitor}} ->
+            {:ok, monitor}
+
+          {:error, :monitor, changeset, _} ->
+            {:error, changeset}
+
+          {:error, :alerts, reason, _} ->
+            {:error, reason}
+        end
     end
   end
 
@@ -173,30 +209,59 @@ defmodule Trifle.Monitors do
   @doc """
   Creates an alert under the provided monitor.
   """
-  def create_alert(%Monitor{} = monitor, attrs \\ %{}) do
-    attrs =
-      attrs
-      |> stringify_keys()
-      |> Map.put("monitor_id", monitor.id)
+  def create_alert(%Monitor{} = monitor, %OrganizationMembership{} = membership, attrs \\ %{}) do
+    if can_edit_monitor?(monitor, membership) do
+      attrs =
+        attrs
+        |> stringify_keys()
+        |> Map.put("monitor_id", monitor.id)
 
-    %Alert{monitor_id: monitor.id}
-    |> Alert.changeset(attrs)
-    |> Repo.insert()
+      %Alert{monitor_id: monitor.id}
+      |> Alert.changeset(attrs)
+      |> Repo.insert()
+    else
+      {:error, :forbidden}
+    end
   end
 
   @doc """
   Updates an existing alert.
   """
-  def update_alert(%Alert{} = alert, attrs) do
-    alert
-    |> Alert.changeset(attrs)
-    |> Repo.update()
+  def update_alert(
+        %Monitor{} = monitor,
+        %OrganizationMembership{} = membership,
+        %Alert{} = alert,
+        attrs
+      ) do
+    cond do
+      alert.monitor_id != monitor.id ->
+        {:error, :not_found}
+
+      not can_edit_monitor?(monitor, membership) ->
+        {:error, :forbidden}
+
+      true ->
+        alert
+        |> Alert.changeset(attrs)
+        |> Repo.update()
+    end
   end
 
   @doc """
   Deletes an alert.
   """
-  def delete_alert(%Alert{} = alert), do: Repo.delete(alert)
+  def delete_alert(%Monitor{} = monitor, %OrganizationMembership{} = membership, %Alert{} = alert) do
+    cond do
+      alert.monitor_id != monitor.id ->
+        {:error, :not_found}
+
+      not can_edit_monitor?(monitor, membership) ->
+        {:error, :forbidden}
+
+      true ->
+        Repo.delete(alert)
+    end
+  end
 
   @doc """
   Returns alerts sorted deterministically by creation time and id.
@@ -772,15 +837,41 @@ defmodule Trifle.Monitors do
   defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
   defp stringify_keys(value), do: value
 
+  defp sanitize_monitor_update_attrs(attrs, allow_protected?) when is_map(attrs) do
+    created_keys = [:created_by_id, "created_by_id"]
+
+    protected_keys =
+      if allow_protected? do
+        created_keys
+      else
+        [:locked, "locked", :user_id, "user_id" | created_keys]
+      end
+
+    has_forbidden? = Enum.any?(protected_keys, &Map.has_key?(attrs, &1))
+
+    sanitized =
+      attrs
+      |> Map.delete(:created_by_id)
+      |> Map.delete("created_by_id")
+
+    if has_forbidden? do
+      {:error, :forbidden}
+    else
+      {:ok, sanitized}
+    end
+  end
+
+  defp sanitize_monitor_update_attrs(attrs, _allow_protected?), do: {:ok, attrs}
+
   defp monitor_preloads(opts) do
     base =
       case Keyword.get(opts, :preload, []) do
-        true -> [:executions, :dashboard, :organization]
+        true -> [:executions, :dashboard, :organization, :user]
         list when is_list(list) -> list
         _ -> []
       end
 
-    [:alerts | List.wrap(base)]
+    [:alerts, :user | List.wrap(base)]
     |> Enum.uniq()
   end
 
