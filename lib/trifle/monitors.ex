@@ -263,6 +263,40 @@ defmodule Trifle.Monitors do
     end
   end
 
+  def transfer_monitor_ownership(
+        %Monitor{} = monitor,
+        %OrganizationMembership{} = membership,
+        target_membership_id
+      )
+      when is_binary(target_membership_id) do
+    cond do
+      monitor.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
+
+      not can_manage_monitor?(monitor, membership) ->
+        {:error, :forbidden}
+
+      true ->
+        case Organizations.get_membership(target_membership_id) do
+          nil ->
+            {:error, :not_found}
+
+          %OrganizationMembership{organization_id: org_id}
+          when org_id != monitor.organization_id ->
+            {:error, :invalid_target}
+
+          %OrganizationMembership{} = new_owner ->
+            if new_owner.user_id == monitor.user_id do
+              {:error, :same_owner}
+            else
+              monitor
+              |> Monitor.changeset(%{user_id: new_owner.user_id})
+              |> Repo.update()
+            end
+        end
+    end
+  end
+
   @doc """
   Returns alerts sorted deterministically by creation time and id.
   """

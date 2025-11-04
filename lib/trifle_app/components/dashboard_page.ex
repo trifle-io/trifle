@@ -1185,6 +1185,57 @@ defmodule TrifleApp.Components.DashboardPage do
                       </p>
                     </div>
 
+                    <div
+                      :if={
+                        @can_transfer_dashboard_owner && Enum.any?(@dashboard_owner_candidates || [])
+                      }
+                      class="mb-6 space-y-3"
+                    >
+                      <div>
+                        <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+                          Transfer ownership
+                        </span>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">
+                          Move ownership to another member. You might lose direct access if you are not an organization admin.
+                        </p>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <.form
+                          for={%{}}
+                          phx-change="change_dashboard_owner_selection"
+                          class="flex flex-1"
+                        >
+                          <select
+                            name="dashboard_owner_membership_id"
+                            class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                            value={@dashboard_owner_selection || ""}
+                          >
+                            <option value="">Select member…</option>
+                            <%= for candidate <- @dashboard_owner_candidates || [] do %>
+                              <option
+                                value={candidate.id}
+                                selected={@dashboard_owner_selection == candidate.id}
+                              >
+                                {candidate.label}
+                              </option>
+                            <% end %>
+                          </select>
+                        </.form>
+                        <button
+                          type="button"
+                          class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                          phx-click="transfer_dashboard_owner"
+                          data-confirm="Transfer ownership to the selected member?"
+                          disabled={@dashboard_owner_selection in [nil, ""]}
+                        >
+                          Transfer ownership
+                        </button>
+                      </div>
+                      <p :if={@dashboard_owner_error} class="text-xs text-rose-600 dark:text-rose-400">
+                        {@dashboard_owner_error}
+                      </p>
+                    </div>
+
                     <button
                       type="button"
                       phx-click="delete_dashboard"

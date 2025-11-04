@@ -246,6 +246,199 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event(
+        "change_dashboard_owner_selection",
+        %{"dashboard_owner_membership_id" => membership_id},
+        socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:dashboard_owner_selection, normalize_selection(membership_id))
+     |> assign(:dashboard_owner_error, nil)}
+  end
+
+  def handle_event(
+        "change_dashboard_owner_selection",
+        %{"value" => membership_id},
+        socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:dashboard_owner_selection, normalize_selection(membership_id))
+     |> assign(:dashboard_owner_error, nil)}
+  end
+
+  def handle_event("transfer_dashboard_owner", _params, socket) do
+    cond do
+      !socket.assigns[:can_transfer_dashboard_owner] ->
+        {:noreply,
+         socket
+         |> assign(:dashboard_owner_error, "You do not have permission to transfer ownership")}
+
+      true ->
+        selection = socket.assigns[:dashboard_owner_selection] || ""
+
+        cond do
+          selection == "" ->
+            {:noreply,
+             socket
+             |> assign(:dashboard_owner_error, "Select a member to transfer ownership")}
+
+          true ->
+            dashboard = socket.assigns.dashboard
+            membership = socket.assigns.current_membership
+
+            case Organizations.transfer_dashboard_ownership(dashboard, membership, selection) do
+              {:ok, updated_dashboard} ->
+                new_owner = Organizations.get_membership!(selection)
+                label = ownership_option_label(new_owner)
+
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_selection, "")
+                 |> assign(:dashboard_owner_error, nil)
+                 |> assign_dashboard(updated_dashboard)
+                 |> put_flash(:info, "Ownership transferred to #{label}")}
+
+              {:error, :same_owner} ->
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_error, "Select a different member")
+                 |> assign_dashboard_owner_state()}
+
+              {:error, :invalid_target} ->
+                {:noreply,
+                 socket
+                 |> assign(
+                   :dashboard_owner_error,
+                   "Selected member is not part of this organization"
+                 )
+                 |> assign_dashboard_owner_state()}
+
+              {:error, :forbidden} ->
+                {:noreply,
+                 socket
+                 |> assign(
+                   :dashboard_owner_error,
+                   "You do not have permission to transfer ownership"
+                 )}
+
+              {:error, :unauthorized} ->
+                {:noreply,
+                 socket
+                 |> assign(
+                   :dashboard_owner_error,
+                   "You do not have permission to transfer ownership"
+                 )}
+
+              {:error, :not_found} ->
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_error, "Selected member was not found")
+                 |> assign_dashboard_owner_state()}
+
+              {:error, %Ecto.Changeset{}} ->
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_error, "Unable to transfer ownership right now")
+                 |> assign_dashboard_owner_state()}
+            end
+        end
+    end
+  end
+
+  def handle_event("change_dashboard_owner_selection", params, socket) do
+    case Map.get(params, "dashboard_owner_membership_id") do
+      nil ->
+        {:noreply, socket}
+
+      membership_id ->
+        {:noreply,
+         socket
+         |> assign(:dashboard_owner_selection, normalize_selection(membership_id))
+         |> assign(:dashboard_owner_error, nil)}
+    end
+  end
+
+  def handle_event("transfer_dashboard_owner", _params, socket) do
+    cond do
+      !socket.assigns[:can_transfer_dashboard_owner] ->
+        {:noreply,
+         socket
+         |> assign(:dashboard_owner_error, "You do not have permission to transfer ownership")}
+
+      true ->
+        selection = socket.assigns[:dashboard_owner_selection] || ""
+
+        cond do
+          selection == "" ->
+            {:noreply,
+             socket
+             |> assign(:dashboard_owner_error, "Select a member to transfer ownership")}
+
+          true ->
+            dashboard = socket.assigns.dashboard
+            membership = socket.assigns.current_membership
+
+            case Organizations.transfer_dashboard_ownership(dashboard, membership, selection) do
+              {:ok, updated_dashboard} ->
+                new_owner = Organizations.get_membership!(selection)
+                label = ownership_option_label(new_owner)
+
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_selection, "")
+                 |> assign(:dashboard_owner_error, nil)
+                 |> assign_dashboard(updated_dashboard)
+                 |> put_flash(:info, "Ownership transferred to #{label}")}
+
+              {:error, :same_owner} ->
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_error, "Select a different member")
+                 |> assign_dashboard_owner_state()}
+
+              {:error, :invalid_target} ->
+                {:noreply,
+                 socket
+                 |> assign(
+                   :dashboard_owner_error,
+                   "Selected member is not part of this organization"
+                 )
+                 |> assign_dashboard_owner_state()}
+
+              {:error, :forbidden} ->
+                {:noreply,
+                 socket
+                 |> assign(
+                   :dashboard_owner_error,
+                   "You do not have permission to transfer ownership"
+                 )}
+
+              {:error, :unauthorized} ->
+                {:noreply,
+                 socket
+                 |> assign(
+                   :dashboard_owner_error,
+                   "You do not have permission to transfer ownership"
+                 )}
+
+              {:error, :not_found} ->
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_error, "Selected member was not found")
+                 |> assign_dashboard_owner_state()}
+
+              {:error, %Ecto.Changeset{}} ->
+                {:noreply,
+                 socket
+                 |> assign(:dashboard_owner_error, "Unable to transfer ownership right now")
+                 |> assign_dashboard_owner_state()}
+            end
+        end
+    end
+  end
+
   def handle_event("delete_dashboard", _params, socket) do
     if !socket.assigns.can_edit_dashboard do
       {:noreply, put_flash(socket, :error, "You do not have permission to delete this dashboard")}
@@ -1343,11 +1536,16 @@ defmodule TrifleApp.DashboardLive do
         socket
         |> assign(:can_edit_dashboard, Organizations.can_edit_dashboard?(dashboard, membership))
         |> assign(:can_clone_dashboard, Organizations.can_clone_dashboard?(dashboard, membership))
+        |> assign(
+          :can_transfer_dashboard_owner,
+          Organizations.can_manage_dashboard?(dashboard, membership)
+        )
 
       true ->
         socket
         |> assign(:can_edit_dashboard, false)
         |> assign(:can_clone_dashboard, false)
+        |> assign(:can_transfer_dashboard_owner, false)
     end
   end
 
@@ -1355,7 +1553,48 @@ defmodule TrifleApp.DashboardLive do
     socket
     |> assign(:dashboard, dashboard)
     |> assign_dashboard_permissions()
+    |> assign_dashboard_owner_state()
     |> assign_segment_state()
+  end
+
+  defp assign_dashboard_owner_state(%{assigns: assigns} = socket) do
+    membership = assigns[:current_membership]
+    dashboard = assigns[:dashboard]
+    can_transfer = assigns[:can_transfer_dashboard_owner]
+
+    previous_selection = Map.get(assigns, :dashboard_owner_selection, "")
+    previous_error = Map.get(assigns, :dashboard_owner_error, nil)
+
+    cond do
+      !can_transfer || is_nil(dashboard) || is_nil(membership) ->
+        socket
+        |> assign(:dashboard_owner_candidates, [])
+        |> assign(:dashboard_owner_selection, "")
+        |> assign(:dashboard_owner_error, nil)
+
+      true ->
+        candidates =
+          Organizations.list_memberships_for_org_id(membership.organization_id)
+          |> Enum.reject(&(&1.user_id == dashboard.user_id))
+          |> Enum.map(fn member ->
+            %{
+              id: member.id,
+              label: ownership_option_label(member)
+            }
+          end)
+
+        selection =
+          if Enum.any?(candidates, &(&1.id == previous_selection)) do
+            previous_selection
+          else
+            ""
+          end
+
+        socket
+        |> assign(:dashboard_owner_candidates, candidates)
+        |> assign(:dashboard_owner_selection, selection)
+        |> assign(:dashboard_owner_error, if(candidates == [], do: nil, else: previous_error))
+    end
   end
 
   defp assign_segment_state(socket, overrides \\ %{}) do
@@ -1380,6 +1619,21 @@ defmodule TrifleApp.DashboardLive do
 
   defp resolve_dashboard_key(pattern, segments, values_map),
     do: DashboardSegments.resolve_key(pattern, segments, values_map)
+
+  defp ownership_option_label(%{user: user}) when is_map(user) do
+    name = Map.get(user, :name) || Map.get(user, :full_name)
+
+    cond do
+      is_binary(name) and String.trim(name) != "" ->
+        "#{name} (#{user.email})"
+
+      true ->
+        user.email
+    end
+  end
+
+  defp normalize_selection(value) when value in [nil, ""], do: ""
+  defp normalize_selection(value), do: to_string(value)
 
   defp fallback_select_value(_previous_present?, _previous_value, default_value, available_values) do
     cond do
