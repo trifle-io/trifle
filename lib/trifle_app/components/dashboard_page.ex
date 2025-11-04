@@ -137,74 +137,31 @@ defmodule TrifleApp.Components.DashboardPage do
                   </svg>
                   <span class="hidden md:inline">Add Widget</span>
                 </button>
-                <!-- Edit Button -->
-                <%= if @live_action == :edit do %>
-                  <button
-                    type="button"
-                    phx-click="cancel_edit"
-                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                <.link
+                  patch={~p"/dashboards/#{@dashboard.id}/configure"}
+                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                >
+                  <svg
+                    class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
                   >
-                    <svg
-                      class="-ml-0.5 mr-1.5 h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Cancel
-                  </button>
-                <% else %>
-                  <.link
-                    patch={~p"/dashboards/#{@dashboard.id}/edit"}
-                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                  >
-                    <svg
-                      class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                      />
-                    </svg>
-                    <span class="hidden md:inline">Edit</span>
-                  </.link>
-                  
-    <!-- Configure Button -->
-                  <.link
-                    patch={~p"/dashboards/#{@dashboard.id}/configure"}
-                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                  >
-                    <svg
-                      class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
-                      />
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
-                    <span class="hidden md:inline">Configure</span>
-                  </.link>
-                <% end %>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                  <span class="hidden md:inline">Configure</span>
+                </.link>
                 
     <!-- Status Icon Badges -->
                 <div id="status-badges" class="flex items-center gap-2" phx-hook="FastTooltip">
@@ -327,6 +284,29 @@ defmodule TrifleApp.Components.DashboardPage do
                       </svg>
                     </div>
                   <% end %>
+
+                  <%= if @dashboard.locked do %>
+                    <div
+                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                      data-tooltip="Locked. Only the owner or organization admins can edit."
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-5 w-5 text-amber-500 dark:text-amber-400"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M16.5 10.5V7.5a4.5 4.5 0 0 0-9 0v3M6 10.5h12a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18v-6A1.5 1.5 0 0 1 6 10.5Z"
+                        />
+                      </svg>
+                      <span class="sr-only">Dashboard locked</span>
+                    </div>
+                  <% end %>
                 </div>
               </div>
             <% else %>
@@ -344,6 +324,11 @@ defmodule TrifleApp.Components.DashboardPage do
                   ]}>
                     {Trifle.Organizations.Dashboard.visibility_display(@dashboard.visibility)}
                   </span>
+                  <%= if @dashboard.locked do %>
+                    <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-amber-50 dark:bg-amber-900 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30">
+                      Locked
+                    </span>
+                  <% end %>
                 </div>
               <% else %>
                 <div class="w-64"></div>
@@ -450,63 +435,6 @@ defmodule TrifleApp.Components.DashboardPage do
             </div>
           </form>
         <% end %>
-        
-    <!-- Edit Form (only shown in edit mode for authenticated users) -->
-        <%= if !@is_public_access && @live_action == :edit && @dashboard_form do %>
-          <div class="mb-6">
-            <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
-              <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Edit Dashboard</h2>
-
-              <.form for={@dashboard_form} phx-submit="save_dashboard" class="space-y-4">
-                <div>
-                  <label
-                    for="dashboard_payload"
-                    class="block text-sm font-medium text-gray-700 dark:text-slate-300"
-                  >
-                    Payload
-                  </label>
-                  <textarea
-                    name="dashboard[payload]"
-                    id="dashboard_payload"
-                    rows="10"
-                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
-                    placeholder="JSON configuration for dashboard visualization"
-                  ><%= if @dashboard.payload, do: Jason.encode!(@dashboard.payload, pretty: true), else: "" %></textarea>
-                  <%= if @dashboard_changeset && @dashboard_changeset.errors[:payload] do %>
-                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">
-                      {case @dashboard_changeset.errors[:payload] do
-                        [{message, _}] -> message
-                        [{message, _} | _] -> message
-                        message when is_binary(message) -> message
-                        _ -> "Invalid payload format"
-                      end}
-                    </p>
-                  <% end %>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    Enter valid JSON configuration for the dashboard visualization
-                  </p>
-                </div>
-
-                <div class="flex items-center justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    phx-click="cancel_edit"
-                    class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </.form>
-            </div>
-          </div>
-        <% end %>
-
         <% export_params =
           build_url_params(%{
             granularity: @granularity,
@@ -1023,7 +951,7 @@ defmodule TrifleApp.Components.DashboardPage do
                   </div>
                 <% end %>
 
-                <%= if @can_edit_dashboard do %>
+                <%= if @can_manage_dashboard do %>
                   <!-- Visibility Toggle (moved below Actions) -->
                   <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
                     <div>
@@ -1048,6 +976,37 @@ defmodule TrifleApp.Components.DashboardPage do
                       <span class={[
                         "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
                         if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
+                      ]}>
+                      </span>
+                    </button>
+                  </div>
+                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
+                    <div>
+                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                        Lock
+                      </span>
+                      <p class="text-xs text-gray-500 dark:text-slate-400">
+                        Prevent regular members from editing while locked.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      phx-click="toggle_lock"
+                      disabled={!@can_manage_lock}
+                      role="switch"
+                      aria-checked={to_string(@dashboard.locked)}
+                      class={[
+                        "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
+                        if(@dashboard.locked,
+                          do: "bg-amber-500 dark:bg-amber-400",
+                          else: "bg-gray-200 dark:bg-gray-700"
+                        ),
+                        if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                      ]}
+                    >
+                      <span class={[
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
                       ]}>
                       </span>
                     </button>

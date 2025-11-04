@@ -235,8 +235,12 @@ defmodule Trifle.Organizations do
 
   def can_edit_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
     cond do
+      dashboard.organization_id != membership.organization_id -> false
       membership_owner?(membership) -> true
+      membership_admin?(membership) -> true
       dashboard.user_id == membership.user_id -> true
+      dashboard.locked -> false
+      dashboard.visibility -> true
       true -> false
     end
   end
@@ -832,6 +836,36 @@ defmodule Trifle.Organizations do
         attrs
     end
   end
+
+  defp ensure_dashboard_lock_default(attrs) when is_map(attrs) do
+    if Map.has_key?(attrs, :locked) || Map.has_key?(attrs, "locked") do
+      attrs
+    else
+      Map.put(attrs, "locked", false)
+    end
+  end
+
+  defp ensure_dashboard_lock_default(attrs), do: attrs
+
+  defp sanitize_dashboard_update_attrs(attrs, allow_protected?) when is_map(attrs) do
+    sanitized =
+      attrs
+      |> Map.delete(:user_id)
+      |> Map.delete("user_id")
+
+    cond do
+      allow_protected? ->
+        {:ok, sanitized}
+
+      Enum.any?([:locked, "locked", :visibility, "visibility"], &Map.has_key?(attrs, &1)) ->
+        {:error, :forbidden}
+
+      true ->
+        {:ok, sanitized}
+    end
+  end
+
+  defp sanitize_dashboard_update_attrs(attrs, _allow_protected?), do: {:ok, attrs}
 
   defp ensure_parent_group_within_org(attrs, %OrganizationMembership{} = membership) do
     value = Map.get(attrs, "parent_group_id") || Map.get(attrs, :parent_group_id)
@@ -1747,6 +1781,7 @@ defmodule Trifle.Organizations do
       attrs =
         attrs
         |> assign_org_id(membership.organization_id)
+        |> ensure_dashboard_lock_default()
         |> atomize_keys()
 
       %Dashboard{}
@@ -1797,20 +1832,26 @@ defmodule Trifle.Organizations do
         {:error, :forbidden}
 
       true ->
+        can_manage? = can_manage_dashboard?(dashboard, membership)
+
         attrs =
           attrs
           |> ensure_dashboard_group_within_org(membership)
 
         default_source = {dashboard.source_type, dashboard.source_id}
 
-        with {:ok, attrs} <- ensure_dashboard_source(attrs, membership, default_source) do
+        with {:ok, attrs} <- ensure_dashboard_source(attrs, membership, default_source),
+             {:ok, sanitized_attrs} <- sanitize_dashboard_update_attrs(attrs, can_manage?) do
           dashboard
           |> Dashboard.changeset(
-            assign_org_id(attrs, membership.organization_id)
+            assign_org_id(sanitized_attrs, membership.organization_id)
             |> atomize_keys()
           )
           |> Repo.update()
         else
+          {:error, :forbidden} ->
+            {:error, :forbidden}
+
           {:error, message} ->
             changeset =
               dashboard
@@ -2199,7 +2240,10 @@ defmodule Trifle.Organizations do
   Creates a dashboard.
   """
   def create_dashboard(attrs \\ %{}) do
-    attrs = ensure_dashboard_source_defaults(attrs)
+    attrs =
+      attrs
+      |> ensure_dashboard_source_defaults()
+      |> ensure_dashboard_lock_default()
 
     %Dashboard{}
     |> Dashboard.changeset(attrs)
