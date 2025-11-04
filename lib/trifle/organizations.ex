@@ -1710,16 +1710,9 @@ defmodule Trifle.Organizations do
   def list_dashboard_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
     top_groups = list_dashboard_groups_for_membership(membership, nil)
 
-    tree =
-      Enum.map(top_groups, fn group ->
-        build_group_tree_for_membership(user, membership, group)
-      end)
-
-    case membership.role do
-      "owner" -> tree
-      "admin" -> tree
-      _ -> prune_empty_groups(tree)
-    end
+    Enum.map(top_groups, fn group ->
+      build_group_tree_for_membership(user, membership, group)
+    end)
   end
 
   defp build_group_tree_for_membership(
@@ -1734,22 +1727,6 @@ defmodule Trifle.Organizations do
       children: Enum.map(children, &build_group_tree_for_membership(user, membership, &1)),
       dashboards: list_dashboards_for_membership(user, membership, group.id)
     }
-  end
-
-  defp prune_empty_groups(tree) when is_list(tree) do
-    tree
-    |> Enum.map(&prune_empty_groups/1)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp prune_empty_groups(%{group: _group, children: children, dashboards: dashboards} = node) do
-    pruned_children = prune_empty_groups(children)
-
-    if pruned_children == [] and dashboards == [] do
-      nil
-    else
-      %{node | children: pruned_children}
-    end
   end
 
   def get_dashboard_for_membership!(%OrganizationMembership{} = membership, id)
@@ -1799,19 +1776,15 @@ defmodule Trifle.Organizations do
   end
 
   def create_dashboard_group_for_membership(%OrganizationMembership{} = membership, attrs \\ %{}) do
-    if not membership_owner?(membership) do
-      {:error, :forbidden}
-    else
-      attrs =
-        attrs
-        |> ensure_parent_group_within_org(membership)
-        |> assign_org_id(membership.organization_id)
-        |> atomize_keys()
+    attrs =
+      attrs
+      |> ensure_parent_group_within_org(membership)
+      |> assign_org_id(membership.organization_id)
+      |> atomize_keys()
 
-      %DashboardGroup{}
-      |> DashboardGroup.changeset(attrs)
-      |> Repo.insert()
-    end
+    %DashboardGroup{}
+    |> DashboardGroup.changeset(attrs)
+    |> Repo.insert()
   end
 
   def get_dashboard_group_for_membership!(%OrganizationMembership{} = membership, id)
@@ -1909,10 +1882,6 @@ defmodule Trifle.Organizations do
               |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
 
             "group" ->
-              unless membership_owner?(membership) do
-                Repo.rollback({:error, :forbidden})
-              end
-
               from(g in DashboardGroup,
                 where: g.id == ^id and g.organization_id == ^membership.organization_id
               )
@@ -1939,10 +1908,6 @@ defmodule Trifle.Organizations do
                 |> Repo.update_all(set: [position: idx])
 
               "group" ->
-                unless membership_owner?(membership) do
-                  Repo.rollback({:error, :forbidden})
-                end
-
                 from(g in DashboardGroup,
                   where: g.id == ^id and g.organization_id == ^membership.organization_id
                 )

@@ -30,7 +30,7 @@ defmodule TrifleApp.DashboardsLive do
      |> assign(:editing_group_id, nil)
      |> assign(:collapsed_groups, MapSet.new())
      |> assign(:current_membership, membership)
-     |> assign(:can_manage_dashboards, Organizations.membership_owner?(membership))}
+     |> assign(:can_manage_dashboards, true)}
   end
 
   def handle_params(params, _url, socket) do
@@ -275,48 +275,45 @@ defmodule TrifleApp.DashboardsLive do
   def handle_event("new_group", params, socket) do
     membership = socket.assigns.current_membership
 
-    if not Organizations.membership_owner?(membership) do
-      {:noreply, put_flash(socket, :error, "Only organization owners can create groups")}
-    else
-      name = Map.get(params, "name", "New Group")
-      parent_id = Map.get(params, "parent_id")
-      pos = Organizations.get_next_dashboard_group_position_for_membership(membership, parent_id)
-      attrs = %{"name" => name, "parent_group_id" => parent_id, "position" => pos}
+    name = Map.get(params, "name", "New Group")
+    parent_id = Map.get(params, "parent_id")
+    pos = Organizations.get_next_dashboard_group_position_for_membership(membership, parent_id)
+    attrs = %{"name" => name, "parent_group_id" => parent_id, "position" => pos}
 
-      case Organizations.create_dashboard_group_for_membership(membership, attrs) do
-        {:ok, _group} -> {:noreply, refresh_tree(socket)}
-        {:error, _cs} -> {:noreply, put_flash(socket, :error, "Could not create group")}
-      end
+    case Organizations.create_dashboard_group_for_membership(membership, attrs) do
+      {:ok, _group} ->
+        {:noreply, refresh_tree(socket)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not create group")}
     end
   end
 
   def handle_event("rename_group", %{"id" => id, "name" => name}, socket) do
     membership = socket.assigns.current_membership
 
-    if not Organizations.membership_owner?(membership) do
-      {:noreply, put_flash(socket, :error, "Only organization owners can rename groups")}
-    else
-      group = Organizations.get_dashboard_group_for_membership!(membership, id)
+    group = Organizations.get_dashboard_group_for_membership!(membership, id)
 
-      case Organizations.update_dashboard_group(group, %{name: name}) do
-        {:ok, _} -> {:noreply, socket |> assign(:editing_group_id, nil) |> refresh_tree()}
-        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not rename group")}
-      end
+    case Organizations.update_dashboard_group(group, %{name: name}) do
+      {:ok, _} ->
+        {:noreply, socket |> assign(:editing_group_id, nil) |> refresh_tree()}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not rename group")}
     end
   end
 
   def handle_event("delete_group", %{"id" => id}, socket) do
     membership = socket.assigns.current_membership
 
-    if not Organizations.membership_owner?(membership) do
-      {:noreply, put_flash(socket, :error, "Only organization owners can delete groups")}
-    else
-      group = Organizations.get_dashboard_group_for_membership!(membership, id)
+    group = Organizations.get_dashboard_group_for_membership!(membership, id)
 
-      case Organizations.delete_dashboard_group(group) do
-        {:ok, _} -> {:noreply, refresh_tree(socket)}
-        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not delete group")}
-      end
+    case Organizations.delete_dashboard_group(group) do
+      {:ok, _} ->
+        {:noreply, refresh_tree(socket)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not delete group")}
     end
   end
 
@@ -335,34 +332,29 @@ defmodule TrifleApp.DashboardsLive do
       ) do
     membership = socket.assigns.current_membership
 
-    if not Organizations.membership_owner?(membership) do
-      {:noreply, put_flash(socket, :error, "Only organization owners can reorder dashboards")}
-    else
-      p = normalize_parent(parent_id)
-      fp = normalize_parent(from_parent_id)
+    p = normalize_parent(parent_id)
+    fp = normalize_parent(from_parent_id)
 
-      case Organizations.reorder_nodes_for_membership(
-             membership,
-             p,
-             items,
-             fp,
-             from_items,
-             moved_id,
-             moved_type
-           ) do
-        {:ok, _} ->
-          {:noreply, refresh_tree(socket)}
+    case Organizations.reorder_nodes_for_membership(
+           membership,
+           p,
+           items,
+           fp,
+           from_items,
+           moved_id,
+           moved_type
+         ) do
+      {:ok, _} ->
+        {:noreply, refresh_tree(socket)}
 
-        {:error, :invalid_parent} ->
-          {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
+      {:error, :invalid_parent} ->
+        {:noreply, put_flash(socket, :error, "Cannot move a group under its descendant")}
 
-        {:error, :forbidden} ->
-          {:noreply,
-           put_flash(socket, :error, "You do not have permission to reorder these dashboards")}
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to reorder these items")}
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Failed to reorder")}
-      end
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to reorder")}
     end
   end
 
