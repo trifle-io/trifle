@@ -78,6 +78,11 @@ app:
     redirectUri: "https://trifle.yourdomain.com/integrations/slack/oauth/callback"
     scopes: "chat:write,chat:write.public,channels:read,groups:read,incoming-webhook"
 
+  googleOAuth:
+    clientId: ""
+    clientSecret: ""
+    redirectUri: "https://trifle.yourdomain.com/auth/google/callback"
+
   openai:
     apiKey: "CHANGE_ME_WITH_OPENAI_KEY"
     model: "gpt-5"

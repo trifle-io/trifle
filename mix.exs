@@ -54,6 +54,8 @@ defmodule Trifle.MixProject do
       {:gettext, "~> 0.20"},
       {:jason, "~> 1.2"},
       {:plug_cowboy, "~> 2.5"},
+      {:ueberauth, "~> 0.10.8"},
+      {:ueberauth_google, "~> 0.12.1"},
       {:slugy, "~> 4.1.1"},
       {:tzdata, "~> 1.1.1"},
       {:timex, "~>3.7.11"},

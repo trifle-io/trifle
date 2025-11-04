@@ -46,6 +46,16 @@ defmodule Trifle.Accounts.User do
     |> validate_password(opts)
   end
 
+  @doc """
+  A user changeset for creating or updating accounts via external SSO providers.
+  """
+  def sso_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:email, :hashed_password, :confirmed_at])
+    |> validate_email([])
+    |> validate_required([:hashed_password])
+  end
+
   defp validate_email(changeset, opts) do
     changeset
     |> validate_required([:email])

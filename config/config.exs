@@ -16,7 +16,7 @@ config :trifle, :projects_enabled, true
 
 # Configures the endpoint
 config :trifle, TrifleWeb.Endpoint,
-  url: [host: "0.0.0.0"],
+  url: [host: "localhost"],
   render_errors: [
     formats: [html: TrifleApp.ErrorHTML, json: TrifleApp.ErrorJSON],
     layout: false
@@ -80,6 +80,22 @@ config :trifle, :slack,
   signing_secret: nil,
   redirect_uri: nil,
   scopes: ~w(chat:write chat:write.public channels:read groups:read incoming-webhook)
+
+config :trifle, :google_oauth,
+  client_id: nil,
+  client_secret: nil,
+  redirect_uri: nil
+
+config :ueberauth, Ueberauth,
+  providers: [
+    google:
+      {Ueberauth.Strategy.Google,
+       [default_scope: "openid email profile", prompt: "select_account", access_type: "offline"]}
+  ]
+
+config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+  client_id: nil,
+  client_secret: nil
 
 config :trifle, :oban_web_enabled, false
 

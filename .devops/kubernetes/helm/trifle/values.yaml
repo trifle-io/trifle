@@ -110,6 +110,11 @@ app:
     redirectUri: ""
     scopes: "chat:write,chat:write.public,channels:read,groups:read,incoming-webhook"
 
+  googleOAuth:
+    clientId: ""
+    clientSecret: ""
+    redirectUri: ""
+
   mailer:
     adapter: "local" # Options: local, smtp, postmark, sendgrid, mailgun, sendinblue/brevo
     from:

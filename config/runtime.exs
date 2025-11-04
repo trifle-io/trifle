@@ -426,4 +426,71 @@ if config_env() == :prod do
     end
 
   config :trifle, :slack, Map.merge(base_slack_config, slack_overrides)
+
+end
+
+base_google_config =
+  case Application.get_env(:trifle, :google_oauth, %{}) do
+    nil -> %{}
+    value when is_map(value) -> value
+    value when is_list(value) -> Map.new(value)
+    value -> value
+  end
+
+google_overrides =
+  %{
+    client_id: System.get_env("GOOGLE_OAUTH_CLIENT_ID") || System.get_env("GOOGLE_CLIENT_ID"),
+    client_secret: System.get_env("GOOGLE_OAUTH_CLIENT_SECRET") || System.get_env("GOOGLE_CLIENT_SECRET"),
+    redirect_uri: System.get_env("GOOGLE_OAUTH_REDIRECT_URI") || System.get_env("GOOGLE_REDIRECT_URI")
+  }
+  |> Enum.filter(fn {_key, value} -> not is_nil(value) and String.trim(value) != "" end)
+  |> Map.new()
+
+google_config = Map.merge(base_google_config, google_overrides)
+
+config :trifle, :google_oauth, google_config
+
+google_client_id = google_config[:client_id] || google_config["client_id"]
+google_client_secret = google_config[:client_secret] || google_config["client_secret"]
+google_redirect_uri =
+  case google_config[:redirect_uri] || google_config["redirect_uri"] do
+    nil ->
+      endpoint_config = Application.get_env(:trifle, TrifleWeb.Endpoint, [])
+      url_config = Keyword.get(endpoint_config, :url, [])
+
+      scheme =
+        url_config[:scheme] ||
+          if config_env() == :prod do
+            "https"
+          else
+            "http"
+          end
+
+      host =
+        url_config[:host] ||
+          System.get_env("PHX_HOST") ||
+          "localhost"
+
+      port =
+        url_config[:port] ||
+          String.to_integer(System.get_env("PORT") || "4000")
+
+      default_uri =
+        if port in [80, 443] do
+          "#{scheme}://#{host}/auth/google/callback"
+        else
+          "#{scheme}://#{host}:#{port}/auth/google/callback"
+        end
+
+      default_uri
+
+    value ->
+      value
+  end
+
+if google_client_id && google_client_secret do
+  config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+    client_id: google_client_id,
+    client_secret: google_client_secret,
+    redirect_uri: google_redirect_uri
 end
