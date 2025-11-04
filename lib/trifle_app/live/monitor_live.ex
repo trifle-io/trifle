@@ -364,14 +364,23 @@ defmodule TrifleApp.MonitorLive do
     refreshed = load_monitor(socket, monitor.id)
     membership = socket.assigns.current_membership
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Monitor updated")
-     |> assign_monitor(refreshed)
-     |> assign(:executions, Monitors.list_recent_executions(refreshed))
-     |> assign(:sources, load_sources(membership))
-     |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
-     |> push_patch(to: ~p"/monitors/#{monitor.id}")}
+    socket =
+      socket
+      |> assign_monitor(refreshed)
+      |> assign(:executions, Monitors.list_recent_executions(refreshed))
+      |> assign(:sources, load_sources(membership))
+      |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
+
+    socket =
+      if socket.assigns.live_action == :configure do
+        socket
+      else
+        socket
+        |> put_flash(:info, "Monitor updated")
+        |> push_patch(to: ~p"/monitors/#{monitor.id}")
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info({FormComponent, {:delete, monitor}}, socket) do
@@ -1468,7 +1477,7 @@ defmodule TrifleApp.MonitorLive do
   defp monitor_icon(assigns) do
     ~H"""
     <span class={[
-      "inline-flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-sm ring-1 ring-inset ring-black/10 dark:ring-white/10",
+      "inline-flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-white shadow-sm ring-1 ring-inset ring-black/10 dark:ring-white/10",
       Monitor.icon_color_class(@monitor)
     ]}>
       <%= if @monitor.type == :report do %>
@@ -2352,65 +2361,9 @@ defmodule TrifleApp.MonitorLive do
             <p :if={@monitor.description} class="mt-2 text-sm text-slate-500 dark:text-slate-300">
               {@monitor.description}
             </p>
-            <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-              <div :if={@monitor.user} class="flex items-center gap-2">
-                <img
-                  src={gravatar_url(@monitor.user.email, 48)}
-                  alt="Monitor owner avatar"
-                  class="h-6 w-6 rounded-full border border-slate-200 dark:border-slate-600"
-                />
-                <span>
-                  Owned by
-                  <span class="font-semibold text-slate-600 dark:text-slate-200">
-                    {monitor_owner_label(@monitor.user)}
-                  </span>
-                </span>
-              </div>
-              <span
-                :if={@monitor.locked}
-                class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[0.7rem] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-3.5 w-3.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
-                  />
-                </svg>
-                Locked
-              </span>
-            </div>
           </div>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <span
-            :if={!@can_edit_monitor && @monitor.locked}
-            class="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
-            title="This monitor is locked by its owner."
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-              class="h-4 w-4"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
-              />
-            </svg>
-            Locked
-          </span>
+        <div class="flex flex-wrap items-center gap-2 justify-end">
           <.link
             :if={@can_edit_monitor}
             patch={~p"/monitors/#{@monitor.id}/configure"}
@@ -2474,6 +2427,43 @@ defmodule TrifleApp.MonitorLive do
           >
             {if @monitor.status == :active, do: "Pause", else: "Resume"}
           </button>
+          <div
+            :if={@monitor.user || @monitor.locked}
+            class="mt-2 flex w-full flex-wrap items-center justify-end gap-2 text-xs text-slate-500 dark:text-slate-400"
+          >
+            <div :if={@monitor.user} class="flex items-center gap-2">
+              <span>Owned by</span>
+              <img
+                src={gravatar_url(@monitor.user.email, 48)}
+                alt="Monitor owner avatar"
+                class="h-6 w-6 rounded-full border border-slate-200 dark:border-slate-600"
+              />
+              <span class="font-semibold text-slate-600 dark:text-slate-200">
+                {monitor_owner_label(@monitor.user)}
+              </span>
+            </div>
+            <span
+              :if={@monitor.locked}
+              class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[0.7rem] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+              title="Locked monitors can only be edited by the owner or organization admins."
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="h-3.5 w-3.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0V10.5m-.75 11.25h10.5a1.5 1.5 0 0 0 1.5-1.5v-6.75a1.5 1.5 0 0 0-1.5-1.5H6.75a1.5 1.5 0 0 0-1.5 1.5V20.25a1.5 1.5 0 0 0 1.5 1.5Z"
+                />
+              </svg>
+              Locked
+            </span>
+          </div>
         </div>
       </div>
 
