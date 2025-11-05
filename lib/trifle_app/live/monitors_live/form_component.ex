@@ -330,6 +330,16 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                           placeholder="e.g. 5m"
                         />
                       </div>
+                      <div>
+                        <.input
+                          field={@form[:alert_notify_every]}
+                          type="number"
+                          label="Notify every Nth trigger"
+                          min="1"
+                          max="100"
+                          help="Send a notification only on every Nth consecutive trigger."
+                        />
+                      </div>
                     </div>
                   <% end %>
                 </div>
@@ -813,6 +823,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     |> Map.put_new(:alert_metric_path, alert_defaults.alert_metric_path)
     |> Map.put_new(:alert_timeframe, alert_defaults.alert_timeframe)
     |> Map.put_new(:alert_granularity, alert_defaults.alert_granularity)
+    |> Map.put_new(:alert_notify_every, alert_defaults.alert_notify_every)
     |> Map.update(:delivery_channels, [], fn
       [] ->
         []

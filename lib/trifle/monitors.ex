@@ -379,7 +379,8 @@ defmodule Trifle.Monitors do
       alert_timeframe: "1h",
       alert_granularity: "5m",
       alert_metric_key: "",
-      alert_metric_path: ""
+      alert_metric_path: "",
+      alert_notify_every: 1
     }
   end
 
@@ -975,6 +976,10 @@ defmodule Trifle.Monitors do
         |> put_unless_present(:alert_metric_path, fetch_string(settings_map, ["metric_path"]))
         |> put_unless_present(:alert_timeframe, fetch_string(settings_map, ["timeframe"]))
         |> put_unless_present(:alert_granularity, fetch_string(settings_map, ["granularity"]))
+        |> put_unless_present(
+          :alert_notify_every,
+          fetch_integer(settings_map, ["notify_every", "notify_every_nth_trigger"])
+        )
 
       _ ->
         attrs
@@ -1117,6 +1122,37 @@ defmodule Trifle.Monitors do
     end
   end
 
+  defp fetch_integer(map, keys) do
+    Enum.find_value(keys, fn key ->
+      cond do
+        Map.has_key?(map, key) ->
+          Map.get(map, key)
+
+        is_binary(key) ->
+          atom_key = safe_to_existing_atom(key)
+
+          if atom_key && Map.has_key?(map, atom_key) do
+            Map.get(map, atom_key)
+          else
+            nil
+          end
+
+        is_atom(key) ->
+          string_key = Atom.to_string(key)
+
+          if Map.has_key?(map, string_key) do
+            Map.get(map, string_key)
+          else
+            nil
+          end
+
+        true ->
+          nil
+      end
+    end)
+    |> normalize_integer()
+  end
+
   defp fetch_string(map, keys) do
     Enum.find_value(keys, fn key ->
       cond do
@@ -1152,6 +1188,28 @@ defmodule Trifle.Monitors do
     case Map.fetch(attrs, key) do
       {:ok, value} -> Map.put(attrs, key, normalize_string(value))
       :error -> attrs
+    end
+  end
+
+  defp normalize_integer(value) when is_integer(value), do: value
+
+  defp normalize_integer(value) when is_float(value), do: round(value)
+
+  defp normalize_integer(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> nil
+      trimmed -> parse_integer(trimmed)
+    end
+  end
+
+  defp normalize_integer(_), do: nil
+
+  defp parse_integer(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> nil
     end
   end
 

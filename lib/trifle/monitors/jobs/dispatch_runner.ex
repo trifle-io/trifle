@@ -76,7 +76,7 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
 
   defp monitors_query do
     from(m in Monitor,
-      where: m.status == :active,
+      where: m.status == :active or (m.status == :paused and m.type == :alert),
       order_by: [asc: m.inserted_at]
     )
   end

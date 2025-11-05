@@ -2113,6 +2113,9 @@ defmodule TrifleApp.MonitorLive do
       status in ["alerted"] ->
         "text-red-600 dark:text-red-300"
 
+      status in ["suppressed"] ->
+        "text-amber-600 dark:text-amber-300"
+
       status in ["skipped"] ->
         "text-amber-600 dark:text-amber-300"
 
@@ -2681,6 +2684,7 @@ defmodule TrifleApp.MonitorLive do
                             :passed
                         end %>
                       <% triggered? = status_atom == :alerted %>
+                      <% suppressed? = status_atom == :suppressed %>
                       <% failed? = status_atom == :failed %>
                       <% alert_key = normalize_id(alert.id) %>
                       <% running_alert? = match?({:alert, ^alert_key, :running}, @test_delivery_state) %>
@@ -2688,7 +2692,9 @@ defmodule TrifleApp.MonitorLive do
                         "flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800",
                         triggered? &&
                           "border-red-500 bg-red-50 dark:border-red-500 dark:bg-red-500/10",
-                        !triggered? && failed? &&
+                        suppressed? &&
+                          "border-amber-400 bg-amber-50 dark:border-amber-500 dark:bg-amber-500/10",
+                        !triggered? && !suppressed? && failed? &&
                           "border-amber-400 bg-amber-50 dark:border-amber-500 dark:bg-amber-500/10"
                       ]}>
                         <div class="min-w-0">
@@ -2698,7 +2704,9 @@ defmodule TrifleApp.MonitorLive do
                           <p class={[
                             "mt-1 text-xs text-slate-500 dark:text-slate-400",
                             triggered? && "text-red-700 dark:text-red-300",
-                            !triggered? && failed? && "text-amber-700 dark:text-amber-300"
+                            suppressed? && "text-amber-700 dark:text-amber-300",
+                            !triggered? && !suppressed? && failed? &&
+                              "text-amber-700 dark:text-amber-300"
                           ]}>
                             {alert_summary(alert, evaluation)}
                           </p>

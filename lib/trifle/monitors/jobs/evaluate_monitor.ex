@@ -236,17 +236,28 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp deliver_triggered_alerts(_monitor, [], _timeframe), do: []
 
   defp deliver_triggered_alerts(monitor, triggered, timeframe) do
-    Enum.map(triggered, fn %{alert: alert} ->
-      case TestDelivery.deliver_alert(monitor, alert, export_params: timeframe) do
-        {:ok, payload} ->
-          {:ok, alert, prune_large_values(payload)}
+    notify_every = normalize_notify_every(monitor.alert_notify_every)
 
-        {:error, reason} ->
-          Logger.warning(
-            "Alert delivery failed for monitor #{monitor.id} alert #{alert.id}: #{inspect(reason)}"
-          )
+    Enum.map(triggered, fn %{alert: %Alert{} = alert} ->
+      cond do
+        monitor.status == :paused ->
+          {:suppressed, alert, %{reason: :monitor_paused}}
 
-          {:error, alert, format_reason(reason)}
+        not deliver_on_frequency?(alert, notify_every) ->
+          {:suppressed, alert, %{reason: :notify_every, notify_every: notify_every}}
+
+        true ->
+          case TestDelivery.deliver_alert(monitor, alert, export_params: timeframe) do
+            {:ok, payload} ->
+              {:ok, alert, prune_large_values(payload)}
+
+            {:error, reason} ->
+              Logger.warning(
+                "Alert delivery failed for monitor #{monitor.id} alert #{alert.id}: #{inspect(reason)}"
+              )
+
+              {:error, alert, format_reason(reason)}
+          end
       end
     end)
   end
@@ -260,9 +271,29 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         _ -> false
       end)
 
+    delivery_suppressed? =
+      Enum.any?(deliveries, fn
+        {:suppressed, _, _} -> true
+        _ -> false
+      end)
+
+    delivery_succeeded? =
+      Enum.any?(deliveries, fn
+        {:ok, _, _} -> true
+        _ -> false
+      end)
+
+    triggered_any? =
+      Enum.any?(triggered, fn
+        %{result: %{triggered?: true}} -> true
+        _ -> false
+      end)
+
     cond do
       evaluation_failed? or delivery_failed? -> "failed"
-      Enum.any?(triggered) -> "alerted"
+      delivery_succeeded? -> "alerted"
+      delivery_suppressed? and triggered_any? -> "suppressed"
+      triggered_any? -> "alerted"
       true -> "passed"
     end
   end
@@ -273,6 +304,40 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp build_alert_summary(triggered, _deliveries, _evaluations, "alerted") do
     triggered_ids = triggered |> Enum.map(&alert_label/1) |> Enum.join(", ")
     "Delivered alerts for #{triggered_ids}."
+  end
+
+  defp build_alert_summary(triggered, deliveries, _evaluations, "suppressed") do
+    triggered_ids = triggered |> Enum.map(&alert_label/1) |> Enum.join(", ")
+
+    reasons =
+      deliveries
+      |> Enum.reduce([], fn
+        {:suppressed, _, meta}, acc ->
+          case suppression_reason_description(meta) do
+            nil -> acc
+            description -> [description | acc]
+          end
+
+        _, acc ->
+          acc
+      end)
+      |> Enum.uniq()
+      |> Enum.join("; ")
+
+    cond do
+      triggered_ids == "" ->
+        if reasons == "" do
+          "Alert notifications suppressed."
+        else
+          "Alert notifications suppressed (#{reasons})."
+        end
+
+      reasons == "" ->
+        "Alerts triggered for #{triggered_ids}, notifications suppressed."
+
+      true ->
+        "Alerts triggered for #{triggered_ids}, notifications suppressed (#{reasons})."
+    end
   end
 
   defp build_alert_summary(triggered, deliveries, evaluations, "failed") do
@@ -327,6 +392,13 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
       {:error, %Alert{id: id}, reason} ->
         %{alert_id: id, status: "error", reason: reason}
+
+      {:suppressed, %Alert{id: id}, meta} ->
+        %{
+          alert_id: id,
+          status: "suppressed",
+          reason: suppression_reason_label(meta)
+        }
     end)
   end
 
@@ -357,6 +429,87 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp format_reason(reason) when is_binary(reason), do: reason
   defp format_reason(reason), do: inspect(reason)
+
+  defp normalize_notify_every(value) when is_integer(value) and value >= 1 do
+    value
+    |> min(100)
+  end
+
+  defp normalize_notify_every(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" ->
+        1
+
+      trimmed ->
+        case Integer.parse(trimmed) do
+          {int, ""} -> normalize_notify_every(int)
+          _ -> 1
+        end
+    end
+  end
+
+  defp normalize_notify_every(_), do: 1
+
+  defp deliver_on_frequency?(%Alert{} = alert, notify_every) when notify_every <= 1 do
+    _ = alert
+    true
+  end
+
+  defp deliver_on_frequency?(%Alert{} = alert, notify_every) do
+    count = next_trigger_count(alert, true)
+    rem(max(count - 1, 0), notify_every) == 0
+  end
+
+  defp next_trigger_count(%Alert{} = alert, true) do
+    (alert.continuous_trigger_count || 0) + 1
+  end
+
+  defp next_trigger_count(_alert, false), do: 0
+
+  defp suppression_summary(%{reason: :monitor_paused}) do
+    "Alert triggered but notifications suppressed because the monitor is paused."
+  end
+
+  defp suppression_summary(%{reason: :notify_every, notify_every: notify_every})
+       when is_integer(notify_every) do
+    "Alert triggered but notifications throttled (notify every #{notify_every} trigger(s))."
+  end
+
+  defp suppression_summary(%{reason: reason}) when is_atom(reason) do
+    formatted = reason |> Atom.to_string() |> String.replace("_", " ")
+    "Alert triggered but notifications suppressed (#{formatted})."
+  end
+
+  defp suppression_summary(_), do: "Alert triggered but notifications were suppressed."
+
+  defp suppression_reason_description(%{reason: :monitor_paused}), do: "monitor is paused"
+
+  defp suppression_reason_description(%{reason: :notify_every, notify_every: notify_every})
+       when is_integer(notify_every) do
+    "notify every #{notify_every} trigger(s)"
+  end
+
+  defp suppression_reason_description(%{reason: reason}) when is_atom(reason) do
+    reason
+    |> Atom.to_string()
+    |> String.replace("_", " ")
+  end
+
+  defp suppression_reason_description(_), do: nil
+
+  defp suppression_reason_label(%{reason: :monitor_paused}), do: "monitor_paused"
+
+  defp suppression_reason_label(%{reason: :notify_every, notify_every: notify_every})
+       when is_integer(notify_every) do
+    "notify_every_#{notify_every}"
+  end
+
+  defp suppression_reason_label(%{reason: reason}) when is_atom(reason),
+    do: Atom.to_string(reason)
+
+  defp suppression_reason_label(_), do: "suppressed"
 
   defp log_execution(%Monitor{} = monitor, attrs) do
     attrs =
@@ -410,13 +563,16 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       |> List.wrap()
       |> Enum.reduce(%{}, fn %Alert{id: id} = alert, acc -> Map.put(acc, id, alert) end)
 
-    {delivery_status, delivery_errors} =
-      Enum.reduce(deliveries, {%{}, %{}}, fn
-        {:ok, %Alert{id: id}, _}, {status_map, error_map} ->
-          {Map.put(status_map, id, :success), error_map}
+    delivery_info =
+      Enum.reduce(deliveries, %{}, fn
+        {:ok, %Alert{id: id}, _}, acc ->
+          Map.put(acc, id, :success)
 
-        {:error, %Alert{id: id}, reason}, {status_map, error_map} ->
-          {Map.put(status_map, id, :error), Map.put(error_map, id, reason)}
+        {:error, %Alert{id: id}, reason}, acc ->
+          Map.put(acc, id, {:error, reason})
+
+        {:suppressed, %Alert{id: id}, meta}, acc ->
+          Map.put(acc, id, {:suppressed, meta})
       end)
 
     Enum.each(evaluations, fn %{
@@ -425,13 +581,25 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
                                 status: eval_status
                               } ->
       base_alert = Map.get(alerts_by_id, id, alert)
+      triggered? = Map.get(result, :triggered?, false)
+      delivery_entry = Map.get(delivery_info, id)
 
       new_status =
         cond do
           eval_status != :ok -> :failed
-          Map.get(delivery_status, id) == :error -> :failed
-          Map.get(result, :triggered?, false) -> :alerted
+          match?({:error, _}, delivery_entry) -> :failed
+          triggered? and match?({:suppressed, _}, delivery_entry) -> :suppressed
+          triggered? -> :alerted
           true -> :passed
+        end
+
+      new_count =
+        case eval_status do
+          :ok ->
+            next_trigger_count(base_alert, triggered?)
+
+          _ ->
+            0
         end
 
       summary =
@@ -439,30 +607,40 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
           result,
           new_status,
           eval_status,
-          Map.get(delivery_status, id),
-          Map.get(delivery_errors, id)
+          delivery_entry
         )
 
-      maybe_update_alert_state(base_alert, new_status, summary, evaluated_at)
+      maybe_update_alert_state(
+        base_alert,
+        new_status,
+        summary,
+        evaluated_at,
+        continuous_trigger_count: new_count
+      )
     end)
   end
 
   defp mark_all_alerts_failed(%Monitor{} = monitor, summary, evaluated_at) do
     monitor.alerts
     |> List.wrap()
-    |> Enum.each(&maybe_update_alert_state(&1, :failed, summary, evaluated_at))
+    |> Enum.each(
+      &maybe_update_alert_state(&1, :failed, summary, evaluated_at, continuous_trigger_count: 0)
+    )
   end
 
-  defp maybe_update_alert_state(%Alert{} = alert, status, summary, evaluated_at)
-       when status in [:passed, :alerted, :failed] do
+  defp maybe_update_alert_state(%Alert{} = alert, status, summary, evaluated_at, opts \\ [])
+       when status in [:passed, :alerted, :suppressed, :failed] do
     normalized_summary = normalize_summary(summary)
     current_summary = normalize_summary(alert.last_summary)
+    current_count = alert.continuous_trigger_count
+    new_count = Keyword.get(opts, :continuous_trigger_count)
 
     changes =
       %{}
       |> maybe_put_change(:status, status, alert.status)
       |> maybe_put_change(:last_summary, normalized_summary, current_summary)
       |> maybe_put_evaluated_at(evaluated_at, alert.last_evaluated_at)
+      |> maybe_put_trigger_count(new_count, current_count)
 
     case map_size(changes) do
       0 ->
@@ -480,45 +658,32 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end
   end
 
-  defp maybe_update_alert_state(_, _, _, _), do: :ok
+  defp maybe_update_alert_state(_, _, _, _, _), do: :ok
 
-  defp alert_summary_from_evaluation(
-         result,
-         new_status,
-         eval_status,
-         delivery_status,
-         delivery_error
-       )
+  defp alert_summary_from_evaluation(result, _new_status, eval_status, _delivery_info)
        when eval_status != :ok do
     reason = Map.get(result, :error, "evaluation_error")
     "Alert evaluation failed: #{format_reason(reason)}"
   end
 
-  defp alert_summary_from_evaluation(_result, _new_status, _eval_status, :error, delivery_error) do
-    case delivery_error do
-      nil -> "Alert delivery failed."
-      reason -> "Alert delivery failed: #{format_reason(reason)}"
-    end
+  defp alert_summary_from_evaluation(_result, _new_status, _eval_status, {:error, reason}) do
+    "Alert delivery failed: #{format_reason(reason)}"
+  end
+
+  defp alert_summary_from_evaluation(_result, :suppressed, _eval_status, {:suppressed, meta}) do
+    suppression_summary(meta)
   end
 
   defp alert_summary_from_evaluation(
          %AlertEvaluator.Result{} = result,
          _new_status,
          _eval_status,
-         _delivery_status,
-         _delivery_error
+         _delivery_info
        ) do
     summarize_alert_result(result)
   end
 
-  defp alert_summary_from_evaluation(
-         _result,
-         _new_status,
-         _eval_status,
-         _delivery_status,
-         _delivery_error
-       ),
-       do: nil
+  defp alert_summary_from_evaluation(_result, _new_status, _eval_status, _delivery_info), do: nil
 
   defp summarize_alert_result(%AlertEvaluator.Result{summary: summary})
        when is_binary(summary) do
@@ -542,6 +707,12 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp maybe_put_change(map, _field, value, value), do: map
   defp maybe_put_change(map, field, value, _current), do: Map.put(map, field, value)
+
+  defp maybe_put_trigger_count(map, nil, _current), do: map
+
+  defp maybe_put_trigger_count(map, value, current) do
+    maybe_put_change(map, :continuous_trigger_count, value, current)
+  end
 
   defp maybe_put_evaluated_at(map, nil, _current), do: map
 

@@ -341,6 +341,7 @@ defmodule TrifleApp.MonitorComponents do
       "passed" -> "text-emerald-500"
       "ok" -> "text-emerald-500"
       "alerted" -> "text-red-500"
+      "suppressed" -> "text-amber-500"
       "failed" -> "text-slate-400"
       "error" -> "text-slate-400"
       "partial_failure" -> "text-slate-400"

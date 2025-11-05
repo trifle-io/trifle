@@ -118,6 +118,19 @@ defmodule Trifle.Monitors.ScheduleTest do
       refute Schedule.due?(monitor, utc_dt({2024, 4, 10, 12, 16}), boundary)
       assert Schedule.due?(monitor, utc_dt({2024, 4, 10, 12, 30}), boundary)
     end
+
+    test "evaluates paused alert monitors for logging without delivery" do
+      monitor = %Monitor{
+        id: "monitor-alert-paused",
+        status: :paused,
+        type: :alert,
+        alert_granularity: "5m"
+      }
+
+      boundary = utc_dt({2024, 4, 10, 12, 5})
+      assert Schedule.due?(monitor, boundary, nil)
+      refute Schedule.due?(monitor, utc_dt({2024, 4, 10, 12, 6}), boundary)
+    end
   end
 
   defp utc_dt({year, month, day, hour, min}) do
