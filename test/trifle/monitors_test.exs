@@ -79,6 +79,7 @@ defmodule Trifle.MonitorsTest do
       assert monitor.source_id == database.id
       assert monitor.user_id == user.id
       refute monitor.locked
+      assert monitor.alert_notify_every == 1
       assert Monitors.delivery_media_types_from_media(monitor.delivery_media) == [:pdf]
     end
 
@@ -149,6 +150,45 @@ defmodule Trifle.MonitorsTest do
 
       assert updated.description == "Still editable"
       assert updated.locked
+    end
+
+    test "update_monitor_for_membership/3 updates alert notification cadence", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      assert {:ok, %Monitor{} = updated} =
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 alert_notify_every: 5
+               })
+
+      assert updated.alert_notify_every == 5
+    end
+
+    test "update_monitor_for_membership/3 rejects out of range alert cadence", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 alert_notify_every: 0
+               })
+
+      assert %{alert_notify_every: {"must be greater than or equal to %{number}", _}} =
+               errors_on(changeset)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 alert_notify_every: 101
+               })
+
+      assert %{alert_notify_every: {"must be less than or equal to %{number}", _}} =
+               errors_on(changeset)
     end
 
     test "delete_monitor_for_membership/2 removes monitor", %{

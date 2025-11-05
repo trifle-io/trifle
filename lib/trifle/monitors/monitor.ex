@@ -32,6 +32,7 @@ defmodule Trifle.Monitors.Monitor do
     field :alert_metric_path, :string
     field :alert_timeframe, :string
     field :alert_granularity, :string
+    field :alert_notify_every, :integer, default: 1
     field :locked, :boolean, default: false
 
     embeds_one :report_settings, ReportSettings, on_replace: :update do
@@ -93,7 +94,8 @@ defmodule Trifle.Monitors.Monitor do
       :alert_metric_key,
       :alert_metric_path,
       :alert_timeframe,
-      :alert_granularity
+      :alert_granularity,
+      :alert_notify_every
     ])
     |> cast_embed(:report_settings, with: &report_settings_changeset/2, required: false)
     |> cast_embed(:delivery_channels, with: &delivery_channel_changeset/2, required: false)
@@ -110,6 +112,10 @@ defmodule Trifle.Monitors.Monitor do
       :source_id
     ])
     |> validate_length(:name, min: 1, max: 255)
+    |> validate_number(:alert_notify_every,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: 100
+    )
     |> maybe_require_dashboard()
     |> maybe_require_alert_target()
     |> maybe_sync_dashboard_reference()

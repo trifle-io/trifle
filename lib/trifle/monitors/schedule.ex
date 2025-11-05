@@ -23,6 +23,10 @@ defmodule Trifle.Monitors.Schedule do
     alert_due?(monitor, now, last_triggered_at)
   end
 
+  def due?(%Monitor{status: :paused, type: :alert} = monitor, now, last_triggered_at) do
+    alert_due?(monitor, now, last_triggered_at)
+  end
+
   def due?(_monitor, _now, _last_triggered_at), do: false
 
   defp report_due?(%Monitor{} = monitor, now, last_triggered_at) do

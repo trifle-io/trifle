@@ -54,11 +54,12 @@ defmodule Trifle.Monitors.Alert do
       default: :threshold
 
     field :status, Ecto.Enum,
-      values: [:passed, :alerted, :failed],
+      values: [:passed, :alerted, :suppressed, :failed],
       default: :passed
 
     field :last_summary, :string
     field :last_evaluated_at, :utc_datetime
+    field :continuous_trigger_count, :integer, default: 0
 
     embeds_one :settings, Settings, on_replace: :update
 
