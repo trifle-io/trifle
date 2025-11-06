@@ -145,20 +145,6 @@ features:
   projects:
     enabled: false
 
-# MongoDB sidecar configuration
-mongo:
-  image:
-    repository: mongo
-    tag: "7.0"
-    pullPolicy: IfNotPresent
-  resources: {}
-  persistence:
-    enabled: false
-    storageClass: ""
-    size: 10Gi
-    accessModes:
-      - ReadWriteOnce
-
 # Initial user creation (runs during installation)
 initialUser:
   enabled: true
@@ -219,3 +205,17 @@ externalPostgresql:
   database: ""
   existingSecret: ""
   existingSecretPasswordKey: ""
+
+# MongoDB sidecar configuration
+mongo:
+  image:
+    repository: mongo
+    tag: "7.0"
+    pullPolicy: IfNotPresent
+  resources: {}
+  persistence:
+    enabled: false
+    storageClass: ""
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
