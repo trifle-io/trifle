@@ -275,17 +275,26 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   end
 
   defp save_database(socket, :new, database_params) do
-    case Organizations.create_database(database_params) do
-      {:ok, database} ->
-        notify_parent({:saved, database})
+    with org_id when is_binary(org_id) <- socket.assigns.database.organization_id do
+      params = Map.put(database_params, "organization_id", org_id)
 
+      case Organizations.create_database(params) do
+        {:ok, database} ->
+          notify_parent({:saved, database})
+
+          {:noreply,
+           socket
+           |> put_flash(:info, "Database created successfully")
+           |> push_patch(to: socket.assigns.patch)}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply, assign_form(socket, changeset)}
+      end
+    else
+      _ ->
         {:noreply,
          socket
-         |> put_flash(:info, "Database created successfully")
-         |> push_patch(to: socket.assigns.patch)}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign_form(socket, changeset)}
+         |> put_flash(:error, "Unable to determine organization for this database.")}
     end
   end
 

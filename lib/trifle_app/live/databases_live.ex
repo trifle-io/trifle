@@ -34,9 +34,11 @@ defmodule TrifleApp.DatabasesLive do
 
   defp apply_action(socket, :new, _params) do
     if socket.assigns.can_manage_databases do
+      membership = socket.assigns.current_membership
+
       socket
       |> assign(:page_title, "Databases · New")
-      |> assign(:database, %Database{})
+      |> assign(:database, %Database{organization_id: membership.organization_id})
     else
       socket
       |> put_flash(:error, "Only organization owners can create databases.")

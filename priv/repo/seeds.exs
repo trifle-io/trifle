@@ -19,30 +19,62 @@ IO.puts("🌱 Seeding database...")
 admin_email = "admin@trifle.io"
 admin_password = "password"
 
-case Accounts.get_user_by_email(admin_email) do
-  nil ->
-    {:ok, admin_user} =
-      Accounts.register_user(%{
-        email: admin_email,
-        password: admin_password
-      })
+admin_user =
+  case Accounts.get_user_by_email(admin_email) do
+    nil ->
+      {:ok, admin_user} =
+        Accounts.register_user(%{
+          email: admin_email,
+          password: admin_password
+        })
 
-    # Set admin status directly using Ecto changeset
-    changeset = Ecto.Changeset.change(admin_user, is_admin: true)
-    {:ok, _admin_user} = Trifle.Repo.update(changeset)
+      changeset = Ecto.Changeset.change(admin_user, is_admin: true)
+      {:ok, admin_user} = Trifle.Repo.update(changeset)
 
-    IO.puts("✅ Created admin user: #{admin_email}")
+      IO.puts("✅ Created admin user: #{admin_email}")
+      admin_user
 
-  existing_user ->
-    # Ensure existing user has admin status
-    if not existing_user.is_admin do
-      changeset = Ecto.Changeset.change(existing_user, is_admin: true)
-      {:ok, _admin_user} = Trifle.Repo.update(changeset)
-      IO.puts("✅ Updated existing user to admin: #{admin_email}")
-    else
-      IO.puts("⚠️  Admin user already exists: #{admin_email}")
-    end
-end
+    existing_user ->
+      admin_user =
+        if existing_user.is_admin do
+          IO.puts("⚠️  Admin user already exists: #{admin_email}")
+          existing_user
+        else
+          changeset = Ecto.Changeset.change(existing_user, is_admin: true)
+          {:ok, updated_user} = Trifle.Repo.update(changeset)
+          IO.puts("✅ Updated existing user to admin: #{admin_email}")
+          updated_user
+        end
+
+      admin_user
+  end
+
+# Ensure a default organization exists and the admin owns it
+organization_attrs = %{name: "Trifle Demo", slug: "trifle-demo"}
+
+organization =
+  case Organizations.get_organization_by_slug(organization_attrs.slug) do
+    nil ->
+      {:ok, organization} = Organizations.create_organization(organization_attrs)
+      IO.puts("✅ Created default organization: #{organization.name}")
+      organization
+
+    organization ->
+      IO.puts("⚠️  Organization already exists: #{organization.name}")
+      organization
+  end
+
+_membership =
+  case Organizations.get_membership_for_org(organization, admin_user) do
+    nil ->
+      {:ok, membership} = Organizations.create_membership(organization, admin_user, "owner")
+      IO.puts("✅ Linked admin to organization as owner")
+      membership
+
+    membership ->
+      IO.puts("⚠️  Admin already linked to organization as #{membership.role}")
+      membership
+  end
 
 # Database configurations
 database_configs = [
@@ -92,7 +124,7 @@ database_configs = [
   %{
     display_name: "SQLite Joined",
     driver: "sqlite",
-    file_path: "trifle_stats_separated.sqlite",
+    file_path: "trifle_stats_joined.sqlite",
     config: %{"table_name" => "trifle_stats_joined", "joined_identifiers" => true}
   },
   %{
@@ -105,10 +137,10 @@ database_configs = [
 
 # Create database records
 Enum.each(database_configs, fn config ->
-  case Organizations.list_databases()
+  case Organizations.list_databases_for_org(organization)
        |> Enum.find(&(&1.display_name == config.display_name)) do
     nil ->
-      {:ok, _database} = Organizations.create_database(config)
+      {:ok, _database} = Organizations.create_database_for_org(organization, config)
       IO.puts("✅ Created database: #{config.display_name}")
 
     _existing_database ->
