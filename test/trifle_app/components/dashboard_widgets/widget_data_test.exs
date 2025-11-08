@@ -110,4 +110,21 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert dataset.category == []
     assert [%{id: "text-1"}] = dataset.text
   end
+
+  test "category datasets do not double count fallback path", %{series: series} do
+    items = [
+      %{
+        "id" => "cat-dup",
+        "type" => "category",
+        "paths" => ["metrics.category"],
+        "path" => "metrics.category",
+        "chart_type" => "bar"
+      }
+    ]
+
+    %{category: [%{data: data}]} = WidgetData.datasets(series, items)
+
+    assert Enum.find(data, &(&1.name == "metrics.category.A")).value == 7.0
+    assert Enum.find(data, &(&1.name == "metrics.category.B")).value == 5.0
+  end
 end
