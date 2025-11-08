@@ -50,11 +50,18 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
         value -> [value]
       end
 
+    path_sources =
+      case raw_paths do
+        [] -> fallback_paths
+        list -> list
+      end
+
     paths =
-      (raw_paths ++ fallback_paths)
+      path_sources
       |> Enum.map(&to_string/1)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
 
     chart_type = String.downcase(to_string(item["chart_type"] || "line"))
     stacked = !!item["stacked"]
