@@ -161,6 +161,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     {w, h} = Keyword.get(opts, :window_size, @default_viewport)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     theme = Keyword.get(opts, :theme, :light)
+    capture_scale = Keyword.get(opts, :png_scale, @png_capture_scale)
     log_context = ExportLog.normalize(Keyword.get(opts, :log_context, %{}))
     log_label = ExportLog.label(log_context)
     started_ms = ExportLog.monotonic_now_ms()
@@ -178,7 +179,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
          _ = set_background_override(page_ws),
          :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
          _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         clip <- expand_viewport_to_content(page_ws),
+         clip <- expand_viewport_to_content(page_ws, capture_scale),
          {:ok, png_b64} <- page_capture_screenshot(page_ws, clip),
          _ <- clear_background_override(page_ws) do
       _ = close(page_ws)
@@ -848,7 +849,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     :ok
   end
 
-  defp expand_viewport_to_content(page_ws) do
+  defp expand_viewport_to_content(page_ws, capture_scale \\ @png_capture_scale) do
     case __MODULE__.WS.call(page_ws, "Page.getLayoutMetrics", %{}) do
       {:ok, %{"contentSize" => %{"width" => width, "height" => height}}}
       when is_number(width) and is_number(height) and width > 0 and height > 0 ->
@@ -857,7 +858,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
         device_metrics = %{width: w, height: h, deviceScaleFactor: 1, mobile: false, scale: 1}
         _ = __MODULE__.WS.call(page_ws, "Emulation.setDeviceMetricsOverride", device_metrics)
         _ = __MODULE__.WS.call(page_ws, "Emulation.setVisibleSize", %{width: w, height: h})
-        %{width: w, height: h, scale: png_capture_scale(w, h)}
+        %{width: w, height: h, scale: png_capture_scale(w, h, capture_scale)}
 
       other ->
         Logger.debug("CDP expand_viewport_to_content skipped: #{inspect(other)}")
@@ -865,8 +866,9 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
-  defp png_capture_scale(width, height) do
+  defp png_capture_scale(width, height, capture_scale) when is_number(capture_scale) do
     max_side = max(width, height)
+    capture_scale = if capture_scale <= 0, do: 1.0, else: capture_scale
 
     cond do
       max_side <= 0 ->
@@ -874,8 +876,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
 
       true ->
         max_scale = @png_max_dimension / max_side
-        scale = min(@png_capture_scale, max_scale)
-        if scale < 1.0, do: 1.0, else: scale
+        min(capture_scale, max_scale)
     end
   end
 
