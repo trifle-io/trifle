@@ -17,6 +17,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
 
   @default_window_size {1366, 900}
   @default_pdf_window_size {1920, 1080}
+  @widget_png_scale 1.0
   @doc """
   Exports a pre-built layout to PDF.
   """
@@ -136,6 +137,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   defp export_layout(:png, layout, opts) do
     opts =
       Keyword.put_new(opts, :window_size, window_size_from_layout(layout, @default_window_size))
+      |> maybe_put_widget_png_scale(layout)
 
     {opts, log_context} = prepare_export_opts(layout, opts, :png)
     log_label = ExportLog.label(log_context)
@@ -248,4 +250,10 @@ defmodule TrifleApp.Exporters.ChromeExporter do
 
     {updated_layout, updated_opts}
   end
+
+  defp maybe_put_widget_png_scale(opts, %Layout{kind: kind}) when kind in [:dashboard_widget, :monitor_widget] do
+    Keyword.put_new(opts, :png_scale, @widget_png_scale)
+  end
+
+  defp maybe_put_widget_png_scale(opts, _layout), do: opts
 end
