@@ -176,6 +176,7 @@ defmodule TrifleApp.Components.DashboardFooter do
             id={@download_menu_id}
             class="ml-auto relative"
             data-default-label="Export"
+            data-download-menu="true"
             phx-hook="DownloadMenu"
           >
             <button
@@ -184,20 +185,27 @@ defmodule TrifleApp.Components.DashboardFooter do
               data-role="download-button"
               class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 mr-1 text-teal-600 dark:text-teal-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                />
-              </svg>
+              <span class="mr-1 inline-flex items-center" data-role="download-icon">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 text-teal-600 dark:text-teal-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                  />
+                </svg>
+              </span>
+              <span class="mr-1 hidden" data-role="download-spinner">
+                <span class="inline-flex h-4 w-4 items-center justify-center">
+                  <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin"></span>
+                </span>
+              </span>
               <span class="inline" data-role="download-text">Export</span>
               <svg
                 class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400"

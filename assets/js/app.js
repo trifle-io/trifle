@@ -3900,10 +3900,10 @@ Hooks.FileDownload = {
 Hooks.DownloadMenu = {
   mounted() {
     this.loading = false;
-    this.button = this.el.querySelector('[data-role="download-button"]');
-    this.label = this.el.querySelector('[data-role="download-text"]');
+    this.setElements();
     const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
     this.originalLabel = datasetLabel || (this.label ? this.label.textContent : '');
+    this.loadingLabel = (this.el.dataset && this.el.dataset.loadingLabel) || 'Exporting…';
     this.iframe = document.querySelector('iframe[name="download_iframe"]');
     this.hrefSignature = this.computeHrefSignature();
 
@@ -3921,8 +3921,7 @@ Hooks.DownloadMenu = {
 
   updated() {
     // Rebind anchors when dropdown content re-renders and reselect elements that may have been replaced
-    this.button = this.el.querySelector('[data-role="download-button"]');
-    this.label = this.el.querySelector('[data-role="download-text"]');
+    this.setElements();
     const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
     if (datasetLabel) {
       this.originalLabel = datasetLabel;
@@ -3933,7 +3932,9 @@ Hooks.DownloadMenu = {
     const newSignature = this.computeHrefSignature();
     if (newSignature !== this.hrefSignature) {
       this.hrefSignature = newSignature;
-      this.stopLoading(true);
+      if (!this.loading) {
+        this.stopLoading(true);
+      }
     }
 
     this.bindAnchors();
@@ -4034,21 +4035,27 @@ Hooks.DownloadMenu = {
     this.loading = false;
     this.stopCookiePolling();
     if (this.button) {
+      this.button.removeAttribute('data-loading');
       this.button.removeAttribute('aria-busy');
       this.button.classList.remove('opacity-70', 'cursor-wait');
       this.button.disabled = false;
     }
     const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
+    if (this.icon) this.icon.classList.remove('hidden');
+    if (this.spinner) this.spinner.classList.add('hidden');
     if (this.label) this.label.textContent = this.originalLabel || datasetLabel || 'Download';
   },
 
   applyLoadingState() {
     if (this.button) {
       this.button.setAttribute('aria-busy', 'true');
+      this.button.setAttribute('data-loading', 'true');
       this.button.classList.add('opacity-70', 'cursor-wait');
       this.button.disabled = true;
     }
-    if (this.label) this.label.textContent = 'Generating...';
+    if (this.icon) this.icon.classList.add('hidden');
+    if (this.spinner) this.spinner.classList.remove('hidden');
+    if (this.label) this.label.textContent = this.loadingLabel;
   },
 
   startCookiePolling() {
@@ -4085,6 +4092,13 @@ Hooks.DownloadMenu = {
     }
   },
 
+  setElements() {
+    this.button = this.el.querySelector('[data-role="download-button"]');
+    this.label = this.el.querySelector('[data-role="download-text"]');
+    this.icon = this.el.querySelector('[data-role="download-icon"]');
+    this.spinner = this.el.querySelector('[data-role="download-spinner"]');
+  },
+
   destroyed() {
     if (this._onClickCapture) {
       document.removeEventListener('pointerdown', this._onClickCapture, true);
@@ -4104,26 +4118,6 @@ window.TrifleDownloads = window.TrifleDownloads || {};
 
   const queryDropdown = (menu) => (menu ? menu.querySelector('[data-widget-dropdown]') : null);
   const queryButton = (menu) => (menu ? menu.querySelector('[data-role="download-button"]') : null);
-  const queryLabel = (menu) => (menu ? menu.querySelector('[data-role="download-text"]') : null);
-
-  const setButtonLoading = (menu, loading) => {
-    if (!menu) return;
-    const button = queryButton(menu);
-    const label = queryLabel(menu);
-    const defaultLabel = menu.dataset.defaultLabel || 'Export';
-    if (!button) return;
-    if (loading) {
-      button.disabled = true;
-      button.classList.add('opacity-70', 'cursor-wait');
-      button.setAttribute('aria-busy', 'true');
-      if (label) label.textContent = 'Generating...';
-    } else {
-      button.disabled = false;
-      button.classList.remove('opacity-70', 'cursor-wait');
-      button.removeAttribute('aria-busy');
-      if (label) label.textContent = defaultLabel;
-    }
-  };
 
   scope.closeWidgetMenu = function closeWidgetMenu(menu) {
     if (!menu) return;
@@ -4132,7 +4126,6 @@ window.TrifleDownloads = window.TrifleDownloads || {};
       dropdown.classList.add(HIDDEN_CLASS);
       dropdown.setAttribute('aria-hidden', 'true');
     }
-    setButtonLoading(menu, false);
     const button = queryButton(menu);
     if (button) button.setAttribute('aria-expanded', 'false');
     menu.dataset.open = 'false';
@@ -4179,8 +4172,6 @@ window.TrifleDownloads = window.TrifleDownloads || {};
       if (button) {
         button.setAttribute('aria-expanded', 'false');
       }
-      // Reset loading state so button stays interactive
-      setButtonLoading(menu, false);
     }
     try {
       const url = new URL(link.getAttribute('href') || '', window.location.origin);

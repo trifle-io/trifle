@@ -47,24 +47,41 @@ defmodule TrifleApp.Components.DashboardPage do
         name="download_iframe"
         style="display:none"
         aria-hidden="true"
-        onload="(function(){['dashboard-download-menu','explore-download-menu'].forEach(function(id){var m=document.getElementById(id); if(!m) return; var b=m.querySelector('[data-role=download-button]'); var t=m.querySelector('[data-role=download-text]'); var d=(m.dataset&&m.dataset.defaultLabel)||'Download'; if(b){b.disabled=false; b.classList.remove('opacity-70','cursor-wait');} if(t){t.textContent=d;}})})()"
+        onload="window.__resetDownloadMenus && window.__resetDownloadMenus(); window.dispatchEvent(new CustomEvent('download:complete'))"
       >
       </iframe>
       <script>
+        window.__resetDownloadMenus = window.__resetDownloadMenus || function(){
+          try {
+            var menus = document.querySelectorAll('[data-download-menu],[data-widget-download-menu]');
+            menus.forEach(function(menu){
+              var button = menu.querySelector('[data-role=download-button]');
+              var label = menu.querySelector('[data-role=download-text]');
+              var icon = menu.querySelector('[data-role=download-icon]');
+              var spinner = menu.querySelector('[data-role=download-spinner]');
+              var defaultLabel = (menu.dataset && menu.dataset.defaultLabel) || 'Download';
+              if (button) {
+                button.disabled = false;
+                button.classList.remove('opacity-70','cursor-wait');
+                button.removeAttribute('aria-busy');
+                button.removeAttribute('data-loading');
+              }
+              if (icon) icon.classList.remove('hidden');
+              if (spinner) spinner.classList.add('hidden');
+              if (label && defaultLabel) {
+                label.textContent = defaultLabel;
+              }
+            });
+          } catch (_) {}
+        };
         window.__downloadPoller = window.__downloadPoller || setInterval(function(){
           try {
             var m = document.cookie.match(/(?:^|; )download_token=([^;]+)/);
             if (m) {
               // Clear cookie and reset UI
               document.cookie = 'download_token=; Max-Age=0; path=/';
-              ['dashboard-download-menu','explore-download-menu'].forEach(function(id){
-                var menu=document.getElementById(id); if(!menu) return;
-                var btn=menu.querySelector('[data-role=download-button]');
-                var txt=menu.querySelector('[data-role=download-text]');
-                var defaultLabel=(menu.dataset&&menu.dataset.defaultLabel)||'Download';
-                if(btn){btn.disabled=false; btn.classList.remove('opacity-70','cursor-wait');}
-                if(txt){txt.textContent=defaultLabel;}
-              });
+              if (window.__resetDownloadMenus) window.__resetDownloadMenus();
+              window.dispatchEvent(new CustomEvent('download:complete'));
             }
           } catch (e) {}
         }, 500);

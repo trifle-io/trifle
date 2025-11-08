@@ -850,20 +850,27 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                     aria-expanded="false"
                     onclick="window.TrifleDownloads && window.TrifleDownloads.toggleWidgetMenu(this);"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                      class="h-4 w-4 text-teal-600 dark:text-teal-300 transition-colors group-hover:text-teal-700 dark:group-hover:text-teal-200"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                      />
-                    </svg>
+                    <span class="inline-flex items-center justify-center" data-role="download-icon">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="h-4 w-4 text-teal-600 dark:text-teal-300 transition-colors group-hover:text-teal-700 dark:group-hover:text-teal-200"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                        />
+                      </svg>
+                    </span>
+                    <span class="hidden" data-role="download-spinner">
+                      <span class="inline-flex h-4 w-4 items-center justify-center">
+                        <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin"></span>
+                      </span>
+                    </span>
                     <span class="sr-only" data-role="download-text">Export</span>
                   </button>
 
