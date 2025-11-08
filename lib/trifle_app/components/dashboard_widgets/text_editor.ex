@@ -144,32 +144,10 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
           </p>
         </div>
       <% else %>
-        <div class="sm:col-span-2 space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-              Headline
-            </label>
-            <input
-              type="text"
-              name="text_title"
-              value={Map.get(@widget, "title", "")}
-              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-              placeholder="e.g., Enter product ID"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-              Default value
-            </label>
-            <input
-              type="text"
-              name="text_default_value"
-              value={Map.get(@widget, "default_value", "")}
-              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-              placeholder="Leave blank for no default"
-            />
-          </div>
+        <div class="sm:col-span-2">
+          <p class="text-xs text-gray-500 dark:text-slate-400">
+            This widget uses the main title field above as its headline.
+          </p>
         </div>
       <% end %>
 

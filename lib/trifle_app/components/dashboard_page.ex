@@ -1249,7 +1249,7 @@ defmodule TrifleApp.Components.DashboardPage do
             <:body>
               <div class="space-y-6">
                 <!-- Widget Type (change updates the modal content) -->
-                <.form for={%{}} phx-change="change_widget_type" class="space-y-3">
+                <.form for={%{}} phx-change="change_widget_type" class="space-y-4">
                   <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
                   <div>
                     <label
@@ -1285,12 +1285,6 @@ defmodule TrifleApp.Components.DashboardPage do
                       </svg>
                     </div>
                   </div>
-                </.form>
-                
-    <!-- Widget Title and Options -->
-                <.form for={%{}} phx-submit="save_widget" class="space-y-4">
-                  <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
-                  <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
                   <div>
                     <label
                       for="widget_title"
@@ -1303,10 +1297,18 @@ defmodule TrifleApp.Components.DashboardPage do
                       id="widget_title"
                       name="widget_title"
                       value={@editing_widget["title"] || ""}
+                      phx-debounce="400"
                       class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
                       placeholder="Widget title"
                     />
                   </div>
+                </.form>
+                
+    <!-- Widget Title and Options -->
+                <.form for={%{}} phx-submit="save_widget" class="space-y-4">
+                  <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
+                  <input type="hidden" name="widget_title" value={@editing_widget["title"] || ""} />
+                  <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
 
                   <WidgetEditor.editor widget={@editing_widget} path_options={@widget_path_options} />
 

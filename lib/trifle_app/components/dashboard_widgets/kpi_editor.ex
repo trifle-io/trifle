@@ -27,6 +27,7 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
     assigns =
       assigns
       |> assign(:widget, widget)
+      |> assign(:widget_id, Map.get(widget, "id"))
       |> assign(:subtype, subtype)
       |> assign(:function, function)
       |> assign(:size, Map.get(widget, "size", "m"))
@@ -38,8 +39,47 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
     ~H"""
     <input type="hidden" name="kpi_subtype" value={@subtype} />
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="sm:col-span-2">
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+          Display Mode
+        </label>
+        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <button
+            type="button"
+            class={subtype_button_classes(@subtype == "number", "rounded-l-md")}
+            phx-click="change_kpi_subtype"
+            phx-value-widget_id={@widget_id}
+            phx-value-kpi_subtype="number"
+          >
+            Number
+          </button>
+          <button
+            type="button"
+            class={subtype_button_classes(@subtype == "split", "border-x border-gray-200 dark:border-slate-600")}
+            phx-click="change_kpi_subtype"
+            phx-value-widget_id={@widget_id}
+            phx-value-kpi_subtype="split"
+          >
+            Split
+          </button>
+          <button
+            type="button"
+            class={subtype_button_classes(@subtype == "goal", "rounded-r-md")}
+            phx-click="change_kpi_subtype"
+            phx-value-widget_id={@widget_id}
+            phx-value-kpi_subtype="goal"
+          >
+            Goal
+          </button>
+        </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
+          Number shows a single aggregate. Split compares the current timeframe to the previous half. Goal lets you track progress toward a target.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="sm:col-span-2">
         <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
           Path
         </label>
@@ -111,21 +151,22 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
         </div>
       </div>
 
-      <%= if @subtype == "goal" do %>
-        <div class="sm:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-            Target value
-          </label>
-          <input
-            type="text"
-            name="kpi_goal_target"
-            value={Map.get(@widget, "goal_target", "")}
-            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-            placeholder="e.g. 1200"
-          />
+        <%= if @subtype == "goal" do %>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+              Target value
+            </label>
+            <input
+              type="text"
+              name="kpi_goal_target"
+              value={Map.get(@widget, "goal_target", "")}
+              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+              placeholder="e.g. 1200"
+            />
+          </div>
+        <% end %>
         </div>
-      <% end %>
-    </div>
+      </div>
 
     <%= case @subtype do %>
       <% "split" -> %>
@@ -175,5 +216,19 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
         </div>
     <% end %>
     """
+  end
+
+  defp subtype_button_classes(selected, extra_class) do
+    base =
+      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[4.5rem]"
+
+    state_classes =
+      if selected do
+        "bg-teal-600 text-white hover:bg-teal-500"
+      else
+        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      end
+
+    Enum.join([base, state_classes, extra_class], " ")
   end
 end
