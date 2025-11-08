@@ -232,6 +232,52 @@ Hooks.ChatInput = {
   }
 }
 
+Hooks.ExportTheme = {
+  mounted() {
+    this.applyTheme();
+  },
+  updated() {
+    this.applyTheme();
+  },
+  destroyed() {
+    if (this._themeTimer) {
+      clearTimeout(this._themeTimer);
+      this._themeTimer = null;
+    }
+  },
+  applyTheme() {
+    const dataset = this.el.dataset || {};
+    const value = (dataset.exportTheme || dataset.theme || '').toLowerCase();
+    const theme = value === 'dark' ? 'dark' : 'light';
+    const root = document.documentElement;
+    const body = document.body;
+    try {
+      if (theme === 'dark') {
+        root.classList.add('dark');
+        if (body && body.classList) body.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+        if (body && body.classList) body.classList.remove('dark');
+      }
+      root.dataset.exportTheme = theme;
+      if (body) body.dataset.theme = theme;
+      root.style.background = 'transparent';
+      if (body) body.style.background = 'transparent';
+    } catch (_) {}
+
+    if (this._themeTimer) {
+      clearTimeout(this._themeTimer);
+      this._themeTimer = null;
+    }
+
+    this._themeTimer = setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('trifle:theme-changed', { detail: { theme } }));
+      } catch (_) {}
+    }, 0);
+  }
+}
+
 Hooks.ChatChart = {
   mounted() {
     this.chart = null;
