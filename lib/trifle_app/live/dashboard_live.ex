@@ -862,11 +862,21 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  def handle_event("change_widget_type", %{"widget_id" => id, "widget_type" => type}, socket) do
+  def handle_event("change_widget_type", %{"widget_id" => id} = params, socket) do
     w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = String.downcase(to_string(type))
 
-    w = Map.put(w, "type", normalized)
+    normalized =
+      params
+      |> Map.get("widget_type", w["type"] || "kpi")
+      |> to_string()
+      |> String.downcase()
+
+    title_param = Map.get(params, "widget_title")
+
+    w =
+      w
+      |> Map.put("type", normalized)
+      |> maybe_put_widget_title(title_param)
 
     w =
       case normalized do
@@ -936,6 +946,17 @@ defmodule TrifleApp.DashboardLive do
     w = socket.assigns.editing_widget || %{"id" => id}
     normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
     {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
+  end
+
+  defp maybe_put_widget_title(widget, nil), do: widget
+
+  defp maybe_put_widget_title(widget, title) do
+    trimmed =
+      title
+      |> to_string()
+      |> String.trim()
+
+    Map.put(widget, "title", trimmed)
   end
 
   def handle_event("change_kpi_subtype", %{"kpi_subtype" => subtype} = params, socket) do
