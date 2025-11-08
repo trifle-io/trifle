@@ -46,6 +46,8 @@ defmodule TrifleApp.ExportLayoutLive do
         theme_root_class(@theme)
       ]}
       style="background: transparent;"
+      phx-hook="ExportTheme"
+      data-export-theme={Atom.to_string(@theme)}
     >
       {theme_script(@theme)}
       <div class="export-layout-canvas">
