@@ -13,6 +13,7 @@ defmodule TrifleApp.UserAuth do
   @max_age 60 * 60 * 24 * 60
   @remember_me_cookie "_trifle_web_user_remember_me"
   @remember_me_options [sign: true, max_age: @max_age, same_site: "Lax"]
+  @last_active_touch_interval_seconds 5 * 60
 
   @doc """
   Logs the user in.
@@ -99,6 +100,7 @@ defmodule TrifleApp.UserAuth do
         %Accounts.User{} = u -> Organizations.get_membership_for_user(u)
         _ -> nil
       end
+      |> maybe_touch_membership_last_active()
 
     organization = membership && membership.organization
 
@@ -201,6 +203,7 @@ defmodule TrifleApp.UserAuth do
         _ ->
           nil
       end
+      |> maybe_touch_membership_last_active()
 
     organization = membership && membership.organization
 
@@ -253,4 +256,26 @@ defmodule TrifleApp.UserAuth do
   defp maybe_store_return_to(conn), do: conn
 
   defp signed_in_path(_conn), do: ~p"/dashboards"
+
+  defp maybe_touch_membership_last_active(nil), do: nil
+
+  defp maybe_touch_membership_last_active(membership) do
+    if should_touch_membership?(membership.last_active_at) do
+      case Organizations.touch_membership_last_active(membership) do
+        {:ok, updated_membership} -> updated_membership
+        {:error, _changeset} -> membership
+      end
+    else
+      membership
+    end
+  end
+
+  defp should_touch_membership?(nil), do: true
+
+  defp should_touch_membership?(%DateTime{} = last_active_at) do
+    DateTime.diff(DateTime.utc_now(), last_active_at, :second) >=
+      @last_active_touch_interval_seconds
+  end
+
+  defp should_touch_membership?(_), do: true
 end
