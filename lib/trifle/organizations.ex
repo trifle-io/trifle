@@ -208,6 +208,13 @@ defmodule Trifle.Organizations do
     membership
     |> OrganizationMembership.changeset(%{last_active_at: DateTime.utc_now()})
     |> Repo.update()
+    |> case do
+      {:ok, updated_membership} ->
+        {:ok, Repo.preload(updated_membership, [:organization, :user, :invited_by])}
+
+      error ->
+        error
+    end
   end
 
   def membership_owner?(%OrganizationMembership{} = membership) do
