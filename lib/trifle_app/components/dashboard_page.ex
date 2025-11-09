@@ -495,16 +495,18 @@ defmodule TrifleApp.Components.DashboardPage do
         
     <!-- Configure Modal -->
         <%= if !@is_public_access && @live_action == :configure do %>
+          <% configure_cancel = JS.patch(~p"/dashboards/#{@dashboard.id}") %>
           <.app_modal
             id="configure-modal"
             show={true}
-            on_cancel={JS.patch(~p"/dashboards/#{@dashboard.id}")}
+            on_cancel={configure_cancel}
           >
             <:title>Configure Dashboard</:title>
             <:body>
               <div class="space-y-6">
                 <.form
                   for={%{}}
+                  id="dashboard-configure-form"
                   phx-change="segments_editor_change"
                   phx-submit="save_settings"
                   class="space-y-6"
@@ -919,332 +921,211 @@ defmodule TrifleApp.Components.DashboardPage do
                           </svg>
                         </div>
                       </div>
-                      <div class="sm:col-span-2 flex justify-end">
-                        <button
-                          type="submit"
-                          class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-                        >
-                          Save
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </.form>
-                <!-- Actions -->
-                <%= if @can_clone_dashboard do %>
-                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                    <div class="flex items-center justify-between mb-2">
-                      <div>
-                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                          Actions
-                        </span>
-                        <p class="text-xs text-gray-500 dark:text-slate-400">
-                          Make a copy of this dashboard.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        phx-click="duplicate_dashboard"
-                        class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                        title="Duplicate dashboard"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                          class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-                          />
-                        </svg>
-                        <span class="hidden md:inline">Duplicate</span>
-                      </button>
-                    </div>
-                  </div>
-                <% end %>
-
-                <%= if @can_manage_dashboard do %>
-                  <!-- Visibility Toggle (moved below Actions) -->
-                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-                    <div>
-                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                        Visibility
-                      </span>
-                      <p class="text-xs text-gray-500 dark:text-slate-400">
-                        Make this dashboard visible to everyone in the organization
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      phx-click="toggle_visibility"
-                      class={[
-                        "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                        if(@dashboard.visibility,
-                          do: "bg-teal-600",
-                          else: "bg-gray-200 dark:bg-gray-700"
-                        )
-                      ]}
-                    >
-                      <span class={[
-                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                        if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
-                      ]}>
-                      </span>
-                    </button>
-                  </div>
-                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-                    <div>
-                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                        Lock
-                      </span>
-                      <p class="text-xs text-gray-500 dark:text-slate-400">
-                        Prevent regular members from editing while locked.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      phx-click="toggle_lock"
-                      disabled={!@can_manage_lock}
-                      role="switch"
-                      aria-checked={to_string(@dashboard.locked)}
-                      class={[
-                        "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
-                        if(@dashboard.locked,
-                          do: "bg-amber-500 dark:bg-amber-400",
-                          else: "bg-gray-200 dark:bg-gray-700"
-                        ),
-                        if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
-                      ]}
-                    >
-                      <span class={[
-                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                        if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
-                      ]}>
-                      </span>
-                    </button>
-                  </div>
-                  
-    <!-- Public Link Management -->
-                  <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                    <div class="flex items-center justify-between mb-4">
-                      <div>
-                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                          Public Link
-                        </span>
-                        <p class="text-xs text-gray-500 dark:text-slate-400">
-                          Allow unauthenticated Read-only access to this dashboard
-                        </p>
-                      </div>
-                    </div>
-
-                    <%= if @dashboard.access_token do %>
-                      <!-- Hidden element with the URL to copy -->
-                      <span id="modal-dashboard-public-url" class="hidden">
-                        {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
-                      </span>
-
-                      <div class="flex items-center gap-3">
-                        <!-- Copy Link Button -->
-                        <span
-                          id="modal-copy-dashboard-link"
-                          x-data="{ copied: false }"
-                          phx-click={JS.dispatch("phx:copy", to: "#modal-dashboard-public-url")}
-                          x-on:click="copied = true; setTimeout(() => copied = false, 3000)"
-                          class="flex-1 cursor-pointer inline-flex items-center justify-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                          title="Copy public link to clipboard"
-                          phx-update="ignore"
-                        >
-                          <!-- Copy Icon (show when not copied) -->
-                          <svg
-                            x-show="!copied"
-                            class="-ml-0.5 mr-2 h-4 w-4"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"
-                            />
-                          </svg>
-                          
-    <!-- Check Icon (show when copied) -->
-                          <svg
-                            x-show="copied"
-                            class="-ml-0.5 mr-2 h-4 w-4 text-green-600"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          
-    <!-- Text -->
-                          <span x-show="!copied">Copy Public Link</span>
-                          <span x-show="copied" class="text-green-600">Copied!</span>
-                        </span>
-                        
-    <!-- Remove Button -->
-                        <button
-                          type="button"
-                          phx-click="remove_public_token"
-                          data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
-                          class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                          title="Remove public link"
-                        >
-                          <svg
-                            class="-ml-0.5 mr-2 h-4 w-4"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                            />
-                          </svg>
-                          Remove Link
-                        </button>
-                      </div>
-                    <% else %>
-                      <!-- No token: show generate -->
-                      <button
-                        type="button"
-                        phx-click="generate_public_token"
-                        class="w-full inline-flex items-center justify-center rounded-md bg-teal-50 dark:bg-teal-900 px-3 py-2 text-sm font-medium text-teal-700 dark:text-teal-200 ring-1 ring-inset ring-teal-600/20 dark:ring-teal-500/30 hover:bg-teal-100 dark:hover:bg-teal-800"
-                        title="Generate public link for unauthenticated access"
-                      >
-                        <svg
-                          class="-ml-0.5 mr-2 h-4 w-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
-                          />
-                        </svg>
-                        Generate Public Link
-                      </button>
-                    <% end %>
-                  </div>
-                  
-    <!-- Danger Zone -->
-                  <div class="border-t border-red-200 dark:border-red-800 pt-6">
-                    <div class="mb-4">
-                      <span class="text-sm font-medium text-red-700 dark:text-red-400">
-                        Danger Zone
-                      </span>
-                      <p class="text-xs text-red-600 dark:text-red-400">
-                        This action cannot be undone
-                      </p>
-                    </div>
-
-                    <div
-                      :if={
-                        @can_transfer_dashboard_owner && Enum.any?(@dashboard_owner_candidates || [])
-                      }
-                      class="mb-6 space-y-3"
-                    >
-                      <div>
-                        <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
-                          Transfer ownership
-                        </span>
-                        <p class="text-xs text-slate-500 dark:text-slate-400">
-                          Move ownership to another member. You might lose direct access if you are not an organization admin.
-                        </p>
-                      </div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <.form
-                          for={%{}}
-                          phx-change="change_dashboard_owner_selection"
-                          class="flex flex-1"
-                        >
-                          <select
-                            name="dashboard_owner_membership_id"
-                            class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                            value={@dashboard_owner_selection || ""}
-                          >
-                            <option value="">Select member…</option>
-                            <%= for candidate <- @dashboard_owner_candidates || [] do %>
-                              <option
-                                value={candidate.id}
-                                selected={@dashboard_owner_selection == candidate.id}
-                              >
-                                {candidate.label}
-                              </option>
-                            <% end %>
-                          </select>
-                        </.form>
-                        <button
-                          type="button"
-                          class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
-                          phx-click="transfer_dashboard_owner"
-                          data-confirm="Transfer ownership to the selected member?"
-                          disabled={@dashboard_owner_selection in [nil, ""]}
-                        >
-                          Transfer ownership
-                        </button>
-                      </div>
-                      <p :if={@dashboard_owner_error} class="text-xs text-rose-600 dark:text-rose-400">
-                        {@dashboard_owner_error}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      phx-click="delete_dashboard"
-                      data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
-                      class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                      title="Delete this dashboard"
-                    >
-                      <svg
-                        class="-ml-0.5 mr-2 h-4 w-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                        />
-                      </svg>
-                      Delete Dashboard
-                    </button>
-                  </div>
-                <% end %>
               </div>
             </:body>
+            <:actions>
+          <.form_actions>
+            <.secondary_button type="button" phx-click={configure_cancel}>
+              Cancel
+            </.secondary_button>
+            <.primary_button
+              form="dashboard-configure-form"
+              phx-disable-with="Saving..."
+            >
+              Save changes
+            </.primary_button>
+          </.form_actions>
+        </:actions>
+        <:below_actions>
+          <%= if @can_clone_dashboard do %>
+            <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                    Actions
+                  </span>
+                  <p class="text-xs text-gray-500 dark:text-slate-400">
+                    Make a copy of this dashboard.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  phx-click="duplicate_dashboard"
+                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                  title="Duplicate dashboard"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                    />
+                  </svg>
+                  <span class="hidden md:inline">Duplicate</span>
+                </button>
+              </div>
+            </div>
+          <% end %>
+
+          <%= if @can_manage_dashboard do %>
+            <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
+              <div>
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Visibility</span>
+                <p class="text-xs text-gray-500 dark:text-slate-400">
+                  Make this dashboard visible to everyone in the organization
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="toggle_visibility"
+                class={[
+                  "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                  if(@dashboard.visibility, do: "bg-teal-600", else: "bg-gray-200 dark:bg-gray-700")
+                ]}
+              >
+                <span class={[
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
+                ]}>
+                </span>
+              </button>
+            </div>
+
+            <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
+              <div>
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Lock</span>
+                <p class="text-xs text-gray-500 dark:text-slate-400">
+                  Prevent regular members from editing while locked.
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="toggle_lock"
+                disabled={!@can_manage_lock}
+                class={[
+                  "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
+                  if(@dashboard.locked, do: "bg-amber-500 dark:bg-amber-400", else: "bg-gray-200 dark:bg-gray-700"),
+                  if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                ]}
+              >
+                <span class={[
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
+                ]}>
+                </span>
+              </button>
+            </div>
+
+            <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Public Link</span>
+                  <p class="text-xs text-gray-500 dark:text-slate-400">
+                    Generate a shareable link for read-only access.
+                  </p>
+                </div>
+                <%= if @public_token do %>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      phx-click="copy_public_link"
+                      class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700"
+                    >
+                      Copy Public Link
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="remove_public_token"
+                      data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
+                      class="inline-flex items-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                    >
+                      Remove Link
+                    </button>
+                  </div>
+                <% else %>
+                  <button
+                    type="button"
+                    phx-click="generate_public_token"
+                    class="inline-flex items-center rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 hover:bg-teal-100 dark:bg-teal-900 dark:text-teal-200 dark:ring-teal-500/30 dark:hover:bg-teal-800"
+                  >
+                    Generate Public Link
+                  </button>
+                <% end %>
+              </div>
+            </div>
+
+            <div class="border-t border-red-200 dark:border-red-800 pt-6">
+              <div class="mb-4">
+                <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger Zone</span>
+                <p class="text-xs text-red-600 dark:text-red-400">This action cannot be undone.</p>
+              </div>
+
+              <div :if={@can_transfer_dashboard_owner && Enum.any?(@dashboard_owner_candidates || [])} class="mb-6 space-y-3">
+                <div>
+                  <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Transfer ownership</span>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Move ownership to another member. You might lose direct access if you are not an organization admin.
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <.form for={%{}} phx-change="change_dashboard_owner_selection" class="flex flex-1">
+                    <select
+                      name="dashboard_owner_membership_id"
+                      class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                      value={@dashboard_owner_selection || ""}
+                    >
+                      <option value="">Select member…</option>
+                      <%= for candidate <- @dashboard_owner_candidates || [] do %>
+                        <option value={candidate.id} selected={@dashboard_owner_selection == candidate.id}>
+                          {candidate.label}
+                        </option>
+                      <% end %>
+                    </select>
+                  </.form>
+                  <button
+                    type="button"
+                    class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                    phx-click="transfer_dashboard_owner"
+                    data-confirm="Transfer ownership to the selected member?"
+                    disabled={@dashboard_owner_selection in [nil, ""]}
+                  >
+                    Transfer ownership
+                  </button>
+                </div>
+                <p :if={@dashboard_owner_error} class="text-xs text-rose-600 dark:text-rose-400">
+                  {@dashboard_owner_error}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                phx-click="delete_dashboard"
+                data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
+                class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                title="Delete this dashboard"
+              >
+                Delete Dashboard
+              </button>
+            </div>
+          <% end %>
+        </:below_actions>
           </.app_modal>
         <% end %>
         
     <!-- Widget Edit Modal -->
         <%= if !@is_public_access && @editing_widget do %>
-          <.app_modal id="widget-modal" show={true} on_cancel={JS.push("close_widget_editor")}>
+          <% widget_cancel = JS.push("close_widget_editor") %>
+          <.app_modal id="widget-modal" show={true} on_cancel={widget_cancel}>
             <:title>Edit Widget</:title>
             <:body>
               <div class="space-y-6">
@@ -1305,50 +1186,48 @@ defmodule TrifleApp.Components.DashboardPage do
                 </.form>
                 
     <!-- Widget Title and Options -->
-                <.form for={%{}} phx-submit="save_widget" class="space-y-4">
+                <.form for={%{}} id="widget-editor-form" phx-submit="save_widget" class="space-y-4">
                   <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
                   <input type="hidden" name="widget_title" value={@editing_widget["title"] || ""} />
                   <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
 
                   <WidgetEditor.editor widget={@editing_widget} path_options={@widget_path_options} />
 
-                  <div class="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      phx-click="close_widget_editor"
-                      class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-                    >
-                      Save
-                    </button>
-                  </div>
                 </.form>
-                
-    <!-- Danger Zone -->
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
-                  <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
-                  <p class="text-xs text-gray-500 dark:text-slate-400">
-                    Delete this widget permanently from the dashboard.
-                  </p>
-                  <div class="mt-3">
-                    <button
-                      type="button"
-                      phx-click="delete_widget"
-                      phx-value-id={@editing_widget["id"]}
-                      data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
-                      class="inline-flex items-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                    >
-                      Delete Widget
-                    </button>
-                  </div>
-                </div>
               </div>
             </:body>
+            <:actions>
+              <.form_actions>
+                <.secondary_button type="button" phx-click={widget_cancel}>
+                  Cancel
+                </.secondary_button>
+                <.primary_button
+                  form="widget-editor-form"
+                  phx-disable-with="Saving..."
+                >
+                  Save
+                </.primary_button>
+              </.form_actions>
+            </:actions>
+        <:below_actions>
+          <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
+            <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-400">
+              Delete this widget permanently from the dashboard.
+            </p>
+            <div class="mt-3">
+              <button
+                type="button"
+                phx-click="delete_widget"
+                phx-value-id={@editing_widget["id"]}
+                data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
+                class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+              >
+                Delete Widget
+              </button>
+            </div>
+          </div>
+        </:below_actions>
           </.app_modal>
         <% end %>
         

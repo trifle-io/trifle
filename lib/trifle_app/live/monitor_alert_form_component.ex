@@ -64,7 +64,8 @@ defmodule TrifleApp.MonitorAlertFormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <.app_modal id="monitor-alert-modal" show size="sm" on_cancel={JS.push("close_alert_modal")}>
+      <% cancel_action = JS.push("close_alert_modal") %>
+      <.app_modal id="monitor-alert-modal" show size="sm" on_cancel={cancel_action}>
         <:title>
           {if @action == :new, do: "Add alert", else: "Edit alert"}
         </:title>
@@ -288,22 +289,26 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                 <% end %>
               </.inputs_for>
 
-              <div class="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  class="inline-flex items-center rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/70"
-                  phx-click="close_alert_modal"
-                >
-                  Cancel
-                </button>
-                <.button type="submit">
-                  {if @action == :new, do: "Create alert", else: "Save alert"}
-                </.button>
-              </div>
             </div>
           </.form>
 
-          <div :if={@action == :edit} class="mt-6 border-t border-red-200 pt-4 dark:border-red-800">
+
+        </:body>
+        <:actions>
+          <.form_actions>
+            <.secondary_button type="button" phx-click={cancel_action}>
+              Cancel
+            </.secondary_button>
+            <.primary_button
+              form="monitor-alert-form"
+              phx-disable-with={if @action == :new, do: "Creating...", else: "Saving..."}
+            >
+              {if @action == :new, do: "Create alert", else: "Save alert"}
+            </.primary_button>
+          </.form_actions>
+        </:actions>
+        <:below_actions :if={@action == :edit}>
+          <div class="border-t border-red-200 pt-4 dark:border-red-800">
             <div class="mb-3">
               <span class="text-sm font-semibold text-red-700 dark:text-red-200">Danger zone</span>
               <p class="mt-1 text-xs text-red-600 dark:text-red-300">
@@ -334,7 +339,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
               Delete alert
             </button>
           </div>
-        </:body>
+        </:below_actions>
       </.app_modal>
     </div>
     """

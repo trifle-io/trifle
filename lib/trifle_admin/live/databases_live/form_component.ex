@@ -205,8 +205,10 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
 
         <:actions>
           <.form_actions>
+            <.secondary_button type="button" phx-click={JS.patch(~p"/admin/databases")}>
+              Cancel
+            </.secondary_button>
             <.primary_button phx-disable-with="Saving...">Save Database</.primary_button>
-            <.secondary_button phx-click={JS.patch(~p"/admin/databases")}>Cancel</.secondary_button>
           </.form_actions>
         </:actions>
       </.form_container>

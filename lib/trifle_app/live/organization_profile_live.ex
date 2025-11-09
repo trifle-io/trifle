@@ -534,7 +534,9 @@ defmodule TrifleApp.OrganizationProfileLive do
             </div>
 
             <.form_actions spacing="gap-2">
-              <.ghost_button type="button" phx-click="close_profile_modal">Cancel</.ghost_button>
+              <.secondary_button type="button" phx-click="close_profile_modal">
+                Cancel
+              </.secondary_button>
               <.primary_button phx-disable-with="Saving...">Save changes</.primary_button>
             </.form_actions>
           </.form>

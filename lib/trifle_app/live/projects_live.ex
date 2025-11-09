@@ -197,8 +197,10 @@ defmodule TrifleApp.ProjectsLive do
 
           <:actions>
             <.form_actions>
+              <.secondary_button patch={~p"/projects"}>
+                Cancel
+              </.secondary_button>
               <.primary_button phx-disable-with="Creating...">Create project</.primary_button>
-              <.secondary_button patch={~p"/projects"}>Cancel</.secondary_button>
             </.form_actions>
           </:actions>
         </.form_container>

@@ -103,10 +103,10 @@ defmodule TrifleApp.OrganizationSSOLive do
           />
 
           <.form_actions>
-            <.primary_button phx-disable-with="Saving...">Save changes</.primary_button>
             <.secondary_button type="button" phx-click="close_google_sso_modal">
               Cancel
             </.secondary_button>
+            <.primary_button phx-disable-with="Saving...">Save changes</.primary_button>
           </.form_actions>
         </.form>
       </:body>
