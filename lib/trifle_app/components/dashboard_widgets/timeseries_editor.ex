@@ -93,28 +93,19 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
         <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
           Chart Type
         </label>
-        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-          <select
-            name="ts_chart_type"
-            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-          >
-            <option value="line" selected={@chart_type == "line"}>Line</option>
-            <option value="area" selected={@chart_type == "area"}>Area</option>
-            <option value="bar" selected={@chart_type == "bar"}>Bar</option>
-          </select>
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            data-slot="icon"
-            aria-hidden="true"
-            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-          >
-            <path
-              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-              clip-rule="evenodd"
-              fill-rule="evenodd"
-            />
-          </svg>
+        <input type="hidden" name="ts_chart_type" value={@chart_type} />
+        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
+          <%= for {label, value, position} <- chart_type_options_ts() do %>
+            <button
+              type="button"
+              class={chart_toggle_classes(@chart_type == value, position)}
+              phx-click="set_ts_chart_type"
+              phx-value-widget-id={Map.get(@widget, "id")}
+              phx-value-chart-type={value}
+            >
+              {label}
+            </button>
+          <% end %>
         </div>
       </div>
 
@@ -131,5 +122,34 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
       </div>
     </div>
     """
+  end
+
+  defp chart_type_options_ts do
+    [
+      {"Line", "line", :first},
+      {"Area", "area", :middle},
+      {"Bar", "bar", :last}
+    ]
+  end
+
+  defp chart_toggle_classes(selected, position) do
+    base =
+      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[4.5rem] text-center"
+
+    corners =
+      case position do
+        :first -> "rounded-l-md"
+        :last -> "rounded-r-md"
+        _ -> "border-x border-gray-200 dark:border-slate-600"
+      end
+
+    state =
+      if selected do
+        "bg-teal-600 text-white hover:bg-teal-500"
+      else
+        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      end
+
+    Enum.join([base, corners, state], " ")
   end
 end
