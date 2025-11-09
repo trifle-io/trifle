@@ -2,13 +2,17 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   use TrifleApp, :live_component
 
   alias Ecto.Changeset
+  import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Monitors.Monitor.{DeliveryChannel, DeliveryMedium, ReportSettings}
   alias Trifle.Stats.Source
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
+  alias TrifleApp.PathSuggestions
   require Logger
+
+  @path_refresh_ttl_ms 60_000
 
   @impl true
   def update(assigns, socket) do
@@ -26,6 +30,11 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign_new(:delivery_media_options, fn -> Monitors.delivery_media_options() end)
      |> assign_new(:delivery_handles, fn -> [] end)
      |> assign_new(:sources, fn -> assigns.sources || [] end)
+     |> assign_new(:path_options, fn -> [] end)
+     |> assign_new(:path_fetch_state, fn -> :idle end)
+     |> assign_new(:path_fetch_meta, fn -> %{} end)
+     |> assign_new(:path_fetch_fingerprint, fn -> nil end)
+     |> assign_new(:path_fetch_last_checked, fn -> nil end)
      |> assign(assigns)
      |> assign(:can_manage_lock, Map.get(assigns, :can_manage_lock, false))
      |> assign(:persisted_monitor, monitor)
@@ -33,6 +42,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign(:delivery_handle_error, nil)
      |> assign(:delivery_media_error, nil)
      |> assign_form(assigns.changeset || Monitors.change_monitor(monitor, %{}))
+     |> maybe_refresh_path_options()
      |> assign_transfer_state()}
   end
 
@@ -310,12 +320,28 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                         />
                       </div>
                       <div>
-                        <.input
-                          field={@form[:alert_metric_path]}
-                          label="Metric path"
+                        <% path_field = @form[:alert_metric_path] %>
+                        <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                          Metric path <span class="text-rose-500">*</span>
+                        </label>
+                        <.path_autocomplete_input
+                          id="monitor-alert-metric-path"
+                          name={path_field.name}
+                          value={path_field.value || ""}
                           placeholder="e.g. $.country.US"
-                          required
+                          path_options={@path_options}
+                          input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
                         />
+                        <%= for error <- path_field.errors do %>
+                          <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                            {translate_error(error)}
+                          </p>
+                        <% end %>
+                        <%= if hint = path_status_message(@path_fetch_state, @path_fetch_meta) do %>
+                          <p class={"mt-1 text-xs #{path_hint_class(elem(hint, 1))}"}>
+                            {elem(hint, 0)}
+                          </p>
+                        <% end %>
                       </div>
                       <div>
                         <.input
@@ -562,7 +588,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      socket
      |> assign(:delivery_handle_error, delivery_handle_error_message(errors))
      |> assign(:delivery_media_error, delivery_media_error_message(errors))
-     |> assign_form(changeset, handles: normalized.handles, media: normalized.media)}
+     |> assign_form(changeset, handles: normalized.handles, media: normalized.media)
+     |> maybe_refresh_path_options()}
   end
 
   def handle_event("save", %{"monitor" => monitor_params}, socket) do
@@ -581,7 +608,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
        socket
        |> assign(:delivery_handle_error, delivery_handle_error_message(errors))
        |> assign(:delivery_media_error, delivery_media_error_message(errors))
-       |> assign_form(changeset, handles: normalized.handles, media: normalized.media)}
+       |> assign_form(changeset, handles: normalized.handles, media: normalized.media)
+       |> maybe_refresh_path_options()}
     else
       save_monitor(socket, socket.assigns.action, normalized.params, normalized.handles)
     end
@@ -608,6 +636,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
              |> assign(:persisted_monitor, updated)
              |> assign(:monitor, updated)
              |> assign_form(Monitors.change_monitor(updated, %{}))
+             |> maybe_refresh_path_options()
              |> assign_transfer_state()}
 
           {:error, :forbidden} ->
@@ -619,7 +648,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
             {:noreply, socket}
 
           {:error, %Changeset{} = changeset} ->
-            {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+            {:noreply,
+             socket
+             |> assign_form(Map.put(changeset, :action, :validate))
+             |> maybe_refresh_path_options()}
         end
     end
   end
@@ -736,6 +768,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:delivery_handle_error, nil)
          |> assign(:delivery_media_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)
+         |> maybe_refresh_path_options(force: true)
          |> assign_transfer_state()}
 
       {:error, %Changeset{} = changeset} ->
@@ -746,6 +779,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:delivery_handle_error, Map.get(delivery_errors, :handles))
          |> assign(:delivery_media_error, Map.get(delivery_errors, :media))
          |> assign_form(Map.put(changeset, :action, :validate), handles: handles)
+         |> maybe_refresh_path_options()
          |> assign_transfer_state()}
     end
   end
@@ -766,6 +800,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:delivery_handle_error, nil)
          |> assign(:delivery_media_error, nil)
          |> assign_form(Monitors.change_monitor(monitor, %{}), handles: handles)
+         |> maybe_refresh_path_options(force: true)
          |> assign_transfer_state()}
 
       {:error, :forbidden} ->
@@ -791,6 +826,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
          |> assign(:delivery_handle_error, Map.get(delivery_errors, :handles))
          |> assign(:delivery_media_error, Map.get(delivery_errors, :media))
          |> assign_form(Map.put(changeset, :action, :validate), handles: handles)
+         |> maybe_refresh_path_options()
          |> assign_transfer_state()}
     end
   end
@@ -1284,6 +1320,193 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp normalize_selection(value) when value in [nil, ""], do: ""
   defp normalize_selection(value), do: to_string(value)
+
+  defp maybe_refresh_path_options(socket, opts \\ []) do
+    monitor = socket.assigns[:monitor]
+
+    cond do
+      is_nil(monitor) ->
+        socket
+
+      monitor.type != :alert ->
+        socket
+        |> assign(:path_options, [])
+        |> assign(:path_fetch_state, :not_applicable)
+        |> assign(:path_fetch_fingerprint, nil)
+        |> assign(:path_fetch_last_checked, nil)
+
+      true ->
+        with {:ok, source} <- resolve_monitor_source(socket, monitor),
+             {:ok, key} <- normalize_metric_key(monitor.alert_metric_key),
+             {:ok, fingerprint} <- should_fetch_paths?(socket, source, key, opts) do
+          socket
+          |> assign(:path_fetch_state, :loading)
+          |> assign(:path_fetch_meta, %{})
+          |> do_refresh_path_options(source, key, fingerprint)
+        else
+          {:error, :missing_source} ->
+            socket
+            |> assign(:path_options, [])
+            |> assign(:path_fetch_state, :awaiting_source)
+            |> assign(:path_fetch_fingerprint, nil)
+            |> assign(:path_fetch_last_checked, nil)
+
+          {:error, :missing_key} ->
+            socket
+            |> assign(:path_options, [])
+            |> assign(:path_fetch_state, :awaiting_key)
+            |> assign(:path_fetch_fingerprint, nil)
+            |> assign(:path_fetch_last_checked, nil)
+
+          :skip ->
+            socket
+
+          {:error, reason} ->
+            socket
+            |> assign(:path_options, [])
+            |> assign(:path_fetch_state, {:error, reason})
+        end
+    end
+  end
+
+  defp do_refresh_path_options(socket, source, key, fingerprint) do
+    case PathSuggestions.sample_options(source, key) do
+      {:ok, %{options: options, meta: meta}} ->
+        state = if Enum.empty?(options), do: :empty, else: {:ready, meta}
+
+        socket
+        |> assign(:path_options, options)
+        |> assign(:path_fetch_meta, meta)
+        |> assign(:path_fetch_state, state)
+        |> assign(:path_fetch_fingerprint, fingerprint)
+        |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+
+      {:error, reason} ->
+        socket
+        |> assign(:path_options, [])
+        |> assign(:path_fetch_meta, %{})
+        |> assign(:path_fetch_state, {:error, reason})
+        |> assign(:path_fetch_fingerprint, fingerprint)
+        |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+    end
+  end
+
+  defp resolve_monitor_source(socket, %Monitor{} = monitor) do
+    sources = socket.assigns[:sources] || []
+
+    with {:ok, {type, id}} <- monitor_source_tuple(monitor),
+         %Source{} = source <-
+           Enum.find(sources, fn source ->
+             Source.type(source) == type && to_string(Source.id(source)) == to_string(id)
+           end) do
+      {:ok, source}
+    else
+      _ -> {:error, :missing_source}
+    end
+  end
+
+  defp monitor_source_tuple(%Monitor{source_type: type, source_id: id})
+       when type not in [nil, ""] and id not in [nil, ""] do
+    {:ok, {normalize_source_type(type), id}}
+  end
+
+  defp monitor_source_tuple(_), do: {:error, :missing_source}
+
+  defp normalize_source_type(type) when is_atom(type), do: type
+
+  defp normalize_source_type(type) when is_binary(type) do
+    case String.downcase(type) do
+      "database" -> :database
+      "project" -> :project
+      other -> String.to_atom(other)
+    end
+  end
+
+  defp normalize_source_type(type), do: type
+
+  defp normalize_metric_key(nil), do: {:error, :missing_key}
+
+  defp normalize_metric_key(key) do
+    trimmed =
+      key
+      |> to_string()
+      |> String.trim()
+
+    if trimmed == "" do
+      {:error, :missing_key}
+    else
+      {:ok, trimmed}
+    end
+  end
+
+  defp should_fetch_paths?(socket, source, key, opts) do
+    fingerprint = path_fetch_fingerprint(source, key)
+    force? = Keyword.get(opts, :force, false)
+    last_fingerprint = socket.assigns[:path_fetch_fingerprint]
+    state = socket.assigns[:path_fetch_state]
+
+    cond do
+      force? -> {:ok, fingerprint}
+      last_fingerprint != fingerprint -> {:ok, fingerprint}
+      match?({:error, _}, state) -> {:ok, fingerprint}
+      state == :empty -> {:ok, fingerprint}
+      stale_path_fetch?(socket.assigns[:path_fetch_last_checked]) -> {:ok, fingerprint}
+      true -> :skip
+    end
+  end
+
+  defp stale_path_fetch?(nil), do: true
+
+  defp stale_path_fetch?(timestamp) do
+    System.monotonic_time(:millisecond) - timestamp > @path_refresh_ttl_ms
+  end
+
+  defp path_fetch_fingerprint(source, key) do
+    type = Source.type(source)
+    id = Source.id(source)
+    "#{type}:#{id}:#{key}"
+  end
+
+  defp path_status_message(:not_applicable, _meta), do: nil
+  defp path_status_message(:idle, _meta), do: nil
+  defp path_status_message(:awaiting_source, _meta), do: {"Select a source to enable path suggestions.", :muted}
+  defp path_status_message(:awaiting_key, _meta), do: {"Enter a metric key to preview its available paths.", :muted}
+  defp path_status_message(:loading, _meta), do: {"Sampling recent data for autocomplete…", :muted}
+  defp path_status_message(:empty, _meta), do: {"No matching paths were found in the sampled window.", :warning}
+
+  defp path_status_message({:ready, meta}, _meta2) do
+    granularity = meta[:granularity] || "selected granularity"
+    {"Suggestions refreshed from the last #{granularity} segment.", :success}
+  end
+
+  defp path_status_message({:error, reason}, _meta) do
+    {"Unable to load sample paths#{format_path_error(reason)}.", :danger}
+  end
+
+  defp path_status_message(_, _), do: nil
+
+  defp path_hint_class(:muted), do: "text-slate-500 dark:text-slate-400"
+  defp path_hint_class(:success), do: "text-teal-600 dark:text-teal-400"
+  defp path_hint_class(:warning), do: "text-amber-600 dark:text-amber-400"
+  defp path_hint_class(:danger), do: "text-rose-600 dark:text-rose-400"
+  defp path_hint_class(_), do: "text-slate-500 dark:text-slate-400"
+
+  defp format_path_error({:invalid_granularity, granularity}), do: " (invalid granularity #{granularity})"
+
+  defp format_path_error({:no_granularity, _}), do: " (no granularities configured)"
+
+  defp format_path_error(:missing_source), do: " (source missing)"
+  defp format_path_error(:missing_key), do: " (metric key missing)"
+
+  defp format_path_error(reason) do
+    detail =
+      case reason do
+        value when is_binary(value) -> value
+        value -> inspect(value)
+      end
+
+    " (#{detail})"
+  end
 
   defp assign_form(socket, %Changeset{} = changeset, opts \\ []) do
     monitor = Changeset.apply_changes(changeset)

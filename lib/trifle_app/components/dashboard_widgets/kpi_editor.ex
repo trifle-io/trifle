@@ -3,7 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
 
   use Phoenix.Component
 
-  import TrifleApp.Components.DashboardWidgets.PathInput, only: [path_autocomplete_input: 1]
+  import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
 
   alias TrifleApp.Components.DashboardWidgets.Helpers
 
