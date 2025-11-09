@@ -21,6 +21,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
 
   @default_viewport %{width: 1366, height: 900}
+  @widget_viewport %{width: 1024, height: 768}
 
   @doc """
   Returns the normalized grid widget definitions for an alert monitor.
@@ -91,8 +92,15 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp build_context(monitor, opts) do
     params = Keyword.get(opts, :params, %{})
     theme = Keyword.get(opts, :theme, :light)
-    viewport = Keyword.get(opts, :viewport, @default_viewport)
     selected_widget = Keyword.get(opts, :selected_widget_id)
+
+    default_viewport =
+      case selected_widget do
+        nil -> @default_viewport
+        _ -> @widget_viewport
+      end
+
+    viewport = Keyword.get(opts, :viewport, default_viewport)
 
     with {:ok, source} <- resolve_source(monitor),
          {:ok, config} <- {:ok, Source.stats_config(source)},
@@ -405,10 +413,11 @@ defmodule TrifleApp.Exports.MonitorLayout do
             timeseries: datasets.timeseries,
             category: datasets.category,
             text_widgets: datasets.text,
-            export_params: %{},
-            dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id"),
-            print_width: printable_width(viewport)
-          }
+          export_params: %{},
+          dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id"),
+          print_width: printable_width(viewport),
+          print_cell_height: widget_print_cell_height(grid_items, selected_widget_id, viewport)
+        }
 
         layout =
           Layout.new(%{
@@ -576,6 +585,24 @@ defmodule TrifleApp.Exports.MonitorLayout do
   end
 
   defp printable_width(_), do: 1366
+
+  defp widget_print_cell_height(_grid, nil, _viewport), do: nil
+
+  defp widget_print_cell_height(grid, _widget_id, %{height: height})
+       when is_list(grid) and is_integer(height) and height > 0 do
+    rows =
+      grid
+      |> Enum.map(&derive_widget_height/1)
+      |> Enum.max(fn -> 0 end)
+
+    cond do
+      rows <= 0 -> nil
+      true -> max(div(height, rows), 40)
+    end
+  end
+
+  defp widget_print_cell_height(_, _, _), do: nil
+
 
   defp monitor_alert_widgets(%Monitor{} = monitor) do
     case extract_target_widgets(monitor.target) do

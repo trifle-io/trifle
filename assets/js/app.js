@@ -1201,14 +1201,6 @@ Hooks.DashboardGrid = {
     // Ready signaling for export capture
     this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false };
     this._markedReady = false;
-    this._scheduleReadyMark = () => {
-      if (this._readyTimer) clearTimeout(this._readyTimer);
-      this._readyTimer = setTimeout(() => {
-        if (this._markedReady) return;
-        const ready = this._seen.timeseries || this._seen.category || this._seen.text || (this._seen.kpi_values && this._seen.kpi_visual);
-        if (ready) { this._markedReady = true; try { window.TRIFLE_READY = true; } catch (_) {} }
-      }, 200);
-    };
 
     this._onThemeChange = (event) => {
       const theme = event && event.detail && event.detail.theme;
@@ -1251,16 +1243,37 @@ Hooks.DashboardGrid = {
     // Ready signaling helpers for export (used by CDP waiter)
     try {
       window.TRIFLE_READY = false;
+      const requireChartsReady = () => {
+        const rawNodes = Array.from(document.querySelectorAll('.ts-chart, .cat-chart, .kpi-visual'));
+        const chartNodes = rawNodes.filter((node) => {
+          if (!node) return false;
+          if (node.classList && node.classList.contains('kpi-visual')) {
+            const hasVisual = node.dataset && node.dataset.visualType && node.dataset.visualType !== '';
+            const isHidden = node.offsetParent === null || getComputedStyle(node).display === 'none';
+            return hasVisual && !isHidden;
+          }
+          return true;
+        });
+
+        if (chartNodes.length === 0) {
+          return this._seen.timeseries || this._seen.category || this._seen.text || (this._seen.kpi_values && this._seen.kpi_visual);
+        }
+
+        return chartNodes.every((node) => node.dataset && node.dataset.echartsReady === '1');
+      };
+
       this._scheduleReadyMark = () => {
+        if (this._markedReady) return;
         if (this._readyTimer) clearTimeout(this._readyTimer);
         this._readyTimer = setTimeout(() => {
           try {
-            const charts = document.querySelectorAll('.ts-chart, .cat-chart, .kpi-visual');
-            if (charts.length === 0) return;
-            const allReady = Array.prototype.every.call(charts, el => el && el.dataset && el.dataset.echartsReady === '1');
-            if (allReady) requestAnimationFrame(() => requestAnimationFrame(() => { window.TRIFLE_READY = true; }));
+            if (this._markedReady) return;
+            if (requireChartsReady()) {
+              this._markedReady = true;
+              requestAnimationFrame(() => requestAnimationFrame(() => { window.TRIFLE_READY = true; }));
+            }
           } catch (_) {}
-        }, 100);
+        }, 120);
       };
     } catch (_) {}
 
@@ -1381,6 +1394,11 @@ Hooks.DashboardGrid = {
       this.initialItems.forEach((item) => this.addGridItemEl(item));
     }
 
+    const customCellHeight = parseInt(this.el.dataset.printCellHeight || '', 10);
+    const resolvedCellHeight = (this.el.dataset.printMode === 'true' && customCellHeight > 0)
+      ? customCellHeight
+      : 80;
+
     this.grid = GridStack.init({
       column: this.cols,
       minRow: this.minRows,
@@ -1388,7 +1406,7 @@ Hooks.DashboardGrid = {
       margin: 5,
       disableOneColumnMode: true,
       styleInHead: true,
-      cellHeight: 80,
+      cellHeight: resolvedCellHeight,
       // drag only by the title bar (between title and cog button)
       draggable: { handle: '.grid-widget-handle' },
     }, this.el);
@@ -1498,8 +1516,8 @@ Hooks.DashboardGrid = {
       if (visual) {
         if (!hasVisual) {
           visual.style.display = 'none';
-          visual.dataset.visualType = '';
-          visual.dataset.echartsReady = '0';
+          delete visual.dataset.visualType;
+          visual.dataset.echartsReady = '1';
           const chart = this._sparklines && this._sparklines[it.id];
           if (chart && !chart.isDisposed()) chart.dispose();
           if (this._sparklines) delete this._sparklines[it.id];
@@ -1510,6 +1528,7 @@ Hooks.DashboardGrid = {
           if (this._sparkTypes) delete this._sparkTypes[it.id];
         } else {
           visual.style.display = '';
+          visual.dataset.echartsReady = '0';
           visual.dataset.visualType = visualType || 'sparkline';
           if (visualType !== 'progress') {
             visual.style.marginTop = 'auto';
