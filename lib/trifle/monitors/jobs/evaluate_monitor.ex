@@ -127,12 +127,16 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
          stats when not is_nil(stats) <- fetch_stats_struct(export),
          evaluations <- evaluate_each_alert(monitor, stats),
          {triggered, _non_triggered} <- Enum.split_with(evaluations, & &1.result.triggered?) do
-      deliveries = deliver_triggered_alerts(monitor, triggered, timeframe)
+      recoveries = recovered_alerts(evaluations)
+      deliveries =
+        deliver_triggered_alerts(monitor, triggered, timeframe) ++
+          deliver_recovered_alerts(monitor, recoveries, timeframe)
+
       status = execution_status(triggered, deliveries, evaluations)
 
       log_execution(monitor, %{
         status: status,
-        summary: build_alert_summary(triggered, deliveries, evaluations, status),
+        summary: build_alert_summary(triggered, recoveries, deliveries, evaluations, status),
         details: %{
           kind: "alert",
           scheduled_for: scheduled_for,
@@ -233,36 +237,70 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end)
   end
 
+  defp recovered_alerts(evaluations) do
+    Enum.filter(evaluations, fn
+      %{alert: %Alert{status: :alerted}, result: result, status: :ok} ->
+        not Map.get(result, :triggered?, false)
+
+      _ ->
+        false
+    end)
+  end
+
   defp deliver_triggered_alerts(_monitor, [], _timeframe), do: []
 
   defp deliver_triggered_alerts(monitor, triggered, timeframe) do
+    deliver_alert_events(monitor, triggered, timeframe, :triggered)
+  end
+
+  defp deliver_recovered_alerts(_monitor, [], _timeframe), do: []
+
+  defp deliver_recovered_alerts(monitor, recoveries, timeframe) do
+    deliver_alert_events(monitor, recoveries, timeframe, :recovered)
+  end
+
+  defp deliver_alert_events(monitor, events, timeframe, trigger_type) do
     notify_every = normalize_notify_every(monitor.alert_notify_every)
 
-    Enum.map(triggered, fn %{alert: %Alert{} = alert} ->
+    Enum.map(events, fn %{alert: %Alert{} = alert} ->
       cond do
         monitor.status == :paused ->
-          {:suppressed, alert, %{reason: :monitor_paused}}
+          {:suppressed, alert, %{reason: :monitor_paused, event: trigger_type}}
 
-        not deliver_on_frequency?(alert, notify_every) ->
-          {:suppressed, alert, %{reason: :notify_every, notify_every: notify_every}}
+        trigger_type == :triggered and not deliver_on_frequency?(alert, notify_every) ->
+          {:suppressed, alert,
+           %{reason: :notify_every, notify_every: notify_every, event: trigger_type}}
 
         true ->
-          case TestDelivery.deliver_alert(monitor, alert, export_params: timeframe) do
+          case TestDelivery.deliver_alert(monitor, alert,
+                 export_params: timeframe,
+                 trigger_type: trigger_type
+               ) do
             {:ok, payload} ->
-              {:ok, alert, prune_large_values(payload)}
+              {:ok, alert,
+               %{payload: prune_large_values(payload), event: trigger_type}}
 
             {:error, reason} ->
               Logger.warning(
                 "Alert delivery failed for monitor #{monitor.id} alert #{alert.id}: #{inspect(reason)}"
               )
 
-              {:error, alert, format_reason(reason)}
+              {:error, alert, %{reason: format_reason(reason), event: trigger_type}}
           end
       end
     end)
   end
 
   defp execution_status(triggered, deliveries, evaluations) do
+    triggered_ids =
+      triggered
+      |> Enum.map(fn
+        %{alert: %Alert{id: id}} -> id
+        _ -> nil
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
+
     evaluation_failed? = Enum.any?(evaluations, &(&1.status != :ok))
 
     delivery_failed? =
@@ -273,13 +311,17 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
     delivery_suppressed? =
       Enum.any?(deliveries, fn
-        {:suppressed, _, _} -> true
+        {:suppressed, %Alert{id: id}, meta} ->
+          MapSet.member?(triggered_ids, id) and delivery_event_type(meta) == :triggered
+
         _ -> false
       end)
 
     delivery_succeeded? =
       Enum.any?(deliveries, fn
-        {:ok, _, _} -> true
+        {:ok, %Alert{id: id}, meta} ->
+          MapSet.member?(triggered_ids, id) and delivery_event_type(meta) == :triggered
+
         _ -> false
       end)
 
@@ -298,15 +340,31 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end
   end
 
-  defp build_alert_summary([], _deliveries, _evaluations, "passed"),
+  defp build_alert_summary(triggered, recoveries, deliveries, evaluations, status) do
+    trigger_summary = build_trigger_summary(triggered, deliveries, evaluations, status)
+    recovery_summary = build_recovery_summary(recoveries, deliveries)
+
+    cond do
+      recovery_summary && trigger_summary ->
+        trigger_summary <> " " <> recovery_summary
+
+      recovery_summary ->
+        recovery_summary
+
+      true ->
+        trigger_summary
+    end
+  end
+
+  defp build_trigger_summary([], _deliveries, _evaluations, "passed"),
     do: "No alerts triggered."
 
-  defp build_alert_summary(triggered, _deliveries, _evaluations, "alerted") do
+  defp build_trigger_summary(triggered, _deliveries, _evaluations, "alerted") do
     triggered_ids = triggered |> Enum.map(&alert_label/1) |> Enum.join(", ")
     "Delivered alerts for #{triggered_ids}."
   end
 
-  defp build_alert_summary(triggered, deliveries, _evaluations, "suppressed") do
+  defp build_trigger_summary(triggered, deliveries, _evaluations, "suppressed") do
     triggered_ids = triggered |> Enum.map(&alert_label/1) |> Enum.join(", ")
 
     reasons =
@@ -340,7 +398,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end
   end
 
-  defp build_alert_summary(triggered, deliveries, evaluations, "failed") do
+  defp build_trigger_summary(triggered, deliveries, evaluations, "failed") do
     triggered_ids = triggered |> Enum.map(&alert_label/1) |> Enum.join(", ")
 
     delivery_failed? =
@@ -366,10 +424,62 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end
   end
 
-  defp build_alert_summary(_triggered, _deliveries, _evaluations, _status),
+  defp build_trigger_summary(_triggered, _deliveries, _evaluations, _status),
     do: "Alert processing completed."
 
+  defp build_recovery_summary([], _deliveries), do: nil
+
+  defp build_recovery_summary(_recoveries, deliveries) do
+    {successes, failures, suppressed} =
+      Enum.reduce(deliveries, {[], [], []}, fn
+        {:ok, %Alert{} = alert, meta}, {succ, fail, sup} ->
+          if delivery_event_type(meta) == :recovered do
+            {[alert_label(alert) | succ], fail, sup}
+          else
+            {succ, fail, sup}
+          end
+
+        {:error, %Alert{} = alert, meta}, {succ, fail, sup} ->
+          if delivery_event_type(meta) == :recovered do
+            {succ, [alert_label(alert) | fail], sup}
+          else
+            {succ, fail, sup}
+          end
+
+        {:suppressed, %Alert{} = alert, meta}, {succ, fail, sup} ->
+          if delivery_event_type(meta) == :recovered do
+            {succ, fail, [alert_label(alert) | sup]}
+          else
+            {succ, fail, sup}
+          end
+
+        _, acc ->
+          acc
+      end)
+
+    []
+    |> maybe_add_recovery_part(successes, "Recovery notifications sent for ")
+    |> maybe_add_recovery_part(failures, "Recovery notifications failed for ")
+    |> maybe_add_recovery_part(suppressed, "Recovery notifications suppressed for ")
+    |> case do
+      [] -> nil
+      parts -> Enum.join(parts, " ")
+    end
+  end
+
+  defp maybe_add_recovery_part(parts, [], _prefix), do: parts
+
+  defp maybe_add_recovery_part(parts, labels, prefix) do
+    formatted =
+      labels
+      |> Enum.reverse()
+      |> Enum.join(", ")
+
+    parts ++ ["#{prefix}#{formatted}."]
+  end
+
   defp alert_label(%{alert: %Alert{id: id}}), do: "alert #{id}"
+  defp alert_label(%Alert{id: id}), do: "alert #{id}"
   defp alert_label(_), do: "unknown alert"
 
   defp map_evaluations(evaluations) do
@@ -385,21 +495,50 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end)
   end
 
+  defp delivery_event_type(meta) when is_map(meta), do: Map.get(meta, :event, :triggered)
+  defp delivery_event_type(_), do: :triggered
+
+  defp notification_label(meta) do
+    case delivery_event_type(meta) do
+      :recovered -> "Recovery notification"
+      :previewed -> "Preview notification"
+      _ -> "Alert notification"
+    end
+  end
+
   defp format_deliveries(deliveries) do
     Enum.map(deliveries, fn
-      {:ok, %Alert{id: id}, payload} ->
-        %{alert_id: id, status: "success", payload: payload}
+      {:ok, %Alert{id: id}, meta} ->
+        %{
+          alert_id: id,
+          status: "success",
+          event: delivery_event_type(meta) |> Atom.to_string()
+        }
+        |> maybe_put_payload(meta)
 
-      {:error, %Alert{id: id}, reason} ->
-        %{alert_id: id, status: "error", reason: reason}
+      {:error, %Alert{id: id}, meta} ->
+        %{
+          alert_id: id,
+          status: "error",
+          event: delivery_event_type(meta) |> Atom.to_string(),
+          reason: Map.get(meta, :reason)
+        }
 
       {:suppressed, %Alert{id: id}, meta} ->
         %{
           alert_id: id,
           status: "suppressed",
+           event: delivery_event_type(meta) |> Atom.to_string(),
           reason: suppression_reason_label(meta)
         }
     end)
+  end
+
+  defp maybe_put_payload(map, meta) do
+    case Map.get(meta, :payload) do
+      nil -> map
+      payload -> Map.put(map, :payload, payload)
+    end
   end
 
   defp prune_large_values(value) when is_map(value) do
@@ -468,21 +607,21 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp next_trigger_count(_alert, false), do: 0
 
-  defp suppression_summary(%{reason: :monitor_paused}) do
-    "Alert triggered but notifications suppressed because the monitor is paused."
+  defp suppression_summary(%{reason: :monitor_paused} = meta) do
+    "#{notification_label(meta)} suppressed because the monitor is paused."
   end
 
-  defp suppression_summary(%{reason: :notify_every, notify_every: notify_every})
+  defp suppression_summary(%{reason: :notify_every, notify_every: notify_every} = meta)
        when is_integer(notify_every) do
-    "Alert triggered but notifications throttled (notify every #{notify_every} trigger(s))."
+    "#{notification_label(meta)} throttled (notify every #{notify_every} trigger(s))."
   end
 
-  defp suppression_summary(%{reason: reason}) when is_atom(reason) do
+  defp suppression_summary(%{reason: reason} = meta) when is_atom(reason) do
     formatted = reason |> Atom.to_string() |> String.replace("_", " ")
-    "Alert triggered but notifications suppressed (#{formatted})."
+    "#{notification_label(meta)} suppressed (#{formatted})."
   end
 
-  defp suppression_summary(_), do: "Alert triggered but notifications were suppressed."
+  defp suppression_summary(meta), do: "#{notification_label(meta)} suppressed."
 
   defp suppression_reason_description(%{reason: :monitor_paused}), do: "monitor is paused"
 
@@ -568,8 +707,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:ok, %Alert{id: id}, _}, acc ->
           Map.put(acc, id, :success)
 
-        {:error, %Alert{id: id}, reason}, acc ->
-          Map.put(acc, id, {:error, reason})
+        {:error, %Alert{id: id}, meta}, acc ->
+          Map.put(acc, id, {:error, Map.get(meta, :reason)})
 
         {:suppressed, %Alert{id: id}, meta}, acc ->
           Map.put(acc, id, {:suppressed, meta})
