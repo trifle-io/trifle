@@ -97,7 +97,12 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
 
         <:actions>
           <.form_actions>
-            <.primary_button phx-disable-with="Saving..." class="bg-teal-600 hover:bg-teal-500">
+            <.secondary_button type="button" phx-click={JS.patch(@patch)}>
+              Cancel
+            </.secondary_button>
+            <.primary_button
+              phx-disable-with={if @action == :new, do: "Creating...", else: "Saving..."}
+            >
               {if @action == :new, do: "Create Transponder", else: "Update Transponder"}
             </.primary_button>
           </.form_actions>

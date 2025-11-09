@@ -255,8 +255,10 @@ defmodule TrifleApp.ProjectSettingsLive do
 
           <:actions>
             <.form_actions>
+              <.secondary_button type="button" phx-click="close_edit_modal">
+                Cancel
+              </.secondary_button>
               <.primary_button phx-disable-with="Saving...">Save changes</.primary_button>
-              <.secondary_button phx-click="close_edit_modal">Cancel</.secondary_button>
             </.form_actions>
           </:actions>
         </.form_container>

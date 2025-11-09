@@ -255,16 +255,22 @@ defmodule TrifleApp.OrganizationUsersLive do
           <% end %>
         </div>
 
+        <% invite_cancel = JS.push("close_invite_modal") %>
         <.app_modal
           id="invite-member"
           show={@show_invite_modal}
-          on_cancel="close_invite_modal"
+          on_cancel={invite_cancel}
           size="md"
         >
           <:title>Invite a new member</:title>
           <:body>
             <%= if @can_manage do %>
-              <.form for={@invitation_form} phx-submit="invite_member" class="space-y-4">
+              <.form
+                for={@invitation_form}
+                id="invite-member-form"
+                phx-submit="invite_member"
+                class="space-y-4"
+              >
                 <.form_field
                   type="email"
                   field={@invitation_form[:email]}
@@ -299,7 +305,12 @@ defmodule TrifleApp.OrganizationUsersLive do
                   </div>
                 </div>
                 <.form_actions>
-                  <.primary_button phx-disable-with="Sending...">Send invitation</.primary_button>
+                  <.secondary_button type="button" phx-click={invite_cancel}>
+                    Cancel
+                  </.secondary_button>
+                  <.primary_button form="invite-member-form" phx-disable-with="Sending...">
+                    Send invitation
+                  </.primary_button>
                 </.form_actions>
               </.form>
             <% else %>

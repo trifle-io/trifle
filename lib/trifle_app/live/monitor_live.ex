@@ -371,14 +371,10 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:sources, load_sources(membership))
       |> assign(:delivery_options, Monitors.delivery_options_for_membership(membership))
 
-    socket = put_flash(socket, :info, "Monitor updated")
-
     socket =
-      if socket.assigns.live_action == :configure do
-        socket
-      else
-        push_patch(socket, to: ~p"/monitors/#{monitor.id}")
-      end
+      socket
+      |> put_flash(:info, "Monitor updated")
+      |> push_patch(to: ~p"/monitors/#{monitor.id}")
 
     {:noreply, socket}
   end

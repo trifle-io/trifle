@@ -599,15 +599,16 @@ defmodule TrifleApp.DashboardsLive do
       </div>
       
     <!-- New Dashboard Modal -->
+      <% dashboard_cancel = JS.patch(~p"/dashboards") %>
       <.app_modal
         :if={@live_action == :new}
         id="dashboard-modal"
         show
-        on_cancel={JS.patch(~p"/dashboards")}
+        on_cancel={dashboard_cancel}
       >
         <:title>New Dashboard</:title>
         <:body>
-          <.form for={%{}} phx-submit="create_dashboard" class="space-y-4">
+          <.form for={%{}} id="dashboard-form" phx-submit="create_dashboard" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                 Name
@@ -677,21 +678,14 @@ defmodule TrifleApp.DashboardsLive do
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
               />
             </div>
-            <div class="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                phx-click={JS.patch(~p"/dashboards")}
-                class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-              >
+            <.form_actions class="pt-2">
+              <.secondary_button type="button" phx-click={dashboard_cancel}>
                 Cancel
-              </button>
-              <button
-                type="submit"
-                class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-              >
+              </.secondary_button>
+              <.primary_button form="dashboard-form" phx-disable-with="Creating...">
                 Create
-              </button>
-            </div>
+              </.primary_button>
+            </.form_actions>
           </.form>
         </:body>
       </.app_modal>

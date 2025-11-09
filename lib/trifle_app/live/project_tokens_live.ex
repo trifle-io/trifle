@@ -130,7 +130,7 @@ defmodule TrifleApp.ProjectTokensLive do
                 Tokens authenticate ingestion clients for this project. Configure the access level you need.
               </p>
 
-              <.form for={@form} phx-submit="create" class="space-y-6">
+              <.form for={@form} id="project-token-form" phx-submit="create" class="space-y-6">
                 <div class="grid gap-6 sm:grid-cols-3 sm:items-start">
                   <div>
                     <label
@@ -205,20 +205,12 @@ defmodule TrifleApp.ProjectTokensLive do
                   </div>
                 </div>
 
-                <div class="flex items-center justify-end gap-3">
-                  <.button
-                    phx-disable-with="Creating..."
-                    class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-                  >
-                    Create
-                  </.button>
-                  <.link
-                    navigate={~p"/projects/#{@project.id}/tokens"}
-                    class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:border-gray-300 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-                  >
+                <.form_actions>
+                  <.secondary_button navigate={~p"/projects/#{@project.id}/tokens"}>
                     Cancel
-                  </.link>
-                </div>
+                  </.secondary_button>
+                  <.primary_button phx-disable-with="Creating...">Create</.primary_button>
+                </.form_actions>
               </.form>
             </div>
           <% end %>

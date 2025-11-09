@@ -40,7 +40,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <.app_modal id="monitor-modal" show on_cancel={JS.patch(@patch)} size="md">
+      <% cancel_action = JS.patch(@patch) %>
+      <.app_modal id="monitor-modal" show on_cancel={cancel_action} size="md">
         <:title>{@title}</:title>
         <:body>
           <.simple_form
@@ -412,139 +413,131 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
               </div>
             </div>
 
-            <div class="flex w-full items-center justify-end gap-3">
-              <.link
-                patch={@patch}
-                class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
-              >
-                Cancel
-              </.link>
-              <.button type="submit">
-                {if @action == :new, do: "Create monitor", else: "Save changes"}
-              </.button>
-            </div>
-            <div
-              :if={@persisted_monitor && @persisted_monitor.id}
-              class="border-t border-gray-200 pt-6 dark:border-slate-700"
+          </.simple_form>
+        </:body>
+        <:actions>
+          <.form_actions>
+            <.secondary_button type="button" phx-click={cancel_action}>
+              Cancel
+            </.secondary_button>
+            <.primary_button
+              form="monitor-form"
+              phx-disable-with={if @action == :new, do: "Creating...", else: "Saving..."}
             >
-              <% locked? = @persisted_monitor.locked || false %>
-              <div class="flex items-center justify-between">
-                <div>
-                  <span class="text-sm font-semibold text-slate-900 dark:text-white">
-                    Lock
-                  </span>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    Prevent other organization members from changing this monitor while it's locked.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  phx-click="toggle_lock"
-                  phx-target={@myself}
-                  disabled={!@can_manage_lock}
-                  class={[
-                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                    if(locked?,
-                      do: "bg-amber-500 dark:bg-amber-400",
-                      else: "bg-gray-200 dark:bg-gray-700"
-                    ),
-                    if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
-                  ]}
-                >
-                  <span class={[
-                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                    if(locked?, do: "translate-x-5", else: "translate-x-0")
-                  ]}>
-                  </span>
-                </button>
-              </div>
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                When locked, only the owner and organization admins can modify configuration or alerts.
-              </p>
-              <p :if={!@can_manage_lock} class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Lock state can only be changed by the monitor owner or organization admins.
-              </p>
-            </div>
-
-            <div
-              :if={@persisted_monitor && @persisted_monitor.id}
-              class="mt-8 border-t border-red-200 pt-6 dark:border-red-800"
-            >
-              <div class="mb-4">
-                <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger zone</span>
-                <p class="text-xs text-red-600 dark:text-red-400">
-                  Deleting this monitor cannot be undone.
-                </p>
-              </div>
-              <div :if={@can_manage_lock && Enum.any?(@ownership_candidates)} class="mb-6 space-y-3">
-                <div>
-                  <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
-                    Transfer ownership
-                  </span>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    Move ownership to another member. You may lose edit access if you are not an organization admin.
-                  </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <select
-                    name="monitor_owner_membership_id"
-                    class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                    phx-change="change_monitor_owner_selection"
-                    phx-target={@myself}
-                    value={@selected_transfer_membership_id || ""}
-                  >
-                    <option value="">Select member…</option>
-                    <%= for candidate <- @ownership_candidates do %>
-                      <option
-                        value={candidate.id}
-                        selected={@selected_transfer_membership_id == candidate.id}
-                      >
-                        {candidate.label}
-                      </option>
-                    <% end %>
-                  </select>
-                  <button
-                    type="button"
-                    class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
-                    phx-click="transfer_monitor_owner"
-                    phx-target={@myself}
-                    data-confirm="Transfer ownership to the selected member?"
-                    disabled={@selected_transfer_membership_id in [nil, ""]}
-                  >
-                    Transfer ownership
-                  </button>
-                </div>
-                <p :if={@ownership_transfer_error} class="text-xs text-rose-600 dark:text-rose-400">
-                  {@ownership_transfer_error}
+              {if @action == :new, do: "Create monitor", else: "Save changes"}
+            </.primary_button>
+          </.form_actions>
+        </:actions>
+        <:below_actions :if={@persisted_monitor && @persisted_monitor.id}>
+          <% locked? = @persisted_monitor.locked || false %>
+          <div class="border-t border-gray-200 pt-6 dark:border-slate-700">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-sm font-semibold text-slate-900 dark:text-white">Lock</span>
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                  Prevent other organization members from changing this monitor while it's locked.
                 </p>
               </div>
               <button
                 type="button"
-                phx-click="delete_monitor"
+                phx-click="toggle_lock"
                 phx-target={@myself}
-                data-confirm="Are you sure you want to delete this monitor? This action cannot be undone."
-                class="w-full inline-flex items-center justify-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                disabled={!@can_manage_lock}
+                class={[
+                  "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                  if(locked?, do: "bg-amber-500 dark:bg-amber-400", else: "bg-gray-200 dark:bg-gray-700"),
+                  if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                ]}
               >
-                <svg
-                  class="-ml-0.5 mr-1.5 h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                  />
-                </svg>
-                <span class="hidden md:inline">Delete monitor</span>
-                <span class="md:hidden">Delete</span>
+                <span class={[
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  if(locked?, do: "translate-x-5", else: "translate-x-0")
+                ]}>
+                </span>
               </button>
             </div>
-          </.simple_form>
-        </:body>
+            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              When locked, only the owner and organization admins can modify configuration or alerts.
+            </p>
+            <p :if={!@can_manage_lock} class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Lock state can only be changed by the monitor owner or organization admins.
+            </p>
+          </div>
+
+          <div class="mt-8 border-t border-red-200 pt-6 dark:border-red-800">
+            <div class="mb-4">
+              <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger zone</span>
+              <p class="text-xs text-red-600 dark:text-red-400">
+                Deleting this monitor cannot be undone.
+              </p>
+            </div>
+            <div :if={@can_manage_lock && Enum.any?(@ownership_candidates)} class="mb-6 space-y-3">
+              <div>
+                <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+                  Transfer ownership
+                </span>
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                  Move ownership to another member. You may lose edit access if you are not an organization admin.
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <select
+                  name="monitor_owner_membership_id"
+                  class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  phx-change="change_monitor_owner_selection"
+                  phx-target={@myself}
+                  value={@selected_transfer_membership_id || ""}
+                >
+                  <option value="">Select member…</option>
+                  <%= for candidate <- @ownership_candidates do %>
+                    <option
+                      value={candidate.id}
+                      selected={@selected_transfer_membership_id == candidate.id}
+                    >
+                      {candidate.label}
+                    </option>
+                  <% end %>
+                </select>
+                <button
+                  type="button"
+                  class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                  phx-click="transfer_monitor_owner"
+                  phx-target={@myself}
+                  data-confirm="Transfer ownership to the selected member?"
+                  disabled={@selected_transfer_membership_id in [nil, ""]}
+                >
+                  Transfer ownership
+                </button>
+              </div>
+              <p :if={@ownership_transfer_error} class="text-xs text-rose-600 dark:text-rose-400">
+                {@ownership_transfer_error}
+              </p>
+            </div>
+            <button
+              type="button"
+              phx-click="delete_monitor"
+              phx-target={@myself}
+              data-confirm="Are you sure you want to delete this monitor? This action cannot be undone."
+              class="w-full inline-flex items-center justify-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+            >
+              <svg
+                class="-ml-0.5 mr-1.5 h-4 w-4"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                />
+              </svg>
+              Delete Monitor
+            </button>
+          </div>
+        </:below_actions>
       </.app_modal>
     </div>
     """
