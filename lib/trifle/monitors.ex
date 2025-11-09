@@ -174,6 +174,7 @@ defmodule Trifle.Monitors do
   Triggers a one-off delivery for a specific alert belonging to the monitor.
   """
   def test_deliver_alert(%Monitor{} = monitor, %Alert{} = alert, opts \\ []) do
+    opts = Keyword.put_new(opts, :trigger_type, :previewed)
     TestDelivery.deliver_alert(monitor, alert, opts)
   end
 

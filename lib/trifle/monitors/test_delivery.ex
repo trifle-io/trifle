@@ -20,6 +20,7 @@ defmodule Trifle.Monitors.TestDelivery do
   @default_media [:pdf]
   @supported_media [:pdf, :png_light, :png_dark, :file_csv, :file_json]
   @default_monitor_viewport %{width: 1920, height: 1080}
+  @trigger_types [:triggered, :previewed, :recovered]
 
   @spec deliver_monitor(Monitor.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
@@ -97,7 +98,10 @@ defmodule Trifle.Monitors.TestDelivery do
 
     log_context = Keyword.get(base_exporter_opts, :log_context, %{})
     log_label = ExportLog.label(log_context)
-    opts = Keyword.put(opts, :exporter_opts, base_exporter_opts)
+    opts =
+      opts
+      |> Keyword.put(:exporter_opts, base_exporter_opts)
+      |> Keyword.update(:trigger_type, :triggered, &normalize_trigger_type/1)
 
     cond do
       Enum.empty?(channels) ->
@@ -561,6 +565,12 @@ defmodule Trifle.Monitors.TestDelivery do
     end)
   end
 
+  defp delivery_trigger_type(nil, _opts), do: nil
+
+  defp delivery_trigger_type(_alert, opts) do
+    Keyword.get(opts, :trigger_type, :triggered)
+  end
+
   defp deliver_to_channels(monitor, alert, channels, exports, params, opts) do
     log_context =
       opts
@@ -664,13 +674,14 @@ defmodule Trifle.Monitors.TestDelivery do
         mailer = mailer(opts)
         mailer_opts = Keyword.get(opts, :mailer_opts, [])
         attachments = email_attachments(exports)
+        trigger_type = delivery_trigger_type(alert, opts)
 
         email =
           Email.new()
           |> Email.to(recipient)
           |> Email.from(email_from(opts))
-          |> Email.subject(email_subject(monitor, alert))
-          |> Email.text_body(email_body(monitor, alert, params))
+          |> Email.subject(email_subject(monitor, alert, trigger_type))
+          |> Email.text_body(email_body(monitor, alert, params, trigger_type))
           |> attach_exports(exports)
           |> put_email_client_options(client_options)
 
@@ -854,6 +865,8 @@ defmodule Trifle.Monitors.TestDelivery do
 
     channel_id = resolve_slack_channel_id(channel, config, monitor)
 
+    trigger_type = delivery_trigger_type(alert, opts)
+
     cond do
       blank?(token) ->
         {:error,
@@ -873,7 +886,11 @@ defmodule Trifle.Monitors.TestDelivery do
          }}
 
       true ->
-        message = slack_message(monitor, alert, params)
+        message =
+          case alert do
+            nil -> slack_message(monitor, nil, params)
+            %Alert{} -> slack_message(monitor, alert, params, trigger_type)
+          end
 
         case upload_slack_exports(
                slack_client,
@@ -882,6 +899,7 @@ defmodule Trifle.Monitors.TestDelivery do
                exports,
                monitor,
                alert,
+               trigger_type,
                message,
                slack_opts
              ) do
@@ -906,13 +924,33 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
-  defp upload_slack_exports(_client, _token, _channel_id, [], _monitor, _alert, _message, _opts),
+  defp upload_slack_exports(
+         _client,
+         _token,
+         _channel_id,
+         [],
+         _monitor,
+         _alert,
+         _trigger_type,
+         _message,
+         _opts
+       ),
     do: {:ok, %{files: []}}
 
-  defp upload_slack_exports(client, token, channel_id, exports, monitor, alert, message, opts) do
+  defp upload_slack_exports(
+         client,
+         token,
+         channel_id,
+         exports,
+         monitor,
+         alert,
+         trigger_type,
+         message,
+         opts
+       ) do
     Enum.reduce_while(Enum.with_index(exports, 1), {:ok, []}, fn {export, index}, {:ok, acc} ->
       comment = if index == 1 && present?(message), do: message, else: nil
-      title = slack_export_title(monitor, alert, export)
+      title = slack_export_title(monitor, alert, export, trigger_type)
 
       metadata = %{
         filename: export.filename,
@@ -1196,16 +1234,15 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
-  defp email_subject(%Monitor{} = monitor, nil) do
+  defp email_subject(%Monitor{} = monitor, nil, _trigger_type) do
     "Monitor preview · #{monitor.name}"
   end
 
-  defp email_subject(%Monitor{} = monitor, %Alert{} = alert) do
-    label = MonitorLayout.alert_label(alert) || "Alert"
-    "Alert preview · #{monitor.name} · #{label}"
+  defp email_subject(%Monitor{} = monitor, %Alert{} = alert, trigger_type) do
+    alert_descriptor(monitor, alert, trigger_type)
   end
 
-  defp email_body(%Monitor{} = monitor, nil, params) do
+  defp email_body(%Monitor{} = monitor, nil, params, _trigger_type) do
     detail = window_details(params)
     window_line = window_detail_line(detail)
 
@@ -1219,16 +1256,16 @@ defmodule Trifle.Monitors.TestDelivery do
     |> Enum.join("\n")
   end
 
-  defp email_body(%Monitor{} = monitor, %Alert{} = alert, params) do
-    label = MonitorLayout.alert_label(alert) || "Alert"
+  defp email_body(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type) do
+    descriptor = alert_descriptor(monitor, alert, trigger_type)
     detail = window_details(params)
     window_line = window_detail_line(detail)
 
     [
-      "Quick pulse on #{monitor.name} · #{label}.",
+      descriptor,
       window_line,
       "",
-      "Preview attached. — Trifle"
+      "Snapshot attached. — Trifle"
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")
@@ -1245,25 +1282,23 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
-  defp slack_message(%Monitor{} = monitor, %Alert{} = alert, params) do
-    label = MonitorLayout.alert_label(alert) || "Alert"
+  defp slack_message(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type) do
     detail = window_details(params)
     window_line = window_detail_line(detail)
-    base = "Alert preview: #{label} on #{monitor.name}."
+    base = alert_descriptor(monitor, alert, trigger_type)
 
     case window_line do
-      nil -> base <> " ⚡"
-      line -> base <> "\n" <> line <> " ⚡"
+      nil -> base
+      line -> base <> "\n" <> line
     end
   end
 
-  defp slack_export_title(%Monitor{} = monitor, nil, export) do
+  defp slack_export_title(%Monitor{} = monitor, nil, export, _trigger_type) do
     "#{monitor.name} · #{medium_label(export.medium)}"
   end
 
-  defp slack_export_title(%Monitor{} = monitor, %Alert{} = alert, export) do
-    label = MonitorLayout.alert_label(alert) || "Alert"
-    "#{monitor.name} · #{label} · #{medium_label(export.medium)}"
+  defp slack_export_title(%Monitor{} = monitor, %Alert{} = alert, export, trigger_type) do
+    "#{alert_descriptor(monitor, alert, trigger_type)} · #{medium_label(export.medium)}"
   end
 
   defp medium_label(:pdf), do: "PDF"
@@ -1272,6 +1307,35 @@ defmodule Trifle.Monitors.TestDelivery do
   defp medium_label(:file_csv), do: "File CSV"
   defp medium_label(:file_json), do: "File JSON"
   defp medium_label(other), do: to_string(other)
+
+  defp normalize_trigger_type(type) when type in @trigger_types, do: type
+
+  defp normalize_trigger_type(type) when is_binary(type) do
+    case String.downcase(type) do
+      "previewed" -> :previewed
+      "recovered" -> :recovered
+      _ -> :triggered
+    end
+  end
+
+  defp normalize_trigger_type(_), do: :triggered
+
+  defp alert_descriptor(%Monitor{} = monitor, %Alert{} = alert, trigger_type) do
+    label = MonitorLayout.alert_label(alert) || "Alert"
+
+    [
+      monitor.name,
+      trigger_type_label(trigger_type),
+      label
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
+
+  defp trigger_type_label(:previewed), do: "🧪 Previewed (Test)"
+  defp trigger_type_label(:recovered), do: "✅ Recovered"
+  defp trigger_type_label(:triggered), do: "🚨 Triggered"
+  defp trigger_type_label(_), do: "🚨 Triggered"
 
   defp window_details(params) when is_map(params) do
     timeframe = fetch_param(params, "timeframe")
@@ -1335,8 +1399,8 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp format_datetime(%DateTime{} = dt) do
     dt
-    |> DateTime.truncate(:minute)
-    |> Calendar.strftime("%Y-%m-%d %H:%M %Z")
+    |> DateTime.truncate(:second)
+    |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
   rescue
     _ -> DateTime.to_iso8601(dt)
   end
@@ -1344,7 +1408,16 @@ defmodule Trifle.Monitors.TestDelivery do
   defp format_datetime(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do
       {:ok, dt, _offset} -> format_datetime(dt)
-      {:error, _} -> value
+      {:error, _} ->
+        case NaiveDateTime.from_iso8601(value) do
+          {:ok, naive} ->
+            naive
+            |> NaiveDateTime.truncate(:second)
+            |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
+
+          {:error, _} ->
+            value
+        end
     end
   end
 
