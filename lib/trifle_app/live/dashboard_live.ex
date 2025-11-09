@@ -728,7 +728,7 @@ defmodule TrifleApp.DashboardLive do
 
                   base
                   |> Map.put("paths", auto_expand_path_wildcards(paths, path_options))
-                  |> Map.put("chart_type", Map.get(params, "ts_chart_type", "line"))
+                  |> Map.put("chart_type", Map.get(params, "ts_chart_type", Map.get(i, "chart_type") || "line"))
                   |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
                   |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
                   |> Map.put("legend", Map.has_key?(params, "ts_legend"))
@@ -765,7 +765,7 @@ defmodule TrifleApp.DashboardLive do
                   base
                   |> Map.put("paths", expanded_paths)
                   |> Map.put("path", primary_path)
-                  |> Map.put("chart_type", Map.get(params, "cat_chart_type", "bar"))
+                  |> Map.put("chart_type", Map.get(params, "cat_chart_type", Map.get(i, "chart_type") || "bar"))
 
                 "text" ->
                   subtype =
@@ -892,82 +892,113 @@ defmodule TrifleApp.DashboardLive do
     {:noreply, assign(socket, :editing_widget, w)}
   end
 
-  def handle_event("change_text_subtype", %{"widget_id" => id, "text_subtype" => subtype}, socket) do
-    w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = DashboardWidgetHelpers.normalize_text_subtype(subtype)
-
-    w =
-      w
-      |> Map.put("subtype", normalized)
-      |> Map.put_new("color", "default")
-
-    {:noreply, assign(socket, :editing_widget, w)}
+  def handle_event("set_kpi_function", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         func when not is_nil(func) <- param(params, "function") do
+      update_editing_widget(socket, id, fn widget ->
+        Map.put(widget, "function", normalize_kpi_function(func))
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  def handle_event("change_text_subtype", %{"text_subtype" => subtype} = params, socket) do
-    id =
-      Map.get(params, "widget_id") ||
-        Map.get(params, "widget-id") ||
-        (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
-
-    w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = DashboardWidgetHelpers.normalize_text_subtype(subtype)
-
-    w =
-      w
-      |> Map.put("subtype", normalized)
-      |> Map.put_new("color", "default")
-
-    {:noreply, assign(socket, :editing_widget, w)}
+  def handle_event("set_kpi_size", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         size when not is_nil(size) <- param(params, "size") do
+      update_editing_widget(socket, id, fn widget ->
+        Map.put(widget, "size", normalize_kpi_size(size))
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  def handle_event("change_text_color", %{"widget_id" => id, "color" => color_id}, socket) do
-    w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = DashboardWidgetHelpers.normalize_text_color_id(color_id)
-    w = Map.put(w, "color", normalized)
-
-    {:noreply, assign(socket, :editing_widget, w)}
+  def handle_event("set_ts_chart_type", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         type when not is_nil(type) <- param(params, "chart_type") do
+      update_editing_widget(socket, id, fn widget ->
+        Map.put(widget, "chart_type", normalize_ts_chart_type(type))
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  def handle_event("change_text_color", %{"color" => color_id} = params, socket) do
-    id =
-      Map.get(params, "widget_id") ||
-        Map.get(params, "widget-id") ||
-        (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
-
-    w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = DashboardWidgetHelpers.normalize_text_color_id(color_id)
-    w = Map.put(w, "color", normalized)
-
-    {:noreply, assign(socket, :editing_widget, w)}
+  def handle_event("set_cat_chart_type", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         type when not is_nil(type) <- param(params, "chart_type") do
+      update_editing_widget(socket, id, fn widget ->
+        Map.put(widget, "chart_type", normalize_cat_chart_type(type))
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  def handle_event("change_kpi_subtype", %{"widget_id" => id, "kpi_subtype" => subtype}, socket) do
-    w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
-    {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
+  def handle_event("change_text_subtype", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         subtype when not is_nil(subtype) <- param(params, "text_subtype") do
+      w = socket.assigns.editing_widget || %{"id" => id}
+      normalized = DashboardWidgetHelpers.normalize_text_subtype(subtype)
+
+      w =
+        w
+        |> Map.put("subtype", normalized)
+        |> Map.put_new("color", "default")
+
+      {:noreply, assign(socket, :editing_widget, w)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  defp maybe_put_widget_title(widget, nil), do: widget
+  def handle_event("change_text_color", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         color when not is_nil(color) <- param(params, "color") do
+      w = socket.assigns.editing_widget || %{"id" => id}
+      normalized = DashboardWidgetHelpers.normalize_text_color_id(color)
+      w = Map.put(w, "color", normalized)
 
-  defp maybe_put_widget_title(widget, title) do
-    trimmed =
-      title
-      |> to_string()
-      |> String.trim()
-
-    Map.put(widget, "title", trimmed)
+      {:noreply, assign(socket, :editing_widget, w)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  def handle_event("change_kpi_subtype", %{"kpi_subtype" => subtype} = params, socket) do
-    id =
-      Map.get(params, "widget_id") ||
-        Map.get(params, "widget-id") ||
-        (socket.assigns.editing_widget && socket.assigns.editing_widget["id"])
+  def handle_event("set_text_title_size", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         value when not is_nil(value) <- param(params, "text_title_size") do
+      update_editing_widget(socket, id, fn widget ->
+        size = DashboardWidgetHelpers.normalize_text_title_size(value)
+        Map.put(widget, "title_size", size)
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
 
-    w = socket.assigns.editing_widget || %{"id" => id}
-    normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
-    {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
+  def handle_event("set_text_alignment", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         value when not is_nil(value) <- param(params, "text_alignment") do
+      update_editing_widget(socket, id, fn widget ->
+        alignment = DashboardWidgetHelpers.normalize_text_alignment(value)
+        Map.put(widget, "alignment", alignment)
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("change_kpi_subtype", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         subtype when not is_nil(subtype) <- param(params, "kpi_subtype") do
+      w = socket.assigns.editing_widget || %{"id" => id}
+      normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
+      {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event(
@@ -2864,6 +2895,73 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp changeset_error_message(_), do: nil
+
+  defp maybe_put_widget_title(widget, nil), do: widget
+
+  defp maybe_put_widget_title(widget, title) do
+    trimmed =
+      title
+      |> to_string()
+      |> String.trim()
+
+    Map.put(widget, "title", trimmed)
+  end
+
+  defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do
+    case fetch_editing_widget(socket, id) do
+      {:ok, widget} ->
+        updated = updater.(widget)
+        {:noreply, assign(socket, :editing_widget, updated)}
+
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  defp fetch_editing_widget(socket, id) do
+    widget = socket.assigns[:editing_widget]
+
+    cond do
+      is_nil(widget) -> :error
+      is_nil(id) -> :error
+      to_string(widget["id"]) != to_string(id) -> :error
+      true -> {:ok, widget}
+    end
+  end
+
+  defp normalize_ts_chart_type(value) do
+    case value |> to_string() |> String.downcase() do
+      "area" -> "area"
+      "bar" -> "bar"
+      _ -> "line"
+    end
+  end
+
+  defp normalize_cat_chart_type(value) do
+    case value |> to_string() |> String.downcase() do
+      "pie" -> "pie"
+      "donut" -> "donut"
+      _ -> "bar"
+    end
+  end
+
+  defp normalize_kpi_function(value) do
+    case value |> to_string() |> String.downcase() do
+      v when v in ["sum", "max", "min", "mean"] -> v
+      _ -> "mean"
+    end
+  end
+
+  defp normalize_kpi_size(value) do
+    case value |> to_string() |> String.downcase() do
+      v when v in ["s", "m", "l"] -> v
+      _ -> "m"
+    end
+  end
+
+  defp param(params, key) do
+    Map.get(params, key) || Map.get(params, String.replace(key, "_", "-"))
+  end
 
   defp apply_dashboard_source_change(socket, source) do
     {transponder_info, transponder_response_paths} =

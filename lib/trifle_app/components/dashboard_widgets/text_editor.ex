@@ -29,29 +29,19 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
         <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
           Content Type
         </label>
-        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-          <select
-            name="text_subtype"
-            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-            phx-change="change_text_subtype"
-            phx-value-widget-id={Map.get(@widget, "id")}
-          >
-            <option value="header" selected={@subtype == "header"}>Header</option>
-            <option value="html" selected={@subtype == "html"}>HTML</option>
-          </select>
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            data-slot="icon"
-            aria-hidden="true"
-            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-          >
-            <path
-              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-              clip-rule="evenodd"
-              fill-rule="evenodd"
-            />
-          </svg>
+        <input type="hidden" name="text_subtype" value={@subtype} />
+        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
+          <%= for {label, value, position} <- text_subtype_options() do %>
+            <button
+              type="button"
+              class={text_toggle_classes(@subtype == value, position)}
+              phx-click="change_text_subtype"
+              phx-value-widget-id={Map.get(@widget, "id")}
+              phx-value-text-subtype={value}
+            >
+              {label}
+            </button>
+          <% end %>
         </div>
       </div>
 
@@ -155,28 +145,19 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
         <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
           Title Size
         </label>
-        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-          <select
-            name="text_title_size"
-            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-          >
-            <option value="large" selected={@title_size == "large"}>Large</option>
-            <option value="medium" selected={@title_size == "medium"}>Medium</option>
-            <option value="small" selected={@title_size == "small"}>Small</option>
-          </select>
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            data-slot="icon"
-            aria-hidden="true"
-            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-          >
-            <path
-              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-              clip-rule="evenodd"
-              fill-rule="evenodd"
-            />
-          </svg>
+        <input type="hidden" name="text_title_size" value={@title_size} />
+        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
+          <%= for {label, value, position} <- text_title_size_options() do %>
+            <button
+              type="button"
+              class={text_toggle_classes(@title_size == value, position)}
+              phx-click="set_text_title_size"
+              phx-value-widget-id={Map.get(@widget, "id")}
+              phx-value-text-title-size={value}
+            >
+              {label}
+            </button>
+          <% end %>
         </div>
       </div>
 
@@ -184,28 +165,19 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
         <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
           Alignment
         </label>
-        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-          <select
-            name="text_alignment"
-            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-          >
-            <option value="left" selected={@alignment == "left"}>Left</option>
-            <option value="center" selected={@alignment == "center"}>Center</option>
-            <option value="right" selected={@alignment == "right"}>Right</option>
-          </select>
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            data-slot="icon"
-            aria-hidden="true"
-            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-          >
-            <path
-              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-              clip-rule="evenodd"
-              fill-rule="evenodd"
-            />
-          </svg>
+        <input type="hidden" name="text_alignment" value={@alignment} />
+        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
+          <%= for {label, value, position} <- text_alignment_options() do %>
+            <button
+              type="button"
+              class={text_toggle_classes(@alignment == value, position)}
+              phx-click="set_text_alignment"
+              phx-value-widget-id={Map.get(@widget, "id")}
+              phx-value-text-alignment={value}
+            >
+              {label}
+            </button>
+          <% end %>
         </div>
       </div>
 
@@ -222,5 +194,49 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
       </div>
     </div>
     """
+  end
+
+  defp text_subtype_options do
+    [
+      {"Header", "header", :first},
+      {"HTML", "html", :last}
+    ]
+  end
+
+  defp text_title_size_options do
+    [
+      {"L", "large", :first},
+      {"M", "medium", :middle},
+      {"S", "small", :last}
+    ]
+  end
+
+  defp text_alignment_options do
+    [
+      {"Left", "left", :first},
+      {"Center", "center", :middle},
+      {"Right", "right", :last}
+    ]
+  end
+
+  defp text_toggle_classes(selected, position) do
+    base =
+      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[3.5rem] text-center"
+
+    corners =
+      case position do
+        :first -> "rounded-l-md"
+        :last -> "rounded-r-md"
+        _ -> "border-x border-gray-200 dark:border-slate-600"
+      end
+
+    state =
+      if selected do
+        "bg-teal-600 text-white hover:bg-teal-500"
+      else
+        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      end
+
+    Enum.join([base, corners, state], " ")
   end
 end
