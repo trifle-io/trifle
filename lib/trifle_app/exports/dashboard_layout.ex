@@ -12,6 +12,9 @@ defmodule TrifleApp.Exports.DashboardLayout do
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
 
+  @default_viewport %{width: 1366, height: 900}
+  @widget_viewport %{width: 1024, height: 768}
+
   @type opts :: [
           params: map(),
           theme: Layout.theme(),
@@ -40,8 +43,15 @@ defmodule TrifleApp.Exports.DashboardLayout do
   defp do_build(dashboard, opts) do
     params = Keyword.get(opts, :params, %{})
     theme = Keyword.get(opts, :theme, :light)
-    viewport = Keyword.get(opts, :viewport, %{width: 1366, height: 900})
     selected_widget = Keyword.get(opts, :selected_widget_id)
+
+    default_viewport =
+      case selected_widget do
+        nil -> @default_viewport
+        _ -> @widget_viewport
+      end
+
+    viewport = Keyword.get(opts, :viewport, default_viewport)
 
     with {:ok, source} <- dashboard_source(dashboard),
          {:ok, timeframe} <- resolve_timeframe(source, dashboard, params),
@@ -171,7 +181,8 @@ defmodule TrifleApp.Exports.DashboardLayout do
           text_widgets: pruned_datasets.text,
           export_params: %{},
           dashboard_id: dashboard.id,
-          print_width: printable_width(viewport)
+          print_width: printable_width(viewport),
+          print_cell_height: widget_print_cell_height(filtered_grid, selected_widget_id, viewport)
         }
 
         Layout.new(%{
@@ -224,6 +235,23 @@ defmodule TrifleApp.Exports.DashboardLayout do
   end
 
   defp printable_width(_), do: 1366
+
+  defp widget_print_cell_height(_grid, nil, _viewport), do: nil
+
+  defp widget_print_cell_height(grid, _widget_id, %{height: height})
+       when is_list(grid) and is_integer(height) and height > 0 do
+    rows =
+      grid
+      |> Enum.map(&derive_widget_height/1)
+      |> Enum.max(fn -> 0 end)
+
+    cond do
+      rows <= 0 -> nil
+      true -> max(div(height, rows), 40)
+    end
+  end
+
+  defp widget_print_cell_height(_, _, _), do: nil
 
   defp widget_id(%{"id" => id}), do: to_string(id)
   defp widget_id(%{id: id}), do: to_string(id)

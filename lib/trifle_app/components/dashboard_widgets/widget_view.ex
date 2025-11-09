@@ -21,6 +21,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :export_params, :map, default: %{}
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :print_width, :integer, default: nil
+  attr :print_cell_height, :integer, default: nil
 
   def grid(assigns) do
     assigns =
@@ -53,6 +54,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         phx-update="ignore"
         phx-hook="DashboardGrid"
         data-print-mode={if @print_mode, do: "true", else: "false"}
+        data-print-cell-height={if @print_cell_height, do: Integer.to_string(@print_cell_height)}
         data-editable={
           if !@is_public_access && @current_user && @can_edit_dashboard,
             do: "true",
