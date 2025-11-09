@@ -1,4 +1,4 @@
-defmodule TrifleApp.Components.DashboardWidgets.PathInput do
+defmodule TrifleApp.Components.PathInput do
   @moduledoc false
 
   use Phoenix.Component

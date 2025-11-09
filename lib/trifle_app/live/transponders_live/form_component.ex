@@ -1,8 +1,14 @@
 defmodule TrifleApp.TranspondersLive.FormComponent do
   use TrifleApp, :live_component
 
+  import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
+
   alias Trifle.Organizations
   alias Trifle.Organizations.{Database, Project, Transponder}
+  alias Trifle.Stats.Source
+  alias TrifleApp.PathSuggestions
+
+  @path_refresh_ttl_ms 60_000
 
   def render(assigns) do
     ~H"""
@@ -31,6 +37,11 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
           label="Key Pattern"
           placeholder="e.g., customer::(.*)::orders"
         />
+        <%= if hint = path_status_message(@path_fetch_state) do %>
+          <p class={"-mt-2 mb-4 text-xs #{path_hint_class(elem(hint, 1))}"}>
+            {elem(hint, 0)}
+          </p>
+        <% end %>
 
         <div>
           <.label>Type</.label>
@@ -76,6 +87,7 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
 
         <%= if @selected_type do %>
           <%= for field <- Transponder.get_transponder_fields(@selected_type) do %>
+            <% value = @config_values[field.name] || @config_values[String.to_atom(field.name)] || "" %>
             <div>
               <.label>
                 {field.label}
@@ -83,14 +95,19 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
                   <span class="text-red-500 dark:text-red-400">*</span>
                 <% end %>
               </.label>
-              <input
-                type="text"
+              <.path_autocomplete_input
+                id={"transponder-config-#{field.name}"}
                 name={"transponder[config][#{field.name}]"}
-                value={@config_values[field.name] || @config_values[String.to_atom(field.name)] || ""}
-                class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
+                value={value}
                 placeholder={field.label}
-                required={field.required}
+                path_options={@path_options}
+                input_class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
               />
+              <%= if @path_fetch_state == :regex_disabled do %>
+                <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  Autocomplete is unavailable when the key uses regular expressions.
+                </p>
+              <% end %>
             </div>
           <% end %>
         <% end %>
@@ -119,10 +136,16 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
   def update(%{transponder: transponder} = assigns, socket) do
     {:ok,
      socket
+     |> assign_new(:path_options, fn -> [] end)
+     |> assign_new(:path_fetch_state, fn -> :idle end)
+     |> assign_new(:path_fetch_meta, fn -> %{} end)
+     |> assign_new(:path_fetch_fingerprint, fn -> nil end)
+     |> assign_new(:path_fetch_last_checked, fn -> nil end)
      |> assign(assigns)
      |> assign(:selected_type, transponder.type)
      |> assign(:config_values, transponder.config || %{})
-     |> assign_form(Organizations.change_transponder(transponder))}
+     |> assign_form(Organizations.change_transponder(transponder))
+     |> maybe_refresh_path_options()}
   end
 
   def handle_event("validate", %{"transponder" => transponder_params}, socket) do
@@ -139,7 +162,8 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     {:noreply,
      socket
      |> assign(:config_values, Map.merge(socket.assigns.config_values, config_values))
-     |> assign_form(changeset)}
+     |> assign_form(changeset)
+     |> maybe_refresh_path_options()}
   end
 
   def handle_event("select_type", %{"transponder" => %{"type" => type}}, socket)
@@ -174,7 +198,10 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign_form(socket, changeset)}
+        {:noreply,
+         socket
+         |> assign_form(changeset)
+         |> maybe_refresh_path_options()}
     end
   end
 
@@ -197,7 +224,10 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign_form(socket, changeset)}
+        {:noreply,
+         socket
+         |> assign_form(changeset)
+         |> maybe_refresh_path_options()}
     end
   end
 
@@ -214,6 +244,167 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
   end
 
   defp maybe_put_source_specific_attrs(attrs, _), do: attrs
+
+  defp maybe_refresh_path_options(socket, opts \\ []) do
+    stats_source = stats_source(socket.assigns)
+    key = current_transponder_key(socket)
+
+    cond do
+      is_nil(stats_source) ->
+        socket
+        |> assign(:path_options, [])
+        |> assign(:path_fetch_state, :missing_source)
+        |> assign(:path_fetch_fingerprint, nil)
+        |> assign(:path_fetch_meta, %{})
+
+      key in [nil, ""] ->
+        socket
+        |> assign(:path_options, [])
+        |> assign(:path_fetch_state, :awaiting_key)
+        |> assign(:path_fetch_fingerprint, nil)
+        |> assign(:path_fetch_meta, %{})
+
+      regex_key?(key) ->
+        socket
+        |> assign(:path_options, [])
+        |> assign(:path_fetch_state, :regex_disabled)
+        |> assign(:path_fetch_fingerprint, nil)
+        |> assign(:path_fetch_meta, %{})
+
+      true ->
+        case should_fetch_paths?(socket, stats_source, key, opts) do
+          {:ok, fingerprint} ->
+            socket
+            |> assign(:path_fetch_state, :loading)
+            |> assign(:path_fetch_meta, %{})
+            |> do_refresh_path_options(stats_source, key, fingerprint)
+
+          :skip ->
+            socket
+        end
+    end
+  end
+
+  defp stats_source(%{source_type: :database, source: %Database{} = database}),
+    do: Source.from_database(database)
+
+  defp stats_source(%{source_type: :project, source: %Project{} = project}),
+    do: Source.from_project(project)
+
+  defp stats_source(_), do: nil
+
+  defp current_transponder_key(socket) do
+    form = socket.assigns[:form]
+
+    cond do
+      form && form[:key] && Map.has_key?(form[:key], :value) ->
+        form[:key].value || ""
+
+      socket.assigns[:transponder] && socket.assigns.transponder.key ->
+        socket.assigns.transponder.key
+
+      true ->
+        ""
+    end
+    |> to_string()
+    |> String.trim()
+  rescue
+    _ -> ""
+  end
+
+  defp regex_key?(key) when key in [nil, ""], do: false
+
+  defp regex_key?(key) do
+    Regex.match?(~r/[\[\]\(\)\^\$\+\?\|\\]/, key)
+  rescue
+    _ -> false
+  end
+
+  defp should_fetch_paths?(socket, source, key, opts) do
+    fingerprint = path_fetch_fingerprint(source, key)
+    force? = Keyword.get(opts, :force, false)
+    last_fingerprint = socket.assigns[:path_fetch_fingerprint]
+    last_checked = socket.assigns[:path_fetch_last_checked]
+    state = socket.assigns[:path_fetch_state]
+
+    cond do
+      force? -> {:ok, fingerprint}
+      last_fingerprint != fingerprint -> {:ok, fingerprint}
+      match?({:error, _}, state) -> {:ok, fingerprint}
+      state == :empty -> {:ok, fingerprint}
+      stale_path_fetch?(last_checked) -> {:ok, fingerprint}
+      true -> :skip
+    end
+  end
+
+  defp stale_path_fetch?(nil), do: true
+
+  defp stale_path_fetch?(timestamp) do
+    System.monotonic_time(:millisecond) - timestamp > @path_refresh_ttl_ms
+  end
+
+  defp path_fetch_fingerprint(source, key) do
+    "#{Source.type(source)}:#{Source.id(source)}:#{key}"
+  end
+
+  defp do_refresh_path_options(socket, source, key, fingerprint) do
+    case PathSuggestions.sample_options(source, key) do
+      {:ok, %{options: options, meta: meta}} ->
+        state = if Enum.empty?(options), do: :empty, else: {:ready, meta}
+
+        socket
+        |> assign(:path_options, options)
+        |> assign(:path_fetch_state, state)
+        |> assign(:path_fetch_meta, meta)
+        |> assign(:path_fetch_fingerprint, fingerprint)
+        |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+
+      {:error, reason} ->
+        socket
+        |> assign(:path_options, [])
+        |> assign(:path_fetch_state, {:error, reason})
+        |> assign(:path_fetch_meta, %{})
+        |> assign(:path_fetch_fingerprint, fingerprint)
+        |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+    end
+  end
+
+  defp path_status_message(:missing_source), do: {"Select a source to enable path suggestions.", :muted}
+  defp path_status_message(:awaiting_key), do: {"Enter a key pattern to preview available paths.", :muted}
+  defp path_status_message(:regex_disabled), do: {"Autocomplete is disabled while the key uses regular expressions.", :warning}
+  defp path_status_message(:loading), do: {"Sampling recent data for this key…", :muted}
+  defp path_status_message(:empty), do: {"No paths were found in the sampled window.", :warning}
+
+  defp path_status_message({:ready, meta}) do
+    granularity = meta[:granularity] || "selected granularity"
+    {"Suggestions refreshed from the last #{granularity} segment.", :success}
+  end
+
+  defp path_status_message({:error, reason}),
+    do: {"Unable to load path suggestions#{format_path_error(reason)}.", :danger}
+
+  defp path_status_message(_), do: nil
+
+  defp path_hint_class(:muted), do: "text-slate-500 dark:text-slate-400"
+  defp path_hint_class(:success), do: "text-teal-600 dark:text-teal-400"
+  defp path_hint_class(:warning), do: "text-amber-600 dark:text-amber-400"
+  defp path_hint_class(:danger), do: "text-rose-600 dark:text-rose-400"
+  defp path_hint_class(_), do: "text-slate-500 dark:text-slate-400"
+
+  defp format_path_error({:invalid_granularity, granularity}), do: " (invalid granularity #{granularity})"
+  defp format_path_error({:no_granularity, _}), do: " (no granularities configured)"
+  defp format_path_error(:missing_source), do: " (source missing)"
+  defp format_path_error(:missing_key), do: " (key missing)"
+
+  defp format_path_error(reason) do
+    detail =
+      case reason do
+        value when is_binary(value) -> value
+        value -> inspect(value)
+      end
+
+    " (#{detail})"
+  end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
