@@ -128,6 +128,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
          evaluations <- evaluate_each_alert(monitor, stats),
          {triggered, _non_triggered} <- Enum.split_with(evaluations, & &1.result.triggered?) do
       recoveries = recovered_alerts(evaluations)
+
       deliveries =
         deliver_triggered_alerts(monitor, triggered, timeframe) ++
           deliver_recovered_alerts(monitor, recoveries, timeframe)
@@ -277,8 +278,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
                  trigger_type: trigger_type
                ) do
             {:ok, payload} ->
-              {:ok, alert,
-               %{payload: prune_large_values(payload), event: trigger_type}}
+              {:ok, alert, %{payload: prune_large_values(payload), event: trigger_type}}
 
             {:error, reason} ->
               Logger.warning(
@@ -314,7 +314,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:suppressed, %Alert{id: id}, meta} ->
           MapSet.member?(triggered_ids, id) and delivery_event_type(meta) == :triggered
 
-        _ -> false
+        _ ->
+          false
       end)
 
     delivery_succeeded? =
@@ -322,7 +323,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:ok, %Alert{id: id}, meta} ->
           MapSet.member?(triggered_ids, id) and delivery_event_type(meta) == :triggered
 
-        _ -> false
+        _ ->
+          false
       end)
 
     triggered_any? =
@@ -528,7 +530,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         %{
           alert_id: id,
           status: "suppressed",
-           event: delivery_event_type(meta) |> Atom.to_string(),
+          event: delivery_event_type(meta) |> Atom.to_string(),
           reason: suppression_reason_label(meta)
         }
     end)

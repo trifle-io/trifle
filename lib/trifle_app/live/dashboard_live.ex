@@ -119,7 +119,11 @@ defmodule TrifleApp.DashboardLive do
 
     socket
     |> assign(:temp_name, socket.assigns.dashboard.name)
-    |> assign(:temp_timeframe, socket.assigns.dashboard.default_timeframe || socket.assigns.database.default_timeframe || "24h")
+    |> assign(
+      :temp_timeframe,
+      socket.assigns.dashboard.default_timeframe || socket.assigns.database.default_timeframe ||
+        "24h"
+    )
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, component_source_ref(socket.assigns.source))
     |> assign(:configure_segments, configure_segments_from_dashboard(socket.assigns.dashboard))
@@ -729,7 +733,10 @@ defmodule TrifleApp.DashboardLive do
 
                   base
                   |> Map.put("paths", auto_expand_path_wildcards(paths, path_options))
-                  |> Map.put("chart_type", Map.get(params, "ts_chart_type", Map.get(i, "chart_type") || "line"))
+                  |> Map.put(
+                    "chart_type",
+                    Map.get(params, "ts_chart_type", Map.get(i, "chart_type") || "line")
+                  )
                   |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
                   |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
                   |> Map.put("legend", Map.has_key?(params, "ts_legend"))
@@ -766,7 +773,10 @@ defmodule TrifleApp.DashboardLive do
                   base
                   |> Map.put("paths", expanded_paths)
                   |> Map.put("path", primary_path)
-                  |> Map.put("chart_type", Map.get(params, "cat_chart_type", Map.get(i, "chart_type") || "bar"))
+                  |> Map.put(
+                    "chart_type",
+                    Map.get(params, "cat_chart_type", Map.get(i, "chart_type") || "bar")
+                  )
 
                 "table" ->
                   table_paths_param =
@@ -799,6 +809,12 @@ defmodule TrifleApp.DashboardLive do
                   base
                   |> Map.put("paths", expanded_paths)
                   |> Map.put("path", primary_path)
+                  |> Map.put(
+                    "table_mode",
+                    params
+                    |> Map.get("table_mode", Map.get(i, "table_mode") || "html")
+                    |> DashboardWidgetHelpers.normalize_table_mode()
+                  )
 
                 "text" ->
                   subtype =
@@ -952,6 +968,17 @@ defmodule TrifleApp.DashboardLive do
          type when not is_nil(type) <- param(params, "chart_type") do
       update_editing_widget(socket, id, fn widget ->
         Map.put(widget, "chart_type", normalize_ts_chart_type(type))
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("set_table_mode", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         mode when not is_nil(mode) <- param(params, "mode") do
+      update_editing_widget(socket, id, fn widget ->
+        Map.put(widget, "table_mode", DashboardWidgetHelpers.normalize_table_mode(mode))
       end)
     else
       _ -> {:noreply, socket}

@@ -151,4 +151,15 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def table_paths_for_form(widget), do: category_paths_for_form(widget)
   def normalize_table_paths_param(value), do: normalize_category_paths_param(value)
   def normalize_table_paths_for_edit(paths), do: normalize_category_paths_for_edit(paths)
+
+  def normalize_table_mode(value) do
+    value
+    |> to_string()
+    |> String.downcase()
+    |> case do
+      "aggrid" -> "aggrid"
+      "ag-grid" -> "aggrid"
+      _ -> "html"
+    end
+  end
 end

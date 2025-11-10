@@ -203,7 +203,8 @@ defmodule TrifleApp.Components.DashboardFooter do
               </span>
               <span class="mr-1 hidden" data-role="download-spinner">
                 <span class="inline-flex h-4 w-4 items-center justify-center">
-                  <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin"></span>
+                  <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin">
+                  </span>
                 </span>
               </span>
               <span class="inline" data-role="download-text">Export</span>

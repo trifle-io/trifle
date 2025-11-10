@@ -30,7 +30,8 @@ defmodule TrifleApp.PathSuggestions do
     time_zone = opts[:time_zone] || Source.time_zone(source)
 
     with {:ok, granularity} <- select_granularity(source, opts),
-         {:ok, {from, to}} <- timeframe_window(granularity, Keyword.put(opts, :time_zone, time_zone)),
+         {:ok, {from, to}} <-
+           timeframe_window(granularity, Keyword.put(opts, :time_zone, time_zone)),
          {:ok, result} <-
            Source.fetch_series(
              source,
@@ -85,7 +86,10 @@ defmodule TrifleApp.PathSuggestions do
       Enum.any?(parsed, &(&1.string == "1w")) ->
         {:ok, "1w"}
 
-      match = parsed |> Enum.filter(&(&1.duration >= @one_week_seconds)) |> Enum.min_by(& &1.duration, fn -> nil end) ->
+      match =
+          parsed
+          |> Enum.filter(&(&1.duration >= @one_week_seconds))
+          |> Enum.min_by(& &1.duration, fn -> nil end) ->
         {:ok, match.string}
 
       true ->

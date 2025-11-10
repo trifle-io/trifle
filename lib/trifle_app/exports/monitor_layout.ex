@@ -605,7 +605,6 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
   defp widget_print_cell_height(_, _, _), do: nil
 
-
   defp monitor_alert_widgets(%Monitor{} = monitor) do
     case extract_target_widgets(monitor.target) do
       nil ->

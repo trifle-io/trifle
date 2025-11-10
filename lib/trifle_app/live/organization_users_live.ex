@@ -256,12 +256,7 @@ defmodule TrifleApp.OrganizationUsersLive do
         </div>
 
         <% invite_cancel = JS.push("close_invite_modal") %>
-        <.app_modal
-          id="invite-member"
-          show={@show_invite_modal}
-          on_cancel={invite_cancel}
-          size="md"
-        >
+        <.app_modal id="invite-member" show={@show_invite_modal} on_cancel={invite_cancel} size="md">
           <:title>Invite a new member</:title>
           <:body>
             <%= if @can_manage do %>

@@ -56,7 +56,12 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
           </button>
           <button
             type="button"
-            class={subtype_button_classes(@subtype == "split", "border-x border-gray-200 dark:border-slate-600")}
+            class={
+              subtype_button_classes(
+                @subtype == "split",
+                "border-x border-gray-200 dark:border-slate-600"
+              )
+            }
             phx-click="change_kpi_subtype"
             phx-value-widget-id={@widget_id}
             phx-value-kpi-subtype="split"
@@ -80,57 +85,57 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="sm:col-span-2">
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Path
-        </label>
-        <.path_autocomplete_input
-          id="widget-kpi-path"
-          name="kpi_path"
-          value={Map.get(@widget, "path", "")}
-          placeholder="e.g. sales.total"
-          path_options={@path_options}
-        />
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Function
-        </label>
-        <input type="hidden" name="kpi_function" value={@function} />
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-          <%= for {label, value, position} <- kpi_function_options() do %>
-            <button
-              type="button"
-              class={kpi_toggle_classes(@function == value, position)}
-              phx-click="set_kpi_function"
-              phx-value-widget-id={@widget_id}
-              phx-value-function={value}
-            >
-              {label}
-            </button>
-          <% end %>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+            Path
+          </label>
+          <.path_autocomplete_input
+            id="widget-kpi-path"
+            name="kpi_path"
+            value={Map.get(@widget, "path", "")}
+            placeholder="e.g. sales.total"
+            path_options={@path_options}
+          />
         </div>
-      </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Widget size
-        </label>
-        <input type="hidden" name="kpi_size" value={@size} />
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-          <%= for {label, value, position} <- kpi_size_options() do %>
-            <button
-              type="button"
-              class={kpi_toggle_classes(@size == value, position)}
-              phx-click="set_kpi_size"
-              phx-value-widget-id={@widget_id}
-              phx-value-size={value}
-            >
-              {label}
-            </button>
-          <% end %>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+            Function
+          </label>
+          <input type="hidden" name="kpi_function" value={@function} />
+          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
+            <%= for {label, value, position} <- kpi_function_options() do %>
+              <button
+                type="button"
+                class={kpi_toggle_classes(@function == value, position)}
+                phx-click="set_kpi_function"
+                phx-value-widget-id={@widget_id}
+                phx-value-function={value}
+              >
+                {label}
+              </button>
+            <% end %>
+          </div>
         </div>
-      </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+            Widget size
+          </label>
+          <input type="hidden" name="kpi_size" value={@size} />
+          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
+            <%= for {label, value, position} <- kpi_size_options() do %>
+              <button
+                type="button"
+                class={kpi_toggle_classes(@size == value, position)}
+                phx-click="set_kpi_size"
+                phx-value-widget-id={@widget_id}
+                phx-value-size={value}
+              >
+                {label}
+              </button>
+            <% end %>
+          </div>
+        </div>
 
         <%= if @subtype == "goal" do %>
           <div class="sm:col-span-2">
@@ -146,8 +151,8 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
             />
           </div>
         <% end %>
-        </div>
       </div>
+    </div>
 
     <%= case @subtype do %>
       <% "split" -> %>
@@ -208,7 +213,7 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
         "bg-teal-600 text-white hover:bg-teal-500"
       else
         "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-    end
+      end
 
     Enum.join([base, state_classes, extra_class], " ")
   end

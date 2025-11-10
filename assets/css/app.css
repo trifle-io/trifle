@@ -133,3 +133,231 @@ select[class*="grid"], select[class*="col-"] {
 .ts-chart .echarts-mark-point {
   overflow: visible !important;
 }
+
+/* Data grid table variants */
+.aggrid-table-shell {
+  position: relative;
+  min-height: 0;
+}
+
+.aggrid-table-shell [data-role="aggrid-table-root"] {
+  height: 100%;
+}
+
+.aggrid-table-shell .ag-root-wrapper,
+.aggrid-table-shell .ag-root,
+.aggrid-table-shell .ag-root-wrapper-body,
+.aggrid-table-shell .ag-center-cols-viewport,
+.aggrid-table-shell .ag-center-cols-container {
+  border: none !important;
+  box-shadow: none !important;
+  height: 100%;
+}
+
+.aggrid-table-shell[data-theme="light"] .ag-root-wrapper,
+.aggrid-table-shell[data-theme="light"] .ag-root,
+.aggrid-table-shell[data-theme="light"] .ag-root-wrapper-body,
+.aggrid-table-shell[data-theme="light"] .ag-center-cols-viewport,
+.aggrid-table-shell[data-theme="light"] .ag-center-cols-container {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-root-wrapper,
+.aggrid-table-shell[data-theme="dark"] .ag-root,
+.aggrid-table-shell[data-theme="dark"] .ag-root-wrapper-body,
+.aggrid-table-shell[data-theme="dark"] .ag-center-cols-viewport,
+.aggrid-table-shell[data-theme="dark"] .ag-center-cols-container {
+  background-color: transparent;
+  color: #f8fafc;
+}
+
+.aggrid-table-shell .ag-header,
+.aggrid-table-shell .ag-header-viewport {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.5);
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-header,
+.aggrid-table-shell[data-theme="dark"] .ag-header-viewport {
+  border-bottom-color: rgba(71, 85, 105, 0.7);
+}
+
+.aggrid-table-shell .ag-header {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  background-color: transparent;
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-header {
+  color: #f8fafc;
+}
+
+.aggrid-table-shell .ag-header-cell,
+.aggrid-table-shell .ag-header-group-cell {
+  background: transparent;
+  padding: 0.25rem 0.35rem;
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-header-cell,
+.aggrid-table-shell[data-theme="dark"] .ag-header-group-cell {
+  border-right-color: transparent;
+}
+
+.aggrid-table-shell .ag-header-cell-text {
+  white-space: pre-line;
+  line-height: 1.1;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+.aggrid-table-shell .ag-header-cell-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.aggrid-table-shell .aggrid-header-cell-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.aggrid-table-shell .aggrid-header-cell-wrapper.aggrid-header-align-left {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.aggrid-table-shell .aggrid-header-line {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  line-height: 1.1;
+  text-align: right;
+  width: 100%;
+}
+
+.aggrid-table-shell .aggrid-header-cell-wrapper.aggrid-header-align-left .aggrid-header-line {
+  text-align: left;
+}
+
+.aggrid-table-shell .ag-center-cols-container {
+  font-family: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aggrid-table-shell .ag-row {
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #ffffff;
+}
+
+.aggrid-table-shell .ag-row:last-child {
+  border-bottom-width: 0;
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-row {
+  border-bottom: 1px solid #1e293b;
+  background-color: transparent;
+}
+
+.aggrid-table-shell .ag-row-hover .ag-cell {
+  background-color: rgba(20, 184, 166, 0.04);
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-row-hover .ag-cell {
+  background-color: rgba(30, 41, 59, 0.85);
+}
+
+.aggrid-table-shell .aggrid-body-cell {
+  font-size: 0.78rem;
+  line-height: 1.25;
+  border: none !important;
+  display: flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  background-color: transparent !important;
+}
+
+.aggrid-table-shell .aggrid-path-cell-wrapper {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+}
+
+.aggrid-table-shell .aggrid-path-cell {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.aggrid-table-shell .aggrid-path-cell span {
+  display: inline;
+}
+
+.aggrid-table-shell .aggrid-path-cell [data-tooltip] {
+  margin-left: auto;
+  padding-left: 0.1rem;
+  display: inline-flex !important;
+  align-items: center;
+}
+
+.aggrid-table-shell .aggrid-numeric-cell {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.74rem;
+}
+
+.aggrid-table-shell[data-theme="dark"] .aggrid-body-cell {
+  color: #f8fafc;
+}
+
+.aggrid-table-shell[data-theme="light"] .aggrid-body-cell {
+  color: #0f172a;
+}
+
+.aggrid-table-shell .aggrid-placeholder-row .ag-cell {
+  color: transparent !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+.aggrid-table-shell .aggrid-placeholder-row .aggrid-path-cell {
+  opacity: 0;
+}
+
+.aggrid-table-shell[data-theme="dark"] .aggrid-placeholder-row .ag-cell {
+  border-color: rgba(30, 41, 59, 0.9) !important;
+}
+
+.aggrid-table-shell .ag-pinned-left-cols-container,
+.aggrid-table-shell .ag-pinned-left-header {
+  background-color: #ffffff;
+  box-shadow: 3px 0 4px rgba(15, 23, 42, 0.08);
+  border-right: 1px solid #e2e8f0;
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-pinned-left-cols-container,
+.aggrid-table-shell[data-theme="dark"] .ag-pinned-left-header {
+  background-color: transparent;
+  border-right: 1px solid #1e293b;
+  box-shadow: 3px 0 6px rgba(0, 0, 0, 0.35);
+}
+
+.aggrid-table-shell .ag-pinned-left-scrollbar {
+  display: none;
+}
+
+.aggrid-table-shell .aggrid-path-pinned {
+  font-weight: 500;
+}

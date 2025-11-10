@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Tabler
   alias TrifleApp.Components.DataTable
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -75,7 +76,14 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
         matching_paths: length(matching_paths)
       )
 
-      Map.put(table_dataset, :id, widget_id(widget))
+      table_mode =
+        widget
+        |> Map.get("table_mode", "html")
+        |> DashboardWidgetHelpers.normalize_table_mode()
+
+      table_dataset
+      |> Map.put(:id, widget_id(widget))
+      |> Map.put(:mode, table_mode)
     end
   end
 

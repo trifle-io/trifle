@@ -502,11 +502,7 @@ defmodule TrifleApp.Components.DashboardPage do
     <!-- Configure Modal -->
         <%= if !@is_public_access && @live_action == :configure do %>
           <% configure_cancel = JS.patch(~p"/dashboards/#{@dashboard.id}") %>
-          <.app_modal
-            id="configure-modal"
-            show={true}
-            on_cancel={configure_cancel}
-          >
+          <.app_modal id="configure-modal" show={true} on_cancel={configure_cancel}>
             <:title>Configure Dashboard</:title>
             <:body>
               <div class="space-y-6">
@@ -909,198 +905,223 @@ defmodule TrifleApp.Components.DashboardPage do
               </div>
             </:body>
             <:actions>
-          <.form_actions>
-            <.secondary_button type="button" phx-click={configure_cancel}>
-              Cancel
-            </.secondary_button>
-            <.primary_button
-              form="dashboard-configure-form"
-              phx-disable-with="Saving..."
-            >
-              Save changes
-            </.primary_button>
-          </.form_actions>
-        </:actions>
-        <:below_actions>
-          <%= if @can_clone_dashboard do %>
-            <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-              <div class="flex items-center justify-between mb-2">
-                <div>
-                  <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                    Actions
-                  </span>
-                  <p class="text-xs text-gray-500 dark:text-slate-400">
-                    Make a copy of this dashboard.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  phx-click="duplicate_dashboard"
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                  title="Duplicate dashboard"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
-                    class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-                    />
-                  </svg>
-                  <span class="hidden md:inline">Duplicate</span>
-                </button>
-              </div>
-            </div>
-          <% end %>
-
-          <%= if @can_manage_dashboard do %>
-            <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-              <div>
-                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Visibility</span>
-                <p class="text-xs text-gray-500 dark:text-slate-400">
-                  Make this dashboard visible to everyone in the organization
-                </p>
-              </div>
-              <button
-                type="button"
-                phx-click="toggle_visibility"
-                class={[
-                  "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                  if(@dashboard.visibility, do: "bg-teal-600", else: "bg-gray-200 dark:bg-gray-700")
-                ]}
-              >
-                <span class={[
-                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                  if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
-                ]}>
-                </span>
-              </button>
-            </div>
-
-            <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-              <div>
-                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Lock</span>
-                <p class="text-xs text-gray-500 dark:text-slate-400">
-                  Prevent regular members from editing while locked.
-                </p>
-              </div>
-              <button
-                type="button"
-                phx-click="toggle_lock"
-                disabled={!@can_manage_lock}
-                class={[
-                  "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
-                  if(@dashboard.locked, do: "bg-amber-500 dark:bg-amber-400", else: "bg-gray-200 dark:bg-gray-700"),
-                  if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
-                ]}
-              >
-                <span class={[
-                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                  if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
-                ]}>
-                </span>
-              </button>
-            </div>
-
-            <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Public Link</span>
-                  <p class="text-xs text-gray-500 dark:text-slate-400">
-                    Generate a shareable link for read-only access.
-                  </p>
-                </div>
-                <%= if @public_token do %>
-                  <div class="flex flex-wrap items-center gap-3">
+              <.form_actions>
+                <.secondary_button type="button" phx-click={configure_cancel}>
+                  Cancel
+                </.secondary_button>
+                <.primary_button form="dashboard-configure-form" phx-disable-with="Saving...">
+                  Save changes
+                </.primary_button>
+              </.form_actions>
+            </:actions>
+            <:below_actions>
+              <%= if @can_clone_dashboard do %>
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                        Actions
+                      </span>
+                      <p class="text-xs text-gray-500 dark:text-slate-400">
+                        Make a copy of this dashboard.
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      phx-click="copy_public_link"
-                      class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700"
+                      phx-click="duplicate_dashboard"
+                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                      title="Duplicate dashboard"
                     >
-                      Copy Public Link
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="remove_public_token"
-                      data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
-                      class="inline-flex items-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
-                    >
-                      Remove Link
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                        />
+                      </svg>
+                      <span class="hidden md:inline">Duplicate</span>
                     </button>
                   </div>
-                <% else %>
+                </div>
+              <% end %>
+
+              <%= if @can_manage_dashboard do %>
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
+                  <div>
+                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                      Visibility
+                    </span>
+                    <p class="text-xs text-gray-500 dark:text-slate-400">
+                      Make this dashboard visible to everyone in the organization
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    phx-click="generate_public_token"
-                    class="inline-flex items-center rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 hover:bg-teal-100 dark:bg-teal-900 dark:text-teal-200 dark:ring-teal-500/30 dark:hover:bg-teal-800"
+                    phx-click="toggle_visibility"
+                    class={[
+                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                      if(@dashboard.visibility,
+                        do: "bg-teal-600",
+                        else: "bg-gray-200 dark:bg-gray-700"
+                      )
+                    ]}
                   >
-                    Generate Public Link
+                    <span class={[
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
+                    ]}>
+                    </span>
                   </button>
-                <% end %>
-              </div>
-            </div>
-
-            <div class="border-t border-red-200 dark:border-red-800 pt-6">
-              <div class="mb-4">
-                <span class="text-sm font-medium text-red-700 dark:text-red-400">Danger Zone</span>
-                <p class="text-xs text-red-600 dark:text-red-400">This action cannot be undone.</p>
-              </div>
-
-              <div :if={@can_transfer_dashboard_owner && Enum.any?(@dashboard_owner_candidates || [])} class="mb-6 space-y-3">
-                <div>
-                  <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Transfer ownership</span>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    Move ownership to another member. You might lose direct access if you are not an organization admin.
-                  </p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <.form for={%{}} phx-change="change_dashboard_owner_selection" class="flex flex-1">
-                    <select
-                      name="dashboard_owner_membership_id"
-                      class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                      value={@dashboard_owner_selection || ""}
-                    >
-                      <option value="">Select member…</option>
-                      <%= for candidate <- @dashboard_owner_candidates || [] do %>
-                        <option value={candidate.id} selected={@dashboard_owner_selection == candidate.id}>
-                          {candidate.label}
-                        </option>
-                      <% end %>
-                    </select>
-                  </.form>
+
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
+                  <div>
+                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Lock</span>
+                    <p class="text-xs text-gray-500 dark:text-slate-400">
+                      Prevent regular members from editing while locked.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
-                    phx-click="transfer_dashboard_owner"
-                    data-confirm="Transfer ownership to the selected member?"
-                    disabled={@dashboard_owner_selection in [nil, ""]}
+                    phx-click="toggle_lock"
+                    disabled={!@can_manage_lock}
+                    class={[
+                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
+                      if(@dashboard.locked,
+                        do: "bg-amber-500 dark:bg-amber-400",
+                        else: "bg-gray-200 dark:bg-gray-700"
+                      ),
+                      if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                    ]}
                   >
-                    Transfer ownership
+                    <span class={[
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
+                    ]}>
+                    </span>
                   </button>
                 </div>
-                <p :if={@dashboard_owner_error} class="text-xs text-rose-600 dark:text-rose-400">
-                  {@dashboard_owner_error}
-                </p>
-              </div>
 
-              <button
-                type="button"
-                phx-click="delete_dashboard"
-                data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
-                class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                title="Delete this dashboard"
-              >
-                Delete Dashboard
-              </button>
-            </div>
-          <% end %>
-        </:below_actions>
+                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                        Public Link
+                      </span>
+                      <p class="text-xs text-gray-500 dark:text-slate-400">
+                        Generate a shareable link for read-only access.
+                      </p>
+                    </div>
+                    <%= if @public_token do %>
+                      <div class="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          phx-click="copy_public_link"
+                          class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700"
+                        >
+                          Copy Public Link
+                        </button>
+                        <button
+                          type="button"
+                          phx-click="remove_public_token"
+                          data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
+                          class="inline-flex items-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                        >
+                          Remove Link
+                        </button>
+                      </div>
+                    <% else %>
+                      <button
+                        type="button"
+                        phx-click="generate_public_token"
+                        class="inline-flex items-center rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 hover:bg-teal-100 dark:bg-teal-900 dark:text-teal-200 dark:ring-teal-500/30 dark:hover:bg-teal-800"
+                      >
+                        Generate Public Link
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+
+                <div class="border-t border-red-200 dark:border-red-800 pt-6">
+                  <div class="mb-4">
+                    <span class="text-sm font-medium text-red-700 dark:text-red-400">
+                      Danger Zone
+                    </span>
+                    <p class="text-xs text-red-600 dark:text-red-400">
+                      This action cannot be undone.
+                    </p>
+                  </div>
+
+                  <div
+                    :if={
+                      @can_transfer_dashboard_owner && Enum.any?(@dashboard_owner_candidates || [])
+                    }
+                    class="mb-6 space-y-3"
+                  >
+                    <div>
+                      <span class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+                        Transfer ownership
+                      </span>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Move ownership to another member. You might lose direct access if you are not an organization admin.
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <.form
+                        for={%{}}
+                        phx-change="change_dashboard_owner_selection"
+                        class="flex flex-1"
+                      >
+                        <select
+                          name="dashboard_owner_membership_id"
+                          class="min-w-[12rem] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                          value={@dashboard_owner_selection || ""}
+                        >
+                          <option value="">Select member…</option>
+                          <%= for candidate <- @dashboard_owner_candidates || [] do %>
+                            <option
+                              value={candidate.id}
+                              selected={@dashboard_owner_selection == candidate.id}
+                            >
+                              {candidate.label}
+                            </option>
+                          <% end %>
+                        </select>
+                      </.form>
+                      <button
+                        type="button"
+                        class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+                        phx-click="transfer_dashboard_owner"
+                        data-confirm="Transfer ownership to the selected member?"
+                        disabled={@dashboard_owner_selection in [nil, ""]}
+                      >
+                        Transfer ownership
+                      </button>
+                    </div>
+                    <p :if={@dashboard_owner_error} class="text-xs text-rose-600 dark:text-rose-400">
+                      {@dashboard_owner_error}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    phx-click="delete_dashboard"
+                    data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
+                    class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                    title="Delete this dashboard"
+                  >
+                    Delete Dashboard
+                  </button>
+                </div>
+              <% end %>
+            </:below_actions>
           </.app_modal>
         <% end %>
         
@@ -1175,7 +1196,6 @@ defmodule TrifleApp.Components.DashboardPage do
                   <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
 
                   <WidgetEditor.editor widget={@editing_widget} path_options={@widget_path_options} />
-
                 </.form>
               </div>
             </:body>
@@ -1184,33 +1204,30 @@ defmodule TrifleApp.Components.DashboardPage do
                 <.secondary_button type="button" phx-click={widget_cancel}>
                   Cancel
                 </.secondary_button>
-                <.primary_button
-                  form="widget-editor-form"
-                  phx-disable-with="Saving..."
-                >
+                <.primary_button form="widget-editor-form" phx-disable-with="Saving...">
                   Save
                 </.primary_button>
               </.form_actions>
             </:actions>
-        <:below_actions>
-          <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
-            <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
-            <p class="text-xs text-gray-500 dark:text-slate-400">
-              Delete this widget permanently from the dashboard.
-            </p>
-            <div class="mt-3">
-              <button
-                type="button"
-                phx-click="delete_widget"
-                phx-value-id={@editing_widget["id"]}
-                data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
-                class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-              >
-                Delete Widget
-              </button>
-            </div>
-          </div>
-        </:below_actions>
+            <:below_actions>
+              <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
+                <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
+                <p class="text-xs text-gray-500 dark:text-slate-400">
+                  Delete this widget permanently from the dashboard.
+                </p>
+                <div class="mt-3">
+                  <button
+                    type="button"
+                    phx-click="delete_widget"
+                    phx-value-id={@editing_widget["id"]}
+                    data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
+                    class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                  >
+                    Delete Widget
+                  </button>
+                </div>
+              </div>
+            </:below_actions>
           </.app_modal>
         <% end %>
         

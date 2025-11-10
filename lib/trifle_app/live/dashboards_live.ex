@@ -600,12 +600,7 @@ defmodule TrifleApp.DashboardsLive do
       
     <!-- New Dashboard Modal -->
       <% dashboard_cancel = JS.patch(~p"/dashboards") %>
-      <.app_modal
-        :if={@live_action == :new}
-        id="dashboard-modal"
-        show
-        on_cancel={dashboard_cancel}
-      >
+      <.app_modal :if={@live_action == :new} id="dashboard-modal" show on_cancel={dashboard_cancel}>
         <:title>New Dashboard</:title>
         <:body>
           <.form for={%{}} id="dashboard-form" phx-submit="create_dashboard" class="space-y-4">

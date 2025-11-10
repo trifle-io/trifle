@@ -251,7 +251,8 @@ defmodule TrifleApp.Exporters.ChromeExporter do
     {updated_layout, updated_opts}
   end
 
-  defp maybe_put_widget_png_scale(opts, %Layout{kind: kind}) when kind in [:dashboard_widget, :monitor_widget] do
+  defp maybe_put_widget_png_scale(opts, %Layout{kind: kind})
+       when kind in [:dashboard_widget, :monitor_widget] do
     Keyword.put_new(opts, :png_scale, @widget_png_scale)
   end
 
