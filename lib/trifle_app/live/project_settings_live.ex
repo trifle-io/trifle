@@ -1,9 +1,13 @@
 defmodule TrifleApp.ProjectSettingsLive do
   use TrifleApp, :live_view
 
+  import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
+
+  alias Ecto.Changeset
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
   alias TrifleApp.ProjectsLive
+  alias TrifleApp.Granularity
 
   @week_options [
     {"Monday", 1},
@@ -20,16 +24,18 @@ defmodule TrifleApp.ProjectSettingsLive do
     project = Organizations.get_project!(id)
 
     if project.user_id == user.id do
+      changeset = Organizations.change_project(project)
+
       {:ok,
        socket
        |> assign(:project, project)
        |> assign(:page_title, "Projects · #{project.name} · Settings")
        |> assign(:nav_section, :projects)
        |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
-       |> assign(:form, to_form(Organizations.change_project(project)))
        |> assign(:show_edit_modal, false)
        |> assign(:time_zones, time_zones())
-       |> assign(:week_options, @week_options)}
+       |> assign(:week_options, @week_options)
+       |> assign_project_form(changeset)}
     else
       {:ok,
        socket
@@ -42,7 +48,7 @@ defmodule TrifleApp.ProjectSettingsLive do
   def handle_event("open_edit_modal", _params, socket) do
     {:noreply,
      socket
-     |> assign(:form, to_form(Organizations.change_project(socket.assigns.project)))
+     |> assign_project_form(Organizations.change_project(socket.assigns.project))
      |> assign(:show_edit_modal, true)}
   end
 
@@ -50,9 +56,20 @@ defmodule TrifleApp.ProjectSettingsLive do
     {:noreply, assign(socket, :show_edit_modal, false)}
   end
 
+  def handle_event("validate", %{"project" => project_params}, socket) do
+    changeset =
+      socket.assigns.project
+      |> Organizations.change_project(project_params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign_project_form(socket, changeset)}
+  end
+
   def handle_event("save", %{"project" => project_params}, socket) do
     case Organizations.update_project(socket.assigns.project, project_params) do
       {:ok, project} ->
+        changeset = Organizations.change_project(project)
+
         {:noreply,
          socket
          |> put_flash(:info, "Project updated successfully.")
@@ -60,11 +77,11 @@ defmodule TrifleApp.ProjectSettingsLive do
          |> assign(:page_title, "Projects · #{project.name} · Settings")
          |> assign(:nav_section, :projects)
          |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
-         |> assign(:form, to_form(Organizations.change_project(project)))
+         |> assign_project_form(changeset)
          |> assign(:show_edit_modal, false)}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, :form, to_form(changeset))}
+        {:noreply, assign_project_form(socket, changeset)}
     end
   end
 
@@ -184,7 +201,7 @@ defmodule TrifleApp.ProjectSettingsLive do
     >
       <:title>Edit Project</:title>
       <:body>
-        <.form_container for={@form} phx-submit="save" class="space-y-6">
+        <.form_container for={@form} phx-submit="save" phx-change="validate" class="space-y-6">
           <:header
             title="Project details"
             subtitle="Update the defaults that shape how dashboards, Explore, and ingestion behave."
@@ -238,11 +255,12 @@ defmodule TrifleApp.ProjectSettingsLive do
             help_text="Optional. Applied when dashboards or Explore load without explicit overrides."
           />
 
-          <.form_field
+          <.granularity_select
             field={@form[:default_granularity]}
             label="Default granularity"
-            placeholder="1h"
-            help_text="Optional. Should match one of the configured granularities."
+            options={@granularity_options}
+            prompt="Select a granularity"
+            help="Optional. Should match one of the configured granularities."
           />
 
           <.form_field
@@ -294,6 +312,44 @@ defmodule TrifleApp.ProjectSettingsLive do
 
   defp granularities_to_string(value) when is_binary(value), do: value
   defp granularities_to_string(_), do: ""
+
+  defp assign_project_form(socket, %Changeset{} = changeset) do
+    granularity_values =
+      changeset
+      |> Changeset.get_field(:granularities)
+      |> List.wrap()
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> case do
+        [] -> Project.default_granularities()
+        list -> list
+      end
+
+    default_granularity = Changeset.get_field(changeset, :default_granularity)
+
+    options =
+      granularity_values
+      |> Granularity.options()
+      |> ensure_current_option(default_granularity)
+
+    socket
+    |> assign(:form, to_form(changeset))
+    |> assign(:granularity_options, options)
+  end
+
+  defp assign_project_form(socket, _), do: socket
+
+  defp ensure_current_option(options, value) do
+    cond do
+      is_nil(value) or value == "" ->
+        options
+
+      Enum.any?(options, &(to_string(&1.value) == to_string(value))) ->
+        options
+
+      true ->
+        options ++ Granularity.options([value])
+    end
+  end
 
   defp project_breadcrumb_links(%Project{} = project, last) do
     project_name = project.name || "Project"

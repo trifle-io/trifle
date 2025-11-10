@@ -2,6 +2,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   use TrifleApp, :live_component
 
   alias Ecto.Changeset
+  import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
   import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
@@ -9,6 +10,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Trifle.Stats.Source
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
+  alias TrifleApp.Granularity
   alias TrifleApp.PathSuggestions
   require Logger
 
@@ -35,6 +37,9 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
      |> assign_new(:path_fetch_meta, fn -> %{} end)
      |> assign_new(:path_fetch_fingerprint, fn -> nil end)
      |> assign_new(:path_fetch_last_checked, fn -> nil end)
+     |> assign_new(:alert_granularity_options, fn -> [] end)
+     |> assign_new(:report_granularity_options, fn -> [] end)
+     |> assign_new(:selected_dashboard, fn -> nil end)
      |> assign(assigns)
      |> assign(:can_manage_lock, Map.get(assigns, :can_manage_lock, false))
      |> assign(:persisted_monitor, monitor)
@@ -301,11 +306,18 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                           />
                         </div>
                         <div>
-                          <.input
+                          <.granularity_select
                             field={report_form[:granularity]}
                             label="Granularity"
-                            placeholder="e.g. 1h, 1d"
+                            options={@report_granularity_options}
+                            prompt="Use source default"
                           />
+                          <p
+                            :if={Enum.empty?(@report_granularity_options)}
+                            class="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                          >
+                            Select a dashboard to enable predefined granularities.
+                          </p>
                         </div>
                       </div>
                     </.inputs_for>
@@ -351,11 +363,18 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                         />
                       </div>
                       <div>
-                        <.input
+                        <.granularity_select
                           field={@form[:alert_granularity]}
                           label="Evaluation granularity"
-                          placeholder="e.g. 5m"
+                          options={@alert_granularity_options}
+                          prompt="Use source default"
                         />
+                        <p
+                          :if={Enum.empty?(@alert_granularity_options)}
+                          class="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          Select a data source to choose from supported granularities.
+                        </p>
                       </div>
                       <div>
                         <.input
@@ -1405,6 +1424,74 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end
   end
 
+  defp resolve_dashboard_source(_socket, nil), do: {:error, :missing_dashboard}
+
+  defp resolve_dashboard_source(socket, dashboard) do
+    sources = socket.assigns[:sources] || []
+    type = normalize_source_type(dashboard && dashboard.source_type)
+    id = dashboard && dashboard.source_id
+
+    cond do
+      is_nil(type) or is_nil(id) ->
+        {:error, :missing_source}
+
+      true ->
+        Source.find_in_list(sources, type, id)
+        |> case do
+          %Source{} = source -> {:ok, source}
+          _ -> {:error, :missing_source}
+        end
+    end
+  end
+
+  defp granularity_options_for_alert(socket, monitor) do
+    current = monitor.alert_granularity
+
+    case resolve_monitor_source(socket, monitor) do
+      {:ok, source} -> granularity_options_from_source(source, current)
+      _ -> ensure_current_option([], current)
+    end
+  end
+
+  defp granularity_options_for_report(socket, selected_dashboard, monitor) do
+    current =
+      case monitor.report_settings do
+        %ReportSettings{granularity: granularity} -> granularity
+        %{granularity: granularity} -> granularity
+        _ -> nil
+      end
+
+    case resolve_dashboard_source(socket, selected_dashboard) do
+      {:ok, source} -> granularity_options_from_source(source, current)
+      _ -> ensure_current_option([], current)
+    end
+  end
+
+  defp granularity_options_from_source(%Source{} = source, current_value) do
+    source
+    |> Source.available_granularities()
+    |> List.wrap()
+    |> Granularity.options()
+    |> ensure_current_option(current_value)
+  end
+
+  defp granularity_options_from_source(_source, current_value) do
+    ensure_current_option([], current_value)
+  end
+
+  defp ensure_current_option(options, value) do
+    cond do
+      is_nil(value) or value == "" ->
+        options
+
+      Enum.any?(options, &(to_string(&1.value) == to_string(value))) ->
+        options
+
+      true ->
+        options ++ Granularity.options([value])
+    end
+  end
+
   defp monitor_source_tuple(%Monitor{source_type: type, source_id: id})
        when type not in [nil, ""] and id not in [nil, ""] do
     {:ok, {normalize_source_type(type), id}}
@@ -1574,6 +1661,9 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
         Changeset.put_change(changeset, :segment_values, segment_values)
       end
 
+    alert_options = granularity_options_for_alert(socket, monitor)
+    report_options = granularity_options_for_report(socket, selected_dashboard, monitor)
+
     socket
     |> assign(:form, to_form(changeset))
     |> assign(:monitor, monitor)
@@ -1581,8 +1671,11 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     |> assign(:selected_delivery_media, media)
     |> assign(:primary_delivery_medium, primary_medium)
     |> assign(:selected_dashboard_id, dashboard_id)
+    |> assign(:selected_dashboard, selected_dashboard)
     |> assign(:dashboard_segment_definitions, segments_with_current)
     |> assign(:dashboard_segment_values, segment_values)
+    |> assign(:alert_granularity_options, alert_options)
+    |> assign(:report_granularity_options, report_options)
     |> assign(:selected_source_ref, monitor_source_ref(monitor))
   end
 end
