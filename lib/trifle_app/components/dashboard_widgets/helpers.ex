@@ -145,4 +145,10 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   def category_paths_for_form(paths), do: normalize_category_paths_for_edit(paths)
+
+  ## Table helpers
+
+  def table_paths_for_form(widget), do: category_paths_for_form(widget)
+  def normalize_table_paths_param(value), do: normalize_category_paths_param(value)
+  def normalize_table_paths_for_edit(paths), do: normalize_category_paths_for_edit(paths)
 end

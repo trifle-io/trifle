@@ -5,6 +5,7 @@ defmodule TrifleApp.ExploreLive do
   alias Trifle.Organizations
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
+  alias TrifleApp.Components.DataTable
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
 
@@ -1739,11 +1740,22 @@ defmodule TrifleApp.ExploreLive do
     if(base == "", do: prefix, else: base) <> "-" <> ts <> ext
   end
 
-  def format_nested_path(path, all_paths, transponder_info \\ %{}) when is_binary(path) do
-    transponder_name = Map.get(transponder_info, path)
+  def format_nested_path(path, all_paths, transponder_info \\ %{}, opts \\ [])
+      when is_binary(path) do
+    display_path =
+      opts
+      |> Keyword.get(:display_path, path)
+      |> to_string()
+
+    transponder_lookup =
+      opts
+      |> Keyword.get(:transponder_path, path)
+      |> to_string()
+
+    transponder_name = Map.get(transponder_info, transponder_lookup)
 
     formatted_path =
-      path
+      display_path
       |> String.split(".")
       |> build_nested_html(all_paths, [])
       |> Enum.join(".")
@@ -2174,81 +2186,17 @@ defmodule TrifleApp.ExploreLive do
     <!-- Row 4: Data for Selected Key -->
         <div class="flex-1 flex flex-col min-h-0">
           <%= if @stats do %>
-            <div
-              id="phantom-rows-container"
-              class="flex-1 bg-white dark:bg-slate-800 flex flex-col min-h-0"
-              phx-hook="PhantomRows"
-            >
-              <div
-                class="flex-1 overflow-x-auto overflow-y-auto relative"
-                id="table-hover-container"
-                phx-hook="TableHover"
-              >
-                <table
-                  class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto"
-                  id="data-table"
-                  phx-hook="FastTooltip"
-                  style="table-layout: fixed;"
-                >
-                  <thead>
-                    <tr>
-                      <th
-                        scope="col"
-                        class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white pl-4 h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
-                        style="width: 200px;"
-                      >
-                        Path
-                      </th>
-                      <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
-                        <th
-                          scope="col"
-                          class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 dark:text-teal-400 bg-white dark:bg-slate-800 h-16 align-top z-10 transition-colors duration-150"
-                          data-col={col_index}
-                          style="width: 120px;"
-                        >
-                          {format_table_timestamp(at, @granularity)}
-                        </th>
-                      <% end %>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800">
-                    <%= for {path, row_index} <- @stats[:paths] |> Enum.with_index(1) do %>
-                      <tr data-row={row_index}>
-                        <td
-                          class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white pl-4 z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
-                          data-row={row_index}
-                        >
-                          {format_nested_path(path, @stats[:paths], @transponder_info)}
-                        </td>
-                        <%= for {at, col_index} <- Enum.reverse(@stats[:at]) |> Enum.with_index(1) do %>
-                          <% value = @stats[:values][{path, at}] %>
-                          <%= if value do %>
-                            <td
-                              class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 dark:text-white transition-colors duration-150 cursor-pointer"
-                              data-row={row_index}
-                              data-col={col_index}
-                            >
-                              {value}
-                            </td>
-                          <% else %>
-                            <td
-                              class="whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 dark:text-slate-500 transition-colors duration-150 cursor-pointer"
-                              data-row={row_index}
-                              data-col={col_index}
-                            >
-                              0
-                            </td>
-                          <% end %>
-                        <% end %>
-                      </tr>
-                    <% end %>
-                  </tbody>
-                </table>
-                
-    <!-- Border after last row -->
-                <div class="border-t border-gray-200 dark:border-slate-700"></div>
-              </div>
-            </div>
+            <% table_dataset =
+                 DataTable.from_stats(
+                   @stats,
+                   granularity: @granularity,
+                   empty_message: "No data available yet."
+                 ) %>
+            <DataTable.table
+              dataset={table_dataset}
+              transponder_info={@transponder_info}
+              outer_class="bg-white dark:bg-slate-800"
+            />
             
     <!-- Sticky Summary Footer -->
             <%= if summary = get_summary_stats(assigns) do %>

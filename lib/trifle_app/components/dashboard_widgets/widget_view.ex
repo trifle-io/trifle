@@ -3,8 +3,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   use TrifleApp, :html
 
+  alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
   alias TrifleApp.DesignSystem.ChartColors
+  alias TrifleApp.ExploreLive
+  require Logger
 
   attr :dashboard, :map, required: true
   attr :stats, :any, default: nil
@@ -17,11 +20,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :kpi_visuals, :map, default: %{}
   attr :timeseries, :map, default: %{}
   attr :category, :map, default: %{}
+  attr :table, :map, default: %{}
   attr :text_widgets, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :print_width, :integer, default: nil
   attr :print_cell_height, :integer, default: nil
+  attr :transponder_info, :map, default: %{}
 
   def grid(assigns) do
     assigns =
@@ -29,6 +34,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:grid_items, fn ->
         grid_items(assigns.dashboard)
       end)
+      |> assign_new(:transponder_info, fn -> %{} end)
 
     assigns = assign(assigns, :has_grid_items, assigns.grid_items != [])
 
@@ -77,12 +83,14 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             kpi_visuals={@kpi_visuals}
             timeseries={@timeseries}
             category={@category}
+            table={@table}
             text_widgets={@text_widgets}
             export_params={@export_params}
             print_mode={@print_mode}
             dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
             dashboard={@dashboard}
             widget_export={@widget_export}
+            transponder_info={@transponder_info}
           />
         <% end %>
       </div>
@@ -99,6 +107,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           data-kpi-visual={data.kpi_visual}
           data-timeseries={data.timeseries}
           data-category={data.category}
+          data-table={data.table}
           data-text={data.text}
           data-grid-id={@grid_dom_id}
           phx-hook="DashboardWidgetData"
@@ -114,6 +123,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "kpi" -> render_kpi_body(assigns)
       "timeseries" -> render_timeseries_body(assigns)
       "category" -> render_category_body(assigns)
+      "table" -> render_table_body(assigns)
       "text" -> render_text_body(assigns)
       _ -> render_placeholder_body(assigns)
     end
@@ -376,6 +386,22 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     ~H"""
     <div class="grid-widget-body flex-1 flex">
       <div class="cat-chart w-full h-full" data-echarts-ready="0"></div>
+    </div>
+    """
+  end
+
+  defp render_table_body(assigns) do
+    log_table_render(assigns, assigns.table_dataset)
+
+    ~H"""
+    <div class="grid-widget-body flex-1 flex flex-col min-h-0">
+      <%= if @table_dataset do %>
+        <DataTable.table dataset={@table_dataset} transponder_info={@transponder_info} />
+      <% else %>
+        <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-4">
+          Add a path to this widget to display table data.
+        </div>
+      <% end %>
     </div>
     """
   end
@@ -764,12 +790,14 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :kpi_visuals, :map, default: %{}
   attr :timeseries, :map, default: %{}
   attr :category, :map, default: %{}
+  attr :table, :map, default: %{}
   attr :text_widgets, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :print_mode, :boolean, default: false
   attr :dashboard_id, :string, default: nil
   attr :dashboard, :map, required: true
   attr :widget_export, :map, default: %{type: :dashboard}
+  attr :transponder_info, :map, default: %{}
 
   def grid_item(assigns) do
     widget_type = widget_type(assigns.widget)
@@ -778,6 +806,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     kpi_visual_dataset = fetch_dataset(assigns.kpi_visuals, widget_id)
     timeseries_dataset = fetch_dataset(assigns.timeseries, widget_id)
     category_dataset = fetch_dataset(assigns.category, widget_id)
+    table_dataset = fetch_dataset(assigns.table, widget_id)
     text_dataset = fetch_dataset(assigns.text_widgets, widget_id)
 
     assigns =
@@ -790,6 +819,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:kpi_visual_dataset, kpi_visual_dataset)
       |> assign(:timeseries_dataset, timeseries_dataset)
       |> assign(:category_dataset, category_dataset)
+      |> assign(:table_dataset, table_dataset)
       |> assign(:text_dataset, text_dataset)
       |> assign(:content_classnames, content_classnames(widget_type))
       |> assign(:header_classnames, header_classnames(widget_type))
@@ -799,6 +829,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:export_params, normalize_export_params(assigns.export_params || %{}))
       |> assign(:print_mode, Map.get(assigns, :print_mode, false))
       |> assign(:widget_export, normalize_widget_export(Map.get(assigns, :widget_export)))
+      |> assign(:transponder_info, Map.get(assigns, :transponder_info, %{}))
 
     ~H"""
     <div
@@ -1032,6 +1063,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       kpi_visual: nil,
       timeseries: nil,
       category: nil,
+      table: nil,
       text: nil
     }
 
@@ -1046,6 +1078,15 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
       "category" ->
         Map.put(base, :category, encode_dataset(fetch_dataset(assigns.category, widget_id)))
+
+      "table" ->
+        payload =
+          assigns
+          |> Map.get(:table, %{})
+          |> fetch_dataset(widget_id)
+          |> table_payload(assigns.transponder_info)
+
+        Map.put(base, :table, encode_dataset(payload))
 
       "text" ->
         Map.put(base, :text, encode_dataset(fetch_dataset(assigns.text_widgets, widget_id)))
@@ -1082,6 +1123,97 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       widget
       |> Map.get(:uuid)
       |> to_string()
+  end
+
+  defp table_payload(nil, _transponder_info), do: nil
+
+  defp table_payload(dataset, transponder_info) do
+    columns =
+      dataset
+      |> Map.get(:columns, [])
+      |> Enum.map(fn %{at: at, index: idx} ->
+        label =
+          ExploreLive.format_table_timestamp(at, dataset.granularity)
+          |> Phoenix.HTML.safe_to_string()
+
+        %{id: idx, label: label}
+      end)
+
+    column_refs =
+      dataset
+      |> Map.get(:columns, [])
+      |> Enum.map(& &1.at)
+
+    rows =
+      dataset
+      |> Map.get(:rows, [])
+      |> Enum.map(fn row ->
+        formatted_path =
+          ExploreLive.format_nested_path(
+            row.display_path,
+            Map.get(dataset, :color_paths, []),
+            transponder_info || %{},
+            transponder_path: row.path,
+            display_path: row.display_path
+          )
+          |> Phoenix.HTML.safe_to_string()
+
+        values =
+          column_refs
+          |> Enum.map(fn at ->
+            dataset
+            |> Map.get(:values, %{})
+            |> Map.get({row.path, at})
+            |> format_table_value()
+          end)
+
+        %{
+          id: row.index,
+          path_html: formatted_path,
+          values: values
+        }
+      end)
+
+    %{
+      id: dataset.id,
+      columns: columns,
+      rows: rows,
+      empty_message: dataset.empty_message
+    }
+  end
+
+  defp format_table_value(%Decimal{} = d), do: Decimal.to_float(d)
+  defp format_table_value(value) when is_number(value), do: value
+
+  defp format_table_value(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" ->
+        0
+
+      trimmed ->
+        case Float.parse(trimmed) do
+          {num, _} -> num
+          _ -> 0
+        end
+    end
+  end
+
+  defp format_table_value(_), do: 0
+
+  defp log_table_render(assigns, %{} = dataset) do
+    Logger.debug(fn ->
+      rows = dataset |> Map.get(:rows, []) |> length()
+      cols = dataset |> Map.get(:columns, []) |> length()
+      "[TableWidget #{assigns.widget_id || "unknown"}] rendering dataset rows=#{rows} cols=#{cols}"
+    end)
+  end
+
+  defp log_table_render(assigns, _nil_or_other) do
+    Logger.debug(fn ->
+      "[TableWidget #{assigns.widget_id || "unknown"}] no dataset present; showing placeholder"
+    end)
   end
 
   defp grid_position(widget) do

@@ -20,11 +20,13 @@ defmodule TrifleApp.MonitorLive do
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
     Kpi,
+    Table,
     Text,
     Timeseries,
     WidgetData,
     WidgetView
   }
+  alias TrifleApp.Components.DataTable
 
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.MonitorComponents
@@ -79,10 +81,11 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:alert_modal_action, nil)
      |> assign(:insights_dashboard, nil)
      |> assign(:insights_kpi_values, %{})
-     |> assign(:insights_kpi_visuals, %{})
-     |> assign(:insights_timeseries, %{})
-     |> assign(:insights_category, %{})
-     |> assign(:insights_text_widgets, %{})
+    |> assign(:insights_kpi_visuals, %{})
+    |> assign(:insights_timeseries, %{})
+    |> assign(:insights_category, %{})
+    |> assign(:insights_table, %{})
+    |> assign(:insights_text_widgets, %{})
      |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
@@ -1573,6 +1576,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_kpi_visuals, datasets.kpi_visuals)
     |> assign(:insights_timeseries, datasets.timeseries)
     |> assign(:insights_category, datasets.category)
+    |> assign(:insights_table, datasets.table)
     |> assign(:insights_text_widgets, datasets.text)
     |> assign(:alert_evaluations, alert_evaluations)
   end
@@ -1585,12 +1589,13 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_kpi_visuals, datasets.kpi_visuals)
     |> assign(:insights_timeseries, datasets.timeseries)
     |> assign(:insights_category, datasets.category)
+    |> assign(:insights_table, datasets.table)
     |> assign(:insights_text_widgets, datasets.text)
     |> assign(:alert_evaluations, %{})
   end
 
   defp empty_widget_dataset_maps do
-    %{kpi_values: %{}, kpi_visuals: %{}, timeseries: %{}, category: %{}, text: %{}}
+    %{kpi_values: %{}, kpi_visuals: %{}, timeseries: %{}, category: %{}, table: %{}, text: %{}}
   end
 
   defp dataset_maps_for_dashboard(_stats, dashboard) when not is_map(dashboard) do
@@ -1704,6 +1709,14 @@ defmodule TrifleApp.MonitorLive do
         stats
         |> Kpi.dataset(widget)
         |> maybe_put_kpi_data(base)
+
+      type == "table" ->
+        stats
+        |> Table.dataset(widget)
+        |> case do
+          nil -> base
+          table_data -> Map.put(base, :table_data, table_data)
+        end
 
       type == "text" ->
         widget
@@ -2600,7 +2613,9 @@ defmodule TrifleApp.MonitorLive do
                   kpi_visuals={@insights_kpi_visuals}
                   timeseries={@insights_timeseries}
                   category={@insights_category}
+                  table={@insights_table}
                   text_widgets={@insights_text_widgets}
+                  transponder_info={%{}}
                   export_params={export_params}
                   widget_export={%{type: :monitor, monitor_id: @monitor.id}}
                 />
@@ -2944,35 +2959,53 @@ defmodule TrifleApp.MonitorLive do
             </div>
           </:title>
           <:body>
-            <div
-              id={"expanded-widget-#{@expanded_widget.widget_id}"}
-              class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
-              phx-hook="ExpandedWidgetView"
-              data-type={@expanded_widget.type}
-              data-title={@expanded_widget.title}
-              data-colors={ChartColors.json_palette()}
-              data-chart={
-                if @expanded_widget[:chart_data],
-                  do: Jason.encode!(@expanded_widget.chart_data)
-              }
-              data-visual={
-                if @expanded_widget[:visual_data],
-                  do: Jason.encode!(@expanded_widget.visual_data)
-              }
-              data-text={
-                if @expanded_widget[:text_data],
-                  do: Jason.encode!(@expanded_widget.text_data)
-              }
-            >
-              <div class="flex-1 min-h-[500px]">
-                <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                  <div data-role="chart" class="h-full w-full"></div>
+            <%= if @expanded_widget.type == "table" do %>
+              <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
+                <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                  <%= if table_data = @expanded_widget[:table_data] do %>
+                    <DataTable.table
+                      dataset={table_data}
+                      transponder_info={%{}}
+                      outer_class="flex-1 flex flex-col min-h-0"
+                    />
+                  <% else %>
+                    <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                      Configure this widget with a path to display table data.
+                    </div>
+                  <% end %>
                 </div>
               </div>
-              <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+            <% else %>
+              <div
+                id={"expanded-widget-#{@expanded_widget.widget_id}"}
+                class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
+                phx-hook="ExpandedWidgetView"
+                data-type={@expanded_widget.type}
+                data-title={@expanded_widget.title}
+                data-colors={ChartColors.json_palette()}
+                data-chart={
+                  if @expanded_widget[:chart_data],
+                    do: Jason.encode!(@expanded_widget.chart_data)
+                }
+                data-visual={
+                  if @expanded_widget[:visual_data],
+                    do: Jason.encode!(@expanded_widget.visual_data)
+                }
+                data-text={
+                  if @expanded_widget[:text_data],
+                    do: Jason.encode!(@expanded_widget.text_data)
+                }
+              >
+                <div class="flex-1 min-h-[500px]">
+                  <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                    <div data-role="chart" class="h-full w-full"></div>
+                  </div>
+                </div>
+                <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                  <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                </div>
               </div>
-            </div>
+            <% end %>
           </:body>
         </.app_modal>
       <% end %>

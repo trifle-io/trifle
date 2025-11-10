@@ -1,14 +1,15 @@
 defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
   @moduledoc false
 
-  alias TrifleApp.Components.DashboardWidgets.{Category, Kpi, Text, Timeseries, WidgetView}
+  alias TrifleApp.Components.DashboardWidgets.{Category, Kpi, Table, Text, Timeseries, WidgetView}
 
   @type dataset_group :: %{
           kpi_values: list(),
           kpi_visuals: list(),
           timeseries: list(),
           category: list(),
-          text: list()
+          text: list(),
+          table: list()
         }
 
   @spec datasets(Trifle.Stats.Series.t() | nil, list()) :: dataset_group()
@@ -20,7 +21,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
       kpi_visuals: kpi_visuals,
       timeseries: Timeseries.datasets(stats, grid_items),
       category: Category.datasets(stats, grid_items),
-      text: Text.widgets(grid_items)
+      text: Text.widgets(grid_items),
+      table: Table.datasets(stats, grid_items)
     }
   end
 
@@ -35,26 +37,37 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
           kpi_visuals: map(),
           timeseries: map(),
           category: map(),
-          text: map()
+          text: map(),
+          table: map()
         }
   def dataset_maps(%{
         kpi_values: kpi_values,
         kpi_visuals: kpi_visuals,
         timeseries: timeseries,
         category: category,
-        text: text
+        text: text,
+        table: table
       }) do
     %{
       kpi_values: to_map(kpi_values),
       kpi_visuals: to_map(kpi_visuals),
       timeseries: to_map(timeseries),
       category: to_map(category),
-      text: to_map(text)
+      text: to_map(text),
+      table: to_map(table)
     }
   end
 
   def dataset_maps(_other),
-    do: dataset_maps(%{kpi_values: [], kpi_visuals: [], timeseries: [], category: [], text: []})
+    do:
+      dataset_maps(%{
+        kpi_values: [],
+        kpi_visuals: [],
+        timeseries: [],
+        category: [],
+        text: [],
+        table: []
+      })
 
   defp to_map(list) when is_list(list) do
     list

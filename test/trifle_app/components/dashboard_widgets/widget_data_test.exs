@@ -23,6 +23,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
       "paths" => ["metrics.category"],
       "chart_type" => "bar"
     },
+    %{
+      "id" => "table-1",
+      "type" => "table",
+      "paths" => ["metrics.table"],
+      "title" => "Table View"
+    },
     %{"id" => "text-1", "type" => "text", "title" => "Hello World"}
   ]
 
@@ -36,13 +42,15 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
       %{
         "metrics" => %{
           "count" => 5,
-          "category" => %{"A" => 3, "B" => 2}
+          "category" => %{"A" => 3, "B" => 2},
+          "table" => %{"payments" => %{"credit" => 4, "digital" => 6}}
         }
       },
       %{
         "metrics" => %{
           "count" => 7,
-          "category" => %{"A" => 4, "B" => 3}
+          "category" => %{"A" => 4, "B" => 3},
+          "table" => %{"payments" => %{"credit" => 5, "digital" => 7}}
         }
       }
     ]
@@ -73,6 +81,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert [%{id: "cat-1", data: cat_data}] = dataset.category
     assert Enum.any?(cat_data, &(&1.name == "A"))
     assert Enum.any?(cat_data, &(&1.name == "B"))
+    assert [%{id: "table-1", rows: table_rows}] = dataset.table
+    assert Enum.any?(table_rows, &(&1.display_path == "payments.credit"))
 
     assert [%{id: "text-1", title: "Hello World"}] = dataset.text
   end
@@ -89,6 +99,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert %{"ts-1" => %{series: [_ | _]}} = dataset_maps.timeseries
     assert %{"cat-1" => %{data: cat_data}} = dataset_maps.category
     assert Enum.count(cat_data) >= 2
+    assert %{"table-1" => %{rows: table_rows}} = dataset_maps.table
+    assert is_list(table_rows)
     assert %{"text-1" => %{title: "Hello World"}} = dataset_maps.text
   end
 
@@ -108,6 +120,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert dataset.kpi_visuals == []
     assert dataset.timeseries == []
     assert dataset.category == []
+    assert dataset.table == []
     assert [%{id: "text-1"}] = dataset.text
   end
 

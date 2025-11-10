@@ -1040,10 +1040,12 @@ Hooks.DashboardGrid = {
     this._sparkTypes = {};
     this._tsCharts = {};
     this._catCharts = {};
+    this._tableCache = {};
     this._lastKpiValues = [];
     this._lastKpiVisuals = [];
     this._lastTimeseries = [];
     this._lastCategory = [];
+    this._lastTable = [];
     this._lastText = [];
 
     // Global window resize handler to resize all charts
@@ -1107,6 +1109,7 @@ Hooks.DashboardGrid = {
       kpiVisuals: {},
       timeseries: {},
       category: {},
+      table: {},
       text: {}
     };
     this.el.__dashboardGrid = this;
@@ -1199,7 +1202,7 @@ Hooks.DashboardGrid = {
     }
 
     // Ready signaling for export capture
-    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false };
+    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false, table: false };
     this._markedReady = false;
 
     this._onThemeChange = (event) => {
@@ -2246,6 +2249,156 @@ Hooks.DashboardGrid = {
     this._lastCategory = this._deepClone(items);
   },
 
+  _render_table(items) {
+    if (!Array.isArray(items)) return;
+    this._lastTable = this._deepClone(items);
+
+    items.forEach((it) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+      const body = item && item.querySelector('.grid-widget-body');
+      if (!body) return;
+
+      body.className = 'grid-widget-body flex-1 flex flex-col min-h-0';
+
+      if (!it.rows || !it.rows.length || !it.columns || !it.columns.length) {
+        body.innerHTML = `<div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">${this.escapeHtml(it.empty_message || 'No data available yet.')}</div>`;
+        return;
+      }
+
+      body.innerHTML = this._build_table_html(it);
+      this._init_table_hooks(body);
+    });
+  },
+
+  _build_table_html(payload) {
+    const headerCells = (payload.columns || [])
+      .map((col) => {
+        const label = col && col.label ? col.label : '';
+        return `
+          <th
+            scope="col"
+            class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 dark:text-teal-400 bg-white dark:bg-slate-800 h-16 align-top z-10 transition-colors duration-150"
+            data-col="${col && col.id != null ? col.id : ''}"
+            style="width: 120px;"
+          >
+            ${label}
+          </th>
+        `;
+      })
+      .join('');
+
+    const rows = (payload.rows || [])
+      .map((row) => {
+        const cells = (row.values || []).map((value, idx) => {
+          const columnId = (payload.columns && payload.columns[idx] && payload.columns[idx].id != null)
+            ? payload.columns[idx].id
+            : idx + 1;
+
+          const hasValue = value !== null && value !== undefined && value !== '';
+          const cellClass = hasValue
+            ? 'whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 dark:text-white transition-colors duration-150 cursor-pointer'
+            : 'whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 dark:text-slate-500 transition-colors duration-150 cursor-pointer';
+
+          const displayValue = this._format_table_value(value, hasValue);
+
+          return `
+            <td
+              class="${cellClass}"
+              data-row="${row.id}"
+              data-col="${columnId}"
+            >
+              ${displayValue}
+            </td>
+          `;
+        }).join('');
+
+        const pathHtml = row.path_html || '';
+
+        return `
+          <tr data-row="${row.id}">
+            <td
+              class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
+              data-row="${row.id}"
+            >
+              ${pathHtml}
+            </td>
+            ${cells}
+          </tr>
+        `;
+      })
+      .join('');
+
+    return `
+      <div class="data-table-shell flex-1 flex flex-col min-h-0" data-role="table-container">
+        <div class="data-table-scroll flex-1 overflow-x-auto overflow-y-auto relative" data-role="table-scroll">
+          <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto" data-role="data-table" style="table-layout: fixed;">
+            <thead>
+              <tr>
+                <th
+                  scope="col"
+                  class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
+                  style="width: 200px;"
+                >
+                  Path
+                </th>
+                ${headerCells}
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800">
+              ${rows}
+            </tbody>
+          </table>
+          <div class="border-t border-gray-200 dark:border-slate-700" data-role="table-border"></div>
+        </div>
+      </div>
+    `;
+  },
+
+  _format_table_value(value, hasValue) {
+    if (!hasValue) return '0';
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return '0';
+      return String(value);
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed === '') return '0';
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? String(parsed) : this.escapeHtml(trimmed);
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? String(parsed) : '0';
+  },
+
+  _init_table_hooks(container) {
+    const tableContainer = container.querySelector('[data-role="table-container"]');
+    if (tableContainer && Hooks.PhantomRows && typeof Hooks.PhantomRows.addPhantomRows === 'function') {
+      try {
+        Hooks.PhantomRows.addPhantomRows.call({ el: tableContainer });
+      } catch (_) {}
+    }
+
+    const table = container.querySelector('[data-role="data-table"]');
+
+    if (table && Hooks.TableHover && typeof Hooks.TableHover.initHover === 'function') {
+      try {
+        Hooks.TableHover.initHover.call({ el: table });
+      } catch (_) {}
+    }
+
+    if (table && Hooks.FastTooltip && typeof Hooks.FastTooltip.initTooltips === 'function') {
+      const context = {
+        el: table,
+        showTooltip: Hooks.FastTooltip.showTooltip.bind(Hooks.FastTooltip),
+        hideTooltip: Hooks.FastTooltip.hideTooltip.bind(Hooks.FastTooltip)
+      };
+
+      try {
+        Hooks.FastTooltip.initTooltips.call(context);
+      } catch (_) {}
+    }
+  },
+
   _render_text(items) {
     if (!Array.isArray(items)) return;
     const cloned = this._deepClone(items);
@@ -2562,6 +2715,7 @@ Hooks.DashboardGrid = {
       kpiVisuals: {},
       timeseries: {},
       category: {},
+      table: {},
       text: {}
     });
 
@@ -2605,6 +2759,18 @@ Hooks.DashboardGrid = {
       return;
     }
 
+    if (type === 'table') {
+      if (payload) {
+        registry.table[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+      } else {
+        delete registry.table[normalizedId];
+      }
+      this._render_table(this._sortedWidgetValues(registry.table));
+      this._seen.table = true;
+      this._scheduleReadyMark();
+      return;
+    }
+
     if (type === 'text') {
       if (payload) {
         registry.text[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
@@ -2622,6 +2788,7 @@ Hooks.DashboardGrid = {
     delete registry.kpiVisuals[normalizedId];
     delete registry.timeseries[normalizedId];
     delete registry.category[normalizedId];
+    delete registry.table[normalizedId];
     delete registry.text[normalizedId];
   },
 
@@ -2631,6 +2798,7 @@ Hooks.DashboardGrid = {
       this.registerWidget('kpi', id, null);
       this.registerWidget('timeseries', id, null);
       this.registerWidget('category', id, null);
+      this.registerWidget('table', id, null);
       this.registerWidget('text', id, null);
       return;
     }
@@ -2657,6 +2825,7 @@ Hooks.DashboardGrid = {
     const kpiVisuals = Array.isArray(this._lastKpiVisuals) ? this._deepClone(this._lastKpiVisuals) : null;
     const timeseries = Array.isArray(this._lastTimeseries) ? this._deepClone(this._lastTimeseries) : null;
     const categories = Array.isArray(this._lastCategory) ? this._deepClone(this._lastCategory) : null;
+    const tables = Array.isArray(this._lastTable) ? this._deepClone(this._lastTable) : null;
     const textWidgets = Array.isArray(this._lastText) ? this._deepClone(this._lastText) : null;
 
     const updateTheme = (map) => {
@@ -2673,6 +2842,7 @@ Hooks.DashboardGrid = {
     updateTheme(this._sparklines);
     updateTheme(this._tsCharts);
     updateTheme(this._catCharts);
+    updateTheme(this._tableCache);
 
     if (this._sparkTimers) {
       Object.keys(this._sparkTimers).forEach((key) => {
@@ -2686,6 +2856,7 @@ Hooks.DashboardGrid = {
       this._seen.kpi_visual = false;
       this._seen.timeseries = false;
       this._seen.category = false;
+      this._seen.table = false;
       this._seen.text = false;
     }
 
@@ -2763,13 +2934,14 @@ Hooks.DashboardWidgetData = {
       this.widgetType = nextType;
     }
 
-    const dataStrings = [
-      this.el.dataset.kpiValues || '',
-      this.el.dataset.kpiVisual || '',
-      this.el.dataset.timeseries || '',
-      this.el.dataset.category || '',
-      this.el.dataset.text || ''
-    ];
+      const dataStrings = [
+        this.el.dataset.kpiValues || '',
+        this.el.dataset.kpiVisual || '',
+        this.el.dataset.timeseries || '',
+        this.el.dataset.category || '',
+        this.el.dataset.table || '',
+        this.el.dataset.text || ''
+      ];
     const key = [this.widgetType, this.widgetId].concat(dataStrings).join('||');
     if (key === this._lastKey) return;
     this._lastKey = key;
@@ -2807,6 +2979,10 @@ Hooks.DashboardWidgetData = {
         payload = data;
       } else if (type === 'category') {
         const data = parseJsonSafe(this.el.dataset.category || '');
+        if (data && data.id == null) data.id = id;
+        payload = data;
+      } else if (type === 'table') {
+        const data = parseJsonSafe(this.el.dataset.table || '');
         if (data && data.id == null) data.id = id;
         payload = data;
       } else if (type === 'text') {
@@ -4549,6 +4725,7 @@ Hooks.TimeseriesPaths = {
 Hooks.CategoryPaths = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId;
+    this.inputName = this.el.dataset.pathInputName || 'cat_paths[]';
 
     this.handleClick = (event) => {
       const button = event.target.closest('[data-action]');
@@ -4584,6 +4761,7 @@ Hooks.CategoryPaths = {
 
   updated() {
     this.widgetId = this.el.dataset.widgetId;
+    this.inputName = this.el.dataset.pathInputName || 'cat_paths[]';
   },
 
   destroyed() {
@@ -4593,7 +4771,7 @@ Hooks.CategoryPaths = {
   },
 
   readPaths() {
-    return Array.from(this.el.querySelectorAll('input[name="cat_paths[]"]')).map((input) =>
+    return Array.from(this.el.querySelectorAll(`input[name="${this.inputName}"]`)).map((input) =>
       input.value || ''
     );
   }
@@ -4614,12 +4792,12 @@ Hooks.PhantomRows = {
     this.clearPhantomRows();
     
     const container = this.el;
-    const scrollContainer = container.querySelector('#table-hover-container');
-    const table = container.querySelector('table');
+    const scrollContainer = container.querySelector('[data-role="table-scroll"]');
+    const table = scrollContainer ? scrollContainer.querySelector('[data-role="data-table"]') : null;
     if (!table || !scrollContainer) return;
     
     // Fix border width to match table width
-    const borderDiv = scrollContainer.querySelector('.border-t');
+    const borderDiv = scrollContainer.querySelector('[data-role="table-border"]');
     if (borderDiv) {
       const tableWidth = table.scrollWidth;
       borderDiv.style.width = `${tableWidth}px`;
@@ -4643,7 +4821,7 @@ Hooks.PhantomRows = {
   },
   
   createPhantomRowsElement(height, scrollContainer) {
-    const table = scrollContainer.querySelector('table');
+    const table = scrollContainer.querySelector('[data-role="data-table"]');
     const tableWidth = table ? table.scrollWidth : scrollContainer.scrollWidth;
     
     const phantomContainer = document.createElement('div');
@@ -4669,7 +4847,7 @@ Hooks.PhantomRows = {
     `;
     
     // Append to scroll container, right after the border
-    const borderDiv = scrollContainer.querySelector('.border-t');
+    const borderDiv = scrollContainer.querySelector('[data-role="table-border"]');
     if (borderDiv && borderDiv.nextSibling) {
       scrollContainer.insertBefore(phantomContainer, borderDiv.nextSibling);
     } else {
@@ -4678,7 +4856,7 @@ Hooks.PhantomRows = {
   },
   
   clearPhantomRows() {
-    const existing = document.querySelectorAll('.phantom-rows-js');
+    const existing = this.el.querySelectorAll('.phantom-rows-js');
     existing.forEach(el => el.remove());
   }
 }
