@@ -5,6 +5,7 @@ defmodule TrifleApp.Components.DashboardPage do
   use TrifleApp, :html
 
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
+  import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
 
   import TrifleApp.DashboardLive,
     only: [
@@ -14,6 +15,7 @@ defmodule TrifleApp.Components.DashboardPage do
     ]
 
   alias Trifle.Stats.Source
+  alias TrifleApp.Granularity
   alias TrifleApp.Components.DashboardWidgets.WidgetView
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   alias TrifleApp.DesignSystem.ChartColors
@@ -885,41 +887,17 @@ defmodule TrifleApp.Components.DashboardPage do
                         />
                       </div>
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                          Granularity
-                        </label>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select
-                            name="granularity"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                          >
-                            <%= for g <- @available_granularities do %>
-                              <option
-                                value={g}
-                                selected={
-                                  g ==
-                                    (@dashboard.default_granularity || @database.default_granularity ||
-                                       "1h")
-                                }
-                              >
-                                {g}
-                              </option>
-                            <% end %>
-                          </select>
-                          <svg
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                            data-slot="icon"
-                            aria-hidden="true"
-                            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                          >
-                            <path
-                              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                              clip-rule="evenodd"
-                              fill-rule="evenodd"
-                            />
-                          </svg>
-                        </div>
+                        <.granularity_select
+                          id="dashboard-default-granularity"
+                          name="granularity"
+                          label="Granularity"
+                          wrapper_class="grid grid-cols-1 sm:max-w-xs mt-2"
+                          value={
+                            @dashboard.default_granularity || @database.default_granularity || "1h"
+                          }
+                          options={Granularity.options(@available_granularities)}
+                          prompt="Use source default"
+                        />
                       </div>
                     </div>
                   </div>

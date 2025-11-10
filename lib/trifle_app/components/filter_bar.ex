@@ -8,7 +8,7 @@ defmodule TrifleApp.Components.FilterBar do
   use TrifleApp, :live_component
 
   alias Trifle.Stats.Source
-  alias TrifleApp.TimeframeParsing
+  alias TrifleApp.{Granularity, TimeframeParsing}
 
   def render(assigns) do
     ~H"""
@@ -305,7 +305,7 @@ defmodule TrifleApp.Components.FilterBar do
                   class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:hover:bg-slate-700"
                 >
                   <div class="flex items-center justify-between">
-                    <span>{granularity_display_name(@granularity)}</span>
+                    <span>{Granularity.display_name(@granularity)}</span>
                     <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900/30 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-600/50">
                       {@granularity}
                     </span>
@@ -344,7 +344,7 @@ defmodule TrifleApp.Components.FilterBar do
                       >
                         <div class="flex items-center justify-between">
                           <span class="text-sm text-gray-900 dark:text-white">
-                            {granularity_display_name(granularity)}
+                            {Granularity.display_name(granularity)}
                           </span>
                           <span class="inline-flex items-center rounded-md bg-teal-100 dark:bg-teal-900/30 px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 ring-1 ring-inset ring-gray-500/10 dark:ring-slate-600/50">
                             {granularity}
@@ -693,41 +693,6 @@ defmodule TrifleApp.Components.FilterBar do
     end
   end
 
-  defp granularity_display_name(granularity) do
-    try do
-      parser = Trifle.Stats.Nocturnal.Parser.new(granularity)
-
-      if Trifle.Stats.Nocturnal.Parser.valid?(parser) do
-        unit_name =
-          case parser.unit do
-            :second -> if parser.offset == 1, do: "second", else: "seconds"
-            :minute -> if parser.offset == 1, do: "minute", else: "minutes"
-            :hour -> if parser.offset == 1, do: "hour", else: "hours"
-            :day -> if parser.offset == 1, do: "day", else: "days"
-            :week -> if parser.offset == 1, do: "week", else: "weeks"
-            :month -> if parser.offset == 1, do: "month", else: "months"
-            :year -> if parser.offset == 1, do: "year", else: "years"
-            _ -> "#{parser.unit}"
-          end
-
-        "#{parser.offset} #{unit_name}"
-      else
-        # Fallback for old format
-        case granularity do
-          "minute" -> "1 minute"
-          "hour" -> "1 hour"
-          "day" -> "1 day"
-          "week" -> "1 week"
-          "month" -> "1 month"
-          "year" -> "1 year"
-          _ -> granularity
-        end
-      end
-    rescue
-      _ -> granularity
-    end
-  end
-
   defp render_granularity_button_group(assigns) do
     ~H"""
     <div class="relative">
@@ -751,7 +716,7 @@ defmodule TrifleApp.Components.FilterBar do
             phx-target={@myself}
             phx-click="select_granularity"
             phx-value-granularity={granularity}
-            data-tooltip={granularity_display_name(granularity)}
+            data-tooltip={Granularity.display_name(granularity)}
             class={[
               "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus:outline-none focus-visible:outline-none focus:bg-white dark:focus:bg-slate-800 active:bg-white dark:active:bg-slate-800",
               case position do
