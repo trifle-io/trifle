@@ -40,6 +40,7 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   """
   attr :type, :string, default: "submit"
   attr :class, :string, default: ""
+
   attr :rest, :global,
     include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled form)
 
@@ -67,7 +68,9 @@ defmodule TrifleApp.DesignSystem.FormButtons do
   attr :class, :string, default: ""
   attr :navigate, :string, default: nil
   attr :patch, :string, default: nil
-  attr :rest, :global, include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled form)
+
+  attr :rest, :global,
+    include: ~w(phx-click phx-disable-with phx-value-id data-confirm disabled form)
 
   slot :inner_block, required: true
 

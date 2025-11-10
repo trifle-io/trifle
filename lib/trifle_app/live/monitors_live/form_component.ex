@@ -299,13 +299,13 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                             ]}
                           />
                         </div>
-                      <div>
-                        <.timeframe_input
-                          field={report_form[:timeframe]}
-                          label="Timeframe window"
-                          placeholder="e.g. 7d, 30d"
-                        />
-                      </div>
+                        <div>
+                          <.timeframe_input
+                            field={report_form[:timeframe]}
+                            label="Timeframe window"
+                            placeholder="e.g. 7d, 30d"
+                          />
+                        </div>
                         <div>
                           <.granularity_select
                             field={report_form[:granularity]}
@@ -458,7 +458,6 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                 </p>
               </div>
             </div>
-
           </.simple_form>
         </:body>
         <:actions>
@@ -491,7 +490,10 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                 disabled={!@can_manage_lock}
                 class={[
                   "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                  if(locked?, do: "bg-amber-500 dark:bg-amber-400", else: "bg-gray-200 dark:bg-gray-700"),
+                  if(locked?,
+                    do: "bg-amber-500 dark:bg-amber-400",
+                    else: "bg-gray-200 dark:bg-gray-700"
+                  ),
                   if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
                 ]}
               >
@@ -1557,10 +1559,18 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   defp path_status_message(:not_applicable, _meta), do: nil
   defp path_status_message(:idle, _meta), do: nil
-  defp path_status_message(:awaiting_source, _meta), do: {"Select a source to enable path suggestions.", :muted}
-  defp path_status_message(:awaiting_key, _meta), do: {"Enter a metric key to preview its available paths.", :muted}
-  defp path_status_message(:loading, _meta), do: {"Sampling recent data for autocomplete…", :muted}
-  defp path_status_message(:empty, _meta), do: {"No matching paths were found in the sampled window.", :warning}
+
+  defp path_status_message(:awaiting_source, _meta),
+    do: {"Select a source to enable path suggestions.", :muted}
+
+  defp path_status_message(:awaiting_key, _meta),
+    do: {"Enter a metric key to preview its available paths.", :muted}
+
+  defp path_status_message(:loading, _meta),
+    do: {"Sampling recent data for autocomplete…", :muted}
+
+  defp path_status_message(:empty, _meta),
+    do: {"No matching paths were found in the sampled window.", :warning}
 
   defp path_status_message({:ready, meta}, _meta2) do
     granularity = meta[:granularity] || "selected granularity"
@@ -1579,7 +1589,8 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   defp path_hint_class(:danger), do: "text-rose-600 dark:text-rose-400"
   defp path_hint_class(_), do: "text-slate-500 dark:text-slate-400"
 
-  defp format_path_error({:invalid_granularity, granularity}), do: " (invalid granularity #{granularity})"
+  defp format_path_error({:invalid_granularity, granularity}),
+    do: " (invalid granularity #{granularity})"
 
   defp format_path_error({:no_granularity, _}), do: " (no granularities configured)"
 

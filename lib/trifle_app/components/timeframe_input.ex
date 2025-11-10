@@ -23,7 +23,8 @@ defmodule TrifleApp.Components.TimeframeInput do
   attr :wrapper_class, :string, default: ""
 
   attr :rest, :global,
-    include: ~w(autocomplete autocapitalize autocorrect spellcheck phx-debounce phx-hook phx-target inputmode)
+    include:
+      ~w(autocomplete autocapitalize autocorrect spellcheck phx-debounce phx-hook phx-target inputmode)
 
   def timeframe_input(assigns) do
     assigns =

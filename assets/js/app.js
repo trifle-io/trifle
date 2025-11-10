@@ -60,6 +60,94 @@ const formatCompactNumber = (value) => {
     .replace(/(\.\d*?[1-9])0+$/, '$1');
 };
 
+const TABLE_PATH_HTML_FIELD = '__table_path_html__';
+const AGGRID_SCRIPT_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js';
+const AGGRID_BASE_STYLE_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-grid.css';
+const AGGRID_THEME_LIGHT_STYLE_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine.css';
+const AGGRID_THEME_DARK_STYLE_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine-dark.css';
+let aggridLoaderPromise = null;
+let aggridHeaderComponentClass = null;
+
+const ensureStylesheet = (id, href) => {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(id)) return;
+  const existing = Array.from(document.querySelectorAll(`link[data-trifle-css="${id}"]`));
+  if (existing.length) return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = href;
+  link.id = id;
+  link.dataset.trifleCss = id;
+  document.head.appendChild(link);
+};
+
+const ensureAgGridCommunity = () => {
+  if (typeof window !== 'undefined' && window.agGrid && window.agGrid.Grid) {
+    return Promise.resolve(window.agGrid);
+  }
+  if (!aggridLoaderPromise) {
+    aggridLoaderPromise = new Promise((resolve, reject) => {
+      if (typeof document === 'undefined') {
+        reject(new Error('Document not available'));
+        return;
+      }
+      ensureStylesheet('ag-grid-base-css', AGGRID_BASE_STYLE_SRC);
+      ensureStylesheet('ag-grid-alpine-css', AGGRID_THEME_LIGHT_STYLE_SRC);
+      ensureStylesheet('ag-grid-alpine-dark-css', AGGRID_THEME_DARK_STYLE_SRC);
+      const script = document.createElement('script');
+      script.src = AGGRID_SCRIPT_SRC;
+      script.async = true;
+      script.onload = () => resolve(window.agGrid);
+      script.onerror = (err) => {
+        console.error('[AGGrid] failed to load ag-grid-community script', err);
+        aggridLoaderPromise = null;
+        reject(err);
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return aggridLoaderPromise;
+};
+
+const getAggridHeaderComponentClass = () => {
+  if (aggridHeaderComponentClass) return aggridHeaderComponentClass;
+  class TrifleAgGridHeader {
+    init(params) {
+      this.eGui = document.createElement('div');
+      this.eGui.className = 'aggrid-header-cell-wrapper';
+      if (params && params.align === 'left') {
+        this.eGui.classList.add('aggrid-header-align-left');
+      } else {
+        this.eGui.classList.add('aggrid-header-align-right');
+      }
+      const lines =
+        (params &&
+          params.column &&
+          params.column.getColDef &&
+          params.column.getColDef() &&
+          params.column.getColDef().headerComponentParams &&
+          params.column.getColDef().headerComponentParams.lines) ||
+        [];
+      const displayName = params && typeof params.displayName === 'string' ? params.displayName : '';
+      const segments = Array.isArray(lines) && lines.length ? lines : [displayName];
+      segments.forEach((segment, idx) => {
+        const span = document.createElement('span');
+        span.className = 'aggrid-header-line';
+        span.textContent = segment;
+        this.eGui.appendChild(span);
+      });
+    }
+
+    getGui() {
+      return this.eGui;
+    }
+
+    destroy() {}
+  }
+  aggridHeaderComponentClass = TrifleAgGridHeader;
+  return aggridHeaderComponentClass;
+};
+
 let Hooks = {}
 
 const parseJsonSafe = (value) => {
@@ -1064,6 +1152,7 @@ Hooks.DashboardGrid = {
         if (this._catCharts) {
           Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
         }
+        this._resizeAgGridTables();
       } catch (_) {}
     };
     window.addEventListener('resize', this._onWindowResize);
@@ -1112,6 +1201,9 @@ Hooks.DashboardGrid = {
       table: {},
       text: {}
     };
+    this._aggridTables = {};
+    this._aggridResizeTimers = {};
+    this._aggridThemeIsDark = document.documentElement.classList.contains('dark');
     this.el.__dashboardGrid = this;
 
     // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
@@ -1384,6 +1476,16 @@ Hooks.DashboardGrid = {
       });
       this._catCharts = {};
     }
+    if (this._aggridTables) {
+      Object.keys(this._aggridTables).forEach((id) => this._destroy_aggrid_table(id));
+      this._aggridTables = {};
+    }
+    if (this._aggridResizeTimers) {
+      Object.keys(this._aggridResizeTimers).forEach((key) => {
+        try { clearTimeout(this._aggridResizeTimers[key]); } catch (_) {}
+        delete this._aggridResizeTimers[key];
+      });
+    }
     if (this._onThemeChange) {
       window.removeEventListener('trifle:theme-changed', this._onThemeChange);
       this._onThemeChange = null;
@@ -1413,6 +1515,7 @@ Hooks.DashboardGrid = {
       // drag only by the title bar (between title and cog button)
       draggable: { handle: '.grid-widget-handle' },
     }, this.el);
+    this._cellHeight = resolvedCellHeight;
 
     if (!this.editable) {
       this.grid.setStatic(true);
@@ -1429,6 +1532,7 @@ Hooks.DashboardGrid = {
       if (this._catCharts) {
         Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
       }
+      this._resizeAgGridTables();
     };
     this.grid.on('change', () => { if (!this._suppressSave && !this._isOneCol && document.visibilityState !== 'hidden') save(); resizeCharts(); });
     this.grid.on('added', () => { if (!this._isOneCol) save(); resizeCharts(); });
@@ -2252,6 +2356,7 @@ Hooks.DashboardGrid = {
   _render_table(items) {
     if (!Array.isArray(items)) return;
     this._lastTable = this._deepClone(items);
+    const seenAggridTables = new Set();
 
     items.forEach((it) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
@@ -2259,15 +2364,34 @@ Hooks.DashboardGrid = {
       if (!body) return;
 
       body.className = 'grid-widget-body flex-1 flex flex-col min-h-0';
+      const tableId = this._tableKey(it.id);
 
       if (!it.rows || !it.rows.length || !it.columns || !it.columns.length) {
+        this._destroy_aggrid_table(tableId);
         body.innerHTML = `<div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">${this.escapeHtml(it.empty_message || 'No data available yet.')}</div>`;
         return;
       }
 
+      const mode = (it.mode || 'html').toString().toLowerCase();
+      if (mode === 'aggrid') {
+        body.innerHTML = this._build_aggrid_table_html(it);
+        this._render_aggrid_table(body, it);
+        if (tableId) seenAggridTables.add(tableId);
+        return;
+      }
+
+      this._destroy_aggrid_table(tableId);
       body.innerHTML = this._build_table_html(it);
       this._init_table_hooks(body);
     });
+
+    if (this._aggridTables) {
+      Object.keys(this._aggridTables).forEach((id) => {
+        if (!seenAggridTables.has(id)) {
+          this._destroy_aggrid_table(id);
+        }
+      });
+    }
   },
 
   _build_table_html(payload) {
@@ -2397,6 +2521,403 @@ Hooks.DashboardGrid = {
         Hooks.FastTooltip.initTooltips.call(context);
       } catch (_) {}
     }
+  },
+
+  _activate_tooltips_for_element(element) {
+    if (!element || !Hooks || !Hooks.FastTooltip) return;
+    const fastTooltip = Hooks.FastTooltip;
+    if (typeof fastTooltip.initTooltips !== 'function') return;
+    const context = {
+      el: element,
+      showTooltip: fastTooltip.showTooltip.bind(fastTooltip),
+      hideTooltip: fastTooltip.hideTooltip.bind(fastTooltip)
+    };
+    requestAnimationFrame(() => {
+      try {
+        fastTooltip.initTooltips.call(context);
+      } catch (_) {}
+    });
+  },
+
+
+  _build_aggrid_table_html(payload) {
+    const idAttr = payload && payload.id != null ? ` data-aggrid-id="${this.escapeHtml(String(payload.id))}"` : '';
+    const rootId = payload && payload.id != null ? ` id="aggrid-table-${this.escapeHtml(String(payload.id))}"` : '';
+    const theme = this._aggridThemeIsDark ? 'dark' : 'light';
+    const themeClass = this._aggridThemeIsDark ? 'ag-theme-alpine-dark' : 'ag-theme-alpine';
+    return `
+      <div class="aggrid-table-shell flex-1 flex flex-col min-h-0" data-role="aggrid-table"${idAttr} data-theme="${theme}">
+        <div class="flex-1 min-h-0 ${themeClass}" data-role="aggrid-table-root"${rootId}>
+          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+            Loading AG Grid table...
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+
+
+
+
+
+
+  _render_aggrid_table(container, payload) {
+    if (!payload) return;
+    const root = container.querySelector('[data-role="aggrid-table-root"]');
+    const tableId = this._tableKey(payload.id);
+    if (!root || !tableId) return;
+
+    if (!window.agGrid || typeof window.agGrid.Grid !== 'function') {
+      ensureAgGridCommunity()
+        .then(() => this._render_aggrid_table(container, payload))
+        .catch((err) => console.error('[AGGrid] unable to load ag-grid-community', err));
+      return;
+    }
+
+    if (root.clientWidth === 0 || root.clientHeight === 0) {
+      if (!this._aggridResizeTimers) this._aggridResizeTimers = {};
+      if (this._aggridResizeTimers[tableId]) clearTimeout(this._aggridResizeTimers[tableId]);
+      this._aggridResizeTimers[tableId] = setTimeout(() => this._render_aggrid_table(container, payload), 60);
+      return;
+    }
+
+    let entry = this._aggridTables && this._aggridTables[tableId];
+    if (!entry || entry.root !== root || !entry.api) {
+      this._destroy_aggrid_table(tableId);
+      entry = this._create_aggrid_table(root);
+      this._aggridTables[tableId] = entry;
+    }
+
+    const dataset = this._prepare_table_dataset(payload);
+    entry.dataset = dataset;
+    entry.payload = payload;
+    entry.pathKey = dataset.pathKey;
+
+    const schema = Array.isArray(dataset.schema) ? dataset.schema : [];
+    const originalColumns = Array.isArray(payload.columns) ? payload.columns : [];
+    const columnDefs = schema.map((col, idx) => {
+      const sourceLabel = (
+        idx === 0
+          ? (col.title || col.name || 'Path')
+          : ((originalColumns[idx - 1] && originalColumns[idx - 1].label) || col.title || col.name || '')
+      ).toString();
+      const headerLines = sourceLabel
+        .split(/<br\s*\/?>/i)
+        .map((segment) => this._strip_html(segment))
+        .map((line) => line.replace(/\s+/g, ' ').trim())
+        .filter((line) => line !== '');
+      const resolvedHeader = headerLines.length ? headerLines.join('\n') : this._strip_html(sourceLabel);
+      const headerAlignment = idx === 0 ? 'left' : 'right';
+      const headerAlignment = idx === 0 ? 'left' : 'right';
+      const baseDef = {
+        field: col.name,
+        headerName: resolvedHeader,
+        headerTooltip: headerLines.join(' · ') || resolvedHeader,
+        sortable: false,
+        filter: false,
+        resizable: false,
+        suppressMenu: true,
+        suppressMovable: true,
+        minWidth: idx === 0 ? 240 : 120,
+        flex: idx === 0 ? 2 : 1,
+        cellClass: [
+          col.align === 'right' ? 'ag-right-aligned-cell' : 'ag-left-aligned-cell',
+          'aggrid-body-cell'
+        ].join(' '),
+        headerClass: [
+          headerAlignment === 'right' ? 'ag-right-aligned-header' : 'ag-left-aligned-header',
+          'aggrid-header-cell'
+        ].join(' ')
+      };
+      baseDef.headerComponentParams = { lines: headerLines, align: headerAlignment };
+      if (col.name === dataset.pathKey) {
+        baseDef.cellRenderer = (params) => {
+          if (params && params.data && params.data.__placeholder) {
+            const empty = document.createElement('div');
+            empty.className = 'aggrid-path-cell';
+            empty.innerHTML = '&nbsp;';
+            return empty;
+          }
+          const value = (params && params.value != null) ? params.value : '';
+          const pathHtml = params && params.data ? params.data[TABLE_PATH_HTML_FIELD] : '';
+          const wrapper = document.createElement('div');
+          wrapper.className = 'aggrid-path-cell';
+          if (pathHtml && typeof pathHtml === 'string') {
+            wrapper.innerHTML = pathHtml;
+          } else {
+            wrapper.textContent = value == null ? '' : String(value);
+          }
+          return wrapper;
+        };
+        baseDef.cellClass += ' aggrid-path-cell-wrapper';
+      }
+      if (col.type === 'number') {
+        baseDef.valueFormatter = (params) => {
+          if (params && params.data && params.data.__placeholder) return '';
+          const value = params && params.value;
+          if (value === undefined || value === null || value === '') return '';
+          const numeric = Number(value);
+          if (!Number.isFinite(numeric)) return String(value);
+          return numeric.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        };
+        baseDef.type = 'numericColumn';
+        baseDef.cellClass += ' aggrid-numeric-cell';
+      }
+      if (idx === 0) {
+        baseDef.pinned = 'left';
+        baseDef.lockPinned = true;
+        baseDef.suppressMovable = true;
+        baseDef.cellClass += ' aggrid-path-pinned';
+      }
+      return baseDef;
+    });
+
+    const filledRows = Array.isArray(dataset.rows) ? dataset.rows.map((row) => Object.assign({}, row)) : [];
+    const rowHeight = entry.gridOptions && entry.gridOptions.rowHeight ? entry.gridOptions.rowHeight : 28;
+    const headerHeight = entry.gridOptions && entry.gridOptions.headerHeight ? entry.gridOptions.headerHeight : 48;
+    const containerHeight = container && container.clientHeight ? container.clientHeight : root.clientHeight;
+    const bodyEl = container.closest('.grid-widget-body');
+    const widgetEl = container.closest('.grid-stack-item');
+    const bodyHeight = bodyEl ? bodyEl.clientHeight : containerHeight;
+    const gridUnits = widgetEl ? parseInt(widgetEl.getAttribute('gs-h') || '0', 10) : 0;
+    const estimatedWidgetHeight = gridUnits > 0 && this && this._cellHeight ? gridUnits * this._cellHeight : bodyHeight;
+    const desiredHeight = Math.max(containerHeight || 0, bodyHeight || 0, estimatedWidgetHeight || 0);
+    const availableHeight = Math.max(desiredHeight - headerHeight, 0);
+    const estimatedRowsFromHeight = rowHeight > 0 ? Math.ceil(availableHeight / rowHeight) : 0;
+    const minRows = Math.max(estimatedRowsFromHeight, 10);
+    if (minRows > filledRows.length) {
+      const fillerCount = minRows - filledRows.length;
+      for (let i = 0; i < fillerCount; i += 1) {
+        const filler = { __placeholder: true };
+        filler[dataset.pathKey] = '';
+        filler[TABLE_PATH_HTML_FIELD] = '';
+        schema.forEach((col) => {
+          if (col && col.name) filler[col.name] = '';
+        });
+        filledRows.push(filler);
+      }
+    }
+
+    try {
+      entry.gridOptions.api.setColumnDefs(columnDefs);
+      entry.gridOptions.api.setRowData(filledRows);
+      entry.gridOptions.api.refreshCells({ force: true });
+      setTimeout(() => {
+        try { entry.gridOptions.api.sizeColumnsToFit(); } catch (_) {}
+        this._activate_tooltips_for_element(root);
+      }, 0);
+    } catch (err) {
+      console.error('[AGGrid] failed to render grid', err);
+    }
+    this._apply_aggrid_theme_to_entry(entry);
+  },
+
+  _create_aggrid_table(root) {
+    root.innerHTML = '';
+    const agGrid = window.agGrid;
+    const gridOptions = {
+      columnDefs: [],
+      rowData: [],
+      suppressCellFocus: true,
+      suppressMovableColumns: true,
+      suppressRowClickSelection: true,
+      rowSelection: 'single',
+      animateRows: false,
+      rowHeight: 28,
+      headerHeight: 48,
+      getRowClass: (params) => (params && params.data && params.data.__placeholder ? 'aggrid-placeholder-row' : ''),
+      defaultColDef: {
+        sortable: false,
+        filter: false,
+        resizable: false,
+        flex: 1,
+        headerComponent: getAggridHeaderComponentClass()
+      }
+    };
+    new agGrid.Grid(root, gridOptions);
+    const entry = {
+      gridOptions,
+      api: gridOptions.api,
+      columnApi: gridOptions.columnApi,
+      root,
+      shell: root.closest('[data-role="aggrid-table"]') || null
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      entry.resizeObserver = new ResizeObserver(() => {
+        if (entry.api && typeof entry.api.sizeColumnsToFit === 'function') {
+          try { entry.api.sizeColumnsToFit(); } catch (_) {}
+        }
+      });
+      try { entry.resizeObserver.observe(root); } catch (_) {}
+    }
+    this._apply_aggrid_theme_to_entry(entry);
+    return entry;
+  },
+
+  _destroy_aggrid_table(id) {
+    if (!this._aggridTables || !id || !this._aggridTables[id]) return;
+    const entry = this._aggridTables[id];
+    if (entry && entry.resizeObserver) {
+      try { entry.resizeObserver.disconnect(); } catch (_) {}
+      entry.resizeObserver = null;
+    }
+    if (entry && entry.api && typeof entry.api.destroy === 'function') {
+      try { entry.api.destroy(); } catch (_) {}
+    }
+    delete this._aggridTables[id];
+    if (this._aggridResizeTimers && this._aggridResizeTimers[id]) {
+      clearTimeout(this._aggridResizeTimers[id]);
+      delete this._aggridResizeTimers[id];
+    }
+  },
+
+  _prepare_table_dataset(payload) {
+    const columns = Array.isArray(payload.columns) ? payload.columns : [];
+    const headerLabels = ['Path'].concat(
+      columns.map((col) => this._strip_html(col && col.label ? col.label : ''))
+    );
+    const normalizedHeaders = this._ensure_unique_labels(headerLabels);
+
+    const rows = Array.isArray(payload.rows)
+      ? payload.rows.map((row) => {
+          const obj = {};
+          normalizedHeaders.forEach((header, idx) => {
+            if (idx === 0) {
+              obj[header] = row.display_path || row.path || '';
+              obj[TABLE_PATH_HTML_FIELD] = row.path_html || (row.display_path || row.path || '');
+            } else {
+              const values = Array.isArray(row.values) ? row.values : [];
+              const value = values[idx - 1];
+              obj[header] = value == null || value === '' ? 0 : value;
+            }
+          });
+          return obj;
+        })
+      : [];
+    const schema = normalizedHeaders.map((label, idx) => ({
+      name: label,
+      title: label,
+      width: idx === 0 ? 240 : 120,
+      align: idx === 0 ? 'left' : 'right',
+      type: idx === 0 ? 'string' : 'number'
+    }));
+
+    const meta = Array.isArray(payload.rows)
+      ? payload.rows.map((row) => ({
+          row,
+          segments: this._build_path_segments(row, payload)
+        }))
+      : [];
+
+    return {
+      rows,
+      schema,
+      meta,
+      pathKey: normalizedHeaders[0] || 'Path'
+    };
+  },
+
+  _build_path_segments(row, payload) {
+    const rawPath = (row && (row.display_path || row.path)) ? String(row.display_path || row.path) : '';
+    if (!rawPath) return null;
+    const parts = rawPath.split('.');
+    const allPaths = (Array.isArray(payload.color_paths) && payload.color_paths.length
+      ? payload.color_paths
+      : (payload.rows || []).map((r) => r.display_path || r.path || '')
+    ).map((p) => String(p || ''));
+    const palette = Array.isArray(payload.color_palette) && payload.color_palette.length
+      ? payload.color_palette
+      : (this.colors || ['#14b8a6']);
+    const segments = [];
+    const prefix = [];
+    parts.forEach((component) => {
+      const idx = this._path_color_index(component, prefix, allPaths);
+      const color = this._color_from_palette(idx, palette);
+      segments.push({ text: component, color });
+      prefix.push(component);
+    });
+    return segments;
+  },
+
+  _path_color_index(component, prefixParts, allPaths) {
+    const prefix = prefixParts.length ? `${prefixParts.join('.')}.` : '';
+    const siblingSet = new Set();
+    allPaths.forEach((path) => {
+      if (!path || typeof path !== 'string') return;
+      if (!prefix && path.indexOf('.') === -1 && prefixParts.length === 0) {
+        siblingSet.add(path);
+        return;
+      }
+      if (!path.startsWith(prefix)) return;
+      const remainder = path.slice(prefix.length);
+      if (!remainder) return;
+      const next = remainder.split('.')[0];
+      if (next) siblingSet.add(next);
+    });
+    const siblings = Array.from(siblingSet).sort();
+    const idx = siblings.indexOf(component);
+    return idx >= 0 ? idx : 0;
+  },
+
+  _color_from_palette(index, palette) {
+    if (!Array.isArray(palette) || palette.length === 0) return '#14b8a6';
+    const safeIndex = index % palette.length;
+    return palette[safeIndex] || palette[0];
+  },
+
+  _strip_html(value) {
+    if (!value || typeof value !== 'string') return '';
+    const div = document.createElement('div');
+    div.innerHTML = value;
+    return div.textContent || div.innerText || '';
+  },
+
+  _ensure_unique_labels(labels) {
+    const seen = {};
+    return labels.map((label, idx) => {
+      const base = label && label.trim() !== '' ? label : `Column ${idx + 1}`;
+      const count = seen[base] || 0;
+      seen[base] = count + 1;
+      return count === 0 ? base : `${base} (${count + 1})`;
+    });
+  },
+
+  _tableKey(id) {
+    if (id === undefined || id === null) return null;
+    return String(id);
+  },
+
+  _resizeAgGridTables() {
+    if (!this._aggridTables) return;
+    Object.values(this._aggridTables).forEach((entry) => {
+      if (entry && entry.api && typeof entry.api.sizeColumnsToFit === 'function') {
+        try { entry.api.sizeColumnsToFit(); } catch (_) {}
+      }
+    });
+  },
+
+  _apply_aggrid_theme(isDark) {
+    this._aggridThemeIsDark = !!isDark;
+    if (!this._aggridTables) return;
+    Object.values(this._aggridTables).forEach((entry) => this._apply_aggrid_theme_to_entry(entry));
+  },
+
+  _apply_aggrid_theme_to_entry(entry) {
+    if (!entry || !entry.root) return;
+    const theme = this._aggridThemeIsDark ? 'dark' : 'light';
+    if (entry.shell) {
+      entry.shell.dataset.theme = theme;
+    }
+    if (entry.root.classList) {
+      entry.root.classList.remove('ag-theme-alpine', 'ag-theme-alpine-dark');
+      entry.root.classList.add(this._aggridThemeIsDark ? 'ag-theme-alpine-dark' : 'ag-theme-alpine');
+    }
+    setTimeout(() => {
+      if (entry.api && typeof entry.api.redrawRows === 'function') {
+        try { entry.api.redrawRows(); } catch (_) {}
+      }
+    }, 0);
   },
 
   _render_text(items) {
@@ -2585,7 +3106,6 @@ Hooks.DashboardGrid = {
     el.setAttribute('gs-y', item.y || 0);
     el.setAttribute('gs-id', item.id || (item.id = this.genId()));
     const content = document.createElement('div');
-    content.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col group';
     const titleText = item.title || `Widget ${String(item.id || '').slice(0,6)}`;
     const widgetId = el.getAttribute('gs-id');
     const expandBtn = `
@@ -2629,7 +3149,7 @@ Hooks.DashboardGrid = {
     const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
     const contentEl = el && el.querySelector('.grid-stack-item-content');
     if (contentEl) {
-      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow p-3 text-gray-700 dark:text-slate-300 flex flex-col group';
+      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow px-3 pb-3 pt-2 text-gray-700 dark:text-slate-300 flex flex-col group';
       contentEl.innerHTML = `
         <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\"> 
           <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">New Widget</div></div> 
@@ -2843,6 +3363,7 @@ Hooks.DashboardGrid = {
     updateTheme(this._tsCharts);
     updateTheme(this._catCharts);
     updateTheme(this._tableCache);
+    this._apply_aggrid_theme(themeIsDark);
 
     if (this._sparkTimers) {
       Object.keys(this._sparkTimers).forEach((key) => {

@@ -2187,11 +2187,11 @@ defmodule TrifleApp.ExploreLive do
         <div class="flex-1 flex flex-col min-h-0">
           <%= if @stats do %>
             <% table_dataset =
-                 DataTable.from_stats(
-                   @stats,
-                   granularity: @granularity,
-                   empty_message: "No data available yet."
-                 ) %>
+              DataTable.from_stats(
+                @stats,
+                granularity: @granularity,
+                empty_message: "No data available yet."
+              ) %>
             <DataTable.table
               dataset={table_dataset}
               transponder_info={@transponder_info}
@@ -2385,7 +2385,8 @@ defmodule TrifleApp.ExploreLive do
                       </span>
                       <span class="mr-1 hidden" data-role="download-spinner">
                         <span class="inline-flex h-4 w-4 items-center justify-center">
-                          <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin"></span>
+                          <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin">
+                          </span>
                         </span>
                       </span>
                       <span class="inline" data-role="download-text">Export</span>

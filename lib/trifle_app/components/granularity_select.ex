@@ -16,8 +16,7 @@ defmodule TrifleApp.Components.GranularitySelect do
   attr :prompt, :string, default: nil
   attr :disabled, :boolean, default: false
   attr :options, :list, default: []
-  attr :wrapper_class, :string,
-    default: "grid grid-cols-1 sm:max-w-xs mt-1"
+  attr :wrapper_class, :string, default: "grid grid-cols-1 sm:max-w-xs mt-1"
 
   attr :input_class, :string,
     default:
@@ -60,7 +59,8 @@ defmodule TrifleApp.Components.GranularitySelect do
           name={@name}
           class={[
             @input_class,
-            @disabled && "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed"
+            @disabled &&
+              "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed"
           ]}
           disabled={@disabled || Enum.empty?(@normalized_options)}
         >

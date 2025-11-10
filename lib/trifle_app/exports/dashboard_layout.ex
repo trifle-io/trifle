@@ -183,7 +183,8 @@ defmodule TrifleApp.Exports.DashboardLayout do
           export_params: %{},
           dashboard_id: dashboard.id,
           print_width: printable_width(viewport),
-          print_cell_height: widget_print_cell_height(filtered_grid, selected_widget_id, viewport),
+          print_cell_height:
+            widget_print_cell_height(filtered_grid, selected_widget_id, viewport),
           transponder_info: %{}
         }
 

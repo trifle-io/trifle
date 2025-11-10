@@ -26,6 +26,7 @@ defmodule TrifleApp.MonitorLive do
     WidgetData,
     WidgetView
   }
+
   alias TrifleApp.Components.DataTable
 
   alias TrifleApp.DesignSystem.ChartColors
@@ -81,11 +82,11 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:alert_modal_action, nil)
      |> assign(:insights_dashboard, nil)
      |> assign(:insights_kpi_values, %{})
-    |> assign(:insights_kpi_visuals, %{})
-    |> assign(:insights_timeseries, %{})
-    |> assign(:insights_category, %{})
-    |> assign(:insights_table, %{})
-    |> assign(:insights_text_widgets, %{})
+     |> assign(:insights_kpi_visuals, %{})
+     |> assign(:insights_timeseries, %{})
+     |> assign(:insights_category, %{})
+     |> assign(:insights_table, %{})
+     |> assign(:insights_text_widgets, %{})
      |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)

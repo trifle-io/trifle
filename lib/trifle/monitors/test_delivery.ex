@@ -98,6 +98,7 @@ defmodule Trifle.Monitors.TestDelivery do
 
     log_context = Keyword.get(base_exporter_opts, :log_context, %{})
     log_label = ExportLog.label(log_context)
+
     opts =
       opts
       |> Keyword.put(:exporter_opts, base_exporter_opts)
@@ -935,7 +936,7 @@ defmodule Trifle.Monitors.TestDelivery do
          _message,
          _opts
        ),
-    do: {:ok, %{files: []}}
+       do: {:ok, %{files: []}}
 
   defp upload_slack_exports(
          client,
@@ -1407,7 +1408,9 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp format_datetime(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do
-      {:ok, dt, _offset} -> format_datetime(dt)
+      {:ok, dt, _offset} ->
+        format_datetime(dt)
+
       {:error, _} ->
         case NaiveDateTime.from_iso8601(value) do
           {:ok, naive} ->

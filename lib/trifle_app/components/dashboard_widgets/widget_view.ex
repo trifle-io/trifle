@@ -394,9 +394,29 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     log_table_render(assigns, assigns.table_dataset)
 
     ~H"""
-    <div class="grid-widget-body flex-1 flex flex-col min-h-0">
+    <div class="grid-widget-body flex-1 flex flex-col min-h-0 p-0 gap-0">
       <%= if @table_dataset do %>
-        <DataTable.table dataset={@table_dataset} transponder_info={@transponder_info} />
+        <% mode = Map.get(@table_dataset, :mode) || Map.get(@table_dataset, "mode") || "html" %>
+        <%= if mode == "aggrid" do %>
+            <div
+              class="aggrid-table-shell flex-1 flex flex-col min-h-0"
+              data-role="aggrid-table"
+              data-widget-id={@widget_id}
+              data-theme="light"
+            >
+              <div
+                class="flex-1 min-h-0 ag-theme-alpine"
+                data-role="aggrid-table-root"
+                id={"aggrid-table-#{@table_dataset[:id] || @widget_id}"}
+              >
+                <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+                  Loading AG Grid table...
+                </div>
+              </div>
+            </div>
+        <% else %>
+            <DataTable.table dataset={@table_dataset} transponder_info={@transponder_info} />
+        <% end %>
       <% else %>
         <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-4">
           Add a path to this widget to display table data.
@@ -481,7 +501,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "dark:border-slate-700",
       "rounded-md",
       "shadow",
-      "p-3",
+      "px-3",
+      "pb-3",
+      "pt-2",
       "text-gray-700",
       "dark:text-slate-300",
       "flex",
@@ -901,7 +923,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                     </span>
                     <span class="hidden" data-role="download-spinner">
                       <span class="inline-flex h-4 w-4 items-center justify-center">
-                        <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin"></span>
+                        <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin">
+                        </span>
                       </span>
                     </span>
                     <span class="sr-only" data-role="download-text">Export</span>
@@ -1169,6 +1192,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
         %{
           id: row.index,
+          path: row.path,
+          display_path: row.display_path,
           path_html: formatted_path,
           values: values
         }
@@ -1176,6 +1201,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     %{
       id: dataset.id,
+      mode: dataset.mode || "html",
+      color_paths: Map.get(dataset, :color_paths, []),
+      color_palette: ChartColors.palette(),
       columns: columns,
       rows: rows,
       empty_message: dataset.empty_message
@@ -1206,6 +1234,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     Logger.debug(fn ->
       rows = dataset |> Map.get(:rows, []) |> length()
       cols = dataset |> Map.get(:columns, []) |> length()
+
       "[TableWidget #{assigns.widget_id || "unknown"}] rendering dataset rows=#{rows} cols=#{cols}"
     end)
   end

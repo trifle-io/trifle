@@ -288,11 +288,8 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                     </div>
                 <% end %>
               </.inputs_for>
-
             </div>
           </.form>
-
-
         </:body>
         <:actions>
           <.form_actions>

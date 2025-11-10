@@ -117,9 +117,9 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
             <.secondary_button type="button" phx-click={JS.patch(@patch)}>
               Cancel
             </.secondary_button>
-            <.primary_button
-              phx-disable-with={if @action == :new, do: "Creating...", else: "Saving..."}
-            >
+            <.primary_button phx-disable-with={
+              if @action == :new, do: "Creating...", else: "Saving..."
+            }>
               {if @action == :new, do: "Create Transponder", else: "Update Transponder"}
             </.primary_button>
           </.form_actions>
@@ -369,9 +369,15 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     end
   end
 
-  defp path_status_message(:missing_source), do: {"Select a source to enable path suggestions.", :muted}
-  defp path_status_message(:awaiting_key), do: {"Enter a key pattern to preview available paths.", :muted}
-  defp path_status_message(:regex_disabled), do: {"Autocomplete is disabled while the key uses regular expressions.", :warning}
+  defp path_status_message(:missing_source),
+    do: {"Select a source to enable path suggestions.", :muted}
+
+  defp path_status_message(:awaiting_key),
+    do: {"Enter a key pattern to preview available paths.", :muted}
+
+  defp path_status_message(:regex_disabled),
+    do: {"Autocomplete is disabled while the key uses regular expressions.", :warning}
+
   defp path_status_message(:loading), do: {"Sampling recent data for this key…", :muted}
   defp path_status_message(:empty), do: {"No paths were found in the sampled window.", :warning}
 
@@ -391,7 +397,9 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
   defp path_hint_class(:danger), do: "text-rose-600 dark:text-rose-400"
   defp path_hint_class(_), do: "text-slate-500 dark:text-slate-400"
 
-  defp format_path_error({:invalid_granularity, granularity}), do: " (invalid granularity #{granularity})"
+  defp format_path_error({:invalid_granularity, granularity}),
+    do: " (invalid granularity #{granularity})"
+
   defp format_path_error({:no_granularity, _}), do: " (no granularities configured)"
   defp format_path_error(:missing_source), do: " (source missing)"
   defp format_path_error(:missing_key), do: " (key missing)"

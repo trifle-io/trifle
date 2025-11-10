@@ -124,12 +124,12 @@ defmodule TrifleApp.Components.DataTable do
                     data-row={row.index}
                   >
                     {ExploreLive.format_nested_path(
-                       row.display_path,
-                       @color_paths,
-                       @transponder_info,
-                       transponder_path: row.path,
-                       display_path: row.display_path
-                     )}
+                      row.display_path,
+                      @color_paths,
+                      @transponder_info,
+                      transponder_path: row.path,
+                      display_path: row.display_path
+                    )}
                   </td>
                   <%= for %{at: at, index: col_index} <- @columns do %>
                     <% value = Map.get(@values, {row.path, at}) %>
