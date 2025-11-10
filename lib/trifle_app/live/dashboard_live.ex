@@ -119,6 +119,7 @@ defmodule TrifleApp.DashboardLive do
 
     socket
     |> assign(:temp_name, socket.assigns.dashboard.name)
+    |> assign(:temp_timeframe, socket.assigns.dashboard.default_timeframe || socket.assigns.database.default_timeframe || "24h")
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, component_source_ref(socket.assigns.source))
     |> assign(:configure_segments, configure_segments_from_dashboard(socket.assigns.dashboard))
@@ -2358,18 +2359,22 @@ defmodule TrifleApp.DashboardLive do
     reload_current_timeframe(socket)
   end
 
-  def handle_event("segments_editor_change", %{"segments" => segments_params}, socket) do
+  def handle_event("segments_editor_change", params, socket) do
     current_segments = socket.assigns.configure_segments || []
+    segments_params = Map.get(params, "segments", %{})
 
     updated_segments =
       current_segments
       |> merge_segment_form_params(segments_params)
       |> normalize_configure_segments()
 
-    {:noreply, assign(socket, :configure_segments, updated_segments)}
-  end
+    socket =
+      socket
+      |> assign(:configure_segments, updated_segments)
+      |> assign(:temp_timeframe, Map.get(params, "timeframe", socket.assigns[:temp_timeframe]))
 
-  def handle_event("segments_editor_change", _params, socket), do: {:noreply, socket}
+    {:noreply, socket}
+  end
 
   def handle_event("segments_add", _params, socket) do
     segments = socket.assigns.configure_segments || []
@@ -2549,10 +2554,16 @@ defmodule TrifleApp.DashboardLive do
              socket
              |> assign_dashboard(updated_dashboard)
              |> assign(:temp_name, updated_dashboard.name)
+             |> assign(
+               :temp_timeframe,
+               updated_dashboard.default_timeframe ||
+                 socket.assigns.database.default_timeframe || "24h"
+             )
              |> assign(:breadcrumb_links, updated_breadcrumbs)
              |> assign(:page_title, updated_page_title)
              |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
-             |> put_flash(:info, "Settings saved")}
+             |> put_flash(:info, "Settings saved")
+             |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to save settings")}

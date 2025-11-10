@@ -2,6 +2,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   use TrifleApp, :live_component
 
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
+  import TrifleApp.Components.TimeframeInput, only: [timeframe_input: 1]
 
   alias Ecto.Changeset
   alias Trifle.Organizations
@@ -107,11 +108,11 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
             />
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <.form_field
+              <.timeframe_input
                 field={@form[:default_timeframe]}
                 label="Default Timeframe"
                 placeholder="e.g. 24h, 7d, 1mo"
-                help_text="Smart input used when Explore/Dashboards open without explicit timeframe."
+                help="Smart input used when Explore/Dashboards open without explicit timeframe."
               />
               <div>
                 <.granularity_select

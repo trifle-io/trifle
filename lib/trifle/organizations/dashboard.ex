@@ -2,6 +2,7 @@ defmodule Trifle.Organizations.Dashboard do
   use Ecto.Schema
   import Ecto.Changeset
   alias Ecto.UUID
+  alias Trifle.Timeframe
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -71,6 +72,7 @@ defmodule Trifle.Organizations.Dashboard do
     |> validate_source_type()
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
+    |> validate_timeframe_field(:default_timeframe)
     |> maybe_sync_database_reference()
     |> maybe_require_database()
     |> handle_payload_field(payload_raw, payload_provided)
@@ -513,4 +515,14 @@ defmodule Trifle.Organizations.Dashboard do
 
   def visibility_display(true), do: "Everyone"
   def visibility_display(false), do: "Personal"
+
+  defp validate_timeframe_field(changeset, field) do
+    validate_change(changeset, field, fn ^field, value ->
+      case Timeframe.validate(value) do
+        :ok -> []
+        {:ok, _parser} -> []
+        {:error, message} -> [{field, message}]
+      end
+    end)
+  end
 end

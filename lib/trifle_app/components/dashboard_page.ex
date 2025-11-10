@@ -6,6 +6,7 @@ defmodule TrifleApp.Components.DashboardPage do
 
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
+  import TrifleApp.Components.TimeframeInput, only: [timeframe_input: 1]
 
   import TrifleApp.DashboardLive,
     only: [
@@ -875,14 +876,14 @@ defmodule TrifleApp.Components.DashboardPage do
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                          Timeframe
-                        </label>
-                        <input
-                          type="text"
+                        <.timeframe_input
+                          id="dashboard-default-timeframe"
                           name="timeframe"
-                          value={@dashboard.default_timeframe || @database.default_timeframe || "24h"}
-                          class="mt-2 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+                          label="Timeframe"
+                          value={
+                            @temp_timeframe || @dashboard.default_timeframe ||
+                              @database.default_timeframe || "24h"
+                          }
                           placeholder="e.g. 24h, 2d, 1w, 1mo, 1y"
                         />
                       </div>

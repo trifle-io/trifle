@@ -2,6 +2,8 @@ defmodule Trifle.Organizations.Database do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Trifle.Timeframe
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
@@ -129,6 +131,7 @@ defmodule Trifle.Organizations.Database do
     |> validate_length(:display_name, min: 1, max: 255)
     |> validate_number(:port, greater_than: 0, less_than: 65536)
     |> parse_granularities(attrs)
+    |> validate_timeframe_field(:default_timeframe)
     |> put_default_config()
   end
 
@@ -195,6 +198,16 @@ defmodule Trifle.Organizations.Database do
   end
 
   defp normalize_config_value(_key, value), do: value
+
+  defp validate_timeframe_field(changeset, field) do
+    validate_change(changeset, field, fn ^field, value ->
+      case Timeframe.validate(value) do
+        :ok -> []
+        {:ok, _parser} -> []
+        {:error, message} -> [{field, message}]
+      end
+    end)
+  end
 
   # Parse comma-separated granularities string into array
   defp parse_granularities(changeset, attrs) do

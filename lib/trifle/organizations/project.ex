@@ -2,6 +2,8 @@ defmodule Trifle.Organizations.Project do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Trifle.Timeframe
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
@@ -56,6 +58,7 @@ defmodule Trifle.Organizations.Project do
     ])
     |> maybe_put_user(user)
     |> ensure_granularities()
+    |> validate_timeframe_field(:default_timeframe)
     |> ensure_default_granularity()
     |> validate_required([:name, :time_zone, :beginning_of_week, :granularities])
     |> validate_number(:expire_after, greater_than: 0)
@@ -221,6 +224,16 @@ defmodule Trifle.Organizations.Project do
       true ->
         add_error(changeset, :default_granularity, "must be one of the configured granularities")
     end
+  end
+
+  defp validate_timeframe_field(changeset, field) do
+    validate_change(changeset, field, fn ^field, value ->
+      case Timeframe.validate(value) do
+        :ok -> []
+        {:ok, _parser} -> []
+        {:error, message} -> [{field, message}]
+      end
+    end)
   end
 
   defp maybe_put_user(changeset, nil), do: changeset
