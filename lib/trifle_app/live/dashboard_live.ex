@@ -12,7 +12,7 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
-  alias TrifleApp.Components.DashboardWidgets.{Kpi, Timeseries, Category, Text, WidgetData}
+  alias TrifleApp.Components.DashboardWidgets.{Category, Kpi, Table, Text, Timeseries, WidgetData}
   require Logger
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
@@ -768,6 +768,38 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("path", primary_path)
                   |> Map.put("chart_type", Map.get(params, "cat_chart_type", Map.get(i, "chart_type") || "bar"))
 
+                "table" ->
+                  table_paths_param =
+                    params
+                    |> Map.get("table_paths", Map.get(params, "table_paths[]", []))
+
+                  table_paths =
+                    DashboardWidgetHelpers.normalize_table_paths_param(table_paths_param)
+
+                  fallback_path =
+                    params
+                    |> Map.get("table_path", "")
+                    |> to_string()
+                    |> String.trim()
+
+                  paths =
+                    case table_paths do
+                      [] -> if(fallback_path == "", do: [], else: [fallback_path])
+                      list -> list
+                    end
+
+                  expanded_paths = auto_expand_path_wildcards(paths, path_options)
+
+                  primary_path =
+                    expanded_paths
+                    |> Enum.reject(&(&1 == ""))
+                    |> List.first()
+                    |> Kernel.||(fallback_path)
+
+                  base
+                  |> Map.put("paths", expanded_paths)
+                  |> Map.put("path", primary_path)
+
                 "text" ->
                   subtype =
                     Map.get(params, "text_subtype", i["subtype"] || "header")
@@ -1151,6 +1183,14 @@ defmodule TrifleApp.DashboardLive do
         |> Kpi.dataset(widget)
         |> maybe_put_kpi_data(base)
 
+      type == "table" ->
+        stats
+        |> Table.dataset(widget)
+        |> case do
+          nil -> base
+          table_data -> Map.put(base, :table_data, table_data)
+        end
+
       type == "text" ->
         widget
         |> Text.widget()
@@ -1326,6 +1366,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_timeseries, %{})
     |> assign(:widget_category, %{})
     |> assign(:widget_text, %{})
+    |> assign(:widget_table, %{})
     |> assign_dashboard_permissions()
   end
 
@@ -1511,6 +1552,23 @@ defmodule TrifleApp.DashboardLive do
           widget
           |> Map.get("paths", widget["path"])
           |> DashboardWidgetHelpers.normalize_category_paths_for_edit()
+          |> auto_expand_path_wildcards(options)
+
+        primary =
+          paths
+          |> Enum.reject(&(&1 == ""))
+          |> List.first()
+          |> Kernel.||(widget["path"] || "")
+
+        widget
+        |> Map.put("paths", paths)
+        |> Map.put("path", primary)
+
+      "table" ->
+        paths =
+          widget
+          |> Map.get("paths", widget["path"])
+          |> DashboardWidgetHelpers.normalize_table_paths_for_edit()
           |> auto_expand_path_wildcards(options)
 
         primary =
@@ -2142,6 +2200,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_timeseries, dataset_maps.timeseries)
     |> assign(:widget_category, dataset_maps.category)
     |> assign(:widget_text, dataset_maps.text)
+    |> assign(:widget_table, dataset_maps.table)
   end
 
   defp reset_widget_datasets(socket) do
@@ -2151,6 +2210,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_timeseries, %{})
     |> assign(:widget_category, %{})
     |> assign(:widget_text, %{})
+    |> assign(:widget_table, %{})
   end
 
   defp gravatar_url(email) do

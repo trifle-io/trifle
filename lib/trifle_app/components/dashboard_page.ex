@@ -16,10 +16,11 @@ defmodule TrifleApp.Components.DashboardPage do
     ]
 
   alias Trifle.Stats.Source
-  alias TrifleApp.Granularity
-  alias TrifleApp.Components.DashboardWidgets.WidgetView
+  alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
+  alias TrifleApp.Components.DashboardWidgets.WidgetView
   alias TrifleApp.DesignSystem.ChartColors
+  alias TrifleApp.Granularity
 
   def dashboard(assigns) do
     ~H"""
@@ -492,7 +493,9 @@ defmodule TrifleApp.Components.DashboardPage do
           kpi_visuals={@widget_kpi_visuals || %{}}
           timeseries={@widget_timeseries || %{}}
           category={@widget_category || %{}}
+          table={@widget_table || %{}}
           text_widgets={@widget_text || %{}}
+          transponder_info={@transponder_info || %{}}
           export_params={export_params}
         />
         
@@ -1128,6 +1131,7 @@ defmodule TrifleApp.Components.DashboardPage do
                         <option value="kpi" selected={sel == "kpi"}>KPI</option>
                         <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
                         <option value="category" selected={sel == "category"}>Category</option>
+                        <option value="table" selected={sel == "table"}>Table</option>
                         <option value="text" selected={sel == "text"}>Text</option>
                       </select>
                       <svg
@@ -1229,35 +1233,53 @@ defmodule TrifleApp.Components.DashboardPage do
               </div>
             </:title>
             <:body>
-              <div
-                id={"expanded-widget-#{@expanded_widget.widget_id}"}
-                class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
-                phx-hook="ExpandedWidgetView"
-                data-type={@expanded_widget.type}
-                data-title={@expanded_widget.title}
-                data-colors={ChartColors.json_palette()}
-                data-chart={
-                  if @expanded_widget[:chart_data],
-                    do: Jason.encode!(@expanded_widget.chart_data)
-                }
-                data-visual={
-                  if @expanded_widget[:visual_data],
-                    do: Jason.encode!(@expanded_widget.visual_data)
-                }
-                data-text={
-                  if @expanded_widget[:text_data],
-                    do: Jason.encode!(@expanded_widget.text_data)
-                }
-              >
-                <div class="flex-1 min-h-[500px]">
-                  <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                    <div data-role="chart" class="h-full w-full"></div>
+              <%= if @expanded_widget.type == "table" do %>
+                <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
+                  <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                    <%= if table_data = @expanded_widget[:table_data] do %>
+                      <DataTable.table
+                        dataset={table_data}
+                        transponder_info={@transponder_info || %{}}
+                        outer_class="flex-1 flex flex-col min-h-0"
+                      />
+                    <% else %>
+                      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                        Configure this widget with a path to display table data.
+                      </div>
+                    <% end %>
                   </div>
                 </div>
-                <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                  <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+              <% else %>
+                <div
+                  id={"expanded-widget-#{@expanded_widget.widget_id}"}
+                  class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
+                  phx-hook="ExpandedWidgetView"
+                  data-type={@expanded_widget.type}
+                  data-title={@expanded_widget.title}
+                  data-colors={ChartColors.json_palette()}
+                  data-chart={
+                    if @expanded_widget[:chart_data],
+                      do: Jason.encode!(@expanded_widget.chart_data)
+                  }
+                  data-visual={
+                    if @expanded_widget[:visual_data],
+                      do: Jason.encode!(@expanded_widget.visual_data)
+                  }
+                  data-text={
+                    if @expanded_widget[:text_data],
+                      do: Jason.encode!(@expanded_widget.text_data)
+                  }
+                >
+                  <div class="flex-1 min-h-[500px]">
+                    <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                      <div data-role="chart" class="h-full w-full"></div>
+                    </div>
+                  </div>
+                  <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                    <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                  </div>
                 </div>
-              </div>
+              <% end %>
             </:body>
           </.app_modal>
         <% end %>

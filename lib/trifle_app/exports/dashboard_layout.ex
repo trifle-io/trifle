@@ -178,11 +178,13 @@ defmodule TrifleApp.Exports.DashboardLayout do
           kpi_visuals: pruned_datasets.kpi_visuals,
           timeseries: pruned_datasets.timeseries,
           category: pruned_datasets.category,
+          table: pruned_datasets.table,
           text_widgets: pruned_datasets.text,
           export_params: %{},
           dashboard_id: dashboard.id,
           print_width: printable_width(viewport),
-          print_cell_height: widget_print_cell_height(filtered_grid, selected_widget_id, viewport)
+          print_cell_height: widget_print_cell_height(filtered_grid, selected_widget_id, viewport),
+          transponder_info: %{}
         }
 
         Layout.new(%{

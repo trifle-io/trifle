@@ -412,12 +412,14 @@ defmodule TrifleApp.Exports.MonitorLayout do
             kpi_visuals: datasets.kpi_visuals,
             timeseries: datasets.timeseries,
             category: datasets.category,
+            table: datasets.table,
             text_widgets: datasets.text,
-          export_params: %{},
-          dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id"),
-          print_width: printable_width(viewport),
-          print_cell_height: widget_print_cell_height(grid_items, selected_widget_id, viewport)
-        }
+            export_params: %{},
+            dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id"),
+            print_width: printable_width(viewport),
+            print_cell_height: widget_print_cell_height(grid_items, selected_widget_id, viewport),
+            transponder_info: %{}
+          }
 
         layout =
           Layout.new(%{

@@ -92,6 +92,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
       kpi_visuals: dataset_maps.kpi_visuals,
       timeseries: dataset_maps.timeseries,
       category: dataset_maps.category,
+      table: dataset_maps.table,
       text_widgets: dataset_maps.text
     }
 

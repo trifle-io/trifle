@@ -1,0 +1,216 @@
+defmodule TrifleApp.Components.DashboardWidgets.Table do
+  @moduledoc false
+
+  alias Trifle.Stats.Series
+  alias Trifle.Stats.Tabler
+  alias TrifleApp.Components.DataTable
+  require Logger
+
+  @spec datasets(Series.t() | nil, list()) :: list()
+  def datasets(nil, _grid_items), do: []
+
+  def datasets(%Series{} = series_struct, grid_items) do
+    table_stats = tabulate_series(series_struct)
+
+    grid_items
+    |> Enum.filter(&table_widget?/1)
+    |> Enum.map(&build_dataset(series_struct, table_stats, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  @spec dataset(Series.t() | nil, map()) :: map() | nil
+  def dataset(nil, _widget), do: nil
+
+  def dataset(%Series{} = series_struct, widget) do
+    table_stats = tabulate_series(series_struct)
+    build_dataset(series_struct, table_stats, widget)
+  end
+
+  defp table_widget?(%{"type" => type}), do: String.downcase(to_string(type)) == "table"
+  defp table_widget?(%{type: type}), do: String.downcase(to_string(type)) == "table"
+  defp table_widget?(_), do: false
+
+  defp build_dataset(_series, nil, widget) do
+    log_debug(widget, "tabulated stats unavailable; skipping table dataset")
+    nil
+  end
+
+  defp build_dataset(series_struct, table_stats, widget) do
+    filters = widget_paths(widget)
+
+    if filters == [] do
+      log_debug(widget, "table widget has no configured paths")
+      nil
+    else
+      paths = table_stats[:paths] || []
+      matching_paths = filter_paths(paths, filters)
+
+      display_overrides =
+        matching_paths
+        |> Enum.map(fn path ->
+          {path, trim_display_path(path, filters)}
+        end)
+        |> Enum.into(%{})
+
+      empty_message =
+        if matching_paths == [] do
+          "No data matched #{Enum.join(filters, ", ")}."
+        else
+          "No values available for the selected timeframe."
+        end
+
+      table_dataset =
+        DataTable.from_stats(
+          table_stats,
+          paths: matching_paths,
+          display_paths: display_overrides,
+          granularity: series_granularity(series_struct),
+          reverse_columns: true,
+          empty_message: empty_message,
+          id: widget_id(widget)
+        )
+
+      log_debug(widget, "table dataset prepared",
+        filters: filters,
+        matching_paths: length(matching_paths)
+      )
+
+      Map.put(table_dataset, :id, widget_id(widget))
+    end
+  end
+
+  defp tabulate_series(%Series{series: series_map}) when is_map(series_map) do
+    try do
+      Tabler.tabulize(series_map)
+    rescue
+      _ -> nil
+    end
+  end
+
+  defp tabulate_series(_), do: nil
+
+  defp widget_paths(widget) do
+    raw_value =
+      Map.get(widget, "paths") ||
+        Map.get(widget, :paths) ||
+        case widget do
+          %{"paths" => value} -> value
+          %{paths: value} -> value
+          _ -> nil
+        end
+
+    raw_paths =
+      cond do
+        is_list(raw_value) ->
+          raw_value
+
+        not is_nil(raw_value) ->
+          [raw_value]
+
+        true ->
+          case fetch_single_path(widget) do
+            nil -> []
+            value -> [value]
+          end
+      end
+
+    raw_paths
+    |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp filter_paths(paths, filters) do
+    Enum.filter(paths, fn path ->
+      Enum.any?(filters, &match_path?(to_string(path), &1))
+    end)
+  end
+
+  defp match_path?(_path, ""), do: false
+  defp match_path?(path, "*"), do: true
+
+  defp match_path?(path, filter) do
+    cond do
+      String.ends_with?(filter, ".*") ->
+        base = String.trim_trailing(filter, ".*")
+        path == base || String.starts_with?(path, base <> ".")
+
+      String.contains?(filter, "*") ->
+        wildcard = Regex.escape(filter) |> String.replace("\\*", ".*")
+        Regex.match?(Regex.compile!("^#{wildcard}$"), path)
+
+      true ->
+        path == filter || String.starts_with?(path, filter <> ".")
+    end
+  end
+
+  defp trim_display_path(path, filters) do
+    normalized_path = to_string(path)
+
+    best_prefix =
+      filters
+      |> Enum.map(&String.trim_trailing(&1, ".*"))
+      |> Enum.map(&String.trim/1)
+      |> Enum.filter(&(&1 != ""))
+      |> Enum.filter(fn prefix ->
+        normalized_path == prefix || String.starts_with?(normalized_path, prefix <> ".")
+      end)
+      |> Enum.max_by(&String.length/1, fn -> nil end)
+
+    cond do
+      is_nil(best_prefix) ->
+        normalized_path
+
+      normalized_path == best_prefix ->
+        normalized_path
+        |> String.split(".")
+        |> List.last()
+        |> Kernel.||(normalized_path)
+
+      true ->
+        String.replace_prefix(normalized_path, best_prefix <> ".", "")
+    end
+  end
+
+  defp series_granularity(%Series{series: series_map}) when is_map(series_map) do
+    Map.get(series_map, :granularity) ||
+      Map.get(series_map, "granularity") ||
+      series_map
+      |> Map.get(:meta, %{})
+      |> Map.get(:granularity) ||
+      series_map
+      |> Map.get("meta", %{})
+      |> Map.get("granularity")
+  end
+
+  defp series_granularity(_), do: nil
+
+  defp widget_id(%{"id" => id}), do: to_string(id)
+  defp widget_id(%{id: id}), do: to_string(id)
+  defp widget_id(_), do: nil
+
+  defp fetch_single_path(widget) do
+    Map.get(widget, "path") ||
+      Map.get(widget, :path) ||
+      case widget do
+        %{"path" => value} -> value
+        %{path: value} -> value
+        _ -> nil
+      end
+  end
+
+  defp log_debug(widget, message, metadata \\ []) do
+    widget_id = widget_id(widget) || "unknown"
+
+    Logger.debug(fn ->
+      meta =
+        metadata
+        |> Enum.map(fn {key, value} -> "#{key}=#{inspect(value)}" end)
+        |> Enum.join(" ")
+
+      "[TableWidget #{widget_id}] #{message}" <>
+        if(meta == "", do: "", else: " (#{meta})")
+    end)
+  end
+end
