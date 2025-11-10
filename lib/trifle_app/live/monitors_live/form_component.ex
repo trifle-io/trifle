@@ -4,6 +4,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
   alias Ecto.Changeset
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
   import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
+  import TrifleApp.Components.TimeframeInput, only: [timeframe_input: 1]
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Monitors.Monitor.{DeliveryChannel, DeliveryMedium, ReportSettings}
@@ -298,13 +299,13 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                             ]}
                           />
                         </div>
-                        <div>
-                          <.input
-                            field={report_form[:timeframe]}
-                            label="Timeframe window"
-                            placeholder="e.g. 7d, 30d"
-                          />
-                        </div>
+                      <div>
+                        <.timeframe_input
+                          field={report_form[:timeframe]}
+                          label="Timeframe window"
+                          placeholder="e.g. 7d, 30d"
+                        />
+                      </div>
                         <div>
                           <.granularity_select
                             field={report_form[:granularity]}
@@ -356,7 +357,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                         <% end %>
                       </div>
                       <div>
-                        <.input
+                        <.timeframe_input
                           field={@form[:alert_timeframe]}
                           label="Evaluation timeframe"
                           placeholder="e.g. 1h"

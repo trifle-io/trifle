@@ -677,7 +677,7 @@ defmodule TrifleApp.Components.FilterBar do
     send(self(), {:filter_bar, message})
   end
 
-  defp get_input_value(smart_timeframe_input, use_fixed_display, from, to) do
+  defp get_input_value(smart_timeframe_input, _use_fixed_display, from, to) do
     cond do
       # Always show the datetime range if we have from/to dates
       from && to ->
@@ -764,7 +764,7 @@ defmodule TrifleApp.Components.FilterBar do
     Source.find_in_list(sources, type, id)
   end
 
-  defp selected_source?(source, nil), do: false
+  defp selected_source?(_source, nil), do: false
 
   defp selected_source?(source, %{type: type, id: id}) do
     Source.type(source) == type && to_string(Source.id(source)) == id

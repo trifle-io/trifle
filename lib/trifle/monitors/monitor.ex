@@ -9,6 +9,7 @@ defmodule Trifle.Monitors.Monitor do
   alias Trifle.Accounts.User
   alias Trifle.Monitors.{Alert, Execution}
   alias Trifle.Organizations.{Dashboard, DashboardSegments, Organization}
+  alias Trifle.Timeframe
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -102,6 +103,7 @@ defmodule Trifle.Monitors.Monitor do
     |> cast_embed(:delivery_media, with: &delivery_media_changeset/2, required: false)
     |> sanitize_target()
     |> sanitize_segment_values()
+    |> validate_timeframe_field(:alert_timeframe)
     |> validate_required([
       :organization_id,
       :user_id,
@@ -128,6 +130,7 @@ defmodule Trifle.Monitors.Monitor do
     |> validate_required([:frequency])
     |> validate_length(:timeframe, max: 64)
     |> validate_length(:granularity, max: 32)
+    |> validate_timeframe_field(:timeframe)
   end
 
   defp delivery_channel_changeset(channel, attrs) do
@@ -331,4 +334,14 @@ defmodule Trifle.Monitors.Monitor do
 
   def icon_color_class(%__MODULE__{}), do: "bg-slate-500"
   def icon_color_class(_), do: "bg-slate-500"
+
+  defp validate_timeframe_field(changeset, field) do
+    validate_change(changeset, field, fn ^field, value ->
+      case Timeframe.validate(value) do
+        :ok -> []
+        {:ok, _parser} -> []
+        {:error, message} -> [{field, message}]
+      end
+    end)
+  end
 end
