@@ -1135,6 +1135,7 @@ Hooks.DashboardGrid = {
     this._lastCategory = [];
     this._lastTable = [];
     this._lastText = [];
+    this._lastList = [];
 
     // Global window resize handler to resize all charts
     this._onWindowResize = () => {
@@ -1199,7 +1200,8 @@ Hooks.DashboardGrid = {
       timeseries: {},
       category: {},
       table: {},
-      text: {}
+      text: {},
+      list: {}
     };
     this._aggridTables = {};
     this._aggridResizeTimers = {};
@@ -1281,7 +1283,8 @@ Hooks.DashboardGrid = {
     try { this.initialTimeseries = this.el.dataset.initialTimeseries ? JSON.parse(this.el.dataset.initialTimeseries) : []; } catch (_) { this.initialTimeseries = []; }
     try { this.initialCategory = this.el.dataset.initialCategory ? JSON.parse(this.el.dataset.initialCategory) : []; } catch (_) { this.initialCategory = []; }
     try { this.initialText = this.el.dataset.initialText ? JSON.parse(this.el.dataset.initialText) : []; } catch (_) { this.initialText = []; }
-    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiVisual && this.initialKpiVisual.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length) || (this.initialText && this.initialText.length)) {
+    try { this.initialList = this.el.dataset.initialList ? JSON.parse(this.el.dataset.initialList) : []; } catch (_) { this.initialList = []; }
+    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiVisual && this.initialKpiVisual.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length) || (this.initialText && this.initialText.length) || (this.initialList && this.initialList.length)) {
       setTimeout(() => {
         try {
           if (this.initialKpiValues && this.initialKpiValues.length) this._render_kpi_values(this.initialKpiValues);
@@ -1289,12 +1292,13 @@ Hooks.DashboardGrid = {
           if (this.initialTimeseries && this.initialTimeseries.length) this._render_timeseries(this.initialTimeseries);
           if (this.initialCategory && this.initialCategory.length) this._render_category(this.initialCategory);
           if (this.initialText && this.initialText.length) this._render_text(this.initialText);
+          if (this.initialList && this.initialList.length) this._render_list(this.initialList);
         } catch (e) { console.error('initial print render failed', e); }
       }, 0);
     }
 
     // Ready signaling for export capture
-    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false, table: false };
+    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false, table: false, list: false };
     this._markedReady = false;
 
     this._onThemeChange = (event) => {
@@ -1351,7 +1355,7 @@ Hooks.DashboardGrid = {
         });
 
         if (chartNodes.length === 0) {
-          return this._seen.timeseries || this._seen.category || this._seen.text || (this._seen.kpi_values && this._seen.kpi_visual);
+        return this._seen.timeseries || this._seen.category || this._seen.text || this._seen.list || (this._seen.kpi_values && this._seen.kpi_visual);
         }
 
         return chartNodes.every((node) => node.dataset && node.dataset.echartsReady === '1');
@@ -1390,6 +1394,7 @@ Hooks.DashboardGrid = {
           titleEl.style.pointerEvents = 'none';
         } else {
           if (content) delete content.dataset.widgetTitle;
+          titleEl.dataset.originalTitle = title || '';
           titleEl.removeAttribute('aria-hidden');
           titleEl.style.opacity = '';
           titleEl.style.pointerEvents = '';
@@ -2609,7 +2614,6 @@ Hooks.DashboardGrid = {
         .filter((line) => line !== '');
       const resolvedHeader = headerLines.length ? headerLines.join('\n') : this._strip_html(sourceLabel);
       const headerAlignment = idx === 0 ? 'left' : 'right';
-      const headerAlignment = idx === 0 ? 'left' : 'right';
       const baseDef = {
         field: col.name,
         headerName: resolvedHeader,
@@ -3033,6 +3037,41 @@ Hooks.DashboardGrid = {
     if (typeof this._scheduleReadyMark === 'function') this._scheduleReadyMark();
   },
 
+  _render_list(items) {
+    if (!Array.isArray(items)) return;
+    const cloned = this._deepClone(items);
+    this._lastList = cloned;
+
+    const activeIds = new Set(cloned.map((it) => String(it.id)));
+
+    this.el
+      .querySelectorAll('.grid-stack-item-content[data-list-widget="1"]')
+      .forEach((content) => {
+        const parent = content.closest('.grid-stack-item');
+        const id = parent && parent.getAttribute('gs-id');
+        if (!activeIds.has(id)) {
+          this._resetListWidget(content);
+        }
+      });
+
+    cloned.forEach((dataset) => {
+      if (!dataset) return;
+      const id = String(dataset.id);
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+      if (!item) return;
+
+      const content = item.querySelector('.grid-stack-item-content');
+      const body = item.querySelector('.grid-widget-body');
+      if (!content || !body) return;
+
+      content.dataset.listWidget = '1';
+      this._render_list_body(body, dataset);
+    });
+
+    if (this._seen) this._seen.list = true;
+    if (typeof this._scheduleReadyMark === 'function') this._scheduleReadyMark();
+  },
+
   _resetTextWidget(content) {
     if (!content) return;
     delete content.dataset.textWidget;
@@ -3080,6 +3119,93 @@ Hooks.DashboardGrid = {
     }
   },
 
+  _resetListWidget(content) {
+    if (!content) return;
+    delete content.dataset.listWidget;
+    const body = content.querySelector('.grid-widget-body');
+    if (!body) return;
+    body.className = 'grid-widget-body flex-1 flex flex-col min-h-0 gap-0';
+    const empty = document.createElement('div');
+    empty.className = 'flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 px-4 text-center';
+    empty.textContent = 'No data available yet.';
+    body.innerHTML = '';
+    body.appendChild(empty);
+  },
+
+  _render_list_body(body, dataset) {
+    if (!body) return;
+    body.className = 'grid-widget-body flex-1 flex flex-col min-h-0 gap-0';
+    const items = Array.isArray(dataset.items) ? dataset.items : [];
+    if (!items.length) {
+      const emptyMessage =
+        typeof dataset.empty_message === 'string' && dataset.empty_message.trim() !== ''
+          ? dataset.empty_message
+          : 'No data available yet.';
+      const empty = document.createElement('div');
+      empty.className = 'flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 px-4 text-center';
+      empty.textContent = emptyMessage;
+      body.innerHTML = '';
+      body.appendChild(empty);
+      return;
+    }
+
+    const list = document.createElement('ul');
+    list.className = 'flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-1';
+
+    items.forEach((entry, index) => {
+      if (!entry) return;
+      const li = document.createElement('li');
+      li.className = 'py-2 first:pt-0 last:pb-0';
+
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between gap-3';
+
+      const left = document.createElement('div');
+      left.className = 'flex items-center gap-2 min-w-0';
+
+      const color =
+        typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color : '#14b8a6';
+
+      const dot = document.createElement('span');
+      dot.className = 'inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0';
+      dot.style.backgroundColor = color;
+      dot.setAttribute('aria-hidden', 'true');
+
+      const label = document.createElement('span');
+      label.className = 'text-sm font-mono truncate';
+      label.style.color = color;
+      const labelText =
+        (typeof entry.label === 'string' && entry.label.trim() !== ''
+          ? entry.label
+          : entry.path) || `Item ${index + 1}`;
+      label.textContent = labelText;
+      label.title = labelText;
+
+      left.appendChild(dot);
+      left.appendChild(label);
+
+      const badge = document.createElement('span');
+      badge.className = 'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold';
+      badge.style.color = color;
+      const bgColor = this._colorWithAlpha(color, '15');
+      const borderColor = this._colorWithAlpha(color, '40');
+      if (bgColor) badge.style.backgroundColor = bgColor;
+      if (borderColor) badge.style.borderColor = borderColor;
+      const valueText =
+        entry.formatted_value ||
+        (typeof entry.value === 'number' ? String(entry.value) : '0');
+      badge.textContent = valueText;
+
+      row.appendChild(left);
+      row.appendChild(badge);
+      li.appendChild(row);
+      list.appendChild(li);
+    });
+
+    body.innerHTML = '';
+    body.appendChild(list);
+  },
+
   _isColorDark(color) {
     if (!color || typeof color !== 'string') return false;
     const hexMatch = color.trim().match(/^#?([0-9a-f]{6})$/i);
@@ -3095,6 +3221,16 @@ Hooks.DashboardGrid = {
   _isHexColor(color) {
     if (!color || typeof color !== 'string') return false;
     return /^#?[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color.trim());
+  },
+
+  _colorWithAlpha(color, alphaHex) {
+    if (!color || typeof color !== 'string') return '';
+    const trimmed = color.trim();
+    const match = trimmed.match(/^#([0-9a-f]{6})$/i);
+    if (match) {
+      return `${trimmed}${alphaHex}`;
+    }
+    return trimmed;
   },
 
   addGridItemEl(item) {
@@ -3236,7 +3372,8 @@ Hooks.DashboardGrid = {
       timeseries: {},
       category: {},
       table: {},
-      text: {}
+      text: {},
+      list: {}
     });
 
     if (type === 'kpi') {
@@ -3303,6 +3440,16 @@ Hooks.DashboardGrid = {
       return;
     }
 
+    if (type === 'list') {
+      if (payload) {
+        registry.list[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+      } else {
+        delete registry.list[normalizedId];
+      }
+      this._render_list(this._sortedWidgetValues(registry.list));
+      return;
+    }
+
     // Unknown type: ensure removal from all registries
     delete registry.kpiValues[normalizedId];
     delete registry.kpiVisuals[normalizedId];
@@ -3310,6 +3457,7 @@ Hooks.DashboardGrid = {
     delete registry.category[normalizedId];
     delete registry.table[normalizedId];
     delete registry.text[normalizedId];
+    delete registry.list[normalizedId];
   },
 
   unregisterWidget(type, id) {
@@ -3320,6 +3468,7 @@ Hooks.DashboardGrid = {
       this.registerWidget('category', id, null);
       this.registerWidget('table', id, null);
       this.registerWidget('text', id, null);
+      this.registerWidget('list', id, null);
       return;
     }
     this.registerWidget(type, id, null);
@@ -3347,6 +3496,7 @@ Hooks.DashboardGrid = {
     const categories = Array.isArray(this._lastCategory) ? this._deepClone(this._lastCategory) : null;
     const tables = Array.isArray(this._lastTable) ? this._deepClone(this._lastTable) : null;
     const textWidgets = Array.isArray(this._lastText) ? this._deepClone(this._lastText) : null;
+    const lists = Array.isArray(this._lastList) ? this._deepClone(this._lastList) : null;
 
     const updateTheme = (map) => {
       if (!map) return;
@@ -3379,6 +3529,7 @@ Hooks.DashboardGrid = {
       this._seen.category = false;
       this._seen.table = false;
       this._seen.text = false;
+      this._seen.list = false;
     }
 
     const markPending = (selector) => {
@@ -3397,6 +3548,7 @@ Hooks.DashboardGrid = {
       if (timeseries && timeseries.length) this._render_timeseries(timeseries);
       if (categories && categories.length) this._render_category(categories);
       if (Array.isArray(textWidgets)) this._render_text(textWidgets);
+      if (Array.isArray(lists)) this._render_list(lists);
     };
 
     // Ensure DOM settles before re-rendering charts to avoid zero-size init
@@ -3461,7 +3613,8 @@ Hooks.DashboardWidgetData = {
         this.el.dataset.timeseries || '',
         this.el.dataset.category || '',
         this.el.dataset.table || '',
-        this.el.dataset.text || ''
+        this.el.dataset.text || '',
+        this.el.dataset.list || ''
       ];
     const key = [this.widgetType, this.widgetId].concat(dataStrings).join('||');
     if (key === this._lastKey) return;
@@ -3508,6 +3661,10 @@ Hooks.DashboardWidgetData = {
         payload = data;
       } else if (type === 'text') {
         const data = parseJsonSafe(this.el.dataset.text || '');
+        if (data && data.id == null) data.id = id;
+        payload = data;
+      } else if (type === 'list') {
+        const data = parseJsonSafe(this.el.dataset.list || '');
         if (data && data.id == null) data.id = id;
         payload = data;
       }

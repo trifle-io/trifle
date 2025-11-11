@@ -180,6 +180,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
           category: pruned_datasets.category,
           table: pruned_datasets.table,
           text_widgets: pruned_datasets.text,
+          list: pruned_datasets.list,
           export_params: %{},
           dashboard_id: dashboard.id,
           print_width: printable_width(viewport),

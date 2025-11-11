@@ -6,6 +6,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
   alias TrifleApp.Components.DashboardWidgets.{
     CategoryEditor,
     KpiEditor,
+    ListEditor,
     TableEditor,
     TextEditor,
     TimeseriesEditor
@@ -32,6 +33,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
         <TableEditor.editor widget={@widget} path_options={@path_options} />
       <% "text" -> %>
         <TextEditor.editor widget={@widget} />
+      <% "list" -> %>
+        <ListEditor.editor widget={@widget} path_options={@path_options} />
       <% _ -> %>
         <KpiEditor.editor widget={@widget} path_options={@path_options} />
     <% end %>
