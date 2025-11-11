@@ -398,7 +398,18 @@ defmodule TrifleApp.ExploreV2Live do
           color: ExploreLive.get_key_color(keys_map, key)
         }
       end)
-      |> Enum.reject(&(&1.value == 0))
+
+    selected_key =
+      case assigns[:key] do
+        key when is_binary(key) and key != "" -> key
+        _ -> nil
+      end
+
+    selected_path =
+      case selected_key do
+        nil -> nil
+        key -> "keys.#{key}"
+      end
 
     %{
       @list_widget_id => %{
@@ -406,7 +417,11 @@ defmodule TrifleApp.ExploreV2Live do
         path: "keys",
         sort: "alpha",
         items: items,
-        empty_message: "No keys tracked for this timeframe."
+        empty_message: "No keys tracked for this timeframe.",
+        selected_key: selected_key,
+        selected_path: selected_path,
+        select_event: "select_key",
+        deselect_event: "deselect_key"
       }
     }
   end

@@ -3149,6 +3149,21 @@ Hooks.DashboardGrid = {
       return;
     }
 
+    const selectedPath = typeof dataset.selected_path === 'string' && dataset.selected_path.trim() !== '' ? dataset.selected_path.trim() : null;
+    const rawSelectedKey = typeof dataset.selected_key === 'string' ? dataset.selected_key : '';
+    const selectedKey = rawSelectedKey.trim() !== '' ? rawSelectedKey : null;
+    const selectEvent = typeof dataset.select_event === 'string' && dataset.select_event.trim() !== '' ? dataset.select_event.trim() : null;
+    const deselectEvent = typeof dataset.deselect_event === 'string' && dataset.deselect_event.trim() !== '' ? dataset.deselect_event.trim() : null;
+    const interactive = Boolean(selectEvent);
+
+    if (interactive) {
+      this._currentListSelectionPath = selectedPath;
+      this._currentListSelectionKey = selectedKey;
+    } else {
+      this._currentListSelectionPath = null;
+      this._currentListSelectionKey = null;
+    }
+
     const list = document.createElement('ul');
     list.className = 'flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-1';
 
@@ -3157,31 +3172,72 @@ Hooks.DashboardGrid = {
       const li = document.createElement('li');
       li.className = 'py-2 first:pt-0 last:pb-0';
 
+      const wrapperTag = interactive ? 'button' : 'div';
+      const wrapper = document.createElement(wrapperTag);
+      if (interactive) {
+        wrapper.type = 'button';
+        wrapper.setAttribute('data-role', 'list-selectable');
+      }
+
+      const entryPath = typeof entry.path === 'string' ? entry.path : '';
+      const rawLabel = typeof entry.label === 'string' ? entry.label : '';
+      const trimmedLabel = rawLabel.trim();
+      const labelText = trimmedLabel !== '' ? rawLabel : (entryPath || `Item ${index + 1}`);
+      const payloadKey = trimmedLabel !== '' ? rawLabel : entryPath || labelText;
+      const isSelected =
+        (selectedPath && entryPath === selectedPath) ||
+        (selectedKey && rawLabel === selectedKey);
+
+      const baseClasses = [
+        'w-full',
+        'flex',
+        'items-center',
+        'justify-between',
+        'gap-3',
+        'rounded-md',
+        'border',
+        'px-3',
+        'py-2',
+        'transition-colors'
+      ];
+
+      if (isSelected && interactive) {
+        baseClasses.push('bg-teal-50', 'dark:bg-teal-900/30', 'border-teal-100', 'dark:border-teal-800');
+      } else {
+        baseClasses.push('border-transparent', 'hover:bg-gray-50', 'dark:hover:bg-slate-800/40');
+      }
+
+      if (interactive) {
+        baseClasses.push('cursor-pointer', 'focus-visible:outline-none', 'focus-visible:ring-2', 'focus-visible:ring-teal-500/60');
+      }
+
+      wrapper.className = baseClasses.join(' ');
+      if (interactive) {
+        wrapper.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      }
+
       const row = document.createElement('div');
       row.className = 'flex items-center justify-between gap-3';
 
       const left = document.createElement('div');
-      left.className = 'flex items-center gap-2 min-w-0';
+      left.className = `flex items-center ${interactive ? 'gap-3' : 'gap-2'} min-w-0`;
 
       const color =
         typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color : '#14b8a6';
 
-      const dot = document.createElement('span');
-      dot.className = 'inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0';
-      dot.style.backgroundColor = color;
-      dot.setAttribute('aria-hidden', 'true');
+      if (interactive) {
+        const indicator = this._buildListSelectionIcon(isSelected);
+        left.appendChild(indicator);
+      } else {
+        left.appendChild(this._buildListColorChip(color));
+      }
 
       const label = document.createElement('span');
       label.className = 'text-sm font-mono truncate';
       label.style.color = color;
-      const labelText =
-        (typeof entry.label === 'string' && entry.label.trim() !== ''
-          ? entry.label
-          : entry.path) || `Item ${index + 1}`;
       label.textContent = labelText;
       label.title = labelText;
 
-      left.appendChild(dot);
       left.appendChild(label);
 
       const badge = document.createElement('span');
@@ -3198,8 +3254,32 @@ Hooks.DashboardGrid = {
 
       row.appendChild(left);
       row.appendChild(badge);
-      li.appendChild(row);
+      wrapper.appendChild(row);
+      li.appendChild(wrapper);
       list.appendChild(li);
+
+      if (interactive) {
+        wrapper.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const keyToSend = payloadKey;
+          if (!keyToSend || !selectEvent) return;
+          const currentlySelected =
+            (this._currentListSelectionPath && entryPath === this._currentListSelectionPath) ||
+            (this._currentListSelectionKey && keyToSend === this._currentListSelectionKey) ||
+            isSelected;
+
+          if (currentlySelected && deselectEvent) {
+            this.pushEvent(deselectEvent, {});
+            this._currentListSelectionKey = null;
+            this._currentListSelectionPath = null;
+          } else {
+            this.pushEvent(selectEvent, { key: keyToSend });
+            this._currentListSelectionKey = keyToSend;
+            this._currentListSelectionPath = entryPath || null;
+          }
+        });
+      }
     });
 
     body.innerHTML = '';
@@ -3231,6 +3311,49 @@ Hooks.DashboardGrid = {
       return `${trimmed}${alphaHex}`;
     }
     return trimmed;
+  },
+
+  _buildListColorChip(color) {
+    const span = document.createElement('span');
+    span.className = 'inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0';
+    if (color && typeof color === 'string') {
+      span.style.backgroundColor = color;
+    }
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  },
+
+  _buildListSelectionIcon(selected) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke-width', '1.5');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.classList.add('h-5', 'w-5', 'flex-shrink-0');
+    svg.setAttribute('aria-hidden', 'true');
+
+    if (selected) {
+      svg.classList.add('text-teal-600');
+    } else {
+      svg.classList.add('text-gray-400', 'dark:text-slate-400');
+    }
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('d', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z');
+    svg.appendChild(path);
+
+    if (selected) {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '12');
+      circle.setAttribute('cy', '12');
+      circle.setAttribute('r', '4');
+      circle.setAttribute('fill', 'currentColor');
+      svg.appendChild(circle);
+    }
+
+    return svg;
   },
 
   addGridItemEl(item) {
