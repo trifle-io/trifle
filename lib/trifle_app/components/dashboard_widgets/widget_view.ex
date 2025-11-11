@@ -490,10 +490,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   end
 
   defp render_list_body(assigns) do
+    select_event = list_select_event(assigns.list_dataset)
+
     assigns =
       assigns
       |> assign(:list_items, list_items(assigns.list_dataset))
       |> assign(:list_empty_message, list_empty_message(assigns.list_dataset))
+      |> assign(:list_selected_key, list_selected_key(assigns.list_dataset))
+      |> assign(:list_selected_path, list_selected_path(assigns.list_dataset))
+      |> assign(:list_select_event, select_event)
+      |> assign(:list_selectable, not is_nil(select_event))
 
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col min-h-0 gap-0">
@@ -503,16 +509,61 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         </div>
       <% else %>
         <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-1">
-          <%= for item <- @list_items do %>
+          <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
+            <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
             <li class="py-2 first:pt-0 last:pb-0">
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span
-                    class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
-                    style={"background-color: #{item.color}"}
-                    aria-hidden="true"
-                  >
-                  </span>
+              <div class={[
+                "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
+                if(selected && @list_selectable,
+                  do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
+                  else: "border-transparent hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                )
+              ]}>
+                <div class={[
+                  "flex items-center min-w-0",
+                  if(@list_selectable, do: "gap-3", else: "gap-2")
+                ]}>
+                  <%= if @list_selectable do %>
+                    <span class="flex-shrink-0 text-gray-400 dark:text-slate-400">
+                      <%= if selected do %>
+                        <svg
+                          class="h-5 w-5 text-teal-600 flex-shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                          <circle cx="12" cy="12" r="4" fill="currentColor" />
+                        </svg>
+                      <% else %>
+                        <svg
+                          class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      <% end %>
+                    </span>
+                  <% else %>
+                    <span
+                      class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                      style={"background-color: #{item.color}"}
+                      aria-hidden="true"
+                    >
+                    </span>
+                  <% end %>
                   <span
                     class="text-sm font-mono truncate"
                     style={"color: #{item.color}"}
@@ -545,6 +596,43 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     do: message
 
   defp list_empty_message(_), do: "No data available yet."
+
+  defp list_selected_key(%{selected_key: key}) when is_binary(key) and key != "", do: key
+  defp list_selected_key(%{"selected_key" => key}) when is_binary(key) and key != "", do: key
+  defp list_selected_key(_), do: nil
+
+  defp list_selected_path(%{selected_path: path}) when is_binary(path) and path != "", do: path
+
+  defp list_selected_path(%{"selected_path" => path}) when is_binary(path) and path != "",
+    do: path
+
+  defp list_selected_path(_), do: nil
+
+  defp list_select_event(%{select_event: event}) when is_binary(event) and event != "", do: event
+
+  defp list_select_event(%{"select_event" => event}) when is_binary(event) and event != "",
+    do: event
+
+  defp list_select_event(_), do: nil
+
+  defp list_item_selected?(item, selected_key, selected_path) do
+    cond do
+      is_binary(selected_path) and selected_path != "" ->
+        list_item_value(item, :path) == selected_path
+
+      is_binary(selected_key) and selected_key != "" ->
+        list_item_value(item, :label) == selected_key
+
+      true ->
+        false
+    end
+  end
+
+  defp list_item_value(item, key) when is_map(item) do
+    Map.get(item, key) || Map.get(item, to_string(key))
+  end
+
+  defp list_item_value(_, _), do: nil
 
   defp color_with_alpha(color, alpha_suffix) do
     color = color || ChartColors.primary()

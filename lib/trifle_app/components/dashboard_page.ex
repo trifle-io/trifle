@@ -1282,12 +1282,6 @@ defmodule TrifleApp.Components.DashboardPage do
                         <% else %>
                           <div class="h-full w-full overflow-auto">
                             <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
-                              <thead class="bg-gray-50 dark:bg-slate-800/80 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-300">
-                                <tr>
-                                  <th scope="col" class="px-4 py-3">Item</th>
-                                  <th scope="col" class="px-4 py-3 text-right">Value</th>
-                                </tr>
-                              </thead>
                               <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
                                 <%= for item <- items do %>
                                   <% color = expanded_list_color(item) %>
@@ -1305,10 +1299,16 @@ defmodule TrifleApp.Components.DashboardPage do
                                         >
                                         </span>
                                         <div class="min-w-0">
-                                          <p class="font-mono text-xs truncate text-slate-700 dark:text-slate-200" title={label}>
+                                          <p
+                                            class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
+                                            title={label}
+                                          >
                                             {label}
                                           </p>
-                                          <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={expanded_list_path(item)}>
+                                          <p
+                                            class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
+                                            title={expanded_list_path(item)}
+                                          >
                                             {expanded_list_path(item)}
                                           </p>
                                         </div>
