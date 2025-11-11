@@ -22,6 +22,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :category, :map, default: %{}
   attr :table, :map, default: %{}
   attr :text_widgets, :map, default: %{}
+  attr :list, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :print_width, :integer, default: nil
@@ -41,6 +42,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     assigns =
       assigns
       |> assign_new(:text_items, fn -> text_items(assigns.grid_items) end)
+      |> assign_new(:list, fn -> %{} end)
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
       |> assign(:grid_dom_id, "dashboard-grid")
@@ -72,6 +74,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-colors={ChartColors.json_palette()}
         data-initial-grid={Jason.encode!(@grid_items)}
         data-initial-text={Jason.encode!(@text_items)}
+        data-initial-list={Jason.encode!(Map.values(@list || %{}))}
         data-dashboard-id={@dashboard.id}
         data-public-token={@public_token}
       >
@@ -85,6 +88,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             category={@category}
             table={@table}
             text_widgets={@text_widgets}
+            list={@list}
             export_params={@export_params}
             print_mode={@print_mode}
             dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
@@ -109,6 +113,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           data-category={data.category}
           data-table={data.table}
           data-text={data.text}
+          data-list={data.list}
           data-grid-id={@grid_dom_id}
           phx-hook="DashboardWidgetData"
         >
@@ -125,6 +130,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "category" -> render_category_body(assigns)
       "table" -> render_table_body(assigns)
       "text" -> render_text_body(assigns)
+      "list" -> render_list_body(assigns)
       _ -> render_placeholder_body(assigns)
     end
   end
@@ -398,24 +404,24 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       <%= if @table_dataset do %>
         <% mode = Map.get(@table_dataset, :mode) || Map.get(@table_dataset, "mode") || "html" %>
         <%= if mode == "aggrid" do %>
+          <div
+            class="aggrid-table-shell flex-1 flex flex-col min-h-0"
+            data-role="aggrid-table"
+            data-widget-id={@widget_id}
+            data-theme="light"
+          >
             <div
-              class="aggrid-table-shell flex-1 flex flex-col min-h-0"
-              data-role="aggrid-table"
-              data-widget-id={@widget_id}
-              data-theme="light"
+              class="flex-1 min-h-0 ag-theme-alpine"
+              data-role="aggrid-table-root"
+              id={"aggrid-table-#{@table_dataset[:id] || @widget_id}"}
             >
-              <div
-                class="flex-1 min-h-0 ag-theme-alpine"
-                data-role="aggrid-table-root"
-                id={"aggrid-table-#{@table_dataset[:id] || @widget_id}"}
-              >
-                <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-                  Loading AG Grid table...
-                </div>
+              <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+                Loading AG Grid table...
               </div>
             </div>
+          </div>
         <% else %>
-            <DataTable.table dataset={@table_dataset} transponder_info={@transponder_info} />
+          <DataTable.table dataset={@table_dataset} transponder_info={@transponder_info} />
         <% end %>
       <% else %>
         <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-4">
@@ -481,6 +487,75 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       <% end %>
     </div>
     """
+  end
+
+  defp render_list_body(assigns) do
+    assigns =
+      assigns
+      |> assign(:list_items, list_items(assigns.list_dataset))
+      |> assign(:list_empty_message, list_empty_message(assigns.list_dataset))
+
+    ~H"""
+    <div class="grid-widget-body flex-1 flex flex-col min-h-0 gap-0">
+      <%= if @list_items == [] do %>
+        <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 px-4 text-center">
+          {@list_empty_message}
+        </div>
+      <% else %>
+        <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-1">
+          <%= for item <- @list_items do %>
+            <li class="py-2 first:pt-0 last:pb-0">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span
+                    class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                    style={"background-color: #{item.color}"}
+                    aria-hidden="true"
+                  >
+                  </span>
+                  <span
+                    class="text-sm font-mono truncate"
+                    style={"color: #{item.color}"}
+                    title={item.label}
+                  >
+                    {item.label}
+                  </span>
+                </div>
+                <span
+                  class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold"
+                  style={
+                    "color: #{item.color}; border-color: #{color_with_alpha(item.color, "40")}; background-color: #{color_with_alpha(item.color, "15")}"
+                  }
+                >
+                  {item.formatted_value || item.value}
+                </span>
+              </div>
+            </li>
+          <% end %>
+        </ul>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp list_items(%{items: items}) when is_list(items), do: items
+  defp list_items(_), do: []
+
+  defp list_empty_message(%{empty_message: message}) when is_binary(message) and message != "",
+    do: message
+
+  defp list_empty_message(_), do: "No data available yet."
+
+  defp color_with_alpha(color, alpha_suffix) do
+    color = color || ChartColors.primary()
+
+    cond do
+      is_binary(color) and String.starts_with?(color, "#") ->
+        color <> alpha_suffix
+
+      true ->
+        color
+    end
   end
 
   defp render_placeholder_body(assigns) do
@@ -760,6 +835,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp normalize_export_params(_), do: %{}
 
+  defp normalize_widget_export(%{type: :disabled}), do: %{type: :disabled}
+
   defp normalize_widget_export(%{type: :monitor, monitor_id: id} = config) when is_binary(id) do
     Map.put(config, :type, :monitor)
   end
@@ -768,6 +845,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     do: Map.put(config, :type, :dashboard)
 
   defp normalize_widget_export(_), do: %{type: :dashboard}
+
+  defp widget_export_links(%{type: :disabled}, _dashboard_id, _widget_id, _params), do: :error
 
   defp widget_export_links(%{type: :dashboard}, dashboard_id, widget_id, params)
        when is_binary(dashboard_id) do
@@ -814,6 +893,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :category, :map, default: %{}
   attr :table, :map, default: %{}
   attr :text_widgets, :map, default: %{}
+  attr :list, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :print_mode, :boolean, default: false
   attr :dashboard_id, :string, default: nil
@@ -830,6 +910,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     category_dataset = fetch_dataset(assigns.category, widget_id)
     table_dataset = fetch_dataset(assigns.table, widget_id)
     text_dataset = fetch_dataset(assigns.text_widgets, widget_id)
+    list_dataset = fetch_dataset(assigns.list, widget_id)
 
     assigns =
       assigns
@@ -843,6 +924,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:category_dataset, category_dataset)
       |> assign(:table_dataset, table_dataset)
       |> assign(:text_dataset, text_dataset)
+      |> assign(:list_dataset, list_dataset)
       |> assign(:content_classnames, content_classnames(widget_type))
       |> assign(:header_classnames, header_classnames(widget_type))
       |> assign(:title_classnames, title_classnames(widget_type))
@@ -868,6 +950,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-widget-id={@widget_id}
         data-widget-type={@widget_type}
         data-text-widget={if @widget_type == "text", do: "1", else: nil}
+        data-list-widget={if @widget_type == "list", do: "1", else: nil}
         data-widget-title={widget_title_data(@widget_type, @text_dataset, @title)}
         style={content_style(@widget_type, @text_dataset)}
       >
@@ -1087,7 +1170,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       timeseries: nil,
       category: nil,
       table: nil,
-      text: nil
+      text: nil,
+      list: nil
     }
 
     case widget_type do
@@ -1113,6 +1197,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
       "text" ->
         Map.put(base, :text, encode_dataset(fetch_dataset(assigns.text_widgets, widget_id)))
+
+      "list" ->
+        Map.put(base, :list, encode_dataset(fetch_dataset(assigns.list, widget_id)))
 
       _ ->
         base

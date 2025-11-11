@@ -12,7 +12,15 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
-  alias TrifleApp.Components.DashboardWidgets.{Category, Kpi, Table, Text, Timeseries, WidgetData}
+  alias TrifleApp.Components.DashboardWidgets.{
+    Category,
+    Kpi,
+    List,
+    Table,
+    Text,
+    Timeseries,
+    WidgetData
+  }
   require Logger
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
@@ -656,7 +664,16 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("save_widget", params, socket) do
     %{"widget_id" => id} = params
-    title = String.trim(to_string(Map.get(params, "widget_title", "")))
+    title =
+      params
+      |> Map.get("widget_title")
+      |> case do
+        nil -> current_editing_widget_title(socket, id)
+        value -> value
+      end
+      |> Kernel.||("")
+      |> to_string()
+      |> String.trim()
     type = String.downcase(Map.get(params, "widget_type", "kpi"))
 
     cond do
@@ -816,6 +833,46 @@ defmodule TrifleApp.DashboardLive do
                     |> DashboardWidgetHelpers.normalize_table_mode()
                   )
 
+                "list" ->
+                  list_path =
+                    params
+                    |> Map.get("list_path", Map.get(i, "path"))
+                    |> case do
+                      nil ->
+                        nil
+
+                      value ->
+                        value
+                        |> to_string()
+                        |> String.trim()
+                        |> case do
+                          "" -> nil
+                          trimmed -> trimmed
+                        end
+                    end
+
+                  limit =
+                    params
+                    |> Map.get("list_limit", Map.get(i, "limit"))
+                    |> normalize_optional_positive_integer()
+
+                  sort =
+                    params
+                    |> Map.get("list_sort", Map.get(i, "sort") || "desc")
+                    |> normalize_list_sort()
+
+                  label_strategy =
+                    params
+                    |> Map.get("list_label_strategy", Map.get(i, "label_strategy") || "short")
+                    |> normalize_list_label_strategy()
+
+                  base
+                  |> Map.put("path", list_path)
+                  |> Map.put("limit", limit)
+                  |> Map.put("sort", sort)
+                  |> Map.put("label_strategy", label_strategy)
+                  |> Map.delete("empty_message")
+
                 "text" ->
                   subtype =
                     Map.get(params, "text_subtype", i["subtype"] || "header")
@@ -933,6 +990,12 @@ defmodule TrifleApp.DashboardLive do
           w
           |> Map.put_new("subtype", "header")
           |> Map.put_new("color", "default")
+
+        "list" ->
+          w
+          |> Map.put_new("limit", 20)
+          |> Map.put_new("sort", "desc")
+          |> Map.put_new("label_strategy", "short")
 
         _ ->
           w
@@ -1218,6 +1281,14 @@ defmodule TrifleApp.DashboardLive do
           table_data -> Map.put(base, :table_data, table_data)
         end
 
+      type == "list" ->
+        stats
+        |> List.dataset(widget)
+        |> case do
+          nil -> base
+          list_data -> Map.put(base, :list_data, list_data)
+        end
+
       type == "text" ->
         widget
         |> Text.widget()
@@ -1394,6 +1465,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_category, %{})
     |> assign(:widget_text, %{})
     |> assign(:widget_table, %{})
+    |> assign(:widget_list, %{})
     |> assign_dashboard_permissions()
   end
 
@@ -2228,6 +2300,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_category, dataset_maps.category)
     |> assign(:widget_text, dataset_maps.text)
     |> assign(:widget_table, dataset_maps.table)
+    |> assign(:widget_list, dataset_maps.list)
   end
 
   defp reset_widget_datasets(socket) do
@@ -2238,6 +2311,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_category, %{})
     |> assign(:widget_text, %{})
     |> assign(:widget_table, %{})
+    |> assign(:widget_list, %{})
   end
 
   defp gravatar_url(email) do
@@ -3005,6 +3079,20 @@ defmodule TrifleApp.DashboardLive do
     Map.put(widget, "title", trimmed)
   end
 
+  defp current_editing_widget_title(socket, id) do
+    case socket.assigns[:editing_widget] do
+      %{"id" => widget_id} = widget ->
+        if to_string(widget_id) == to_string(id) do
+          Map.get(widget, "title")
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
   defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do
     case fetch_editing_widget(socket, id) do
       {:ok, widget} ->
@@ -3054,6 +3142,55 @@ defmodule TrifleApp.DashboardLive do
     case value |> to_string() |> String.downcase() do
       v when v in ["s", "m", "l"] -> v
       _ -> "m"
+    end
+  end
+
+  defp normalize_positive_integer(value, default \\ 1) do
+    cond do
+      is_integer(value) and value > 0 ->
+        value
+
+      is_binary(value) ->
+        case Integer.parse(value) do
+          {int, ""} when int > 0 -> int
+          _ -> default
+        end
+
+      true ->
+        default
+    end
+  end
+
+  defp normalize_optional_positive_integer(value) do
+    cond do
+      value in [nil, "", false] ->
+        nil
+
+      is_integer(value) and value > 0 ->
+        value
+
+      is_binary(value) ->
+        case Integer.parse(value) do
+          {int, ""} when int > 0 -> int
+          _ -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  defp normalize_list_sort(value) do
+    case value |> to_string() |> String.downcase() do
+      v when v in ["asc", "alpha", "alpha_desc"] -> v
+      _ -> "desc"
+    end
+  end
+
+  defp normalize_list_label_strategy(value) do
+    case value |> to_string() |> String.downcase() do
+      "full_path" -> "full_path"
+      _ -> "short"
     end
   end
 

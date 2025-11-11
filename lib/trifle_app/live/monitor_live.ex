@@ -87,6 +87,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:insights_category, %{})
      |> assign(:insights_table, %{})
      |> assign(:insights_text_widgets, %{})
+     |> assign(:insights_list, %{})
      |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
@@ -1579,6 +1580,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_category, datasets.category)
     |> assign(:insights_table, datasets.table)
     |> assign(:insights_text_widgets, datasets.text)
+    |> assign(:insights_list, datasets.list)
     |> assign(:alert_evaluations, alert_evaluations)
   end
 
@@ -1592,11 +1594,20 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_category, datasets.category)
     |> assign(:insights_table, datasets.table)
     |> assign(:insights_text_widgets, datasets.text)
+    |> assign(:insights_list, datasets.list)
     |> assign(:alert_evaluations, %{})
   end
 
   defp empty_widget_dataset_maps do
-    %{kpi_values: %{}, kpi_visuals: %{}, timeseries: %{}, category: %{}, table: %{}, text: %{}}
+    %{
+      kpi_values: %{},
+      kpi_visuals: %{},
+      timeseries: %{},
+      category: %{},
+      table: %{},
+      text: %{},
+      list: %{}
+    }
   end
 
   defp dataset_maps_for_dashboard(_stats, dashboard) when not is_map(dashboard) do
@@ -2616,6 +2627,7 @@ defmodule TrifleApp.MonitorLive do
                   category={@insights_category}
                   table={@insights_table}
                   text_widgets={@insights_text_widgets}
+                  list={@insights_list}
                   transponder_info={%{}}
                   export_params={export_params}
                   widget_export={%{type: :monitor, monitor_id: @monitor.id}}

@@ -47,6 +47,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
         "y" => 2
       },
       %{
+        "id" => "list-1",
+        "type" => "list",
+        "title" => "Keys",
+        "path" => "keys",
+        "w" => 4,
+        "h" => 3,
+        "x" => 0,
+        "y" => 4
+      },
+      %{
         "id" => "text-1",
         "type" => "text",
         "title" => "Highlights",
@@ -68,9 +78,18 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
       end)
 
     values = [
-      %{"metrics" => %{"count" => 12, "category" => %{"New" => 7, "Returning" => 5}}},
-      %{"metrics" => %{"count" => 16, "category" => %{"New" => 9, "Returning" => 7}}},
-      %{"metrics" => %{"count" => 20, "category" => %{"New" => 11, "Returning" => 9}}}
+      %{
+        "metrics" => %{"count" => 12, "category" => %{"New" => 7, "Returning" => 5}},
+        "keys" => %{"alpha" => 4, "beta" => 3}
+      },
+      %{
+        "metrics" => %{"count" => 16, "category" => %{"New" => 9, "Returning" => 7}},
+        "keys" => %{"alpha" => 5, "beta" => 2}
+      },
+      %{
+        "metrics" => %{"count" => 20, "category" => %{"New" => 11, "Returning" => 9}},
+        "keys" => %{"alpha" => 6, "beta" => 4}
+      }
     ]
 
     series = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
@@ -93,7 +112,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
       timeseries: dataset_maps.timeseries,
       category: dataset_maps.category,
       table: dataset_maps.table,
-      text_widgets: dataset_maps.text
+      text_widgets: dataset_maps.text,
+      list: dataset_maps.list
     }
 
     %{assigns: assigns, grid_items: grid_items}
@@ -169,5 +189,20 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     classes = body_attrs |> Keyword.get("class", "")
     assert String.contains?(classes, "items-start")
     assert String.contains?(classes, "text-widget-body")
+  end
+
+  test "renders list widget entries", %{assigns: assigns} do
+    html = render_to_string(&WidgetView.grid/1, assigns)
+    {:ok, document} = Floki.parse_document(html)
+
+    badges = Floki.find(document, "#grid-widget-content-list-1 li span.inline-flex.items-center")
+    assert length(badges) > 0
+
+    labels =
+      document
+      |> Floki.find("#grid-widget-content-list-1 .font-mono")
+      |> Enum.map(fn {"span", _attrs, [text]} -> String.trim(text) end)
+
+    assert "alpha" in labels
   end
 end

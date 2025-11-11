@@ -18,6 +18,7 @@ defmodule TrifleApp.ExploreLive do
 
     socket =
       socket
+      |> assign(:explore_path, default_explore_path())
       |> assign(:sources, sources)
 
     case select_source_from_params(params, sources) do
@@ -1252,7 +1253,7 @@ defmodule TrifleApp.ExploreLive do
     |> assign(:transponder_info, transponder_info)
     |> assign(:transponder_response_paths, response_paths)
     |> assign(:page_title, "Explore · #{Source.display_name(source)}")
-    |> assign(:breadcrumb_links, [{"Explore", ~p"/explore?#{source_params(source)}"}])
+    |> assign(:breadcrumb_links, [{"Explore", build_explore_path(socket, source_params(source))}])
   end
 
   defp assign_source_state(socket, nil), do: assign_no_source(socket)
@@ -1389,11 +1390,51 @@ defmodule TrifleApp.ExploreLive do
       socket.assigns.source
       |> source_params()
       |> Map.merge(extra_params)
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Map.new()
 
-    push_patch(socket, to: ~p"/explore?#{params}")
+    push_patch(socket, to: build_explore_path(socket, params))
   end
+
+  defp explore_base_path(socket), do: socket.assigns[:explore_path] || default_explore_path()
+
+  defp build_explore_path(socket, params) do
+    base = explore_base_path(socket)
+    query = encode_query(params)
+
+    if query == "" do
+      base
+    else
+      base <> "?" <> query
+    end
+  end
+
+  defp encode_query(nil), do: ""
+
+  defp encode_query(params) when is_map(params) do
+    params
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Enum.map(fn {k, v} -> {normalize_query_key(k), normalize_query_value(v)} end)
+    |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+    |> URI.encode_query()
+  end
+
+  defp encode_query(params) when is_list(params) do
+    params
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Enum.map(fn {k, v} -> {normalize_query_key(k), normalize_query_value(v)} end)
+    |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+    |> URI.encode_query()
+  end
+
+  defp encode_query(_other), do: ""
+
+  defp normalize_query_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp normalize_query_key(key), do: to_string(key)
+
+  defp normalize_query_value(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp normalize_query_value(value) when is_binary(value), do: String.trim(value)
+  defp normalize_query_value(value), do: to_string(value)
+
+  defp default_explore_path, do: ~p"/explore"
 
   defp source_from_change(change, sources)
 

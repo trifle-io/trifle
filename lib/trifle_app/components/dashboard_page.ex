@@ -495,6 +495,7 @@ defmodule TrifleApp.Components.DashboardPage do
           category={@widget_category || %{}}
           table={@widget_table || %{}}
           text_widgets={@widget_text || %{}}
+          list={@widget_list || %{}}
           transponder_info={@transponder_info || %{}}
           export_params={export_params}
         />
@@ -1132,8 +1133,13 @@ defmodule TrifleApp.Components.DashboardPage do
             <:title>Edit Widget</:title>
             <:body>
               <div class="space-y-6">
-                <!-- Widget Type (change updates the modal content) -->
-                <.form for={%{}} phx-change="change_widget_type" class="space-y-4">
+                <.form
+                  for={%{}}
+                  id="widget-editor-form"
+                  phx-change="change_widget_type"
+                  phx-submit="save_widget"
+                  class="space-y-4"
+                >
                   <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
                   <div>
                     <label
@@ -1153,6 +1159,7 @@ defmodule TrifleApp.Components.DashboardPage do
                         <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
                         <option value="category" selected={sel == "category"}>Category</option>
                         <option value="table" selected={sel == "table"}>Table</option>
+                        <option value="list" selected={sel == "list"}>List</option>
                         <option value="text" selected={sel == "text"}>Text</option>
                       </select>
                       <svg
@@ -1187,13 +1194,6 @@ defmodule TrifleApp.Components.DashboardPage do
                       placeholder="Widget title"
                     />
                   </div>
-                </.form>
-                
-    <!-- Widget Title and Options -->
-                <.form for={%{}} id="widget-editor-form" phx-submit="save_widget" class="space-y-4">
-                  <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
-                  <input type="hidden" name="widget_title" value={@editing_widget["title"] || ""} />
-                  <input type="hidden" name="widget_type" value={@editing_widget["type"] || "kpi"} />
 
                   <WidgetEditor.editor widget={@editing_widget} path_options={@widget_path_options} />
                 </.form>
@@ -1251,11 +1251,12 @@ defmodule TrifleApp.Components.DashboardPage do
             </:title>
             <:body>
               <%= if @expanded_widget.type == "table" do %>
+                <% render_table = @expanded_widget[:table_data] %>
                 <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
                   <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                    <%= if table_data = @expanded_widget[:table_data] do %>
+                    <%= if render_table do %>
                       <DataTable.table
-                        dataset={table_data}
+                        dataset={render_table}
                         transponder_info={@transponder_info || %{}}
                         outer_class="flex-1 flex flex-col min-h-0"
                       />
@@ -1267,35 +1268,100 @@ defmodule TrifleApp.Components.DashboardPage do
                   </div>
                 </div>
               <% else %>
-                <div
-                  id={"expanded-widget-#{@expanded_widget.widget_id}"}
-                  class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
-                  phx-hook="ExpandedWidgetView"
-                  data-type={@expanded_widget.type}
-                  data-title={@expanded_widget.title}
-                  data-colors={ChartColors.json_palette()}
-                  data-chart={
-                    if @expanded_widget[:chart_data],
-                      do: Jason.encode!(@expanded_widget.chart_data)
-                  }
-                  data-visual={
-                    if @expanded_widget[:visual_data],
-                      do: Jason.encode!(@expanded_widget.visual_data)
-                  }
-                  data-text={
-                    if @expanded_widget[:text_data],
-                      do: Jason.encode!(@expanded_widget.text_data)
-                  }
-                >
-                  <div class="flex-1 min-h-[500px]">
-                    <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                      <div data-role="chart" class="h-full w-full"></div>
+                <%= if @expanded_widget.type == "list" do %>
+                  <% list_data = @expanded_widget[:list_data] %>
+                  <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
+                    <div class="flex-1 min-h-[400px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                      <%= if list_data do %>
+                        <% items = expanded_list_items(list_data) %>
+                        <% empty_message = expanded_list_empty_message(list_data) %>
+                        <%= if items == [] do %>
+                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                            {empty_message}
+                          </div>
+                        <% else %>
+                          <div class="h-full w-full overflow-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                              <thead class="bg-gray-50 dark:bg-slate-800/80 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-300">
+                                <tr>
+                                  <th scope="col" class="px-4 py-3">Item</th>
+                                  <th scope="col" class="px-4 py-3 text-right">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
+                                <%= for item <- items do %>
+                                  <% color = expanded_list_color(item) %>
+                                  <% label = expanded_list_label(item) %>
+                                  <% value = expanded_list_value(item) %>
+                                  <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
+                                  <% badge_border = expanded_list_color_with_alpha(color, "40") %>
+                                  <tr>
+                                    <td class="px-4 py-3 align-middle">
+                                      <div class="flex items-center gap-3 min-w-0">
+                                        <span
+                                          class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                          style={"background-color: #{color}"}
+                                          aria-hidden="true"
+                                        >
+                                        </span>
+                                        <div class="min-w-0">
+                                          <p class="font-mono text-xs truncate text-slate-700 dark:text-slate-200" title={label}>
+                                            {label}
+                                          </p>
+                                          <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={expanded_list_path(item)}>
+                                            {expanded_list_path(item)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-right align-middle">
+                                      <span
+                                        class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
+                                        style={
+                                          "color: #{color}; border-color: #{badge_border}; background-color: #{badge_bg}"
+                                        }
+                                      >
+                                        {value}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                <% end %>
+                              </tbody>
+                            </table>
+                          </div>
+                        <% end %>
+                      <% else %>
+                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                          Configure this widget with a path to display list data.
+                        </div>
+                      <% end %>
                     </div>
                   </div>
-                  <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                    <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                <% else %>
+                  <% chart_data = @expanded_widget[:chart_data] %>
+                  <% visual_data = @expanded_widget[:visual_data] %>
+                  <% text_data = @expanded_widget[:text_data] %>
+                  <div
+                    id={"expanded-widget-#{@expanded_widget.widget_id}"}
+                    class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
+                    phx-hook="ExpandedWidgetView"
+                    data-type={@expanded_widget.type}
+                    data-title={@expanded_widget.title}
+                    data-colors={ChartColors.json_palette()}
+                    data-chart={if chart_data, do: Jason.encode!(chart_data)}
+                    data-visual={if visual_data, do: Jason.encode!(visual_data)}
+                    data-text={if text_data, do: Jason.encode!(text_data)}
+                  >
+                    <div class="flex-1 min-h-[500px]">
+                      <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                        <div data-role="chart" class="h-full w-full"></div>
+                      </div>
+                    </div>
+                    <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                      <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                    </div>
                   </div>
-                </div>
+                <% end %>
               <% end %>
             </:body>
           </.app_modal>
@@ -1328,7 +1394,7 @@ defmodule TrifleApp.Components.DashboardPage do
                     Dashboard is empty
                   </h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                    This dashboard doesn't have any visualization data yet. Hit the Add Widget button and give it something to show off.
+                    This dashboard doesn&#39;t have any visualization data yet. Hit the Add Widget button and give it something to show off.
                   </p>
                   <%= if !@is_public_access do %>
                     <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
@@ -1359,7 +1425,7 @@ defmodule TrifleApp.Components.DashboardPage do
         </div>
       </main>
       
-    <!-- Sticky Summary Footer (only for authenticated users) -->
+    <!-- Sticky Summary Footer for authenticated users -->
       <%= if !@is_public_access do %>
         <%= if summary = get_summary_stats(assigns) do %>
           <.dashboard_footer
@@ -1393,5 +1459,47 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp source_selected?(%{type: type, id: id}, source) do
     type == Source.type(source) && id == to_string(Source.id(source))
+  end
+
+  defp expanded_list_items(data) when is_map(data) do
+    Map.get(data, :items) || Map.get(data, "items") || []
+  end
+
+  defp expanded_list_items(_), do: []
+
+  defp expanded_list_empty_message(data) when is_map(data) do
+    Map.get(data, :empty_message) || Map.get(data, "empty_message") || "No data available yet."
+  end
+
+  defp expanded_list_empty_message(_), do: "No data available yet."
+
+  defp expanded_list_color(item) do
+    Map.get(item, :color) || Map.get(item, "color") || ChartColors.primary()
+  end
+
+  defp expanded_list_label(item) do
+    Map.get(item, :label) || Map.get(item, "label") || expanded_list_path(item) || "Item"
+  end
+
+  defp expanded_list_path(item) do
+    Map.get(item, :path) || Map.get(item, "path") || ""
+  end
+
+  defp expanded_list_value(item) do
+    Map.get(item, :formatted_value) ||
+      Map.get(item, "formatted_value") ||
+      Map.get(item, :value) ||
+      Map.get(item, "value") ||
+      "0"
+  end
+
+  defp expanded_list_color_with_alpha(color, alpha_suffix) do
+    cond do
+      is_binary(color) and String.starts_with?(color, "#") ->
+        color <> alpha_suffix
+
+      true ->
+        color || ChartColors.primary()
+    end
   end
 end
