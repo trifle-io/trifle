@@ -1916,7 +1916,17 @@ Hooks.DashboardGrid = {
           const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
           if (stacked) base.stack = 'total';
           if (type === 'area') base.areaStyle = { opacity: 0.1 };
-          if (colors.length) base.itemStyle = { color: colors[idx % colors.length] };
+          const customColor = typeof s.color === 'string' && s.color.trim() !== '' ? s.color.trim() : null;
+          const paletteColor = colors.length ? colors[idx % colors.length] : null;
+          const appliedColor = customColor || paletteColor;
+          if (appliedColor) {
+            base.color = appliedColor;
+            base.itemStyle = Object.assign({}, base.itemStyle, { color: appliedColor });
+            base.lineStyle = Object.assign({}, base.lineStyle, { color: appliedColor });
+            if (type === 'area') {
+              base.areaStyle = Object.assign({ opacity: 0.1 }, { color: appliedColor });
+            }
+          }
           return base;
         });
         const overlay = it.alert_overlay || null;
@@ -3165,12 +3175,12 @@ Hooks.DashboardGrid = {
     }
 
     const list = document.createElement('ul');
-    list.className = 'flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-1';
+    list.className = 'flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-0.5';
 
     items.forEach((entry, index) => {
       if (!entry) return;
       const li = document.createElement('li');
-      li.className = 'py-2 first:pt-0 last:pb-0';
+      li.className = 'first:pt-0 last:pb-0';
 
       const wrapperTag = interactive ? 'button' : 'div';
       const wrapper = document.createElement(wrapperTag);
@@ -3189,16 +3199,16 @@ Hooks.DashboardGrid = {
         (selectedKey && rawLabel === selectedKey);
 
       const baseClasses = [
-        'w-full',
         'flex',
         'items-center',
         'justify-between',
-        'gap-3',
+        'gap-2.5',
         'rounded-md',
         'border',
-        'px-3',
-        'py-2',
-        'transition-colors'
+        'px-2.5',
+        'py-1.5',
+        'transition-colors',
+        'w-full'
       ];
 
       if (isSelected && interactive) {
@@ -3217,10 +3227,10 @@ Hooks.DashboardGrid = {
       }
 
       const row = document.createElement('div');
-      row.className = 'flex items-center justify-between gap-3';
+      row.className = 'w-full flex items-center justify-between gap-2.5';
 
       const left = document.createElement('div');
-      left.className = `flex items-center ${interactive ? 'gap-3' : 'gap-2'} min-w-0`;
+      left.className = `flex items-center ${interactive ? 'gap-2.5' : 'gap-2'} min-w-0`;
 
       const color =
         typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color : '#14b8a6';

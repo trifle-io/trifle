@@ -41,6 +41,7 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
       items =
         normalized_entries
+        |> Enum.reject(&zero_entry?/1)
         |> sort_items(sort)
         |> maybe_limit(limit)
         |> Enum.with_index()
@@ -98,8 +99,9 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
   defp widget_limit(widget) do
     widget
-    |> Map.get("limit") || Map.get(widget, :limit)
-    |> normalize_limit()
+    |> Map.get("limit") ||
+      Map.get(widget, :limit)
+      |> normalize_limit()
   end
 
   defp widget_sort(widget) do
@@ -177,6 +179,10 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
   defp sort_items(items, "alpha"), do: Enum.sort_by(items, fn {k, _v} -> k end, :asc)
   defp sort_items(items, "alpha_desc"), do: Enum.sort_by(items, fn {k, _v} -> k end, :desc)
   defp sort_items(items, _), do: Enum.sort_by(items, fn {_k, v} -> v end, :desc)
+
+  defp zero_entry?({_, value}) when is_number(value), do: value == 0
+  defp zero_entry?({_, value}) when is_nil(value), do: true
+  defp zero_entry?(_), do: true
 
   defp display_label(path, widget) do
     case Map.get(widget, "label_strategy") || Map.get(widget, :label_strategy) do

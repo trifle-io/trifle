@@ -1282,6 +1282,7 @@ defmodule TrifleApp.ExploreLive do
     |> assign(:load_start_time, nil)
     |> assign(:load_duration_microseconds, nil)
     |> assign(:show_export_dropdown, false)
+    |> assign(:expanded_widget, nil)
   end
 
   defp assign_no_source(socket) do
@@ -1317,6 +1318,7 @@ defmodule TrifleApp.ExploreLive do
     |> assign(:load_duration_microseconds, nil)
     |> assign(:show_export_dropdown, false)
     |> assign(:breadcrumb_links, [])
+    |> assign(:expanded_widget, nil)
   end
 
   defp ensure_source_in_list(sources, source) do
