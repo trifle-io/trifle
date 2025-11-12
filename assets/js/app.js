@@ -2744,6 +2744,8 @@ Hooks.DashboardGrid = {
       animateRows: false,
       rowHeight: 28,
       headerHeight: 48,
+      enableRangeSelection: true,
+      enableCellTextSelection: true,
       getRowClass: (params) => (params && params.data && params.data.__placeholder ? 'aggrid-placeholder-row' : ''),
       defaultColDef: {
         sortable: false,
@@ -4986,6 +4988,8 @@ Hooks.ExpandedAgGridTable = {
       animateRows: false,
       rowHeight: 28,
       headerHeight: 48,
+      enableRangeSelection: true,
+      enableCellTextSelection: true,
       defaultColDef: {
         sortable: false,
         filter: false,
