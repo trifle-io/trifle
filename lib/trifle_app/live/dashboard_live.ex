@@ -12,15 +12,17 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
+
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
     Kpi,
-    List,
     Table,
     Text,
     Timeseries,
     WidgetData
   }
+
+  alias TrifleApp.Components.DashboardWidgets.List, as: WidgetList
   require Logger
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
@@ -664,6 +666,7 @@ defmodule TrifleApp.DashboardLive do
 
   def handle_event("save_widget", params, socket) do
     %{"widget_id" => id} = params
+
     title =
       params
       |> Map.get("widget_title")
@@ -674,6 +677,7 @@ defmodule TrifleApp.DashboardLive do
       |> Kernel.||("")
       |> to_string()
       |> String.trim()
+
     type = String.downcase(Map.get(params, "widget_type", "kpi"))
 
     cond do
@@ -1283,7 +1287,7 @@ defmodule TrifleApp.DashboardLive do
 
       type == "list" ->
         stats
-        |> List.dataset(widget)
+        |> WidgetList.dataset(widget)
         |> case do
           nil -> base
           list_data -> Map.put(base, :list_data, list_data)

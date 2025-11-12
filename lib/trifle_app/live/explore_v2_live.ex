@@ -7,7 +7,10 @@ defmodule TrifleApp.ExploreV2Live do
   alias Decimal
   alias Jason
   alias TrifleApp.Components.DataTable
+
   alias TrifleApp.Components.DashboardWidgets.WidgetView
+
+  alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.ExploreLive
 
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
@@ -37,9 +40,18 @@ defmodule TrifleApp.ExploreV2Live do
   end
 
   @impl true
-  def handle_event(event, params, socket) do
-    ExploreLive.handle_event(event, params, socket)
+  def handle_event("expand_widget", %{"id" => id}, socket) do
+    widget = find_explore_widget(socket, id)
+    expanded = build_explore_expanded_widget(socket, widget)
+
+    {:noreply, assign(socket, :expanded_widget, expanded)}
   end
+
+  def handle_event("close_expanded_widget", _params, socket) do
+    {:noreply, assign(socket, :expanded_widget, nil)}
+  end
+
+  def handle_event(event, params, socket), do: ExploreLive.handle_event(event, params, socket)
 
   @impl true
   def handle_async(task, result, socket) do
@@ -66,7 +78,7 @@ defmodule TrifleApp.ExploreV2Live do
       |> assign(:timeseries_map, timeseries_map)
       |> assign(:table_map, table_map)
       |> assign(:list_map, list_map)
-      |> assign(:widget_export_config, %{type: :disabled})
+      |> assign(:widget_export_config, %{type: :dashboard})
 
     ~H"""
     <%= if @no_source do %>
@@ -213,6 +225,137 @@ defmodule TrifleApp.ExploreV2Live do
           />
         </div>
 
+        <%= if @expanded_widget do %>
+          <.app_modal
+            id="explore-expanded-widget"
+            show={true}
+            size="full"
+            on_cancel={JS.push("close_expanded_widget")}
+          >
+            <:title>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <div class="flex items-center gap-3">
+                  <span>{@expanded_widget.title}</span>
+                  <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
+                    {String.capitalize(@expanded_widget.type || "widget")}
+                  </span>
+                </div>
+              </div>
+            </:title>
+            <:body>
+              <%= case @expanded_widget.type do %>
+                <% "table" -> %>
+                  <% render_table =
+                    Map.get(@table_map || %{}, @expanded_widget.widget_id) %>
+                  <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
+                    <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                      <%= if render_table do %>
+                        <DataTable.table
+                          dataset={render_table}
+                          transponder_info={@transponder_info || %{}}
+                          outer_class="flex-1 flex flex-col min-h-0"
+                        />
+                      <% else %>
+                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                          Configure this widget with a path to display table data.
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                <% "list" -> %>
+                  <% list_data = Map.get(@list_map || %{}, @expanded_widget.widget_id) %>
+                  <% list_items = expanded_list_items(list_data) %>
+                  <% empty_message = expanded_list_empty_message(list_data) %>
+                  <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
+                    <div class="flex-1 min-h-[400px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                      <%= if list_items == [] do %>
+                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                          {empty_message}
+                        </div>
+                      <% else %>
+                        <div class="h-full w-full overflow-auto">
+                          <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                            <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
+                              <%= for item <- list_items do %>
+                                <% color = expanded_list_color(item) %>
+                                <% label = expanded_list_label(item) %>
+                                <% value = expanded_list_value(item) %>
+                                <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
+                                <% badge_border = expanded_list_color_with_alpha(color, "40") %>
+                                <tr>
+                                  <td class="px-4 py-3 align-middle">
+                                    <div class="flex items-center gap-3 min-w-0">
+                                      <span
+                                        class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                        style={"background-color: #{color}"}
+                                        aria-hidden="true"
+                                      >
+                                      </span>
+                                      <div class="min-w-0">
+                                        <p
+                                          class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
+                                          title={label}
+                                        >
+                                          {label}
+                                        </p>
+                                        <%= if path = expanded_list_path(item) do %>
+                                          <p
+                                            class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
+                                            title={path}
+                                          >
+                                            {path}
+                                          </p>
+                                        <% end %>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td class="px-4 py-3 text-right align-middle">
+                                    <span
+                                      class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
+                                      style={
+                                        "border-color: #{badge_border}; background-color: #{badge_bg}; color: #{color}"
+                                      }
+                                    >
+                                      {value}
+                                    </span>
+                                  </td>
+                                </tr>
+                              <% end %>
+                            </tbody>
+                          </table>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                <% _ -> %>
+                  <% chart_payload =
+                    Map.get(@timeseries_map || %{}, @expanded_widget.widget_id) %>
+                  <% chart_data = encode_optional_json(chart_payload) %>
+                  <div
+                    id={"expanded-widget-#{@expanded_widget.widget_id}"}
+                    class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
+                    phx-hook="ExpandedWidgetView"
+                    data-type={@expanded_widget.type}
+                    data-title={@expanded_widget.title}
+                    data-colors={ChartColors.json_palette()}
+                    data-chart={chart_data}
+                    data-visual={nil}
+                    data-text={nil}
+                  >
+                    <div class="flex-1 min-h-[500px]">
+                      <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                        <div data-role="chart" class="h-full w-full"></div>
+                      </div>
+                    </div>
+                    <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                      <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                    </div>
+                  </div>
+              <% end %>
+            </:body>
+          </.app_modal>
+        <% end %>
+
         <%= if @summary do %>
           <.dashboard_footer
             class="mt-8"
@@ -297,13 +440,13 @@ defmodule TrifleApp.ExploreV2Live do
       "type" => "timeseries",
       "title" => activity_title(assigns),
       "chart_type" => "bar",
-      "legend" => stacked_chart?(assigns),
+      "legend" => false,
       "stacked" => stacked_chart?(assigns),
       "normalized" => false,
       "paths" => timeline_paths(assigns),
       "y_label" => "Events",
-      "w" => 8,
-      "h" => 6,
+      "w" => 12,
+      "h" => 3,
       "x" => 0,
       "y" => 0
     }
@@ -313,11 +456,11 @@ defmodule TrifleApp.ExploreV2Live do
     %{
       "id" => @table_widget_id,
       "type" => "table",
-      "title" => "Table",
+      "title" => "Explore",
       "w" => 12,
       "h" => 8,
       "x" => 0,
-      "y" => 6
+      "y" => 7
     }
   end
 
@@ -328,10 +471,10 @@ defmodule TrifleApp.ExploreV2Live do
       "title" => "Keys",
       "path" => "keys",
       "sort" => "alpha",
-      "w" => 4,
-      "h" => 6,
-      "x" => 8,
-      "y" => 0
+      "w" => 12,
+      "h" => 4,
+      "x" => 0,
+      "y" => 3
     }
   end
 
@@ -351,7 +494,10 @@ defmodule TrifleApp.ExploreV2Live do
   defp timeline_paths(_assigns), do: ["keys.*"]
 
   defp build_timeseries_dataset(%{timeline: timeline, chart_type: chart_type} = assigns) do
-    series = decode_timeline_series(timeline, chart_type, assigns[:key])
+    series =
+      timeline
+      |> decode_timeline_series(chart_type, assigns[:key])
+      |> apply_selected_series_color(chart_type, assigns[:selected_key_color])
 
     %{
       @activity_widget_id => %{
@@ -359,12 +505,19 @@ defmodule TrifleApp.ExploreV2Live do
         chart_type: "bar",
         stacked: stacked_chart?(assigns),
         normalized: false,
-        legend: stacked_chart?(assigns),
+        legend: false,
         y_label: "Events",
         series: series
       }
     }
   end
+
+  defp apply_selected_series_color(series, "single", color)
+       when is_binary(color) and color != "" do
+    Enum.map(series, fn item -> Map.put(item, :color, color) end)
+  end
+
+  defp apply_selected_series_color(series, _chart_type, _color), do: series
 
   defp build_table_dataset(%{stats: nil}), do: %{}
 
@@ -398,6 +551,7 @@ defmodule TrifleApp.ExploreV2Live do
           color: ExploreLive.get_key_color(keys_map, key)
         }
       end)
+      |> Enum.reject(fn %{value: value} -> (value || 0) == 0 end)
 
     selected_key =
       case assigns[:key] do
@@ -424,6 +578,33 @@ defmodule TrifleApp.ExploreV2Live do
         deselect_event: "deselect_key"
       }
     }
+  end
+
+  defp find_explore_widget(socket, id) do
+    socket.assigns
+    |> grid_widgets()
+    |> Enum.find(fn widget -> to_string(widget["id"]) == to_string(id) end)
+  end
+
+  defp build_explore_expanded_widget(_socket, nil), do: nil
+
+  defp build_explore_expanded_widget(_socket, widget) do
+    id = widget |> Map.get("id") |> to_string()
+    type = explore_widget_type(widget)
+    title = widget |> Map.get("title", "") |> to_string() |> String.trim()
+
+    %{
+      widget_id: id,
+      title: if(title == "", do: "Untitled Widget", else: title),
+      type: type
+    }
+  end
+
+  defp explore_widget_type(widget) do
+    widget
+    |> Map.get("type", "kpi")
+    |> to_string()
+    |> String.downcase()
   end
 
   defp decode_timeline_series(nil, _chart_type, _key), do: []
@@ -495,6 +676,58 @@ defmodule TrifleApp.ExploreV2Live do
   defp normalize_value(%Decimal{} = value), do: Decimal.to_float(value)
   defp normalize_value(value) when is_number(value), do: value * 1.0
   defp normalize_value(_), do: 0.0
+
+  defp encode_optional_json(nil), do: nil
+
+  defp encode_optional_json(data) do
+    Jason.encode!(data)
+  rescue
+    _ -> nil
+  end
+
+  defp expanded_list_items(%{items: items}) when is_list(items), do: items
+  defp expanded_list_items(%{"items" => items}) when is_list(items), do: items
+  defp expanded_list_items(_), do: []
+
+  defp expanded_list_empty_message(%{empty_message: msg}) when is_binary(msg) and msg != "",
+    do: msg
+
+  defp expanded_list_empty_message(%{"empty_message" => msg}) when is_binary(msg) and msg != "",
+    do: msg
+
+  defp expanded_list_empty_message(_), do: "No data available yet."
+
+  defp expanded_list_color(item) do
+    Map.get(item, :color) ||
+      Map.get(item, "color") ||
+      ChartColors.primary()
+  end
+
+  defp expanded_list_label(item) do
+    Map.get(item, :label) || Map.get(item, "label") || expanded_list_path(item) || "Item"
+  end
+
+  defp expanded_list_value(item) do
+    Map.get(item, :formatted_value) ||
+      Map.get(item, "formatted_value") ||
+      Map.get(item, :value) ||
+      Map.get(item, "value") ||
+      "0"
+  end
+
+  defp expanded_list_path(item) do
+    Map.get(item, :path) || Map.get(item, "path")
+  end
+
+  defp expanded_list_color_with_alpha(color, suffix) do
+    cond do
+      is_binary(color) and String.starts_with?(color, "#") ->
+        color <> suffix
+
+      true ->
+        color
+    end
+  end
 
   defp explore_v2_path, do: ~p"/explore/v2"
 end

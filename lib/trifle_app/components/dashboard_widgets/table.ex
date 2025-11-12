@@ -31,11 +31,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   defp table_widget?(%{type: type}), do: String.downcase(to_string(type)) == "table"
   defp table_widget?(_), do: false
 
-  defp build_dataset(_series, nil, widget) do
-    log_debug(widget, "tabulated stats unavailable; skipping table dataset")
-    nil
-  end
-
   defp build_dataset(series_struct, table_stats, widget) do
     filters = widget_paths(widget)
 
@@ -43,7 +38,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
       log_debug(widget, "table widget has no configured paths")
       nil
     else
-      paths = table_stats[:paths] || []
+      normalized_stats = ensure_table_stats(table_stats, series_struct)
+
+      paths = normalized_stats[:paths] || []
       matching_paths = filter_paths(paths, filters)
 
       display_overrides =
@@ -55,14 +52,14 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
 
       empty_message =
         if matching_paths == [] do
-          "No data matched #{Enum.join(filters, ", ")}."
+          "No data available yet."
         else
           "No values available for the selected timeframe."
         end
 
       table_dataset =
         DataTable.from_stats(
-          table_stats,
+          normalized_stats,
           paths: matching_paths,
           display_paths: display_overrides,
           granularity: series_granularity(series_struct),
@@ -197,6 +194,43 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   defp widget_id(%{"id" => id}), do: to_string(id)
   defp widget_id(%{id: id}), do: to_string(id)
   defp widget_id(_), do: nil
+
+  defp ensure_table_stats(nil, series_struct) do
+    %{
+      at: fallback_at(series_struct),
+      paths: [],
+      values: %{}
+    }
+  end
+
+  defp ensure_table_stats(table_stats, series_struct) when is_map(table_stats) do
+    table_stats
+    |> Map.put_new(:paths, [])
+    |> Map.put_new(:values, %{})
+    |> ensure_at(series_struct)
+  end
+
+  defp ensure_table_stats(_other, series_struct), do: ensure_table_stats(nil, series_struct)
+
+  defp ensure_at(stats, series_struct) do
+    case Map.get(stats, :at) do
+      list when is_list(list) and list != [] ->
+        stats
+
+      _ ->
+        Map.put(stats, :at, fallback_at(series_struct))
+    end
+  end
+
+  defp fallback_at(%Series{series: series_map}) when is_map(series_map) do
+    cond do
+      is_list(series_map[:at]) and series_map[:at] != [] -> series_map[:at]
+      is_list(series_map["at"]) and series_map["at"] != [] -> series_map["at"]
+      true -> []
+    end
+  end
+
+  defp fallback_at(_), do: []
 
   defp fetch_single_path(widget) do
     Map.get(widget, "path") ||

@@ -60,7 +60,7 @@ defmodule TrifleApp.Components.DataTable do
       |> assign(:color_paths, color_paths)
       |> assign(:granularity, Map.get(dataset, :granularity))
       |> assign(:empty_message, Map.get(dataset, :empty_message, "No data available yet."))
-      |> assign(:has_grid, rows != [] and columns != [])
+      |> assign(:has_grid, rows != [] or columns != [])
       |> assign(:table_dom_id, table_base_id <> "-table")
       |> assign(:scroll_dom_id, table_base_id <> "-scroll")
       |> assign(:container_dom_id, table_base_id <> "-container")
@@ -147,7 +147,7 @@ defmodule TrifleApp.Components.DataTable do
                         data-row={row.index}
                         data-col={col_index}
                       >
-                        0
+                        {Phoenix.HTML.raw("&nbsp;")}
                       </td>
                     <% end %>
                   <% end %>

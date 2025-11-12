@@ -495,7 +495,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     assigns =
       assigns
       |> assign(:list_items, list_items(assigns.list_dataset))
-      |> assign(:list_empty_message, list_empty_message(assigns.list_dataset))
       |> assign(:list_selected_key, list_selected_key(assigns.list_dataset))
       |> assign(:list_selected_path, list_selected_path(assigns.list_dataset))
       |> assign(:list_select_event, select_event)
@@ -503,99 +502,88 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col min-h-0 gap-0">
-      <%= if @list_items == [] do %>
-        <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 px-4 text-center">
-          {@list_empty_message}
-        </div>
-      <% else %>
-        <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-1">
-          <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
-            <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
-            <li class="py-2 first:pt-0 last:pb-0">
+      <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-0.5">
+        <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
+          <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
+          <li class="first:pt-0 last:pb-0">
+            <div class={[
+              "flex items-center justify-between gap-2.5 rounded-md border px-2.5 py-1.5 transition-colors",
+              if(selected && @list_selectable,
+                do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
+                else: "border-transparent hover:bg-gray-50 dark:hover:bg-slate-800/40"
+              )
+            ]}>
               <div class={[
-                "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
-                if(selected && @list_selectable,
-                  do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
-                  else: "border-transparent hover:bg-gray-50 dark:hover:bg-slate-800/40"
-                )
+                "flex items-center min-w-0",
+                if(@list_selectable, do: "gap-2.5", else: "gap-2")
               ]}>
-                <div class={[
-                  "flex items-center min-w-0",
-                  if(@list_selectable, do: "gap-3", else: "gap-2")
-                ]}>
-                  <%= if @list_selectable do %>
-                    <span class="flex-shrink-0 text-gray-400 dark:text-slate-400">
-                      <%= if selected do %>
-                        <svg
-                          class="h-5 w-5 text-teal-600 flex-shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                          <circle cx="12" cy="12" r="4" fill="currentColor" />
-                        </svg>
-                      <% else %>
-                        <svg
-                          class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke-width="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                      <% end %>
-                    </span>
-                  <% else %>
-                    <span
-                      class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
-                      style={"background-color: #{item.color}"}
-                      aria-hidden="true"
-                    >
-                    </span>
-                  <% end %>
-                  <span
-                    class="text-sm font-mono truncate"
-                    style={"color: #{item.color}"}
-                    title={item.label}
-                  >
-                    {item.label}
+                <%= if @list_selectable do %>
+                  <span class="flex-shrink-0 text-gray-400 dark:text-slate-400">
+                    <%= if selected do %>
+                      <svg
+                        class="h-5 w-5 text-teal-600 flex-shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                        <circle cx="12" cy="12" r="4" fill="currentColor" />
+                      </svg>
+                    <% else %>
+                      <svg
+                        class="h-5 w-5 text-gray-400 dark:text-slate-400 flex-shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    <% end %>
                   </span>
-                </div>
+                <% else %>
+                  <span
+                    class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                    style={"background-color: #{item.color}"}
+                    aria-hidden="true"
+                  >
+                  </span>
+                <% end %>
                 <span
-                  class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold"
-                  style={
-                    "color: #{item.color}; border-color: #{color_with_alpha(item.color, "40")}; background-color: #{color_with_alpha(item.color, "15")}"
-                  }
+                  class="text-sm font-mono truncate"
+                  style={"color: #{item.color}"}
+                  title={item.label}
                 >
-                  {item.formatted_value || item.value}
+                  {item.label}
                 </span>
               </div>
-            </li>
-          <% end %>
-        </ul>
-      <% end %>
+              <span
+                class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold"
+                style={
+                  "color: #{item.color}; border-color: #{color_with_alpha(item.color, "40")}; background-color: #{color_with_alpha(item.color, "15")}"
+                }
+              >
+                {item.formatted_value || item.value}
+              </span>
+            </div>
+          </li>
+        <% end %>
+      </ul>
     </div>
     """
   end
 
   defp list_items(%{items: items}) when is_list(items), do: items
   defp list_items(_), do: []
-
-  defp list_empty_message(%{empty_message: message}) when is_binary(message) and message != "",
-    do: message
-
-  defp list_empty_message(_), do: "No data available yet."
 
   defp list_selected_key(%{selected_key: key}) when is_binary(key) and key != "", do: key
   defp list_selected_key(%{"selected_key" => key}) when is_binary(key) and key != "", do: key
@@ -1056,8 +1044,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           </div>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
             <%= unless @print_mode do %>
-              <%= with {:ok, links} <-
-                      widget_export_links(@widget_export, @dashboard_id, @widget_id, @export_params) do %>
+              <% export_links =
+                widget_export_links(@widget_export, @dashboard_id, @widget_id, @export_params) %>
+              <%= if match?({:ok, _}, export_links) do %>
+                <% {:ok, links} = export_links %>
                 <div
                   id={"widget-download-menu-#{@widget_id}"}
                   class="relative"
