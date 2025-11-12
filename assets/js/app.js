@@ -3721,6 +3721,12 @@ Hooks.DashboardWidgetData = {
     this.register();
   },
 
+  reconnected() {
+    // Force re-register so widgets with unchanged payloads (text/list) render after reconnects
+    this._lastKey = null;
+    this.register();
+  },
+
   destroyed() {
     if (this._retryTimer) {
       clearTimeout(this._retryTimer);
