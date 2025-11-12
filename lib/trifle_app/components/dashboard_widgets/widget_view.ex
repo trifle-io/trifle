@@ -107,6 +107,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           id={"widget-data-#{data.widget_id}"}
           data-widget-id={data.widget_id}
           data-widget-type={data.widget_type}
+          data-title={data.title}
           data-kpi-values={data.kpi_values}
           data-kpi-visual={data.kpi_visual}
           data-timeseries={data.timeseries}
@@ -421,7 +422,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             </div>
           </div>
         <% else %>
-          <DataTable.table dataset={@table_dataset} transponder_info={@transponder_info} />
+          <DataTable.table
+            dataset={@table_dataset}
+            transponder_info={@transponder_info}
+            scroll_y={Map.get(@table_dataset, :scroll_y, true)}
+          />
         <% end %>
       <% else %>
         <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-4">
@@ -1243,6 +1248,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     base = %{
       widget_id: widget_id,
       widget_type: widget_type,
+      title: widget_title(widget),
       kpi_values: nil,
       kpi_visual: nil,
       timeseries: nil,
@@ -1316,84 +1322,19 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp table_payload(nil, _transponder_info), do: nil
 
   defp table_payload(dataset, transponder_info) do
-    columns =
-      dataset
-      |> Map.get(:columns, [])
-      |> Enum.map(fn %{at: at, index: idx} ->
-        label =
-          ExploreLive.format_table_timestamp(at, dataset.granularity)
-          |> Phoenix.HTML.safe_to_string()
-
-        %{id: idx, label: label}
-      end)
-
-    column_refs =
-      dataset
-      |> Map.get(:columns, [])
-      |> Enum.map(& &1.at)
-
-    rows =
-      dataset
-      |> Map.get(:rows, [])
-      |> Enum.map(fn row ->
-        formatted_path =
-          ExploreLive.format_nested_path(
-            row.display_path,
-            Map.get(dataset, :color_paths, []),
-            transponder_info || %{},
-            transponder_path: row.path,
-            display_path: row.display_path
-          )
-          |> Phoenix.HTML.safe_to_string()
-
-        values =
-          column_refs
-          |> Enum.map(fn at ->
-            dataset
-            |> Map.get(:values, %{})
-            |> Map.get({row.path, at})
-            |> format_table_value()
-          end)
-
-        %{
-          id: row.index,
-          path: row.path,
-          display_path: row.display_path,
-          path_html: formatted_path,
-          values: values
-        }
-      end)
-
-    %{
-      id: dataset.id,
-      mode: dataset.mode || "html",
-      color_paths: Map.get(dataset, :color_paths, []),
-      color_palette: ChartColors.palette(),
-      columns: columns,
-      rows: rows,
-      empty_message: dataset.empty_message
-    }
-  end
-
-  defp format_table_value(%Decimal{} = d), do: Decimal.to_float(d)
-  defp format_table_value(value) when is_number(value), do: value
-
-  defp format_table_value(value) when is_binary(value) do
-    value
-    |> String.trim()
+    dataset
+    |> DataTable.to_aggrid_payload(transponder_info)
     |> case do
-      "" ->
-        0
+      nil ->
+        nil
 
-      trimmed ->
-        case Float.parse(trimmed) do
-          {num, _} -> num
-          _ -> 0
-        end
+      payload ->
+        Map.merge(payload, %{
+          color_paths: Map.get(dataset, :color_paths, []),
+          color_palette: ChartColors.palette()
+        })
     end
   end
-
-  defp format_table_value(_), do: 0
 
   defp log_table_render(assigns, %{} = dataset) do
     Logger.debug(fn ->

@@ -3,6 +3,7 @@ defmodule TrifleApp.Components.DataTable do
 
   use TrifleApp, :html
 
+  alias Decimal
   alias TrifleApp.ExploreLive
 
   @type table_dataset :: %{
@@ -20,6 +21,7 @@ defmodule TrifleApp.Components.DataTable do
   attr :outer_class, :string, default: nil
   attr :scroll_class, :string, default: nil
   attr :table_class, :string, default: nil
+  attr :scroll_y, :boolean, default: true
 
   def table(assigns) do
     dataset = assigns.dataset || %{}
@@ -77,7 +79,8 @@ defmodule TrifleApp.Components.DataTable do
     >
       <div
         class={[
-          "data-table-scroll flex-1 overflow-x-auto overflow-y-auto relative",
+          "data-table-scroll flex-1 overflow-x-auto relative",
+          if(@scroll_y, do: "overflow-y-auto", else: "overflow-y-visible"),
           @scroll_class
         ]}
         id={@scroll_dom_id}
@@ -212,6 +215,71 @@ defmodule TrifleApp.Components.DataTable do
     |> maybe_put_id(Keyword.get(opts, :id))
   end
 
+  def to_aggrid_payload(nil, _transponder_info), do: nil
+
+  def to_aggrid_payload(dataset, transponder_info \\ %{}) do
+    granularity = Map.get(dataset, :granularity) || Map.get(dataset, "granularity")
+    color_paths = Map.get(dataset, :color_paths) || Map.get(dataset, "color_paths") || []
+    columns = get_columns(dataset)
+
+    column_defs =
+      columns
+      |> Enum.map(fn column ->
+        at = get_field(column, :at)
+        idx = get_field(column, :index) || 0
+
+        label =
+          ExploreLive.format_table_timestamp(at, granularity)
+          |> Phoenix.HTML.safe_to_string()
+
+        %{id: idx, label: label}
+      end)
+
+    column_refs = Enum.map(columns, &get_field(&1, :at))
+
+    rows =
+      dataset
+      |> get_field(:rows, [])
+      |> Enum.map(fn row ->
+        path = get_field(row, :path)
+        display_path = get_field(row, :display_path)
+
+        formatted_path =
+          ExploreLive.format_nested_path(
+            display_path,
+            color_paths,
+            transponder_info || %{},
+            transponder_path: path,
+            display_path: display_path
+          )
+          |> Phoenix.HTML.safe_to_string()
+
+        values =
+          column_refs
+          |> Enum.map(fn at ->
+            dataset
+            |> get_field(:values, %{})
+            |> Map.get({path, at})
+            |> format_aggrid_value()
+          end)
+
+        %{
+          path: path,
+          display_path: display_path,
+          path_html: formatted_path,
+          values: values
+        }
+      end)
+
+    %{
+      id: get_field(dataset, :id),
+      mode: get_field(dataset, :mode) || "html",
+      columns: column_defs,
+      rows: rows,
+      empty_message: get_field(dataset, :empty_message) || "No data available yet."
+    }
+  end
+
   defp normalize_paths(list) when is_list(list), do: Enum.map(list, &to_string/1)
   defp normalize_paths(other), do: normalize_paths(List.wrap(other))
 
@@ -244,6 +312,45 @@ defmodule TrifleApp.Components.DataTable do
 
   defp maybe_put_id(map, nil), do: map
   defp maybe_put_id(map, id), do: Map.put(map, :id, id)
+
+  defp get_field(map, key, default \\ nil)
+
+  defp get_field(map, key, default) when is_map(map) do
+    Map.get(map, key) ||
+      Map.get(map, to_string(key)) ||
+      default
+  end
+
+  defp get_field(_map, _key, default), do: default
+
+  defp get_columns(dataset) do
+    dataset
+    |> get_field(:columns, [])
+    |> Enum.map(fn
+      %{} = column -> column
+      other -> other
+    end)
+  end
+
+  defp format_aggrid_value(%Decimal{} = d), do: Decimal.to_float(d)
+  defp format_aggrid_value(value) when is_number(value), do: value
+
+  defp format_aggrid_value(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" ->
+        nil
+
+      trimmed ->
+        case Float.parse(trimmed) do
+          {num, _} -> num
+          _ -> trimmed
+        end
+    end
+  end
+
+  defp format_aggrid_value(_), do: 0
 
   defp dataset_dom_id(dataset) do
     base =
