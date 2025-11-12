@@ -463,6 +463,7 @@ defmodule TrifleApp.ExploreLive do
   def handle_event("select_key", %{"key" => key}, socket) do
     socket =
       socket
+      |> assign(key: key)
       |> assign(loading: true)
       |> push_source_patch(%{
         granularity: socket.assigns.granularity,
@@ -478,6 +479,7 @@ defmodule TrifleApp.ExploreLive do
   def handle_event("deselect_key", _, socket) do
     socket =
       socket
+      |> assign(key: nil)
       |> assign(loading: true)
       |> push_source_patch(%{
         granularity: socket.assigns.granularity,

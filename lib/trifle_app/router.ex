@@ -92,7 +92,7 @@ defmodule TrifleApp.Router do
       live "/dbs/new", DatabasesLive, :new
       live "/dbs/:id", DatabaseRedirectLive, :index
       live "/dbs/:id/settings", DatabaseSettingsLive, :show
-      live "/explore", ExploreLive, :show
+      live "/explore", ExploreV2Live, :show
       live "/explore/v2", ExploreV2Live, :show
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new

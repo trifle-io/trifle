@@ -2729,6 +2729,10 @@ Hooks.DashboardGrid = {
 
   _create_aggrid_table(root) {
     root.innerHTML = '';
+    root.style.width = '100%';
+    root.style.height = '100%';
+    root.style.width = '100%';
+    root.style.height = '100%';
     const agGrid = window.agGrid;
     const gridOptions = {
       columnDefs: [],
@@ -3746,16 +3750,17 @@ Hooks.DashboardWidgetData = {
       this.widgetType = nextType;
     }
 
-      const dataStrings = [
-        this.el.dataset.kpiValues || '',
-        this.el.dataset.kpiVisual || '',
-        this.el.dataset.timeseries || '',
-        this.el.dataset.category || '',
-        this.el.dataset.table || '',
-        this.el.dataset.text || '',
-        this.el.dataset.list || ''
-      ];
-    const key = [this.widgetType, this.widgetId].concat(dataStrings).join('||');
+    const titleData = this.el.dataset.title || '';
+    const dataStrings = [
+      this.el.dataset.kpiValues || '',
+      this.el.dataset.kpiVisual || '',
+      this.el.dataset.timeseries || '',
+      this.el.dataset.category || '',
+      this.el.dataset.table || '',
+      this.el.dataset.text || '',
+      this.el.dataset.list || ''
+    ];
+    const key = [this.widgetType, this.widgetId, titleData].concat(dataStrings).join('||');
     if (key === this._lastKey) return;
     this._lastKey = key;
 
@@ -3810,9 +3815,32 @@ Hooks.DashboardWidgetData = {
 
       gridHook.registerWidget(type || null, id, payload);
       this._registeredType = type || null;
+      this.updateWidgetTitle(titleData, type);
     };
 
     attempt();
+  },
+
+  updateWidgetTitle(title, type) {
+    if (!this.widgetId) return;
+    if (!title || type === 'text') return;
+    const trimmed = title.trim();
+    if (trimmed === '') return;
+    const gridHook = findDashboardGridHook(this.el);
+    const root = gridHook && gridHook.el ? gridHook.el : document;
+    const item =
+      root && root.querySelector
+        ? root.querySelector(`.grid-stack-item[gs-id="${this.widgetId}"]`)
+        : null;
+    if (!item) return;
+    const titleEl = item.querySelector('.grid-widget-title');
+    if (!titleEl) return;
+    titleEl.textContent = trimmed;
+    titleEl.dataset.originalTitle = trimmed;
+    const content = item.querySelector('.grid-stack-item-content');
+    if (content) {
+      content.dataset.widgetTitle = trimmed;
+    }
   }
 };
 
@@ -4856,6 +4884,255 @@ Hooks.ExpandedWidgetView = {
         fastTooltip.initTooltips.call(context);
       } catch (_) {}
     });
+  }
+};
+
+Hooks.ExpandedAgGridTable = {
+  mounted() {
+    this.grid = null;
+    this.gridOptions = null;
+    this.lastPayload = null;
+    this.handleThemeChange = () => this.applyTheme();
+    window.addEventListener('trifle:theme-changed', this.handleThemeChange);
+    this.render();
+    setTimeout(() => this.render(), 150);
+  },
+
+  updated() {
+    this.render();
+  },
+
+  destroyed() {
+    window.removeEventListener('trifle:theme-changed', this.handleThemeChange);
+    this.destroyGrid();
+  },
+
+  render() {
+    const payloadString = this.el.dataset.table || '';
+    if (!payloadString) {
+      this.showEmpty();
+      return;
+    }
+    if (payloadString === this.lastPayload && this.grid) {
+      this.applyTheme();
+      return;
+    }
+    this.lastPayload = payloadString;
+    const payload = parseJsonSafe(payloadString);
+    if (!payload) {
+      this.showEmpty();
+      return;
+    }
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    if (rows.length === 0) {
+      this.destroyGrid();
+      this.showEmpty(payload.empty_message);
+      return;
+    }
+    ensureAgGridCommunity()
+      .then(() => this.renderGrid(payload))
+      .catch((err) => {
+        console.error('[ExpandedAgGridTable] Failed to load ag-grid-community', err);
+        this.showEmpty('Unable to load table data.');
+      });
+  },
+
+  renderGrid(payload) {
+    const root = this.el.querySelector('[data-role="aggrid-table-root"]');
+    if (!root) return;
+    this.applyTheme();
+    const shell = this.el;
+    const shellHeight = shell && shell.clientHeight > 0 ? shell.clientHeight : (shell && shell.parentElement ? shell.parentElement.clientHeight : 0);
+    const fallbackHeight = shellHeight > 0 ? shellHeight : 520;
+    root.style.width = '100%';
+    root.style.height = `${fallbackHeight}px`;
+    root.style.minHeight = '400px';
+    root.style.flex = '1 1 auto';
+    const tableId = this.normalizeId(payload && payload.id);
+    this.tableId = tableId;
+    if (!this.grid || this.grid.root !== root || !this.grid.api) {
+      this.destroyGrid();
+      this.createGrid(root);
+    }
+
+    const columnDefs = this.buildColumns(payload);
+    const rowData = this.buildRows(payload);
+
+    try {
+      this.grid.api.setColumnDefs(columnDefs);
+      this.grid.api.setRowData(rowData);
+      requestAnimationFrame(() => {
+        try {
+          this.grid.api.sizeColumnsToFit();
+        } catch (_) {}
+      });
+    } catch (err) {
+      console.error('[ExpandedAgGridTable] Failed to render grid', err);
+      this.showEmpty('Unable to render table.');
+    }
+  },
+
+  createGrid(root) {
+    const agGrid = window.agGrid;
+    if (!agGrid || typeof agGrid.Grid !== 'function') return;
+    root.innerHTML = '';
+    const gridOptions = {
+      columnDefs: [],
+      rowData: [],
+      suppressCellFocus: true,
+      suppressMovableColumns: true,
+      suppressRowClickSelection: true,
+      rowSelection: 'single',
+      animateRows: false,
+      rowHeight: 28,
+      headerHeight: 48,
+      defaultColDef: {
+        sortable: false,
+        filter: false,
+        resizable: false,
+        flex: 1,
+        headerComponent: getAggridHeaderComponentClass()
+      }
+    };
+    new agGrid.Grid(root, gridOptions);
+    this.grid = {
+      api: gridOptions.api,
+      columnApi: gridOptions.columnApi,
+      root
+    };
+  },
+
+  destroyGrid() {
+    if (this.grid && this.grid.api && typeof this.grid.api.destroy === 'function') {
+      try {
+        this.grid.api.destroy();
+      } catch (_) {}
+    }
+    this.grid = null;
+  },
+
+  showEmpty(message) {
+    const root = this.el.querySelector('[data-role="aggrid-table-root"]');
+    if (!root) return;
+    this.destroyGrid();
+    root.classList.remove('ag-theme-alpine', 'ag-theme-alpine-dark');
+    root.innerHTML = `
+      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+        ${this.escapeHtml(message || 'No data available yet.')}
+      </div>
+    `;
+  },
+
+  applyTheme() {
+    const root = this.el.querySelector('[data-role="aggrid-table-root"]');
+    if (!root) return;
+    const isDark = document.documentElement.classList.contains('dark');
+    this.el.dataset.theme = isDark ? 'dark' : 'light';
+    root.classList.remove('ag-theme-alpine', 'ag-theme-alpine-dark');
+    root.classList.add(isDark ? 'ag-theme-alpine-dark' : 'ag-theme-alpine');
+    if (this.grid && this.grid.api) {
+      try {
+        this.grid.api.refreshCells({ force: true });
+        this.grid.api.redrawRows();
+      } catch (_) {}
+      requestAnimationFrame(() => {
+        try {
+          this.grid.api.sizeColumnsToFit();
+        } catch (_) {}
+      });
+    }
+  },
+
+  buildColumns(payload) {
+    const columns = Array.isArray(payload.columns) ? payload.columns : [];
+    const defs = [
+      {
+        field: 'path',
+        headerName: 'Path',
+        pinned: 'left',
+        lockPinned: true,
+        suppressMovable: true,
+        minWidth: 240,
+        flex: 2,
+        cellRenderer: (params) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'aggrid-path-cell';
+          const html = params && params.data ? params.data.__pathHtml : '';
+          if (html && typeof html === 'string') {
+            wrapper.innerHTML = html;
+          } else {
+            wrapper.textContent =
+              params && params.value != null ? String(params.value) : (params && params.data && params.data.path) || '';
+          }
+          return wrapper;
+        },
+        cellClass: 'aggrid-path-cell-wrapper aggrid-body-cell ag-left-aligned-cell',
+        headerClass: 'aggrid-header-cell ag-left-aligned-header',
+        headerComponentParams: { lines: ['Path'], align: 'left' }
+      }
+    ];
+
+    columns.forEach((column, idx) => {
+      const label = this.stripHtml(column && column.label ? column.label : `Column ${idx + 1}`);
+      defs.push({
+        field: `col_${idx}`,
+        headerName: label,
+        headerTooltip: label,
+        type: 'numericColumn',
+        minWidth: 120,
+        flex: 1,
+        valueFormatter: (params) => {
+          if (!params || params.value === null || params.value === undefined || params.value === '') return '';
+          const numeric = Number(params.value);
+          if (!Number.isFinite(numeric)) return String(params.value);
+          return numeric.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        },
+        cellClass: 'aggrid-numeric-cell aggrid-body-cell ag-right-aligned-cell',
+        headerClass: 'aggrid-header-cell ag-right-aligned-header',
+        headerComponentParams: { lines: [label], align: 'right' }
+      });
+    });
+
+    return defs;
+  },
+
+  buildRows(payload) {
+    const columns = Array.isArray(payload.columns) ? payload.columns : [];
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    return rows.map((row) => {
+      const data = {
+        path: row && (row.display_path || row.path || ''),
+        __pathHtml: row && row.path_html ? row.path_html : ''
+      };
+      const values = Array.isArray(row && row.values) ? row.values : [];
+      columns.forEach((_, idx) => {
+        data[`col_${idx}`] = values[idx] != null ? values[idx] : '';
+      });
+      return data;
+    });
+  },
+
+  stripHtml(input) {
+    if (!input || typeof input !== 'string') return '';
+    return input.replace(/<[^>]*>/g, '').trim();
+  },
+
+  escapeHtml(text) {
+    if (text == null) return '';
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  },
+
+  normalizeId(id) {
+    if (id == null) return null;
+    if (typeof id === 'string') return id;
+    if (typeof id === 'number') return String(id);
+    if (typeof id === 'object' && 'toString' in id) return String(id);
+    return null;
   }
 };
 // Generic file download handler via pushEvent
