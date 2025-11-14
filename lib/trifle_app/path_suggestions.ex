@@ -8,7 +8,7 @@ defmodule TrifleApp.PathSuggestions do
   alias Trifle.Stats.Source
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Stats.Tabler
-  alias TrifleApp.ExploreLive
+  alias TrifleApp.ExploreCore
 
   @one_week_seconds 7 * 24 * 60 * 60
 
@@ -140,7 +140,7 @@ defmodule TrifleApp.PathSuggestions do
       Enum.map(paths, fn path ->
         label =
           path
-          |> ExploreLive.format_nested_path(paths, %{})
+          |> ExploreCore.format_nested_path(paths, %{})
           |> HTML.safe_to_string()
 
         %{"value" => path, "label" => label}

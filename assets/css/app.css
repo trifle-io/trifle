@@ -55,6 +55,28 @@ input[type="checkbox"] {
   @apply w-4 h-4 text-teal-600 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 rounded focus:ring-teal-500;
 }
 
+.filter-field-label {
+  background-image: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(255, 255, 255, 0.95) 45%,
+    rgba(255, 255, 255, 0.85) 65%,
+    rgba(255, 255, 255, 0.6) 80%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.dark .filter-field-label {
+  background-image: radial-gradient(
+    ellipse at center,
+    rgba(15, 23, 42, 0.98) 0%,
+    rgba(15, 23, 42, 0.92) 45%,
+    rgba(15, 23, 42, 0.8) 65%,
+    rgba(15, 23, 42, 0.65) 80%,
+    rgba(15, 23, 42, 0) 100%
+  );
+}
+
 /* Only add dropdown arrow to selects that don't have custom icons */
 select:not([class*="grid"]):not([class*="col-"]) {
   @apply bg-white dark:bg-slate-800 bg-no-repeat;
@@ -264,7 +286,7 @@ select[class*="grid"], select[class*="col-"] {
 }
 
 .aggrid-table-shell[data-theme="dark"] .ag-row {
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
   background-color: transparent;
 }
 
@@ -337,7 +359,7 @@ select[class*="grid"], select[class*="col-"] {
 }
 
 .aggrid-table-shell[data-theme="dark"] .aggrid-placeholder-row .ag-cell {
-  border-color: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
 }
 
 .aggrid-table-shell .ag-pinned-left-cols-container,
@@ -350,8 +372,8 @@ select[class*="grid"], select[class*="col-"] {
 .aggrid-table-shell[data-theme="dark"] .ag-pinned-left-cols-container,
 .aggrid-table-shell[data-theme="dark"] .ag-pinned-left-header {
   background-color: transparent;
-  border-right: 1px solid #1e293b;
-  box-shadow: 3px 0 6px rgba(0, 0, 0, 0.35);
+  border-right: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 3px 0 6px rgba(15, 23, 42, 0.35);
 }
 
 .aggrid-table-shell .ag-pinned-left-scrollbar {

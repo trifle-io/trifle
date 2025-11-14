@@ -7,7 +7,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
   alias Phoenix.HTML
-  alias TrifleApp.ExploreLive
+  alias TrifleApp.ExploreCore
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
@@ -830,12 +830,6 @@ defmodule TrifleApp.DashboardLive do
                   base
                   |> Map.put("paths", expanded_paths)
                   |> Map.put("path", primary_path)
-                  |> Map.put(
-                    "table_mode",
-                    params
-                    |> Map.get("table_mode", Map.get(i, "table_mode") || "html")
-                    |> DashboardWidgetHelpers.normalize_table_mode()
-                  )
 
                 "list" ->
                   list_path =
@@ -1035,17 +1029,6 @@ defmodule TrifleApp.DashboardLive do
          type when not is_nil(type) <- param(params, "chart_type") do
       update_editing_widget(socket, id, fn widget ->
         Map.put(widget, "chart_type", normalize_ts_chart_type(type))
-      end)
-    else
-      _ -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("set_table_mode", params, socket) do
-    with id when not is_nil(id) <- param(params, "widget_id"),
-         mode when not is_nil(mode) <- param(params, "mode") do
-      update_editing_widget(socket, id, fn widget ->
-        Map.put(widget, "table_mode", DashboardWidgetHelpers.normalize_table_mode(mode))
       end)
     else
       _ -> {:noreply, socket}
@@ -1628,7 +1611,7 @@ defmodule TrifleApp.DashboardLive do
     Enum.map(sorted_paths, fn path ->
       label =
         path
-        |> ExploreLive.format_nested_path(sorted_paths, transponder_info)
+        |> ExploreCore.format_nested_path(sorted_paths, transponder_info)
         |> HTML.safe_to_string()
 
       %{"value" => path, "label" => label}

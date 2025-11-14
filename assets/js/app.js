@@ -61,6 +61,8 @@ const formatCompactNumber = (value) => {
 };
 
 const TABLE_PATH_HTML_FIELD = '__table_path_html__';
+const AGGRID_PATH_COL_MIN_WIDTH = 160;
+const AGGRID_PATH_COL_MAX_WIDTH = 640;
 const AGGRID_SCRIPT_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js';
 const AGGRID_BASE_STYLE_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-grid.css';
 const AGGRID_THEME_LIGHT_STYLE_SRC = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine.css';
@@ -2387,17 +2389,9 @@ Hooks.DashboardGrid = {
         return;
       }
 
-      const mode = (it.mode || 'html').toString().toLowerCase();
-      if (mode === 'aggrid') {
-        body.innerHTML = this._build_aggrid_table_html(it);
-        this._render_aggrid_table(body, it);
-        if (tableId) seenAggridTables.add(tableId);
-        return;
-      }
-
-      this._destroy_aggrid_table(tableId);
-      body.innerHTML = this._build_table_html(it);
-      this._init_table_hooks(body);
+      body.innerHTML = this._build_aggrid_table_html(it);
+      this._render_aggrid_table(body, it);
+      if (tableId) seenAggridTables.add(tableId);
     });
 
     if (this._aggridTables) {
@@ -2406,135 +2400,6 @@ Hooks.DashboardGrid = {
           this._destroy_aggrid_table(id);
         }
       });
-    }
-  },
-
-  _build_table_html(payload) {
-    const headerCells = (payload.columns || [])
-      .map((col) => {
-        const label = col && col.label ? col.label : '';
-        return `
-          <th
-            scope="col"
-            class="top-0 sticky whitespace-nowrap px-2 py-2 text-left text-xs font-mono font-semibold text-teal-700 dark:text-teal-400 bg-white dark:bg-slate-800 h-16 align-top z-10 transition-colors duration-150"
-            data-col="${col && col.id != null ? col.id : ''}"
-            style="width: 120px;"
-          >
-            ${label}
-          </th>
-        `;
-      })
-      .join('');
-
-    const rows = (payload.rows || [])
-      .map((row) => {
-        const cells = (row.values || []).map((value, idx) => {
-          const columnId = (payload.columns && payload.columns[idx] && payload.columns[idx].id != null)
-            ? payload.columns[idx].id
-            : idx + 1;
-
-          const hasValue = value !== null && value !== undefined && value !== '';
-          const cellClass = hasValue
-            ? 'whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-900 dark:text-white transition-colors duration-150 cursor-pointer'
-            : 'whitespace-nowrap px-2 py-1 text-xs font-medium text-gray-300 dark:text-slate-500 transition-colors duration-150 cursor-pointer';
-
-          const displayValue = this._format_table_value(value, hasValue);
-
-          return `
-            <td
-              class="${cellClass}"
-              data-row="${row.id}"
-              data-col="${columnId}"
-            >
-              ${displayValue}
-            </td>
-          `;
-        }).join('');
-
-        const pathHtml = row.path_html || '';
-
-        return `
-          <tr data-row="${row.id}">
-            <td
-              class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
-              data-row="${row.id}"
-            >
-              ${pathHtml}
-            </td>
-            ${cells}
-          </tr>
-        `;
-      })
-      .join('');
-
-    return `
-      <div class="data-table-shell flex-1 flex flex-col min-h-0" data-role="table-container">
-        <div class="data-table-scroll flex-1 overflow-x-auto overflow-y-auto relative" data-role="table-scroll">
-          <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto" data-role="data-table" style="table-layout: fixed;">
-            <thead>
-              <tr>
-                <th
-                  scope="col"
-                  class="top-0 lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
-                  style="width: 200px;"
-                >
-                  Path
-                </th>
-                ${headerCells}
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800">
-              ${rows}
-            </tbody>
-          </table>
-          <div class="border-t border-gray-200 dark:border-slate-700" data-role="table-border"></div>
-        </div>
-      </div>
-    `;
-  },
-
-  _format_table_value(value, hasValue) {
-    if (!hasValue) return '0';
-    if (typeof value === 'number') {
-      if (!Number.isFinite(value)) return '0';
-      return String(value);
-    }
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed === '') return '0';
-      const parsed = Number(trimmed);
-      return Number.isFinite(parsed) ? String(parsed) : this.escapeHtml(trimmed);
-    }
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? String(parsed) : '0';
-  },
-
-  _init_table_hooks(container) {
-    const tableContainer = container.querySelector('[data-role="table-container"]');
-    if (tableContainer && Hooks.PhantomRows && typeof Hooks.PhantomRows.addPhantomRows === 'function') {
-      try {
-        Hooks.PhantomRows.addPhantomRows.call({ el: tableContainer });
-      } catch (_) {}
-    }
-
-    const table = container.querySelector('[data-role="data-table"]');
-
-    if (table && Hooks.TableHover && typeof Hooks.TableHover.initHover === 'function') {
-      try {
-        Hooks.TableHover.initHover.call({ el: table });
-      } catch (_) {}
-    }
-
-    if (table && Hooks.FastTooltip && typeof Hooks.FastTooltip.initTooltips === 'function') {
-      const context = {
-        el: table,
-        showTooltip: Hooks.FastTooltip.showTooltip.bind(Hooks.FastTooltip),
-        hideTooltip: Hooks.FastTooltip.hideTooltip.bind(Hooks.FastTooltip)
-      };
-
-      try {
-        Hooks.FastTooltip.initTooltips.call(context);
-      } catch (_) {}
     }
   },
 
@@ -2612,8 +2477,9 @@ Hooks.DashboardGrid = {
     const schema = Array.isArray(dataset.schema) ? dataset.schema : [];
     const originalColumns = Array.isArray(payload.columns) ? payload.columns : [];
     const columnDefs = schema.map((col, idx) => {
+      const isPathColumn = idx === 0;
       const sourceLabel = (
-        idx === 0
+        isPathColumn
           ? (col.title || col.name || 'Path')
           : ((originalColumns[idx - 1] && originalColumns[idx - 1].label) || col.title || col.name || '')
       ).toString();
@@ -2633,8 +2499,8 @@ Hooks.DashboardGrid = {
         resizable: false,
         suppressMenu: true,
         suppressMovable: true,
-        minWidth: idx === 0 ? 240 : 120,
-        flex: idx === 0 ? 2 : 1,
+        minWidth: isPathColumn ? AGGRID_PATH_COL_MIN_WIDTH : 120,
+        maxWidth: isPathColumn ? AGGRID_PATH_COL_MAX_WIDTH : undefined,
         cellClass: [
           col.align === 'right' ? 'ag-right-aligned-cell' : 'ag-left-aligned-cell',
           'aggrid-body-cell'
@@ -2645,6 +2511,14 @@ Hooks.DashboardGrid = {
         ].join(' ')
       };
       baseDef.headerComponentParams = { lines: headerLines, align: headerAlignment };
+      if (!isPathColumn) {
+        baseDef.flex = 1;
+      }
+      if (isPathColumn) {
+        baseDef.width = AGGRID_PATH_COL_MIN_WIDTH;
+        baseDef.suppressSizeToFit = true;
+        baseDef.resizable = true;
+      }
       if (col.name === dataset.pathKey) {
         baseDef.cellRenderer = (params) => {
           if (params && params.data && params.data.__placeholder) {
@@ -2718,6 +2592,7 @@ Hooks.DashboardGrid = {
       entry.gridOptions.api.setRowData(filledRows);
       entry.gridOptions.api.refreshCells({ force: true });
       setTimeout(() => {
+        this._auto_size_aggrid_path_column(entry, dataset.pathKey);
         try { entry.gridOptions.api.sizeColumnsToFit(); } catch (_) {}
         this._activate_tooltips_for_element(root);
       }, 0);
@@ -2725,6 +2600,29 @@ Hooks.DashboardGrid = {
       console.error('[AGGrid] failed to render grid', err);
     }
     this._apply_aggrid_theme_to_entry(entry);
+  },
+
+  _auto_size_aggrid_path_column(entry, pathKey) {
+    if (!entry || !entry.columnApi || !pathKey) return;
+    const column = entry.columnApi.getColumn(pathKey);
+    if (!column) return;
+    try {
+      entry.columnApi.autoSizeColumns([pathKey], false);
+    } catch (_) {}
+    const colDef = column.getColDef ? column.getColDef() : null;
+    const minWidth = (colDef && Number.isFinite(colDef.minWidth)) ? colDef.minWidth : AGGRID_PATH_COL_MIN_WIDTH;
+    const maxWidth = (colDef && Number.isFinite(colDef.maxWidth)) ? colDef.maxWidth : AGGRID_PATH_COL_MAX_WIDTH;
+    let width = null;
+    try {
+      width = column.getActualWidth ? column.getActualWidth() : null;
+    } catch (_) {
+      width = null;
+    }
+    if (!Number.isFinite(width)) return;
+    const clamped = Math.max(minWidth || AGGRID_PATH_COL_MIN_WIDTH, Math.min(maxWidth || AGGRID_PATH_COL_MAX_WIDTH, width));
+    if (clamped !== width) {
+      try { entry.columnApi.setColumnWidth(column, clamped); } catch (_) {}
+    }
   },
 
   _create_aggrid_table(root) {
@@ -3181,7 +3079,7 @@ Hooks.DashboardGrid = {
     }
 
     const list = document.createElement('ul');
-    list.className = 'flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-0.5';
+    list.className = 'flex-1 divide-y divide-gray-100/80 dark:divide-slate-500/60 overflow-auto px-0.5';
 
     items.forEach((entry, index) => {
       if (!entry) return;
@@ -3211,6 +3109,7 @@ Hooks.DashboardGrid = {
         'gap-2.5',
         'rounded-md',
         'border',
+        'border-transparent',
         'px-2.5',
         'py-1.5',
         'transition-colors',
@@ -3220,7 +3119,7 @@ Hooks.DashboardGrid = {
       if (isSelected && interactive) {
         baseClasses.push('bg-teal-50', 'dark:bg-teal-900/30', 'border-teal-100', 'dark:border-teal-800');
       } else {
-        baseClasses.push('border-transparent', 'hover:bg-gray-50', 'dark:hover:bg-slate-800/40');
+        baseClasses.push('hover:bg-gray-50', 'dark:hover:bg-slate-600/35');
       }
 
       if (interactive) {
@@ -4965,6 +4864,9 @@ Hooks.ExpandedAgGridTable = {
       this.grid.api.setRowData(rowData);
       requestAnimationFrame(() => {
         try {
+          this.autoSizePathColumn();
+        } catch (_) {}
+        try {
           this.grid.api.sizeColumnsToFit();
         } catch (_) {}
       });
@@ -5056,8 +4958,11 @@ Hooks.ExpandedAgGridTable = {
         pinned: 'left',
         lockPinned: true,
         suppressMovable: true,
-        minWidth: 240,
-        flex: 2,
+        minWidth: AGGRID_PATH_COL_MIN_WIDTH,
+        maxWidth: AGGRID_PATH_COL_MAX_WIDTH,
+        width: AGGRID_PATH_COL_MIN_WIDTH,
+        suppressSizeToFit: true,
+        resizable: true,
         cellRenderer: (params) => {
           const wrapper = document.createElement('div');
           wrapper.className = 'aggrid-path-cell';
@@ -5137,6 +5042,29 @@ Hooks.ExpandedAgGridTable = {
     if (typeof id === 'number') return String(id);
     if (typeof id === 'object' && 'toString' in id) return String(id);
     return null;
+  },
+
+  autoSizePathColumn() {
+    if (!this.grid || !this.grid.columnApi) return;
+    const column = this.grid.columnApi.getColumn('path');
+    if (!column) return;
+    try {
+      this.grid.columnApi.autoSizeColumns(['path'], false);
+    } catch (_) {}
+    const colDef = column.getColDef ? column.getColDef() : null;
+    const minWidth = (colDef && Number.isFinite(colDef.minWidth)) ? colDef.minWidth : AGGRID_PATH_COL_MIN_WIDTH;
+    const maxWidth = (colDef && Number.isFinite(colDef.maxWidth)) ? colDef.maxWidth : AGGRID_PATH_COL_MAX_WIDTH;
+    let width = null;
+    try {
+      width = column.getActualWidth ? column.getActualWidth() : null;
+    } catch (_) {
+      width = null;
+    }
+    if (!Number.isFinite(width)) return;
+    const clamped = Math.max(minWidth || AGGRID_PATH_COL_MIN_WIDTH, Math.min(maxWidth || AGGRID_PATH_COL_MAX_WIDTH, width));
+    if (clamped !== width) {
+      try { this.grid.columnApi.setColumnWidth(column, clamped); } catch (_) {}
+    }
   }
 };
 // Generic file download handler via pushEvent
