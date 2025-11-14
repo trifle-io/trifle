@@ -21,7 +21,7 @@ defmodule TrifleApp.Components.FilterBar do
             <% selected_source = selected_source_struct(@sources, @selected_source) %>
             <div class="w-full md:w-64">
               <div class="relative">
-                <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                <div class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
                   Source
                 </div>
                 <button
@@ -295,7 +295,7 @@ defmodule TrifleApp.Components.FilterBar do
                 "block md:hidden"
             }>
               <div class="relative">
-                <div class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+                <div class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
                   Granularity
                 </div>
                 <button
@@ -696,7 +696,7 @@ defmodule TrifleApp.Components.FilterBar do
   defp render_granularity_button_group(assigns) do
     ~H"""
     <div class="relative">
-      <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+      <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
         Granularity
       </label>
       <div

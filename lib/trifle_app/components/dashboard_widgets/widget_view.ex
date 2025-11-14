@@ -6,7 +6,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
   alias TrifleApp.DesignSystem.ChartColors
-  alias TrifleApp.ExploreLive
   require Logger
 
   attr :dashboard, :map, required: true
@@ -403,31 +402,22 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col min-h-0 p-0 gap-0">
       <%= if @table_dataset do %>
-        <% mode = Map.get(@table_dataset, :mode) || Map.get(@table_dataset, "mode") || "html" %>
-        <%= if mode == "aggrid" do %>
+        <div
+          class="aggrid-table-shell flex-1 flex flex-col min-h-0"
+          data-role="aggrid-table"
+          data-widget-id={@widget_id}
+          data-theme="light"
+        >
           <div
-            class="aggrid-table-shell flex-1 flex flex-col min-h-0"
-            data-role="aggrid-table"
-            data-widget-id={@widget_id}
-            data-theme="light"
+            class="flex-1 min-h-0 ag-theme-alpine"
+            data-role="aggrid-table-root"
+            id={"aggrid-table-#{@table_dataset[:id] || @widget_id}"}
           >
-            <div
-              class="flex-1 min-h-0 ag-theme-alpine"
-              data-role="aggrid-table-root"
-              id={"aggrid-table-#{@table_dataset[:id] || @widget_id}"}
-            >
-              <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-                Loading AG Grid table...
-              </div>
+            <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+              Loading AG Grid table...
             </div>
           </div>
-        <% else %>
-          <DataTable.table
-            dataset={@table_dataset}
-            transponder_info={@transponder_info}
-            scroll_y={Map.get(@table_dataset, :scroll_y, true)}
-          />
-        <% end %>
+        </div>
       <% else %>
         <div class="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-4">
           Add a path to this widget to display table data.

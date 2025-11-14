@@ -4,7 +4,7 @@ defmodule TrifleApp.Components.DataTable do
   use TrifleApp, :html
 
   alias Decimal
-  alias TrifleApp.ExploreLive
+  alias TrifleApp.ExploreCore
 
   @type table_dataset :: %{
           optional(:id) => any(),
@@ -90,7 +90,7 @@ defmodule TrifleApp.Components.DataTable do
         <%= if @has_grid do %>
           <table
             class={[
-              "min-w-full divide-y divide-gray-300 dark:divide-slate-600 overflow-auto",
+              "min-w-full divide-y divide-gray-300 dark:divide-slate-400/70 overflow-auto",
               @table_class
             ]}
             id={@table_dom_id}
@@ -102,7 +102,7 @@ defmodule TrifleApp.Components.DataTable do
               <tr>
                 <th
                   scope="col"
-                  class="top-0 lg:left-0 lg:sticky whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white h-16 z-20 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)] bg-white dark:bg-slate-800"
+                  class="top-0 lg:left-0 lg:sticky whitespace-nowrap py-2 pl-4 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white h-16 z-20 border-r border-gray-300 dark:border-slate-400/60 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)] bg-white dark:bg-slate-800"
                   style="width: 200px;"
                 >
                   Path
@@ -114,19 +114,19 @@ defmodule TrifleApp.Components.DataTable do
                     data-col={idx}
                     style="width: 120px;"
                   >
-                    {ExploreLive.format_table_timestamp(at, @granularity)}
+                    {ExploreCore.format_table_timestamp(at, @granularity)}
                   </th>
                 <% end %>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800">
+            <tbody class="divide-y divide-gray-200 dark:divide-slate-500/60 bg-white dark:bg-slate-800">
               <%= for row <- @rows do %>
                 <tr data-row={row.index}>
                   <td
-                    class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-600 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
+                    class="lg:left-0 lg:sticky bg-white dark:bg-slate-800 whitespace-nowrap py-1 pl-4 pr-3 text-xs font-mono text-gray-900 dark:text-white z-10 transition-colors duration-150 border-r border-gray-300 dark:border-slate-400/60 lg:border-r-0 lg:shadow-[1px_0_2px_-1px_rgba(209,213,219,0.8)] dark:lg:shadow-[1px_0_2px_-1px_rgba(71,85,105,0.8)]"
                     data-row={row.index}
                   >
-                    {ExploreLive.format_nested_path(
+                    {ExploreCore.format_nested_path(
                       row.display_path,
                       @color_paths,
                       @transponder_info,
@@ -158,7 +158,8 @@ defmodule TrifleApp.Components.DataTable do
               <% end %>
             </tbody>
           </table>
-          <div class="border-t border-gray-200 dark:border-slate-700" data-role="table-border"></div>
+          <div class="border-t border-gray-200 dark:border-slate-500/60" data-role="table-border">
+          </div>
         <% else %>
           <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
             {@empty_message}
@@ -229,7 +230,7 @@ defmodule TrifleApp.Components.DataTable do
         idx = get_field(column, :index) || 0
 
         label =
-          ExploreLive.format_table_timestamp(at, granularity)
+          ExploreCore.format_table_timestamp(at, granularity)
           |> Phoenix.HTML.safe_to_string()
 
         %{id: idx, label: label}
@@ -245,7 +246,7 @@ defmodule TrifleApp.Components.DataTable do
         display_path = get_field(row, :display_path)
 
         formatted_path =
-          ExploreLive.format_nested_path(
+          ExploreCore.format_nested_path(
             display_path,
             color_paths,
             transponder_info || %{},

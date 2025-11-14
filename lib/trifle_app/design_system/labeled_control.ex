@@ -24,7 +24,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
   def labeled_control(assigns) do
     ~H"""
     <div class={["relative", @class]}>
-      <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-20">
+      <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-20">
         {@label}
       </label>
       {render_slot(@inner_block)}
@@ -53,7 +53,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
     <div class={["relative", @class]}>
       <label
         for={@id}
-        class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-20"
+        class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-20"
       >
         {@label}
       </label>

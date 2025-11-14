@@ -73,14 +73,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
         matching_paths: length(matching_paths)
       )
 
-      table_mode =
-        widget
-        |> Map.get("table_mode", "html")
-        |> DashboardWidgetHelpers.normalize_table_mode()
-
       table_dataset
       |> Map.put(:id, widget_id(widget))
-      |> Map.put(:mode, table_mode)
+      |> Map.put(:mode, "aggrid")
     end
   end
 

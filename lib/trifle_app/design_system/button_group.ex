@@ -43,7 +43,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
   def button_group(assigns) do
     ~H"""
     <div class={["relative", @class]}>
-      <label class="absolute -top-2 left-2 inline-block bg-white dark:bg-slate-800 px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+      <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
         {@label}
       </label>
       <div

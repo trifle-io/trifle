@@ -2974,9 +2974,6 @@ defmodule TrifleApp.MonitorLive do
           <:body>
             <%= if @expanded_widget.type == "table" do %>
               <% table_data = @expanded_widget[:table_data] %>
-              <% mode =
-                Map.get(table_data || %{}, :mode) ||
-                  Map.get(table_data || %{}, "mode") || "html" %>
               <% aggrid_payload = DataTable.to_aggrid_payload(table_data, %{}) %>
               <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
                 <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
@@ -2985,7 +2982,7 @@ defmodule TrifleApp.MonitorLive do
                       <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
                         Configure this widget with a path to display table data.
                       </div>
-                    <% mode == "aggrid" and aggrid_payload -> %>
+                    <% aggrid_payload -> %>
                       <div
                         id={"expanded-aggrid-shell-#{@expanded_widget.widget_id}"}
                         class="aggrid-table-shell flex-1 flex flex-col min-h-0"
@@ -3005,11 +3002,9 @@ defmodule TrifleApp.MonitorLive do
                         </div>
                       </div>
                     <% true -> %>
-                      <DataTable.table
-                        dataset={table_data}
-                        transponder_info={%{}}
-                        outer_class="flex-1 flex flex-col min-h-0"
-                      />
+                      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                        {Map.get(table_data || %{}, :empty_message, "No data available yet.")}
+                      </div>
                   <% end %>
                 </div>
               </div>
