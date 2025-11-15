@@ -1160,20 +1160,28 @@ Hooks.DashboardGrid = {
     };
     window.addEventListener('resize', this._onWindowResize);
     // Avoid persisting transient responsive changes when navigating away
-    this._onPageLoadingStart = () => {
+    const hideableLoadingKinds = new Set(['patch', 'redirect']);
+    this._gridHiddenForLoading = false;
+    this._onPageLoadingStart = (event) => {
+      const kind = event && event.detail && event.detail.kind;
+      if (kind && !hideableLoadingKinds.has(kind)) return;
       this._suppressSave = true;
+      this._gridHiddenForLoading = true;
       if (this.el) {
         this.el.classList.remove('opacity-100');
         this.el.classList.add('opacity-0', 'pointer-events-none');
       }
     };
     window.addEventListener('phx:page-loading-start', this._onPageLoadingStart);
-    this._onPageLoadingStop = () => {
+    this._onPageLoadingStop = (event) => {
+      const kind = event && event.detail && event.detail.kind;
+      if (kind && !hideableLoadingKinds.has(kind) && !this._gridHiddenForLoading) return;
       this._suppressSave = false;
       if (this.el) {
         this.el.classList.remove('opacity-0', 'pointer-events-none');
         this.el.classList.add('opacity-100');
       }
+      this._gridHiddenForLoading = false;
       // ensure widgets remain in sync after LiveView patches
       requestAnimationFrame(() => {
         try {
