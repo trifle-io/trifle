@@ -1602,7 +1602,7 @@ Hooks.DashboardGrid = {
 
       let wrap = body.querySelector('.kpi-wrap');
       if (!wrap) {
-        body.innerHTML = `<div class="kpi-wrap w-full flex flex-col flex-1 grow" style="min-height: 0; gap: 12px;"><div class="kpi-top"></div><div class="kpi-meta" style="display: none;"></div><div class="kpi-visual" style="margin-top: auto; height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -12px;"></div></div>`;
+        body.innerHTML = `<div class="kpi-wrap w-full flex flex-col flex-1 grow" style="min-height: 0; gap: 12px;"><div class="kpi-top px-3"></div><div class="kpi-meta px-3" style="display: none;"></div><div class="kpi-visual" style="margin-top: auto; height: 40px; width: 100%; margin-left: 0; margin-right: 0; margin-bottom: 0;"></div></div>`;
         wrap = body.querySelector('.kpi-wrap');
       }
       if (!wrap) return;
@@ -1647,10 +1647,10 @@ Hooks.DashboardGrid = {
           if (visualType !== 'progress') {
             visual.style.marginTop = 'auto';
             visual.style.height = '40px';
-            visual.style.width = 'calc(100% + 24px)';
-            visual.style.marginLeft = '-12px';
-            visual.style.marginRight = '-12px';
-            visual.style.marginBottom = '-12px';
+            visual.style.width = '100%';
+            visual.style.marginLeft = '0';
+            visual.style.marginRight = '0';
+            visual.style.marginBottom = '0';
           }
         }
       }
@@ -1780,10 +1780,10 @@ Hooks.DashboardGrid = {
         } else {
           visual.style.marginTop = 'auto';
           visual.style.height = '40px';
-          visual.style.width = 'calc(100% + 24px)';
-          visual.style.marginLeft = '-12px';
-          visual.style.marginRight = '-12px';
-          visual.style.marginBottom = '-12px';
+          visual.style.width = '100%';
+          visual.style.marginLeft = '0';
+          visual.style.marginRight = '0';
+          visual.style.marginBottom = '0';
         }
         visual.dataset.visualType = mode;
         visual.dataset.echartsReady = '0';
@@ -3079,7 +3079,7 @@ Hooks.DashboardGrid = {
     }
 
     const list = document.createElement('ul');
-    list.className = 'flex-1 divide-y divide-gray-100/80 dark:divide-slate-500/60 overflow-auto px-0.5';
+    list.className = 'flex-1 divide-y divide-gray-100/80 dark:divide-slate-500/60 overflow-auto list-none m-0 p-0';
 
     items.forEach((entry, index) => {
       if (!entry) return;
@@ -3107,7 +3107,6 @@ Hooks.DashboardGrid = {
         'items-center',
         'justify-between',
         'gap-2.5',
-        'rounded-md',
         'border',
         'border-transparent',
         'px-2.5',
@@ -3300,7 +3299,7 @@ Hooks.DashboardGrid = {
         ${editBtn}
       </div>`;
     content.innerHTML = `
-      <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${actionButtons}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
+      <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${actionButtons}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
     el.appendChild(content);
     this.el.appendChild(el);
   },
@@ -3322,9 +3321,9 @@ Hooks.DashboardGrid = {
     const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
     const contentEl = el && el.querySelector('.grid-stack-item-content');
     if (contentEl) {
-      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow px-3 pb-3 pt-2 text-gray-700 dark:text-slate-300 flex flex-col group';
+      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group';
       contentEl.innerHTML = `
-        <div class=\"grid-widget-header flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\"> 
+        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\"> 
           <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">New Widget</div></div> 
           <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
             <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Expand widget\">
