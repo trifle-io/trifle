@@ -3113,13 +3113,12 @@ Hooks.DashboardGrid = {
         'px-2.5',
         'py-1.5',
         'transition-colors',
-        'w-full'
+        'w-full',
+        'list-widget-row'
       ];
 
       if (isSelected && interactive) {
         baseClasses.push('bg-teal-50', 'dark:bg-teal-900/30', 'border-teal-100', 'dark:border-teal-800');
-      } else {
-        baseClasses.push('hover:bg-gray-50', 'dark:hover:bg-slate-600/35');
       }
 
       if (interactive) {

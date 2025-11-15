@@ -77,6 +77,20 @@ input[type="checkbox"] {
   );
 }
 
+.list-widget-row {
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.list-widget-row:hover {
+  background-color: rgba(20, 184, 166, 0.12);
+  border-color: rgba(13, 148, 136, 0.4);
+}
+
+.dark .list-widget-row:hover {
+  background-color: rgba(13, 148, 136, 0.25);
+  border-color: rgba(45, 212, 191, 0.35);
+}
+
 /* Only add dropdown arrow to selects that don't have custom icons */
 select:not([class*="grid"]):not([class*="col-"]) {
   @apply bg-white dark:bg-slate-800 bg-no-repeat;
@@ -290,12 +304,22 @@ select[class*="grid"], select[class*="col-"] {
   background-color: transparent;
 }
 
-.aggrid-table-shell .ag-row-hover .ag-cell {
-  background-color: rgba(20, 184, 166, 0.04);
+.aggrid-table-shell[data-theme="light"] {
+  --ag-row-hover-color: rgba(20, 184, 166, 0.12);
 }
 
+.aggrid-table-shell[data-theme="dark"] {
+  --ag-row-hover-color: rgba(13, 148, 136, 0.25);
+}
+
+.aggrid-table-shell[data-theme="light"] .ag-row-hover,
+.aggrid-table-shell[data-theme="light"] .ag-row-hover .ag-cell {
+  background-color: rgba(20, 184, 166, 0.12) !important;
+}
+
+.aggrid-table-shell[data-theme="dark"] .ag-row-hover,
 .aggrid-table-shell[data-theme="dark"] .ag-row-hover .ag-cell {
-  background-color: rgba(30, 41, 59, 0.85);
+  background-color: rgba(13, 148, 136, 0.25) !important;
 }
 
 .aggrid-table-shell .aggrid-body-cell {
