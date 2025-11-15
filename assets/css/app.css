@@ -78,17 +78,15 @@ input[type="checkbox"] {
 }
 
 .list-widget-row {
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color 120ms ease;
 }
 
 .list-widget-row:hover {
   background-color: rgba(20, 184, 166, 0.12);
-  border-color: rgba(13, 148, 136, 0.4);
 }
 
 .dark .list-widget-row:hover {
   background-color: rgba(13, 148, 136, 0.25);
-  border-color: rgba(45, 212, 191, 0.35);
 }
 
 /* Only add dropdown arrow to selects that don't have custom icons */

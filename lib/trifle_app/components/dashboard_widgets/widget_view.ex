@@ -180,10 +180,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         class="kpi-wrap w-full flex flex-col flex-1 grow"
         style={"min-height: 0; gap: #{@kpi_gap};"}
       >
-        <div class="kpi-top">
+        <div class="kpi-top px-3">
           {render_kpi_top(assigns)}
         </div>
-        <div class="kpi-meta" style={kpi_meta_style(@kpi_meta)}>
+        <div class="kpi-meta px-3" style={kpi_meta_style(@kpi_meta)}>
           <%= if @kpi_meta do %>
             {Phoenix.HTML.raw(@kpi_meta)}
           <% end %>
@@ -374,7 +374,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp sparkline_default_style,
     do:
-      "margin-top: auto; height: 40px; width: calc(100% + 24px); margin-left: -12px; margin-right: -12px; margin-bottom: -12px;"
+      "margin-top: auto; height: 40px; width: 100%; margin-left: 0; margin-right: 0; margin-bottom: 0;"
 
   defp kpi_size_class("s"), do: "text-2xl"
   defp kpi_size_class("l"), do: "text-4xl"
@@ -497,13 +497,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col min-h-0 gap-0">
-      <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto px-0.5">
+      <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto list-none m-0 p-0">
         <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
           <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
           <li class="first:pt-0 last:pb-0">
             <div
               class={[
-                "flex items-center justify-between gap-2.5 rounded-md border px-2.5 py-1.5 transition-colors list-widget-row",
+                "flex items-center justify-between gap-2.5 border px-2.5 py-1.5 transition-colors list-widget-row",
                 if(selected && @list_selectable,
                   do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
                   else: "border-transparent"
@@ -649,9 +649,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "dark:border-slate-700",
       "rounded-md",
       "shadow",
-      "px-3",
-      "pb-3",
-      "pt-2",
       "text-gray-700",
       "dark:text-slate-300",
       "flex",
@@ -685,6 +682,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "flex",
       "items-center",
       "justify-between",
+      "pt-2",
+      "px-3",
       "border-b",
       "border-transparent",
       "mb-0",
@@ -698,6 +697,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "flex",
       "items-center",
       "justify-between",
+      "pt-2",
+      "px-3",
       "mb-2",
       "pb-1",
       "border-b",
