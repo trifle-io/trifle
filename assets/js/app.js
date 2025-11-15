@@ -2570,12 +2570,14 @@ Hooks.DashboardGrid = {
     const bodyHeight = bodyEl ? bodyEl.clientHeight : containerHeight;
     const gridUnits = widgetEl ? parseInt(widgetEl.getAttribute('gs-h') || '0', 10) : 0;
     const estimatedWidgetHeight = gridUnits > 0 && this && this._cellHeight ? gridUnits * this._cellHeight : bodyHeight;
-    const desiredHeight = Math.max(containerHeight || 0, bodyHeight || 0, estimatedWidgetHeight || 0);
+    const measuredHeight = Math.max(containerHeight || 0, bodyHeight || 0);
+    const desiredHeight = measuredHeight > 0 ? measuredHeight : (estimatedWidgetHeight || 0);
     const availableHeight = Math.max(desiredHeight - headerHeight, 0);
     const estimatedRowsFromHeight = rowHeight > 0 ? Math.ceil(availableHeight / rowHeight) : 0;
     const minRows = Math.max(estimatedRowsFromHeight, 10);
+    let fillerCount = 0;
     if (minRows > filledRows.length) {
-      const fillerCount = minRows - filledRows.length;
+      fillerCount = minRows - filledRows.length;
       for (let i = 0; i < fillerCount; i += 1) {
         const filler = { __placeholder: true };
         filler[dataset.pathKey] = '';
@@ -2584,6 +2586,15 @@ Hooks.DashboardGrid = {
           if (col && col.name) filler[col.name] = '';
         });
         filledRows.push(filler);
+      }
+    }
+
+    const tableShell = container && container.querySelector('.aggrid-table-shell');
+    if (tableShell) {
+      if (fillerCount > 0) {
+        tableShell.setAttribute('data-fillers', '1');
+      } else {
+        tableShell.removeAttribute('data-fillers');
       }
     }
 
@@ -2663,7 +2674,20 @@ Hooks.DashboardGrid = {
     };
     if (typeof ResizeObserver !== 'undefined') {
       entry.resizeObserver = new ResizeObserver(() => {
-        if (entry.api && typeof entry.api.sizeColumnsToFit === 'function') {
+        const dataset = entry.dataset;
+        const payload = entry.payload;
+        const container = entry.shell;
+        if (dataset && payload && container) {
+          if (entry._resizeRendering) return;
+          entry._resizeRendering = true;
+          try {
+            this._render_aggrid_table(container, payload);
+          } catch (err) {
+            console.error('[AGGrid] resize render error', err);
+          } finally {
+            entry._resizeRendering = false;
+          }
+        } else if (entry.api && typeof entry.api.sizeColumnsToFit === 'function') {
           try { entry.api.sizeColumnsToFit(); } catch (_) {}
         }
       });
