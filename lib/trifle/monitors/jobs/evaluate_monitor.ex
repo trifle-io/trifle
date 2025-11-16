@@ -240,7 +240,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp recovered_alerts(evaluations) do
     Enum.filter(evaluations, fn
-      %{alert: %Alert{status: :alerted}, result: result, status: :ok} ->
+      %{alert: %Alert{status: status}, result: result, status: :ok}
+      when status in [:alerted, :suppressed] ->
         not Map.get(result, :triggered?, false)
 
       _ ->
