@@ -26,9 +26,17 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   def perform(%Oban.Job{args: %{"monitor_id" => monitor_id}} = job) do
     case Repo.get(Monitor, monitor_id) do
       %Monitor{} = monitor ->
-        monitor = Repo.preload(monitor, :alerts)
+        monitor = Repo.preload(monitor, [:alerts, :dashboard])
         scheduled_for = parse_scheduled_for(job.args["scheduled_for"])
-        handle_monitor(monitor, scheduled_for)
+        log_monitor_start(monitor, scheduled_for)
+
+        try do
+          handle_monitor(monitor, scheduled_for)
+        rescue
+          exception ->
+            stacktrace = __STACKTRACE__
+            handle_monitor_exception(monitor, scheduled_for, exception, stacktrace)
+        end
 
       nil ->
         Logger.info("Monitor #{monitor_id} missing, skipping evaluation.")
@@ -48,8 +56,15 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp parse_scheduled_for(_other), do: parse_scheduled_for(nil)
 
   defp handle_monitor(%Monitor{type: :report} = monitor, scheduled_for) do
+    report_settings = monitor.report_settings || %{}
+    Logger.debug(fn ->
+      "[EvaluateMonitor] deliver report monitor=#{monitor.id} freq=#{Map.get(report_settings, :frequency)} timeframe=#{Map.get(report_settings, :timeframe)} granularity=#{Map.get(report_settings, :granularity)} channels=#{length(monitor.delivery_channels || [])}"
+    end)
     case TestDelivery.deliver_monitor(monitor) do
       {:ok, result} ->
+        Logger.debug(fn ->
+          "[EvaluateMonitor] report delivered monitor=#{monitor.id} keys=#{inspect(Map.keys(result || %{}))}"
+        end)
         log_execution(monitor, %{
           status: "ok",
           summary: "Report delivered successfully.",
@@ -64,6 +79,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       {:error, reason} ->
+        Logger.debug(fn ->
+          "[EvaluateMonitor] report delivery failed monitor=#{monitor.id} reason=#{inspect(reason)}"
+        end)
         log_execution(monitor, %{
           status: "error",
           summary: "Report delivery failed: #{format_reason(reason)}",
@@ -82,6 +100,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp handle_monitor(%Monitor{type: :alert} = monitor, scheduled_for) do
     cond do
       not has_alert_metric?(monitor) ->
+        Logger.debug(fn ->
+          "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=missing_metric_path"
+        end)
         log_execution(monitor, %{
           status: "skipped",
           summary: "Skipped alert evaluation – metric path not configured.",
@@ -95,6 +116,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       Enum.empty?(monitor.alerts || []) ->
+        Logger.debug(fn ->
+          "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=no_alerts"
+        end)
         log_execution(monitor, %{
           status: "skipped",
           summary: "Skipped alert evaluation – no alerts configured.",
@@ -108,11 +132,18 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       true ->
+        Logger.debug(fn ->
+          "[EvaluateMonitor] evaluate alert monitor=#{monitor.id} alerts=#{length(monitor.alerts || [])} timeframe=#{monitor.alert_timeframe} granularity=#{monitor.alert_granularity} notify_every=#{monitor.alert_notify_every}"
+        end)
         evaluate_alerts(monitor, scheduled_for)
     end
   end
 
   defp handle_monitor(_monitor, _scheduled_for), do: :ok
+  defp monitor_kind(%Monitor{type: type}) when type in [:report, :alert],
+    do: Atom.to_string(type)
+
+  defp monitor_kind(_monitor), do: "monitor"
 
   defp has_alert_metric?(%Monitor{} = monitor) do
     monitor.alert_metric_path
@@ -134,6 +165,10 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
           deliver_recovered_alerts(monitor, recoveries, timeframe)
 
       status = execution_status(triggered, deliveries, evaluations)
+
+      Logger.debug(fn ->
+        "[EvaluateMonitor] alert evaluated monitor=#{monitor.id} triggered=#{length(triggered)} recoveries=#{length(recoveries)} deliveries=#{format_delivery_stats(deliveries)} status=#{status}"
+      end)
 
       log_execution(monitor, %{
         status: status,
@@ -189,6 +224,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:error, reason}
 
       _ ->
+        Logger.debug(fn ->
+          "[EvaluateMonitor] alert evaluation unexpected export response monitor=#{monitor.id}"
+        end)
         log_execution(monitor, %{
           status: "failed",
           summary: "Alert evaluation failed due to unexpected response.",
@@ -208,6 +246,62 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:error, :unexpected_response}
     end
   end
+
+  defp log_monitor_start(%Monitor{} = monitor, scheduled_for) do
+    Logger.debug(fn ->
+      "[EvaluateMonitor] start monitor=#{monitor.id} type=#{monitor.type} status=#{monitor.status} scheduled_for=#{format_dt(scheduled_for)}"
+    end)
+  end
+
+  defp format_delivery_stats(deliveries) do
+    counts =
+      Enum.reduce(deliveries, %{success: 0, error: 0, suppressed: 0}, fn
+        {:ok, _alert, _}, acc -> Map.update!(acc, :success, &(&1 + 1))
+        {:error, _alert, _}, acc -> Map.update!(acc, :error, &(&1 + 1))
+        {:suppressed, _alert, _}, acc -> Map.update!(acc, :suppressed, &(&1 + 1))
+        _other, acc -> acc
+      end)
+
+    "success=#{counts.success} error=#{counts.error} suppressed=#{counts.suppressed}"
+  end
+
+  defp format_dt(nil), do: "nil"
+  defp format_dt(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp format_dt(%NaiveDateTime{} = dt), do: NaiveDateTime.to_iso8601(dt)
+  defp format_dt(other), do: inspect(other)
+
+  defp handle_monitor_exception(%Monitor{} = monitor, scheduled_for, exception, stacktrace) do
+    Logger.error(fn ->
+      [
+        "[EvaluateMonitor] crash monitor=#{monitor.id} type=#{monitor.type} ",
+        Exception.format(:error, exception, stacktrace)
+      ]
+      |> IO.iodata_to_binary()
+    end)
+
+    log_execution(monitor, %{
+      status: "failed",
+      summary: "Monitor evaluation crashed: #{Exception.message(exception)}",
+      details: %{
+        kind: monitor_kind(monitor),
+        scheduled_for: scheduled_for,
+        reason: "exception",
+        error: Exception.message(exception),
+        exception: inspect(exception),
+        stacktrace: format_stacktrace(stacktrace)
+      }
+    })
+
+    reraise(exception, stacktrace)
+  end
+
+  defp format_stacktrace(stacktrace) when is_list(stacktrace) do
+    stacktrace
+    |> Enum.take(15)
+    |> Enum.map(&Exception.format_stacktrace_entry/1)
+  end
+
+  defp format_stacktrace(_other), do: []
 
   defp fetch_stats_struct(%SeriesExport.Result{} = export) do
     export.raw
