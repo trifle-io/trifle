@@ -742,7 +742,11 @@ defmodule TrifleApp.Exporters.ChromeCDP do
           """
             (function() {
               // Apply dark theme via localStorage and DOM manipulation
-              localStorage.setItem('theme', 'dark');
+              try {
+                localStorage.setItem('trifle:theme-pref', 'dark');
+                localStorage.setItem('trifle:resolved-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+              } catch (_) {}
               document.addEventListener('DOMContentLoaded', function() {
                 document.documentElement.classList.add('dark');
                 if(document.body){
@@ -760,7 +764,11 @@ defmodule TrifleApp.Exporters.ChromeCDP do
           """
             (function() {
               // Apply light theme via localStorage and DOM manipulation
-              localStorage.setItem('theme', 'light');
+              try {
+                localStorage.setItem('trifle:theme-pref', 'light');
+                localStorage.setItem('trifle:resolved-theme', 'light');
+                localStorage.setItem('theme', 'light');
+              } catch (_) {}
               document.addEventListener('DOMContentLoaded', function() {
                 document.documentElement.classList.remove('dark');
                 if(document.body){
