@@ -15,6 +15,7 @@ defmodule TrifleApp.DashboardLive do
 
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
+    Distribution,
     Kpi,
     Table,
     Text,
@@ -831,6 +832,45 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("paths", expanded_paths)
                   |> Map.put("path", primary_path)
 
+                "distribution" ->
+                  dist_paths_param =
+                    params
+                    |> Map.get("dist_paths", Map.get(params, "dist_paths[]", []))
+
+                  dist_paths =
+                    DashboardWidgetHelpers.normalize_distribution_paths_param(dist_paths_param)
+
+                  expanded_paths = auto_expand_path_wildcards(dist_paths, path_options)
+
+                  primary_path =
+                    expanded_paths
+                    |> Enum.reject(&(&1 == ""))
+                    |> List.first()
+                    |> Kernel.||("")
+
+                  designators =
+                    DashboardWidgetHelpers.normalize_distribution_designators(
+                      params,
+                      Map.get(i, "designators") || i || %{}
+                    )
+
+                  mode =
+                    DashboardWidgetHelpers.normalize_distribution_mode(
+                      Map.get(params, "dist_mode", Map.get(i, "mode"))
+                    )
+                  legend =
+                    params
+                    |> Map.get("dist_legend", Map.get(i, "legend"))
+                    |> DashboardWidgetHelpers.normalize_distribution_legend()
+
+                  base
+                  |> Map.put("paths", expanded_paths)
+                  |> Map.put("path", primary_path)
+                  |> Map.put("designators", designators)
+                  |> Map.put("designator", Map.get(designators, "horizontal"))
+                  |> Map.put("mode", mode)
+                  |> Map.put("legend", legend)
+
                 "list" ->
                   list_path =
                     params
@@ -982,22 +1022,46 @@ defmodule TrifleApp.DashboardLive do
       |> Map.put("type", normalized)
       |> maybe_put_widget_title(title_param)
 
-    w =
-      case normalized do
-        "text" ->
-          w
-          |> Map.put_new("subtype", "header")
+      w =
+        case normalized do
+          "text" ->
+            w
+            |> Map.put_new("subtype", "header")
           |> Map.put_new("color", "default")
 
         "list" ->
-          w
-          |> Map.put_new("limit", 20)
-          |> Map.put_new("sort", "desc")
-          |> Map.put_new("label_strategy", "short")
+            w
+            |> Map.put_new("limit", 20)
+            |> Map.put_new("sort", "desc")
+            |> Map.put_new("label_strategy", "short")
 
-        _ ->
-          w
-      end
+          "distribution" ->
+            designators =
+              DashboardWidgetHelpers.normalize_distribution_designators(
+                params,
+                Map.get(w, "designators") || w || %{}
+              )
+
+            mode =
+              params
+              |> Map.get("dist_mode", Map.get(w, "mode"))
+              |> DashboardWidgetHelpers.normalize_distribution_mode()
+
+          legend =
+            params
+            |> Map.get("dist_legend", w["legend"])
+            |> DashboardWidgetHelpers.normalize_distribution_legend()
+
+            w
+            |> Map.put_new("paths", w["paths"] || [""])
+            |> Map.put("mode", mode)
+            |> Map.put("designators", designators)
+            |> Map.put("designator", Map.get(designators, "horizontal"))
+            |> Map.put("legend", legend)
+
+          _ ->
+            w
+        end
 
     {:noreply, assign(socket, :editing_widget, w)}
   end
@@ -1174,6 +1238,48 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event(
+        "distribution_paths_update",
+        %{"widget_id" => widget_id, "paths" => raw_paths},
+        socket
+      ) do
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:editing_widget]) ->
+        {:noreply, socket}
+
+      to_string(socket.assigns.editing_widget["id"]) != to_string(widget_id) ->
+        {:noreply, socket}
+
+      true ->
+        path_options = socket.assigns[:widget_path_options] || []
+
+        paths =
+          DashboardWidgetHelpers.normalize_distribution_paths_for_edit(raw_paths)
+
+        expanded_paths = auto_expand_path_wildcards(paths, path_options)
+
+        primary_path =
+          expanded_paths
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> List.first()
+          |> case do
+            nil -> ""
+            value -> value
+          end
+
+        widget =
+          socket.assigns.editing_widget
+          |> Map.put("paths", expanded_paths)
+          |> Map.put("path", primary_path)
+
+        {:noreply, assign(socket, :editing_widget, widget)}
+    end
+  end
+
   def handle_event("delete_widget", %{"id" => id}, socket) do
     cond do
       socket.assigns.is_public_access ->
@@ -1275,6 +1381,12 @@ defmodule TrifleApp.DashboardLive do
           nil -> base
           list_data -> Map.put(base, :list_data, list_data)
         end
+
+      type == "distribution" ->
+        stats
+        |> Distribution.datasets([widget])
+        |> List.first()
+        |> maybe_put_chart(base)
 
       type == "text" ->
         widget
@@ -1453,6 +1565,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_text, %{})
     |> assign(:widget_table, %{})
     |> assign(:widget_list, %{})
+    |> assign(:widget_distribution, %{})
     |> assign_dashboard_permissions()
   end
 
@@ -2288,6 +2401,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_text, dataset_maps.text)
     |> assign(:widget_table, dataset_maps.table)
     |> assign(:widget_list, dataset_maps.list)
+    |> assign(:widget_distribution, dataset_maps.distribution)
   end
 
   defp reset_widget_datasets(socket) do
@@ -2299,6 +2413,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_text, %{})
     |> assign(:widget_table, %{})
     |> assign(:widget_list, %{})
+    |> assign(:widget_distribution, %{})
   end
 
   defp gravatar_url(email) do

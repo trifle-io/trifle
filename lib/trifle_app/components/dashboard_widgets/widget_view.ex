@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   use TrifleApp, :html
 
   alias TrifleApp.Components.DataTable
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
   alias TrifleApp.DesignSystem.ChartColors
   require Logger
@@ -22,6 +23,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :table, :map, default: %{}
   attr :text_widgets, :map, default: %{}
   attr :list, :map, default: %{}
+  attr :distribution, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :print_width, :integer, default: nil
@@ -42,6 +44,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       assigns
       |> assign_new(:text_items, fn -> text_items(assigns.grid_items) end)
       |> assign_new(:list, fn -> %{} end)
+      |> assign_new(:distribution, fn -> %{} end)
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
       |> assign(:grid_dom_id, "dashboard-grid")
@@ -88,6 +91,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             table={@table}
             text_widgets={@text_widgets}
             list={@list}
+            distribution={@distribution}
             export_params={@export_params}
             print_mode={@print_mode}
             dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
@@ -114,6 +118,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           data-table={data.table}
           data-text={data.text}
           data-list={data.list}
+          data-distribution={data.distribution}
           data-grid-id={@grid_dom_id}
           phx-hook="DashboardWidgetData"
         >
@@ -131,6 +136,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "table" -> render_table_body(assigns)
       "text" -> render_text_body(assigns)
       "list" -> render_list_body(assigns)
+      "distribution" -> render_distribution_body(assigns)
       _ -> render_placeholder_body(assigns)
     end
   end
@@ -392,6 +398,14 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     ~H"""
     <div class="grid-widget-body flex-1 flex">
       <div class="cat-chart w-full h-full" data-echarts-ready="0"></div>
+    </div>
+    """
+  end
+
+  defp render_distribution_body(assigns) do
+    ~H"""
+    <div class="grid-widget-body flex-1 flex">
+      <div class="distribution-chart w-full h-full" data-echarts-ready="0"></div>
     </div>
     """
   end
@@ -968,6 +982,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :table, :map, default: %{}
   attr :text_widgets, :map, default: %{}
   attr :list, :map, default: %{}
+  attr :distribution, :map, default: %{}
   attr :export_params, :map, default: %{}
   attr :print_mode, :boolean, default: false
   attr :dashboard_id, :string, default: nil
@@ -985,6 +1000,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     table_dataset = fetch_dataset(assigns.table, widget_id)
     text_dataset = fetch_dataset(assigns.text_widgets, widget_id)
     list_dataset = fetch_dataset(assigns.list, widget_id)
+    distribution_dataset = fetch_dataset(assigns.distribution, widget_id)
 
     assigns =
       assigns
@@ -999,6 +1015,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:table_dataset, table_dataset)
       |> assign(:text_dataset, text_dataset)
       |> assign(:list_dataset, list_dataset)
+      |> assign(:distribution_dataset, distribution_dataset)
       |> assign(:content_classnames, content_classnames(widget_type))
       |> assign(:header_classnames, header_classnames(widget_type))
       |> assign(:title_classnames, title_classnames(widget_type))
@@ -1248,7 +1265,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       category: nil,
       table: nil,
       text: nil,
-      list: nil
+      list: nil,
+      distribution: nil
     }
 
     case widget_type do
@@ -1277,6 +1295,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
       "list" ->
         Map.put(base, :list, encode_dataset(fetch_dataset(assigns.list, widget_id)))
+
+      "distribution" ->
+        Map.put(
+          base,
+          :distribution,
+          encode_dataset(fetch_dataset(assigns.distribution, widget_id))
+        )
 
       _ ->
         base
@@ -1382,6 +1407,45 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   def text_items(grid_items), do: TextWidgets.widgets(grid_items)
 
-  defp normalize_items(items) when is_list(items), do: items
+  defp normalize_items(items) when is_list(items) do
+    Enum.map(items, &normalize_widget/1)
+  end
+
   defp normalize_items(_other), do: []
+
+  defp normalize_widget(item) when is_map(item) do
+    type =
+      item
+      |> Map.get("type", "kpi")
+      |> to_string()
+      |> String.downcase()
+
+    case type do
+      "distribution" ->
+        normalized_mode =
+          item
+          |> Map.get("mode")
+          |> WidgetHelpers.normalize_distribution_mode()
+
+        normalized_paths =
+          item
+          |> Map.get("paths", item["path"])
+          |> WidgetHelpers.normalize_distribution_paths_for_edit()
+
+        designators = WidgetHelpers.normalize_distribution_designators(%{}, item)
+        designator = Map.get(designators, "horizontal") || WidgetHelpers.default_distribution_designator()
+
+        item
+        |> Map.put("mode", normalized_mode)
+        |> Map.put("paths", normalized_paths)
+        |> Map.put("designators", designators)
+        |> Map.put("designator", designator)
+        |> Map.put_new("legend", true)
+
+      _ ->
+        item
+    end
+  end
+
+  defp normalize_widget(other), do: other
 end

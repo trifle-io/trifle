@@ -415,6 +415,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
             table: datasets.table,
             text_widgets: datasets.text,
             list: datasets.list,
+            distribution: datasets.distribution,
             export_params: %{},
             dashboard_id: Map.get(dashboard, :id) || Map.get(dashboard, "id"),
             print_width: printable_width(viewport),

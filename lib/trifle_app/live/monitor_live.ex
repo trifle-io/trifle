@@ -19,6 +19,7 @@ defmodule TrifleApp.MonitorLive do
 
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
+    Distribution,
     Kpi,
     Table,
     Text,
@@ -84,11 +85,12 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:insights_kpi_values, %{})
      |> assign(:insights_kpi_visuals, %{})
      |> assign(:insights_timeseries, %{})
-     |> assign(:insights_category, %{})
-     |> assign(:insights_table, %{})
-     |> assign(:insights_text_widgets, %{})
-     |> assign(:insights_list, %{})
-     |> assign(:alert_evaluations, %{})
+    |> assign(:insights_category, %{})
+    |> assign(:insights_table, %{})
+    |> assign(:insights_text_widgets, %{})
+    |> assign(:insights_list, %{})
+    |> assign(:insights_distribution, %{})
+    |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
      |> assign(:show_error_modal, false)
@@ -1581,6 +1583,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_table, datasets.table)
     |> assign(:insights_text_widgets, datasets.text)
     |> assign(:insights_list, datasets.list)
+    |> assign(:insights_distribution, datasets.distribution)
     |> assign(:alert_evaluations, alert_evaluations)
   end
 
@@ -1595,6 +1598,7 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_table, datasets.table)
     |> assign(:insights_text_widgets, datasets.text)
     |> assign(:insights_list, datasets.list)
+    |> assign(:insights_distribution, datasets.distribution)
     |> assign(:alert_evaluations, %{})
   end
 
@@ -1606,7 +1610,8 @@ defmodule TrifleApp.MonitorLive do
       category: %{},
       table: %{},
       text: %{},
-      list: %{}
+      list: %{},
+      distribution: %{}
     }
   end
 
@@ -1721,6 +1726,12 @@ defmodule TrifleApp.MonitorLive do
         stats
         |> Kpi.dataset(widget)
         |> maybe_put_kpi_data(base)
+
+      type == "distribution" ->
+        stats
+        |> Distribution.datasets([widget])
+        |> List.first()
+        |> maybe_put_chart(base)
 
       type == "table" ->
         stats
@@ -2628,6 +2639,7 @@ defmodule TrifleApp.MonitorLive do
                   table={@insights_table}
                   text_widgets={@insights_text_widgets}
                   list={@insights_list}
+                  distribution={@insights_distribution}
                   transponder_info={%{}}
                   export_params={export_params}
                   widget_export={%{type: :monitor, monitor_id: @monitor.id}}

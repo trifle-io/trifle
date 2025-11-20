@@ -31,6 +31,8 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 const ECHARTS_RENDERER = 'svg';
 const ECHARTS_DEVICE_PIXEL_RATIO = Math.max(1, window.devicePixelRatio || 1);
 const withChartOpts = (opts = {}) => Object.assign({ renderer: ECHARTS_RENDERER, devicePixelRatio: ECHARTS_DEVICE_PIXEL_RATIO }, opts);
+const chartFontFamily =
+  'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 const formatCompactNumber = (value) => {
   if (value === null || value === undefined || value === '') return '0';
@@ -1130,11 +1132,13 @@ Hooks.DashboardGrid = {
     this._sparkTypes = {};
     this._tsCharts = {};
     this._catCharts = {};
+    this._distCharts = {};
     this._tableCache = {};
     this._lastKpiValues = [];
     this._lastKpiVisuals = [];
     this._lastTimeseries = [];
     this._lastCategory = [];
+    this._lastDistribution = [];
     this._lastTable = [];
     this._lastText = [];
     this._lastList = [];
@@ -1154,6 +1158,9 @@ Hooks.DashboardGrid = {
         }
         if (this._catCharts) {
           Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
+        }
+        if (this._distCharts) {
+          Object.values(this._distCharts).forEach(c => c && !c.isDisposed() && c.resize());
         }
         this._resizeAgGridTables();
       } catch (_) {}
@@ -1308,7 +1315,7 @@ Hooks.DashboardGrid = {
     }
 
     // Ready signaling for export capture
-    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false, table: false, list: false };
+    this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false, table: false, list: false, distribution: false };
     this._markedReady = false;
 
     this._onThemeChange = (event) => {
@@ -1365,7 +1372,7 @@ Hooks.DashboardGrid = {
         });
 
         if (chartNodes.length === 0) {
-        return this._seen.timeseries || this._seen.category || this._seen.text || this._seen.list || (this._seen.kpi_values && this._seen.kpi_visual);
+        return this._seen.timeseries || this._seen.category || this._seen.text || this._seen.list || this._seen.distribution || (this._seen.kpi_values && this._seen.kpi_visual);
         }
 
         return chartNodes.every((node) => node.dataset && node.dataset.echartsReady === '1');
@@ -1491,6 +1498,12 @@ Hooks.DashboardGrid = {
       });
       this._catCharts = {};
     }
+    if (this._distCharts) {
+      Object.values(this._distCharts).forEach((c) => {
+        if (c && !c.isDisposed()) c.dispose();
+      });
+      this._distCharts = {};
+    }
     if (this._aggridTables) {
       Object.keys(this._aggridTables).forEach((id) => this._destroy_aggrid_table(id));
       this._aggridTables = {};
@@ -1546,6 +1559,9 @@ Hooks.DashboardGrid = {
       }
       if (this._catCharts) {
         Object.values(this._catCharts).forEach(c => c && !c.isDisposed() && c.resize());
+      }
+      if (this._distCharts) {
+        Object.values(this._distCharts).forEach(c => c && !c.isDisposed() && c.resize());
       }
       this._resizeAgGridTables();
     };
@@ -2376,6 +2392,273 @@ Hooks.DashboardGrid = {
     this._seen.category = true;
     this._scheduleReadyMark();
     this._lastCategory = this._deepClone(items);
+  },
+
+  _render_distribution(items) {
+    if (!Array.isArray(items)) return;
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const colors = this.colors || [];
+    this._distCharts = this._distCharts || {};
+
+    items.forEach((it) => {
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
+      const body = item && item.querySelector('.grid-widget-body');
+      if (!body) return;
+
+      const errors = Array.isArray(it.errors) ? it.errors.filter(Boolean) : [];
+      if (errors.length) {
+        body.innerHTML = `
+          <div class="flex items-center justify-center text-sm text-red-600 dark:text-red-300 text-center px-3">
+            ${this.escapeHtml(errors.join(', '))}
+          </div>`;
+        return;
+      }
+
+      const labels = Array.isArray(it.bucket_labels) ? it.bucket_labels : [];
+      const verticalLabels = Array.isArray(it.vertical_bucket_labels) ? it.vertical_bucket_labels : [];
+      const is3d = (it.mode || '').toLowerCase() === '3d';
+      if (is3d) {
+        if (!labels.length || !verticalLabels.length) {
+          body.innerHTML = `
+            <div class="flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-3">
+              No 3D buckets available. Add both horizontal and vertical bucket definitions in the editor.
+            </div>`;
+          return;
+        }
+      } else {
+        if (!labels.length) {
+          body.innerHTML = `
+            <div class="flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-3">
+              No distribution buckets available. Add bucket definitions in the editor.
+            </div>`;
+          return;
+        }
+      }
+
+      let container = body.querySelector('.distribution-chart');
+      if (!container) {
+        body.innerHTML = '';
+        body.classList.remove('items-center', 'justify-center', 'text-sm', 'text-gray-500', 'dark:text-slate-400');
+        container = document.createElement('div');
+        container.className = 'distribution-chart';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.dataset.echartsReady = '0';
+        body.appendChild(container);
+      }
+
+      let chart = this._distCharts[it.id];
+      const initTheme = isDarkMode ? 'dark' : undefined;
+      const ensureInit = () => {
+        if (!chart || chart.isDisposed?.()) {
+          const existing = echarts.getInstanceByDom(container);
+          if (existing) {
+            chart = existing;
+          } else {
+            if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
+            chart = echarts.init(container, initTheme, withChartOpts());
+          }
+          this._distCharts[it.id] = chart;
+        }
+
+        const legendNames = [];
+        const hasLegendData = Array.isArray(it.series) && it.series.length > 1;
+        const showLegend = it.legend === undefined ? hasLegendData : !!it.legend;
+        const bottomPadding = showLegend ? 56 : 20;
+
+        let seriesData;
+        if (is3d) {
+          let maxValue = 0;
+            seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
+              const name = series && series.name ? series.name : `Series ${idx + 1}`;
+              legendNames.push(name);
+              const points = Array.isArray(series && series.points) ? series.points : [];
+              const color = colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+            const data = points.map((p) => {
+              const xIndex = labels.indexOf(p.bucket_x);
+              const yIndex = verticalLabels.indexOf(p.bucket_y);
+              if (xIndex === -1 || yIndex === -1) return null;
+              const val = Number(p.value) || 0;
+              maxValue = Math.max(maxValue, val);
+              return [xIndex, yIndex, val];
+            }).filter(Boolean);
+            return {
+              name,
+              type: 'scatter',
+              data,
+              symbolSize: (val) => {
+                const v = val && val[2] ? val[2] : 0;
+                if (!maxValue) return 10;
+                const size = 8 + (v / maxValue) * 24;
+                return Math.max(6, size);
+              },
+              itemStyle: { color, opacity: 1 },
+              hoverAnimation: false,
+              emphasis: {
+                disabled: true,
+                focus: 'none',
+                scale: false,
+                blurScope: 'none',
+                itemStyle: { opacity: 1 }
+              },
+              select: { disabled: true }
+            };
+          });
+
+          seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
+          if (!seriesData.length) {
+            body.innerHTML = `
+              <div class="flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-3">
+                No 3D distribution points yet. Once data arrives the chart will render.
+              </div>`;
+            return;
+          }
+
+          const option = {
+            backgroundColor: 'transparent',
+            legend: showLegend
+              ? {
+                  data: legendNames,
+                  textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+                  bottom: 0,
+                  type: legendNames.length > 4 ? 'scroll' : 'plain'
+                }
+              : { show: false },
+            grid: { top: 16, left: 56, right: 16, bottom: bottomPadding },
+            tooltip: {
+              trigger: 'item',
+              appendToBody: true,
+              formatter: (params) => {
+                const valueArr = Array.isArray(params.value) && params.value.length >= 3
+                  ? params.value
+                  : (Array.isArray(params.data) && params.data.length >= 3 ? params.data : null);
+
+                if (!valueArr) return '';
+
+                const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
+                const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
+                const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
+                const xLabel = (xIdx != null && labels[xIdx]) ? labels[xIdx] : (labels[0] || '');
+                const yLabel = (yIdx != null && verticalLabels[yIdx]) ? verticalLabels[yIdx] : (verticalLabels[0] || '');
+
+                if (!xLabel && !yLabel) return '';
+
+                const seriesName = params.seriesName || '';
+                const marker = params.marker || '';
+                const lines = [`${xLabel} × ${yLabel}`];
+
+                if (seriesName || marker) {
+                  lines.push(`${marker}${seriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+                }
+
+                return lines.join('<br/>');
+              }
+            },
+            axisPointer: {
+              show: true,
+              type: 'line',
+              lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+              link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }]
+            },
+            grid: { top: 16, left: 64, right: 16, bottom: bottomPadding },
+            xAxis: {
+              type: 'category',
+              data: labels,
+              splitLine: { show: true, lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 } },
+              axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
+            },
+            yAxis: {
+              type: 'category',
+              data: verticalLabels,
+              splitLine: { show: true, lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 } },
+              axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
+            },
+            series: seriesData
+          };
+
+          chart.setOption(option, true);
+          try {
+            chart.off('finished');
+            chart.on('finished', () => {
+              try { container.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch (_) {}
+            });
+          } catch (_) {}
+          chart.resize();
+          return;
+        }
+
+        seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
+          const name = series && series.name ? series.name : `Series ${idx + 1}`;
+          legendNames.push(name);
+          const values = Array.isArray(series && series.values) ? series.values : [];
+          const color = colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+          const data = labels.map((label) => {
+            const match = values.find((v) => v && v.bucket === label);
+            return match && Number.isFinite(match.value) ? Number(match.value) : 0;
+          });
+          return {
+            name,
+            type: 'bar',
+            emphasis: { focus: 'series' },
+            itemStyle: { color },
+            data
+          };
+        });
+
+          const option = {
+            backgroundColor: 'transparent',
+            legend: showLegend
+              ? {
+                  data: legendNames,
+                  textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+                  bottom: 0,
+                  type: legendNames.length > 4 ? 'scroll' : 'plain'
+                }
+              : { show: false },
+            grid: { top: 16, left: 52, right: 16, bottom: bottomPadding },
+            tooltip: {
+              trigger: 'axis',
+              axisPointer: {
+                type: 'line',
+                lineStyle: { color: isDarkMode ? '#CBD5F5' : '#94a3b8', width: 1.5, type: 'dashed' }
+              },
+              appendToBody: true,
+              valueFormatter: (value) => formatCompactNumber(value)
+            },
+          xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 6 ? 30 : 0 }
+          },
+          yAxis: {
+            type: 'value',
+            min: 0,
+            axisLabel: { formatter: (v) => formatCompactNumber(v), color: isDarkMode ? '#CBD5F5' : '#475569' },
+            splitLine: { lineStyle: { color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.35 : 1 } }
+          },
+          series: seriesData.length ? seriesData : [{
+            name: 'Values',
+            type: 'bar',
+            itemStyle: { color: colors[0] || '#14b8a6' },
+            data: labels.map(() => 0)
+          }]
+        };
+
+        chart.setOption(option, true);
+        try {
+          chart.off('finished');
+          chart.on('finished', () => {
+            try { container.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch (_) {}
+          });
+        } catch (_) {}
+        chart.resize();
+      };
+      setTimeout(ensureInit, 0);
+    });
+
+    this._seen.distribution = true;
+    this._scheduleReadyMark();
+    this._lastDistribution = this._deepClone(items);
   },
 
   _render_table(items) {
@@ -3441,8 +3724,10 @@ Hooks.DashboardGrid = {
       category: {},
       table: {},
       text: {},
-      list: {}
+      list: {},
+      distribution: {}
     });
+    if (!registry.distribution) registry.distribution = {};
 
     if (type === 'kpi') {
       const value = payload && payload.value ? Object.assign({}, payload.value, { id: payload.value.id || normalizedId }) : null;
@@ -3518,6 +3803,16 @@ Hooks.DashboardGrid = {
       return;
     }
 
+    if (type === 'distribution') {
+      if (payload) {
+        registry.distribution[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+      } else {
+        delete registry.distribution[normalizedId];
+      }
+      this._render_distribution(this._sortedWidgetValues(registry.distribution));
+      return;
+    }
+
     // Unknown type: ensure removal from all registries
     delete registry.kpiValues[normalizedId];
     delete registry.kpiVisuals[normalizedId];
@@ -3526,6 +3821,7 @@ Hooks.DashboardGrid = {
     delete registry.table[normalizedId];
     delete registry.text[normalizedId];
     delete registry.list[normalizedId];
+    delete registry.distribution[normalizedId];
   },
 
   unregisterWidget(type, id) {
@@ -3537,6 +3833,7 @@ Hooks.DashboardGrid = {
       this.registerWidget('table', id, null);
       this.registerWidget('text', id, null);
       this.registerWidget('list', id, null);
+      this.registerWidget('distribution', id, null);
       return;
     }
     this.registerWidget(type, id, null);
@@ -3562,6 +3859,7 @@ Hooks.DashboardGrid = {
     const kpiVisuals = Array.isArray(this._lastKpiVisuals) ? this._deepClone(this._lastKpiVisuals) : null;
     const timeseries = Array.isArray(this._lastTimeseries) ? this._deepClone(this._lastTimeseries) : null;
     const categories = Array.isArray(this._lastCategory) ? this._deepClone(this._lastCategory) : null;
+    const distributions = Array.isArray(this._lastDistribution) ? this._deepClone(this._lastDistribution) : null;
     const tables = Array.isArray(this._lastTable) ? this._deepClone(this._lastTable) : null;
     const textWidgets = Array.isArray(this._lastText) ? this._deepClone(this._lastText) : null;
     const lists = Array.isArray(this._lastList) ? this._deepClone(this._lastList) : null;
@@ -3580,6 +3878,7 @@ Hooks.DashboardGrid = {
     updateTheme(this._sparklines);
     updateTheme(this._tsCharts);
     updateTheme(this._catCharts);
+    updateTheme(this._distCharts);
     updateTheme(this._tableCache);
     this._apply_aggrid_theme(themeIsDark);
 
@@ -3598,6 +3897,7 @@ Hooks.DashboardGrid = {
       this._seen.table = false;
       this._seen.text = false;
       this._seen.list = false;
+      this._seen.distribution = false;
     }
 
     const markPending = (selector) => {
@@ -3610,11 +3910,13 @@ Hooks.DashboardGrid = {
     markPending('.kpi-visual');
     markPending('.ts-chart');
     markPending('.cat-chart');
+    markPending('.distribution-chart');
 
     const rerender = () => {
       if (kpiVisuals && kpiVisuals.length) this._render_kpi_visuals(kpiVisuals);
       if (timeseries && timeseries.length) this._render_timeseries(timeseries);
       if (categories && categories.length) this._render_category(categories);
+      if (distributions && distributions.length) this._render_distribution(distributions);
       if (Array.isArray(textWidgets)) this._render_text(textWidgets);
       if (Array.isArray(lists)) this._render_list(lists);
     };
@@ -3689,7 +3991,8 @@ Hooks.DashboardWidgetData = {
       this.el.dataset.category || '',
       this.el.dataset.table || '',
       this.el.dataset.text || '',
-      this.el.dataset.list || ''
+      this.el.dataset.list || '',
+      this.el.dataset.distribution || ''
     ];
     const key = [this.widgetType, this.widgetId, titleData].concat(dataStrings).join('||');
     if (key === this._lastKey) return;
@@ -3740,6 +4043,10 @@ Hooks.DashboardWidgetData = {
         payload = data;
       } else if (type === 'list') {
         const data = parseJsonSafe(this.el.dataset.list || '');
+        if (data && data.id == null) data.id = id;
+        payload = data;
+      } else if (type === 'distribution') {
+        const data = parseJsonSafe(this.el.dataset.distribution || '');
         if (data && data.id == null) data.id = id;
         payload = data;
       }
@@ -3885,6 +4192,11 @@ Hooks.ExpandedWidgetView = {
 
     if (type === 'category') {
       this.renderCategory(chartData);
+      return;
+    }
+
+    if (type === 'distribution') {
+      this.renderDistribution(chartData);
       return;
     }
 
@@ -4723,6 +5035,367 @@ Hooks.ExpandedWidgetView = {
     try { chart.resize(); } catch (_) {}
 
     this.renderCategoryTable(data);
+  },
+  renderDistribution(data) {
+    const is3d = String(data?.mode || '2d').toLowerCase() === '3d';
+    const labels = Array.isArray(data?.bucket_labels) ? data.bucket_labels : [];
+    const verticalLabelsRaw = Array.isArray(data?.vertical_bucket_labels) ? data.vertical_bucket_labels : [];
+    const series = Array.isArray(data?.series) ? data.series : [];
+    const legendFlag = data?.legend;
+    const showLegendDefault = series.length > 1;
+    const showLegend = legendFlag === undefined ? showLegendDefault : !!legendFlag;
+    const bottomPadding = showLegend ? 56 : 24;
+    const chartFontFamily =
+      'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+    let verticalLabels = verticalLabelsRaw;
+    if (is3d && (!verticalLabels || verticalLabels.length === 0)) {
+      const derived = new Set();
+      series.forEach((s) => {
+        (Array.isArray(s?.points) ? s.points : []).forEach((p) => {
+          if (p && p.bucket_y != null && p.bucket_y !== '') derived.add(String(p.bucket_y));
+        });
+      });
+      verticalLabels = Array.from(derived);
+    }
+
+    if (
+      !Array.isArray(labels) ||
+      labels.length === 0 ||
+      !Array.isArray(series) ||
+      series.length === 0 ||
+      (is3d && (!verticalLabels || verticalLabels.length === 0))
+    ) {
+      this.showChartPlaceholder('No distribution data available yet.');
+      this.renderDistributionTable(data);
+      return;
+    }
+
+    const chart = this.ensureChart({ height: 480 });
+    if (!chart) {
+      this.renderDistributionTable(data);
+      return;
+    }
+
+    const theme = this.getTheme();
+    const isDarkMode = theme === 'dark';
+    const colors = Array.isArray(this.colors) && this.colors.length ? this.colors : null;
+
+    if (is3d) {
+      let maxValue = 0;
+      const legendNames = [];
+      let seriesData = series.map((seriesItem, idx) => {
+        const name = seriesItem?.name || `Series ${idx + 1}`;
+        legendNames.push(name);
+        const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
+        const color = colors ? colors[idx % colors.length] : this.seriesColor(idx);
+        const dataPoints = points
+          .map((p) => {
+            if (!p) return null;
+            const xIdx = labels.indexOf(p.bucket_x);
+            const yIdx = verticalLabels.indexOf(p.bucket_y);
+            if (xIdx === -1 || yIdx === -1) return null;
+            const val = Number(p.value) || 0;
+            maxValue = Math.max(maxValue, val);
+            return [xIdx, yIdx, val];
+          })
+          .filter(Boolean);
+
+        return {
+          name,
+          type: 'scatter',
+          data: dataPoints,
+          symbolSize: (val) => {
+            const v = val && val[2] ? val[2] : 0;
+            if (!maxValue) return 10;
+            const size = 8 + (v / maxValue) * 24;
+            return Math.max(6, size);
+          },
+          itemStyle: { color, opacity: 1 },
+          hoverAnimation: false,
+          emphasis: {
+            disabled: true,
+            focus: 'none',
+            scale: false,
+            blurScope: 'none',
+            itemStyle: { opacity: 1 }
+          },
+          select: { disabled: true }
+        };
+      });
+
+      seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
+
+      if (!seriesData.length) {
+        this.showChartPlaceholder('No distribution data available yet.');
+        this.renderDistributionTable(data);
+        return;
+      }
+
+      const option = {
+        backgroundColor: 'transparent',
+        legend: showLegend
+          ? {
+              data: legendNames,
+              textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+              bottom: 0,
+              type: legendNames.length > 4 ? 'scroll' : 'plain'
+            }
+          : { show: false },
+        grid: { top: 16, left: 64, right: 16, bottom: bottomPadding },
+        tooltip: {
+          trigger: 'item',
+          appendToBody: true,
+          formatter: (params) => {
+            const valueArr =
+              Array.isArray(params.value) && params.value.length >= 3
+                ? params.value
+                : Array.isArray(params.data) && params.data.length >= 3
+                  ? params.data
+                  : null;
+
+            if (!valueArr) return '';
+
+            const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
+            const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
+            const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
+            const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
+            const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
+
+            if (!xLabel && !yLabel) return '';
+
+            const seriesName = params.seriesName || '';
+            const marker = params.marker || '';
+            const lines = [`${xLabel} × ${yLabel}`];
+
+            if (seriesName || marker) {
+              lines.push(`${marker}${seriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+            }
+
+            return lines.join('<br/>');
+          }
+        },
+        axisPointer: {
+          show: true,
+          type: 'line',
+          lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+          link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }]
+        },
+        xAxis: {
+          type: 'category',
+          data: labels,
+          splitLine: {
+            show: true,
+            lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 }
+          },
+          axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
+        },
+        yAxis: {
+          type: 'category',
+          data: verticalLabels,
+          splitLine: {
+            show: true,
+            lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 }
+          },
+          axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
+        },
+        series: seriesData
+      };
+
+      chart.setOption(option, true);
+      try { chart.resize(); } catch (_) {}
+      this.renderDistributionTable(data);
+      return;
+    }
+
+    const legendNames = [];
+    const seriesData = series.map((seriesItem, idx) => {
+      const name = seriesItem?.name || `Series ${idx + 1}`;
+      legendNames.push(name);
+      const values = Array.isArray(seriesItem?.values) ? seriesItem.values : [];
+      const color = colors ? colors[idx % colors.length] : this.seriesColor(idx);
+      const dataPoints = labels.map((label) => {
+        const match = values.find((v) => v && (v.bucket === label || v.bucket_x === label));
+        const val = match && Number.isFinite(Number(match.value)) ? Number(match.value) : 0;
+        return val;
+      });
+      return {
+        name,
+        type: 'bar',
+        emphasis: { focus: 'series' },
+        itemStyle: { color },
+        data: dataPoints
+      };
+    });
+
+    const option = {
+      backgroundColor: 'transparent',
+      legend: showLegend
+        ? {
+            data: legendNames,
+            textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+            bottom: 0,
+            type: legendNames.length > 4 ? 'scroll' : 'plain'
+          }
+        : { show: false },
+      grid: { top: 16, left: 52, right: 16, bottom: bottomPadding, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'line',
+          lineStyle: { color: isDarkMode ? '#CBD5F5' : '#94a3b8', width: 1.5, type: 'dashed' }
+        },
+        appendToBody: true,
+        valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
+      },
+      xAxis: {
+        type: 'category',
+        data: labels,
+        axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 6 ? 30 : 0 }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        axisLabel: { formatter: (value) => formatCompactNumber(value), color: isDarkMode ? '#CBD5F5' : '#475569' },
+        splitLine: { lineStyle: { color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.35 : 1 } }
+      },
+      series: seriesData
+    };
+
+    chart.setOption(option, true);
+    try { chart.resize(); } catch (_) {}
+    this.renderDistributionTable(data);
+  },
+
+  renderDistributionTable(data) {
+    if (!this.tableRoot) return;
+    const is3d = String(data?.mode || '2d').toLowerCase() === '3d';
+    const series = Array.isArray(data?.series) ? data.series : [];
+    const rows = [];
+
+    series.forEach((seriesItem, idx) => {
+      const name = seriesItem?.name || `Series ${idx + 1}`;
+      const color = this.seriesColor(idx);
+
+      if (is3d) {
+        const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
+        points.forEach((p) => {
+          if (!p) return;
+          const value = Number(p.value);
+          if (!Number.isFinite(value)) return;
+          rows.push({
+            series: name,
+            color,
+            bucket_x: p.bucket_x || '',
+            bucket_y: p.bucket_y || '',
+            value
+          });
+        });
+      } else {
+        const values = Array.isArray(seriesItem?.values) ? seriesItem.values : [];
+        values.forEach((v) => {
+          if (!v) return;
+          const value = Number(v.value);
+          if (!Number.isFinite(value)) return;
+          rows.push({
+            series: name,
+            color,
+            bucket_x: v.bucket || v.bucket_x || '',
+            bucket_y: '',
+            value
+          });
+        });
+      }
+    });
+
+    if (!rows.length) {
+      this.showTablePlaceholder('No distribution data available yet.');
+      return;
+    }
+
+    rows.sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
+
+    const hasSeries = series.length > 1;
+    const hasVertical = is3d && rows.some((row) => row.bucket_y);
+
+    const escapeHtml = (str) =>
+      String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
+    const formatRaw = (value) => {
+      if (!Number.isFinite(value)) return '';
+      try {
+        return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
+      } catch (_) {
+        return String(value);
+      }
+    };
+
+    const headerCells = [];
+    if (hasSeries) {
+      headerCells.push(
+        '<th scope="col" class="py-3.5 pr-4 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Series</th>'
+      );
+    }
+    headerCells.push(
+      '<th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Horizontal Bucket</th>'
+    );
+    if (hasVertical) {
+      headerCells.push(
+        '<th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Vertical Bucket</th>'
+      );
+    }
+    headerCells.push(
+      '<th scope="col" class="py-3.5 pr-5 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Value</th>'
+    );
+
+    const bodyRows = rows
+      .map((row) => {
+        const bucketX = escapeHtml(row.bucket_x || '');
+        const bucketY = escapeHtml(row.bucket_y || '');
+        const formattedValue = Number.isFinite(row.value) ? formatCompactNumber(row.value) : '—';
+        const raw = escapeHtml(formatRaw(row.value));
+
+        const seriesCell = hasSeries
+          ? `
+            <td class="py-2 pr-4 pl-5 text-sm whitespace-nowrap text-gray-600 dark:text-slate-300">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-2.5 w-2.5 rounded-full" style="background-color: ${row.color};"></span>
+                <span class="font-medium" style="color: ${row.color};">${escapeHtml(row.series)}</span>
+              </div>
+            </td>
+          `
+          : '';
+
+        const verticalCell = hasVertical
+          ? `<td class="px-5 py-2 text-sm whitespace-nowrap text-gray-600 dark:text-slate-200 font-mono">${bucketY || 'total'}</td>`
+          : '';
+
+        return `
+          <tr>
+            ${seriesCell}
+            <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-600 dark:text-slate-200 font-mono">${bucketX || 'total'}</td>
+            ${verticalCell}
+            <td class="py-2 pr-5 pl-5 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${raw}">${formattedValue}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    this.tableRoot.innerHTML = `
+      <div class="h-full overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-700">
+          <thead class="bg-white dark:bg-slate-900/60">
+            <tr>
+              ${headerCells.join('')}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-900/60">
+            ${bodyRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    this.activateFastTooltips();
   },
 
   showChartPlaceholder(message) {
@@ -5782,6 +6455,7 @@ Hooks.CategoryPaths = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId;
     this.inputName = this.el.dataset.pathInputName || 'cat_paths[]';
+    this.eventName = this.el.dataset.eventName || 'category_paths_update';
 
     this.handleClick = (event) => {
       const button = event.target.closest('[data-action]');
@@ -5806,7 +6480,7 @@ Hooks.CategoryPaths = {
         return;
       }
 
-      this.pushEvent('category_paths_update', {
+      this.pushEvent(this.eventName, {
         widget_id: this.widgetId,
         paths
       });
@@ -5818,6 +6492,7 @@ Hooks.CategoryPaths = {
   updated() {
     this.widgetId = this.el.dataset.widgetId;
     this.inputName = this.el.dataset.pathInputName || 'cat_paths[]';
+    this.eventName = this.el.dataset.eventName || 'category_paths_update';
   },
 
   destroyed() {

@@ -181,6 +181,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
           table: pruned_datasets.table,
           text_widgets: pruned_datasets.text,
           list: pruned_datasets.list,
+          distribution: pruned_datasets.distribution,
           export_params: %{},
           dashboard_id: dashboard.id,
           print_width: printable_width(viewport),
