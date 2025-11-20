@@ -29,7 +29,17 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
       "paths" => ["metrics.table"],
       "title" => "Table View"
     },
-    %{"id" => "text-1", "type" => "text", "title" => "Hello World"}
+    %{"id" => "text-1", "type" => "text", "title" => "Hello World"},
+    %{
+      "id" => "dist-1",
+      "type" => "distribution",
+      "title" => "Latency Buckets",
+      "paths" => ["metrics.distribution.*"],
+      "designator" => %{
+        "type" => "custom",
+        "buckets" => [10, 20]
+      }
+    }
   ]
 
   setup do
@@ -40,20 +50,22 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
 
     values = [
       %{
-        "metrics" => %{
-          "count" => 5,
-          "category" => %{"A" => 3, "B" => 2},
-          "table" => %{"payments" => %{"credit" => 4, "digital" => 6}}
+          "metrics" => %{
+            "count" => 5,
+            "category" => %{"A" => 3, "B" => 2},
+            "table" => %{"payments" => %{"credit" => 4, "digital" => 6}},
+            "distribution" => %{"10" => 2, "20" => 1}
+          }
+        },
+        %{
+          "metrics" => %{
+            "count" => 7,
+            "category" => %{"A" => 4, "B" => 3},
+            "table" => %{"payments" => %{"credit" => 5, "digital" => 7}},
+            "distribution" => %{"10" => 1, "20" => 2, "20+" => 1}
+          }
         }
-      },
-      %{
-        "metrics" => %{
-          "count" => 7,
-          "category" => %{"A" => 4, "B" => 3},
-          "table" => %{"payments" => %{"credit" => 5, "digital" => 7}}
-        }
-      }
-    ]
+      ]
 
     series = %Trifle.Stats.Series{
       series: %{
@@ -85,6 +97,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert Enum.any?(table_rows, &(&1.display_path == "payments.credit"))
 
     assert [%{id: "text-1", title: "Hello World"}] = dataset.text
+
+    assert [%{id: "dist-1", bucket_labels: buckets, series: dist_series}] = dataset.distribution
+    assert buckets == ["10", "20", "20+"]
+    assert [%{name: "metrics.distribution.*", values: values}] = dist_series
+    assert Enum.any?(values, &(&1.bucket == "10" && &1.value > 0))
   end
 
   test "dataset_maps indexes entries by widget id", %{series: series} do
@@ -102,6 +119,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert %{"table-1" => %{rows: table_rows}} = dataset_maps.table
     assert is_list(table_rows)
     assert %{"text-1" => %{title: "Hello World"}} = dataset_maps.text
+    assert %{"dist-1" => %{bucket_labels: ["10", "20", "20+"], series: [_ | _]}} =
+             dataset_maps.distribution
   end
 
   test "datasets_from_dashboard delegates grid extraction", %{series: series} do

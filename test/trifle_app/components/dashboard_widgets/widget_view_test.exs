@@ -113,7 +113,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
       category: dataset_maps.category,
       table: dataset_maps.table,
       text_widgets: dataset_maps.text,
-      list: dataset_maps.list
+      list: dataset_maps.list,
+      distribution: dataset_maps.distribution
     }
 
     %{assigns: assigns, grid_items: grid_items}

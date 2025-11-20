@@ -3,6 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
 
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
+    Distribution,
     Kpi,
     List,
     Table,
@@ -18,7 +19,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
           category: list(),
           text: list(),
           table: list(),
-          list: list()
+          list: list(),
+          distribution: list()
         }
 
   @spec datasets(Trifle.Stats.Series.t() | nil, list()) :: dataset_group()
@@ -32,7 +34,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
       category: Category.datasets(stats, grid_items),
       text: Text.widgets(grid_items),
       table: Table.datasets(stats, grid_items),
-      list: List.datasets(stats, grid_items)
+      list: List.datasets(stats, grid_items),
+      distribution: Distribution.datasets(stats, grid_items)
     }
   end
 
@@ -49,7 +52,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
           category: map(),
           text: map(),
           table: map(),
-          list: map()
+          list: map(),
+          distribution: map()
         }
   def dataset_maps(%{
         kpi_values: kpi_values,
@@ -58,7 +62,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
         category: category,
         text: text,
         table: table,
-        list: list
+        list: list,
+        distribution: distribution
       }) do
     %{
       kpi_values: to_map(kpi_values),
@@ -67,7 +72,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
       category: to_map(category),
       text: to_map(text),
       table: to_map(table),
-      list: to_map(list)
+      list: to_map(list),
+      distribution: to_map(distribution)
     }
   end
 
@@ -80,7 +86,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
         category: [],
         text: [],
         table: [],
-        list: []
+        list: [],
+        distribution: []
       })
 
   defp to_map(list) when is_list(list) do

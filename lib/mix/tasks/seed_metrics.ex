@@ -57,6 +57,7 @@ defmodule Mix.Tasks.SeedMetrics do
     IO.puts("✅ Successfully loaded #{type} configuration")
 
     maybe_log_transponders(source)
+    designator_configs = build_designator_configs(config)
 
     # Process metrics in batches
     total_batches = ceil(count / batch_size)
@@ -72,7 +73,8 @@ defmodule Mix.Tasks.SeedMetrics do
       )
 
       # Process current batch
-      batch_result = process_batch(config, current_batch_size, hours, acc_submitted)
+      batch_result =
+        process_batch(config, designator_configs, current_batch_size, hours, acc_submitted)
 
       case batch_result do
         {:ok, batch_submitted} ->
@@ -121,7 +123,7 @@ defmodule Mix.Tasks.SeedMetrics do
     end
   end
 
-  defp process_batch(config, batch_size, hours, offset) do
+  defp process_batch(config, designator_configs, batch_size, hours, offset) do
     # Generate timestamps randomly distributed over the time range using the database's timezone
     timezone = config.time_zone || "Etc/UTC"
     now = DateTime.now!(timezone)
@@ -137,7 +139,9 @@ defmodule Mix.Tasks.SeedMetrics do
       "conversion",
       "engagement",
       "retention",
-      "revenue"
+      "revenue",
+      "latency_distribution",
+      "payload_distribution"
     ]
 
     1..batch_size
@@ -152,10 +156,19 @@ defmodule Mix.Tasks.SeedMetrics do
       # Generate realistic nested values based on the key
       values = generate_values(key)
 
-      # Submit the metric directly using Trifle.Stats
       try do
-        # Track the metric
-        _result = Trifle.Stats.track(key, timestamp, values, config)
+        classification_key = classification_metric_for(key)
+
+        case classification_key do
+          nil ->
+            _result = Trifle.Stats.track(key, timestamp, values, config)
+
+          designator ->
+            class_config = Map.fetch!(designator_configs, designator)
+            classified_values = classify_values(values, class_config.designator)
+            _result = Trifle.Stats.track(key, timestamp, classified_values, class_config)
+            maybe_track_3d_support(key, timestamp, values, designator_configs)
+        end
 
         new_count = success_count + 1
         global_count = offset + new_count
@@ -200,6 +213,91 @@ defmodule Mix.Tasks.SeedMetrics do
         {:error, "Missing required --source option (project:<id> or database:<id>)"}
     end
   end
+
+  defp build_designator_configs(config) do
+    latency_designator = Trifle.Stats.Designator.Linear.new(0, 2_000, 100)
+    payload_designator = Trifle.Stats.Designator.Geometric.new(1, 1_000_000)
+
+    %{
+      latency: Trifle.Stats.Configuration.set_designator(config, latency_designator),
+      payload: Trifle.Stats.Configuration.set_designator(config, payload_designator)
+    }
+  end
+
+  defp classification_metric_for("latency_distribution"), do: :latency
+  defp classification_metric_for("payload_distribution"), do: :payload
+  defp classification_metric_for(_), do: nil
+
+  defp maybe_track_3d_support("latency_distribution", timestamp, %{"latency_ms" => latency_ms}, designator_configs)
+       when is_number(latency_ms) do
+    case Map.fetch(designator_configs, :latency) do
+      {:ok, %{designator: designator} = config} when not is_nil(designator) ->
+        x_bucket = bucket_label(designator, latency_ms)
+        secondary = jitter_secondary_latency(latency_ms)
+        normalized_secondary = normalize_secondary_latency(secondary, latency_ms)
+        y_bucket = bucket_label(designator, normalized_secondary)
+
+        if x_bucket && y_bucket do
+          payload = %{"latency" => %{x_bucket => %{y_bucket => 1}}}
+          _ = Trifle.Stats.track("latency_distribution", timestamp, payload, config)
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp maybe_track_3d_support(_key, _timestamp, _values, _designator_configs), do: :ok
+
+  defp bucket_label(designator, value) when is_number(value) do
+    designator.__struct__.designate(designator, value)
+    |> to_string()
+    |> String.replace(".", "_")
+  end
+
+  defp bucket_label(_designator, _value), do: nil
+
+  defp jitter_secondary_latency(latency_ms) when is_number(latency_ms) do
+    # Secondary dimension correlated but not identical to primary latency
+    variability = 0.55 + :rand.uniform() * 0.9
+    shifted = latency_ms * variability + (:rand.normal() * 30)
+    max(1.0, shifted)
+  end
+
+  defp normalize_secondary_latency(value, fallback) do
+    cond do
+      safe_number?(value) ->
+        max(1.0, value)
+
+      true ->
+        fallback
+    end
+  end
+
+  defp safe_number?(value) when is_number(value) do
+    # In Elixir/Erlang, NaN is the only float that is not equal to itself.
+    value == value
+  end
+
+  defp safe_number?(_), do: false
+
+  defp classify_values(values, designator) when is_map(values) do
+    Map.new(values, fn {k, v} ->
+      if is_map(v) do
+        {k, classify_values(v, designator)}
+      else
+        {k, %{classify_value(v, designator) => 1}}
+      end
+    end)
+  end
+
+  defp classify_values(values, _designator), do: values
+
+  defp classify_value(value, designator) when is_number(value) and not is_nil(designator) do
+    bucket_label(designator, value)
+  end
+
+  defp classify_value(value, _designator), do: to_string(value)
 
   defp maybe_log_transponders(source) do
     source
@@ -434,6 +532,31 @@ defmodule Mix.Tasks.SeedMetrics do
           }
         }
       }
+    }
+  end
+
+  defp generate_values("latency_distribution") do
+    jitter = :rand.normal() * 75
+    base = :rand.uniform(1_800) + 50
+    value = Float.round(max(base + jitter, 1.0), 2)
+
+    %{
+      "latency_ms" => value,
+      "path" => Enum.random(["/api/users", "/api/projects", "/api/auth"])
+    }
+  end
+
+  defp generate_values("payload_distribution") do
+    bucket =
+      Enum.random([64, 128, 256, 512, 1_024, 2_048, 4_096, 8_192, 16_384, 65_536, 262_144])
+
+    fluctuation = :rand.uniform(bucket) / 2
+    direction = Enum.random([-1, 1])
+    value = Float.round(max(bucket + direction * fluctuation, 1.0), 1)
+
+    %{
+      "payload_bytes" => value,
+      "transport" => Enum.random(["http", "grpc", "websocket"])
     }
   end
 
