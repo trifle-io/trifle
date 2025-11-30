@@ -2469,11 +2469,11 @@ Hooks.DashboardGrid = {
         let seriesData;
         if (is3d) {
           let maxValue = 0;
-            seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
-              const name = series && series.name ? series.name : `Series ${idx + 1}`;
-              legendNames.push(name);
-              const points = Array.isArray(series && series.points) ? series.points : [];
-              const color = colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+          seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
+            const name = series && series.name ? series.name : `Series ${idx + 1}`;
+            legendNames.push(name);
+            const points = Array.isArray(series && series.points) ? series.points : [];
+            const color = colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
             const data = points.map((p) => {
               const xIndex = labels.indexOf(p.bucket_x);
               const yIndex = verticalLabels.indexOf(p.bucket_y);
@@ -2505,13 +2505,24 @@ Hooks.DashboardGrid = {
             };
           });
 
-          seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
           if (!seriesData.length) {
-            body.innerHTML = `
-              <div class="flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-3">
-                No 3D distribution points yet. Once data arrives the chart will render.
-              </div>`;
-            return;
+            const fallbackColor = colors[0] || '#14b8a6';
+            seriesData = [{
+              name: legendNames[0] || 'Series 1',
+              type: 'scatter',
+              data: [],
+              symbolSize: () => 10,
+              itemStyle: { color: fallbackColor, opacity: 1 },
+              hoverAnimation: false,
+              emphasis: {
+                disabled: true,
+                focus: 'none',
+                scale: false,
+                blurScope: 'none',
+                itemStyle: { opacity: 1 }
+              },
+              select: { disabled: true }
+            }];
           }
 
           const option = {
