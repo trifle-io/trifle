@@ -305,6 +305,21 @@ defmodule Trifle.Stats.SeriesFetcher do
 
     try do
       case transponder.type do
+        "Trifle.Stats.Transponder.Expression" ->
+          paths = config["paths"] || config[:paths] || []
+          expression = config["expression"] || config[:expression] || ""
+          response_path = config["response_path"] || config[:response_path] || ""
+
+          case Trifle.Stats.Transponder.Expression.transform(
+                 series.series,
+                 paths,
+                 expression,
+                 response_path
+               ) do
+            {:ok, updated} -> {:ok, %Trifle.Stats.Series{series: updated}}
+            {:error, reason} -> {:error, reason}
+          end
+
         "Trifle.Stats.Transponder.Add" ->
           {:ok,
            Trifle.Stats.Series.transform_add(

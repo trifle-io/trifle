@@ -434,6 +434,74 @@ defmodule TrifleApp.ExploreLive do
             </:export_menu>
           </.dashboard_footer>
         <% end %>
+
+        <%= if @show_error_modal do %>
+          <% modal_summary = ExploreCore.get_summary_stats(assigns) %>
+          <%= if modal_summary && length(modal_summary.transponder_errors) > 0 do %>
+            <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
+              <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"></div>
+
+                <div
+                  class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6"
+                  phx-click-away="hide_transponder_errors"
+                >
+                  <div class="sm:flex sm:items-start">
+                    <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
+                      <svg
+                        class="h-6 w-6 text-red-600 dark:text-red-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                      <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                        Transponder Errors
+                      </h3>
+                      <div class="mt-4">
+                        <div class="space-y-4">
+                          <%= for error <- modal_summary.transponder_errors do %>
+                          <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
+                            <div class="flex items-center justify-between mb-2">
+                              <h4 class="font-medium text-red-800 dark:text-red-300">
+                                {error.transponder.name || error.transponder.key}
+                              </h4>
+                              <span class="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 px-2 py-1 rounded">
+                                {error.transponder.type}
+                              </span>
+                            </div>
+                            <p class="text-sm text-red-700 dark:text-red-300 font-mono break-words">
+                              {format_transponder_error(error.error)}
+                            </p>
+                          </div>
+                        <% end %>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                    <button
+                      type="button"
+                      phx-click="hide_transponder_errors"
+                      class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gray-600 text-base font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:ml-3 sm:w-auto sm:text-sm"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+
       </div>
     <% end %>
     """
@@ -474,7 +542,7 @@ defmodule TrifleApp.ExploreLive do
     }
   end
 
-  defp table_widget(assigns) do
+  defp table_widget(_assigns) do
     %{
       "id" => @table_widget_id,
       "type" => "table",
@@ -514,6 +582,22 @@ defmodule TrifleApp.ExploreLive do
   end
 
   defp timeline_paths(_assigns), do: ["keys.*"]
+
+  defp format_transponder_error({tag, %_struct{} = exception}) when is_atom(tag) do
+    "#{inspect(tag)}: " <> Exception.message(exception)
+  end
+
+  defp format_transponder_error(%struct{} = exception) do
+    if function_exported?(struct, :exception, 1) do
+      Exception.message(exception)
+    else
+      inspect(exception)
+    end
+  end
+
+  defp format_transponder_error(%{message: message}) when is_binary(message), do: message
+  defp format_transponder_error(message) when is_binary(message), do: message
+  defp format_transponder_error(other), do: inspect(other)
 
   defp build_timeseries_dataset(%{timeline: timeline, chart_type: chart_type} = assigns) do
     series =

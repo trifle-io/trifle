@@ -85,31 +85,114 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
           </div>
         </div>
 
-        <%= if @selected_type do %>
-          <%= for field <- Transponder.get_transponder_fields(@selected_type) do %>
-            <% value = @config_values[field.name] || @config_values[String.to_atom(field.name)] || "" %>
-            <div>
-              <.label>
-                {field.label}
-                <%= if field.required do %>
-                  <span class="text-red-500 dark:text-red-400">*</span>
-                <% end %>
-              </.label>
-              <.path_autocomplete_input
-                id={"transponder-config-#{field.name}"}
-                name={"transponder[config][#{field.name}]"}
-                value={value}
-                placeholder={field.label}
-                path_options={@path_options}
-                input_class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
-              />
-              <%= if @path_fetch_state == :regex_disabled do %>
-                <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  Autocomplete is unavailable when the key uses regular expressions.
+        <%= cond do %>
+          <% @selected_type == "Trifle.Stats.Transponder.Expression" -> %>
+            <div class="space-y-4">
+              <div>
+                <.label>Paths</.label>
+                <div class="mt-2 space-y-2">
+                  <%= for {path, index} <- Enum.with_index(expression_paths(@config_values)) do %>
+                    <div class="flex items-center gap-2">
+                      <div class="h-9 w-9 flex items-center justify-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200 text-sm font-medium">
+                        {letter_for_index(index)}
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <.path_autocomplete_input
+                          id={"transponder-expression-path-#{index}"}
+                          name="transponder[config][paths][]"
+                          value={path}
+                          placeholder="metrics.duration.average"
+                          path_options={@path_options}
+                          input_class="block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="remove_expression_path"
+                        phx-target={@myself}
+                        phx-value-index={index}
+                        class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                        aria-label="Remove path"
+                        disabled={length(expression_paths(@config_values)) == 1}
+                      >
+                        &minus;
+                      </button>
+                    </div>
+                  <% end %>
+                </div>
+                <button
+                  type="button"
+                  phx-click="add_expression_path"
+                  phx-target={@myself}
+                  class="mt-2 inline-flex items-center gap-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
+                >
+                  <span aria-hidden="true">+</span>
+                  <span>Add path</span>
+                </button>
+                <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                  Paths are mapped to variables in order: a, b, c, …
                 </p>
-              <% end %>
+              </div>
+
+              <div>
+                <.label>Expression</.label>
+                <input
+                  type="text"
+                  id="transponder-expression"
+                  name="transponder[config][expression]"
+                  value={@config_values["expression"] || @config_values[:expression] || ""}
+                  placeholder="(a + b) / c"
+                  phx-debounce="300"
+                  class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                  Use variables a…{last_expression_letter(@config_values)} with +, -, *, /, parentheses, and functions like sum(a, b), max(a, b, c), mean(a, b).
+                </p>
+                <%= if @expression_error do %>
+                  <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">{@expression_error}</p>
+                <% end %>
+              </div>
+
+              <div>
+                <.label>Response Path</.label>
+                <.path_autocomplete_input
+                  id="transponder-response-path"
+                  name="transponder[config][response_path]"
+                  value={@config_values["response_path"] || @config_values[:response_path] || ""}
+                  placeholder="metrics.duration.per_minute"
+                  path_options={@path_options}
+                  input_class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
+                />
+              </div>
             </div>
-          <% end %>
+
+          <% @selected_type -> %>
+            <%= for field <- Transponder.get_transponder_fields(@selected_type) do %>
+              <% value = @config_values[field.name] || @config_values[String.to_atom(field.name)] || "" %>
+              <div>
+                <.label>
+                  {field.label}
+                  <%= if field.required do %>
+                    <span class="text-red-500 dark:text-red-400">*</span>
+                  <% end %>
+                </.label>
+                <.path_autocomplete_input
+                  id={"transponder-config-#{field.name}"}
+                  name={"transponder[config][#{field.name}]"}
+                  value={value}
+                  placeholder={field.label}
+                  path_options={@path_options}
+                  input_class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
+                />
+                <%= if @path_fetch_state == :regex_disabled do %>
+                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    Autocomplete is unavailable when the key uses regular expressions.
+                  </p>
+                <% end %>
+              </div>
+            <% end %>
+          <% true -> %>
+            <% nil %>
         <% end %>
 
         <:actions>
@@ -143,42 +226,85 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
      |> assign_new(:path_fetch_last_checked, fn -> nil end)
      |> assign(assigns)
      |> assign(:selected_type, transponder.type)
-     |> assign(:config_values, transponder.config || %{})
+     |> assign(:expression_error, nil)
+     |> assign(:config_values, normalize_config_values(transponder.type, transponder.config || %{}))
      |> assign_form(Organizations.change_transponder(transponder))
      |> maybe_refresh_path_options()}
   end
 
   def handle_event("validate", %{"transponder" => transponder_params}, socket) do
     config_values = Map.get(transponder_params, "config", %{})
-
-    # Only validate the basic fields, preserve config values in component state
-    basic_params = Map.drop(transponder_params, ["config"])
+    merged_config = Map.merge(socket.assigns.config_values, config_values)
+    selected_type = transponder_params["type"] || socket.assigns.selected_type
 
     changeset =
       socket.assigns.transponder
-      |> Organizations.change_transponder(basic_params)
+      |> Organizations.change_transponder(transponder_params)
       |> Map.put(:action, :validate)
 
     {:noreply,
      socket
-     |> assign(:config_values, Map.merge(socket.assigns.config_values, config_values))
+     |> assign(:selected_type, selected_type)
+     |> assign(:config_values, normalize_config_values(selected_type, merged_config))
+     |> assign(:expression_error, expression_error(selected_type, merged_config))
      |> assign_form(changeset)
      |> maybe_refresh_path_options()}
   end
 
   def handle_event("select_type", %{"transponder" => %{"type" => type}}, socket)
       when type != "" do
-    {:noreply, assign(socket, :selected_type, type)}
+    {:noreply,
+     socket
+     |> assign(:selected_type, type)
+     |> assign(:expression_error, nil)
+     |> assign(:config_values, normalize_config_values(type, socket.assigns.config_values))}
   end
 
   def handle_event("select_type", _params, socket) do
-    {:noreply, assign(socket, :selected_type, nil)}
+    {:noreply,
+     socket
+     |> assign(:selected_type, nil)
+     |> assign(:expression_error, nil)}
+  end
+
+  def handle_event("add_expression_path", _params, socket) do
+    paths = expression_paths(socket.assigns.config_values)
+    updated_paths = paths ++ [""]
+    new_config = Map.put(socket.assigns.config_values, "paths", updated_paths)
+
+    {:noreply,
+     socket
+     |> assign(:config_values, new_config)
+     |> assign(:expression_error, expression_error(socket.assigns.selected_type, new_config))}
+  end
+
+  def handle_event("remove_expression_path", %{"index" => index}, socket) do
+    idx = String.to_integer(index)
+
+    updated_paths =
+      socket.assigns.config_values
+      |> expression_paths()
+      |> Enum.with_index()
+      |> Enum.reject(fn {_path, i} -> i == idx end)
+      |> Enum.map(&elem(&1, 0))
+      |> then(fn list -> if Enum.empty?(list), do: [""], else: list end)
+
+    new_config = Map.put(socket.assigns.config_values, "paths", updated_paths)
+
+    {:noreply,
+     socket
+     |> assign(:config_values, new_config)
+     |> assign(:expression_error, expression_error(socket.assigns.selected_type, new_config))}
   end
 
   def handle_event("save", %{"transponder" => transponder_params}, socket) do
     # Get config from the form submission and merge with component state
     form_config = Map.get(transponder_params, "config", %{})
     merged_config = Map.merge(socket.assigns.config_values, form_config)
+
+    merged_config =
+      merged_config
+      |> maybe_clean_expression_paths(socket.assigns.selected_type || transponder_params["type"])
 
     # Filter out empty values from config
     clean_config = Enum.reject(merged_config, fn {_k, v} -> v == "" or is_nil(v) end) |> Map.new()
@@ -419,4 +545,67 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
   end
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
+
+  defp expression_paths(config_values) do
+    config_values
+    |> then(fn config -> Map.get(config, "paths") || Map.get(config, :paths) || [] end)
+    |> case do
+      [] -> [""]
+      paths when is_list(paths) -> paths
+      _ -> [""]
+    end
+  end
+
+  defp letter_for_index(index) do
+    <<?a + index>>
+  rescue
+    _ -> "?"
+  end
+
+  defp last_expression_letter(config_values) do
+    paths = expression_paths(config_values)
+    capped_index = Enum.min([Enum.max([length(paths) - 1, 0]), 25])
+    letter_for_index(capped_index)
+  end
+
+  defp normalize_config_values("Trifle.Stats.Transponder.Expression", config) do
+    config
+    |> Map.put("paths", expression_paths(config))
+  end
+
+  defp normalize_config_values(_type, config), do: config
+
+  defp expression_error("Trifle.Stats.Transponder.Expression", config) do
+    paths = Map.get(config, "paths") || Map.get(config, :paths)
+    expression = Map.get(config, "expression") || Map.get(config, :expression) || ""
+    trimmed_expression = String.trim(to_string(expression))
+
+    cond do
+      trimmed_expression == "" -> nil
+      paths in [nil, [], [""]] -> nil
+      true ->
+        case Trifle.Stats.Transponder.ExpressionEngine.validate(paths || [], trimmed_expression) do
+          :ok -> nil
+          {:error, %{message: message}} -> message
+          {:error, other} -> inspect(other)
+        end
+    end
+  end
+
+  defp expression_error(_type, _config), do: nil
+
+  defp maybe_clean_expression_paths(config, "Trifle.Stats.Transponder.Expression") do
+    paths =
+      config
+      |> then(fn cfg -> Map.get(cfg, "paths") || Map.get(cfg, :paths) || [] end)
+      |> Enum.map(fn
+        nil -> nil
+        value -> String.trim(to_string(value))
+      end)
+      |> Enum.reject(&(&1 in [nil, ""]))
+
+    Map.put(config, "paths", paths)
+  end
+
+  defp maybe_clean_expression_paths(config, _type), do: config
 end
