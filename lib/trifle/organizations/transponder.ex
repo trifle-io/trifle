@@ -46,6 +46,7 @@ defmodule Trifle.Organizations.Transponder do
 
   def available_types do
     [
+      "Trifle.Stats.Transponder.Expression",
       "Trifle.Stats.Transponder.Add",
       "Trifle.Stats.Transponder.Subtract",
       "Trifle.Stats.Transponder.Multiply",
@@ -61,6 +62,9 @@ defmodule Trifle.Organizations.Transponder do
 
   def get_transponder_fields(type) do
     case type do
+      "Trifle.Stats.Transponder.Expression" ->
+        []
+
       "Trifle.Stats.Transponder.Add" ->
         [
           %{name: "path1", type: "string", label: "First Path", required: true},
@@ -181,15 +185,29 @@ defmodule Trifle.Organizations.Transponder do
     config = get_field(changeset, :config) || %{}
 
     if type do
-      required_fields = get_transponder_fields(type)
+      case type do
+        "Trifle.Stats.Transponder.Expression" ->
+          paths = Map.get(config, "paths") || Map.get(config, :paths)
+          expression = Map.get(config, "expression") || Map.get(config, :expression)
+          response_path = Map.get(config, "response_path") || Map.get(config, :response_path)
 
-      Enum.reduce(required_fields, changeset, fn field, acc ->
-        if field.required and is_nil(config[field.name]) do
-          add_error(acc, :config, "#{field.label} is required")
-        else
-          acc
-        end
-      end)
+          case Trifle.Stats.Transponder.Expression.validate(paths, expression, response_path) do
+            :ok -> changeset
+            {:error, %{message: message}} -> add_error(changeset, :config, message)
+            {:error, other} -> add_error(changeset, :config, inspect(other))
+          end
+
+        _ ->
+          required_fields = get_transponder_fields(type)
+
+          Enum.reduce(required_fields, changeset, fn field, acc ->
+            if field.required and is_nil(config[field.name]) do
+              add_error(acc, :config, "#{field.label} is required")
+            else
+              acc
+            end
+          end)
+      end
     else
       changeset
     end
