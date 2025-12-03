@@ -10,10 +10,12 @@ defmodule Trifle.Stats.Transponder.Expression do
   alias Trifle.Stats.Precision
 
   def transform(series, paths, expression, response_path, _slices \\ 1) do
+    trimmed_response_path = trim_path(response_path)
+
     with {:ok, normalized_paths} <- normalize_paths(paths),
-         :ok <- ensure_response_path(response_path),
+         :ok <- ensure_response_path(trimmed_response_path),
          {:ok, ast} <- ExpressionEngine.parse(expression, normalized_paths) do
-      apply_expression(series, normalized_paths, ast, response_path)
+      apply_expression(series, normalized_paths, ast, trimmed_response_path)
     end
   end
 
@@ -100,6 +102,9 @@ defmodule Trifle.Stats.Transponder.Expression do
     if Precision.enabled?(), do: decimal, else: Precision.to_float(decimal)
   end
   defp normalize_value(value), do: value
+
+  defp trim_path(path) when is_binary(path), do: String.trim(path)
+  defp trim_path(path), do: path
 
   # Helpers borrowed from existing transponders for path handling
   defp get_path_value(value_map, keys) do
