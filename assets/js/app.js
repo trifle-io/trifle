@@ -62,6 +62,40 @@ const formatCompactNumber = (value) => {
     .replace(/(\.\d*?[1-9])0+$/, '$1');
 };
 
+const extractTimestamp = (point) => {
+  if (Array.isArray(point) && point.length) return Number(point[0]);
+  if (point && typeof point === 'object') {
+    if (Array.isArray(point.value) && point.value.length) return Number(point.value[0]);
+    if (Array.isArray(point.coord) && point.coord.length) return Number(point.coord[0]);
+  }
+  return null;
+};
+
+const detectOngoingSegment = (seriesList) => {
+  const timestamps =
+    (Array.isArray(seriesList) ? seriesList : [])
+      .flatMap((series) => (Array.isArray(series?.data) ? series.data : []))
+      .map((point) => extractTimestamp(point))
+      .filter((ts) => Number.isFinite(ts));
+
+  const sorted = Array.from(new Set(timestamps)).sort((a, b) => a - b);
+  if (sorted.length < 2) return null;
+
+  let bucketMs = null;
+  for (let i = 1; i < sorted.length; i++) {
+    const diff = sorted[i] - sorted[i - 1];
+    if (diff > 0) {
+      bucketMs = bucketMs == null ? diff : Math.min(bucketMs, diff);
+    }
+  }
+
+  if (!Number.isFinite(bucketMs) || bucketMs <= 0) return null;
+
+  const lastTs = sorted[sorted.length - 1];
+  const now = Date.now();
+  return now >= lastTs && now < lastTs + bucketMs ? { lastTs, bucketMs } : null;
+};
+
 const TABLE_PATH_HTML_FIELD = '__table_path_html__';
 const AGGRID_PATH_COL_MIN_WIDTH = 160;
 const AGGRID_PATH_COL_MAX_WIDTH = 640;
@@ -1958,6 +1992,7 @@ Hooks.DashboardGrid = {
         const overlay = it.alert_overlay || null;
         const alertStrategy = String(it.alert_strategy || '').toLowerCase();
         const shouldApplyAlertAxis = !!overlay && (alertStrategy === 'threshold' || alertStrategy === 'range');
+        const baselineSeries = [];
         if (overlay && series.length) {
           const primarySeries = series[0];
           const markAreas = [];
@@ -2115,11 +2150,11 @@ Hooks.DashboardGrid = {
               };
             }
           }
-          const baselineSeries = []
+          const baselineCandidates = []
             .concat(Array.isArray(it.alert_baseline_series) ? it.alert_baseline_series : [])
             .concat(overlay && Array.isArray(overlay.baseline_series) ? overlay.baseline_series : []);
           const seenBaselineKeys = new Set();
-          baselineSeries
+          baselineCandidates
             .filter((baseline) => {
               if (!baseline || !Array.isArray(baseline.data) || baseline.data.length === 0) return false;
               const key = baseline.name || `${baseline.color || 'baseline'}-${baseline.line_type || 'line'}`;
@@ -2134,7 +2169,7 @@ Hooks.DashboardGrid = {
               const lineType = baseline.line_type || 'dashed';
               const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
               const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
-              series.push({
+              baselineSeries.push({
                 name: baseline.name || 'Detection baseline',
                 type: 'line',
                 data: baselineData,
@@ -2158,6 +2193,27 @@ Hooks.DashboardGrid = {
               });
             });
         }
+        const ongoingInfo = detectOngoingSegment(it.series || []);
+        if (ongoingInfo && series.length) {
+          const start = new Date(ongoingInfo.lastTs - ongoingInfo.bucketMs * 0.5);
+          const end = new Date(ongoingInfo.lastTs + ongoingInfo.bucketMs * 0.5);
+          if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+            const areaColor = isDarkMode ? 'rgba(148,163,184,0.26)' : 'rgba(148,163,184,0.16)';
+            const primarySeries = series[0];
+            const existing = primarySeries.markArea && Array.isArray(primarySeries.markArea.data) ? primarySeries.markArea.data : [];
+            primarySeries.markArea = {
+              data: existing.concat([[
+                { xAxis: start.toISOString(), itemStyle: { color: areaColor }, label: { show: false }, emphasis: { disabled: true } },
+                { xAxis: end.toISOString() }
+              ]]),
+              silent: true,
+              emphasis: { disabled: true }
+            };
+          }
+        }
+
+        const finalSeries = series.concat(baselineSeries);
+        const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
         const extractPointValue = (point) => {
           if (Array.isArray(point)) return Number(point[1]);
           if (point && typeof point === 'object') {
@@ -2173,7 +2229,7 @@ Hooks.DashboardGrid = {
           if (value > bounds.max) bounds.max = value;
         };
         const seriesBounds = { min: Infinity, max: -Infinity };
-        series.forEach((s) => {
+        finalSeries.forEach((s) => {
           (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
         });
         let alertAxis = null;
@@ -2269,21 +2325,34 @@ Hooks.DashboardGrid = {
             splitLine: { show: false }
           },
           yAxis,
-          legend: showLegend ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: chartFontFamily } } : { show: false },
+          legend: showLegend
+            ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData }
+            : { show: false },
           tooltip: {
             trigger: 'axis',
             appendToBody: true,
             textStyle: { fontFamily: chartFontFamily },
-            valueFormatter: (v) => {
-              if (v == null) return '-';
-              if (normalized) {
-                const pct = Number(v);
-                return Number.isFinite(pct) ? `${pct.toFixed(2)}%` : '-';
-              }
-              return formatCompactNumber(v);
+            formatter: (params) => {
+              const list = Array.isArray(params) ? params : [];
+              if (!list.length) return '';
+              const header = list[0].axisValueLabel || '';
+              const formatValue = (val) => {
+                if (val == null) return '-';
+                if (normalized) {
+                  const pct = Number(val);
+                  return Number.isFinite(pct) ? `${pct.toFixed(2)}%` : '-';
+                }
+                return formatCompactNumber(val);
+              };
+              const lines = list.map((p) => {
+                const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
+                return `${p.marker || ''}${p.seriesName || ''}: <strong>${formatValue(raw)}</strong>`;
+              });
+              const note = ongoingInfo ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>' : '';
+              return `<div>${header}</div><div>${lines.join('<br/>')}</div>${note}`;
             }
           },
-          series
+          series: finalSeries
         }, true);
         try {
           chart.off('finished');
@@ -4434,11 +4503,12 @@ Hooks.ExpandedWidgetView = {
           };
         }
       }
-      const baselineSeries = []
+      const baselineSeries = [];
+      const baselineCandidates = []
         .concat(Array.isArray(data.alert_baseline_series) ? data.alert_baseline_series : [])
         .concat(overlay && Array.isArray(overlay.baseline_series) ? overlay.baseline_series : []);
       const seenBaselineKeys = new Set();
-      baselineSeries
+      baselineCandidates
         .filter((baseline) => {
           if (!baseline || !Array.isArray(baseline.data) || baseline.data.length === 0) return false;
           const key = baseline.name || `${baseline.color || 'baseline'}-${baseline.line_type || 'line'}`;
@@ -4450,34 +4520,55 @@ Hooks.ExpandedWidgetView = {
           const baselineData = Array.isArray(baseline.data) ? baseline.data : [];
           if (!baselineData.length) return;
           const baselineColor = baseline.color || overlayLabelText;
-        const lineType = baseline.line_type || 'dashed';
-        const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
-        const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
-        series.push({
-          name: baseline.name || 'Detection baseline',
-          type: 'line',
-          data: baselineData,
-          showSymbol: false,
-          smooth: false,
-          connectNulls: true,
-          animation: false,
-          lineStyle: {
-            width: lineWidth,
-            type: lineType,
-            color: baselineColor,
-            opacity: lineOpacity
-          },
-          itemStyle: { color: baselineColor, opacity: lineOpacity },
-          emphasis: { focus: 'series' },
-          tooltip: {
-            valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
-          },
-          zlevel: 1,
-          z: 25
-        });
+          const lineType = baseline.line_type || 'dashed';
+          const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
+          const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
+          baselineSeries.push({
+            name: baseline.name || 'Detection baseline',
+            type: 'line',
+            data: baselineData,
+            showSymbol: false,
+            smooth: false,
+            connectNulls: true,
+            animation: false,
+            lineStyle: {
+              width: lineWidth,
+              type: lineType,
+              color: baselineColor,
+              opacity: lineOpacity
+            },
+            itemStyle: { color: baselineColor, opacity: lineOpacity },
+            emphasis: { focus: 'series' },
+            tooltip: {
+              valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
+            },
+            zlevel: 1,
+            z: 25
+          });
       });
     }
 
+    const ongoingInfo = detectOngoingSegment(data.series || []);
+    if (ongoingInfo && series.length) {
+      const start = new Date(ongoingInfo.lastTs - ongoingInfo.bucketMs * 0.5);
+      const end = new Date(ongoingInfo.lastTs + ongoingInfo.bucketMs * 0.5);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        const areaColor = isDarkMode ? 'rgba(148,163,184,0.26)' : 'rgba(148,163,184,0.16)';
+        const primarySeries = series[0];
+        const existing = primarySeries.markArea && Array.isArray(primarySeries.markArea.data) ? primarySeries.markArea.data : [];
+        primarySeries.markArea = {
+          data: existing.concat([[
+            { xAxis: start.toISOString(), itemStyle: { color: areaColor }, label: { show: false }, emphasis: { disabled: true } },
+            { xAxis: end.toISOString() }
+          ]]),
+          silent: true,
+          emphasis: { disabled: true }
+        };
+      }
+    }
+
+    const finalSeries = series.concat(baselineSeries);
+    const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
     const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
@@ -4500,7 +4591,7 @@ Hooks.ExpandedWidgetView = {
     };
 
     const seriesBounds = { min: Infinity, max: -Infinity };
-    series.forEach((s) => {
+    finalSeries.forEach((s) => {
       (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
     });
 
@@ -4610,17 +4701,36 @@ Hooks.ExpandedWidgetView = {
         splitLine: { show: false }
       },
       yAxis,
-      legend: showLegend ? { type: 'scroll', bottom: 6, textStyle: { color: legendText, fontFamily: chartFontFamily } } : { show: false },
+      legend: showLegend
+        ? { type: 'scroll', bottom: 6, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData }
+        : { show: false },
       tooltip: {
         trigger: 'axis',
         appendToBody: true,
         textStyle: { fontFamily: chartFontFamily },
-        valueFormatter: (v) => {
-          if (v == null) return '-';
-          return normalized ? `${Number(v).toFixed(2)}%` : formatCompactNumber(v);
+        formatter: (params) => {
+          const list = Array.isArray(params) ? params : [];
+          if (!list.length) return '';
+          const header = list[0].axisValueLabel || '';
+          const formatValue = (val) => {
+            if (val == null) return '-';
+            if (normalized) {
+              const pct = Number(val);
+              return Number.isFinite(pct) ? `${pct.toFixed(2)}%` : '-';
+            }
+            return formatCompactNumber(val);
+          };
+          const lines = list.map((p) => {
+            const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
+            return `${p.marker || ''}${p.seriesName || ''}: <strong>${formatValue(raw)}</strong>`;
+          });
+          const note = ongoingInfo
+            ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>'
+            : '';
+          return `<div>${header}</div><div>${lines.join('<br/>')}</div>${note}`;
         }
       },
-      series
+      series: finalSeries
     }, true);
 
     try { chart.resize(); } catch (_) {}
