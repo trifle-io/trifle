@@ -25,6 +25,19 @@ defmodule Trifle.Stats.Transponder.ExpressionEngineTest do
     assert to_float(max_result) == 3.0
   end
 
+  test "supports sqrt function" do
+    {:ok, ast} = ExpressionEngine.parse("sqrt(a)", ["a"])
+    assert {:ok, result} = ExpressionEngine.evaluate(ast, %{"a" => 9})
+    assert to_float(result) == 3.0
+  end
+
+  test "validates sqrt arity during evaluation" do
+    {:ok, ast} = ExpressionEngine.parse("sqrt(a, b)", ["a", "b"])
+
+    assert {:error, %{message: "Function sqrt expects 1 argument."}} ==
+             ExpressionEngine.evaluate(ast, %{"a" => 9, "b" => 4})
+  end
+
   test "errors on divide by zero" do
     {:ok, ast} = ExpressionEngine.parse("a / b", ["a", "b"])
     assert {:ok, nil} == ExpressionEngine.evaluate(ast, %{"a" => 10, "b" => 0})

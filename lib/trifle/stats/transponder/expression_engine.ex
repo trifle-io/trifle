@@ -7,7 +7,7 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
   - Parentheses for grouping
   - Numeric literals (ints/floats)
   - Auto-assigned variables (a, b, c, ...)
-  - Simple n-ary functions: sum/mean/avg/min/max
+  - Simple n-ary functions: sum/mean/avg/min/max/sqrt
 
   The parser is intentionally small and self contained so it can later be moved
   into the trifle_stats plugin.
@@ -317,6 +317,16 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
       true ->
         numeric = Enum.map(args, &normalize_numeric/1)
         {:ok, Precision.max(numeric)}
+    end
+  end
+
+  defp apply_function("sqrt", args) do
+    case args do
+      [value] ->
+        {:ok, Precision.sqrt(value)}
+
+      _ ->
+        {:error, %{message: "Function sqrt expects 1 argument."}}
     end
   end
 
