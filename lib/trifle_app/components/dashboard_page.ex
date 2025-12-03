@@ -1457,6 +1457,11 @@ defmodule TrifleApp.Components.DashboardPage do
             show_export_dropdown={@show_export_dropdown}
             dashboard={@dashboard}
             export_params={export_params}
+            show_error_modal={@show_error_modal}
+          />
+          <TrifleApp.Components.DashboardFooter.transponder_errors_modal
+            summary={summary}
+            show_error_modal={@show_error_modal}
           />
         <% end %>
       <% end %>
