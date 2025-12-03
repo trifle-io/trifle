@@ -91,10 +91,12 @@ defmodule Trifle.Stats.Transponder.Expression do
   end
 
   defp put_response(value_map, response_keys, value) do
-    if can_create_path?(value_map, response_keys) do
-      {:ok, put_path_value(value_map, response_keys, normalize_value(value))}
-    else
-      {:error, %{message: "Cannot write to response path #{Enum.join(response_keys, ".")}."}}
+    case can_create_path?(value_map, response_keys) do
+      true ->
+        {:ok, put_path_value(value_map, response_keys, normalize_value(value))}
+
+      false ->
+        {:error, %{message: "Cannot write to response path #{Enum.join(response_keys, ".")}."}}
     end
   end
 
@@ -119,13 +121,30 @@ defmodule Trifle.Stats.Transponder.Expression do
   end
 
   defp put_path_value(value_map, keys, value) do
-    if map_uses_atom_keys?(value_map) do
-      atom_keys = Enum.map(keys, &String.to_atom/1)
-      put_in(value_map, atom_keys, value)
-    else
-      put_in(value_map, keys, value)
-    end
+    do_put_path_value(value_map, keys, value, map_uses_atom_keys?(value_map))
   end
+
+  defp do_put_path_value(value_map, [key], value, atom_keys?) do
+    Map.put(value_map, normalize_key(key, atom_keys?), value)
+  end
+
+  defp do_put_path_value(value_map, [key | rest], value, atom_keys?) do
+    actual_key = normalize_key(key, atom_keys?)
+    current = Map.get(value_map, actual_key)
+
+    {nested_map, nested_atom_keys?} =
+      cond do
+        is_map(current) -> {current, map_uses_atom_keys?(current)}
+        current == nil -> {%{}, atom_keys?}
+        true -> {%{}, atom_keys?}
+      end
+
+    updated_nested = do_put_path_value(nested_map, rest, value, nested_atom_keys?)
+    Map.put(value_map, actual_key, updated_nested)
+  end
+
+  defp normalize_key(key, true), do: String.to_atom(key)
+  defp normalize_key(key, false), do: key
 
   defp map_uses_atom_keys?(value_map) when is_map(value_map) do
     keys = Map.keys(value_map)
@@ -141,7 +160,7 @@ defmodule Trifle.Stats.Transponder.Expression do
     actual_key = if atom_keys?, do: String.to_atom(key), else: key
 
     case Map.get(map, actual_key) do
-      nil -> false
+      nil -> true
       nested_map when is_map(nested_map) -> can_create_path?(nested_map, rest, map_uses_atom_keys?(nested_map))
       _non_map -> false
     end
