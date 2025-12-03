@@ -146,7 +146,7 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
                   class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
                 />
                 <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                  Use variables a…{last_expression_letter(@config_values)} with +, -, *, /, parentheses, and functions like sum(a, b), max(a, b, c), mean(a, b).
+                  Use variables a…{last_expression_letter(@config_values)} with +, -, *, /, parentheses, and functions like sum(a, b), max(a, b, c), mean(a, b), sqrt(a).
                 </p>
                 <%= if @expression_error do %>
                   <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">{@expression_error}</p>
