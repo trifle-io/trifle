@@ -6,6 +6,10 @@
 /* GridStack styles (imported from node_modules) */
 @import url("../node_modules/gridstack/dist/gridstack.min.css");
 
+[x-cloak] {
+  display: none !important;
+}
+
 /* Lower GridStack drag/resize z-index so modals overlay correctly */
 .grid-stack .ui-draggable-dragging,
 .grid-stack .ui-resizable-resizing {

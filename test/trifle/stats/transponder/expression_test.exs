@@ -23,6 +23,30 @@ defmodule Trifle.Stats.Transponder.ExpressionTest do
     assert totals == [5.0, 9.0, 13.0]
   end
 
+  test "creates nested response paths when missing" do
+    series = %{
+      at: [1, 2],
+      values: [
+        %{"metrics" => %{"a" => 4, "b" => 2}},
+        %{"metrics" => %{"b" => 1}}
+      ]
+    }
+
+    {:ok, updated} =
+      Expression.transform(series, ["metrics.a", "metrics.b"], "a / b", "metrics.duration.average")
+
+    results =
+      updated.values
+      |> Enum.map(fn %{"metrics" => m} -> get_in(m, ["duration", "average"]) end)
+      |> Enum.map(fn
+        nil -> nil
+        %Decimal{} = decimal -> Decimal.to_float(decimal)
+        value when is_number(value) -> value * 1.0
+      end)
+
+    assert results == [2.0, nil]
+  end
+
   test "returns error on missing value" do
     series = %{at: [1], values: [%{"metrics" => %{"a" => 2}}]}
 
