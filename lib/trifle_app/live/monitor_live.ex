@@ -2845,6 +2845,7 @@ defmodule TrifleApp.MonitorLive do
           dashboard={monitor_footer_resource(@monitor)}
           export_params={export_params}
           download_menu_id="monitor-download-menu"
+          show_error_modal={@show_error_modal}
         >
           <:export_menu :let={slot_assigns}>
             <% menu_id = slot_assigns[:download_menu_id] || "monitor-download-menu" %>
@@ -2964,6 +2965,10 @@ defmodule TrifleApp.MonitorLive do
             </a>
           </:export_menu>
         </.dashboard_footer>
+        <TrifleApp.Components.DashboardFooter.transponder_errors_modal
+          summary={summary}
+          show_error_modal={@show_error_modal}
+        />
       <% end %>
 
       <%= if @expanded_widget do %>
@@ -3119,83 +3124,6 @@ defmodule TrifleApp.MonitorLive do
         </:footer>
       </.app_modal>
 
-      <%= if @show_error_modal && summary && length(summary.transponder_errors) > 0 do %>
-        <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
-          <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75">
-            </div>
-
-            <div
-              class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6"
-              phx-click-away="hide_transponder_errors"
-            >
-              <div class="sm:flex sm:items-start">
-                <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
-                  <svg
-                    class="h-6 w-6 text-red-600 dark:text-red-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
-                    />
-                  </svg>
-                </div>
-                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                  <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
-                    Transponder Errors
-                  </h3>
-                  <div class="mt-4">
-                    <div class="space-y-4">
-                      <%= for error <- summary.transponder_errors do %>
-                        <div class="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/20">
-                          <div class="flex items-center justify-between mb-2">
-                            <h4 class="font-medium text-red-800 dark:text-red-300">
-                              {(error.transponder && (error.transponder.name || error.transponder.key)) ||
-                                "Transponder"}
-                            </h4>
-                            <span class="text-xs text-slate-500 dark:text-slate-400">
-                              {error.transponder && error.transponder.key}
-                            </span>
-                          </div>
-                          <p class="text-sm text-red-700 dark:text-red-200">
-                            {error.message || "Error executing transponder"}
-                          </p>
-                          <%= if error.details do %>
-                            <pre class="mt-2 rounded bg-slate-900/5 dark:bg-slate-900/60 p-3 text-xs text-slate-700 dark:text-slate-200 overflow-x-auto">
-    {inspect(error.details, pretty: true)}
-                            </pre>
-                          <% end %>
-                        </div>
-                      <% end %>
-                    </div>
-                  </div>
-                  <div class="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse">
-                    <button
-                      type="button"
-                      class="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto"
-                      phx-click="hide_transponder_errors"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600 sm:mt-0 sm:w-auto"
-                      phx-click="hide_transponder_errors"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      <% end %>
 
       <.live_component
         :if={@alert_modal}
