@@ -109,6 +109,7 @@ defmodule TrifleApp.Router do
     end
 
     get "/integrations/slack/oauth/callback", Integrations.SlackController, :callback
+    get "/integrations/discord/oauth/callback", Integrations.DiscordController, :callback
   end
 
   scope "/", TrifleApp do

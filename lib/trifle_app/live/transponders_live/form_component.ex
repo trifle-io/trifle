@@ -165,10 +165,10 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
                 />
               </div>
             </div>
-
           <% @selected_type -> %>
             <%= for field <- Transponder.get_transponder_fields(@selected_type) do %>
-              <% value = @config_values[field.name] || @config_values[String.to_atom(field.name)] || "" %>
+              <% value =
+                @config_values[field.name] || @config_values[String.to_atom(field.name)] || "" %>
               <div>
                 <.label>
                   {field.label}
@@ -227,7 +227,10 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
      |> assign(assigns)
      |> assign(:selected_type, transponder.type)
      |> assign(:expression_error, nil)
-     |> assign(:config_values, normalize_config_values(transponder.type, transponder.config || %{}))
+     |> assign(
+       :config_values,
+       normalize_config_values(transponder.type, transponder.config || %{})
+     )
      |> assign_form(Organizations.change_transponder(transponder))
      |> maybe_refresh_path_options()}
   end
@@ -581,8 +584,12 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     trimmed_expression = String.trim(to_string(expression))
 
     cond do
-      trimmed_expression == "" -> nil
-      paths in [nil, [], [""]] -> nil
+      trimmed_expression == "" ->
+        nil
+
+      paths in [nil, [], [""]] ->
+        nil
+
       true ->
         case Trifle.Stats.Transponder.ExpressionEngine.validate(paths || [], trimmed_expression) do
           :ok -> nil

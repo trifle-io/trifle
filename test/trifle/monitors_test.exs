@@ -5,8 +5,7 @@ defmodule Trifle.MonitorsTest do
   alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Organizations
-  alias Trifle.Integrations.SlackChannel
-  alias Trifle.Integrations.SlackInstallation
+  alias Trifle.Integrations.{DiscordChannel, DiscordInstallation, SlackChannel, SlackInstallation}
   alias Trifle.Repo
 
   setup do
@@ -310,13 +309,39 @@ defmodule Trifle.MonitorsTest do
         })
         |> Repo.insert!()
 
-      handles = ["email#" <> user.email, "slack_#{installation.reference}##{channel.name}"]
+      discord_installation =
+        %DiscordInstallation{}
+        |> DiscordInstallation.changeset(%{
+          organization_id: organization.id,
+          guild_id: "12345",
+          guild_name: "Discord Ops",
+          reference: "discord_ops",
+          installed_by_user_id: user.id
+        })
+        |> Repo.insert!()
+
+      discord_channel =
+        %DiscordChannel{}
+        |> DiscordChannel.changeset(%{
+          discord_installation_id: discord_installation.id,
+          channel_id: "1234567890",
+          name: "ops",
+          channel_type: "text",
+          enabled: true
+        })
+        |> Repo.insert!()
+
+      handles = [
+        "email#" <> user.email,
+        "slack_#{installation.reference}##{channel.name}",
+        "discord_#{discord_installation.reference}##{discord_channel.name}"
+      ]
 
       {channels, invalid} =
         Monitors.delivery_channels_from_handles(handles, membership, [])
 
       assert invalid == []
-      assert Enum.count(channels) == 2
+      assert Enum.count(channels) == 3
 
       assert Enum.any?(channels, fn channel_map ->
                Map.get(channel_map, "target") == user.email
@@ -325,6 +350,12 @@ defmodule Trifle.MonitorsTest do
       slack_entry = Enum.find(channels, fn map -> Map.get(map, "channel") == "slack_webhook" end)
       assert slack_entry
       assert Map.get(slack_entry, "target") == channel.channel_id
+
+      discord_entry =
+        Enum.find(channels, fn map -> Map.get(map, "channel") == "discord_webhook" end)
+
+      assert discord_entry
+      assert Map.get(discord_entry, "target") == discord_channel.channel_id
 
       handles_roundtrip = Monitors.delivery_handles_from_channels(channels)
       assert Enum.sort(handles_roundtrip) == Enum.sort(handles)

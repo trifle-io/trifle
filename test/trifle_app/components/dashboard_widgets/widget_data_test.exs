@@ -50,22 +50,22 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
 
     values = [
       %{
-          "metrics" => %{
-            "count" => 5,
-            "category" => %{"A" => 3, "B" => 2},
-            "table" => %{"payments" => %{"credit" => 4, "digital" => 6}},
-            "distribution" => %{"10" => 2, "20" => 1}
-          }
-        },
-        %{
-          "metrics" => %{
-            "count" => 7,
-            "category" => %{"A" => 4, "B" => 3},
-            "table" => %{"payments" => %{"credit" => 5, "digital" => 7}},
-            "distribution" => %{"10" => 1, "20" => 2, "20+" => 1}
-          }
+        "metrics" => %{
+          "count" => 5,
+          "category" => %{"A" => 3, "B" => 2},
+          "table" => %{"payments" => %{"credit" => 4, "digital" => 6}},
+          "distribution" => %{"10" => 2, "20" => 1}
         }
-      ]
+      },
+      %{
+        "metrics" => %{
+          "count" => 7,
+          "category" => %{"A" => 4, "B" => 3},
+          "table" => %{"payments" => %{"credit" => 5, "digital" => 7}},
+          "distribution" => %{"10" => 1, "20" => 2, "20+" => 1}
+        }
+      }
+    ]
 
     series = %Trifle.Stats.Series{
       series: %{
@@ -119,6 +119,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert %{"table-1" => %{rows: table_rows}} = dataset_maps.table
     assert is_list(table_rows)
     assert %{"text-1" => %{title: "Hello World"}} = dataset_maps.text
+
     assert %{"dist-1" => %{bucket_labels: ["10", "20", "20+"], series: [_ | _]}} =
              dataset_maps.distribution
   end

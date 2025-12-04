@@ -103,6 +103,7 @@ defmodule Trifle.Stats.Transponder.Expression do
   defp normalize_value(%Decimal{} = decimal) do
     if Precision.enabled?(), do: decimal, else: Precision.to_float(decimal)
   end
+
   defp normalize_value(value), do: value
 
   defp trim_path(path) when is_binary(path), do: String.trim(path)
@@ -160,9 +161,14 @@ defmodule Trifle.Stats.Transponder.Expression do
     actual_key = if atom_keys?, do: String.to_atom(key), else: key
 
     case Map.get(map, actual_key) do
-      nil -> true
-      nested_map when is_map(nested_map) -> can_create_path?(nested_map, rest, map_uses_atom_keys?(nested_map))
-      _non_map -> false
+      nil ->
+        true
+
+      nested_map when is_map(nested_map) ->
+        can_create_path?(nested_map, rest, map_uses_atom_keys?(nested_map))
+
+      _non_map ->
+        false
     end
   end
 

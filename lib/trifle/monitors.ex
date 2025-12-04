@@ -417,7 +417,8 @@ defmodule Trifle.Monitors do
   end
 
   def delivery_options_for_membership(%OrganizationMembership{} = membership) do
-    (email_delivery_options(membership) ++ slack_delivery_options(membership))
+    (email_delivery_options(membership) ++
+       slack_delivery_options(membership) ++ discord_delivery_options(membership))
     |> Enum.uniq_by(& &1.handle)
     |> Enum.sort_by(&normalise_sort_key(Map.get(&1, :label, &1.handle)))
   end
@@ -586,6 +587,39 @@ defmodule Trifle.Monitors do
     end)
   end
 
+  defp discord_delivery_options(%OrganizationMembership{} = membership) do
+    membership.organization_id
+    |> Integrations.list_discord_installations_for_org(preload_channels: true)
+    |> Enum.flat_map(fn installation ->
+      Enum.flat_map(installation.channels || [], fn channel ->
+        if channel.enabled do
+          name = channel.name || channel.channel_id
+          handle = "discord_#{installation.reference}##{name}"
+
+          [
+            %{
+              handle: handle,
+              label: "##{name}",
+              description: installation.guild_name,
+              channel: :discord_webhook,
+              target: channel.channel_id,
+              config: %{
+                "installation_id" => installation.id,
+                "installation_reference" => installation.reference,
+                "guild_name" => installation.guild_name,
+                "channel_id" => channel.id,
+                "channel_name" => name
+              },
+              badge: "Discord"
+            }
+          ]
+        else
+          []
+        end
+      end)
+    end)
+  end
+
   defp option_to_channel_params(option, existing \\ nil) do
     channel = Map.get(option, :channel) || Map.get(option, "channel")
     normalized_channel = normalize_channel(channel) || :custom
@@ -642,6 +676,20 @@ defmodule Trifle.Monitors do
 
         if present?(reference) && present?(channel_name) do
           "slack_#{reference}##{channel_name}"
+        else
+          nil
+        end
+
+      :discord_webhook ->
+        config = config || %{}
+
+        reference =
+          Map.get(config, "installation_reference") || Map.get(config, :installation_reference)
+
+        channel_name = Map.get(config, "channel_name") || Map.get(config, :channel_name) || target
+
+        if present?(reference) && present?(channel_name) do
+          "discord_#{reference}##{channel_name}"
         else
           nil
         end
@@ -1027,7 +1075,7 @@ defmodule Trifle.Monitors do
 
   defp normalize_delivery_channel(channel) when is_map(channel) do
     channel
-    |> cast_enum(:channel, [:email, :slack_webhook, :webhook, :custom])
+    |> cast_enum(:channel, [:email, :slack_webhook, :discord_webhook, :webhook, :custom])
     |> ensure_map_key(:config, %{})
   end
 

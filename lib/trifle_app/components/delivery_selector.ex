@@ -147,6 +147,8 @@ defmodule TrifleApp.Components.DeliverySelector do
   defp badge_from_channel("email"), do: "Email"
   defp badge_from_channel(:slack_webhook), do: "Slack"
   defp badge_from_channel("slack_webhook"), do: "Slack"
+  defp badge_from_channel(:discord_webhook), do: "Discord"
+  defp badge_from_channel("discord_webhook"), do: "Discord"
   defp badge_from_channel(:webhook), do: "Webhook"
   defp badge_from_channel("webhook"), do: "Webhook"
   defp badge_from_channel(:custom), do: "Custom"

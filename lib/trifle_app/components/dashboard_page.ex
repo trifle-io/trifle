@@ -1159,7 +1159,9 @@ defmodule TrifleApp.Components.DashboardPage do
                         <option value="kpi" selected={sel == "kpi"}>KPI</option>
                         <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
                         <option value="category" selected={sel == "category"}>Category</option>
-                        <option value="distribution" selected={sel == "distribution"}>Distribution</option>
+                        <option value="distribution" selected={sel == "distribution"}>
+                          Distribution
+                        </option>
                         <option value="table" selected={sel == "table"}>Table</option>
                         <option value="list" selected={sel == "list"}>List</option>
                         <option value="text" selected={sel == "text"}>Text</option>

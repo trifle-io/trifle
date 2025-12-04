@@ -858,6 +858,7 @@ defmodule TrifleApp.DashboardLive do
                     DashboardWidgetHelpers.normalize_distribution_mode(
                       Map.get(params, "dist_mode", Map.get(i, "mode"))
                     )
+
                   legend =
                     params
                     |> Map.get("dist_legend", Map.get(i, "legend"))
@@ -1022,46 +1023,46 @@ defmodule TrifleApp.DashboardLive do
       |> Map.put("type", normalized)
       |> maybe_put_widget_title(title_param)
 
-      w =
-        case normalized do
-          "text" ->
-            w
-            |> Map.put_new("subtype", "header")
+    w =
+      case normalized do
+        "text" ->
+          w
+          |> Map.put_new("subtype", "header")
           |> Map.put_new("color", "default")
 
         "list" ->
-            w
-            |> Map.put_new("limit", 20)
-            |> Map.put_new("sort", "desc")
-            |> Map.put_new("label_strategy", "short")
+          w
+          |> Map.put_new("limit", 20)
+          |> Map.put_new("sort", "desc")
+          |> Map.put_new("label_strategy", "short")
 
-          "distribution" ->
-            designators =
-              DashboardWidgetHelpers.normalize_distribution_designators(
-                params,
-                Map.get(w, "designators") || w || %{}
-              )
+        "distribution" ->
+          designators =
+            DashboardWidgetHelpers.normalize_distribution_designators(
+              params,
+              Map.get(w, "designators") || w || %{}
+            )
 
-            mode =
-              params
-              |> Map.get("dist_mode", Map.get(w, "mode"))
-              |> DashboardWidgetHelpers.normalize_distribution_mode()
+          mode =
+            params
+            |> Map.get("dist_mode", Map.get(w, "mode"))
+            |> DashboardWidgetHelpers.normalize_distribution_mode()
 
           legend =
             params
             |> Map.get("dist_legend", w["legend"])
             |> DashboardWidgetHelpers.normalize_distribution_legend()
 
-            w
-            |> Map.put_new("paths", w["paths"] || [""])
-            |> Map.put("mode", mode)
-            |> Map.put("designators", designators)
-            |> Map.put("designator", Map.get(designators, "horizontal"))
-            |> Map.put("legend", legend)
+          w
+          |> Map.put_new("paths", w["paths"] || [""])
+          |> Map.put("mode", mode)
+          |> Map.put("designators", designators)
+          |> Map.put("designator", Map.get(designators, "horizontal"))
+          |> Map.put("legend", legend)
 
-          _ ->
-            w
-        end
+        _ ->
+          w
+      end
 
     {:noreply, assign(socket, :editing_widget, w)}
   end

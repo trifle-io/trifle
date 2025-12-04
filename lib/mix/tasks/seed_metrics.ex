@@ -228,7 +228,12 @@ defmodule Mix.Tasks.SeedMetrics do
   defp classification_metric_for("payload_distribution"), do: :payload
   defp classification_metric_for(_), do: nil
 
-  defp maybe_track_3d_support("latency_distribution", timestamp, %{"latency_ms" => latency_ms}, designator_configs)
+  defp maybe_track_3d_support(
+         "latency_distribution",
+         timestamp,
+         %{"latency_ms" => latency_ms},
+         designator_configs
+       )
        when is_number(latency_ms) do
     case Map.fetch(designator_configs, :latency) do
       {:ok, %{designator: designator} = config} when not is_nil(designator) ->
@@ -260,7 +265,7 @@ defmodule Mix.Tasks.SeedMetrics do
   defp jitter_secondary_latency(latency_ms) when is_number(latency_ms) do
     # Secondary dimension correlated but not identical to primary latency
     variability = 0.55 + :rand.uniform() * 0.9
-    shifted = latency_ms * variability + (:rand.normal() * 30)
+    shifted = latency_ms * variability + :rand.normal() * 30
     max(1.0, shifted)
   end
 

@@ -13,7 +13,8 @@ defmodule Trifle.Stats.Transponder.ExpressionTest do
       ]
     }
 
-    {:ok, updated} = Expression.transform(series, ["metrics.a", "metrics.b"], "a + b", "metrics.total")
+    {:ok, updated} =
+      Expression.transform(series, ["metrics.a", "metrics.b"], "a + b", "metrics.total")
 
     totals =
       updated.values
@@ -33,7 +34,12 @@ defmodule Trifle.Stats.Transponder.ExpressionTest do
     }
 
     {:ok, updated} =
-      Expression.transform(series, ["metrics.a", "metrics.b"], "a / b", "metrics.duration.average")
+      Expression.transform(
+        series,
+        ["metrics.a", "metrics.b"],
+        "a / b",
+        "metrics.duration.average"
+      )
 
     results =
       updated.values

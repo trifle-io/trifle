@@ -4,6 +4,7 @@ defmodule TrifleApp.OrganizationDeliveryLive do
   alias Trifle.Integrations
   alias Trifle.Organizations
   alias TrifleApp.OrganizationDeliveryLive.EmailComponent
+  alias TrifleApp.OrganizationDeliveryLive.DiscordComponent
   alias TrifleApp.OrganizationDeliveryLive.SlackComponent
   alias TrifleApp.OrganizationLive.Navigation
 
@@ -20,6 +21,8 @@ defmodule TrifleApp.OrganizationDeliveryLive do
       |> assign(:can_manage, false)
       |> assign(:slack_info, nil)
       |> assign(:slack_installations, [])
+      |> assign(:discord_info, nil)
+      |> assign(:discord_installations, [])
 
     email_info = email_info()
     socket = assign(socket, :email_info, email_info)
@@ -69,6 +72,15 @@ defmodule TrifleApp.OrganizationDeliveryLive do
               status={slack_status(@slack_info, @slack_installations)}
               slack_info={@slack_info}
               slack_installations={@slack_installations}
+              can_manage={@can_manage}
+            />
+
+            <.live_component
+              module={DiscordComponent}
+              id="discord-integration"
+              status={discord_status(@discord_info, @discord_installations)}
+              discord_info={@discord_info}
+              discord_installations={@discord_installations}
               can_manage={@can_manage}
             />
           </div>
@@ -225,13 +237,157 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     end
   end
 
+  def handle_event(
+        "connect_discord",
+        _params,
+        %{assigns: %{discord_info: %{configured?: false}}} = socket
+      ) do
+    {:noreply,
+     put_flash(
+       socket,
+       :error,
+       "Discord integration is not configured. Update Helm values and redeploy."
+     )}
+  end
+
+  def handle_event("connect_discord", _params, %{assigns: %{current_membership: nil}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "connect_discord",
+        _params,
+        %{
+          assigns: %{
+            current_membership: membership,
+            current_user: user,
+            discord_info: %{configured?: true, settings: settings}
+          }
+        } = socket
+      ) do
+    if Organizations.membership_admin?(membership) do
+      case build_discord_authorize_url(settings, membership, user) do
+        {:ok, url} ->
+          {:noreply, redirect(socket, external: url)}
+
+        {:error, message} ->
+          {:noreply, put_flash(socket, :error, message)}
+      end
+    else
+      {:noreply,
+       put_flash(socket, :error, "Only organization admins can manage Discord integrations.")}
+    end
+  end
+
+  def handle_event("sync_discord", %{"id" => installation_id}, socket) do
+    with %{} = membership <- socket.assigns.current_membership,
+         true <- Organizations.membership_admin?(membership),
+         %{} = installation <-
+           Integrations.get_discord_installation(membership.organization_id, installation_id) do
+      case Integrations.sync_discord_channels(installation) do
+        {:ok, _updated} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Discord channels synced.")
+           |> reload_discord_installations()}
+
+        {:error, reason} ->
+          {:noreply,
+           put_flash(socket, :error, "Unable to sync Discord channels: #{format_reason(reason)}")}
+      end
+    else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Server not found. Refresh and try again.")}
+
+      false ->
+        {:noreply,
+         put_flash(socket, :error, "Only organization admins can manage Discord integrations.")}
+    end
+  end
+
+  def handle_event(
+        "toggle_discord_channel",
+        %{"id" => channel_id, "next" => next_value},
+        %{assigns: %{current_membership: membership}} = socket
+      ) do
+    with %{} = membership <- membership,
+         true <- Organizations.membership_admin?(membership),
+         {:ok, enabled} <- parse_boolean(next_value),
+         {:ok, _channel} <-
+           Integrations.update_discord_channel_enabled(
+             membership.organization_id,
+             channel_id,
+             enabled
+           ) do
+      message =
+        if enabled do
+          "Channel enabled for delivery."
+        else
+          "Channel disabled for delivery."
+        end
+
+      {:noreply,
+       socket
+       |> put_flash(:info, message)
+       |> reload_discord_installations()}
+    else
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Channel not found. Refresh and try again.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Unable to update channel: #{changeset_error(changeset)}")}
+
+      false ->
+        {:noreply,
+         put_flash(socket, :error, "Only organization admins can manage Discord integrations.")}
+
+      {:error, :invalid_boolean} ->
+        {:noreply, put_flash(socket, :error, "Invalid channel state toggle.")}
+    end
+  end
+
+  def handle_event(
+        "remove_discord_installation",
+        %{"id" => installation_id},
+        %{assigns: %{current_membership: membership}} = socket
+      ) do
+    with %{} = membership <- membership,
+         true <- Organizations.membership_admin?(membership),
+         %{} = installation <-
+           Integrations.get_discord_installation(membership.organization_id, installation_id),
+         {:ok, _} <- Integrations.delete_discord_installation(installation) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Discord server #{installation.guild_name} disconnected.")
+       |> reload_discord_installations()}
+    else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Server not found. Refresh and try again.")}
+
+      false ->
+        {:noreply,
+         put_flash(socket, :error, "Only organization admins can manage Discord integrations.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Unable to disconnect server: #{changeset_error(changeset)}")}
+    end
+  end
+
   defp load_delivery_state(socket, membership) do
     email_info = email_info()
     slack_info = slack_info(membership.organization_id)
+    discord_info = discord_info(membership.organization_id)
     can_manage = Organizations.membership_admin?(membership)
 
     slack_installations =
       Integrations.list_slack_installations_for_org(membership.organization_id,
+        preload_channels: true
+      )
+
+    discord_installations =
+      Integrations.list_discord_installations_for_org(membership.organization_id,
         preload_channels: true
       )
 
@@ -241,6 +397,8 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     |> assign(:email_info, email_info)
     |> assign(:slack_info, slack_info)
     |> assign(:slack_installations, slack_installations)
+    |> assign(:discord_info, discord_info)
+    |> assign(:discord_installations, discord_installations)
   end
 
   defp email_info do
@@ -292,6 +450,18 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     }
   end
 
+  defp discord_info(organization_id) do
+    default_redirect = Integrations.default_discord_redirect_uri()
+    settings = Integrations.discord_settings(default_redirect)
+    configured? = Integrations.discord_configured?()
+
+    %{
+      configured?: configured?,
+      settings: settings,
+      organization_id: organization_id
+    }
+  end
+
   defp slack_status(nil, _installations), do: :warning
 
   defp slack_status(%{configured?: false}, _installations), do: :warning
@@ -318,6 +488,32 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     end
   end
 
+  defp discord_status(nil, _installations), do: :warning
+
+  defp discord_status(%{configured?: false}, _installations), do: :warning
+
+  defp discord_status(_info, installations) do
+    installations = installations || []
+
+    cond do
+      Enum.any?(installations, &discord_installation_error?/1) ->
+        :error
+
+      installations == [] ->
+        :error
+
+      true ->
+        :ok
+    end
+  end
+
+  defp discord_installation_error?(installation) do
+    case Map.get(installation, :settings) do
+      %{} = settings -> Map.get(settings, "error") in [true, "true", "1"]
+      _ -> false
+    end
+  end
+
   defp reload_slack_installations(socket) do
     membership = socket.assigns.current_membership
 
@@ -327,6 +523,17 @@ defmodule TrifleApp.OrganizationDeliveryLive do
       )
 
     assign(socket, :slack_installations, slack_installations)
+  end
+
+  defp reload_discord_installations(socket) do
+    membership = socket.assigns.current_membership
+
+    discord_installations =
+      Integrations.list_discord_installations_for_org(membership.organization_id,
+        preload_channels: true
+      )
+
+    assign(socket, :discord_installations, discord_installations)
   end
 
   defp build_slack_authorize_url(settings, membership, user) do
@@ -359,6 +566,45 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     end
   end
 
+  defp build_discord_authorize_url(settings, membership, user) do
+    client_id = blank_to_nil(settings.client_id)
+
+    redirect_uri =
+      blank_to_nil(settings.redirect_uri || Integrations.default_discord_redirect_uri())
+
+    bot_token = blank_to_nil(settings.bot_token)
+    permissions = settings.permissions || Integrations.discord_default_permissions()
+    scopes = settings.scopes || Integrations.discord_default_scopes()
+
+    cond do
+      is_nil(client_id) ->
+        {:error, "Discord client ID is missing. Update the Helm values and redeploy."}
+
+      is_nil(bot_token) ->
+        {:error, "Discord bot token is missing. Update the Helm values and redeploy."}
+
+      is_nil(redirect_uri) ->
+        {:error, "Discord redirect URI is missing. Update the Helm values and redeploy."}
+
+      true ->
+        state = Integrations.sign_discord_state(user.id, membership.organization_id)
+
+        params =
+          %{
+            "client_id" => client_id,
+            "response_type" => "code",
+            "scope" => Enum.join(List.wrap(scopes), " "),
+            "redirect_uri" => redirect_uri,
+            "permissions" => permissions,
+            "state" => state,
+            "prompt" => "consent"
+          }
+          |> URI.encode_query()
+
+        {:ok, "https://discord.com/api/oauth2/authorize?" <> params}
+    end
+  end
+
   defp parse_boolean(value) when value in [true, "true", "1", 1], do: {:ok, true}
   defp parse_boolean(value) when value in [false, "false", "0", 0], do: {:ok, false}
   defp parse_boolean(_), do: {:error, :invalid_boolean}
@@ -376,8 +622,13 @@ defmodule TrifleApp.OrganizationDeliveryLive do
   end
 
   defp format_reason({:slack_error, error}), do: error
+  defp format_reason({:discord_error, error}), do: error
+  defp format_reason({:discord_error, error, _payload}), do: error
+  defp format_reason({:discord_error, error, _code, _payload}), do: error
   defp format_reason({:invalid_payload, reason}), do: format_reason(reason)
   defp format_reason({:missing_key, key}), do: "missing #{key}"
+  defp format_reason({:missing_config, field}), do: "missing #{field}"
+  defp format_reason({:http_error, %{status: status}}), do: "HTTP #{status}"
   defp format_reason({:error, reason}), do: format_reason(reason)
   defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp format_reason(reason) when is_binary(reason), do: reason
