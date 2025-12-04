@@ -43,11 +43,13 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
     assert dataset.bucket_labels == ["10", "20", "20+"]
     assert dataset.vertical_bucket_labels == ["10", "20", "20+"]
     assert dataset.errors == []
+
     assert %{
              bucket_labels: ["10", "20", "20+"],
              config: %{buckets: [10.0, 20.0]},
              type: :custom
            } = dataset.designators["horizontal"]
+
     assert [%{values: values}] = dataset.series
 
     assert Enum.find(values, &(&1.bucket == "10")).value > 0
@@ -153,16 +155,19 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
     assert dataset.bucket_labels == ["100", "200", "200+"]
     assert dataset.vertical_bucket_labels == ["200", "200+"]
     assert [%{points: points}] = dataset.series
+
     assert %{
              bucket_x: "100",
              bucket_y: "200",
              value: 1.0
            } in points
+
     assert %{
              bucket_x: "200",
              bucket_y: "200",
              value: 2.0
            } in points
+
     assert dataset.errors == []
   end
 end

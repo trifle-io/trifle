@@ -81,6 +81,14 @@ config :trifle, :slack,
   redirect_uri: nil,
   scopes: ~w(chat:write chat:write.public channels:read groups:read incoming-webhook)
 
+config :trifle, :discord,
+  client_id: nil,
+  client_secret: nil,
+  bot_token: nil,
+  redirect_uri: nil,
+  scopes: ~w(bot applications.commands identify guilds),
+  permissions: 52_224
+
 config :trifle, :google_oauth,
   client_id: nil,
   client_secret: nil,

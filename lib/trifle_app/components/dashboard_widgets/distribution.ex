@@ -40,7 +40,10 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
             buckets: length(i.bucket_labels || []),
             series:
               Enum.map(i.series || [], fn s ->
-                values = Map.get(s, :values) || Map.get(s, "values") || Map.get(s, :points) || Map.get(s, "points") || []
+                values =
+                  Map.get(s, :values) || Map.get(s, "values") || Map.get(s, :points) ||
+                    Map.get(s, "points") || []
+
                 %{name: s.name, buckets: length(values)}
               end),
             errors: i.errors || []
@@ -97,20 +100,30 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
             chart_type: chart_type,
             legend: legend,
             bucket_labels: [],
-            vertical_bucket_labels: Map.get(Map.get(designators_summary, "vertical", %{}), :bucket_labels),
+            vertical_bucket_labels:
+              Map.get(Map.get(designators_summary, "vertical", %{}), :bucket_labels),
             series: [],
             designator: %{},
             designators: designators_summary,
             points?: mode == "3d",
             errors:
-              if(designator_errors == [], do: ["Horizontal designator is required"], else: designator_errors)
+              if(designator_errors == [],
+                do: ["Horizontal designator is required"],
+                else: designator_errors
+              )
           }
 
         true ->
           series =
             case {mode, Map.get(descriptors, "vertical")} do
               {"3d", %{} = vertical_descriptor} ->
-                series_for_paths_3d(series_struct, paths, horizontal_descriptor, vertical_descriptor, item)
+                series_for_paths_3d(
+                  series_struct,
+                  paths,
+                  horizontal_descriptor,
+                  vertical_descriptor,
+                  item
+                )
 
               _ ->
                 series_for_paths(series_struct, paths, horizontal_descriptor, item)
@@ -224,7 +237,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
   defp bucket_matrix(series_struct, path, horizontal_descriptor, vertical_descriptor) do
     normalized_path = to_string(path || "") |> String.trim()
-    clean_segments = normalized_path |> strip_wildcard() |> String.split(".") |> Enum.reject(&(&1 == ""))
+
+    clean_segments =
+      normalized_path |> strip_wildcard() |> String.split(".") |> Enum.reject(&(&1 == ""))
 
     series_struct
     |> Map.get(:series, %{})
@@ -313,7 +328,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end)
   end
 
-  defp reduce_bucket_maps(formatted) when is_map(formatted), do: accumulate_bucket_map(formatted, %{})
+  defp reduce_bucket_maps(formatted) when is_map(formatted),
+    do: accumulate_bucket_map(formatted, %{})
 
   defp reduce_bucket_maps(formatted) when is_list(formatted) do
     formatted
@@ -578,8 +594,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       for exp <- 0..max_power, multiplier <- [1, 2, 5], do: :math.pow(10, exp) * multiplier
 
     small_samples =
-      for exp <- 1..4, multiplier <- [1, 5],
-          do: multiplier / :math.pow(10, exp)
+      for exp <- 1..4, multiplier <- [1, 5], do: multiplier / :math.pow(10, exp)
 
     samples =
       [min, max, min / 10, max * 1.2, 1.0, 0.5]

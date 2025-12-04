@@ -217,14 +217,14 @@ defmodule TrifleApp.ExploreLive do
             kpi_visuals={%{}}
             timeseries={@timeseries_map}
             category={%{}}
-          table={@table_map}
-          text_widgets={%{}}
-          list={@list_map}
-          distribution={%{}}
-          export_params={%{}}
-          widget_export={@widget_export_config}
-          transponder_info={@transponder_info}
-        />
+            table={@table_map}
+            text_widgets={%{}}
+            list={@list_map}
+            distribution={%{}}
+            export_params={%{}}
+            widget_export={@widget_export_config}
+            transponder_info={@transponder_info}
+          />
         </div>
 
         <%= if @expanded_widget do %>
@@ -436,7 +436,6 @@ defmodule TrifleApp.ExploreLive do
           </.dashboard_footer>
           <.transponder_errors_modal summary={@summary} show_error_modal={@show_error_modal} />
         <% end %>
-
       </div>
     <% end %>
     """

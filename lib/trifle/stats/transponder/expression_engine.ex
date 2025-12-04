@@ -83,7 +83,15 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
   defp do_tokenize(<<"\n", rest::binary>>, acc, pos), do: do_tokenize(rest, acc, pos + 1)
   defp do_tokenize(<<"\r", rest::binary>>, acc, pos), do: do_tokenize(rest, acc, pos + 1)
 
-  for {op, token} <- [{"+", :+}, {"-", :-}, {"*", :*}, {"/", :/}, {"(", :"("}, {")", :")"}, {",", :","}] do
+  for {op, token} <- [
+        {"+", :+},
+        {"-", :-},
+        {"*", :*},
+        {"/", :/},
+        {"(", :"("},
+        {")", :")"},
+        {",", :","}
+      ] do
     defp do_tokenize(<<unquote(op), rest::binary>>, acc, pos),
       do: do_tokenize(rest, [unquote(token) | acc], pos + 1)
   end
@@ -94,7 +102,8 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
     do_tokenize(rest, [token | acc], pos + consumed)
   end
 
-  defp do_tokenize(<<c, _rest::binary>> = bin, acc, pos) when c in ?A..?Z or c in ?a..?z or c == ?_ do
+  defp do_tokenize(<<c, _rest::binary>> = bin, acc, pos)
+       when c in ?A..?Z or c in ?a..?z or c == ?_ do
     {ident, rest, consumed} = read_ident(bin, <<>>)
     token = {:ident, ident}
     do_tokenize(rest, [token | acc], pos + consumed)
@@ -127,7 +136,8 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
     end
   end
 
-  defp read_ident(<<c, rest::binary>>, acc) when c in ?A..?Z or c in ?a..?z or c in ?0..?9 or c == ?_ do
+  defp read_ident(<<c, rest::binary>>, acc)
+       when c in ?A..?Z or c in ?a..?z or c in ?0..?9 or c == ?_ do
     read_ident(rest, <<acc::binary, c>>)
   end
 
@@ -199,7 +209,9 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
   end
 
   defp parse_factor([], _vars), do: {:error, %{message: "Unexpected end of expression."}}
-  defp parse_factor([unexpected | _], _vars), do: {:error, %{message: "Unexpected token #{inspect(unexpected)}."}}
+
+  defp parse_factor([unexpected | _], _vars),
+    do: {:error, %{message: "Unexpected token #{inspect(unexpected)}."}}
 
   defp parse_args([:")" | rest], _vars), do: {:ok, {[], rest}}
 
@@ -277,6 +289,7 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
   defp apply_binary(:*, l, r), do: {:ok, Precision.mult(l, r)}
 
   defp apply_binary(:/, _l, 0), do: {:ok, nil}
+
   defp apply_binary(:/, l, r) do
     zero? =
       case r do
@@ -302,8 +315,12 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
 
   defp apply_function(name, args) when name in ["mean", "avg"] do
     cond do
-      Enum.empty?(args) -> {:ok, nil}
-      Enum.any?(args, &is_nil/1) -> {:ok, nil}
+      Enum.empty?(args) ->
+        {:ok, nil}
+
+      Enum.any?(args, &is_nil/1) ->
+        {:ok, nil}
+
       true ->
         numeric = Enum.map(args, &normalize_numeric/1)
         {:ok, Precision.average(numeric)}
@@ -312,8 +329,12 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
 
   defp apply_function("max", args) do
     cond do
-      Enum.empty?(args) -> {:ok, nil}
-      Enum.any?(args, &is_nil/1) -> {:ok, nil}
+      Enum.empty?(args) ->
+        {:ok, nil}
+
+      Enum.any?(args, &is_nil/1) ->
+        {:ok, nil}
+
       true ->
         numeric = Enum.map(args, &normalize_numeric/1)
         {:ok, Precision.max(numeric)}
@@ -332,8 +353,12 @@ defmodule Trifle.Stats.Transponder.ExpressionEngine do
 
   defp apply_function("min", args) do
     cond do
-      Enum.empty?(args) -> {:ok, nil}
-      Enum.any?(args, &is_nil/1) -> {:ok, nil}
+      Enum.empty?(args) ->
+        {:ok, nil}
+
+      Enum.any?(args, &is_nil/1) ->
+        {:ok, nil}
+
       true ->
         numeric = Enum.map(args, &normalize_numeric/1)
         {:ok, Precision.min(numeric)}

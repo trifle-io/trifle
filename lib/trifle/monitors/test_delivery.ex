@@ -623,6 +623,9 @@ defmodule Trifle.Monitors.TestDelivery do
       :slack_webhook ->
         deliver_slack(monitor, alert, channel, exports, params, handle, opts)
 
+      :discord_webhook ->
+        deliver_discord(monitor, alert, channel, exports, params, handle, opts)
+
       :webhook ->
         {:error,
          %{
@@ -925,6 +928,138 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
+  defp deliver_discord(monitor, alert, channel, exports, params, handle, opts) do
+    config = channel_config(channel)
+    channel_id = resolve_discord_channel_id(channel, config, monitor)
+    bot_token = Integrations.discord_bot_token()
+    discord_client = discord_client(opts)
+    discord_opts = Keyword.get(opts, :discord_client_opts, [])
+    trigger_type = delivery_trigger_type(alert, opts)
+
+    message =
+      case alert do
+        nil -> slack_message(monitor, nil, params)
+        %Alert{} -> slack_message(monitor, alert, params, trigger_type)
+      end
+
+    cond do
+      blank?(bot_token) ->
+        {:error,
+         %{
+           handle: handle,
+           type: :discord_webhook,
+           reason: "Discord bot token is missing."
+         }}
+
+      blank?(channel_id) ->
+        {:error,
+         %{
+           handle: handle,
+           type: :discord_webhook,
+           reason:
+             "Discord channel identifier is missing or invalid. Refresh Discord channels from Delivery settings and re-save this monitor."
+         }}
+
+      true ->
+        attachments =
+          exports
+          |> Enum.map(&discord_attachment/1)
+          |> Enum.reject(&is_nil/1)
+
+        case discord_client.create_message(
+               bot_token,
+               channel_id,
+               message,
+               attachments,
+               discord_opts
+             ) do
+          {:ok, response} ->
+            {:ok,
+             %{
+               handle: handle,
+               type: :discord_webhook,
+               attachments: parse_discord_attachments(response)
+             }}
+
+          {:error, reason} ->
+            {:error,
+             %{
+               handle: handle,
+               type: :discord_webhook,
+               reason: format_error(reason),
+               error: reason
+             }}
+
+          {:error, kind, detail} ->
+            wrapped_error = {kind, detail}
+
+            {:error,
+             %{
+               handle: handle,
+               type: :discord_webhook,
+               reason: format_error(wrapped_error),
+               error: wrapped_error
+             }}
+
+          {:decode_error, _reason} = error ->
+            retry_discord_without_attachments(
+              discord_client,
+              bot_token,
+              channel_id,
+              message,
+              handle,
+              error,
+              discord_opts
+            )
+
+          {:error, %Mint.TransportError{} = transport} = error ->
+            retry_discord_without_attachments(
+              discord_client,
+              bot_token,
+              channel_id,
+              message,
+              handle,
+              error,
+              discord_opts
+            )
+        end
+    end
+  end
+
+  defp retry_discord_without_attachments(client, token, channel_id, message, handle, reason, opts) do
+    case client.create_message(token, channel_id, message, [], opts) do
+      {:ok, response} ->
+        {:error,
+         %{
+           handle: handle,
+           type: :discord_webhook,
+           reason: format_error(reason),
+           error: reason,
+           attachments: parse_discord_attachments(response) || []
+         }}
+
+      {:error, secondary_reason} ->
+        {:error,
+         %{
+           handle: handle,
+           type: :discord_webhook,
+           reason: format_error(secondary_reason),
+           error: secondary_reason
+         }}
+
+      {:error, kind, detail} ->
+        wrapped = {kind, detail}
+
+        {:error,
+         %{
+           handle: handle,
+           type: :discord_webhook,
+           reason: format_error(wrapped),
+           error: wrapped
+         }}
+    end
+  end
+
   defp upload_slack_exports(
          _client,
          _token,
@@ -1113,6 +1248,35 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp sanitize_slack_file_metadata(_), do: nil
 
+  defp discord_attachment(export) when is_map(export) do
+    %{
+      binary: Map.get(export, :binary),
+      filename: Map.get(export, :filename),
+      content_type: Map.get(export, :content_type)
+    }
+  end
+
+  defp discord_attachment(_), do: nil
+
+  defp parse_discord_attachments(%{} = response) do
+    response
+    |> Map.get("attachments", [])
+    |> Enum.map(fn attachment ->
+      %{
+        id: Map.get(attachment, "id"),
+        filename: Map.get(attachment, "filename"),
+        size: Map.get(attachment, "size"),
+        url: Map.get(attachment, "url"),
+        proxy_url: Map.get(attachment, "proxy_url"),
+        content_type: Map.get(attachment, "content_type")
+      }
+      |> prune_empty_values()
+    end)
+    |> Enum.reject(&(&1 == %{}))
+  end
+
+  defp parse_discord_attachments(_), do: []
+
   defp finalize_results(%{successes: [], failures: failures}, _media) do
     {:error, failure_summary(failures)}
   end
@@ -1216,6 +1380,7 @@ defmodule Trifle.Monitors.TestDelivery do
   defp layout_builder(opts), do: Keyword.get(opts, :layout_builder, MonitorLayout)
   defp mailer(opts), do: Keyword.get(opts, :mailer, Mailer)
   defp slack_client(opts), do: Keyword.get(opts, :slack_client, SlackClient)
+  defp discord_client(opts), do: Keyword.get(opts, :discord_client, Integrations.Discord.Client)
 
   defp email_from(opts) do
     default_from =
@@ -1679,6 +1844,122 @@ defmodule Trifle.Monitors.TestDelivery do
 
   defp parse_slack_handle(_), do: nil
 
+  defp resolve_discord_channel_id(channel, config, %Monitor{} = monitor) do
+    candidates = [
+      channel_field(channel, :target),
+      config_value(config, :discord_channel_id),
+      config_value(config, :channel_discord_id)
+    ]
+
+    case Enum.find(candidates, &valid_discord_channel_id?/1) do
+      nil ->
+        channel_db_id =
+          config_value(config, :channel_id) ||
+            config_value(config, :channel_db_id)
+
+        cond do
+          valid_discord_channel_id?(channel_db_id) ->
+            channel_db_id
+
+          is_binary(channel_db_id) ->
+            fetch_discord_channel_id_from_db(
+              monitor.organization_id,
+              channel_db_id,
+              config_value(config, :installation_id)
+            )
+
+          true ->
+            case parse_discord_handle(channel_handle(channel)) do
+              {reference, channel_name} ->
+                fetch_discord_channel_id_by_name(
+                  monitor.organization_id,
+                  reference,
+                  channel_name
+                )
+
+              _ ->
+                nil
+            end
+        end
+
+      id ->
+        id
+    end
+  end
+
+  defp fetch_discord_channel_id_by_name(organization_id, reference, channel_name)
+       when is_binary(reference) and is_binary(channel_name) do
+    Integrations.list_discord_installations_for_org(organization_id, preload_channels: true)
+    |> Enum.find_value(fn installation ->
+      if installation.reference == reference do
+        installation.channels
+        |> List.wrap()
+        |> Enum.find_value(fn discord_channel ->
+          if channel_name_matches?(discord_channel.name, channel_name) do
+            discord_channel.channel_id
+          else
+            nil
+          end
+        end)
+      end
+    end)
+  end
+
+  defp fetch_discord_channel_id_by_name(_, _, _), do: nil
+
+  defp fetch_discord_channel_id_from_db(_organization_id, nil, _installation_id), do: nil
+
+  defp fetch_discord_channel_id_from_db(organization_id, channel_db_id, installation_id) do
+    installations =
+      cond do
+        valid_discord_channel_id?(channel_db_id) ->
+          []
+
+        present?(installation_id) ->
+          case Integrations.get_discord_installation(
+                 organization_id,
+                 installation_id,
+                 preload_channels: true
+               ) do
+            nil -> []
+            installation -> [installation]
+          end
+
+        true ->
+          Integrations.list_discord_installations_for_org(organization_id, preload_channels: true)
+      end
+
+    installations
+    |> Enum.find_value(fn installation ->
+      installation.channels
+      |> List.wrap()
+      |> Enum.find_value(fn discord_channel ->
+        cond do
+          discord_channel.id == channel_db_id ->
+            discord_channel.channel_id
+
+          discord_channel.channel_id == channel_db_id ->
+            discord_channel.channel_id
+
+          true ->
+            nil
+        end
+      end)
+    end)
+  end
+
+  defp parse_discord_handle(handle) when is_binary(handle) do
+    case String.split(handle, "#", parts: 2) do
+      [reference, channel_name] when reference != "" and channel_name != "" ->
+        {reference, channel_name}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_discord_handle(_), do: nil
+
   defp channel_name_matches?(a, b) when is_binary(a) and is_binary(b) do
     normalize_channel_name(a) == normalize_channel_name(b)
   end
@@ -1691,6 +1972,14 @@ defmodule Trifle.Monitors.TestDelivery do
     |> String.trim_leading("#")
     |> String.downcase()
   end
+
+  defp valid_discord_channel_id?(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    trimmed != "" and Regex.match?(~r/^[0-9]{10,}$/, trimmed)
+  end
+
+  defp valid_discord_channel_id?(_), do: false
 
   defp valid_slack_channel_id?(value) when is_binary(value) do
     trimmed = String.trim(value)
@@ -1751,6 +2040,22 @@ defmodule Trifle.Monitors.TestDelivery do
   defp format_error({:slack_error, error}), do: "Slack error: #{inspect(error)}"
 
   defp format_error({:slack_error, error, _payload}), do: "Slack error: #{inspect(error)}"
+  defp format_error({:discord_error, error}), do: "Discord error: #{inspect(error)}"
+
+  defp format_error({:discord_error, error, _payload}),
+    do: "Discord error: #{inspect(error)}"
+
+  defp format_error({:discord_error, error, _code, _payload}),
+    do: "Discord error: #{inspect(error)}"
+
+  defp format_error({:decode_error, reason}), do: "Decode error: #{inspect(reason)}"
+
+  defp format_error({:error, %Mint.TransportError{} = error}),
+    do: "Transport error: #{inspect(error)}"
+
+  defp format_error({:invalid_request, :empty_message}),
+    do: "Discord error: empty message payload"
+
   defp format_error({:mailer_error, reason}), do: "Mailer error: #{inspect(reason)}"
 
   defp format_error(:mailer_not_configured),

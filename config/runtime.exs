@@ -426,6 +426,58 @@ if config_env() == :prod do
     end
 
   config :trifle, :slack, Map.merge(base_slack_config, slack_overrides)
+
+  base_discord_config =
+    Application.get_env(:trifle, :discord, %{})
+    |> to_map.()
+
+  env_discord_scopes =
+    case System.get_env("DISCORD_SCOPES") do
+      nil ->
+        nil
+
+      "" ->
+        []
+
+      value ->
+        value
+        |> String.split(~r/[, ]+/, trim: true)
+        |> Enum.reject(&(&1 == ""))
+    end
+
+  discord_overrides =
+    %{
+      client_id: System.get_env("DISCORD_CLIENT_ID"),
+      client_secret: System.get_env("DISCORD_CLIENT_SECRET"),
+      bot_token: System.get_env("DISCORD_BOT_TOKEN"),
+      redirect_uri: System.get_env("DISCORD_REDIRECT_URI")
+    }
+    |> Enum.filter(fn {_key, value} -> not is_nil(value) and String.trim(value) != "" end)
+    |> Map.new()
+
+  discord_overrides =
+    case System.get_env("DISCORD_BOT_PERMISSIONS") do
+      nil ->
+        discord_overrides
+
+      "" ->
+        discord_overrides
+
+      value ->
+        case Integer.parse(value) do
+          {int, _} -> Map.put(discord_overrides, :permissions, int)
+          :error -> discord_overrides
+        end
+    end
+
+  discord_overrides =
+    if env_discord_scopes do
+      Map.put(discord_overrides, :scopes, env_discord_scopes)
+    else
+      discord_overrides
+    end
+
+  config :trifle, :discord, Map.merge(base_discord_config, discord_overrides)
 end
 
 base_google_config =

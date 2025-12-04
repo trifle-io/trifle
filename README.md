@@ -77,6 +77,13 @@ ChatLive is a conversational analytics assistant that lets you query your Trifle
 
 After configuring the variables, restart the server. The assistant will list your accessible analytics sources and can call internal tools to fetch metric series using `Trifle.Stats`.
 
+## Delivery Channels
+
+- **Email:** Configure `Trifle.Mailer` (see `EMAILS.md`). All organization members are available as delivery targets.
+- **Slack:** Set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, and `SLACK_REDIRECT_URI` (scopes default to `chat:write chat:write.public channels:read groups:read incoming-webhook`). Authorize workspaces from **Organization → Delivery** and sync channels before enabling them.
+- **Discord:** Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, and `DISCORD_REDIRECT_URI` (optional: `DISCORD_SCOPES`, `DISCORD_BOT_PERMISSIONS`, default `52224`). Create a Discord application + bot with scopes `bot applications.commands identify guilds`, grant message + file permissions, then connect servers from **Organization → Delivery** and sync channels.
+- After connecting Slack or Discord, use the Delivery panel to enable specific channels and reference them in monitors with `slack_<ref>#channel` or `discord_<ref>#channel`.
+
 ## API Testing and Data Population
 
 The application provides a metrics API for programmatic data submission. You'll need to create a project token with write permissions first.

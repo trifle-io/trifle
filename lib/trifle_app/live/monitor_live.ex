@@ -85,12 +85,12 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:insights_kpi_values, %{})
      |> assign(:insights_kpi_visuals, %{})
      |> assign(:insights_timeseries, %{})
-    |> assign(:insights_category, %{})
-    |> assign(:insights_table, %{})
-    |> assign(:insights_text_widgets, %{})
-    |> assign(:insights_list, %{})
-    |> assign(:insights_distribution, %{})
-    |> assign(:alert_evaluations, %{})
+     |> assign(:insights_category, %{})
+     |> assign(:insights_table, %{})
+     |> assign(:insights_text_widgets, %{})
+     |> assign(:insights_list, %{})
+     |> assign(:insights_distribution, %{})
+     |> assign(:alert_evaluations, %{})
      |> assign(:expanded_widget, nil)
      |> assign(:show_export_dropdown, false)
      |> assign(:show_error_modal, false)
@@ -3123,7 +3123,6 @@ defmodule TrifleApp.MonitorLive do
           </button>
         </:footer>
       </.app_modal>
-
 
       <.live_component
         :if={@alert_modal}

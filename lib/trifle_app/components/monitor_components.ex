@@ -429,6 +429,7 @@ defmodule TrifleApp.MonitorComponents do
   defp delivery_badge(channel) when is_atom(channel), do: delivery_badge(Atom.to_string(channel))
   defp delivery_badge("email"), do: "Email"
   defp delivery_badge("slack_webhook"), do: "Slack"
+  defp delivery_badge("discord_webhook"), do: "Discord"
   defp delivery_badge("webhook"), do: "Webhook"
   defp delivery_badge("custom"), do: "Custom"
   defp delivery_badge(_), do: "Channel"

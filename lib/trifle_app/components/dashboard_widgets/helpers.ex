@@ -218,16 +218,24 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       "linear" ->
         %{
           "type" => "linear",
-          "min" => normalize_designator_number(Map.get(params, "#{prefix}min"), Map.get(existing, "min")),
-          "max" => normalize_designator_number(Map.get(params, "#{prefix}max"), Map.get(existing, "max")),
-          "step" => normalize_designator_number(Map.get(params, "#{prefix}step"), Map.get(existing, "step"))
+          "min" =>
+            normalize_designator_number(Map.get(params, "#{prefix}min"), Map.get(existing, "min")),
+          "max" =>
+            normalize_designator_number(Map.get(params, "#{prefix}max"), Map.get(existing, "max")),
+          "step" =>
+            normalize_designator_number(
+              Map.get(params, "#{prefix}step"),
+              Map.get(existing, "step")
+            )
         }
 
       "geometric" ->
         %{
           "type" => "geometric",
-          "min" => normalize_designator_number(Map.get(params, "#{prefix}min"), Map.get(existing, "min")),
-          "max" => normalize_designator_number(Map.get(params, "#{prefix}max"), Map.get(existing, "max"))
+          "min" =>
+            normalize_designator_number(Map.get(params, "#{prefix}min"), Map.get(existing, "min")),
+          "max" =>
+            normalize_designator_number(Map.get(params, "#{prefix}max"), Map.get(existing, "max"))
         }
 
       _ ->
@@ -281,8 +289,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       |> case do
         nil ->
           source
-          |> Map.get("designator") || Map.get(source, :designator) || default_distribution_designator()
-          |> normalize_designator_map()
+          |> Map.get("designator") || Map.get(source, :designator) ||
+            default_distribution_designator()
+            |> normalize_designator_map()
 
         value ->
           normalize_designator_map(value)

@@ -57,14 +57,17 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp handle_monitor(%Monitor{type: :report} = monitor, scheduled_for) do
     report_settings = monitor.report_settings || %{}
+
     Logger.debug(fn ->
       "[EvaluateMonitor] deliver report monitor=#{monitor.id} freq=#{Map.get(report_settings, :frequency)} timeframe=#{Map.get(report_settings, :timeframe)} granularity=#{Map.get(report_settings, :granularity)} channels=#{length(monitor.delivery_channels || [])}"
     end)
+
     case TestDelivery.deliver_monitor(monitor) do
       {:ok, result} ->
         Logger.debug(fn ->
           "[EvaluateMonitor] report delivered monitor=#{monitor.id} keys=#{inspect(Map.keys(result || %{}))}"
         end)
+
         log_execution(monitor, %{
           status: "ok",
           summary: "Report delivered successfully.",
@@ -82,6 +85,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         Logger.debug(fn ->
           "[EvaluateMonitor] report delivery failed monitor=#{monitor.id} reason=#{inspect(reason)}"
         end)
+
         log_execution(monitor, %{
           status: "error",
           summary: "Report delivery failed: #{format_reason(reason)}",
@@ -103,6 +107,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         Logger.debug(fn ->
           "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=missing_metric_path"
         end)
+
         log_execution(monitor, %{
           status: "skipped",
           summary: "Skipped alert evaluation – metric path not configured.",
@@ -119,6 +124,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         Logger.debug(fn ->
           "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=no_alerts"
         end)
+
         log_execution(monitor, %{
           status: "skipped",
           summary: "Skipped alert evaluation – no alerts configured.",
@@ -135,11 +141,13 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         Logger.debug(fn ->
           "[EvaluateMonitor] evaluate alert monitor=#{monitor.id} alerts=#{length(monitor.alerts || [])} timeframe=#{monitor.alert_timeframe} granularity=#{monitor.alert_granularity} notify_every=#{monitor.alert_notify_every}"
         end)
+
         evaluate_alerts(monitor, scheduled_for)
     end
   end
 
   defp handle_monitor(_monitor, _scheduled_for), do: :ok
+
   defp monitor_kind(%Monitor{type: type}) when type in [:report, :alert],
     do: Atom.to_string(type)
 
@@ -227,6 +235,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         Logger.debug(fn ->
           "[EvaluateMonitor] alert evaluation unexpected export response monitor=#{monitor.id}"
         end)
+
         log_execution(monitor, %{
           status: "failed",
           summary: "Alert evaluation failed due to unexpected response.",

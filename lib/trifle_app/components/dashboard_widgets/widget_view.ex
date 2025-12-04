@@ -515,15 +515,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
           <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
           <li class="first:pt-0 last:pb-0">
-            <div
-              class={[
-                "flex items-center justify-between gap-2.5 border px-2.5 py-1.5 transition-colors list-widget-row",
-                if(selected && @list_selectable,
-                  do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
-                  else: "border-transparent"
-                )
-              ]}
-            >
+            <div class={[
+              "flex items-center justify-between gap-2.5 border px-2.5 py-1.5 transition-colors list-widget-row",
+              if(selected && @list_selectable,
+                do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
+                else: "border-transparent"
+              )
+            ]}>
               <div class={[
                 "flex items-center min-w-0",
                 if(@list_selectable, do: "gap-2.5", else: "gap-2")
@@ -1433,7 +1431,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           |> WidgetHelpers.normalize_distribution_paths_for_edit()
 
         designators = WidgetHelpers.normalize_distribution_designators(%{}, item)
-        designator = Map.get(designators, "horizontal") || WidgetHelpers.default_distribution_designator()
+
+        designator =
+          Map.get(designators, "horizontal") || WidgetHelpers.default_distribution_designator()
 
         item
         |> Map.put("mode", normalized_mode)

@@ -73,7 +73,8 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
             <span class="sr-only">Add path</span>
           </button>
           <p class="text-xs text-gray-500 dark:text-slate-400">
-            Use <code>*</code> to include nested buckets (for example <code>metrics.distribution.*</code>).
+            Use <code>*</code>
+            to include nested buckets (for example <code>metrics.distribution.*</code>).
           </p>
         </div>
       </div>

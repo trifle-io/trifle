@@ -47,7 +47,7 @@ defmodule Trifle.Monitors.Monitor do
 
     embeds_many :delivery_channels, DeliveryChannel, on_replace: :delete do
       field :channel, Ecto.Enum,
-        values: [:email, :slack_webhook, :webhook, :custom],
+        values: [:email, :slack_webhook, :discord_webhook, :webhook, :custom],
         default: :email
 
       field :label, :string
