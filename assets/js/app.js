@@ -1165,6 +1165,7 @@ Hooks.DashboardGrid = {
     this._sparklines = {};
     this._sparkTypes = {};
     this._tsCharts = {};
+    this._tsSeriesData = {};
     this._catCharts = {};
     this._distCharts = {};
     this._tableCache = {};
@@ -1235,6 +1236,16 @@ Hooks.DashboardGrid = {
     };
     window.addEventListener('phx:page-loading-stop', this._onPageLoadingStop);
     this._sparkTimers = {};
+    this._tsSyncGroup = ['ts-sync', this.el.dataset.dashboardId || this.el.id || 'grid', this.el.dataset.publicToken || 'priv'].join(':');
+    this._tsSyncPending = null;
+    this._tsSyncRaf = null;
+    this._tsSyncApplying = false;
+    this._tsSyncConnected = false;
+    this._tsHoveringId = null;
+    this._tsLastValue = null;
+    this._tsSyncLoop = null;
+    this._tsHideTimer = null;
+    this._tsPointerMove = null;
     const editableAttr = this.el.dataset.editable;
     this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
     this.cols = parseInt(this.el.dataset.cols || '12', 10);
@@ -1526,6 +1537,7 @@ Hooks.DashboardGrid = {
       });
       this._tsCharts = {};
     }
+    this._tsSeriesData = {};
     if (this._catCharts) {
       Object.values(this._catCharts).forEach((c) => {
         if (c && !c.isDisposed()) c.dispose();
@@ -1552,6 +1564,25 @@ Hooks.DashboardGrid = {
       window.removeEventListener('trifle:theme-changed', this._onThemeChange);
       this._onThemeChange = null;
     }
+    if (this._tsSyncRaf) {
+      cancelAnimationFrame(this._tsSyncRaf);
+      this._tsSyncRaf = null;
+    }
+    if (this._tsSyncLoop) {
+      cancelAnimationFrame(this._tsSyncLoop);
+      this._tsSyncLoop = null;
+    }
+    if (this._tsHideTimer) {
+      clearTimeout(this._tsHideTimer);
+      this._tsHideTimer = null;
+    }
+    if (this._tsPointerMove) {
+      window.removeEventListener('pointermove', this._tsPointerMove, true);
+      this._tsPointerMove = null;
+    }
+    this._tsSyncConnected = false;
+    this._tsHoveringId = null;
+    this._tsLastValue = null;
   },
 
   initGrid() {
@@ -1958,7 +1989,13 @@ Hooks.DashboardGrid = {
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
           chart = echarts.init(container, initTheme, withChartOpts());
+          chart.group = this._tsSyncGroup;
+          if (this._tsSyncGroup && !this._tsSyncConnected) {
+            try { echarts.connect(this._tsSyncGroup); this._tsSyncConnected = true; } catch (_) {}
+          }
           this._tsCharts[it.id] = chart;
+        } else if (chart && chart.group !== this._tsSyncGroup) {
+          chart.group = this._tsSyncGroup;
         }
         const type = (it.chart_type || 'line');
         const stacked = !!it.stacked;
@@ -2213,6 +2250,7 @@ Hooks.DashboardGrid = {
         }
 
         const finalSeries = series.concat(baselineSeries);
+        this._tsSeriesData[it.id] = series.map((s) => Array.isArray(s.data) ? s.data : []);
         const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
         const extractPointValue = (point) => {
           if (Array.isArray(point)) return Number(point[1]);
@@ -2328,11 +2366,11 @@ Hooks.DashboardGrid = {
           legend: showLegend
             ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData }
             : { show: false },
-          tooltip: {
-            trigger: 'axis',
-            appendToBody: true,
-            textStyle: { fontFamily: chartFontFamily },
-            formatter: (params) => {
+      tooltip: {
+        trigger: 'axis',
+        appendToBody: true,
+        textStyle: { fontFamily: chartFontFamily },
+        formatter: (params) => {
               const list = Array.isArray(params) ? params : [];
               if (!list.length) return '';
               const header = list[0].axisValueLabel || '';
@@ -2361,6 +2399,7 @@ Hooks.DashboardGrid = {
           });
         } catch (_) {}
         chart.resize();
+        this._bind_ts_sync(chart, it.id);
       };
       setTimeout(ensureInit, 0);
     });
@@ -3834,6 +3873,9 @@ Hooks.DashboardGrid = {
         registry.timeseries[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
       } else {
         delete registry.timeseries[normalizedId];
+        if (this._tsSeriesData) {
+          delete this._tsSeriesData[normalizedId];
+        }
       }
       this._render_timeseries(this._sortedWidgetValues(registry.timeseries));
       return;
@@ -4021,6 +4063,173 @@ Hooks.DashboardGrid = {
 
   escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
+  },
+
+  _bind_ts_sync(chart, widgetId) {
+    if (!chart || typeof chart.on !== 'function') return;
+    const id = String(widgetId || '');
+    if (chart.__tsSyncHandlers) {
+      const { pointer, leave, dom, out } = chart.__tsSyncHandlers;
+      try { chart.off('updateAxisPointer', pointer); } catch (_) {}
+      if (dom && dom.removeEventListener && leave) {
+        try { dom.removeEventListener('mouseleave', leave); } catch (_) {}
+      }
+      if (out) {
+        try { chart.off('mouseout', out); } catch (_) {}
+      }
+    }
+    const pointer = (event) => {
+      if (this._tsSyncApplying) return;
+      if (!this._tsCharts || Object.keys(this._tsCharts).length <= 1) return;
+      const axisInfo = event && Array.isArray(event.axesInfo) ? event.axesInfo[0] : null;
+      const value = axisInfo ? axisInfo.value : null;
+      if (!Number.isFinite(value) && typeof value !== 'string') return;
+      this._cancel_ts_hide();
+      this._tsHoveringId = id;
+      this._tsLastValue = value;
+      this._queue_ts_sync({ type: 'show', value, sourceId: id });
+      this._kick_ts_sync_loop();
+      this._ensure_ts_pointer_listener();
+    };
+    const leave = () => this._schedule_ts_hide(id);
+    const out = () => this._schedule_ts_hide(id);
+    chart.on('updateAxisPointer', pointer);
+    const dom = chart.getDom ? chart.getDom() : null;
+    if (dom && dom.addEventListener) {
+      dom.addEventListener('mouseleave', leave);
+    }
+    chart.on('mouseout', out);
+    chart.__tsSyncHandlers = { pointer, leave, out, dom };
+  },
+
+  _queue_ts_sync(payload) {
+    this._tsSyncPending = payload;
+    if (this._tsSyncRaf) return;
+    this._tsSyncRaf = requestAnimationFrame(() => {
+      this._tsSyncRaf = null;
+      const task = this._tsSyncPending;
+      this._tsSyncPending = null;
+      if (!task) return;
+      this._apply_ts_sync(task);
+    });
+  },
+
+  _apply_ts_sync(payload) {
+    if (!payload || !this._tsCharts) return;
+    const entries = Object.entries(this._tsCharts)
+      .filter(([, chart]) => chart && !(chart.isDisposed && chart.isDisposed()));
+    if (entries.length === 0) return;
+    if (entries.length === 1 && payload.type === 'show') return;
+    const { type, value } = payload;
+    if (type === 'show' && !Number.isFinite(value) && typeof value !== 'string') return;
+    this._tsSyncApplying = true;
+    try {
+      entries.forEach(([, chart]) => {
+        if (type === 'show') {
+          try {
+            chart.dispatchAction({ type: 'updateAxisPointer', xAxisIndex: 0, value });
+            const idx = this._nearest_ts_index(chart, value);
+            if (idx != null) {
+              chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx });
+              chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: idx });
+            } else {
+              chart.dispatchAction({ type: 'showTip', xAxisIndex: 0, value });
+            }
+          } catch (_) {}
+        } else if (type === 'hide') {
+          try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) {}
+          try { chart.dispatchAction({ type: 'downplay', seriesIndex: 0 }); } catch (_) {}
+        }
+      });
+    } finally {
+      this._tsSyncApplying = false;
+    }
+  },
+
+  _kick_ts_sync_loop() {
+    if (this._tsSyncLoop) return;
+    const tick = () => {
+      this._tsSyncLoop = null;
+      if (!this._tsHoveringId || this._tsLastValue == null) {
+        return;
+      }
+      this._apply_ts_sync({ type: 'show', value: this._tsLastValue, sourceId: this._tsHoveringId });
+      this._tsSyncLoop = requestAnimationFrame(tick);
+    };
+    this._tsSyncLoop = requestAnimationFrame(tick);
+  },
+
+  _schedule_ts_hide(sourceId) {
+    if (this._tsHideTimer) return;
+    if (this._tsSyncLoop) {
+      cancelAnimationFrame(this._tsSyncLoop);
+      this._tsSyncLoop = null;
+    }
+    this._tsHideTimer = setTimeout(() => {
+      this._tsHideTimer = null;
+      this._tsHoveringId = null;
+      this._tsLastValue = null;
+      this._queue_ts_sync({ type: 'hide', sourceId });
+    }, 120);
+  },
+
+  _cancel_ts_hide() {
+    if (this._tsHideTimer) {
+      clearTimeout(this._tsHideTimer);
+      this._tsHideTimer = null;
+    }
+  },
+
+  _ensure_ts_pointer_listener() {
+    if (this._tsPointerMove) return;
+    this._tsPointerMove = (e) => {
+      if (!this._tsHoveringId) return;
+      const inside = this._point_inside_ts(e.clientX, e.clientY);
+      if (inside) {
+        this._cancel_ts_hide();
+      } else {
+        this._schedule_ts_hide(this._tsHoveringId);
+      }
+    };
+    window.addEventListener('pointermove', this._tsPointerMove, true);
+  },
+
+  _point_inside_ts(x, y) {
+    if (!this._tsCharts) return false;
+    const charts = Object.values(this._tsCharts);
+    for (let i = 0; i < charts.length; i += 1) {
+      const chart = charts[i];
+      if (!chart || (chart.isDisposed && chart.isDisposed())) continue;
+      const dom = chart.getDom ? chart.getDom() : null;
+      if (!dom || dom.offsetParent === null) continue;
+      const rect = dom.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return true;
+    }
+    return false;
+  },
+
+  _nearest_ts_index(chart, value) {
+    const id = Object.entries(this._tsCharts || {}).find(([, c]) => c === chart)?.[0];
+    if (!id) return null;
+    const seriesData = (this._tsSeriesData && this._tsSeriesData[id]) || [];
+    if (!Array.isArray(seriesData) || !seriesData.length) return null;
+    const target = typeof value === 'string' ? new Date(value).getTime() : Number(value);
+    if (!Number.isFinite(target)) return null;
+    let best = null;
+    let bestDiff = Infinity;
+    const extractTs = (point) => extractTimestamp(point);
+    const data = Array.isArray(seriesData[0]) ? seriesData[0] : [];
+    for (let i = 0; i < data.length; i += 1) {
+      const ts = extractTs(data[i]);
+      if (!Number.isFinite(ts)) continue;
+      const diff = Math.abs(ts - target);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+        if (diff === 0) break;
+      }
+    }
+    return best;
   },
 }
 
