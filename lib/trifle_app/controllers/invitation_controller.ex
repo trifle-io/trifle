@@ -28,10 +28,10 @@ defmodule TrifleApp.InvitationController do
 
     with %OrganizationInvitation{} = invitation <- Organizations.get_invitation_by_token(token),
          false <- Organizations.invitation_expired?(invitation),
-         {:ok, _membership} <- Organizations.accept_invitation(invitation, current_user) do
+      {:ok, _membership} <- Organizations.accept_invitation(invitation, current_user) do
       conn
       |> put_flash(:info, "Invitation accepted. Welcome aboard!")
-      |> redirect(to: ~p"/dashboards")
+      |> redirect(to: ~p"/")
     else
       {:error, :expired} ->
         conn
@@ -41,22 +41,22 @@ defmodule TrifleApp.InvitationController do
       {:error, :belongs_to_another_organization} ->
         conn
         |> put_flash(:error, "You already belong to a different organization.")
-        |> redirect(to: ~p"/dashboards")
+        |> redirect(to: ~p"/")
 
       {:error, :invalid_status} ->
         conn
         |> put_flash(:error, "This invitation cannot be accepted.")
-        |> redirect(to: ~p"/dashboards")
+        |> redirect(to: ~p"/")
 
       {:error, %Changeset{} = changeset} ->
         conn
         |> put_flash(:error, "Could not accept invitation: #{changeset_error(changeset)}")
-        |> redirect(to: ~p"/dashboards")
+        |> redirect(to: ~p"/")
 
       _ ->
         conn
         |> put_flash(:error, "Unable to process this invitation.")
-        |> redirect(to: ~p"/dashboards")
+        |> redirect(to: ~p"/")
     end
   end
 

@@ -36,7 +36,7 @@ defmodule TrifleApp.UserLoginLiveTest do
 
       conn = submit_form(form, conn)
 
-      assert redirected_to(conn) == ~p"/dashboards"
+      assert redirected_to(conn) == ~p"/"
     end
 
     test "redirects to login page with a flash error if there are no valid credentials", %{

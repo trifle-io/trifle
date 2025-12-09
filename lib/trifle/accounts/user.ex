@@ -6,6 +6,7 @@ defmodule Trifle.Accounts.User do
   @foreign_key_type :binary_id
 
   schema "users" do
+    field :name, :string
     field :email, :string
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
@@ -41,8 +42,9 @@ defmodule Trifle.Accounts.User do
   """
   def registration_changeset(user, attrs, opts \\ []) do
     user
-    |> cast(attrs, [:email, :password])
+    |> cast(attrs, [:email, :password, :name])
     |> validate_email(opts)
+    |> validate_length(:name, max: 160)
     |> validate_password(opts)
   end
 
@@ -51,8 +53,9 @@ defmodule Trifle.Accounts.User do
   """
   def sso_changeset(user, attrs) do
     user
-    |> cast(attrs, [:email, :hashed_password, :confirmed_at])
+    |> cast(attrs, [:email, :hashed_password, :confirmed_at, :name])
     |> validate_email([])
+    |> validate_length(:name, max: 160)
     |> validate_required([:hashed_password])
   end
 
@@ -178,5 +181,11 @@ defmodule Trifle.Accounts.User do
     user
     |> cast(attrs, [:theme])
     |> validate_inclusion(:theme, ~w(light dark system), message: "is not a valid theme")
+  end
+
+  def profile_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:name])
+    |> validate_length(:name, max: 160)
   end
 end

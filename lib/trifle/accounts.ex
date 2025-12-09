@@ -85,13 +85,18 @@ defmodule Trifle.Accounts do
   @doc """
   Finds or creates a user for SSO-authenticated flows.
   """
-  def get_or_create_user_for_sso(email) when is_binary(email) do
+  def get_or_create_user_for_sso(email, attrs \\ %{}) when is_binary(email) do
+    name = normalize_name(attrs)
+
     case get_user_by_email(email) do
       %User{} = user ->
-        ensure_user_confirmed(user)
+        with {:ok, user} <- ensure_user_confirmed(user),
+             {:ok, user} <- maybe_update_user_name(user, name) do
+          {:ok, user}
+        end
 
       nil ->
-        create_user_for_sso(email)
+        create_user_for_sso(email, name)
     end
   end
 
@@ -105,7 +110,7 @@ defmodule Trifle.Accounts do
     end
   end
 
-  defp create_user_for_sso(email) do
+  defp create_user_for_sso(email, name) do
     password =
       @sso_generated_password_length
       |> :crypto.strong_rand_bytes()
@@ -115,9 +120,42 @@ defmodule Trifle.Accounts do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     %User{}
-    |> User.sso_changeset(%{email: email, hashed_password: hashed_password, confirmed_at: now})
+    |> User.sso_changeset(%{
+      email: email,
+      hashed_password: hashed_password,
+      confirmed_at: now,
+      name: name
+    })
     |> Repo.insert()
   end
+
+  defp maybe_update_user_name(user, nil), do: {:ok, user}
+
+  defp maybe_update_user_name(%User{name: nil} = user, name) when is_binary(name) and name != "" do
+    user
+    |> Ecto.Changeset.change(name: name)
+    |> Repo.update()
+  end
+
+  defp maybe_update_user_name(%User{name: existing} = user, _name)
+       when is_binary(existing) and existing != "" do
+    {:ok, user}
+  end
+
+  defp maybe_update_user_name(user, _), do: {:ok, user}
+
+  defp normalize_name(%{} = attrs) do
+    attrs
+    |> Map.get(:name) || Map.get(attrs, "name")
+    |> normalize_name()
+  end
+
+  defp normalize_name(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: nil, else: trimmed
+  end
+
+  defp normalize_name(_), do: nil
 
   @doc """
   Returns an `%Ecto.Changeset{}` for tracking user changes.
@@ -265,6 +303,23 @@ defmodule Trifle.Accounts do
   """
   def change_user_theme(user, attrs \\ %{}) do
     User.theme_changeset(user, attrs)
+  end
+
+  @doc """
+  Returns a changeset for editing profile fields (currently name).
+  """
+  def change_user_profile(%User{} = user, attrs \\ %{}) do
+    user
+    |> User.profile_changeset(attrs)
+  end
+
+  @doc """
+  Updates profile fields for a user.
+  """
+  def update_user_profile(%User{} = user, attrs) do
+    user
+    |> User.profile_changeset(attrs)
+    |> Repo.update()
   end
 
   @doc """

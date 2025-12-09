@@ -81,7 +81,7 @@ defmodule TrifleApp.Router do
 
     live_session :app_authenticated,
       on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
-      live "/", AppRedirectLive, :index
+      live "/", HomeLive, :index
       live "/organization", OrganizationRedirectLive, :index
       live "/organization/profile", OrganizationProfileLive, :show
       live "/organization/users", OrganizationUsersLive, :index
