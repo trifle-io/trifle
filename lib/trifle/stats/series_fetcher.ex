@@ -141,7 +141,7 @@ defmodule Trifle.Stats.SeriesFetcher do
 
     # Use Trifle.Stats.values to fetch raw stats data
     stats = Trifle.Stats.values(key, from, to, granularity, config)
-    {:ok, stats}
+    {:ok, ensure_chronological(stats)}
   end
 
   defp fetch_stats_progressive(
@@ -174,8 +174,11 @@ defmodule Trifle.Stats.SeriesFetcher do
       end)
 
     case results do
-      {:ok, accumulated_stats} -> {:ok, accumulated_stats}
-      error -> error
+      {:ok, accumulated_stats} ->
+        {:ok, ensure_chronological(accumulated_stats)}
+
+      error ->
+        error
     end
   end
 
@@ -189,9 +192,10 @@ defmodule Trifle.Stats.SeriesFetcher do
   end
 
   defp accumulate_chunk_result({:ok, chunk_stats}, {:ok, accumulated_stats}) do
-    # Merge the timeline (at) arrays and sum the values
-    merged_at = (accumulated_stats[:at] || []) ++ (chunk_stats[:at] || [])
-    merged_values = (accumulated_stats[:values] || []) ++ (chunk_stats[:values] || [])
+    # Merge the timeline (at) arrays and values while preserving chronological order.
+    # We iterate chunks newest-first, so prepend the current chunk to keep ascending timestamps.
+    merged_at = (chunk_stats[:at] || []) ++ (accumulated_stats[:at] || [])
+    merged_values = (chunk_stats[:values] || []) ++ (accumulated_stats[:values] || [])
 
     merged_stats = %{at: merged_at, values: merged_values}
     {:ok, merged_stats}
@@ -204,6 +208,47 @@ defmodule Trifle.Stats.SeriesFetcher do
   defp accumulate_chunk_result(_chunk, {:error, error}) do
     {:error, error}
   end
+
+  defp ensure_chronological(%{at: at, values: values} = stats) do
+    zipped = Enum.zip(at || [], values || [])
+
+    sorted = Enum.sort_by(zipped, fn {ts, _v} -> ts_to_int(ts) end)
+
+    if sorted != zipped do
+      Logger.warning(fn ->
+        %{
+          total_points: length(zipped),
+          original_first: format_ts_value(List.first(zipped)),
+          original_last: format_ts_value(List.last(zipped)),
+          sorted_first: format_ts_value(List.first(sorted)),
+          sorted_last: format_ts_value(List.last(sorted))
+        }
+        |> then(&"[SeriesFetcher] timeline out of order; reordered #{inspect(&1)}")
+      end)
+    end
+
+    {sorted_at, sorted_values} = Enum.unzip(sorted)
+    %{stats | at: sorted_at, values: sorted_values}
+  end
+
+  defp ensure_chronological(other), do: other
+
+  defp ts_to_int(%DateTime{} = dt), do: DateTime.to_unix(dt, :microsecond)
+
+  defp ts_to_int(%NaiveDateTime{} = ndt),
+    do: DateTime.to_unix(DateTime.from_naive!(ndt, "Etc/UTC"), :microsecond)
+
+  defp ts_to_int(int) when is_integer(int), do: int
+  defp ts_to_int(float) when is_float(float), do: round(float * 1_000_000)
+  defp ts_to_int(_), do: 0
+
+  defp format_ts_value(nil), do: nil
+
+  defp format_ts_value({ts, value}) do
+    %{ts: inspect(ts), value: inspect(value)}
+  end
+
+  defp format_ts_value(other), do: inspect(other)
 
   defp apply_transponders_to_stats(raw_stats, transponders, progress_callback \\ nil) do
     if Enum.empty?(transponders) do
