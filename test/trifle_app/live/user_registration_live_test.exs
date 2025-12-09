@@ -45,7 +45,7 @@ defmodule TrifleApp.UserRegistrationLiveTest do
       render_submit(form)
       conn = follow_trigger_action(form, conn)
 
-      assert redirected_to(conn) == ~p"/dashboards"
+      assert redirected_to(conn) == ~p"/"
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, "/")

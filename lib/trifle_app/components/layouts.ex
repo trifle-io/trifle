@@ -45,6 +45,9 @@ defmodule TrifleApp.Layouts do
     view = socket.view
 
     case {menu, view} do
+      {:home, TrifleApp.HomeLive} ->
+        true
+
       {:dashboards, TrifleApp.AppLive} ->
         true
 
@@ -92,6 +95,9 @@ defmodule TrifleApp.Layouts do
 
       {:monitors, _} ->
         Map.get(socket.assigns, :nav_section) == :monitors
+
+      {:home, _} ->
+        Map.get(socket.assigns, :nav_section) == :home
 
       {:projects, _} ->
         Map.get(socket.assigns, :nav_section) == :projects

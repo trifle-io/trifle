@@ -11,12 +11,54 @@ defmodule TrifleApp.UserSettingsLive do
         <div class="pb-8">
           <h1 class="text-2xl font-bold leading-7 text-gray-900 dark:text-white">Account Settings</h1>
           <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-400">
-            Manage your account email address and password settings
+            Manage your profile, theme, email address, and password settings
           </p>
         </div>
         
     <!-- Settings Sections -->
         <div class="divide-y divide-gray-900/10 dark:divide-slate-700">
+          <!-- Profile Settings Section -->
+          <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
+            <div class="px-4 sm:px-0">
+              <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                Profile
+              </h2>
+              <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+                Set your display name. This is shown in greetings and activity trails.
+              </p>
+            </div>
+
+            <.form_container
+              for={@profile_form}
+              phx-submit="update_profile"
+              phx-change="validate_profile"
+              layout="simple"
+              class="bg-white dark:bg-slate-800 shadow-sm ring-1 ring-gray-900/5 dark:ring-slate-700 sm:rounded-xl md:col-span-2"
+            >
+              <div class="px-4 py-6 sm:p-8">
+                <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
+                  <div class="col-span-full">
+                    <.form_field
+                      field={@profile_form[:name]}
+                      type="text"
+                      label="Name"
+                      placeholder="Your name"
+                      maxlength="160"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <:actions>
+                <div class="flex items-center justify-end gap-x-6 border-t border-gray-900/10 dark:border-slate-700 px-4 py-4 sm:px-8">
+                  <.primary_button phx-disable-with="Saving..." type="submit">
+                    Save Profile
+                  </.primary_button>
+                </div>
+              </:actions>
+            </.form_container>
+          </div>
+
           <!-- Theme Settings Section -->
           <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
             <div class="px-4 sm:px-0">
@@ -204,6 +246,7 @@ defmodule TrifleApp.UserSettingsLive do
     email_changeset = Accounts.change_user_email(user)
     password_changeset = Accounts.change_user_password(user)
     theme_changeset = Accounts.change_user_theme(user)
+    profile_changeset = Accounts.change_user_profile(user)
 
     socket =
       socket
@@ -213,6 +256,7 @@ defmodule TrifleApp.UserSettingsLive do
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:theme_form, to_form(theme_changeset))
+      |> assign(:profile_form, to_form(profile_changeset))
       |> assign(:trigger_submit, false)
       |> assign(:page_title, "Account Settings")
 
@@ -230,6 +274,32 @@ defmodule TrifleApp.UserSettingsLive do
       |> to_form()
 
     {:noreply, assign(socket, email_form: email_form, email_form_current_password: password)}
+  end
+
+  def handle_event("validate_profile", %{"user" => user_params}, socket) do
+    profile_form =
+      socket.assigns.current_user
+      |> Accounts.change_user_profile(user_params)
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    {:noreply, assign(socket, profile_form: profile_form)}
+  end
+
+  def handle_event("update_profile", %{"user" => user_params}, socket) do
+    user = Accounts.get_user!(socket.assigns.current_user.id)
+
+    case Accounts.update_user_profile(user, user_params) do
+      {:ok, user} ->
+        {:noreply,
+         socket
+         |> assign(profile_form: to_form(Accounts.change_user_profile(user)))
+         |> assign(current_user: user)
+         |> put_flash(:info, "Profile updated successfully.")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, profile_form: to_form(Map.put(changeset, :action, :insert)))}
+    end
   end
 
   def handle_event("update_email", params, socket) do

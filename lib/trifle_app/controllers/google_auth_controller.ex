@@ -21,6 +21,7 @@ defmodule TrifleApp.GoogleAuthController do
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     email = auth.info.email
+    name = auth.info.name || auth.info.first_name && auth.info.last_name && String.trim("#{auth.info.first_name} #{auth.info.last_name}") || auth.info.nickname
     verified? = Map.get(auth.info, :verified, false) || verified_from_raw(auth)
 
     cond do
@@ -37,7 +38,7 @@ defmodule TrifleApp.GoogleAuthController do
         )
 
       true ->
-        with {:ok, user} <- Accounts.get_or_create_user_for_sso(email),
+        with {:ok, user} <- Accounts.get_or_create_user_for_sso(email, %{name: name}),
              {:ok, _} <- Organizations.ensure_membership_for_sso(user, :google, email) do
           conn
           |> maybe_restore_return_to()

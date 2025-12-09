@@ -64,6 +64,44 @@ defmodule Trifle.Monitors do
     |> Repo.all()
   end
 
+  def count_monitors_for_membership(%OrganizationMembership{} = membership) do
+    scoped_monitors_query(membership)
+    |> exclude(:order_by)
+    |> select([m], count(m.id))
+    |> Repo.one()
+  end
+
+  def list_triggered_monitors_for_membership(
+        %User{} = _user,
+        %OrganizationMembership{} = membership,
+        opts \\ []
+      ) do
+    limit = Keyword.get(opts, :limit)
+
+    preload_opts =
+      opts
+      |> Keyword.update(:preload, [:dashboard], fn existing ->
+        [:dashboard | List.wrap(existing)]
+      end)
+
+    query =
+      scoped_monitors_query(membership)
+      |> where([m],
+        m.type == ^:alert and m.status == ^:active and m.trigger_status != ^:idle
+      )
+      |> order_by([m], [desc: m.updated_at, desc: m.inserted_at])
+
+    query =
+      case limit do
+        value when is_integer(value) and value > 0 -> limit(query, ^value)
+        _ -> query
+      end
+
+    query
+    |> preload(^monitor_preloads(preload_opts))
+    |> Repo.all()
+  end
+
   @doc """
   Fetches a monitor by id, scoped to the organization tied to the membership.
   """

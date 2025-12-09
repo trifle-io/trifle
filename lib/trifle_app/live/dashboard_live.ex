@@ -36,6 +36,12 @@ defmodule TrifleApp.DashboardLive do
         %{assigns: %{current_membership: membership}} = socket
       ) do
     dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
+    current_user = socket.assigns.current_user
+
+    if current_user do
+      Organizations.record_dashboard_visit(current_user, membership, dashboard)
+    end
+
     socket = initialize_dashboard_state(socket, dashboard, membership, false, nil)
 
     groups = Organizations.get_dashboard_group_chain(dashboard.group_id)

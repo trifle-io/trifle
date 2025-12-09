@@ -255,7 +255,7 @@ defmodule TrifleApp.UserAuth do
 
   defp maybe_store_return_to(conn), do: conn
 
-  defp signed_in_path(_conn), do: ~p"/dashboards"
+  defp signed_in_path(_conn), do: ~p"/"
 
   defp maybe_touch_membership_last_active(nil), do: nil
 

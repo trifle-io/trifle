@@ -19,6 +19,7 @@ defmodule Trifle.Organizations do
     OrganizationSSODomain,
     Database,
     Dashboard,
+    DashboardVisit,
     Transponder,
     DashboardGroup
   }
@@ -1668,6 +1669,77 @@ defmodule Trifle.Organizations do
       ) do
     dashboards_base_query(user, membership)
     |> Repo.all()
+  end
+
+  def list_recent_dashboard_visits_for_membership(_, nil, _limit), do: []
+  def list_recent_dashboard_visits_for_membership(nil, _membership, _limit), do: []
+
+  def list_recent_dashboard_visits_for_membership(
+        %User{} = user,
+        %OrganizationMembership{} = membership,
+        limit \\ 5
+      ) do
+    limit = max(limit || 0, 0)
+
+    dashboard_scope =
+      dashboards_base_query(user, membership)
+      |> Ecto.Query.exclude(:preload)
+
+    from(v in DashboardVisit,
+      join: d in subquery(dashboard_scope),
+      on: d.id == v.dashboard_id,
+      where:
+        v.user_id == ^user.id and
+          v.organization_id == ^membership.organization_id,
+      order_by: [desc: v.last_viewed_at, desc: v.updated_at, desc: v.inserted_at],
+      limit: ^limit,
+      preload: [dashboard: d]
+    )
+    |> Repo.all()
+  end
+
+  def record_dashboard_visit(_, nil, _), do: {:error, :unauthorized}
+  def record_dashboard_visit(nil, _membership, _), do: {:error, :unauthorized}
+
+  def record_dashboard_visit(
+        %User{} = user,
+        %OrganizationMembership{} = membership,
+        %Dashboard{} = dashboard
+      ) do
+    cond do
+      membership.user_id != user.id ->
+        {:error, :unauthorized}
+
+      dashboard.organization_id != membership.organization_id ->
+        {:error, :unauthorized}
+
+      true ->
+        now = DateTime.utc_now()
+
+        attrs = %{
+          user_id: user.id,
+          organization_id: membership.organization_id,
+          dashboard_id: dashboard.id,
+          last_viewed_at: now,
+          view_count: 1
+        }
+
+        case Repo.insert(
+               DashboardVisit.changeset(%DashboardVisit{}, attrs),
+               conflict_target: [:user_id, :dashboard_id],
+               on_conflict: [
+                 inc: [view_count: 1],
+                 set: [
+                   last_viewed_at: now,
+                   organization_id: membership.organization_id,
+                   updated_at: now
+                 ]
+               ]
+             ) do
+          {:ok, _visit} -> :ok
+          {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+        end
+    end
   end
 
   def count_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
