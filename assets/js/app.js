@@ -1153,6 +1153,79 @@ Hooks.DashboardGroupsCollapse = {
   }
 }
 
+Hooks.HomeSparkline = {
+  mounted() {
+    this.renderSparkline();
+  },
+  updated() {
+    this.renderSparkline(true);
+  },
+  destroyed() {
+    this.dispose();
+  },
+  disconnected() {
+    this.dispose();
+  },
+  renderSparkline(force) {
+    let series;
+    try {
+      series = JSON.parse(this.el.dataset.series || '[]');
+    } catch (_) {
+      series = [];
+    }
+    if (!Array.isArray(series)) series = [];
+
+    if (!this.chart || force) {
+      this.dispose();
+      const height = this.el.clientHeight || 64;
+      const theme = document.documentElement.classList.contains('dark') ? 'dark' : undefined;
+      this.chart = echarts.init(this.el, theme, withChartOpts({ height }));
+    }
+
+    const lineColor = 'oklch(70.4% 0.14 182.503)';
+
+    this.chart.setOption(
+      {
+        backgroundColor: 'transparent',
+        grid: { top: 2, bottom: 2, left: 0, right: 0, containLabel: false },
+        xAxis: { type: 'time', show: false },
+        yAxis: {
+          type: 'value',
+          show: false,
+          min: 0,
+          max: (value) => (value.max === 0 ? 1 : value.max)
+        },
+        tooltip: { show: false },
+        series: [
+          {
+            type: 'line',
+            data: series,
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 2, color: lineColor },
+            areaStyle: { color: lineColor, opacity: 0.0 },
+            animation: false
+          }
+        ],
+        animation: false
+      },
+      true
+    );
+
+    try {
+      this.chart.resize();
+    } catch (_) {}
+  },
+  dispose() {
+    if (this.chart) {
+      try {
+        this.chart.dispose();
+      } catch (_) {}
+      this.chart = null;
+    }
+  }
+}
+
 // GridStack layout for Dashboards
 Hooks.DashboardGrid = {
   mounted() {

@@ -1,6 +1,7 @@
 defmodule TrifleApp.HomeLive do
   use TrifleApp, :live_view
 
+  alias Decimal
   alias Trifle.Monitors
   alias Trifle.Organizations
   alias TrifleApp.ExploreCore
@@ -46,7 +47,7 @@ defmodule TrifleApp.HomeLive do
       </div>
 
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 lg:order-1 order-2">
           <div class="flex items-center justify-between mb-3">
             <div>
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -114,7 +115,7 @@ defmodule TrifleApp.HomeLive do
           <% end %>
         </section>
 
-        <section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 lg:order-2 order-1">
           <div class="flex items-center justify-between mb-3">
             <div>
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -221,8 +222,8 @@ defmodule TrifleApp.HomeLive do
         <% else %>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <%= for activity <- @source_activity do %>
-              <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                <div class="flex items-start justify-between gap-3">
+              <div class="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pb-10 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                <div class="flex items-start justify-between gap-3 pb-4">
                   <div>
                     <div class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                       <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-200">
@@ -244,48 +245,19 @@ defmodule TrifleApp.HomeLive do
                   </div>
                 </div>
 
-                <div class="mt-4 -mx-4 -mb-2 overflow-hidden">
-                  <%= if activity_error = Map.get(activity, :error) do %>
-                    <div class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-900/30 dark:text-red-200 dark:ring-red-800/60">
-                      Unable to load activity ({format_error(activity_error)})
-                    </div>
-                  <% else %>
-                    <div class="relative h-16">
-                      <svg
-                        viewBox="0 0 100 40"
-                        role="presentation"
-                        class="h-full w-full"
-                        preserveAspectRatio="none"
-                      >
-                        <defs>
-                          <linearGradient id={"sparkline-gradient-#{sparkline_id(activity)}"} x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.35" />
-                            <stop offset="100%" stop-color="#14b8a6" stop-opacity="0" />
-                          </linearGradient>
-                        </defs>
-                        <%= if sparkline_points(activity.timeline) != "" do %>
-                          <polyline
-                            points={sparkline_points(activity.timeline)}
-                            fill={"url(#sparkline-gradient-#{sparkline_id(activity)})"}
-                            stroke="none"
-                            transform="translate(0,0)"
-                          />
-                          <polyline
-                            points={sparkline_points(activity.timeline, stroke: true)}
-                            fill="none"
-                            stroke="#0f766e"
-                            stroke-width="2"
-                            vector-effect="non-scaling-stroke"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                          />
-                        <% else %>
-                          <text x="0" y="50%" fill="#94a3b8" class="text-xs">No data</text>
-                        <% end %>
-                      </svg>
-                    </div>
-                  <% end %>
-                </div>
+                <%= if activity_error = Map.get(activity, :error) do %>
+                  <div class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-900/30 dark:text-red-200 dark:ring-red-800/60">
+                    Unable to load activity ({format_error(activity_error)})
+                  </div>
+                <% else %>
+                  <div
+                    id={"sparkline-#{sparkline_dom_id(activity)}"}
+                    class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
+                    phx-hook="HomeSparkline"
+                    data-series={Jason.encode!(sparkline_series(activity.timeline))}
+                  >
+                  </div>
+                <% end %>
               </div>
             <% end %>
           </div>
@@ -304,17 +276,6 @@ defmodule TrifleApp.HomeLive do
     |> assign(:source_activity, HomeData.source_activity(membership))
     |> assign(:has_sources?, has_sources?(membership))
   end
-
-  defp dashboard_source_label(%{source_type: type}) when is_binary(type) do
-    case String.downcase(String.trim(type)) do
-      "database" -> "Database"
-      "project" -> "Project"
-      other when other != "" -> String.capitalize(other)
-      _ -> "Dashboard"
-    end
-  end
-
-  defp dashboard_source_label(_), do: "Dashboard"
 
   defp dashboard_full_name(%{name: name, group_id: group_id}) do
     groups =
@@ -433,69 +394,37 @@ defmodule TrifleApp.HomeLive do
     _ -> Calendar.strftime(dt, "%b %-d, %Y")
   end
 
-  defp sparkline_points(timeline, opts \\ []) do
-    stroke? = Keyword.get(opts, :stroke, false)
-    height = 40.0
-    width = 100.0
-    values = Enum.map(timeline, fn %{value: value} -> value || 0 end)
-
-    case values do
-      [] ->
-        ""
-
-      [single] ->
-        y = normalize_y(single, values, height)
-        points =
-          Enum.map([0.0, width], fn x -> "#{Float.round(x, 2)},#{Float.round(y, 2)}" end)
-          |> Enum.join(" ")
-
-        if stroke?, do: points, else: "#{points} 0,#{height} #{width},#{height}"
-
-      _ ->
-        step = width / max(length(values) - 1, 1)
-
-        coords =
-          values
-          |> Enum.with_index()
-          |> Enum.map(fn {value, idx} ->
-            x = idx * step
-            y = normalize_y(value, values, height)
-            "#{Float.round(x, 2)},#{Float.round(y, 2)}"
-          end)
-          |> Enum.join(" ")
-
-        if stroke? do
-          coords
-        else
-          coords <> " #{Float.round(width, 2)},#{Float.round(height, 2)} 0,#{Float.round(height, 2)}"
-        end
-    end
-  end
-
-  defp normalize_y(value, values, height) do
-    {min_v, max_v} =
-      values
-      |> Enum.reduce({nil, nil}, fn v, {current_min, current_max} ->
-        new_min = if is_nil(current_min), do: v, else: Kernel.min(current_min, v)
-        new_max = if is_nil(current_max), do: v, else: Kernel.max(current_max, v)
-        {new_min, new_max}
-      end)
-
-    range = max((max_v || 0) - (min_v || 0), 0.0001)
-    normalized = (value - (min_v || 0)) / range
-    height - normalized * height
-  end
-
-  defp sparkline_id(activity) do
-    source = activity.source
-    "#{Source.type(source)}-#{Source.id(source)}"
-  end
-
   defp has_sources?(membership) do
     membership
     |> Source.list_for_membership()
     |> Enum.any?()
   end
+
+  defp sparkline_dom_id(activity) do
+    source = activity.source
+    "#{Source.type(source)}-#{Source.id(source)}"
+  end
+
+  defp sparkline_series(timeline) do
+    timeline
+    |> Enum.map(fn
+      %{at: %DateTime{} = dt, value: value} -> [DateTime.to_unix(dt, :millisecond), normalize_number(value)]
+      %{at: %NaiveDateTime{} = ndt, value: value} ->
+        ndt
+        |> DateTime.from_naive!("Etc/UTC")
+        |> DateTime.to_unix(:millisecond)
+        |> then(&[&1, normalize_number(value)])
+
+      %{at: at, value: value} when is_integer(at) -> [at, normalize_number(value)]
+      %{at: at, value: value} when is_float(at) -> [round(at), normalize_number(value)]
+      %{value: value} -> [System.system_time(:millisecond), normalize_number(value)]
+      other -> [System.system_time(:millisecond), normalize_number(Map.get(other, :value))]
+    end)
+  end
+
+  defp normalize_number(%Decimal{} = decimal), do: Decimal.to_float(decimal)
+  defp normalize_number(value) when is_number(value), do: value * 1.0
+  defp normalize_number(_), do: 0.0
 
   defp welcome_name(%{name: name}) when is_binary(name) do
     trimmed = String.trim(name)
