@@ -74,6 +74,8 @@ app:
   poolSize: 10
   timezone: "UTC"
   logLevel: "info"
+  # Optional: set external MongoDB connection for stats/projects
+  mongodbUrl: ""
 
   # Third-party integrations
   honeybadger:
@@ -208,6 +210,8 @@ externalPostgresql:
 
 # MongoDB sidecar configuration
 mongo:
+  sidecar:
+    enabled: true
   image:
     repository: mongo
     tag: "7.0"

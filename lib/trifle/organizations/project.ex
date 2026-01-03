@@ -97,8 +97,9 @@ defmodule Trifle.Organizations.Project do
   defp get_mongo_connection do
     case Process.whereis(:trifle_mongo) do
       nil ->
+        url = System.get_env("MONGODB_URL") || "mongodb://localhost:27017/trifle"
         {:ok, conn} =
-          Mongo.start_link(url: "mongodb://localhost:27017/trifle", name: :trifle_mongo)
+          Mongo.start_link(url: url, name: :trifle_mongo)
 
         conn
 
