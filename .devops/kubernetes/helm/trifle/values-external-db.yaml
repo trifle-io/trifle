@@ -25,6 +25,7 @@ app:
   host: "trifle.yourdomain.com"
   logLevel: "info"
   deploymentMode: "self_hosted"
+  mongodbUrl: "mongodb://user:password@mongo-0.mongo.svc.cluster.local:27017,mongo-1.mongo.svc.cluster.local:27017,mongo-2.mongo.svc.cluster.local:27017/trifle_production?replicaSet=rs0&authSource=admin"
   openai:
     apiKey: ""
     model: "gpt-5"

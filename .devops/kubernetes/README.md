@@ -135,6 +135,21 @@ When enabled, the Helm chart injects the official `mongo` container into the Tri
 Leave MongoDB persistence disabled for ephemeral clusters or turn it on to provision a dedicated PVC named `<release>-mongo`.
 Authentication defaults to disabled to match the application defaults; supply custom credentials and connection logic if you require secured MongoDB.
 
+To use an external MongoDB cluster (no sidecar), disable the sidecar and set `app.mongodbUrl`:
+
+```yaml
+features:
+  projects:
+    enabled: true
+
+mongo:
+  sidecar:
+    enabled: false
+
+app:
+  mongodbUrl: "mongodb://user:password@mongo-0.mongo.svc.cluster.local:27017,mongo-1.mongo.svc.cluster.local:27017,mongo-2.mongo.svc.cluster.local:27017/trifle_production?replicaSet=rs0&authSource=admin"
+```
+
 ### Persistence
 
 Configure persistent storage:

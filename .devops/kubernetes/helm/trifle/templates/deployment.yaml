@@ -20,6 +20,7 @@ spec:
       labels:
         {{- include "trifle.selectorLabels" . | nindent 8 }}
     spec:
+      {{- $mongoSidecar := and .Values.features.projects.enabled .Values.mongo.sidecar.enabled }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -52,6 +53,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: database-url
+            {{- with .Values.app.mongodbUrl }}
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: mongodb-url
+            {{- end }}
             {{- if .Values.app.honeybadger.apiKey }}
             - name: HONEYBADGER_API_KEY
               valueFrom:
@@ -255,7 +263,7 @@ spec:
             - name: uploads
               mountPath: {{ .Values.persistence.mountPath }}
           {{- end }}
-        {{- if .Values.features.projects.enabled }}
+        {{- if $mongoSidecar }}
         - name: mongo
           image: "{{ .Values.mongo.image.repository }}:{{ .Values.mongo.image.tag }}"
           imagePullPolicy: {{ .Values.mongo.image.pullPolicy }}
@@ -272,14 +280,14 @@ spec:
           {{- end }}
         {{- end }}
 
-      {{- if or .Values.persistence.enabled .Values.features.projects.enabled }}
+      {{- if or .Values.persistence.enabled $mongoSidecar }}
       volumes:
         {{- if .Values.persistence.enabled }}
         - name: uploads
           persistentVolumeClaim:
             claimName: {{ include "trifle.fullname" . }}-uploads
         {{- end }}
-        {{- if .Values.features.projects.enabled }}
+        {{- if $mongoSidecar }}
         - name: mongo-data
           emptyDir: {}
         {{- end }}
