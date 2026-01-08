@@ -109,7 +109,7 @@ mix populate_metrics --token=your_token_here --count=100 --hours=24
 Default development connection managed in `Project.stats_config/1`:
 ```elixir
 # MongoDB connection pool (reused across requests)
-Mongo.start_link(url: "mongodb://localhost:27017/trifle", name: :trifle_mongo)
+Mongo.start_link(url: "mongodb://mongodb:27017/trifle", name: :trifle_mongo)
 ```
 
 ### Running Databases with Docker

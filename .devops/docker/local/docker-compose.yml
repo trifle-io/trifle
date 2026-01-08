@@ -3,18 +3,23 @@ name: "trifle"
 services:
   redis:
     image: redis:latest
+    restart: unless-stopped
   mongo:
     image: mongo:latest
+    restart: unless-stopped
   postgres:
     image: postgres:latest
     environment:
       POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_DB: trifle_dev
+    restart: unless-stopped
   app:
     command: /bin/sh -c "while sleep 1000; do :; done"
     env_file:
-      - ../../../.env
+      - .env
     build:
-      context: ../../..
+      context: .
       dockerfile: .devops/docker/local/Dockerfile
     depends_on:
       - redis
@@ -28,5 +33,11 @@ services:
     ports:
       - 4000:4000
     volumes:
-      - ../../..:/workspaces/trifle
+      - .:/workspaces/trifle:cached
+      - trifle_deps:/workspaces/trifle/deps
+      - trifle_build:/workspaces/trifle/_build
+      - ../trifle_stats:/workspaces/trifle_stats
     working_dir: /workspaces/trifle
+volumes:
+  trifle_deps:
+  trifle_build:

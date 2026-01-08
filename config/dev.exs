@@ -4,7 +4,7 @@ import Config
 config :trifle, Trifle.Repo,
   username: "postgres",
   password: "password",
-  hostname: "localhost",
+  hostname: "postgres",
   database: "trifle_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,

@@ -171,6 +171,23 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
                       </span>
                     </label>
                   </div>
+                <% :joined_identifiers -> %>
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                      {humanize_config_key(key)}
+                    </label>
+                    <% selected = joined_identifiers_value(@form, key, value) %>
+                    <select
+                      name={"database[config][#{key}]"}
+                      class="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
+                    >
+                      <%= for {label, option_value} <- joined_identifiers_options() do %>
+                        <option value={option_value} selected={selected == option_value}>
+                          {label}
+                        </option>
+                      <% end %>
+                    </select>
+                  </div>
                 <% :integer -> %>
                   <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
@@ -299,7 +316,7 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
   defp config_field_type("ssl", "postgres"), do: :boolean
-  defp config_field_type("joined_identifiers", _), do: :boolean
+  defp config_field_type("joined_identifiers", _), do: :joined_identifiers
   defp config_field_type("pool_size", _), do: :integer
   defp config_field_type("pool_timeout", _), do: :integer
   defp config_field_type("timeout", _), do: :integer
@@ -325,6 +342,33 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
           config when is_map(config) -> Map.get(config, key, default_value)
           _ -> default_value
         end
+    end
+  end
+
+  defp joined_identifiers_options do
+    [
+      {"Separated (null)", "null"},
+      {"Partial (partial)", "partial"},
+      {"Joined (full)", "full"}
+    ]
+  end
+
+  defp joined_identifiers_value(form, key, default_value) do
+    value = get_config_value(form, key, default_value)
+
+    case value do
+      nil -> "null"
+      "" -> "null"
+      "null" -> "null"
+      false -> "null"
+      "false" -> "null"
+      true -> "full"
+      "true" -> "full"
+      :full -> "full"
+      "full" -> "full"
+      :partial -> "partial"
+      "partial" -> "partial"
+      _ -> "full"
     end
   end
 

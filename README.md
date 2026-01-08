@@ -33,16 +33,23 @@ See [Kubernetes README](.devops/kubernetes/README.md) for detailed deployment in
 You can run databases locally using Docker:
 
 ```bash
-# Start database-only services
-cd .devops/docker/local_db
-docker-compose up -d
+# Start services
+docker compose up -d
 ```
 
-This exposes:
-- PostgreSQL on port 5432
-- MongoDB on port 27017
+This will launch these docker containers:
+- PostgreSQL
+- MongoDB
+- Application
 
 ### Running the Application
+
+Run all commands inside of `app` docker container.
+```bash
+docker compose exec app zsh
+```
+
+And then follow:
 
 ```bash
 # Install dependencies
