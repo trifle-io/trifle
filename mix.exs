@@ -68,6 +68,7 @@ defmodule Trifle.MixProject do
       {:exqlite, "~> 0.20"},
       {:honeybadger, "~> 0.22"},
       {:appsignal_phoenix, "~> 2.0"},
+      {:new_relic_agent, "~> 1.0"},
       {:mint_web_socket, "~> 1.0"},
       {:oban, "~> 2.17"},
       {:dotenvy, "~> 0.8", only: [:dev, :test], runtime: false}

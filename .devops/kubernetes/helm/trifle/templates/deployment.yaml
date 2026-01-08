@@ -82,6 +82,19 @@ spec:
                   key: appsignal-push-api-key
             {{- end }}
             {{- end }}
+            {{- if .Values.app.newrelic.enabled }}
+            - name: NEW_RELIC_APP_NAME
+              value: {{ .Values.app.newrelic.appName | quote }}
+            - name: NEW_RELIC_APP_ENV
+              value: {{ .Values.app.newrelic.appEnv | quote }}
+            {{- if .Values.app.newrelic.licenseKey }}
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" . }}-secret
+                  key: newrelic-license-key
+            {{- end }}
+            {{- end }}
             - name: REGISTRATION_ENABLED
               value: {{ .Values.app.registration.enabled | quote }}
             - name: PHX_HOST
