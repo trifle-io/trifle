@@ -11,7 +11,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
             collection_name: "trifle_stats",
             separator: "::",
             write_concern: 1,
-            joined_identifier: true,
+            joined_identifier: :partial,
             expire_after: nil,
             system_tracking: true
 
@@ -24,17 +24,19 @@ defmodule Trifle.Stats.Driver.MongoProject do
         collection_name \\ "trifle_stats",
         separator \\ "::",
         write_concern \\ 1,
-        joined_identifier \\ true,
+        joined_identifier \\ :partial,
         expire_after \\ nil,
         system_tracking \\ true
       ) do
+    identifier_mode = normalize_joined_identifier(joined_identifier)
+
     %__MODULE__{
       connection: connection,
       reference: reference,
       collection_name: collection_name,
       separator: separator,
       write_concern: write_concern,
-      joined_identifier: joined_identifier,
+      joined_identifier: identifier_mode,
       expire_after: expire_after,
       system_tracking: system_tracking
     }
@@ -47,7 +49,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
     collection_name =
       Trifle.Stats.Configuration.driver_option(config, :collection_name, "trifle_stats")
 
-    joined_identifier = Trifle.Stats.Configuration.driver_option(config, :joined_identifier, true)
+    joined_identifier =
+      Trifle.Stats.Configuration.driver_option(config, :joined_identifier, :partial)
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
     system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
@@ -69,22 +72,28 @@ defmodule Trifle.Stats.Driver.MongoProject do
   def setup!(
         connection,
         collection_name \\ "trifle_stats",
-        joined_identifier \\ true,
+        joined_identifier \\ :partial,
         expire_after \\ nil,
         system_tracking \\ true
       ) do
     Mongo.create(connection, collection_name)
+    identifier_mode = normalize_joined_identifier(joined_identifier)
 
     indexes =
-      if joined_identifier do
-        [%{"key" => %{"reference" => 1, "key" => 1}, "unique" => true}]
-      else
-        [
-          %{
-            "key" => %{"reference" => 1, "key" => 1, "granularity" => 1, "at" => -1},
-            "unique" => true
-          }
-        ]
+      case identifier_mode do
+        :full ->
+          [%{"key" => %{"reference" => 1, "key" => 1}, "unique" => true}]
+
+        :partial ->
+          [%{"key" => %{"reference" => 1, "key" => 1, "at" => -1}, "unique" => true}]
+
+        nil ->
+          [
+            %{
+              "key" => %{"reference" => 1, "key" => 1, "granularity" => 1, "at" => -1},
+              "unique" => true
+            }
+          ]
       end
 
     indexes =
@@ -104,7 +113,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
     collection_name =
       Trifle.Stats.Configuration.driver_option(config, :collection_name, "trifle_stats")
 
-    joined_identifier = Trifle.Stats.Configuration.driver_option(config, :joined_identifier, true)
+    joined_identifier =
+      Trifle.Stats.Configuration.driver_option(config, :joined_identifier, :partial)
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
     system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
@@ -117,7 +127,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
       filter =
         key
-        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> identifier_for(driver)
         |> convert_keys_to_strings()
         |> with_reference_scope(driver)
 
@@ -162,7 +172,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
       filter =
         key
-        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> identifier_for(driver)
         |> convert_keys_to_strings()
         |> with_reference_scope(driver)
 
@@ -205,7 +215,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     identifiers =
       Enum.map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
         key
-        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> identifier_for(driver)
         |> convert_keys_to_strings()
         |> with_reference_scope(driver)
       end)
@@ -214,24 +224,31 @@ defmodule Trifle.Stats.Driver.MongoProject do
       Mongo.find(driver.connection, driver.collection_name, %{"$or" => identifiers})
       |> Enum.reduce(%{}, fn d, acc ->
         temp_key =
-          if driver.joined_identifier do
-            %Trifle.Stats.Nocturnal.Key{key: d["key"]}
-          else
-            %Trifle.Stats.Nocturnal.Key{
-              key: d["key"],
-              granularity: d["granularity"],
-              at: parse_timestamp_from_mongo(d["at"])
-            }
+          case driver.joined_identifier do
+            :full ->
+              %Trifle.Stats.Nocturnal.Key{key: d["key"]}
+
+            :partial ->
+              %Trifle.Stats.Nocturnal.Key{
+                key: d["key"],
+                at: parse_timestamp_from_mongo(d["at"])
+              }
+
+            nil ->
+              %Trifle.Stats.Nocturnal.Key{
+                key: d["key"],
+                granularity: d["granularity"],
+                at: parse_timestamp_from_mongo(d["at"])
+              }
           end
 
-        simple_identifier =
-          Trifle.Stats.Nocturnal.Key.simple_identifier(temp_key, driver.separator)
+        simple_identifier = simple_identifier_for(temp_key, driver)
 
         Map.put(acc, simple_identifier, d["data"])
       end)
 
     Enum.map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
-      simple_identifier = Trifle.Stats.Nocturnal.Key.simple_identifier(key, driver.separator)
+      simple_identifier = simple_identifier_for(key, driver)
       Map.get(data, simple_identifier, %{})
     end)
   end
@@ -244,7 +261,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
       identifier =
         key
-        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> identifier_for(driver)
         |> convert_keys_to_strings()
         |> with_reference_scope(driver)
 
@@ -272,7 +289,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     else
       identifier =
         key
-        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> identifier_for(driver)
         |> convert_keys_to_strings()
         |> with_reference_scope(driver)
 
@@ -307,7 +324,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
       at: key.at
     }
 
-    Trifle.Stats.Nocturnal.Key.identifier(system_key, driver.separator)
+    identifier_for(system_key, driver)
   end
 
   defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key) do
@@ -349,5 +366,24 @@ defmodule Trifle.Stats.Driver.MongoProject do
       val ->
         val
     end
+  end
+
+  defp identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
+    Trifle.Stats.Nocturnal.Key.identifier(key, driver.separator, driver.joined_identifier)
+  end
+
+  defp simple_identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
+    Trifle.Stats.Nocturnal.Key.simple_identifier(key, driver.separator, driver.joined_identifier)
+  end
+
+  defp normalize_joined_identifier(nil), do: nil
+  defp normalize_joined_identifier(:full), do: :full
+  defp normalize_joined_identifier("full"), do: :full
+  defp normalize_joined_identifier(:partial), do: :partial
+  defp normalize_joined_identifier("partial"), do: :partial
+
+  defp normalize_joined_identifier(value) do
+    raise ArgumentError,
+          "joined_identifier must be nil, :full, \"full\", :partial, or \"partial\", got: #{inspect(value)}"
   end
 end

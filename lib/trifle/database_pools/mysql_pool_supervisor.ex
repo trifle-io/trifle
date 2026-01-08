@@ -122,7 +122,7 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
       timeout: 5000,
       pool_timeout: 5000,
       # MySQL-specific options for better reliability and performance
-      socket_options: [:inet6],
+      socket_options: socket_options(),
       # Enable SSL if needed
       ssl: false,
       ssl_opts: [],
@@ -139,6 +139,10 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
     ]
 
     {MyXQL, config}
+  end
+
+  defp socket_options do
+    if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [:inet]
   end
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do

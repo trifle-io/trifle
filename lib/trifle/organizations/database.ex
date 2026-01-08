@@ -75,7 +75,7 @@ defmodule Trifle.Organizations.Database do
       "timeout" => 15000,
       "ssl" => false,
       "table_name" => "trifle_stats",
-      "joined_identifiers" => true
+      "joined_identifiers" => "full"
     }
   end
 
@@ -86,7 +86,7 @@ defmodule Trifle.Organizations.Database do
       "timeout" => 5000,
       "collection_name" => "trifle_stats",
       "expire_after" => nil,
-      "joined_identifiers" => true
+      "joined_identifiers" => "full"
     }
   end
 
@@ -95,7 +95,7 @@ defmodule Trifle.Organizations.Database do
       "pool_size" => 5,
       "timeout" => 5000,
       "table_name" => "trifle_stats",
-      "joined_identifiers" => true
+      "joined_identifiers" => "full"
     }
   end
 
@@ -186,8 +186,12 @@ defmodule Trifle.Organizations.Database do
 
   defp normalize_config_value("ssl", "true"), do: true
   defp normalize_config_value("ssl", "false"), do: false
-  defp normalize_config_value("joined_identifiers", "true"), do: true
-  defp normalize_config_value("joined_identifiers", "false"), do: false
+  defp normalize_config_value("joined_identifiers", "true"), do: "full"
+  defp normalize_config_value("joined_identifiers", "false"), do: nil
+  defp normalize_config_value("joined_identifiers", "full"), do: "full"
+  defp normalize_config_value("joined_identifiers", "partial"), do: "partial"
+  defp normalize_config_value("joined_identifiers", "null"), do: nil
+  defp normalize_config_value("joined_identifiers", ""), do: nil
   defp normalize_config_value("expire_after", ""), do: nil
 
   defp normalize_config_value("expire_after", val) when is_binary(val) do
@@ -198,6 +202,23 @@ defmodule Trifle.Organizations.Database do
   end
 
   defp normalize_config_value(_key, value), do: value
+
+  defp normalize_joined_identifiers(value) do
+    case value do
+      nil -> nil
+      true -> :full
+      false -> nil
+      "true" -> :full
+      "false" -> nil
+      "full" -> :full
+      :full -> :full
+      "partial" -> :partial
+      :partial -> :partial
+      "null" -> nil
+      "" -> nil
+      val -> val
+    end
+  end
 
   defp validate_timeframe_field(changeset, field) do
     validate_change(changeset, field, fn ^field, value ->
@@ -291,16 +312,8 @@ defmodule Trifle.Organizations.Database do
 
     config = database.config || %{}
 
-    # Convert joined_identifiers to boolean
     joined_identifiers =
-      case config["joined_identifiers"] do
-        nil -> true
-        true -> true
-        false -> false
-        "true" -> true
-        "false" -> false
-        val -> val
-      end
+      normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
 
     Trifle.Stats.Driver.Postgres.new(
       connection_name,
@@ -314,16 +327,8 @@ defmodule Trifle.Organizations.Database do
     {:ok, connection_name} = Trifle.DatabasePools.MongoPoolSupervisor.start_mongo_pool(database)
     config = database.config || %{}
 
-    # Convert joined_identifiers to boolean
     joined_identifiers =
-      case config["joined_identifiers"] do
-        nil -> true
-        true -> true
-        false -> false
-        "true" -> true
-        "false" -> false
-        val -> val
-      end
+      normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
 
     Trifle.Stats.Driver.Mongo.new(
       connection_name,
@@ -359,16 +364,8 @@ defmodule Trifle.Organizations.Database do
     {:ok, connection_name} = Trifle.DatabasePools.SqlitePoolSupervisor.start_sqlite_pool(database)
     config = database.config || %{}
 
-    # Convert joined_identifiers to boolean
     joined_identifiers =
-      case config["joined_identifiers"] do
-        nil -> true
-        true -> true
-        false -> false
-        "true" -> true
-        "false" -> false
-        val -> val
-      end
+      normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
 
     # Get the actual connection from our wrapper GenServer
     case GenServer.call(connection_name, :get_connection) do
@@ -524,12 +521,7 @@ defmodule Trifle.Organizations.Database do
               table_name = config["table_name"] || "trifle_stats"
 
               joined_identifiers =
-                case config["joined_identifiers"] do
-                  "true" -> true
-                  "false" -> false
-                  nil -> true
-                  val -> val
-                end
+                normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
 
               ping_table_name = config["ping_table_name"]
 
@@ -601,12 +593,7 @@ defmodule Trifle.Organizations.Database do
               collection_name = config["collection_name"] || "trifle_stats"
 
               joined_identifiers =
-                case config["joined_identifiers"] do
-                  "true" -> true
-                  "false" -> false
-                  nil -> true
-                  val -> val
-                end
+                normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
 
               expire_after =
                 case config["expire_after"] do
@@ -669,12 +656,7 @@ defmodule Trifle.Organizations.Database do
               table_name = config["table_name"] || "trifle_stats"
 
               joined_identifiers =
-                case config["joined_identifiers"] do
-                  "true" -> true
-                  "false" -> false
-                  nil -> true
-                  val -> val
-                end
+                normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
 
               ping_table_name = config["ping_table_name"]
 

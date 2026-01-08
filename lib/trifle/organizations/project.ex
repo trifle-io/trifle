@@ -80,7 +80,7 @@ defmodule Trifle.Organizations.Project do
         "trifle_stats",
         "::",
         1,
-        true,
+        :partial,
         project.expire_after,
         true
       )

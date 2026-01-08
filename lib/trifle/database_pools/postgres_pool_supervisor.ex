@@ -122,10 +122,14 @@ defmodule Trifle.DatabasePools.PostgresPoolSupervisor do
       timeout: 5000,
       pool_timeout: 5000,
       # Additional Postgrex options for better reliability
-      socket_options: [:inet6]
+      socket_options: socket_options()
     ]
 
     {Postgrex, config}
+  end
+
+  defp socket_options do
+    if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [:inet]
   end
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do

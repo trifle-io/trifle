@@ -81,57 +81,57 @@ database_configs = [
   %{
     display_name: "Redis",
     driver: "redis",
-    host: "localhost",
+    host: "redis",
     port: 6379,
     config: %{"prefix" => "trifle_stats"}
   },
   %{
     display_name: "Mongo Joined",
     driver: "mongo",
-    host: "localhost",
+    host: "mongo",
     port: 27017,
     database_name: "trifle_stats_joined",
-    config: %{"collection_name" => "trifle_stats_joined", "joined_identifiers" => true}
+    config: %{"collection_name" => "trifle_stats_joined", "joined_identifiers" => "full"}
   },
   %{
     display_name: "Mongo Separated",
     driver: "mongo",
-    host: "localhost",
+    host: "mongo",
     port: 27017,
     database_name: "trifle_stats_separated",
-    config: %{"collection_name" => "trifle_stats_separated", "joined_identifiers" => false}
+    config: %{"collection_name" => "trifle_stats_separated", "joined_identifiers" => "null"}
   },
   %{
     display_name: "Postgres Joined",
     driver: "postgres",
-    host: "localhost",
+    host: "postgres",
     port: 5432,
     database_name: "trifle_dev",
     username: "postgres",
     password: "password",
-    config: %{"table_name" => "trifle_stats_joined", "joined_identifiers" => true}
+    config: %{"table_name" => "trifle_stats_joined", "joined_identifiers" => "full"}
   },
   %{
     display_name: "Postgres Separated",
     driver: "postgres",
-    host: "localhost",
+    host: "postgres",
     port: 5432,
     database_name: "trifle_dev",
     username: "postgres",
     password: "password",
-    config: %{"table_name" => "trifle_stats_separated", "joined_identifiers" => false}
+    config: %{"table_name" => "trifle_stats_separated", "joined_identifiers" => "null"}
   },
   %{
     display_name: "SQLite Joined",
     driver: "sqlite",
     file_path: "trifle_stats_joined.sqlite",
-    config: %{"table_name" => "trifle_stats_joined", "joined_identifiers" => true}
+    config: %{"table_name" => "trifle_stats_joined", "joined_identifiers" => "full"}
   },
   %{
     display_name: "SQLite Separated",
     driver: "sqlite",
     file_path: "trifle_stats_separated.sqlite",
-    config: %{"table_name" => "trifle_stats_separated", "joined_identifiers" => false}
+    config: %{"table_name" => "trifle_stats_separated", "joined_identifiers" => "null"}
   }
 ]
 

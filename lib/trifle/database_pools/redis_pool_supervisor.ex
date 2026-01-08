@@ -144,7 +144,7 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
                  port: database.port || 6379,
                  password: database.password,
                  database: database.database_name || 0,
-                 socket_opts: [:inet6],
+                 socket_opts: socket_options(),
                  # Additional Redix options for reliability
                  sync_connect: true,
                  exit_on_disconnection: true
@@ -180,6 +180,10 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
 
   defp random_index do
     Enum.random(0..(@connections_per_pool - 1))
+  end
+
+  defp socket_options do
+    if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [:inet]
   end
 
   defp extract_database_id(supervisor_name) when is_atom(supervisor_name) do

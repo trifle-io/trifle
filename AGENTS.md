@@ -1,10 +1,13 @@
 # Repository Guidelines
 
+This application is running inside of Docker container, but you are running on a host. Prefix all commands with `docker compose exec -T app COMMAND` to run them within the container.
+
 ## Project Structure & Module Organization
 Trifle is a Phoenix LiveView analytics app. Application code lives under `lib/` grouped by OTP app: `lib/trifle_web` for web UI, `lib/trifle_api` for ingest endpoints, `lib/trifle_admin` for admin dashboards, and `lib/trifle` for shared contexts. Assets (Tailwind, esbuild bundles) live in `assets/`, while compiled/static output is staged in `priv/static`. Database migrations and seeds sit in `priv/repo`. Tests mirror the lib layout in `test/`, with helpers in `test/support`. Docs, Helm charts, and deployment scripts reside in `docs/` and `.devops/`.
 
 ## Build, Test, and Development Commands
 Run `mix setup` once per machine to fetch deps, prepare databases, and build assets. Use `mix phx.server` for the Phoenix dev server (visit http://localhost:4000). Regenerate client assets with `mix assets.build`; ship-ready assets use `mix assets.deploy`. Database lifecycle helpers: `mix ecto.migrate`, `mix ecto.reset`, and `mix ecto.setup`. For smoke data, call `mix populate_metrics --token=...` or `./populate_batch.sh TOKEN TOTAL HOURS`.
+Container dev uses named volumes for `deps` and `_build` to avoid host/native build mismatches; if native deps fail, run `mix deps.clean --all` and `mix deps.get` inside the app container.
 
 ## Coding Style & Naming Conventions
 Follow the Elixir formatter (`mix format`); the project’s `.formatter.exs` also formats LiveView HEEx templates. Use two-space indentation, modules in `CamelCase`, functions/macros in `snake_case`, and atoms in `:snake_case`. Branch-specific config stays in `config/*.exs`; avoid committing secrets. Front-end assets should match Tailwind utility patterns; keep custom CSS under `assets/css` when possible.
