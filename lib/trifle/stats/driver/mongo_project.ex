@@ -334,7 +334,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
   defp convert_keys_to_strings(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {k, v}, acc ->
       key = if is_atom(k), do: Atom.to_string(k), else: k
-      value = if is_map(v), do: convert_keys_to_strings(v), else: v
+      value = if is_map(v) and not is_struct(v), do: convert_keys_to_strings(v), else: v
       Map.put(acc, key, value)
     end)
   end
@@ -369,12 +369,43 @@ defmodule Trifle.Stats.Driver.MongoProject do
   end
 
   defp identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
-    Trifle.Stats.Nocturnal.Key.identifier(key, driver.separator, driver.joined_identifier)
+    case driver.joined_identifier do
+      :full ->
+        Trifle.Stats.Nocturnal.Key.identifier(key, driver.separator)
+
+      :partial ->
+        key_without_at = %{key | at: nil}
+        key_without_at
+        |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
+        |> maybe_put_at(key.at)
+
+      nil ->
+        Trifle.Stats.Nocturnal.Key.identifier(key, nil)
+    end
   end
 
   defp simple_identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
-    Trifle.Stats.Nocturnal.Key.simple_identifier(key, driver.separator, driver.joined_identifier)
+    case driver.joined_identifier do
+      :full ->
+        Trifle.Stats.Nocturnal.Key.simple_identifier(key, driver.separator)
+
+      :partial ->
+        key_without_at = %{key | at: nil}
+        key_without_at
+        |> Trifle.Stats.Nocturnal.Key.simple_identifier(driver.separator)
+        |> maybe_put_at(timestamp_for_identifier(key.at))
+
+      nil ->
+        Trifle.Stats.Nocturnal.Key.simple_identifier(key, nil)
+    end
   end
+
+  defp maybe_put_at(map, nil), do: map
+  defp maybe_put_at(map, value), do: Map.put(map, :at, value)
+
+  defp timestamp_for_identifier(nil), do: nil
+  defp timestamp_for_identifier(%DateTime{} = dt), do: DateTime.to_unix(dt)
+  defp timestamp_for_identifier(value), do: value
 
   defp normalize_joined_identifier(nil), do: nil
   defp normalize_joined_identifier(:full), do: :full
