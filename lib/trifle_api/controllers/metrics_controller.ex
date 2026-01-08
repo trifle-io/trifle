@@ -17,13 +17,9 @@ defmodule TrifleApi.MetricsController do
          at when is_binary(at) and byte_size(at) > 0 <- params["at"],
          values when not is_nil(values) <- params["values"],
          {:ok, at, _} <- DateTime.from_iso8601(at),
-         stats <-
-           Trifle.Stats.track(
-             key,
-             at,
-             values,
-             Trifle.Organizations.Project.stats_config(current_project)
-           ) do
+         stats_config <- Trifle.Organizations.Project.stats_config(current_project) do
+      Trifle.Stats.track(key, at, values, stats_config)
+
       conn
       |> put_status(:created)
       |> render("created.json")

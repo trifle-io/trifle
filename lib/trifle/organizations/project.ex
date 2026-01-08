@@ -90,7 +90,8 @@ defmodule Trifle.Organizations.Project do
       time_zone: project.time_zone || "UTC",
       time_zone_database: Tzdata.TimeZoneDatabase,
       beginning_of_week: Trifle.Organizations.Project.beginning_of_week_for(project) || :monday,
-      track_granularities: granularities
+      track_granularities: granularities,
+      buffer_enabled: false
     )
   end
 
