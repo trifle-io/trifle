@@ -66,6 +66,13 @@ config :honeybadger,
   # Enable logging and performance insights
   insights_enabled: true
 
+# Configure New Relic
+config :new_relic_agent,
+  app_name: "Trifle",
+  # License key is set via NEW_RELIC_LICENSE_KEY environment variable
+  # Distributed tracing for better observability
+  distributed_tracing_enabled: true
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 

@@ -87,7 +87,13 @@ app:
     appName: "Trifle App"
     appEnv: "prod"
     pushApiKey: ""
-  
+
+  newrelic:
+    enabled: false
+    appName: "Trifle App"
+    appEnv: "prod"
+    licenseKey: ""
+
   # User registration settings
   registration:
     enabled: true  # Set to false to disable user registration
