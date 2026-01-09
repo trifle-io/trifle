@@ -54,7 +54,7 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 ### Image Tags Generated
 - `trifle/environment:ruby_3.2.0-erlang_28.0.2-elixir_1.18.4`
 - `trifle/environment:latest`
-- `trifle/app:v1.2.3` (when you tag releases)
+- `trifle/app:1.2.3` (when you tag releases like `v1.2.3`)
 
 ## Usage
 
@@ -69,14 +69,14 @@ You can manually trigger the workflow from the GitHub Actions tab.
 git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
-This creates `trifle/app:v1.0.0` images.
+This creates `trifle/app:1.0.0` images.
 
 ### Using in Kubernetes
 Your Helm charts will automatically pull the latest multi-platform images:
 ```yaml
 image:
   repository: trifle/app
-  tag: v1.0.0  # or a newer release tag
+  tag: 1.0.0  # or a newer release tag
 ```
 
 ## Security Scanning
