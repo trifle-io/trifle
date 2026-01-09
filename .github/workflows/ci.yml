@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build app image
+        run: docker compose build app
+
+      - name: Start services
+        run: docker compose up -d postgres mongo redis app
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if docker compose exec -T postgres pg_isready -U postgres -d trifle_dev; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres did not become ready in time" >&2
+          exit 1
+
+      - name: Install Hex/Rebar
+        run: |
+          docker compose exec -T app mix local.hex --force
+          docker compose exec -T app mix local.rebar --force
+
+      - name: Fetch dependencies
+        run: docker compose exec -T -e MIX_ENV=test app mix deps.get
+
+      - name: Run tests
+        run: docker compose exec -T -e MIX_ENV=test app mix test
+
+      - name: Shutdown
+        if: always()
+        run: docker compose down -v
