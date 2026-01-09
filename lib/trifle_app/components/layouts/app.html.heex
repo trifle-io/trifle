@@ -192,15 +192,15 @@
         x-transition:leave="transition duration-100 ease-in"
         ,
         x-transition:leave-start="opacity-100 transform scale-100"
-      ,
-      x-transition:leave-end="opacity-0 transform scale-95"
-    >
-      <div class="space-y-1 px-2 pt-2 pb-3 sm:px-3">
-        {live_active_link(@socket, :home, "Home", to: ~p"/", variant: :mobile)}
-        {live_active_link(@socket, :dashboards, "Dashboards",
-          to: ~p"/dashboards",
-          variant: :mobile
-        )}
+        ,
+        x-transition:leave-end="opacity-0 transform scale-95"
+      >
+        <div class="space-y-1 px-2 pt-2 pb-3 sm:px-3">
+          {live_active_link(@socket, :home, "Home", to: ~p"/", variant: :mobile)}
+          {live_active_link(@socket, :dashboards, "Dashboards",
+            to: ~p"/dashboards",
+            variant: :mobile
+          )}
           {live_active_link(@socket, :monitors, "Monitors", to: ~p"/monitors", variant: :mobile)}
           {live_active_link(@socket, :explore, "Explore", to: ~p"/explore", variant: :mobile)}
           <%= if Trifle.Config.projects_enabled?() do %>
@@ -283,7 +283,7 @@
   <% end %>
   
 <!-- Global notification live region, render this permanently at the end of the document -->
-  <%= if live_flash(@flash, :info) do %>
+  <%= if Phoenix.Flash.get(@flash, :info) do %>
     <div
       aria-live="assertive"
       class="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[12000]"
@@ -330,7 +330,9 @@
                 </svg>
               </div>
               <div class="ml-3 w-0 flex-1 pt-0.5">
-                <p class="text-sm text-gray-900 dark:text-white">{live_flash(@flash, :info)}</p>
+                <p class="text-sm text-gray-900 dark:text-white">
+                  {Phoenix.Flash.get(@flash, :info)}
+                </p>
               </div>
               <div class="ml-4 flex flex-shrink-0">
                 <button
@@ -351,7 +353,7 @@
     </div>
   <% end %>
 
-  <%= if live_flash(@flash, :error) do %>
+  <%= if Phoenix.Flash.get(@flash, :error) do %>
     <div
       aria-live="assertive"
       class="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6 z-[12000]"
@@ -398,7 +400,9 @@
                 </svg>
               </div>
               <div class="ml-3 w-0 flex-1 pt-0.5">
-                <p class="text-sm text-gray-900 dark:text-white">{live_flash(@flash, :error)}</p>
+                <p class="text-sm text-gray-900 dark:text-white">
+                  {Phoenix.Flash.get(@flash, :error)}
+                </p>
               </div>
               <div class="ml-4 flex flex-shrink-0">
                 <button

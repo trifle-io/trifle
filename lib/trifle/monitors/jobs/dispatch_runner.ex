@@ -100,12 +100,6 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
 
   defp parse_scheduled_at(_other, fallback), do: parse_scheduled_at(nil, fallback)
 
-  defp stream_monitors(callback) when is_function(callback, 1) do
-    monitors_query()
-    |> Repo.all()
-    |> Enum.each(callback)
-  end
-
   defp monitors_query do
     from(m in Monitor,
       where: m.status == :active or (m.status == :paused and m.type == :alert),
@@ -132,7 +126,7 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
     |> Map.new()
   end
 
-  defp enqueue_monitor(%Monitor{id: monitor_id, type: type} = monitor, now, last_triggered) do
+  defp enqueue_monitor(%Monitor{id: monitor_id, type: type}, now, last_triggered) do
     scheduled_iso =
       now
       |> truncate_to_minute()

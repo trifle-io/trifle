@@ -1,8 +1,6 @@
 defmodule TrifleApp.DesignSystem.AdminTable do
   use Phoenix.Component
 
-  import TrifleApp.DesignSystem.FormButtons
-
   @doc """
   Renders an admin table with proper layout and styling for administration interfaces.
   """

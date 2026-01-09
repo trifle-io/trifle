@@ -483,8 +483,6 @@ defmodule Trifle.Organizations.Database do
   end
 
   defp update_check_status(database, status, error) do
-    import Ecto.Changeset
-
     attrs = %{
       last_check_at: DateTime.utc_now(),
       last_check_status: status,
@@ -701,9 +699,13 @@ defmodule Trifle.Organizations.Database do
     try do
       driver = build_driver_for_check(database)
 
-      case Trifle.Stats.nuke(driver) do
-        :ok -> {:ok, "Database nuked successfully"}
-        {:error, reason} -> {:error, "Nuke failed: #{inspect(reason)}"}
+      if function_exported?(Trifle.Stats, :nuke, 1) do
+        case apply(Trifle.Stats, :nuke, [driver]) do
+          :ok -> {:ok, "Database nuked successfully"}
+          {:error, reason} -> {:error, "Nuke failed: #{inspect(reason)}"}
+        end
+      else
+        {:error, "Nuke failed: driver does not support database wipe"}
       end
     rescue
       error -> {:error, "Nuke failed: #{Exception.message(error)}"}
@@ -720,18 +722,6 @@ defmodule Trifle.Organizations.Database do
     case Redix.command(driver.connection, ["PING"]) do
       {:ok, "PONG"} -> true
       _ -> false
-    end
-  end
-
-  defp mongo_exists?(driver) do
-    # Check if the collection exists by trying to get collection info
-    case Mongo.show_collections(driver.connection) do
-      {:ok, collections} ->
-        collection_names = Enum.map(collections, & &1["name"])
-        Enum.member?(collection_names, driver.collection_name)
-
-      _ ->
-        false
     end
   end
 
@@ -778,15 +768,6 @@ defmodule Trifle.Organizations.Database do
       _ ->
         Logger.error("MongoDB status check connection failed with unknown error")
         false
-    end
-  end
-
-  defp postgres_exists?(driver) do
-    query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)"
-
-    case Postgrex.query(driver.connection, query, [driver.table_name]) do
-      {:ok, %{rows: [[true]]}} -> true
-      _ -> false
     end
   end
 
@@ -873,7 +854,7 @@ defmodule Trifle.Organizations.Database do
         query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
 
         case GenServer.call(connection_name, {:query, query, [table_name]}) do
-          {:ok, %{rows: rows}} when length(rows) > 0 -> true
+          {:ok, %{rows: rows}} when rows != [] -> true
           _ -> false
         end
 

@@ -4,7 +4,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Tabler
   alias TrifleApp.Components.DataTable
-  alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -128,7 +127,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   end
 
   defp match_path?(_path, ""), do: false
-  defp match_path?(path, "*"), do: true
+  defp match_path?(_path, "*"), do: true
 
   defp match_path?(path, filter) do
     cond do

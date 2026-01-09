@@ -15,7 +15,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :current_user, :any, default: nil
   attr :can_edit_dashboard, :boolean, default: false
   attr :is_public_access, :boolean, default: false
-  attr :public_token, :string, default: nil
+  attr :public_token, :any, default: nil
+  attr :grid_items, :list, default: nil
+  attr :text_items, :list, default: nil
   attr :kpi_values, :map, default: %{}
   attr :kpi_visuals, :map, default: %{}
   attr :timeseries, :map, default: %{}
@@ -33,12 +35,18 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   def grid(assigns) do
     assigns =
       assigns
-      |> assign_new(:grid_items, fn ->
-        grid_items(assigns.dashboard)
-      end)
       |> assign_new(:transponder_info, fn -> %{} end)
 
-    assigns = assign(assigns, :has_grid_items, assigns.grid_items != [])
+    grid_items =
+      case assigns.grid_items do
+        items when is_list(items) -> items
+        _ -> grid_items(assigns.dashboard)
+      end
+
+    assigns =
+      assigns
+      |> assign(:grid_items, grid_items)
+      |> assign(:has_grid_items, grid_items != [])
 
     assigns =
       assigns
@@ -651,7 +659,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     """
   end
 
-  defp content_classnames(widget_type) do
+  defp content_classnames(_widget_type) do
     [
       "grid-stack-item-content",
       "bg-white",
@@ -894,7 +902,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         color_dark?(rest)
 
       <<r1::binary-size(1), r2::binary-size(1), g1::binary-size(1), g2::binary-size(1),
-        b1::binary-size(1), b2::binary-size(1)>> = hex ->
+        b1::binary-size(1), b2::binary-size(1)>> ->
         with {r, ""} <- Integer.parse(r1 <> r2, 16),
              {g, ""} <- Integer.parse(g1 <> g2, 16),
              {b, ""} <- Integer.parse(b1 <> b2, 16) do
@@ -1386,22 +1394,28 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     prefix = "Widget "
 
     suffix =
-      widget_id
-      |> String.slice(0, 6)
-      |> case do
+      case widget_id do
         nil -> "—"
-        slice -> slice
+        value -> String.slice(value, 0, 6)
       end
 
     prefix <> suffix
   end
 
-  def grid_items(dashboard) do
-    dashboard
-    |> Map.get(:payload, %{})
-    |> Map.get("grid", [])
+  def grid_items(dashboard) when is_map(dashboard) do
+    payload =
+      Map.get(dashboard, :payload) ||
+        Map.get(dashboard, "payload") ||
+        %{}
+
+    payload
+    |> Map.get("grid") ||
+      Map.get(payload, :grid) ||
+      []
     |> normalize_items()
   end
+
+  def grid_items(_dashboard), do: []
 
   def text_items(grid_items), do: TextWidgets.widgets(grid_items)
 

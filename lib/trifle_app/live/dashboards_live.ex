@@ -256,14 +256,6 @@ defmodule TrifleApp.DashboardsLive do
     end
   end
 
-  defp all_group_ids(tree) when is_list(tree) do
-    Enum.flat_map(tree, &all_group_ids/1)
-  end
-
-  defp all_group_ids(%{group: group, children: children}) do
-    [group.id | all_group_ids(children)]
-  end
-
   def handle_event("start_rename_group", %{"id" => id}, socket) do
     {:noreply, assign(socket, :editing_group_id, id)}
   end
@@ -289,7 +281,7 @@ defmodule TrifleApp.DashboardsLive do
     end
   end
 
-  def handle_event("rename_group", %{"id" => id, "name" => name}, socket) do
+  def handle_event("rename_group", %{"group_id" => id, "name" => name}, socket) do
     membership = socket.assigns.current_membership
 
     group = Organizations.get_dashboard_group_for_membership!(membership, id)
@@ -388,17 +380,6 @@ defmodule TrifleApp.DashboardsLive do
       |> Base.encode16(case: :lower)
 
     "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
-  end
-
-  # Mixed nodes helpers
-  defp mixed_root_nodes(groups_tree, ungrouped_dashboards) do
-    groups = Enum.map(groups_tree, fn node -> {:group, node} end)
-    dashes = Enum.map(ungrouped_dashboards, fn d -> {:dashboard, d} end)
-
-    Enum.sort_by(groups ++ dashes, fn
-      {:group, n} -> n.group.position || 0
-      {:dashboard, d} -> d.position || 0
-    end)
   end
 
   defp mixed_group_nodes(node) do
@@ -724,7 +705,7 @@ defmodule TrifleApp.DashboardsLive do
               </svg>
             </div>
             <.form for={%{}} as={:g} phx-submit="rename_group" class="flex items-center gap-2 w-full">
-              <input type="hidden" name="id" value={@node.group.id} />
+              <input type="hidden" name="group_id" value={@node.group.id} />
               <input
                 type="text"
                 name="name"
@@ -1140,4 +1121,12 @@ defmodule TrifleApp.DashboardsLive do
   end
 
   defp changeset_error_message(_), do: nil
+
+  defp all_group_ids(tree) when is_list(tree) do
+    Enum.flat_map(tree, &all_group_ids/1)
+  end
+
+  defp all_group_ids(%{group: group, children: children}) do
+    [group.id | all_group_ids(children)]
+  end
 end

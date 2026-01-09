@@ -18,8 +18,8 @@ defmodule TrifleWeb.ObanDashboardRouter do
         not_found(conn)
 
       true ->
-        opts = Oban.Web.Router.init(opts)
-        Oban.Web.Router.call(conn, opts)
+        opts = apply(Oban.Web.Router, :init, [opts])
+        apply(Oban.Web.Router, :call, [conn, opts])
     end
   end
 

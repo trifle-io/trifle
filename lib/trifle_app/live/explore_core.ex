@@ -2,7 +2,6 @@ defmodule TrifleApp.ExploreCore do
   use TrifleApp, :live_view
 
   alias Decimal
-  alias Trifle.Organizations
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
   alias TrifleApp.Components.DataTable
@@ -80,7 +79,7 @@ defmodule TrifleApp.ExploreCore do
     end
   end
 
-  def format_smart_timeframe_display(smart_input, config) when is_nil(smart_input), do: ""
+  def format_smart_timeframe_display(smart_input, _config) when is_nil(smart_input), do: ""
 
   def format_smart_timeframe_display(
         smart_input,
@@ -90,7 +89,7 @@ defmodule TrifleApp.ExploreCore do
         fixed_to \\ nil
       )
 
-  def format_smart_timeframe_display(smart_input, config, true, fixed_from, fixed_to)
+  def format_smart_timeframe_display(_smart_input, _config, true, fixed_from, fixed_to)
       when not is_nil(fixed_from) and not is_nil(fixed_to) do
     # Use the fixed timestamps when explicitly requested (e.g., on page reload)
     format_timeframe_display(fixed_from, fixed_to)
@@ -509,6 +508,75 @@ defmodule TrifleApp.ExploreCore do
 
   def handle_event("reload_data", _, socket) do
     reload_current_timeframe(socket)
+  end
+
+  def handle_event("toggle_play_pause", _params, socket) do
+    socket =
+      if socket.assigns.use_fixed_display do
+        tf = socket.assigns.smart_timeframe_input || "24h"
+        config = socket.assigns.database_config
+
+        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+          {:ok, from, to, smart, _use_fixed} ->
+            assign(socket,
+              from: from,
+              to: to,
+              smart_timeframe_input: smart,
+              use_fixed_display: false
+            )
+
+          {:error, _} ->
+            assign(socket, use_fixed_display: false)
+        end
+      else
+        assign(socket, use_fixed_display: true)
+      end
+
+    reload_current_timeframe(socket)
+  end
+
+  def handle_event("toggle_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, show_export_dropdown: !socket.assigns.show_export_dropdown)}
+  end
+
+  def handle_event("hide_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, show_export_dropdown: false)}
+  end
+
+  def handle_event("download_explore_csv", _params, socket) do
+    export = SeriesExport.extract_series(socket.assigns[:stats])
+
+    if SeriesExport.has_data?(export) do
+      csv = SeriesExport.to_csv(export)
+      fname = export_filename("explore", socket.assigns, ".csv")
+
+      {:noreply,
+       push_event(socket, "file_download", %{
+         content: csv,
+         filename: fname,
+         type: "text/csv"
+       })}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    end
+  end
+
+  def handle_event("download_explore_json", _params, socket) do
+    export = SeriesExport.extract_series(socket.assigns[:stats])
+
+    if SeriesExport.has_data?(export) do
+      json = SeriesExport.to_json(export)
+      fname = export_filename("explore", socket.assigns, ".json")
+
+      {:noreply,
+       push_event(socket, "file_download", %{
+         content: json,
+         filename: fname,
+         type: "application/json"
+       })}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    end
   end
 
   defp navigate_timeframe(socket, direction) do
@@ -936,35 +1004,6 @@ defmodule TrifleApp.ExploreCore do
     end
   end
 
-  # Toggle Play/Pause in Explore (defensive handler in parent LiveView)
-  def handle_event("toggle_play_pause", _params, socket) do
-    socket =
-      if socket.assigns.use_fixed_display do
-        tf =
-          socket.assigns.smart_timeframe_input ||
-            (Source.default_timeframe(socket.assigns.source) || "24h")
-
-        config = socket.assigns.database_config
-
-        case TimeframeParsing.parse_smart_timeframe(tf, config) do
-          {:ok, from, to, smart, _} ->
-            assign(socket,
-              from: from,
-              to: to,
-              smart_timeframe_input: smart,
-              use_fixed_display: false
-            )
-
-          {:error, _} ->
-            assign(socket, use_fixed_display: false)
-        end
-      else
-        assign(socket, use_fixed_display: true)
-      end
-
-    reload_current_timeframe(socket)
-  end
-
   # Progress message handling
   def handle_info({:loading_progress, progress_map}, socket) do
     {:noreply, assign(socket, :loading_progress, progress_map)}
@@ -1122,7 +1161,7 @@ defmodule TrifleApp.ExploreCore do
 
     # Extract values to avoid async socket warnings
     source = socket.assigns.source
-    database = Source.record(source)
+    _database = Source.record(source)
     key = socket.assigns.key
     granularity = socket.assigns.granularity
     from = socket.assigns.from
@@ -1670,7 +1709,7 @@ defmodule TrifleApp.ExploreCore do
       %{
         key: key,
         stats: stats,
-        transponder_info: transponder_info,
+        transponder_info: _transponder_info,
         key_transponder_results: key_transponder_results
       }
       when not is_nil(key) and key != "" and not is_nil(stats) ->
@@ -1715,54 +1754,6 @@ defmodule TrifleApp.ExploreCore do
 
       _ ->
         nil
-    end
-  end
-
-  # Export dropdown handlers
-  def handle_event("toggle_export_dropdown", _params, socket) do
-    {:noreply,
-     assign(socket, :show_export_dropdown, !(socket.assigns[:show_export_dropdown] || false))}
-  end
-
-  def handle_event("hide_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, :show_export_dropdown, false)}
-  end
-
-  def handle_event("download_explore_csv", _params, socket) do
-    series = SeriesExport.extract_series(socket.assigns[:stats])
-
-    if SeriesExport.has_data?(series) do
-      csv = SeriesExport.to_csv(series)
-      fname = export_filename("explore", socket.assigns, ".csv")
-
-      {:noreply,
-       push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
-    else
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    end
-  end
-
-  def handle_event("download_explore_json", _params, socket) do
-    raw =
-      socket.assigns[:series_raw]
-      |> case do
-        nil -> socket.assigns[:stats]
-        other -> other
-      end
-      |> SeriesExport.extract_series()
-
-    if SeriesExport.has_data?(raw) do
-      json = SeriesExport.to_json(raw)
-      fname = export_filename("explore", socket.assigns, ".json")
-
-      {:noreply,
-       push_event(socket, "file_download", %{
-         content: json,
-         filename: fname,
-         type: "application/json"
-       })}
-    else
-      {:noreply, put_flash(socket, :error, "No data to export")}
     end
   end
 

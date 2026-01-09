@@ -86,10 +86,11 @@ defmodule Trifle.Monitors do
 
     query =
       scoped_monitors_query(membership)
-      |> where([m],
+      |> where(
+        [m],
         m.type == ^:alert and m.status == ^:active and m.trigger_status != ^:idle
       )
-      |> order_by([m], [desc: m.updated_at, desc: m.inserted_at])
+      |> order_by([m], desc: m.updated_at, desc: m.inserted_at)
 
     query =
       case limit do
@@ -658,7 +659,7 @@ defmodule Trifle.Monitors do
     end)
   end
 
-  defp option_to_channel_params(option, existing \\ nil) do
+  defp option_to_channel_params(option, existing) do
     channel = Map.get(option, :channel) || Map.get(option, "channel")
     normalized_channel = normalize_channel(channel) || :custom
 
@@ -1156,7 +1157,7 @@ defmodule Trifle.Monitors do
 
   defp fetch_delivery_medium(_), do: :error
 
-  defp delivery_medium_params(medium, existing \\ nil) do
+  defp delivery_medium_params(medium, existing) do
     base =
       existing
       |> existing_medium_map()
@@ -1200,7 +1201,7 @@ defmodule Trifle.Monitors do
 
   defp normalize_enum_value(_value, _valid), do: :error
 
-  defp put_unless_present(attrs, key, nil), do: attrs
+  defp put_unless_present(attrs, _key, nil), do: attrs
 
   defp put_unless_present(attrs, key, value) do
     case Map.fetch(attrs, key) do

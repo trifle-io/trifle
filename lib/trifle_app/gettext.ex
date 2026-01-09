@@ -3,5 +3,5 @@ defmodule TrifleApp.Gettext do
   A module providing Internationalization for the TrifleApp application.
   """
 
-  use Gettext, otp_app: :trifle
+  use Gettext.Backend, otp_app: :trifle
 end

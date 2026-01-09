@@ -843,8 +843,6 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
   defp finished_elapsed(_), do: nil
 
-  defp format_duration(nil), do: nil
-
   defp format_duration(seconds) when is_integer(seconds) and seconds >= 0 do
     cond do
       seconds < 60 ->

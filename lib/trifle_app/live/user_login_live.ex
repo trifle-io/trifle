@@ -183,7 +183,7 @@ defmodule TrifleApp.UserLoginLive do
   end
 
   def mount(params, _session, socket) do
-    email = live_flash(socket.assigns.flash, :email)
+    email = Phoenix.Flash.get(socket.assigns.flash, :email)
     form = to_form(%{"email" => email}, as: "user")
     invitation_token = params["invitation_token"] |> normalize_token()
 

@@ -191,6 +191,7 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
 
       {:ok, result_without_fill} =
         AlertEvaluator.evaluate(alert_without_fill, series, "metric", exclude_recent: false)
+
       refute result_without_fill.triggered?
       assert result_without_fill.points == []
       refute result_without_fill.meta[:treat_nil_as_zero]
@@ -203,6 +204,7 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
 
       {:ok, result_with_fill} =
         AlertEvaluator.evaluate(alert_with_fill, series, "metric", exclude_recent: false)
+
       assert result_with_fill.triggered?
       assert Enum.any?(result_with_fill.points, fn point -> match?(%{value: 0.0}, point) end)
       assert result_with_fill.meta[:treat_nil_as_zero]

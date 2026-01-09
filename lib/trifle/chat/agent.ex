@@ -59,7 +59,7 @@ defmodule Trifle.Chat.Agent do
            tools: Tools.definitions(context),
            model: preferred_model()
          ) do
-      {:ok, %{"choices" => [choice | _]} = response} ->
+      {:ok, %{"choices" => [choice | _]} = _response} ->
         message = choice["message"] || %{}
         finish_reason = choice["finish_reason"]
 

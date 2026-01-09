@@ -30,7 +30,11 @@ defmodule TrifleApp.HomeLive do
      |> load_home_data(user, membership)}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{current_user: user, current_membership: membership}} = socket) do
+  def handle_params(
+        _params,
+        _uri,
+        %{assigns: %{current_user: user, current_membership: membership}} = socket
+      ) do
     {:noreply, load_home_data(socket, user, membership)}
   end
 
@@ -39,7 +43,9 @@ defmodule TrifleApp.HomeLive do
     <div class="px-4 sm:px-6 lg:px-8 py-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between mb-6">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Welcome {welcome_name(@current_user)}!</h1>
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
+            Welcome {welcome_name(@current_user)}!
+          </h1>
           <p class="text-sm text-gray-600 dark:text-slate-400">
             Quick pulse of your dashboards, monitors, and sources.
           </p>
@@ -60,8 +66,19 @@ defmodule TrifleApp.HomeLive do
               class="inline-flex items-center gap-1 rounded-lg border border-teal-600 px-2.5 py-1.5 text-sm font-medium text-teal-700 transition hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 dark:border-teal-400 dark:text-teal-200 dark:hover:bg-teal-900/40"
             >
               <span class="sr-only">View dashboards</span>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                />
               </svg>
             </.link>
           </div>
@@ -75,7 +92,12 @@ defmodule TrifleApp.HomeLive do
                     navigate={~p"/dashboards/new"}
                     class="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      class="h-4 w-4"
+                    >
                       <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
                     </svg>
                     Create your first dashboard
@@ -85,7 +107,10 @@ defmodule TrifleApp.HomeLive do
             <% Enum.empty?(@dashboard_visits) -> %>
               <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
                 No recent visits yet.
-                <.link navigate={~p"/dashboards"} class="ml-1 font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300">
+                <.link
+                  navigate={~p"/dashboards"}
+                  class="ml-1 font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
+                >
                   Browse dashboards
                 </.link>
                 to start exploring.
@@ -128,8 +153,19 @@ defmodule TrifleApp.HomeLive do
               class="inline-flex items-center gap-1 rounded-lg border border-teal-600 px-2.5 py-1.5 text-sm font-medium text-teal-700 transition hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 dark:border-teal-400 dark:text-teal-200 dark:hover:bg-teal-900/40"
             >
               <span class="sr-only">View monitors</span>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-4 w-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                />
               </svg>
             </.link>
           </div>
@@ -143,7 +179,12 @@ defmodule TrifleApp.HomeLive do
                     navigate={~p"/monitors/new"}
                     class="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      class="h-4 w-4"
+                    >
                       <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
                     </svg>
                     Create a monitor
@@ -176,7 +217,8 @@ defmodule TrifleApp.HomeLive do
                         <div class="text-xs text-gray-500 dark:text-slate-400">
                           Status: {humanize_status(monitor.trigger_status)}
                           <%= if monitor.dashboard do %>
-                            • Dashboard: <.link
+                            • Dashboard:
+                            <.link
                               navigate={~p"/dashboards/#{monitor.dashboard_id}"}
                               class="hover:text-teal-600 dark:hover:text-teal-300"
                             >
@@ -209,12 +251,18 @@ defmodule TrifleApp.HomeLive do
         <%= if Enum.empty?(@source_activity) do %>
           <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
             Connect a data source to see activity.
-            <.link navigate={~p"/dbs/new"} class="ml-1 font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300">
+            <.link
+              navigate={~p"/dbs/new"}
+              class="ml-1 font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
+            >
               Add a database
             </.link>
             <%= if Trifle.Config.projects_enabled?() do %>
               <span class="mx-1 text-gray-400 dark:text-slate-500">|</span>
-              <.link navigate={~p"/projects/new"} class="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300">
+              <.link
+                navigate={~p"/projects/new"}
+                class="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
+              >
                 Add a project
               </.link>
             <% end %>
@@ -227,7 +275,7 @@ defmodule TrifleApp.HomeLive do
                   <div>
                     <div class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                       <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-200">
-                        <%= source_icon(activity.source) %>
+                        {source_icon(activity.source)}
                       </span>
                       <span class="truncate">
                         {Source.display_name(activity.source)}
@@ -237,10 +285,10 @@ defmodule TrifleApp.HomeLive do
                       Last event: {last_event_label(activity.last_event_at)}
                     </div>
                   </div>
-                    <div class="text-right">
-                      <div class="text-xl font-semibold text-teal-700 dark:text-teal-300">
-                        {ExploreCore.format_number(activity.total)}
-                      </div>
+                  <div class="text-right">
+                    <div class="text-xl font-semibold text-teal-700 dark:text-teal-300">
+                      {ExploreCore.format_number(activity.total)}
+                    </div>
                     <div class="text-xs text-gray-500 dark:text-slate-400">events</div>
                   </div>
                 </div>
@@ -269,9 +317,15 @@ defmodule TrifleApp.HomeLive do
 
   defp load_home_data(socket, user, membership) do
     socket
-    |> assign(:dashboard_visits, HomeData.recent_dashboard_visits(user, membership, @recent_limit))
+    |> assign(
+      :dashboard_visits,
+      HomeData.recent_dashboard_visits(user, membership, @recent_limit)
+    )
     |> assign(:dashboards_count, Organizations.count_dashboards_for_membership(user, membership))
-    |> assign(:triggered_monitors, HomeData.triggered_monitors(user, membership, preload: [:dashboard]))
+    |> assign(
+      :triggered_monitors,
+      HomeData.triggered_monitors(user, membership, preload: [:dashboard])
+    )
     |> assign(:monitors_count, Monitors.count_monitors_for_membership(membership))
     |> assign(:source_activity, HomeData.source_activity(membership))
     |> assign(:has_sources?, has_sources?(membership))
@@ -300,7 +354,6 @@ defmodule TrifleApp.HomeLive do
           <path d="M5 6v6c0 1.66 3.134 3 7 3s7-1.34 7-3V6" stroke-linecap="round"></path>
           <path d="M5 12v6c0 1.66 3.134 3 7 3s7-1.34 7-3v-6" stroke-linecap="round"></path>
         </svg>
-
       <% :project -> %>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5">
           <path
@@ -308,7 +361,6 @@ defmodule TrifleApp.HomeLive do
             stroke-linejoin="round"
           />
         </svg>
-
       <% _ -> %>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5">
           <path d="M4.5 7.5h15" stroke-linecap="round" />
@@ -336,7 +388,10 @@ defmodule TrifleApp.HomeLive do
 
   defp last_event_label(nil), do: "No events yet"
   defp last_event_label(%DateTime{} = dt), do: relative_time(dt)
-  defp last_event_label(%NaiveDateTime{} = ndt), do: ndt |> DateTime.from_naive!("Etc/UTC") |> relative_time()
+
+  defp last_event_label(%NaiveDateTime{} = ndt),
+    do: ndt |> DateTime.from_naive!("Etc/UTC") |> relative_time()
+
   defp last_event_label(_), do: "—"
 
   defp format_error({:exception, %struct{} = error}) do
@@ -408,17 +463,26 @@ defmodule TrifleApp.HomeLive do
   defp sparkline_series(timeline) do
     timeline
     |> Enum.map(fn
-      %{at: %DateTime{} = dt, value: value} -> [DateTime.to_unix(dt, :millisecond), normalize_number(value)]
+      %{at: %DateTime{} = dt, value: value} ->
+        [DateTime.to_unix(dt, :millisecond), normalize_number(value)]
+
       %{at: %NaiveDateTime{} = ndt, value: value} ->
         ndt
         |> DateTime.from_naive!("Etc/UTC")
         |> DateTime.to_unix(:millisecond)
         |> then(&[&1, normalize_number(value)])
 
-      %{at: at, value: value} when is_integer(at) -> [at, normalize_number(value)]
-      %{at: at, value: value} when is_float(at) -> [round(at), normalize_number(value)]
-      %{value: value} -> [System.system_time(:millisecond), normalize_number(value)]
-      other -> [System.system_time(:millisecond), normalize_number(Map.get(other, :value))]
+      %{at: at, value: value} when is_integer(at) ->
+        [at, normalize_number(value)]
+
+      %{at: at, value: value} when is_float(at) ->
+        [round(at), normalize_number(value)]
+
+      %{value: value} ->
+        [System.system_time(:millisecond), normalize_number(value)]
+
+      other ->
+        [System.system_time(:millisecond), normalize_number(Map.get(other, :value))]
     end)
   end
 

@@ -31,10 +31,6 @@ defmodule TrifleApp.ExploreLive do
     {:ok, assign(socket, :explore_path, explore_path())}
   end
 
-  defp ensure_explore_path({:ok, socket, opts}) do
-    {:ok, assign(socket, :explore_path, explore_path()), opts}
-  end
-
   @impl true
   def handle_params(params, url, socket) do
     ExploreCore.handle_params(params, url, socket)
@@ -516,22 +512,6 @@ defmodule TrifleApp.ExploreLive do
   end
 
   defp timeline_paths(_assigns), do: ["keys.*"]
-
-  defp format_transponder_error({tag, %_struct{} = exception}) when is_atom(tag) do
-    "#{inspect(tag)}: " <> Exception.message(exception)
-  end
-
-  defp format_transponder_error(%struct{} = exception) do
-    if function_exported?(struct, :exception, 1) do
-      Exception.message(exception)
-    else
-      inspect(exception)
-    end
-  end
-
-  defp format_transponder_error(%{message: message}) when is_binary(message), do: message
-  defp format_transponder_error(message) when is_binary(message), do: message
-  defp format_transponder_error(other), do: inspect(other)
 
   defp build_timeseries_dataset(%{timeline: timeline, chart_type: chart_type} = assigns) do
     series =

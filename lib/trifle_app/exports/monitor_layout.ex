@@ -4,7 +4,6 @@ defmodule TrifleApp.Exports.MonitorLayout do
   via the shared Chrome exporter pipeline.
   """
 
-  alias Ecto.NoResultsError
   alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, Monitor}
   alias Trifle.Monitors.AlertEvaluator
@@ -456,7 +455,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp insights_dashboard(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
 
   defp insights_dashboard(%Monitor{type: :alert} = monitor) do
-    metric_path =
+    _metric_path =
       monitor.alert_metric_path
       |> to_string()
       |> String.trim()
@@ -870,7 +869,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   end
 
   defp default_x(_index), do: 0
-  defp default_y(index, height \\ 4), do: index * height
+  defp default_y(index, height), do: index * height
 
   defp clamp_height(_value, _index), do: 4
 
@@ -997,8 +996,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
   defp ensure_list_of_strings(value), do: ensure_list_of_strings(List.wrap(value))
 
-  defp coerce_int(value, default) when is_integer(value), do: value
-  defp coerce_int(value, default) when is_float(value), do: round(value)
+  defp coerce_int(value, _default) when is_integer(value), do: value
+  defp coerce_int(value, _default) when is_float(value), do: round(value)
 
   defp coerce_int(value, default) when is_binary(value) do
     case Integer.parse(value) do
@@ -1012,7 +1011,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp coerce_int(nil, default), do: default
   defp coerce_int(_other, default), do: default
 
-  defp coerce_bool(value, default) when is_boolean(value), do: value
+  defp coerce_bool(value, _default) when is_boolean(value), do: value
 
   defp coerce_bool(value, default) when is_binary(value) do
     value = String.downcase(String.trim(value))
@@ -1024,7 +1023,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end
   end
 
-  defp coerce_bool(value, default) when is_integer(value), do: value != 0
+  defp coerce_bool(value, _default) when is_integer(value), do: value != 0
   defp coerce_bool(_other, default), do: default
 
   defp build_default_alert_widgets(_monitor, ""), do: []

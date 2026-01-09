@@ -1,8 +1,6 @@
 defmodule TrifleApp.ProjectSettingsLive do
   use TrifleApp, :live_view
 
-  import TrifleApp.Components.TimeframeInput, only: [timeframe_input: 1]
-
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
 
   alias Ecto.Changeset

@@ -37,7 +37,7 @@ defmodule TrifleApp.ExportLayoutLive do
     """
   end
 
-  def render(%{export_layout: %Layout{} = layout} = assigns) do
+  def render(%{export_layout: %Layout{}} = assigns) do
     ~H"""
     <div
       id="export-layout-root"
@@ -51,7 +51,7 @@ defmodule TrifleApp.ExportLayoutLive do
     >
       {theme_script(@theme)}
       <div class="export-layout-canvas">
-        {layout_content(%{layout: layout})}
+        {layout_content(%{layout: @export_layout})}
       </div>
     </div>
     """

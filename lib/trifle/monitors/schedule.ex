@@ -143,7 +143,7 @@ defmodule Trifle.Monitors.Schedule do
     ~U[1970-01-01 00:00:00Z]
   end
 
-  defp boundary_hit?(bucket_end, minutes) when minutes <= 0, do: false
+  defp boundary_hit?(_bucket_end, minutes) when minutes <= 0, do: false
 
   defp boundary_hit?(bucket_end, minutes) do
     bucket_end = truncate_to_minute(bucket_end)

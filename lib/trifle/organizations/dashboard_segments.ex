@@ -40,7 +40,9 @@ defmodule Trifle.Organizations.DashboardSegments do
   definitions that include the `"current_value"` key.
   """
   @spec compute_state(list(), map(), map()) :: {map(), list()}
-  def compute_state(segments, overrides \\ %{}, previous_values \\ %{}) when is_list(segments) do
+  def compute_state(segments, overrides \\ %{}, previous_values \\ %{})
+
+  def compute_state(segments, overrides, previous_values) when is_list(segments) do
     overrides = normalize_value_map(overrides)
     previous_values = normalize_value_map(previous_values)
 

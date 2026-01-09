@@ -24,7 +24,7 @@ defmodule TrifleApp do
         layouts: [html: TrifleApp.Layouts]
 
       import Plug.Conn
-      import TrifleApp.Gettext
+      use Gettext, backend: TrifleApp.Gettext
 
       unquote(verified_routes())
     end
@@ -62,7 +62,7 @@ defmodule TrifleApp do
     quote do
       import Phoenix.HTML
       import TrifleApp.CoreComponents
-      import TrifleApp.Gettext
+      use Gettext, backend: TrifleApp.Gettext
 
       # Design System Components
       import TrifleApp.DesignSystem.ButtonGroup

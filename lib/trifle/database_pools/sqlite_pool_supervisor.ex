@@ -133,7 +133,7 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
     # Extract pool_size from config
     db_config = database.config || %{}
 
-    pool_size =
+    _pool_size =
       case db_config["pool_size"] do
         # Smaller default pool for SQLite
         nil -> 3
@@ -145,7 +145,7 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
     # since SQLite doesn't benefit from connection pooling the same way as other databases
 
     # Build connection config for direct exqlite usage
-    config = [
+    _config = [
       name: connection_name,
       database: database_path
     ]

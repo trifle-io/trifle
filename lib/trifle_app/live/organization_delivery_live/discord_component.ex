@@ -42,7 +42,6 @@ defmodule TrifleApp.OrganizationDeliveryLive.DiscordComponent do
           </div>
           <.icon
             name="hero-chevron-down-mini"
-            id={"#{@id}-chevron"}
             class="h-5 w-5 text-gray-400 transition-transform duration-150"
           />
         </div>

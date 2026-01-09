@@ -427,8 +427,6 @@ defmodule TrifleApp.MonitorsLive do
   defp monitor_owner_label(%{email: email}) when is_binary(email), do: email
   defp monitor_owner_label(_), do: "Unknown owner"
 
-  defp gravatar_url(email, size \\ 64)
-
   defp gravatar_url(email, size) when is_binary(email) do
     trimmed =
       email

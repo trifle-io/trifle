@@ -39,7 +39,7 @@ defmodule TrifleApp.Exports.LayoutStore do
   @spec fetch(layout_id()) :: {:ok, Layout.t()} | {:error, :not_found | :expired}
   def fetch(id) when is_binary(id) do
     case local_fetch(id) do
-      {:ok, layout} = ok ->
+      {:ok, _layout} = ok ->
         ok
 
       {:error, :expired} = expired ->
@@ -56,7 +56,7 @@ defmodule TrifleApp.Exports.LayoutStore do
   @spec take(layout_id()) :: {:ok, Layout.t()} | {:error, :not_found | :expired}
   def take(id) when is_binary(id) do
     case local_take(id) do
-      {:ok, layout} = ok ->
+      {:ok, _layout} = ok ->
         _ = delete_from_db(id)
         ok
 

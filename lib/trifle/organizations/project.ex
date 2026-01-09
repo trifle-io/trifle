@@ -99,6 +99,7 @@ defmodule Trifle.Organizations.Project do
     case Process.whereis(:trifle_mongo) do
       nil ->
         url = System.get_env("MONGODB_URL") || "mongodb://localhost:27017/trifle"
+
         {:ok, conn} =
           Mongo.start_link(url: url, name: :trifle_mongo)
 

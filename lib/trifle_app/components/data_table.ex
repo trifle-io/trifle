@@ -216,9 +216,10 @@ defmodule TrifleApp.Components.DataTable do
     |> maybe_put_id(Keyword.get(opts, :id))
   end
 
+  def to_aggrid_payload(dataset, transponder_info \\ %{})
   def to_aggrid_payload(nil, _transponder_info), do: nil
 
-  def to_aggrid_payload(dataset, transponder_info \\ %{}) do
+  def to_aggrid_payload(dataset, transponder_info) do
     granularity = Map.get(dataset, :granularity) || Map.get(dataset, "granularity")
     color_paths = Map.get(dataset, :color_paths) || Map.get(dataset, "color_paths") || []
     columns = get_columns(dataset)

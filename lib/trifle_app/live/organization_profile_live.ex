@@ -253,16 +253,6 @@ defmodule TrifleApp.OrganizationProfileLive do
   defp default_country(value) when value in ["", "nil", nil], do: "US"
   defp default_country(value), do: value
 
-  defp country_label(nil), do: "—"
-  defp country_label(""), do: "—"
-
-  defp country_label(code) do
-    case Enum.find(@countries, fn {_label, value} -> value == code end) do
-      {label, _} -> label
-      nil -> code
-    end
-  end
-
   defp us_state_name(nil), do: nil
   defp us_state_name(""), do: nil
 
@@ -300,8 +290,6 @@ defmodule TrifleApp.OrganizationProfileLive do
     code = organization.country |> value_to_string() |> String.upcase()
     if blank?(code), do: "—", else: code
   end
-
-  defp address_country_value(nil), do: nil
 
   defp address_country_value(%Organization{} = organization) do
     organization.address_country || Map.get(organization.metadata || %{}, "address_country") ||

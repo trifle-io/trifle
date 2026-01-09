@@ -162,22 +162,6 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
     }
   end
 
-  defp build_redis_url(database) do
-    # Handle authentication
-    auth_part =
-      if database.password do
-        ":#{database.password}@"
-      else
-        ""
-      end
-
-    # Build full URL
-    port = database.port || 6379
-    db_number = database.database_name || 0
-
-    "redis://#{auth_part}#{database.host}:#{port}/#{db_number}"
-  end
-
   defp random_index do
     Enum.random(0..(@connections_per_pool - 1))
   end

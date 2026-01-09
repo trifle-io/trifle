@@ -439,15 +439,6 @@ defmodule Trifle.Organizations.Dashboard do
     |> Enum.reduce(%{}, fn {key, value}, acc -> Map.put(acc, to_string(key), value) end)
   end
 
-  defp blank_to_nil(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp blank_to_nil(value), do: value
-
   defp normalize_placeholder(nil), do: nil
 
   defp normalize_placeholder(value) when is_binary(value) do

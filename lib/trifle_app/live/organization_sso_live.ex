@@ -6,6 +6,7 @@ defmodule TrifleApp.OrganizationSSOLive do
   alias TrifleApp.OrganizationLive.Navigation
   alias TrifleApp.OrganizationSSOLive.GoogleComponent
 
+  @impl true
   def mount(_params, _session, socket) do
     current_user = socket.assigns[:current_user]
     membership = socket.assigns[:current_membership]
@@ -34,6 +35,7 @@ defmodule TrifleApp.OrganizationSSOLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="px-4 sm:px-6 lg:px-8">
@@ -84,21 +86,21 @@ defmodule TrifleApp.OrganizationSSOLive do
             type="checkbox"
             field={@google_sso_form[:enabled]}
             label="Enable Google sign-in"
-            help="When disabled, Google OAuth logins are blocked for this organization."
+            help_text="When disabled, Google OAuth logins are blocked for this organization."
           />
 
           <.form_field
             type="checkbox"
             field={@google_sso_form[:auto_provision_members]}
             label="Automatically add members"
-            help="When enabled, users from approved domains are added to the organization on their first Google login."
+            help_text="When enabled, users from approved domains are added to the organization on their first Google login."
           />
 
           <.form_field
             type="textarea"
             field={@google_sso_form[:domains]}
             label="Allowed Google Workspace domains"
-            help="Enter one domain per line, e.g. example.com. Domains must be unique across all organizations."
+            help_text="Enter one domain per line, e.g. example.com. Domains must be unique across all organizations."
             class="min-h-[120px]"
           />
 
