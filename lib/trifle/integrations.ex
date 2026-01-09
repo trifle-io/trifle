@@ -568,11 +568,11 @@ defmodule Trifle.Integrations do
           Map.get(attrs, :guild_id) ||
           Map.get(attrs, "guild_id") ||
           discord_reference_name_from_payload(payload)
+
       guild_id = fetch_attr(attrs, :guild_id)
 
       case fetch_discord_installation_by_guild(organization_id, guild_id) do
         nil ->
-
           reference =
             generate_reference(
               DiscordInstallation,
@@ -594,7 +594,6 @@ defmodule Trifle.Integrations do
           end
 
         %DiscordInstallation{} = installation ->
-
           reference =
             case installation.reference do
               nil ->
@@ -1072,17 +1071,6 @@ defmodule Trifle.Integrations do
 
   defp fetch_attr(attrs, key) when is_atom(key) do
     Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
-  end
-
-  defp slack_reference_name(attrs) do
-    fetch_attr(attrs, :team_name) ||
-      fetch_attr(attrs, :team_domain) ||
-      fetch_attr(attrs, :team_id)
-  end
-
-  defp discord_reference_name(attrs) do
-    fetch_attr(attrs, :guild_name) ||
-      fetch_attr(attrs, :guild_id)
   end
 
   defp slack_reference_name_from_payload(payload) do

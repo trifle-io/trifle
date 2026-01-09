@@ -1,7 +1,6 @@
 defmodule TrifleApp.DashboardLive do
   use TrifleApp, :live_view
   alias Trifle.Organizations
-  alias Trifle.Organizations.Database
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations.DashboardSegments
   alias Trifle.Stats.Source
@@ -421,85 +420,6 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  def handle_event("transfer_dashboard_owner", _params, socket) do
-    cond do
-      !socket.assigns[:can_transfer_dashboard_owner] ->
-        {:noreply,
-         socket
-         |> assign(:dashboard_owner_error, "You do not have permission to transfer ownership")}
-
-      true ->
-        selection = socket.assigns[:dashboard_owner_selection] || ""
-
-        cond do
-          selection == "" ->
-            {:noreply,
-             socket
-             |> assign(:dashboard_owner_error, "Select a member to transfer ownership")}
-
-          true ->
-            dashboard = socket.assigns.dashboard
-            membership = socket.assigns.current_membership
-
-            case Organizations.transfer_dashboard_ownership(dashboard, membership, selection) do
-              {:ok, updated_dashboard} ->
-                new_owner = Organizations.get_membership!(selection)
-                label = ownership_option_label(new_owner)
-
-                {:noreply,
-                 socket
-                 |> assign(:dashboard_owner_selection, "")
-                 |> assign(:dashboard_owner_error, nil)
-                 |> assign_dashboard(updated_dashboard)
-                 |> put_flash(:info, "Ownership transferred to #{label}")}
-
-              {:error, :same_owner} ->
-                {:noreply,
-                 socket
-                 |> assign(:dashboard_owner_error, "Select a different member")
-                 |> assign_dashboard_owner_state()}
-
-              {:error, :invalid_target} ->
-                {:noreply,
-                 socket
-                 |> assign(
-                   :dashboard_owner_error,
-                   "Selected member is not part of this organization"
-                 )
-                 |> assign_dashboard_owner_state()}
-
-              {:error, :forbidden} ->
-                {:noreply,
-                 socket
-                 |> assign(
-                   :dashboard_owner_error,
-                   "You do not have permission to transfer ownership"
-                 )}
-
-              {:error, :unauthorized} ->
-                {:noreply,
-                 socket
-                 |> assign(
-                   :dashboard_owner_error,
-                   "You do not have permission to transfer ownership"
-                 )}
-
-              {:error, :not_found} ->
-                {:noreply,
-                 socket
-                 |> assign(:dashboard_owner_error, "Selected member was not found")
-                 |> assign_dashboard_owner_state()}
-
-              {:error, %Ecto.Changeset{}} ->
-                {:noreply,
-                 socket
-                 |> assign(:dashboard_owner_error, "Unable to transfer ownership right now")
-                 |> assign_dashboard_owner_state()}
-            end
-        end
-    end
-  end
-
   def handle_event("delete_dashboard", _params, socket) do
     error_message =
       permission_message(socket, "You do not have permission to delete this dashboard")
@@ -612,7 +532,7 @@ defmodule TrifleApp.DashboardLive do
             # If stats are loaded, recompute KPI values (in case new widgets were added)
             socket = assign_dashboard(socket, updated_dashboard)
 
-            items = updated_dashboard.payload["grid"] || []
+            _items = updated_dashboard.payload["grid"] || []
 
             {:noreply, socket}
 
@@ -1329,6 +1249,341 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event("toggle_export_dropdown", _params, socket) do
+    current = socket.assigns[:show_export_dropdown] || false
+
+    {:noreply,
+     socket
+     |> assign(:show_export_dropdown, !current)}
+  end
+
+  def handle_event("hide_export_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_export_dropdown, false)}
+  end
+
+  def handle_event("download_dashboard_csv", _params, socket) do
+    series = series_from_assigns(socket.assigns)
+
+    if SeriesExport.has_data?(series) do
+      csv = SeriesExport.to_csv(series)
+      fname = export_filename("dashboard", socket.assigns, ".csv")
+
+      {:noreply,
+       push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    end
+  end
+
+  def handle_event("download_dashboard_json", _params, socket) do
+    series = series_from_assigns(socket.assigns)
+
+    if SeriesExport.has_data?(series) do
+      json = SeriesExport.to_json(series)
+      fname = export_filename("dashboard", socket.assigns, ".json")
+
+      {:noreply,
+       push_event(socket, "file_download", %{
+         content: json,
+         filename: fname,
+         type: "application/json"
+       })}
+    else
+      {:noreply, put_flash(socket, :error, "No data to export")}
+    end
+  end
+
+  def handle_event("download_dashboard_pdf", _params, socket) do
+    # Prefer direct download via controller route to avoid large payloads over LiveView socket
+    fname = export_filename("dashboard", socket.assigns, ".pdf")
+    url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/pdf?filename=#{fname}"
+    {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
+  end
+
+  def handle_event("download_dashboard_png", _params, socket) do
+    fname = export_filename("dashboard", socket.assigns, ".png")
+    url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/png?filename=#{fname}"
+    {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
+  end
+
+  def handle_event("show_transponder_errors", _params, socket) do
+    {:noreply, assign(socket, show_error_modal: true)}
+  end
+
+  def handle_event("hide_transponder_errors", _params, socket) do
+    {:noreply, assign(socket, show_error_modal: false)}
+  end
+
+  def handle_event("reload_data", _params, socket) do
+    reload_current_timeframe(socket)
+  end
+
+  def handle_event("update_segment_filters", %{"segments" => segments_params}, socket) do
+    socket = assign_segment_state(socket, segments_params)
+    params = build_url_params(socket.assigns)
+
+    {:noreply,
+     socket
+     |> assign(loading: true)
+     |> push_patch(to: build_dashboard_url(socket, params))}
+  end
+
+  def handle_event("update_segment_filters", _params, socket) do
+    {:noreply, socket}
+  end
+
+  # Toggle Play/Pause from parent LiveView (in case event bubbles up)
+  def handle_event("toggle_play_pause", _params, socket) do
+    socket =
+      if socket.assigns.use_fixed_display do
+        # Switch to Play: recompute from/to from current smart timeframe, and mark as live (not fixed)
+        tf = socket.assigns.smart_timeframe_input || "24h"
+        config = socket.assigns.database_config
+
+        case TimeframeParsing.parse_smart_timeframe(tf, config) do
+          {:ok, from, to, smart, _use_fixed} ->
+            assign(socket,
+              from: from,
+              to: to,
+              smart_timeframe_input: smart,
+              use_fixed_display: false
+            )
+
+          {:error, _} ->
+            assign(socket, use_fixed_display: false)
+        end
+      else
+        # Switch to Pause: keep current from/to and mark fixed
+        assign(socket, use_fixed_display: true)
+      end
+
+    reload_current_timeframe(socket)
+  end
+
+  def handle_event("segments_editor_change", params, socket) do
+    current_segments = socket.assigns.configure_segments || []
+    segments_params = Map.get(params, "segments", %{})
+
+    updated_segments =
+      current_segments
+      |> merge_segment_form_params(segments_params)
+      |> normalize_configure_segments()
+
+    socket =
+      socket
+      |> assign(:configure_segments, updated_segments)
+      |> assign(:temp_timeframe, Map.get(params, "timeframe", socket.assigns[:temp_timeframe]))
+
+    {:noreply, socket}
+  end
+
+  def handle_event("segments_add", _params, socket) do
+    segments = socket.assigns.configure_segments || []
+
+    updated_segments =
+      (segments ++ [new_config_segment()])
+      |> normalize_configure_segments()
+
+    {:noreply, assign(socket, :configure_segments, updated_segments)}
+  end
+
+  def handle_event("segments_remove", %{"id" => segment_id}, socket) do
+    segments = socket.assigns.configure_segments || []
+
+    filtered =
+      segments
+      |> Enum.reject(fn segment -> segment["id"] == segment_id end)
+      |> normalize_configure_segments()
+
+    {:noreply, assign(socket, :configure_segments, filtered)}
+  end
+
+  def handle_event("segments_add_group", params, socket) do
+    case fetch_identifier(params, "segment_id") do
+      nil ->
+        {:noreply, socket}
+
+      segment_id ->
+        segments = socket.assigns.configure_segments || []
+
+        updated =
+          update_segment_by_id(segments, segment_id, fn segment ->
+            groups = Map.get(segment, "groups", []) ++ [new_config_group()]
+            Map.put(segment, "groups", groups)
+          end)
+          |> normalize_configure_segments()
+
+        {:noreply, assign(socket, :configure_segments, updated)}
+    end
+  end
+
+  def handle_event("segments_remove_group", params, socket) do
+    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
+         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id") do
+      segments = socket.assigns.configure_segments || []
+
+      updated =
+        update_segment_by_id(segments, segment_id, fn segment ->
+          groups =
+            segment
+            |> Map.get("groups", [])
+            |> Enum.reject(&(&1["id"] == group_id))
+            |> ensure_group_presence()
+
+          Map.put(segment, "groups", groups)
+        end)
+        |> normalize_configure_segments()
+
+      {:noreply, assign(socket, :configure_segments, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("segments_add_item", params, socket) do
+    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
+         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id") do
+      segments = socket.assigns.configure_segments || []
+
+      updated =
+        update_segment_by_id(segments, segment_id, fn segment ->
+          update_group_by_id(segment, group_id, fn group ->
+            items = Map.get(group, "items", []) ++ [new_config_item()]
+            Map.put(group, "items", items)
+          end)
+        end)
+        |> normalize_configure_segments()
+
+      {:noreply, assign(socket, :configure_segments, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("segments_remove_item", params, socket) do
+    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
+         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id"),
+         item_id when not is_nil(item_id) <- fetch_identifier(params, "item_id") do
+      segments = socket.assigns.configure_segments || []
+
+      updated =
+        update_segment_by_id(segments, segment_id, fn segment ->
+          update_group_by_id(segment, group_id, fn group ->
+            items =
+              group
+              |> Map.get("items", [])
+              |> Enum.reject(&(&1["id"] == item_id))
+              |> ensure_item_presence()
+
+            Map.put(group, "items", items)
+          end)
+        end)
+        |> normalize_configure_segments()
+
+      {:noreply, assign(socket, :configure_segments, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("save_settings", params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to update this dashboard")
+       )}
+    else
+      dashboard = socket.assigns.dashboard
+      name = Map.get(params, "name")
+      key = Map.get(params, "key")
+      tf = Map.get(params, "timeframe")
+      gran = Map.get(params, "granularity")
+      source_ref = Map.get(params, "source_ref")
+
+      segment_params = Map.get(params, "segments") || %{}
+
+      configure_segments =
+        socket.assigns.configure_segments
+        |> List.wrap()
+        |> merge_segment_form_params(segment_params)
+        |> normalize_configure_segments()
+
+      attrs = %{
+        name: String.trim(to_string(name || "")),
+        key: String.trim(to_string(key || "")),
+        default_timeframe: String.trim(to_string(tf || "")),
+        default_granularity: String.trim(to_string(gran || "")),
+        segments: configure_segments
+      }
+
+      membership = socket.assigns.current_membership
+
+      socket = assign(socket, :configure_segments, configure_segments)
+
+      with {:ok, source} <-
+             resolve_source_selection(
+               source_ref,
+               socket.assigns.source,
+               socket.assigns.sources || [],
+               membership
+             ),
+           {:ok, attrs} <- apply_source_to_attrs(attrs, source) do
+        case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
+          {:ok, updated_dashboard} ->
+            new_sources =
+              membership
+              |> Source.list_for_membership()
+              |> ensure_source_in_list(source)
+
+            socket =
+              socket
+              |> assign(:sources, new_sources)
+              |> apply_dashboard_source_change(source)
+
+            # Update breadcrumbs and title to reflect new name
+            groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
+
+            updated_breadcrumbs =
+              [{"Dashboards", "/dashboards"}] ++
+                Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
+
+            updated_page_title = "Dashboards · #{updated_dashboard.name}"
+
+            {:noreply,
+             socket
+             |> assign_dashboard(updated_dashboard)
+             |> assign(:temp_name, updated_dashboard.name)
+             |> assign(
+               :temp_timeframe,
+               updated_dashboard.default_timeframe ||
+                 socket.assigns.database.default_timeframe || "24h"
+             )
+             |> assign(:breadcrumb_links, updated_breadcrumbs)
+             |> assign(:page_title, updated_page_title)
+             |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
+             |> put_flash(:info, "Settings saved")
+             |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Failed to save settings")}
+        end
+      else
+        {:error, message} ->
+          {:noreply, put_flash(socket, :error, message)}
+      end
+    end
+  end
+
+  def handle_event("navigate_timeframe_backward", _params, socket) do
+    navigate_timeframe(socket, :backward)
+  end
+
+  def handle_event("navigate_timeframe_forward", _params, socket) do
+    navigate_timeframe(socket, :forward)
+  end
+
   defp find_dashboard_widget(nil, _id), do: nil
 
   defp find_dashboard_widget(%{payload: payload}, id) when is_map(payload) do
@@ -1794,15 +2049,6 @@ defmodule TrifleApp.DashboardLive do
 
   defp maybe_auto_expand_widget_paths(widget, _options), do: widget
 
-  defp available_series_paths(%Trifle.Stats.Series{series: series_map}) when is_map(series_map) do
-    case Trifle.Stats.Tabler.tabulize(series_map) do
-      %{paths: paths} when is_list(paths) -> paths
-      _ -> []
-    end
-  end
-
-  defp available_series_paths(_), do: []
-
   defp auto_expand_path_wildcards(paths, options) when is_list(paths) do
     option_values = normalize_option_values(options)
     do_auto_expand_path_wildcards(paths, option_values)
@@ -1953,12 +2199,6 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:resolved_key, resolved_key)
   end
 
-  defp compute_segment_state(segments, overrides, previous_values),
-    do: DashboardSegments.compute_state(segments, overrides, previous_values)
-
-  defp resolve_dashboard_key(pattern, segments, values_map),
-    do: DashboardSegments.resolve_key(pattern, segments, values_map)
-
   defp ownership_option_label(%{user: user}) when is_map(user) do
     name = Map.get(user, :name) || Map.get(user, :full_name)
 
@@ -1974,41 +2214,6 @@ defmodule TrifleApp.DashboardLive do
   defp normalize_selection(value) when value in [nil, ""], do: ""
   defp normalize_selection(value), do: to_string(value)
 
-  defp fallback_select_value(_previous_present?, _previous_value, default_value, available_values) do
-    cond do
-      default_value not in [nil, ""] and default_value in available_values -> default_value
-      available_values != [] -> hd(available_values)
-      default_value in [nil, ""] -> default_value || ""
-      true -> sanitize_select_value(default_value)
-    end
-  end
-
-  defp resolve_default_value(nil, available_values) do
-    case available_values do
-      [] -> ""
-      [first | _] -> first
-    end
-  end
-
-  defp resolve_default_value("", available_values) do
-    if available_values == [] do
-      ""
-    else
-      ""
-    end
-  end
-
-  defp resolve_default_value(value, available_values) do
-    sanitized = sanitize_select_value(value)
-
-    cond do
-      sanitized == "" -> ""
-      sanitized in available_values -> sanitized
-      available_values == [] -> sanitized
-      true -> hd(available_values)
-    end
-  end
-
   defp segment_select_values(segment) do
     segment
     |> Map.get("groups", [])
@@ -2017,15 +2222,6 @@ defmodule TrifleApp.DashboardLive do
       |> Map.get("items", [])
       |> Enum.map(fn item -> sanitize_select_value(Map.get(item, "value")) end)
     end)
-  end
-
-  defp segment_name(segment) do
-    segment
-    |> Map.get("name")
-    |> case do
-      nil -> ""
-      value -> value |> to_string() |> String.trim()
-    end
   end
 
   defp segment_type(segment) do
@@ -2423,17 +2619,6 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_distribution, %{})
   end
 
-  defp gravatar_url(email) do
-    hash =
-      email
-      |> String.trim()
-      |> String.downcase()
-      |> :erlang.md5()
-      |> Base.encode16(case: :lower)
-
-    "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
-  end
-
   # Summary stats for footer (with transponder statistics)
   def get_summary_stats(assigns) do
     case assigns do
@@ -2441,7 +2626,7 @@ defmodule TrifleApp.DashboardLive do
         dashboard: %{key: _key},
         resolved_key: resolved_key,
         stats: stats,
-        transponder_info: transponder_info,
+        transponder_info: _transponder_info,
         transponder_results: transponder_results
       }
       when not is_nil(resolved_key) and resolved_key != "" and not is_nil(stats) ->
@@ -2506,50 +2691,6 @@ defmodule TrifleApp.DashboardLive do
   # Export helpers
   defp series_from_assigns(assigns), do: SeriesExport.extract_series(assigns[:stats])
 
-  def handle_event("toggle_export_dropdown", _params, socket) do
-    current = socket.assigns[:show_export_dropdown] || false
-
-    {:noreply,
-     socket
-     |> assign(:show_export_dropdown, !current)}
-  end
-
-  def handle_event("hide_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, :show_export_dropdown, false)}
-  end
-
-  def handle_event("download_dashboard_csv", _params, socket) do
-    series = series_from_assigns(socket.assigns)
-
-    if SeriesExport.has_data?(series) do
-      csv = SeriesExport.to_csv(series)
-      fname = export_filename("dashboard", socket.assigns, ".csv")
-
-      {:noreply,
-       push_event(socket, "file_download", %{content: csv, filename: fname, type: "text/csv"})}
-    else
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    end
-  end
-
-  def handle_event("download_dashboard_json", _params, socket) do
-    series = series_from_assigns(socket.assigns)
-
-    if SeriesExport.has_data?(series) do
-      json = SeriesExport.to_json(series)
-      fname = export_filename("dashboard", socket.assigns, ".json")
-
-      {:noreply,
-       push_event(socket, "file_download", %{
-         content: json,
-         filename: fname,
-         type: "application/json"
-       })}
-    else
-      {:noreply, put_flash(socket, :error, "No data to export")}
-    end
-  end
-
   defp export_filename(prefix, assigns, ext) do
     ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
 
@@ -2560,297 +2701,6 @@ defmodule TrifleApp.DashboardLive do
       |> Enum.join("-")
 
     if(base == "", do: prefix, else: base) <> "-" <> ts <> ext
-  end
-
-  def handle_event("download_dashboard_pdf", _params, socket) do
-    # Prefer direct download via controller route to avoid large payloads over LiveView socket
-    fname = export_filename("dashboard", socket.assigns, ".pdf")
-    url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/pdf?filename=#{fname}"
-    {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
-  end
-
-  def handle_event("download_dashboard_png", _params, socket) do
-    fname = export_filename("dashboard", socket.assigns, ".png")
-    url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/png?filename=#{fname}"
-    {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
-  end
-
-  def handle_event("show_transponder_errors", _params, socket) do
-    {:noreply, assign(socket, show_error_modal: true)}
-  end
-
-  def handle_event("hide_transponder_errors", _params, socket) do
-    {:noreply, assign(socket, show_error_modal: false)}
-  end
-
-  def handle_event("reload_data", _params, socket) do
-    reload_current_timeframe(socket)
-  end
-
-  def handle_event("update_segment_filters", %{"segments" => segments_params}, socket) do
-    socket = assign_segment_state(socket, segments_params)
-    params = build_url_params(socket.assigns)
-
-    {:noreply,
-     socket
-     |> assign(loading: true)
-     |> push_patch(to: build_dashboard_url(socket, params))}
-  end
-
-  def handle_event("update_segment_filters", _params, socket) do
-    {:noreply, socket}
-  end
-
-  # Toggle Play/Pause from parent LiveView (in case event bubbles up)
-  def handle_event("toggle_play_pause", _params, socket) do
-    socket =
-      if socket.assigns.use_fixed_display do
-        # Switch to Play: recompute from/to from current smart timeframe, and mark as live (not fixed)
-        tf = socket.assigns.smart_timeframe_input || "24h"
-        config = socket.assigns.database_config
-
-        case TimeframeParsing.parse_smart_timeframe(tf, config) do
-          {:ok, from, to, smart, _use_fixed} ->
-            assign(socket,
-              from: from,
-              to: to,
-              smart_timeframe_input: smart,
-              use_fixed_display: false
-            )
-
-          {:error, _} ->
-            assign(socket, use_fixed_display: false)
-        end
-      else
-        # Switch to Pause: keep current from/to and mark fixed
-        assign(socket, use_fixed_display: true)
-      end
-
-    reload_current_timeframe(socket)
-  end
-
-  def handle_event("segments_editor_change", params, socket) do
-    current_segments = socket.assigns.configure_segments || []
-    segments_params = Map.get(params, "segments", %{})
-
-    updated_segments =
-      current_segments
-      |> merge_segment_form_params(segments_params)
-      |> normalize_configure_segments()
-
-    socket =
-      socket
-      |> assign(:configure_segments, updated_segments)
-      |> assign(:temp_timeframe, Map.get(params, "timeframe", socket.assigns[:temp_timeframe]))
-
-    {:noreply, socket}
-  end
-
-  def handle_event("segments_add", _params, socket) do
-    segments = socket.assigns.configure_segments || []
-
-    updated_segments =
-      (segments ++ [new_config_segment()])
-      |> normalize_configure_segments()
-
-    {:noreply, assign(socket, :configure_segments, updated_segments)}
-  end
-
-  def handle_event("segments_remove", %{"id" => segment_id}, socket) do
-    segments = socket.assigns.configure_segments || []
-
-    filtered =
-      segments
-      |> Enum.reject(fn segment -> segment["id"] == segment_id end)
-      |> normalize_configure_segments()
-
-    {:noreply, assign(socket, :configure_segments, filtered)}
-  end
-
-  def handle_event("segments_add_group", params, socket) do
-    case fetch_identifier(params, "segment_id") do
-      nil ->
-        {:noreply, socket}
-
-      segment_id ->
-        segments = socket.assigns.configure_segments || []
-
-        updated =
-          update_segment_by_id(segments, segment_id, fn segment ->
-            groups = Map.get(segment, "groups", []) ++ [new_config_group()]
-            Map.put(segment, "groups", groups)
-          end)
-          |> normalize_configure_segments()
-
-        {:noreply, assign(socket, :configure_segments, updated)}
-    end
-  end
-
-  def handle_event("segments_remove_group", params, socket) do
-    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
-         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id") do
-      segments = socket.assigns.configure_segments || []
-
-      updated =
-        update_segment_by_id(segments, segment_id, fn segment ->
-          groups =
-            segment
-            |> Map.get("groups", [])
-            |> Enum.reject(&(&1["id"] == group_id))
-            |> ensure_group_presence()
-
-          Map.put(segment, "groups", groups)
-        end)
-        |> normalize_configure_segments()
-
-      {:noreply, assign(socket, :configure_segments, updated)}
-    else
-      _ -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("segments_add_item", params, socket) do
-    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
-         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id") do
-      segments = socket.assigns.configure_segments || []
-
-      updated =
-        update_segment_by_id(segments, segment_id, fn segment ->
-          update_group_by_id(segment, group_id, fn group ->
-            items = Map.get(group, "items", []) ++ [new_config_item()]
-            Map.put(group, "items", items)
-          end)
-        end)
-        |> normalize_configure_segments()
-
-      {:noreply, assign(socket, :configure_segments, updated)}
-    else
-      _ -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("segments_remove_item", params, socket) do
-    with segment_id when not is_nil(segment_id) <- fetch_identifier(params, "segment_id"),
-         group_id when not is_nil(group_id) <- fetch_identifier(params, "group_id"),
-         item_id when not is_nil(item_id) <- fetch_identifier(params, "item_id") do
-      segments = socket.assigns.configure_segments || []
-
-      updated =
-        update_segment_by_id(segments, segment_id, fn segment ->
-          update_group_by_id(segment, group_id, fn group ->
-            items =
-              group
-              |> Map.get("items", [])
-              |> Enum.reject(&(&1["id"] == item_id))
-              |> ensure_item_presence()
-
-            Map.put(group, "items", items)
-          end)
-        end)
-        |> normalize_configure_segments()
-
-      {:noreply, assign(socket, :configure_segments, updated)}
-    else
-      _ -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("save_settings", params, socket) do
-    if !socket.assigns.can_edit_dashboard do
-      {:noreply,
-       put_flash(
-         socket,
-         :error,
-         permission_message(socket, "You do not have permission to update this dashboard")
-       )}
-    else
-      dashboard = socket.assigns.dashboard
-      name = Map.get(params, "name")
-      key = Map.get(params, "key")
-      tf = Map.get(params, "timeframe")
-      gran = Map.get(params, "granularity")
-      source_ref = Map.get(params, "source_ref")
-
-      segment_params = Map.get(params, "segments") || %{}
-
-      configure_segments =
-        socket.assigns.configure_segments
-        |> List.wrap()
-        |> merge_segment_form_params(segment_params)
-        |> normalize_configure_segments()
-
-      attrs = %{
-        name: String.trim(to_string(name || "")),
-        key: String.trim(to_string(key || "")),
-        default_timeframe: String.trim(to_string(tf || "")),
-        default_granularity: String.trim(to_string(gran || "")),
-        segments: configure_segments
-      }
-
-      membership = socket.assigns.current_membership
-
-      socket = assign(socket, :configure_segments, configure_segments)
-
-      with {:ok, source} <-
-             resolve_source_selection(
-               source_ref,
-               socket.assigns.source,
-               socket.assigns.sources || [],
-               membership
-             ),
-           {:ok, attrs} <- apply_source_to_attrs(attrs, source) do
-        case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
-          {:ok, updated_dashboard} ->
-            new_sources =
-              membership
-              |> Source.list_for_membership()
-              |> ensure_source_in_list(source)
-
-            socket =
-              socket
-              |> assign(:sources, new_sources)
-              |> apply_dashboard_source_change(source)
-
-            # Update breadcrumbs and title to reflect new name
-            groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
-
-            updated_breadcrumbs =
-              [{"Dashboards", "/dashboards"}] ++
-                Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
-
-            updated_page_title = "Dashboards · #{updated_dashboard.name}"
-
-            {:noreply,
-             socket
-             |> assign_dashboard(updated_dashboard)
-             |> assign(:temp_name, updated_dashboard.name)
-             |> assign(
-               :temp_timeframe,
-               updated_dashboard.default_timeframe ||
-                 socket.assigns.database.default_timeframe || "24h"
-             )
-             |> assign(:breadcrumb_links, updated_breadcrumbs)
-             |> assign(:page_title, updated_page_title)
-             |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
-             |> put_flash(:info, "Settings saved")
-             |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
-
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, "Failed to save settings")}
-        end
-      else
-        {:error, message} ->
-          {:noreply, put_flash(socket, :error, message)}
-      end
-    end
-  end
-
-  def handle_event("navigate_timeframe_backward", _params, socket) do
-    navigate_timeframe(socket, :backward)
-  end
-
-  def handle_event("navigate_timeframe_forward", _params, socket) do
-    navigate_timeframe(socket, :forward)
   end
 
   def format_duration(microseconds) when is_nil(microseconds), do: nil
@@ -3251,22 +3101,6 @@ defmodule TrifleApp.DashboardLive do
     case value |> to_string() |> String.downcase() do
       v when v in ["s", "m", "l"] -> v
       _ -> "m"
-    end
-  end
-
-  defp normalize_positive_integer(value, default \\ 1) do
-    cond do
-      is_integer(value) and value > 0 ->
-        value
-
-      is_binary(value) ->
-        case Integer.parse(value) do
-          {int, ""} when int > 0 -> int
-          _ -> default
-        end
-
-      true ->
-        default
     end
   end
 

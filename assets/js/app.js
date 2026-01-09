@@ -2716,7 +2716,6 @@ Hooks.DashboardGrid = {
                   type: legendNames.length > 4 ? 'scroll' : 'plain'
                 }
               : { show: false },
-            grid: { top: 16, left: 56, right: 16, bottom: bottomPadding },
             tooltip: {
               trigger: 'item',
               appendToBody: true,

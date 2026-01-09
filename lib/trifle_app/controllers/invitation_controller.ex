@@ -28,7 +28,7 @@ defmodule TrifleApp.InvitationController do
 
     with %OrganizationInvitation{} = invitation <- Organizations.get_invitation_by_token(token),
          false <- Organizations.invitation_expired?(invitation),
-      {:ok, _membership} <- Organizations.accept_invitation(invitation, current_user) do
+         {:ok, _membership} <- Organizations.accept_invitation(invitation, current_user) do
       conn
       |> put_flash(:info, "Invitation accepted. Welcome aboard!")
       |> redirect(to: ~p"/")
@@ -60,7 +60,7 @@ defmodule TrifleApp.InvitationController do
     end
   end
 
-  defp maybe_require_login(%{assigns: %{current_user: nil}} = conn, invitation, token) do
+  defp maybe_require_login(%{assigns: %{current_user: nil}} = conn, _invitation, token) do
     conn
     |> put_session(:user_return_to, ~p"/invitations/#{token}")
     |> redirect(

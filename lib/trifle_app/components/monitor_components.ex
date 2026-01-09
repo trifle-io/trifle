@@ -7,20 +7,6 @@ defmodule TrifleApp.MonitorComponents do
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
 
-  ## Shared helpers
-
-  defp monitor_status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide",
-      @status == :active && "bg-teal-100 text-teal-800 dark:bg-teal-500/10 dark:text-teal-200",
-      @status == :paused && "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-    ]}>
-      {@label}
-    </span>
-    """
-  end
-
   attr :monitor, Monitor, required: true
   attr :executions, :list, default: []
   attr :timezone, :string, default: "UTC"
@@ -261,22 +247,6 @@ defmodule TrifleApp.MonitorComponents do
 
   ## Formatting helpers
 
-  defp humanize_status(nil), do: "Triggered"
-  defp humanize_status(status) when is_binary(status), do: String.capitalize(status)
-
-  defp humanize_status(status) when is_atom(status),
-    do: status |> Atom.to_string() |> humanize_status()
-
-  defp format_timestamp(nil), do: "Unknown time"
-
-  defp format_timestamp(datetime) do
-    datetime
-    |> DateTime.shift_zone!("Etc/UTC")
-    |> Calendar.strftime("%b %-d, %Y · %H:%M UTC")
-  rescue
-    ArgumentError -> "--"
-  end
-
   defp format_full_timestamp(nil, _timezone), do: "--"
 
   defp format_full_timestamp(%DateTime{} = datetime, timezone) do
@@ -306,14 +276,6 @@ defmodule TrifleApp.MonitorComponents do
   defp format_shifted_timestamp(%DateTime{} = datetime, _timezone) do
     Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S")
   end
-
-  defp format_details(details) when is_map(details) do
-    details
-    |> Enum.map(fn {key, value} -> "#{Phoenix.Naming.humanize(key)}: #{inspect(value)}" end)
-    |> Enum.join(" · ")
-  end
-
-  defp format_details(_), do: "No additional context captured."
 
   defp format_frequency(%Monitor.ReportSettings{frequency: :hourly}), do: "Hourly"
 

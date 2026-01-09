@@ -198,13 +198,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
     {:ok, url, cleanup}
   end
 
-  defp viewport_from_size({w, h}) when is_integer(w) and is_integer(h) do
-    %{width: w, height: h}
-  end
-
-  defp viewport_from_size(_), do: %{width: 1366, height: 900}
-
-  defp window_size_from_layout(%Layout{viewport: %{width: w, height: h}}, default)
+  defp window_size_from_layout(%Layout{viewport: %{width: w, height: h}}, _default)
        when is_integer(w) and is_integer(h) do
     {w, h}
   end

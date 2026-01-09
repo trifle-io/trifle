@@ -873,7 +873,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     )
   end
 
-  defp maybe_update_alert_state(%Alert{} = alert, status, summary, evaluated_at, opts \\ [])
+  defp maybe_update_alert_state(%Alert{} = alert, status, summary, evaluated_at, opts)
        when status in [:passed, :alerted, :suppressed, :failed] do
     normalized_summary = normalize_summary(summary)
     current_summary = normalize_summary(alert.last_summary)

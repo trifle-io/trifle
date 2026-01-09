@@ -6,7 +6,6 @@ defmodule TrifleApp.ExportController do
   alias TrifleApp.Exports.{DashboardLayout, MonitorLayout}
   alias Trifle.Monitors
   alias Trifle.Organizations
-  alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Trifle.Stats.Source
   alias Ecto.NoResultsError

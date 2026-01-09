@@ -85,6 +85,7 @@ defmodule TrifleApp.DatabasesLive do
   defp is_supported_driver?("sqlite"), do: true
   defp is_supported_driver?(_), do: false
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-8">
@@ -281,16 +282,6 @@ defmodule TrifleApp.DatabasesLive do
       <% end %>
     </svg>
     """
-  end
-
-  defp database_icon_bg_class(driver) do
-    case driver do
-      "postgres" -> "h-9 w-9 rounded-md bg-blue-500/90 flex items-center justify-center shadow-sm"
-      "sqlite" -> "h-9 w-9 rounded-md bg-purple-500/90 flex items-center justify-center shadow-sm"
-      "redis" -> "h-9 w-9 rounded-md bg-red-500/90 flex items-center justify-center shadow-sm"
-      "mongo" -> "h-9 w-9 rounded-md bg-emerald-600/90 flex items-center justify-center shadow-sm"
-      _ -> "h-9 w-9 rounded-md bg-slate-500/90 flex items-center justify-center shadow-sm"
-    end
   end
 
   defp driver_accent_class(driver) do

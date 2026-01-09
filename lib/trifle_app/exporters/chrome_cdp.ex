@@ -559,7 +559,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     :ok
   end
 
-  defp wait_for_stable_rendering(page_ws, stability_duration_ms \\ 300, log_context \\ %{}) do
+  defp wait_for_stable_rendering(page_ws, stability_duration_ms, log_context) do
     log_label = ExportLog.label(log_context)
     started_ms = ExportLog.monotonic_now_ms()
 
@@ -857,7 +857,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     :ok
   end
 
-  defp expand_viewport_to_content(page_ws, capture_scale \\ @png_capture_scale) do
+  defp expand_viewport_to_content(page_ws, capture_scale) do
     case __MODULE__.WS.call(page_ws, "Page.getLayoutMetrics", %{}) do
       {:ok, %{"contentSize" => %{"width" => width, "height" => height}}}
       when is_number(width) and is_number(height) and width > 0 and height > 0 ->

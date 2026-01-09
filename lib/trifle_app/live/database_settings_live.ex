@@ -152,6 +152,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
      |> assign_database(database)}
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="space-y-6">

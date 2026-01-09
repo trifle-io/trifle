@@ -43,7 +43,7 @@ defmodule TrifleApp.UserSettingsLive do
                       type="text"
                       label="Name"
                       placeholder="Your name"
-                      maxlength="160"
+                      maxlength={160}
                     />
                   </div>
                 </div>
@@ -58,8 +58,8 @@ defmodule TrifleApp.UserSettingsLive do
               </:actions>
             </.form_container>
           </div>
-
-          <!-- Theme Settings Section -->
+          
+    <!-- Theme Settings Section -->
           <div class="grid grid-cols-1 gap-x-8 gap-y-8 py-10 md:grid-cols-3">
             <div class="px-4 sm:px-0">
               <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">

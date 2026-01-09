@@ -153,8 +153,6 @@ defmodule Trifle.Chat.Progress do
 
   def text(_, _), do: nil
 
-  defp ensure_period(nil), do: nil
-
   defp ensure_period(text) when is_binary(text) do
     text
     |> String.trim()

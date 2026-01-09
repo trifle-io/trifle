@@ -31,6 +31,7 @@ defmodule TrifleApp.DesignSystem.FormField do
   attr :placeholder, :string, default: nil
   attr :rows, :integer, default: 4
   attr :id, :string, default: nil
+  attr :maxlength, :integer, default: nil
 
   def form_field(assigns) do
     assigns = assign(assigns, :input_id, assigns.id || assigns.field.id)
@@ -86,6 +87,7 @@ defmodule TrifleApp.DesignSystem.FormField do
               name={@field.name}
               rows={@rows}
               placeholder={@placeholder}
+              maxlength={@maxlength}
               class={[
                 "block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm resize-y",
                 @field.errors != [] && "border-red-400 focus:border-red-400 focus:ring-red-400"
@@ -112,6 +114,7 @@ defmodule TrifleApp.DesignSystem.FormField do
               name={@field.name}
               value={@field.value}
               placeholder={@placeholder}
+              maxlength={@maxlength}
               class={[
                 "block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
                 @field.errors != [] && "border-red-400 focus:border-red-400 focus:ring-red-400",

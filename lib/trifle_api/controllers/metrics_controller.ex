@@ -4,15 +4,12 @@ defmodule TrifleApi.MetricsController do
   plug(TrifleApi.Plugs.AuthenticateByProjectToken, %{mode: :read} when action in [:index])
   plug(TrifleApi.Plugs.AuthenticateByProjectToken, %{mode: :write} when action in [:create])
 
-  def index(%{assigns: %{current_project: current_project}} = conn, params) do
+  def index(%{assigns: %{current_project: _current_project}} = conn, _params) do
     conn
     |> render("index.json")
   end
 
-  def create(
-        %{assigns: %{current_project: current_project}} = conn,
-        %{"key" => key, "at" => at, "values" => values} = params
-      ) do
+  def create(%{assigns: %{current_project: current_project}} = conn, params) do
     with key when is_binary(key) and byte_size(key) > 0 <- params["key"],
          at when is_binary(at) and byte_size(at) > 0 <- params["at"],
          values when not is_nil(values) <- params["values"],
@@ -41,7 +38,7 @@ defmodule TrifleApi.MetricsController do
     end
   end
 
-  def create(conn, params) do
+  def create(conn, _params) do
     conn
     |> put_status(:bad_request)
     |> render("400.json")

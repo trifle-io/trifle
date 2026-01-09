@@ -284,15 +284,6 @@ defmodule TrifleApp.ProjectsLive do
     {:noreply, push_patch(assign(socket, :show_new_modal, false), to: ~p"/projects")}
   end
 
-  defp week_label(1), do: "Monday"
-  defp week_label(2), do: "Tuesday"
-  defp week_label(3), do: "Wednesday"
-  defp week_label(4), do: "Thursday"
-  defp week_label(5), do: "Friday"
-  defp week_label(6), do: "Saturday"
-  defp week_label(7), do: "Sunday"
-  defp week_label(_), do: "Monday"
-
   defp project_initials(%Project{name: name}) when is_binary(name) do
     trimmed = String.trim(name)
 

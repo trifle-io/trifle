@@ -1241,10 +1241,14 @@ defmodule Trifle.Organizations do
     end
   end
 
-  @deprecated "Use list_databases_for_org/1 or list_databases_for_user/1"
-  def list_databases do
+  def list_all_databases do
     from(d in Database, order_by: [asc: d.inserted_at, asc: d.id])
     |> Repo.all()
+  end
+
+  @deprecated "Use list_databases_for_org/1 or list_databases_for_user/1"
+  def list_databases do
+    list_all_databases()
   end
 
   @doc """
@@ -1671,13 +1675,14 @@ defmodule Trifle.Organizations do
     |> Repo.all()
   end
 
+  def list_recent_dashboard_visits_for_membership(user, membership, limit \\ 5)
   def list_recent_dashboard_visits_for_membership(_, nil, _limit), do: []
   def list_recent_dashboard_visits_for_membership(nil, _membership, _limit), do: []
 
   def list_recent_dashboard_visits_for_membership(
         %User{} = user,
         %OrganizationMembership{} = membership,
-        limit \\ 5
+        limit
       ) do
     limit = max(limit || 0, 0)
 

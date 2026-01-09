@@ -831,7 +831,7 @@ defmodule TrifleApp.MonitorLive do
   defp format_ai_error({:missing_value, path}),
     do: "AI response was incomplete. Missing #{format_path(path)}."
 
-  defp format_ai_error({:invalid_value, path}),
+  defp format_ai_error({:invalid_value, path}) when is_list(path),
     do: "AI returned an invalid value for #{format_path(path)}."
 
   defp format_ai_error({:invalid_value, value}) when is_binary(value),
@@ -1871,8 +1871,6 @@ defmodule TrifleApp.MonitorLive do
 
   defp monitor_owner_label(%{email: email}) when is_binary(email), do: email
   defp monitor_owner_label(_), do: "Unknown owner"
-
-  defp gravatar_url(email, size \\ 64)
 
   defp gravatar_url(email, size) when is_binary(email) do
     trimmed =

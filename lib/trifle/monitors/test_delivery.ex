@@ -1012,7 +1012,7 @@ defmodule Trifle.Monitors.TestDelivery do
               discord_opts
             )
 
-          {:error, %Mint.TransportError{} = transport} = error ->
+          {:error, %Mint.TransportError{}} = error ->
             retry_discord_without_attachments(
               discord_client,
               bot_token,

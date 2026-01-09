@@ -15,10 +15,10 @@ defmodule TrifleApp.CoreComponents do
   Icons are provided by [heroicons](https://heroicons.com). See `icon/1` for usage.
   """
   use Phoenix.Component
+  use Gettext, backend: TrifleApp.Gettext
 
   alias Phoenix.LiveView.JS
   require Decimal
-  import TrifleApp.Gettext
 
   @doc """
   Renders a modal.
@@ -205,7 +205,7 @@ defmodule TrifleApp.CoreComponents do
       <.button phx-click="go" class="ml-2">Send!</.button>
   """
   attr(:type, :string, default: nil)
-  attr(:class, :string, default: nil)
+  attr(:class, :any, default: nil)
   attr(:rest, :global, include: ~w(disabled form name value))
 
   slot(:inner_block, required: true)
@@ -241,6 +241,7 @@ defmodule TrifleApp.CoreComponents do
   attr(:id, :any, default: nil)
   attr(:name, :any)
   attr(:label, :string, default: nil)
+  attr(:help, :string, default: nil)
   attr(:value, :any)
 
   attr(:type, :string,
@@ -295,6 +296,7 @@ defmodule TrifleApp.CoreComponents do
         {@label}
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
+      <p :if={@help} class="mt-1 text-sm text-zinc-500">{@help}</p>
     </div>
     """
   end
@@ -314,6 +316,7 @@ defmodule TrifleApp.CoreComponents do
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.error :for={msg <- @errors}>{msg}</.error>
+      <p :if={@help} class="mt-1 text-sm text-zinc-500">{@help}</p>
     </div>
     """
   end
@@ -334,6 +337,7 @@ defmodule TrifleApp.CoreComponents do
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
       <.error :for={msg <- @errors}>{msg}</.error>
+      <p :if={@help} class="mt-1 text-sm text-zinc-500">{@help}</p>
     </div>
     """
   end
@@ -357,6 +361,7 @@ defmodule TrifleApp.CoreComponents do
         {@rest}
       />
       <.error :for={msg <- @errors}>{msg}</.error>
+      <p :if={@help} class="mt-1 text-sm text-zinc-500">{@help}</p>
     </div>
     """
   end
@@ -456,7 +461,7 @@ defmodule TrifleApp.CoreComponents do
   @doc """
   Renders a header with title.
   """
-  attr(:class, :string, default: nil)
+  attr(:class, :any, default: nil)
 
   slot(:inner_block, required: true)
   slot(:subtitle)
@@ -625,11 +630,12 @@ defmodule TrifleApp.CoreComponents do
       <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
   """
   attr(:name, :string, required: true)
-  attr(:class, :string, default: nil)
+  attr(:id, :string, default: nil)
+  attr(:class, :any, default: nil)
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} />
+    <span id={@id} class={[@name, @class]} />
     """
   end
 

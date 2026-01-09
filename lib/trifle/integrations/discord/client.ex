@@ -195,7 +195,7 @@ defmodule Trifle.Integrations.Discord.Client do
     end
   end
 
-  defp request(method, path, headers, body \\ nil, opts \\ []) do
+  defp request(method, path, headers, body, opts) do
     finch_opts =
       case opts do
         %{} = map -> Map.get(map, :finch_request_opts, [])

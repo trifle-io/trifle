@@ -1,9 +1,9 @@
 defmodule Trifle.Stats.Tabler do
-  def tabulize(%{at: at, values: values} = stats) do
+  def tabulize(%{at: at, values: values}) do
     Enum.with_index(at)
     |> Enum.reduce(%{at: [], paths: [], values: %{}}, fn {a, i}, acc ->
       packed = Trifle.Stats.Packer.pack(Enum.at(values, i))
-      acc = zip(acc, a, packed)
+      zip(acc, a, packed)
     end)
   end
 
@@ -44,13 +44,12 @@ defmodule Trifle.Stats.Tabler do
     config = Trifle.Organizations.Project.stats_config(project)
     now = DateTime.utc_now()
 
-    stats =
-      Trifle.Stats.values(
-        "tester",
-        DateTime.add(now, -14, :day, config.time_zone_database),
-        now,
-        :day,
-        config
-      )
+    Trifle.Stats.values(
+      "tester",
+      DateTime.add(now, -14, :day, config.time_zone_database),
+      now,
+      :day,
+      config
+    )
   end
 end

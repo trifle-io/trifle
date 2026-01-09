@@ -131,7 +131,8 @@ defmodule Trifle.Accounts do
 
   defp maybe_update_user_name(user, nil), do: {:ok, user}
 
-  defp maybe_update_user_name(%User{name: nil} = user, name) when is_binary(name) and name != "" do
+  defp maybe_update_user_name(%User{name: nil} = user, name)
+       when is_binary(name) and name != "" do
     user
     |> Ecto.Changeset.change(name: name)
     |> Repo.update()
@@ -146,8 +147,9 @@ defmodule Trifle.Accounts do
 
   defp normalize_name(%{} = attrs) do
     attrs
-    |> Map.get(:name) || Map.get(attrs, "name")
-    |> normalize_name()
+    |> Map.get(:name) ||
+      Map.get(attrs, "name")
+      |> normalize_name()
   end
 
   defp normalize_name(value) when is_binary(value) do

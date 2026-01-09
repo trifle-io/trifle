@@ -8,6 +8,7 @@ defmodule TrifleApp.OrganizationDeliveryLive do
   alias TrifleApp.OrganizationDeliveryLive.SlackComponent
   alias TrifleApp.OrganizationLive.Navigation
 
+  @impl true
   def mount(_params, _session, socket) do
     current_user = socket.assigns[:current_user]
     membership = socket.assigns[:current_membership]
@@ -39,6 +40,7 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     end
   end
 
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="px-4 sm:px-6 lg:px-8">

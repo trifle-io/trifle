@@ -16,7 +16,7 @@ defmodule TrifleApp.Integrations.SlackController do
     with {:ok, %{user_id: user_id, organization_id: organization_id}} <-
            Integrations.verify_slack_state(state),
          true <- current_user && current_user.id == user_id,
-         %Organizations.OrganizationMembership{organization_id: ^organization_id} = membership <-
+         %Organizations.OrganizationMembership{organization_id: ^organization_id} <-
            Organizations.get_membership_for_user(current_user),
          {:ok, payload} <- Integrations.exchange_slack_code(code),
          {:ok, installation} <-

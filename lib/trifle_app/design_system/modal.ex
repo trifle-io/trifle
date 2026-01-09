@@ -27,6 +27,7 @@ defmodule TrifleApp.DesignSystem.Modal do
   slot :body, required: true
   slot :actions
   slot :below_actions
+  slot :footer
 
   def app_modal(assigns) do
     ~H"""
@@ -98,6 +99,12 @@ defmodule TrifleApp.DesignSystem.Modal do
           <%= if @below_actions != [] do %>
             <div class="mt-6 space-y-4">
               {render_slot(@below_actions)}
+            </div>
+          <% end %>
+
+          <%= if @footer != [] do %>
+            <div class="mt-6 space-y-4">
+              {render_slot(@footer)}
             </div>
           <% end %>
         </div>

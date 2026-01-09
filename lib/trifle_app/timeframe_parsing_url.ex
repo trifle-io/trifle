@@ -66,10 +66,6 @@ defmodule TrifleApp.TimeframeParsing.Url do
     end
   end
 
-  defp get_default_timeframe(config) do
-    get_default_timeframe(config, %{})
-  end
-
   defp get_default_timeframe(config, opts) do
     case Map.get(opts, :default_timeframe) do
       tf when is_binary(tf) and tf != "" ->

@@ -134,7 +134,7 @@ defmodule Trifle.Stats.SeriesFetcher do
     end
   end
 
-  defp fetch_stats_direct(key, from, to, granularity, config, progress_callback \\ nil) do
+  defp fetch_stats_direct(key, from, to, granularity, config, progress_callback) do
     if progress_callback do
       progress_callback.({:chunk_progress, 1, 1})
     end
@@ -144,15 +144,7 @@ defmodule Trifle.Stats.SeriesFetcher do
     {:ok, ensure_chronological(stats)}
   end
 
-  defp fetch_stats_progressive(
-         key,
-         from,
-         to,
-         granularity,
-         config,
-         chunk_size,
-         progress_callback \\ nil
-       ) do
+  defp fetch_stats_progressive(key, from, to, granularity, config, chunk_size, progress_callback) do
     timeline = generate_timeline(from, to, granularity, config)
     chunks = Enum.chunk_every(timeline, chunk_size)
     total_chunks = length(chunks)
@@ -201,10 +193,6 @@ defmodule Trifle.Stats.SeriesFetcher do
     {:ok, merged_stats}
   end
 
-  defp accumulate_chunk_result({:error, error}, _acc) do
-    {:error, error}
-  end
-
   defp accumulate_chunk_result(_chunk, {:error, error}) do
     {:error, error}
   end
@@ -250,7 +238,7 @@ defmodule Trifle.Stats.SeriesFetcher do
 
   defp format_ts_value(other), do: inspect(other)
 
-  defp apply_transponders_to_stats(raw_stats, transponders, progress_callback \\ nil) do
+  defp apply_transponders_to_stats(raw_stats, transponders, progress_callback) do
     if Enum.empty?(transponders) do
       {:ok,
        %{

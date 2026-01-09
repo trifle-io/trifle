@@ -35,8 +35,8 @@ defmodule TrifleApi.Plugs.AuthenticateByProjectToken do
 
   def find_project_from_header(conn, mode) do
     with token when not is_nil(token) <- extract_bearer_token(conn),
-         {:ok, project, token} <- Trifle.Organizations.get_project_by_token(token),
-         {:ok, permission} <- valid_mode?(token, mode) do
+         {:ok, project, token} <- Organizations.get_project_by_token(token),
+         {:ok, _permission} <- valid_mode?(token, mode) do
       {:ok, project}
     else
       {:error, :invalid_permissions} ->

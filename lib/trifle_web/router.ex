@@ -26,6 +26,10 @@ defmodule TrifleWeb.Router do
       live "/databases/:id/edit", DatabasesLive, :edit
       live "/databases/:id/show", DatabasesLive, :show
     end
+  end
+
+  scope "/admin" do
+    pipe_through [:admin_browser, :require_authenticated_user]
 
     forward "/oban", TrifleWeb.ObanDashboardRouter
   end

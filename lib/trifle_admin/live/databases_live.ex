@@ -327,6 +327,6 @@ defmodule TrifleAdmin.DatabasesLive do
   end
 
   defp list_databases do
-    Organizations.list_databases()
+    Organizations.list_all_databases()
   end
 end

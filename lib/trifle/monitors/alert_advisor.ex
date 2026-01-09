@@ -77,7 +77,9 @@ defmodule Trifle.Monitors.AlertAdvisor do
   """
   @spec recommend(Monitor.t(), Series.t(), keyword()) ::
           {:ok, recommendation()} | {:error, term()}
-  def recommend(%Monitor{} = monitor, %Series{} = series, opts \\ []) do
+  def recommend(monitor, series, opts \\ [])
+
+  def recommend(%Monitor{} = monitor, %Series{} = series, opts) do
     strategy =
       opts
       |> Keyword.get(:strategy)
@@ -437,7 +439,7 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
   defp summarise_points(_), do: {:error, :no_data}
 
-  defp percentile(values, p) when values == [], do: nil
+  defp percentile(values, _p) when values == [], do: nil
 
   defp percentile(values, p) do
     rank = (length(values) - 1) * p
@@ -498,7 +500,7 @@ defmodule Trifle.Monitors.AlertAdvisor do
     {:ok, payload}
   end
 
-  defp build_messages(strategy, variant, payload_json, max_tokens) do
+  defp build_messages(strategy, variant, payload_json, _max_tokens) do
     variant_text = Map.fetch!(@variant_descriptions, variant)
     strategy_text = Map.get(@strategy_instructions, strategy, "")
 

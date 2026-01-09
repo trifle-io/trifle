@@ -51,6 +51,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
     joined_identifier =
       Trifle.Stats.Configuration.driver_option(config, :joined_identifier, :partial)
+
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
     system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
@@ -74,7 +75,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
         collection_name \\ "trifle_stats",
         joined_identifier \\ :partial,
         expire_after \\ nil,
-        system_tracking \\ true
+        _system_tracking \\ true
       ) do
     Mongo.create(connection, collection_name)
     identifier_mode = normalize_joined_identifier(joined_identifier)
@@ -115,6 +116,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
     joined_identifier =
       Trifle.Stats.Configuration.driver_option(config, :joined_identifier, :partial)
+
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
     system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
 
@@ -375,6 +377,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
       :partial ->
         key_without_at = %{key | at: nil}
+
         key_without_at
         |> Trifle.Stats.Nocturnal.Key.identifier(driver.separator)
         |> maybe_put_at(key.at)
@@ -391,6 +394,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
       :partial ->
         key_without_at = %{key | at: nil}
+
         key_without_at
         |> Trifle.Stats.Nocturnal.Key.simple_identifier(driver.separator)
         |> maybe_put_at(timestamp_for_identifier(key.at))

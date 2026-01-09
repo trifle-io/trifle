@@ -78,8 +78,6 @@ defmodule Trifle.Monitors.AlertEvaluator do
   @range_line_color "#0f766e"
   @hampel_point_color "#f97316"
   @hampel_median_color "#0ea5e9"
-  @hampel_upper_line_color "#f97316"
-  @hampel_lower_line_color "#6366f1"
   @cusum_positive_color "rgba(250,204,21,0.28)"
   @cusum_negative_color "rgba(59,130,246,0.28)"
   @cusum_positive_line_color "#facc15"
@@ -835,13 +833,12 @@ defmodule Trifle.Monitors.AlertEvaluator do
 
   defp maybe_extend_segment(segment, points) do
     if segment.from_ts == segment.to_ts do
-      next =
-        points
-        |> Enum.at(segment.end_index + 1)
-        |> case do
-          nil -> segment
-          next_point -> %{segment | to_iso: next_point.at_iso, to_ts: next_point.ts}
-        end
+      points
+      |> Enum.at(segment.end_index + 1)
+      |> case do
+        nil -> segment
+        next_point -> %{segment | to_iso: next_point.at_iso, to_ts: next_point.ts}
+      end
     else
       segment
     end

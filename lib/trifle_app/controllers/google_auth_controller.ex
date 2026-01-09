@@ -21,7 +21,12 @@ defmodule TrifleApp.GoogleAuthController do
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     email = auth.info.email
-    name = auth.info.name || auth.info.first_name && auth.info.last_name && String.trim("#{auth.info.first_name} #{auth.info.last_name}") || auth.info.nickname
+
+    name =
+      auth.info.name ||
+        (auth.info.first_name && auth.info.last_name &&
+           String.trim("#{auth.info.first_name} #{auth.info.last_name}")) || auth.info.nickname
+
     verified? = Map.get(auth.info, :verified, false) || verified_from_raw(auth)
 
     cond do

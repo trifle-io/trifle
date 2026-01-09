@@ -288,6 +288,25 @@ defmodule TrifleApp.ChatLive do
 
   def handle_info({:chat_progress, _other}, socket), do: {:noreply, socket}
 
+  def handle_info(:progress_tick, socket) do
+    socket = assign(socket, :progress_timer_ref, nil)
+
+    if active_progress?(socket.assigns.progress_events) do
+      now = DateTime.utc_now()
+
+      socket =
+        socket
+        |> assign(:progress_tick_at, now)
+        |> ensure_progress_timer()
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   defp handle_progress_event(socket, type, payload) do
     now = DateTime.utc_now()
     normalized_type = normalize_progress_type(type)
@@ -387,25 +406,6 @@ defmodule TrifleApp.ChatLive do
 
     persist_progress(socket)
   end
-
-  def handle_info(:progress_tick, socket) do
-    socket = assign(socket, :progress_timer_ref, nil)
-
-    if active_progress?(socket.assigns.progress_events) do
-      now = DateTime.utc_now()
-
-      socket =
-        socket
-        |> assign(:progress_tick_at, now)
-        |> ensure_progress_timer()
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info(_message, socket), do: {:noreply, socket}
 
   defp init_session(socket, nil) do
     socket
@@ -880,7 +880,7 @@ defmodule TrifleApp.ChatLive do
 
   defp maybe_flash_tool_error(socket, _), do: socket
 
-  defp build_progress_entry(type, payload, text, opts \\ []) when is_list(opts) do
+  defp build_progress_entry(type, payload, text, opts) when is_list(opts) do
     %{
       id:
         Keyword.get_lazy(opts, :id, fn ->
@@ -1124,16 +1124,6 @@ defmodule TrifleApp.ChatLive do
 
   defp progress_after_last?(_events, _sending, _last_message), do: false
 
-  defp progress_text({:progress, type, payload}) do
-    Progress.text(type, normalize_progress_payload(payload))
-  end
-
-  defp progress_text({:progress, type}) do
-    Progress.text(type, %{})
-  end
-
-  defp progress_text(_event), do: nil
-
   defp persist_progress(socket) do
     with {:ok, socket, session} <- ensure_session_for_progress(socket),
          events when is_list(events) <- socket.assigns[:progress_events] do
@@ -1236,14 +1226,14 @@ defmodule TrifleApp.ChatLive do
     |> Kernel.<>(".")
   end
 
+  defp ensure_period(_), do: nil
+
   defp normalize_progress_type(type) when is_atom(type), do: Atom.to_string(type)
   defp normalize_progress_type(type) when is_binary(type), do: type
   defp normalize_progress_type(_), do: "unknown"
 
   defp normalize_progress_payload(payload) when is_map(payload), do: payload
   defp normalize_progress_payload(_), do: %{}
-
-  defp ensure_period(_), do: nil
 
   @impl true
   def render(assigns) do
