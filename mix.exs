@@ -152,11 +152,21 @@ defmodule Trifle.MixProject do
   defp normalize_version(value) when is_binary(value) do
     value
     |> String.trim()
-    |> String.trim_prefix("refs/tags/")
-    |> String.trim_prefix("v")
+    |> strip_prefix("refs/tags/")
+    |> strip_prefix("v")
     |> case do
       "" -> "0.0.0-dev"
       normalized -> normalized
+    end
+  end
+
+  defp strip_prefix(value, prefix) when is_binary(value) and is_binary(prefix) do
+    prefix_size = byte_size(prefix)
+
+    if byte_size(value) >= prefix_size and binary_part(value, 0, prefix_size) == prefix do
+      binary_part(value, prefix_size, byte_size(value) - prefix_size)
+    else
+      value
     end
   end
 
