@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-This application is running inside of Docker container, but you are running on a host. Prefix all commands with `docker compose exec -T app COMMAND` to run them within the container.
+This application is running inside of Docker container, but you are running on a host. Prefix all application related commands (ie tests, linters, scripts) with `docker compose exec -T app COMMAND` to run them within the container.
 
 ## Project Structure & Module Organization
 Trifle is a Phoenix LiveView analytics app. Application code lives under `lib/` grouped by OTP app: `lib/trifle_web` for web UI, `lib/trifle_api` for ingest endpoints, `lib/trifle_admin` for admin dashboards, and `lib/trifle` for shared contexts. Assets (Tailwind, esbuild bundles) live in `assets/`, while compiled/static output is staged in `priv/static`. Database migrations and seeds sit in `priv/repo`. Tests mirror the lib layout in `test/`, with helpers in `test/support`. Docs, Helm charts, and deployment scripts reside in `docs/` and `.devops/`.

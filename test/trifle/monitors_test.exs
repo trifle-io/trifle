@@ -90,7 +90,7 @@ defmodule Trifle.MonitorsTest do
                Monitors.create_monitor_for_membership(user, membership, %{})
 
       refute changeset.valid?
-      assert %{name: {"can't be blank", _}} = errors_on(changeset)
+      assert %{name: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "update_monitor_for_membership/3 modifies an existing monitor", %{
@@ -178,16 +178,14 @@ defmodule Trifle.MonitorsTest do
                  alert_notify_every: 0
                })
 
-      assert %{alert_notify_every: {"must be greater than or equal to %{number}", _}} =
-               errors_on(changeset)
+      assert "must be greater than or equal to 1" in errors_on(changeset).alert_notify_every
 
       assert {:error, %Ecto.Changeset{} = changeset} =
                Monitors.update_monitor_for_membership(monitor, membership, %{
                  alert_notify_every: 101
                })
 
-      assert %{alert_notify_every: {"must be less than or equal to %{number}", _}} =
-               errors_on(changeset)
+      assert "must be less than or equal to 100" in errors_on(changeset).alert_notify_every
     end
 
     test "delete_monitor_for_membership/2 removes monitor", %{
@@ -401,10 +399,9 @@ defmodule Trifle.MonitorsTest do
       "source_id" => database.id
     }
 
-    {:ok, monitor} =
-      defaults
-      |> Map.merge(attrs)
-      |> Monitors.create_monitor_for_membership(user, membership)
+    attrs = Map.merge(defaults, attrs)
+
+    {:ok, monitor} = Monitors.create_monitor_for_membership(user, membership, attrs)
 
     monitor
   end

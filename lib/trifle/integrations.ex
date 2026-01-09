@@ -317,15 +317,26 @@ defmodule Trifle.Integrations do
 
   def create_or_update_slack_installation(organization_id, user_id, payload) do
     with {:ok, attrs} <- normalize_slack_installation_attrs(payload, organization_id, user_id) do
-      case fetch_slack_installation_by_team(organization_id, attrs.team_id) do
+      reference_name =
+        Map.get(attrs, :team_name) ||
+          Map.get(attrs, "team_name") ||
+          Map.get(attrs, :team_domain) ||
+          Map.get(attrs, "team_domain") ||
+          Map.get(attrs, :team_id) ||
+          Map.get(attrs, "team_id") ||
+          slack_reference_name_from_payload(payload)
+
+      team_id = fetch_attr(attrs, :team_id)
+
+      case fetch_slack_installation_by_team(organization_id, team_id) do
         nil ->
           reference =
             generate_reference(
               SlackInstallation,
               "slack",
               organization_id,
-              attrs.team_name,
-              attrs.team_id
+              reference_name,
+              team_id
             )
 
           params = Map.put(attrs, :reference, reference)
@@ -333,15 +344,69 @@ defmodule Trifle.Integrations do
           %SlackInstallation{}
           |> SlackInstallation.changeset(params)
           |> Repo.insert()
+          |> case do
+            {:ok, installation} -> {:ok, ensure_slack_reference(installation)}
+            other -> other
+          end
 
         %SlackInstallation{} = installation ->
+          reference =
+            case installation.reference do
+              nil ->
+                generate_reference(
+                  SlackInstallation,
+                  "slack",
+                  organization_id,
+                  reference_name,
+                  team_id,
+                  installation.id
+                )
+
+              "" ->
+                generate_reference(
+                  SlackInstallation,
+                  "slack",
+                  organization_id,
+                  reference_name,
+                  team_id,
+                  installation.id
+                )
+
+              "slack" ->
+                generate_reference(
+                  SlackInstallation,
+                  "slack",
+                  organization_id,
+                  reference_name,
+                  team_id,
+                  installation.id
+                )
+
+              "slack_slack" ->
+                generate_reference(
+                  SlackInstallation,
+                  "slack",
+                  organization_id,
+                  reference_name,
+                  team_id,
+                  installation.id
+                )
+
+              existing ->
+                existing
+            end
+
           params =
             attrs
-            |> Map.put(:reference, installation.reference)
+            |> Map.put(:reference, reference)
 
           installation
           |> SlackInstallation.changeset(params)
           |> Repo.update()
+          |> case do
+            {:ok, updated} -> {:ok, updated}
+            other -> other
+          end
       end
     end
   end
@@ -497,15 +562,24 @@ defmodule Trifle.Integrations do
 
   def create_or_update_discord_installation(organization_id, user_id, payload) do
     with {:ok, attrs} <- normalize_discord_installation_attrs(payload, organization_id, user_id) do
-      case fetch_discord_installation_by_guild(organization_id, attrs.guild_id) do
+      reference_name =
+        Map.get(attrs, :guild_name) ||
+          Map.get(attrs, "guild_name") ||
+          Map.get(attrs, :guild_id) ||
+          Map.get(attrs, "guild_id") ||
+          discord_reference_name_from_payload(payload)
+      guild_id = fetch_attr(attrs, :guild_id)
+
+      case fetch_discord_installation_by_guild(organization_id, guild_id) do
         nil ->
+
           reference =
             generate_reference(
               DiscordInstallation,
               "discord",
               organization_id,
-              attrs.guild_name,
-              attrs.guild_id,
+              reference_name,
+              guild_id,
               nil
             )
 
@@ -514,8 +588,13 @@ defmodule Trifle.Integrations do
           %DiscordInstallation{}
           |> DiscordInstallation.changeset(params)
           |> Repo.insert()
+          |> case do
+            {:ok, installation} -> {:ok, ensure_discord_reference(installation)}
+            other -> other
+          end
 
         %DiscordInstallation{} = installation ->
+
           reference =
             case installation.reference do
               nil ->
@@ -523,8 +602,8 @@ defmodule Trifle.Integrations do
                   DiscordInstallation,
                   "discord",
                   organization_id,
-                  attrs.guild_name,
-                  attrs.guild_id,
+                  reference_name,
+                  guild_id,
                   installation.id
                 )
 
@@ -533,8 +612,8 @@ defmodule Trifle.Integrations do
                   DiscordInstallation,
                   "discord",
                   organization_id,
-                  attrs.guild_name,
-                  attrs.guild_id,
+                  reference_name,
+                  guild_id,
                   installation.id
                 )
 
@@ -543,8 +622,8 @@ defmodule Trifle.Integrations do
                   DiscordInstallation,
                   "discord",
                   organization_id,
-                  attrs.guild_name,
-                  attrs.guild_id,
+                  reference_name,
+                  guild_id,
                   installation.id
                 )
 
@@ -553,8 +632,8 @@ defmodule Trifle.Integrations do
                   DiscordInstallation,
                   "discord",
                   organization_id,
-                  attrs.guild_name,
-                  attrs.guild_id,
+                  reference_name,
+                  guild_id,
                   installation.id
                 )
 
@@ -569,6 +648,10 @@ defmodule Trifle.Integrations do
           installation
           |> DiscordInstallation.changeset(params)
           |> Repo.update()
+          |> case do
+            {:ok, updated} -> {:ok, updated}
+            other -> other
+          end
       end
     end
   end
@@ -616,7 +699,7 @@ defmodule Trifle.Integrations do
   end
 
   def sync_discord_channels(%DiscordInstallation{} = installation, opts \\ []) do
-    installation = maybe_fix_discord_reference(installation)
+    installation = ensure_discord_reference(installation)
 
     with {:ok, token} <- discord_bot_token_or_error(),
          {:ok, channels} <- DiscordClient.list_channels(token, installation.guild_id, opts) do
@@ -793,13 +876,15 @@ defmodule Trifle.Integrations do
   end
 
   defp generate_reference(schema, prefix, organization_id, name, external_id, exclude_id \\ nil) do
-    base =
+    slug =
       name
       |> to_string()
       |> String.downcase()
       |> String.replace(~r/[^a-z0-9]+/, "_")
       |> String.trim("_")
-      |> ensure_alpha_prefix(prefix, external_id)
+
+    base =
+      ensure_alpha_prefix(prefix, slug, external_id)
       |> String.slice(0, 48)
 
     ensure_unique_reference(schema, organization_id, base, 0, exclude_id)
@@ -894,40 +979,60 @@ defmodule Trifle.Integrations do
 
   defp allowed_discord_channel?(_), do: false
 
-  defp maybe_fix_discord_reference(%DiscordInstallation{} = installation) do
-    reference = Map.get(installation, :reference)
+  defp ensure_discord_reference(%DiscordInstallation{} = installation) do
+    desired_name =
+      installation.guild_name ||
+        installation.guild_id ||
+        "discord_" <> String.slice(to_string(installation.guild_id || "guild"), 0, 8)
 
-    if reference in [nil, "", "discord", "discord_discord"] do
-      fallback_name =
-        case installation.guild_name do
-          nil ->
-            "discord_" <> String.slice(to_string(installation.guild_id || "guild"), 0, 8)
+    desired_reference =
+      generate_reference(
+        DiscordInstallation,
+        "discord",
+        installation.organization_id,
+        desired_name,
+        installation.guild_id,
+        installation.id
+      )
 
-          "" ->
-            "discord_" <> String.slice(to_string(installation.guild_id || "guild"), 0, 8)
-
-          value ->
-            value
-        end
-
-      new_reference =
-        generate_reference(
-          DiscordInstallation,
-          "discord",
-          installation.organization_id,
-          fallback_name,
-          installation.guild_id,
-          installation.id
-        )
-
+    if installation.reference == desired_reference do
+      installation
+    else
       case installation
-           |> DiscordInstallation.changeset(%{reference: new_reference})
+           |> DiscordInstallation.changeset(%{reference: desired_reference})
            |> Repo.update() do
         {:ok, updated} -> updated
         _ -> installation
       end
-    else
+    end
+  end
+
+  defp ensure_slack_reference(%SlackInstallation{} = installation) do
+    desired_name =
+      installation.team_name ||
+        installation.team_domain ||
+        installation.team_id ||
+        "slack_" <> String.slice(to_string(installation.team_id || "team"), 0, 8)
+
+    desired_reference =
+      generate_reference(
+        SlackInstallation,
+        "slack",
+        installation.organization_id,
+        desired_name,
+        installation.team_id,
+        installation.id
+      )
+
+    if installation.reference == desired_reference do
       installation
+    else
+      case installation
+           |> SlackInstallation.changeset(%{reference: desired_reference})
+           |> Repo.update() do
+        {:ok, updated} -> updated
+        _ -> installation
+      end
     end
   end
 
@@ -963,6 +1068,47 @@ defmodule Trifle.Integrations do
     |> maybe_put("parent_id", Map.get(payload, "parent_id"))
     |> maybe_put("raw_type", Map.get(payload, "type"))
     |> maybe_put("position", Map.get(payload, "position"))
+  end
+
+  defp fetch_attr(attrs, key) when is_atom(key) do
+    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  end
+
+  defp slack_reference_name(attrs) do
+    fetch_attr(attrs, :team_name) ||
+      fetch_attr(attrs, :team_domain) ||
+      fetch_attr(attrs, :team_id)
+  end
+
+  defp discord_reference_name(attrs) do
+    fetch_attr(attrs, :guild_name) ||
+      fetch_attr(attrs, :guild_id)
+  end
+
+  defp slack_reference_name_from_payload(payload) do
+    get_in(payload, ["team", "name"]) ||
+      get_in(payload, [:team, :name]) ||
+      Map.get(payload, "team_name") ||
+      Map.get(payload, :team_name) ||
+      get_in(payload, ["team", "domain"]) ||
+      get_in(payload, [:team, :domain]) ||
+      Map.get(payload, "team_domain") ||
+      Map.get(payload, :team_domain) ||
+      get_in(payload, ["team", "id"]) ||
+      get_in(payload, [:team, :id]) ||
+      Map.get(payload, "team_id") ||
+      Map.get(payload, :team_id)
+  end
+
+  defp discord_reference_name_from_payload(payload) do
+    get_in(payload, ["guild", "name"]) ||
+      get_in(payload, [:guild, :name]) ||
+      Map.get(payload, "guild_name") ||
+      Map.get(payload, :guild_name) ||
+      get_in(payload, ["guild", "id"]) ||
+      get_in(payload, [:guild, :id]) ||
+      Map.get(payload, "guild_id") ||
+      Map.get(payload, :guild_id)
   end
 
   defp discord_bot_token_or_error do

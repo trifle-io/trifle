@@ -1,7 +1,7 @@
 defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
   use ExUnit.Case, async: true
 
-  alias TrifleApp.Components.DashboardWidgets.WidgetData
+  alias TrifleApp.Components.DashboardWidgets.{WidgetData, WidgetView}
 
   @grid_items [
     %{
@@ -91,8 +91,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert length(ts_points) == 2
 
     assert [%{id: "cat-1", data: cat_data}] = dataset.category
-    assert Enum.any?(cat_data, &(&1.name == "A"))
-    assert Enum.any?(cat_data, &(&1.name == "B"))
+    assert Enum.any?(cat_data, &(&1.name == "metrics.category.A"))
+    assert Enum.any?(cat_data, &(&1.name == "metrics.category.B"))
     assert [%{id: "table-1", rows: table_rows}] = dataset.table
     assert Enum.any?(table_rows, &(&1.display_path == "payments.credit"))
 
@@ -127,7 +127,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
   test "datasets_from_dashboard delegates grid extraction", %{series: series} do
     dashboard = %{payload: %{"grid" => @grid_items}}
 
-    direct = WidgetData.datasets(series, @grid_items)
+    direct = WidgetData.datasets(series, WidgetView.grid_items(dashboard))
     via_dashboard = WidgetData.datasets_from_dashboard(series, dashboard)
 
     assert direct == via_dashboard

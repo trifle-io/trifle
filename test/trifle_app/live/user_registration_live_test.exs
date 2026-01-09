@@ -8,8 +8,8 @@ defmodule TrifleApp.UserRegistrationLiveTest do
     test "renders registration page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Register"
-      assert html =~ "Log in"
+      assert html =~ "Create account"
+      assert html =~ "Sign in"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -28,9 +28,9 @@ defmodule TrifleApp.UserRegistrationLiveTest do
       result =
         lv
         |> element("#registration_form")
-        |> render_change(user: %{"email" => "with spaces", "password" => "too short"})
+        |> render_change(user: %{"email" => "with spaces", "password" => "short"})
 
-      assert result =~ "Register"
+      assert result =~ "Create account"
       assert result =~ "must have the @ sign and no spaces"
       assert result =~ "should be at least 6 character"
     end
@@ -48,7 +48,10 @@ defmodule TrifleApp.UserRegistrationLiveTest do
       assert redirected_to(conn) == ~p"/"
 
       # Now do a logged in request and assert on the menu
-      conn = get(conn, "/")
+      conn = get(conn, ~p"/")
+      assert redirected_to(conn) == ~p"/organization/profile"
+
+      conn = get(conn, ~p"/organization/profile")
       response = html_response(conn, 200)
       assert response =~ email
       assert response =~ "Settings"
@@ -81,7 +84,7 @@ defmodule TrifleApp.UserRegistrationLiveTest do
         |> render_click()
         |> follow_redirect(conn, ~p"/users/log_in")
 
-      assert login_html =~ "Log in"
+      assert login_html =~ "Sign in"
     end
   end
 end

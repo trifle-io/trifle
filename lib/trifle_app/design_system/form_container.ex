@@ -29,7 +29,7 @@ defmodule TrifleApp.DesignSystem.FormContainer do
   attr :class, :string, default: ""
 
   attr :rest, :global,
-    include: ~w(phx-submit phx-change phx-update action method phx-trigger-action)
+    include: ~w(id phx-submit phx-change phx-update action method phx-trigger-action)
 
   slot :header do
     attr :title, :string

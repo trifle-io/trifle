@@ -7,21 +7,27 @@ defmodule Trifle.OrganizationsTest do
     alias Trifle.Organizations.Project
 
     import Trifle.OrganizationsFixtures
+    import Trifle.AccountsFixtures
 
     @invalid_attrs %{beginning_of_week: nil, name: nil, time_zone: nil, granularities: nil}
 
-    test "list_projects/0 returns all projects" do
-      project = project_fixture()
-      assert Organizations.list_projects() == [project]
+    setup do
+      %{user: user_fixture()}
     end
 
-    test "get_project!/1 returns the project with given id" do
-      project = project_fixture()
-      assert Organizations.get_project!(project.id) == project
+    test "list_projects/0 returns all projects", %{user: user} do
+      project = project_fixture(%{user: user})
+      assert Enum.map(Organizations.list_projects(), & &1.id) == [project.id]
     end
 
-    test "create_project/1 with valid data creates a project" do
+    test "get_project!/1 returns the project with given id", %{user: user} do
+      project = project_fixture(%{user: user})
+      assert Organizations.get_project!(project.id).id == project.id
+    end
+
+    test "create_project/1 with valid data creates a project", %{user: user} do
       valid_attrs = %{
+        user: user,
         beginning_of_week: 42,
         name: "some name",
         time_zone: "Etc/UTC",
@@ -41,12 +47,13 @@ defmodule Trifle.OrganizationsTest do
       assert project.expire_after == 3_600
     end
 
-    test "create_project/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} = Organizations.create_project(@invalid_attrs)
+    test "create_project/1 with invalid data returns error changeset", %{user: user} do
+      assert {:error, %Ecto.Changeset{}} =
+               Organizations.create_project(Map.put(@invalid_attrs, :user, user))
     end
 
-    test "update_project/2 with valid data updates the project" do
-      project = project_fixture()
+    test "update_project/2 with valid data updates the project", %{user: user} do
+      project = project_fixture(%{user: user})
 
       update_attrs = %{
         beginning_of_week: 43,
@@ -68,29 +75,34 @@ defmodule Trifle.OrganizationsTest do
       assert project.expire_after == 86_400
     end
 
-    test "update_project/2 with invalid data returns error changeset" do
-      project = project_fixture()
+    test "update_project/2 with invalid data returns error changeset", %{user: user} do
+      project = project_fixture(%{user: user})
       assert {:error, %Ecto.Changeset{}} = Organizations.update_project(project, @invalid_attrs)
-      assert project == Organizations.get_project!(project.id)
+      assert Organizations.get_project!(project.id).id == project.id
     end
 
-    test "delete_project/1 deletes the project" do
-      project = project_fixture()
+    test "delete_project/1 deletes the project", %{user: user} do
+      project = project_fixture(%{user: user})
       assert {:ok, %Project{}} = Organizations.delete_project(project)
       assert_raise Ecto.NoResultsError, fn -> Organizations.get_project!(project.id) end
     end
 
-    test "change_project/1 returns a project changeset" do
-      project = project_fixture()
+    test "change_project/1 returns a project changeset", %{user: user} do
+      project = project_fixture(%{user: user})
       assert %Ecto.Changeset{} = Organizations.change_project(project)
     end
   end
 
   describe "project transponders" do
     import Trifle.OrganizationsFixtures
+    import Trifle.AccountsFixtures
 
-    test "create_transponder_for_project/2 sets project source" do
-      project = project_fixture()
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "create_transponder_for_project/2 sets project source", %{user: user} do
+      project = project_fixture(%{user: user})
 
       attrs = %{
         "name" => "Project Total",
@@ -106,8 +118,8 @@ defmodule Trifle.OrganizationsTest do
       assert transponder.organization_id == nil
     end
 
-    test "list_transponders_for_project/1 returns transponders for project" do
-      project = project_fixture()
+    test "list_transponders_for_project/1 returns transponders for project", %{user: user} do
+      project = project_fixture(%{user: user})
 
       {:ok, transponder} =
         Organizations.create_transponder_for_project(project, %{
@@ -120,8 +132,8 @@ defmodule Trifle.OrganizationsTest do
       assert Organizations.list_transponders_for_project(project) == [transponder]
     end
 
-    test "get_transponder_for_source!/2 fetches project transponder" do
-      project = project_fixture()
+    test "get_transponder_for_source!/2 fetches project transponder", %{user: user} do
+      project = project_fixture(%{user: user})
 
       {:ok, transponder} =
         Organizations.create_transponder_for_project(project, %{
@@ -140,42 +152,61 @@ defmodule Trifle.OrganizationsTest do
     alias Trifle.Organizations.ProjectToken
 
     import Trifle.OrganizationsFixtures
+    import Trifle.AccountsFixtures
 
     @invalid_attrs %{name: nil, read: nil, token: nil, write: nil}
 
-    test "list_project_tokens/0 returns all project_tokens" do
-      project_token = project_token_fixture()
-      assert Organizations.list_project_tokens() == [project_token]
+    setup do
+      %{user: user_fixture()}
     end
 
-    test "get_project_token!/1 returns the project_token with given id" do
-      project_token = project_token_fixture()
-      assert Organizations.get_project_token!(project_token.id) == project_token
+    test "list_project_tokens/0 returns all project_tokens", %{user: user} do
+      project = project_fixture(%{user: user})
+      project_token = project_token_fixture(%{project: project})
+      assert Enum.map(Organizations.list_project_tokens(), & &1.id) == [project_token.id]
     end
 
-    test "create_project_token/1 with valid data creates a project_token" do
-      valid_attrs = %{name: "some name", read: true, token: "some token", write: true}
+    test "get_project_token!/1 returns the project_token with given id", %{user: user} do
+      project = project_fixture(%{user: user})
+      project_token = project_token_fixture(%{project: project})
+      assert Organizations.get_project_token!(project_token.id).id == project_token.id
+    end
+
+    test "create_project_token/1 with valid data creates a project_token", %{user: user} do
+      project = project_fixture(%{user: user})
+
+      valid_attrs = %{
+        project: project,
+        name: "some name",
+        read: true,
+        write: true
+      }
 
       assert {:ok, %ProjectToken{} = project_token} =
                Organizations.create_project_token(valid_attrs)
 
       assert project_token.name == "some name"
       assert project_token.read == true
-      assert project_token.token == "some token"
+      assert is_binary(project_token.token)
+      assert project_token.token != ""
       assert project_token.write == true
     end
 
-    test "create_project_token/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} = Organizations.create_project_token(@invalid_attrs)
+    test "create_project_token/1 with invalid data returns error changeset", %{user: user} do
+      project = project_fixture(%{user: user})
+
+      assert {:error, %Ecto.Changeset{}} =
+               Organizations.create_project_token(Map.put(@invalid_attrs, :project, project))
     end
 
-    test "update_project_token/2 with valid data updates the project_token" do
-      project_token = project_token_fixture()
+    test "update_project_token/2 with valid data updates the project_token", %{user: user} do
+      project = project_fixture(%{user: user})
+      project_token = project_token_fixture(%{project: project})
+      original_token = project_token.token
 
       update_attrs = %{
         name: "some updated name",
         read: false,
-        token: "some updated token",
         write: false
       }
 
@@ -184,21 +215,23 @@ defmodule Trifle.OrganizationsTest do
 
       assert project_token.name == "some updated name"
       assert project_token.read == false
-      assert project_token.token == "some updated token"
+      assert project_token.token == original_token
       assert project_token.write == false
     end
 
-    test "update_project_token/2 with invalid data returns error changeset" do
-      project_token = project_token_fixture()
+    test "update_project_token/2 with invalid data returns error changeset", %{user: user} do
+      project = project_fixture(%{user: user})
+      project_token = project_token_fixture(%{project: project})
 
       assert {:error, %Ecto.Changeset{}} =
                Organizations.update_project_token(project_token, @invalid_attrs)
 
-      assert project_token == Organizations.get_project_token!(project_token.id)
+      assert Organizations.get_project_token!(project_token.id).id == project_token.id
     end
 
-    test "delete_project_token/1 deletes the project_token" do
-      project_token = project_token_fixture()
+    test "delete_project_token/1 deletes the project_token", %{user: user} do
+      project = project_fixture(%{user: user})
+      project_token = project_token_fixture(%{project: project})
       assert {:ok, %ProjectToken{}} = Organizations.delete_project_token(project_token)
 
       assert_raise Ecto.NoResultsError, fn ->
@@ -206,8 +239,9 @@ defmodule Trifle.OrganizationsTest do
       end
     end
 
-    test "change_project_token/1 returns a project_token changeset" do
-      project_token = project_token_fixture()
+    test "change_project_token/1 returns a project_token changeset", %{user: user} do
+      project = project_fixture(%{user: user})
+      project_token = project_token_fixture(%{project: project})
       assert %Ecto.Changeset{} = Organizations.change_project_token(project_token)
     end
   end

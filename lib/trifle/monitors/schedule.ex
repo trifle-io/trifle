@@ -80,11 +80,21 @@ defmodule Trifle.Monitors.Schedule do
     result
   end
 
-  defp report_period_start(:hourly, now), do: Timex.beginning_of_hour(now)
+  defp report_period_start(:hourly, now), do: truncate_to_hour(now)
   defp report_period_start(:daily, now), do: Timex.beginning_of_day(now)
   defp report_period_start(:weekly, now), do: Timex.beginning_of_week(now)
   defp report_period_start(:monthly, now), do: Timex.beginning_of_month(now)
   defp report_period_start(_other, now), do: Timex.beginning_of_day(now)
+
+  defp truncate_to_hour(%DateTime{} = dt) do
+    %{dt | minute: 0, second: 0, microsecond: {0, 0}}
+  end
+
+  defp truncate_to_hour(%NaiveDateTime{} = dt) do
+    %{dt | minute: 0, second: 0, microsecond: {0, 0}}
+  end
+
+  defp truncate_to_hour(other), do: other
 
   defp truncate_to_minute(%DateTime{} = dt) do
     %{dt | second: 0, microsecond: {0, 0}}

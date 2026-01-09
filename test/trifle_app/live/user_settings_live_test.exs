@@ -12,8 +12,8 @@ defmodule TrifleApp.UserSettingsLiveTest do
         |> log_in_user(user_fixture())
         |> live(~p"/users/settings")
 
-      assert html =~ "Change Email"
-      assert html =~ "Change Password"
+      assert html =~ "Email Address"
+      assert html =~ "Password"
     end
 
     test "redirects if user is not logged in", %{conn: conn} do
@@ -40,8 +40,7 @@ defmodule TrifleApp.UserSettingsLiveTest do
       result =
         lv
         |> form("#email_form", %{
-          "current_password" => password,
-          "user" => %{"email" => new_email}
+          "user" => %{"email" => new_email, "current_password" => password}
         })
         |> render_submit()
 
@@ -57,11 +56,10 @@ defmodule TrifleApp.UserSettingsLiveTest do
         |> element("#email_form")
         |> render_change(%{
           "action" => "update_email",
-          "current_password" => "invalid",
-          "user" => %{"email" => "with spaces"}
+          "user" => %{"email" => "with spaces", "current_password" => "invalid"}
         })
 
-      assert result =~ "Change Email"
+      assert result =~ "Update Email"
       assert result =~ "must have the @ sign and no spaces"
     end
 
@@ -71,12 +69,11 @@ defmodule TrifleApp.UserSettingsLiveTest do
       result =
         lv
         |> form("#email_form", %{
-          "current_password" => "invalid",
-          "user" => %{"email" => user.email}
+          "user" => %{"email" => user.email, "current_password" => "invalid"}
         })
         |> render_submit()
 
-      assert result =~ "Change Email"
+      assert result =~ "Update Email"
       assert result =~ "did not change"
       assert result =~ "is not valid"
     end
@@ -96,11 +93,11 @@ defmodule TrifleApp.UserSettingsLiveTest do
 
       form =
         form(lv, "#password_form", %{
-          "current_password" => password,
           "user" => %{
             "email" => user.email,
             "password" => new_password,
-            "password_confirmation" => new_password
+            "password_confirmation" => new_password,
+            "current_password" => password
           }
         })
 
@@ -125,14 +122,14 @@ defmodule TrifleApp.UserSettingsLiveTest do
         lv
         |> element("#password_form")
         |> render_change(%{
-          "current_password" => "invalid",
           "user" => %{
-            "password" => "too short",
-            "password_confirmation" => "does not match"
+            "password" => "short",
+            "password_confirmation" => "does not match",
+            "current_password" => "invalid"
           }
         })
 
-      assert result =~ "Change Password"
+      assert result =~ "Update Password"
       assert result =~ "should be at least 6 character(s)"
       assert result =~ "does not match password"
     end
@@ -143,15 +140,15 @@ defmodule TrifleApp.UserSettingsLiveTest do
       result =
         lv
         |> form("#password_form", %{
-          "current_password" => "invalid",
           "user" => %{
-            "password" => "too short",
-            "password_confirmation" => "does not match"
+            "password" => "short",
+            "password_confirmation" => "does not match",
+            "current_password" => "invalid"
           }
         })
         |> render_submit()
 
-      assert result =~ "Change Password"
+      assert result =~ "Update Password"
       assert result =~ "should be at least 6 character(s)"
       assert result =~ "does not match password"
       assert result =~ "is not valid"

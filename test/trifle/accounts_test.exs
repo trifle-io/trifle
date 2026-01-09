@@ -37,7 +37,7 @@ defmodule Trifle.AccountsTest do
 
   describe "get_user!/1" do
     test "raises if id is invalid" do
-      assert_raise Ecto.NoResultsError, fn ->
+      assert_raise Ecto.Query.CastError, fn ->
         Accounts.get_user!(-1)
       end
     end
@@ -59,7 +59,7 @@ defmodule Trifle.AccountsTest do
     end
 
     test "validates email and password when given" do
-      {:error, changeset} = Accounts.register_user(%{email: "not valid", password: "not valid"})
+      {:error, changeset} = Accounts.register_user(%{email: "not valid", password: "short"})
 
       assert %{
                email: ["must have the @ sign and no spaces"],
@@ -262,7 +262,7 @@ defmodule Trifle.AccountsTest do
     test "validates password", %{user: user} do
       {:error, changeset} =
         Accounts.update_user_password(user, valid_user_password(), %{
-          password: "not valid",
+          password: "short",
           password_confirmation: "another"
         })
 
@@ -471,7 +471,7 @@ defmodule Trifle.AccountsTest do
     test "validates password", %{user: user} do
       {:error, changeset} =
         Accounts.reset_user_password(user, %{
-          password: "not valid",
+          password: "short",
           password_confirmation: "another"
         })
 

@@ -19,6 +19,9 @@ defmodule TrifleApp.UserSessionControllerTest do
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, ~p"/")
+      assert redirected_to(conn) == ~p"/organization/profile"
+
+      conn = get(conn, ~p"/organization/profile")
       response = html_response(conn, 200)
       assert response =~ user.email
       assert response =~ ~p"/users/settings"

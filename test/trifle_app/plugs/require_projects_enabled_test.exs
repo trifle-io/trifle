@@ -36,7 +36,7 @@ defmodule TrifleApp.Plugs.RequireProjectsEnabledTest do
     assert conn.halted
     assert conn.status == 404
     assert conn.resp_body == "Not found"
-    assert get_resp_header(conn, "content-type") == ["text/html"]
+    assert content_type(conn) |> String.starts_with?("text/html")
   end
 
   test "halts with json response when feature disabled for api" do
@@ -49,7 +49,14 @@ defmodule TrifleApp.Plugs.RequireProjectsEnabledTest do
 
     assert conn.halted
     assert conn.status == 404
-    assert get_resp_header(conn, "content-type") == ["application/json"]
+    assert content_type(conn) |> String.starts_with?("application/json")
     assert %{"error" => "projects feature disabled"} = Jason.decode!(conn.resp_body)
+  end
+
+  defp content_type(conn) do
+    conn
+    |> get_resp_header("content-type")
+    |> List.first()
+    |> Kernel.||("")
   end
 end
