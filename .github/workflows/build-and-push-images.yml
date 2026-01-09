@@ -19,18 +19,12 @@ env:
 jobs:
   build-app:
     runs-on: ubuntu-latest
-    outputs:
-      app_version: ${{ steps.app_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Determine app version
-        id: app_version
-        run: echo "version=$(cat VERSION | tr -d '\n')" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
@@ -76,10 +70,9 @@ jobs:
         with:
           images: ${{ env.APP_IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ steps.app_version.outputs.version }}
+            type=ref,event=tag
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Create production Dockerfile
         run: |
@@ -95,7 +88,7 @@ jobs:
           WORKDIR /app
           
           # Copy mix files and install dependencies
-          COPY mix.exs mix.lock VERSION ./
+          COPY mix.exs mix.lock ./
           RUN mix deps.get --only prod
           
           # Copy application source code (with pre-built assets)
@@ -159,14 +152,14 @@ jobs:
           context: .
           file: ./Dockerfile.production
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta-app.outputs.tags }}
           labels: ${{ steps.meta-app.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   security-scan:
-    if: github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/')
     needs: [build-app]
     runs-on: ubuntu-latest
     steps:
@@ -180,7 +173,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.APP_IMAGE_NAME }}:${{ needs.build-app.outputs.app_version }}'
+          image-ref: '${{ env.APP_IMAGE_NAME }}:${{ github.ref_name }}'
           format: 'table'
           output: 'trivy-results.txt'
           skip-version-check: true
@@ -200,7 +193,7 @@ jobs:
         if: false  # Disabled for now - requires GitHub Advanced Security
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.APP_IMAGE_NAME }}:${{ needs.build-app.outputs.app_version }}'
+          image-ref: '${{ env.APP_IMAGE_NAME }}:${{ github.ref_name }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
           skip-version-check: true
