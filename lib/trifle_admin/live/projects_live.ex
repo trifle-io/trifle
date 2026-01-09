@@ -1,13 +1,13 @@
-defmodule TrifleAdmin.UsersLive do
+defmodule TrifleAdmin.ProjectsLive do
   use TrifleAdmin, :live_view
 
   import Ecto.Query, warn: false
 
-  alias Trifle.Accounts
-  alias Trifle.Accounts.User
   alias Trifle.Organizations
+  alias Trifle.Organizations.Project
   alias Trifle.Organizations.Organization
   alias Trifle.Organizations.OrganizationMembership
+  alias Trifle.Repo
   alias TrifleAdmin.Pagination
 
   @page_size Pagination.default_per_page()
@@ -15,11 +15,11 @@ defmodule TrifleAdmin.UsersLive do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       page_title: "Users",
-       user: nil,
-       users: [],
-       query: "",
+       page_title: "Projects",
+       projects: [],
+       project: nil,
        memberships_by_user_id: %{},
+       query: "",
        pagination: Pagination.build(0, 1, @page_size)
      )}
   end
@@ -30,7 +30,7 @@ defmodule TrifleAdmin.UsersLive do
 
     socket =
       socket
-      |> assign_users(query, page)
+      |> assign_projects(query, page)
       |> apply_action(socket.assigns.live_action, params)
 
     {:noreply, socket}
@@ -39,65 +39,40 @@ defmodule TrifleAdmin.UsersLive do
   def handle_event("filter", %{"q" => query}, socket) do
     query = Pagination.sanitize_query(query)
 
-    {:noreply, push_patch(socket, to: ~p"/admin/users?#{Pagination.list_params(query, 1)}")}
+    {:noreply, push_patch(socket, to: ~p"/admin/projects?#{Pagination.list_params(query, 1)}")}
   end
 
   def handle_event("filter", %{"filters" => %{"q" => query}}, socket) do
     handle_event("filter", %{"q" => query}, socket)
   end
 
-  def handle_event("grant_admin", %{"id" => id}, socket) do
-    case Accounts.update_user_admin_status(id, true) do
-      {:ok, _user} ->
-        {:noreply,
-         socket
-         |> assign_users(socket.assigns.query, socket.assigns.pagination.page)
-         |> put_flash(:info, "Admin access granted successfully")}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to grant admin access")}
-    end
-  end
-
-  def handle_event("revoke_admin", %{"id" => id}, socket) do
-    case Accounts.update_user_admin_status(id, false) do
-      {:ok, _user} ->
-        {:noreply,
-         socket
-         |> assign_users(socket.assigns.query, socket.assigns.pagination.page)
-         |> put_flash(:info, "Admin access revoked successfully")}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to revoke admin access")}
-    end
-  end
-
   defp apply_action(socket, :show, %{"id" => id}) do
-    user = Accounts.get_user!(id)
-    memberships_by_user_id = ensure_memberships_for_user(socket, user.id)
+    project =
+      id
+      |> Organizations.get_project!()
+      |> Repo.preload(:user)
 
-    assign(socket, user: user, memberships_by_user_id: memberships_by_user_id)
+    memberships_by_user_id = ensure_memberships_for_user(socket, project.user_id)
+
+    assign(socket, project: project, memberships_by_user_id: memberships_by_user_id)
   end
 
   defp apply_action(socket, :index, _params) do
-    assign(socket, user: nil)
+    assign(socket, project: nil)
   end
 
   def render(assigns) do
     ~H"""
     <.admin_table>
       <:header>
-        <.admin_table_header
-          title="Users"
-          description="A list of all users in the system including their email, organization, and admin status."
-        >
+        <.admin_table_header title="Projects" description="Browse all projects and owners.">
           <:actions>
             <.form for={%{}} as={:filters} phx-change="filter" class="w-64">
               <input
                 type="search"
                 name="q"
                 value={@query}
-                placeholder="Search users..."
+                placeholder="Search projects..."
                 phx-debounce="300"
                 autocomplete="off"
                 class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
@@ -111,20 +86,21 @@ defmodule TrifleAdmin.UsersLive do
         <.admin_table_container>
           <.admin_table_full>
             <:columns>
-              <.admin_table_column first>Email</.admin_table_column>
+              <.admin_table_column first>Project</.admin_table_column>
+              <.admin_table_column>Owner</.admin_table_column>
               <.admin_table_column>Organization</.admin_table_column>
-              <.admin_table_column>Admin</.admin_table_column>
-              <.admin_table_column>Confirmed</.admin_table_column>
+              <.admin_table_column>Time Zone</.admin_table_column>
               <.admin_table_column>Created</.admin_table_column>
-              <.admin_table_column actions />
             </:columns>
 
             <:rows>
-              <%= for user <- @users do %>
+              <%= for project <- @projects do %>
                 <tr>
                   <.admin_table_cell first>
                     <.link
-                      patch={~p"/admin/users/#{user}/show?#{Pagination.list_params(@query, @pagination.page)}"}
+                      patch={
+                        ~p"/admin/projects/#{project}/show?#{Pagination.list_params(@query, @pagination.page)}"
+                      }
                       class="group flex items-center space-x-3 text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400 transition-all duration-200 cursor-pointer"
                     >
                       <div class="flex-shrink-0">
@@ -139,17 +115,17 @@ defmodule TrifleAdmin.UsersLive do
                               stroke-linecap="round"
                               stroke-linejoin="round"
                               stroke-width="2"
-                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                              d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
                             />
                           </svg>
                         </div>
                       </div>
                       <div class="flex-1 min-w-0">
-                        <p class="text-sm font-semibold text-gray-900 dark:text-white transition-colors duration-200">
-                          {user.email}
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors duration-200">
+                          {project.name}
                         </p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-200">
-                          {if user.is_admin, do: "Administrator", else: "Standard User"}
+                        <p class="text-xs text-gray-500 dark:text-gray-400 group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors duration-200">
+                          Default timeframe: {project.default_timeframe || "Not set"}
                         </p>
                       </div>
                       <div class="flex-shrink-0">
@@ -170,70 +146,23 @@ defmodule TrifleAdmin.UsersLive do
                     </.link>
                   </.admin_table_cell>
                   <.admin_table_cell>
-                    <div class="flex flex-col">
-                      <div class="text-gray-900 dark:text-white">
-                        {organization_name(user, @memberships_by_user_id) || "N/A"}
-                      </div>
-                      <div class="text-xs text-gray-400 dark:text-gray-500">
-                        {organization_role(user, @memberships_by_user_id) || "N/A"}
-                      </div>
-                    </div>
+                    {owner_email(project)}
                   </.admin_table_cell>
                   <.admin_table_cell>
-                    <%= if user.is_admin do %>
-                      <.status_badge variant="admin">Admin</.status_badge>
-                    <% else %>
-                      <.status_badge>User</.status_badge>
-                    <% end %>
+                    {organization_name(project, @memberships_by_user_id) || "N/A"}
                   </.admin_table_cell>
                   <.admin_table_cell>
-                    <div class="flex flex-col">
-                      <div class="mb-1">
-                        <%= if user.confirmed_at do %>
-                          <.status_badge variant="success">Confirmed</.status_badge>
-                        <% else %>
-                          <.status_badge variant="warning">Unconfirmed</.status_badge>
-                        <% end %>
-                      </div>
-                      <%= if user.confirmed_at do %>
-                        <div class="text-xs text-gray-400 dark:text-gray-500">
-                          {Calendar.strftime(user.confirmed_at, "%Y-%m-%d %H:%M")} UTC
-                        </div>
-                      <% else %>
-                        <div class="text-xs text-gray-400 dark:text-gray-500">
-                          Awaiting confirmation
-                        </div>
-                      <% end %>
-                    </div>
+                    {project.time_zone || "N/A"}
                   </.admin_table_cell>
                   <.admin_table_cell>
                     <div class="flex flex-col">
                       <div class="text-gray-900 dark:text-white">
-                        {Calendar.strftime(user.inserted_at, "%Y-%m-%d")}
+                        {Calendar.strftime(project.inserted_at, "%Y-%m-%d")}
                       </div>
                       <div class="text-xs text-gray-400 dark:text-gray-500">
-                        {Calendar.strftime(user.inserted_at, "%H:%M")} UTC
+                        {Calendar.strftime(project.inserted_at, "%H:%M")} UTC
                       </div>
                     </div>
-                  </.admin_table_cell>
-                  <.admin_table_cell actions>
-                    <%= if user.is_admin do %>
-                      <.table_action_button
-                        variant="danger"
-                        phx_click="revoke_admin"
-                        phx_value_id={user.id}
-                      >
-                        Revoke Admin
-                      </.table_action_button>
-                    <% else %>
-                      <.table_action_button
-                        variant="primary"
-                        phx_click="grant_admin"
-                        phx_value_id={user.id}
-                      >
-                        Grant Admin
-                      </.table_action_button>
-                    <% end %>
                   </.admin_table_cell>
                 </tr>
               <% end %>
@@ -243,7 +172,7 @@ defmodule TrifleAdmin.UsersLive do
 
         <.admin_pagination
           pagination={@pagination}
-          path={~p"/admin/users"}
+          path={~p"/admin/projects"}
           params={Pagination.list_params(@query, @pagination.page)}
         />
       </:body>
@@ -251,72 +180,107 @@ defmodule TrifleAdmin.UsersLive do
 
     <.app_modal
       :if={@live_action == :show}
-      id="user-details-modal"
+      id="project-details-modal"
       show
-      on_cancel={JS.patch(~p"/admin/users?#{Pagination.list_params(@query, @pagination.page)}")}
+      on_cancel={JS.patch(~p"/admin/projects?#{Pagination.list_params(@query, @pagination.page)}")}
+      size="lg"
     >
-      <:title>User Details</:title>
+      <:title>Project Details</:title>
       <:body>
         <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
           <dl class="divide-y divide-gray-200 dark:divide-slate-600">
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">Email</dt>
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Name</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {@user.email}
+                {@project.name}
               </dd>
             </div>
-            <%= if @user.name do %>
-              <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-                <dt class="text-sm font-medium text-gray-900 dark:text-white">Name</dt>
-                <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                  {@user.name}
-                </dd>
-              </div>
-            <% end %>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Owner</dt>
+              <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+                {owner_email(@project)}
+              </dd>
+            </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
               <dt class="text-sm font-medium text-gray-900 dark:text-white">Organization</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {organization_name(@user, @memberships_by_user_id) || "N/A"}
+                {organization_name(@project, @memberships_by_user_id) || "N/A"}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">Role</dt>
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Time Zone</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {organization_role(@user, @memberships_by_user_id) || "N/A"}
+                {@project.time_zone || "N/A"}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">Admin</dt>
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Beginning of Week</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {if(@user.is_admin, do: "Yes", else: "No")}
+                {format_beginning_of_week(@project)}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">Confirmed</dt>
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Granularities</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                <%= if @user.confirmed_at do %>
-                  {Calendar.strftime(@user.confirmed_at, "%B %d, %Y at %I:%M %p UTC")}
+                <%= if @project.granularities && length(@project.granularities) > 0 do %>
+                  <div class="flex flex-wrap gap-1">
+                    <%= for granularity <- @project.granularities do %>
+                      <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                        {granularity}
+                      </span>
+                    <% end %>
+                  </div>
                 <% else %>
-                  Unconfirmed
+                  <span class="text-sm text-gray-500 dark:text-slate-400">N/A</span>
                 <% end %>
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">User ID</dt>
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Default Timeframe</dt>
+              <dd class="mt-1 sm:col-span-2 sm:mt-0">
+                <%= if @project.default_timeframe && @project.default_timeframe != "" do %>
+                  <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                    {@project.default_timeframe}
+                  </span>
+                <% else %>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">Not set</span>
+                <% end %>
+              </dd>
+            </div>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Default Granularity</dt>
+              <dd class="mt-1 sm:col-span-2 sm:mt-0">
+                <%= if @project.default_granularity && @project.default_granularity != "" do %>
+                  <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                    {@project.default_granularity}
+                  </span>
+                <% else %>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">Not set</span>
+                <% end %>
+              </dd>
+            </div>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Expire After</dt>
+              <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+                {format_expire_after(@project.expire_after)}
+              </dd>
+            </div>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Project ID</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0 font-mono break-all">
-                {@user.id}
+                {@project.id}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
               <dt class="text-sm font-medium text-gray-900 dark:text-white">Created</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {Calendar.strftime(@user.inserted_at, "%B %d, %Y at %I:%M %p UTC")}
+                {Calendar.strftime(@project.inserted_at, "%B %d, %Y at %I:%M %p UTC")}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
               <dt class="text-sm font-medium text-gray-900 dark:text-white">Updated</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {Calendar.strftime(@user.updated_at, "%B %d, %Y at %I:%M %p UTC")}
+                {Calendar.strftime(@project.updated_at, "%B %d, %Y at %I:%M %p UTC")}
               </dd>
             </div>
           </dl>
@@ -326,80 +290,87 @@ defmodule TrifleAdmin.UsersLive do
     """
   end
 
-  defp list_users(query, page) do
+  defp list_projects(query, page) do
     base_query =
-      from(u in User,
+      from(p in Project,
+        join: u in assoc(p, :user),
         left_join: m in OrganizationMembership,
         on: m.user_id == u.id,
         left_join: o in Organization,
         on: o.id == m.organization_id,
-        order_by: [asc: u.email, asc: u.id],
-        distinct: u.id,
-        select: u
+        order_by: [asc: p.name, asc: p.id],
+        distinct: p.id,
+        preload: [user: u]
       )
 
     base_query
-    |> filter_users(query)
+    |> filter_projects(query)
     |> Pagination.paginate(page, @page_size)
   end
 
-  defp assign_users(socket, query, page) do
-    {users, pagination} = list_users(query, page)
-    memberships_by_user_id = memberships_by_user_id(users)
+  defp assign_projects(socket, query, page) do
+    {projects, pagination} = list_projects(query, page)
+    memberships_by_user_id = memberships_by_user_id(projects)
 
     assign(socket,
-      users: users,
+      projects: projects,
       pagination: pagination,
       query: query,
       memberships_by_user_id: memberships_by_user_id
     )
   end
 
-  defp memberships_by_user_id(users) do
+  defp memberships_by_user_id(projects) do
     user_ids =
-      users
-      |> Enum.map(& &1.id)
+      projects
+      |> Enum.map(& &1.user_id)
       |> Enum.uniq()
 
     Organizations.list_memberships_for_users(user_ids)
     |> Map.new(&{&1.user_id, &1})
   end
 
-  defp organization_name(user, memberships_by_user_id) do
-    case Map.get(memberships_by_user_id, user.id) do
+  defp owner_email(%Project{user: %{email: email}}), do: email
+  defp owner_email(%Project{user: nil}), do: "N/A"
+  defp owner_email(_), do: "N/A"
+
+  defp organization_name(project, memberships_by_user_id) do
+    case Map.get(memberships_by_user_id, project.user_id) do
       %{organization: organization} -> organization.name
       _ -> nil
     end
   end
 
-  defp organization_role(user, memberships_by_user_id) do
-    case Map.get(memberships_by_user_id, user.id) do
-      %{role: role} when is_binary(role) -> String.capitalize(role)
-      _ -> nil
+  defp format_beginning_of_week(%Project{} = project) do
+    project
+    |> Project.beginning_of_week_for()
+    |> case do
+      nil -> "N/A"
+      value -> value |> Atom.to_string() |> String.capitalize()
     end
   end
 
-  defp filter_users(query, ""), do: query
+  defp format_expire_after(nil), do: "N/A"
+  defp format_expire_after(value) when is_integer(value), do: "#{value}"
+  defp format_expire_after(value), do: to_string(value)
 
-  defp filter_users(query, term) do
+  defp filter_projects(query, ""), do: query
+
+  defp filter_projects(query, term) do
     like = "%#{term}%"
 
-    from([u, m, o] in query,
+    from([p, u, m, o] in query,
       where:
-        ilike(u.email, ^like) or
+        ilike(p.name, ^like) or
+          ilike(u.email, ^like) or
           ilike(u.name, ^like) or
-          ilike(fragment("CAST(? AS text)", u.id), ^like) or
           ilike(o.name, ^like) or
           ilike(o.slug, ^like) or
           ilike(m.role, ^like) or
-          ilike(
-            fragment(
-              "CASE WHEN ? THEN 'system admin' ELSE 'standard user' END",
-              u.is_admin
-            ),
-            ^like
-          ) or
-          ilike(fragment("CASE WHEN ? THEN 'admin' ELSE 'user' END", u.is_admin), ^like)
+          ilike(p.time_zone, ^like) or
+          ilike(p.default_timeframe, ^like) or
+          ilike(p.default_granularity, ^like) or
+          ilike(fragment("CAST(? AS text)", p.id), ^like)
     )
   end
 

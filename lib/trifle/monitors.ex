@@ -52,6 +52,36 @@ defmodule Trifle.Monitors do
   ## Monitors
 
   @doc """
+  Lists all monitors across organizations.
+  """
+  def list_all_monitors(opts \\ []) do
+    from(m in Monitor, order_by: [asc: m.inserted_at, asc: m.id])
+    |> preload(^monitor_preloads(opts))
+    |> Repo.all()
+  end
+
+  def count_all_monitors do
+    Repo.aggregate(Monitor, :count, :id)
+  end
+
+  def count_idle_monitors do
+    from(m in Monitor,
+      where: m.trigger_status == ^:idle or is_nil(m.trigger_status),
+      select: count(m.id)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Fetches a monitor by id.
+  """
+  def get_monitor!(id, opts \\ []) do
+    Monitor
+    |> Repo.get!(id)
+    |> Repo.preload(monitor_preloads(opts))
+  end
+
+  @doc """
   Lists monitors visible to the provided membership.
   """
   def list_monitors_for_membership(

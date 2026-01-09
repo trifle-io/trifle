@@ -1,140 +1,61 @@
 defmodule TrifleAdmin.DatabasesLive do
   use TrifleAdmin, :live_view
 
+  import Ecto.Query, warn: false
+
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
+  alias Trifle.Repo
+  alias TrifleAdmin.Pagination
+
+  @page_size Pagination.default_per_page()
 
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       page_title: "Admin · Database Management",
-       breadcrumb_links: [{"Admin", ~p"/admin"}, "Database Management"],
-       databases: list_databases()
+       page_title: "Databases",
+       databases: [],
+       database: nil,
+       query: "",
+       pagination: Pagination.build(0, 1, @page_size)
      )}
   end
 
   def handle_params(params, _url, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-  end
+    query = Pagination.sanitize_query(Map.get(params, "q", ""))
+    page = Pagination.parse_page(params["page"])
+    {databases, pagination} = list_databases(query, page)
 
-  defp apply_action(socket, :edit, %{"id" => id}) do
-    database = Organizations.get_database!(id)
+    socket =
+      socket
+      |> assign(databases: databases, pagination: pagination, query: query)
+      |> apply_action(socket.assigns.live_action, params)
 
-    socket
-    |> assign(:page_title, "Admin · Database Management · Edit #{database.display_name}")
-    |> assign(:breadcrumb_links, [
-      {"Admin", ~p"/admin"},
-      {"Database Management", ~p"/admin/databases"},
-      "Edit #{database.display_name}"
-    ])
-    |> assign(:database, database)
-  end
-
-  defp apply_action(socket, :show, %{"id" => id}) do
-    database = Organizations.get_database!(id)
-
-    socket
-    |> assign(:page_title, "Admin · Database Management · #{database.display_name}")
-    |> assign(:breadcrumb_links, [
-      {"Admin", ~p"/admin"},
-      {"Database Management", ~p"/admin/databases"},
-      database.display_name
-    ])
-    |> assign(:database, database)
-  end
-
-  defp apply_action(socket, :new, _params) do
-    socket
-    |> assign(:page_title, "Admin · Database Management · New Database")
-    |> assign(:breadcrumb_links, [
-      {"Admin", ~p"/admin"},
-      {"Database Management", ~p"/admin/databases"},
-      "New Database"
-    ])
-    |> assign(:database, %Database{})
-  end
-
-  defp apply_action(socket, :index, _params) do
-    socket
-    |> assign(:page_title, "Database Management")
-    |> assign(:database, nil)
-  end
-
-  def handle_info({TrifleAdmin.DatabasesLive.FormComponent, {:saved, _database}}, socket) do
-    {:noreply, assign(socket, :databases, list_databases())}
-  end
-
-  def handle_info({:flash, type, message}, socket) do
-    {:noreply, put_flash(socket, type, message)}
-  end
-
-  def handle_info(:refresh_databases, socket) do
-    {:noreply, assign(socket, :databases, list_databases())}
-  end
-
-  def handle_info(:refresh_and_close, socket) do
-    {:noreply,
-     socket
-     |> assign(:databases, list_databases())
-     |> push_patch(to: ~p"/admin/databases")}
-  end
-
-  def handle_info(_msg, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("delete", %{"id" => id}, socket) do
-    database = Organizations.get_database!(id)
-    {:ok, _} = Organizations.delete_database(database)
+  def handle_event("filter", %{"q" => query}, socket) do
+    query = Pagination.sanitize_query(query)
 
-    {:noreply, assign(socket, databases: list_databases())}
+    {:noreply,
+     push_patch(socket, to: ~p"/admin/databases?#{Pagination.list_params(query, 1)}")}
   end
 
-  def handle_event("setup", %{"id" => id}, socket) do
-    database = Organizations.get_database!(id)
-
-    case Organizations.setup_database(database) do
-      {:ok, message} ->
-        # Also run a status check after successful setup to update the status
-        {:ok, _updated_database, _setup_exists} = Organizations.check_database_status(database)
-        {:noreply, socket |> put_flash(:info, message) |> assign(databases: list_databases())}
-
-      {:error, error} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Setup failed: #{error}")
-         |> assign(databases: list_databases())}
-    end
+  def handle_event("filter", %{"filters" => %{"q" => query}}, socket) do
+    handle_event("filter", %{"q" => query}, socket)
   end
 
-  def handle_event("nuke", %{"id" => id}, socket) do
-    database = Organizations.get_database!(id)
+  defp apply_action(socket, :show, %{"id" => id}) do
+    database =
+      id
+      |> Organizations.get_database!()
+      |> Repo.preload(:organization)
 
-    case Organizations.nuke_database(database) do
-      {:ok, message} ->
-        {:noreply, socket |> put_flash(:info, message) |> assign(databases: list_databases())}
-
-      {:error, error} ->
-        {:noreply, put_flash(socket, :error, error)}
-    end
+    assign(socket, database: database)
   end
 
-  def handle_event("check_status", %{"id" => id}, socket) do
-    database = Organizations.get_database!(id)
-
-    case Organizations.check_database_status(database) do
-      {:ok, _updated_database, _setup_exists} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Status check completed successfully")
-         |> assign(databases: list_databases())}
-
-      {:error, _updated_database, error_msg} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Status check failed: #{error_msg}")
-         |> assign(databases: list_databases())}
-    end
+  defp apply_action(socket, :index, _params) do
+    assign(socket, database: nil)
   end
 
   def render(assigns) do
@@ -143,15 +64,20 @@ defmodule TrifleAdmin.DatabasesLive do
       <:header>
         <.admin_table_header
           title="Databases"
-          description="Manage database connections for Trifle::Stats drivers (Redis, PostgreSQL, MongoDB, SQLite)."
+          description="Browse configured database connections and status."
         >
           <:actions>
-            <.link
-              patch={~p"/admin/databases/new"}
-              class="inline-flex justify-center items-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
-            >
-              Add Database
-            </.link>
+            <.form for={%{}} as={:filters} phx-change="filter" class="w-64">
+              <input
+                type="search"
+                name="q"
+                value={@query}
+                placeholder="Search databases..."
+                phx-debounce="300"
+                autocomplete="off"
+                class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+              />
+            </.form>
           </:actions>
         </.admin_table_header>
       </:header>
@@ -161,6 +87,7 @@ defmodule TrifleAdmin.DatabasesLive do
           <.admin_table_full>
             <:columns>
               <.admin_table_column first>Display Name</.admin_table_column>
+              <.admin_table_column>Organization</.admin_table_column>
               <.admin_table_column>Driver</.admin_table_column>
               <.admin_table_column>Host</.admin_table_column>
               <.admin_table_column>Port</.admin_table_column>
@@ -173,7 +100,9 @@ defmodule TrifleAdmin.DatabasesLive do
                 <tr>
                   <.admin_table_cell first>
                     <.link
-                      patch={~p"/admin/databases/#{database}/show"}
+                      patch={
+                        ~p"/admin/databases/#{database}/show?#{Pagination.list_params(@query, @pagination.page)}"
+                      }
                       class="group flex items-center space-x-3 text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400 transition-all duration-200 cursor-pointer"
                     >
                       <div class="flex-shrink-0">
@@ -217,6 +146,9 @@ defmodule TrifleAdmin.DatabasesLive do
                         </svg>
                       </div>
                     </.link>
+                  </.admin_table_cell>
+                  <.admin_table_cell>
+                    {database.organization && database.organization.name || "N/A"}
                   </.admin_table_cell>
                   <.admin_table_cell>
                     <.database_label driver={database.driver} />
@@ -285,33 +217,20 @@ defmodule TrifleAdmin.DatabasesLive do
             </:rows>
           </.admin_table_full>
         </.admin_table_container>
-      </:body>
-    </.admin_table>
 
-    <.app_modal
-      :if={@live_action in [:new, :edit]}
-      id="database-modal"
-      show
-      on_cancel={JS.patch(~p"/admin/databases")}
-    >
-      <:title>{@page_title}</:title>
-      <:body>
-        <.live_component
-          module={TrifleAdmin.DatabasesLive.FormComponent}
-          id={@database.id || :new}
-          title={@page_title}
-          action={@live_action}
-          database={@database}
-          patch={~p"/admin/databases"}
+        <.admin_pagination
+          pagination={@pagination}
+          path={~p"/admin/databases"}
+          params={Pagination.list_params(@query, @pagination.page)}
         />
       </:body>
-    </.app_modal>
+    </.admin_table>
 
     <.app_modal
       :if={@live_action == :show}
       id="database-details-modal"
       show
-      on_cancel={JS.patch(~p"/admin/databases")}
+      on_cancel={JS.patch(~p"/admin/databases?#{Pagination.list_params(@query, @pagination.page)}")}
     >
       <:title>Database Details</:title>
       <:body>
@@ -326,7 +245,36 @@ defmodule TrifleAdmin.DatabasesLive do
     """
   end
 
-  defp list_databases do
-    Organizations.list_all_databases()
+  defp list_databases(query, page) do
+    base_query =
+      from(d in Database,
+        left_join: o in assoc(d, :organization),
+        preload: [organization: o],
+        order_by: [asc: d.display_name, asc: d.id]
+      )
+
+    base_query
+    |> filter_databases(query)
+    |> Pagination.paginate(page, @page_size)
+  end
+
+  defp filter_databases(query, ""), do: query
+
+  defp filter_databases(query, term) do
+    like = "%#{term}%"
+
+    from([d, o] in query,
+      where:
+        ilike(d.display_name, ^like) or
+          ilike(d.driver, ^like) or
+          ilike(d.host, ^like) or
+          ilike(d.database_name, ^like) or
+          ilike(d.file_path, ^like) or
+          ilike(fragment("CAST(? AS text)", d.port), ^like) or
+          ilike(fragment("?->>'prefix'", d.config), ^like) or
+          ilike(o.name, ^like) or
+          ilike(o.slug, ^like) or
+          ilike(fragment("CAST(? AS text)", d.id), ^like)
+    )
   end
 end

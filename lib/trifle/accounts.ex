@@ -487,6 +487,15 @@ defmodule Trifle.Accounts do
     Repo.all(User)
   end
 
+  def count_users do
+    Repo.aggregate(User, :count, :id)
+  end
+
+  def count_system_admins do
+    from(u in User, where: u.is_admin == true)
+    |> Repo.aggregate(:count, :id)
+  end
+
   @doc """
   Updates a user's admin status.
 

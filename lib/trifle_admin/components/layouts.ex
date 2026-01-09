@@ -42,8 +42,12 @@ defmodule TrifleAdmin.Layouts do
 
     case {menu, view} do
       {:dashboard, TrifleAdmin.AdminLive} -> true
+      {:organizations, TrifleAdmin.OrganizationsLive} -> true
       {:users, TrifleAdmin.UsersLive} -> true
+      {:projects, TrifleAdmin.ProjectsLive} -> true
       {:databases, TrifleAdmin.DatabasesLive} -> true
+      {:dashboards, TrifleAdmin.DashboardsLive} -> true
+      {:monitors, TrifleAdmin.MonitorsLive} -> true
       _ -> false
     end
   end
