@@ -111,10 +111,53 @@ defmodule Trifle.MixProject do
   end
 
   defp project_version do
-    "VERSION"
-    |> Path.expand(__DIR__)
-    |> File.read!()
+    [
+      System.get_env("TRIFLE_VERSION"),
+      System.get_env("APP_VERSION"),
+      github_tag_version(),
+      git_tag_version()
+    ]
+    |> Enum.find(&present_version?/1)
+    |> normalize_version()
+  end
+
+  defp github_tag_version do
+    case {System.get_env("GITHUB_REF_TYPE"), System.get_env("GITHUB_REF_NAME")} do
+      {"tag", tag} -> tag
+      _ -> nil
+    end
+  end
+
+  defp git_tag_version do
+    try do
+      case System.cmd("git", ["tag", "--points-at", "HEAD"]) do
+        {tags, 0} ->
+          tags
+          |> String.split("\n", trim: true)
+          |> List.first()
+
+        _ ->
+          nil
+      end
+    rescue
+      _ -> nil
+    end
+  end
+
+  defp present_version?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present_version?(_), do: false
+
+  defp normalize_version(nil), do: "0.0.0-dev"
+
+  defp normalize_version(value) when is_binary(value) do
+    value
     |> String.trim()
+    |> String.trim_prefix("refs/tags/")
+    |> String.trim_prefix("v")
+    |> case do
+      "" -> "0.0.0-dev"
+      normalized -> normalized
+    end
   end
 
   defp oban_web_dep do
