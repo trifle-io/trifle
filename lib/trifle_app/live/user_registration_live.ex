@@ -66,6 +66,7 @@ defmodule TrifleApp.UserRegistrationLive do
           </div>
 
           <.form_container
+            id="registration_form"
             for={@form}
             phx-submit="save"
             phx-change="validate"

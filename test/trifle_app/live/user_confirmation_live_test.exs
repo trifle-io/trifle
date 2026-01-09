@@ -29,7 +29,7 @@ defmodule TrifleApp.UserConfirmationLiveTest do
         lv
         |> form("#confirmation_form")
         |> render_submit()
-        |> follow_redirect(conn, "/")
+        |> follow_redirect(conn, ~p"/users/log_in")
 
       assert {:ok, conn} = result
 
@@ -47,7 +47,7 @@ defmodule TrifleApp.UserConfirmationLiveTest do
         lv
         |> form("#confirmation_form")
         |> render_submit()
-        |> follow_redirect(conn, "/")
+        |> follow_redirect(conn, ~p"/users/log_in")
 
       assert {:ok, conn} = result
 
@@ -55,16 +55,17 @@ defmodule TrifleApp.UserConfirmationLiveTest do
                "User confirmation link is invalid or it has expired"
 
       # when logged in
-      {:ok, lv, _html} =
+      logged_in_conn =
         build_conn()
         |> log_in_user(user)
-        |> live(~p"/users/confirm/#{token}")
+
+      {:ok, lv, _html} = live(logged_in_conn, ~p"/users/confirm/#{token}")
 
       result =
         lv
         |> form("#confirmation_form")
         |> render_submit()
-        |> follow_redirect(conn, "/")
+        |> follow_redirect(logged_in_conn, ~p"/")
 
       assert {:ok, conn} = result
       refute Phoenix.Flash.get(conn.assigns.flash, :error)
@@ -77,7 +78,7 @@ defmodule TrifleApp.UserConfirmationLiveTest do
         lv
         |> form("#confirmation_form")
         |> render_submit()
-        |> follow_redirect(conn, ~p"/")
+        |> follow_redirect(conn, ~p"/users/log_in")
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
                "User confirmation link is invalid or it has expired"

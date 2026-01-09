@@ -115,6 +115,7 @@ defmodule TrifleApp.UserSettingsLive do
             </div>
 
             <.form_container
+              id="email_form"
               for={@email_form}
               phx-submit="update_email"
               phx-change="validate_email"
@@ -137,6 +138,7 @@ defmodule TrifleApp.UserSettingsLive do
                     <.form_field
                       field={@email_form[:current_password]}
                       type="password"
+                      id="email_current_password"
                       label="Current password"
                       required
                       placeholder="Enter your current password"
@@ -166,6 +168,7 @@ defmodule TrifleApp.UserSettingsLive do
             </div>
 
             <.form_container
+              id="password_form"
               for={@password_form}
               phx-submit="update_password"
               phx-change="validate_password"
@@ -204,6 +207,7 @@ defmodule TrifleApp.UserSettingsLive do
                     <.form_field
                       field={@password_form[:current_password]}
                       type="password"
+                      id="password_current_password"
                       label="Current password"
                       required
                       placeholder="Enter your current password"

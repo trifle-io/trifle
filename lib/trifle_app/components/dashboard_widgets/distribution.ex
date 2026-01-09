@@ -182,15 +182,21 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   end
 
   defp derive_vertical_labels(series) do
-    series
-    |> List.wrap()
-    |> Enum.flat_map(fn s ->
-      s
-      |> Map.get(:points, [])
-      |> Enum.map(& &1.bucket_y)
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
+    labels =
+      series
+      |> List.wrap()
+      |> Enum.flat_map(fn s ->
+        s
+        |> Map.get(:points, [])
+        |> Enum.map(& &1.bucket_y)
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    case labels do
+      [] -> nil
+      _ -> labels
+    end
   end
 
   defp series_for_paths_3d(series_struct, paths, horizontal_descriptor, vertical_descriptor, item) do

@@ -17,17 +17,27 @@ defmodule Trifle.Organizations.ProjectToken do
 
   @doc false
   def changeset(project_token, attrs) do
+    project = Map.get(attrs, "project") || Map.get(attrs, :project)
+
+    attrs =
+      attrs
+      |> Map.delete("project")
+      |> Map.delete(:project)
+
     project_token
     |> cast(attrs, [:name, :read, :write])
-    |> put_assoc(:project, attrs["project"])
+    |> maybe_put_project(project)
     |> put_change(
       :token,
       project_token.token ||
-        Phoenix.Token.sign(TrifleWeb.Endpoint, "project auth", attrs["project"].id,
-          max_age: 86400 * 365
-        )
+        if project do
+          Phoenix.Token.sign(TrifleWeb.Endpoint, "project auth", project.id, max_age: 86400 * 365)
+        end
     )
     |> validate_required([:project, :name, :token, :read, :write])
     |> unique_constraint(:token)
   end
+
+  defp maybe_put_project(changeset, nil), do: changeset
+  defp maybe_put_project(changeset, project), do: put_assoc(changeset, :project, project)
 end

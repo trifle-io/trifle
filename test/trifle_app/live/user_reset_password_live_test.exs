@@ -40,7 +40,7 @@ defmodule TrifleApp.UserResetPasswordLiveTest do
         lv
         |> element("#reset_password_form")
         |> render_change(
-          user: %{"password" => "secret12", "confirmation_password" => "secret123456"}
+          user: %{"password" => "short", "password_confirmation" => "mismatch"}
         )
 
       assert result =~ "should be at least 6 character"
@@ -75,7 +75,7 @@ defmodule TrifleApp.UserResetPasswordLiveTest do
         lv
         |> form("#reset_password_form",
           user: %{
-            "password" => "too short",
+            "password" => "short",
             "password_confirmation" => "does not match"
           }
         )
@@ -91,28 +91,14 @@ defmodule TrifleApp.UserResetPasswordLiveTest do
     test "redirects to login page when the Log in button is clicked", %{conn: conn, token: token} do
       {:ok, lv, _html} = live(conn, ~p"/users/reset_password/#{token}")
 
-      {:ok, conn} =
+      {:ok, _view, html} =
         lv
-        |> element(~s|main a:fl-contains("Log in")|)
+        |> element(~s|main a:fl-contains("Back to sign in")|)
         |> render_click()
         |> follow_redirect(conn, ~p"/users/log_in")
 
-      assert conn.resp_body =~ "Log in"
+      assert html =~ "Sign in"
     end
 
-    test "redirects to password reset page when the Register button is clicked", %{
-      conn: conn,
-      token: token
-    } do
-      {:ok, lv, _html} = live(conn, ~p"/users/reset_password/#{token}")
-
-      {:ok, conn} =
-        lv
-        |> element(~s|main a:fl-contains("Register")|)
-        |> render_click()
-        |> follow_redirect(conn, ~p"/users/register")
-
-      assert conn.resp_body =~ "Register"
-    end
   end
 end

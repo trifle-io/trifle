@@ -1,7 +1,9 @@
 defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
   use ExUnit.Case, async: true
 
-  import Phoenix.Component
+  import Phoenix.LiveViewTest
+
+  @endpoint TrifleWeb.Endpoint
 
   alias TrifleApp.Components.DashboardWidgets.{WidgetData, WidgetView}
 
@@ -121,14 +123,15 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
   end
 
   test "renders hidden dataset nodes with encoded payloads", %{assigns: assigns} do
-    html = render_to_string(&WidgetView.grid/1, assigns)
+    html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
     [{"div", kpi_attrs, _}] = Floki.find(document, "#widget-data-kpi-1")
 
     kpi_payload =
       kpi_attrs
-      |> Keyword.fetch!("data-kpi-values")
+      |> Map.new()
+      |> Map.fetch!("data-kpi-values")
       |> Jason.decode!()
 
     assert kpi_payload["id"] == "kpi-1"
@@ -138,7 +141,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
 
     text_payload =
       text_attrs
-      |> Keyword.fetch!("data-text")
+      |> Map.new()
+      |> Map.fetch!("data-text")
       |> Jason.decode!()
 
     assert text_payload["id"] == "text-1"
@@ -150,15 +154,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assigns: assigns,
     grid_items: grid_items
   } do
-    html = render_to_string(&WidgetView.grid/1, assigns)
+    html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
     [{"div", grid_attrs, _}] = Floki.find(document, "#dashboard-grid")
-    assert Keyword.get(grid_attrs, "phx-update") == "ignore"
+    assert grid_attrs |> Map.new() |> Map.get("phx-update") == "ignore"
 
     initial_grid =
       grid_attrs
-      |> Keyword.fetch!("data-initial-grid")
+      |> Map.new()
+      |> Map.fetch!("data-initial-grid")
       |> Jason.decode!()
       |> Enum.map(& &1["id"])
       |> Enum.sort()
@@ -172,7 +177,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
   end
 
   test "renders KPI and text widget chrome server-side", %{assigns: assigns} do
-    html = render_to_string(&WidgetView.grid/1, assigns)
+    html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
     assert [_] = Floki.find(document, "#grid-widget-content-kpi-1 .kpi-wrap")
@@ -180,20 +185,20 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     [{"div", title_attrs, _}] =
       Floki.find(document, "#grid-widget-content-text-1 .grid-widget-title")
 
-    assert Keyword.get(title_attrs, "aria-hidden") == "true"
+    assert title_attrs |> Map.new() |> Map.get("aria-hidden") == "true"
 
     [{"div", body_attrs, _}] =
       Floki.find(document, "#grid-widget-content-text-1 .text-widget-body")
 
-    assert Keyword.get(body_attrs, "data-text-subtype") == "header"
+    assert body_attrs |> Map.new() |> Map.get("data-text-subtype") == "header"
 
-    classes = body_attrs |> Keyword.get("class", "")
+    classes = body_attrs |> Map.new() |> Map.get("class", "")
     assert String.contains?(classes, "items-start")
     assert String.contains?(classes, "text-widget-body")
   end
 
   test "renders list widget entries", %{assigns: assigns} do
-    html = render_to_string(&WidgetView.grid/1, assigns)
+    html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
     badges = Floki.find(document, "#grid-widget-content-list-1 li span.inline-flex.items-center")

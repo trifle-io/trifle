@@ -8,9 +8,9 @@ defmodule TrifleApp.UserLoginLiveTest do
     test "renders log in page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/log_in")
 
-      assert html =~ "Log in"
-      assert html =~ "Register"
-      assert html =~ "Forgot your password?"
+      assert html =~ "Sign in"
+      assert html =~ "Sign up"
+      assert html =~ "Forgot password?"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -67,7 +67,7 @@ defmodule TrifleApp.UserLoginLiveTest do
         |> render_click()
         |> follow_redirect(conn, ~p"/users/register")
 
-      assert login_html =~ "Register"
+      assert login_html =~ "Create account"
     end
 
     test "redirects to forgot password page when the Forgot Password button is clicked", %{
@@ -75,13 +75,13 @@ defmodule TrifleApp.UserLoginLiveTest do
     } do
       {:ok, lv, _html} = live(conn, ~p"/users/log_in")
 
-      {:ok, conn} =
+      {:ok, _view, html} =
         lv
-        |> element(~s|main a:fl-contains("Forgot your password?")|)
+        |> element(~s|main a:fl-contains("Forgot password?")|)
         |> render_click()
         |> follow_redirect(conn, ~p"/users/reset_password")
 
-      assert conn.resp_body =~ "Forgot your password?"
+      assert html =~ "Forgot your password?"
     end
   end
 end

@@ -1,8 +1,8 @@
 defmodule TrifleApp.PageControllerTest do
   use TrifleApp.ConnCase
 
-  test "GET /", %{conn: conn} do
-    conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Simple predictive"
+  test "GET /home renders marketing page", %{conn: conn} do
+    conn = get(conn, ~p"/home")
+    assert html_response(conn, 200) =~ "Analytics tracking"
   end
 end

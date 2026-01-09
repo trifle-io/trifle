@@ -30,12 +30,15 @@ defmodule TrifleApp.DesignSystem.FormField do
   attr :prompt, :string, default: nil
   attr :placeholder, :string, default: nil
   attr :rows, :integer, default: 4
+  attr :id, :string, default: nil
 
   def form_field(assigns) do
+    assigns = assign(assigns, :input_id, assigns.id || assigns.field.id)
+
     ~H"""
     <div class={["space-y-2", @class]}>
       <!-- Label -->
-      <.form_label for={@field.id} required={@required}>
+      <.form_label for={@input_id} required={@required}>
         {@label}
       </.form_label>
       
@@ -45,7 +48,7 @@ defmodule TrifleApp.DesignSystem.FormField do
           <% "select" -> %>
             <div class="grid grid-cols-1">
               <select
-                id={@field.id}
+                id={@input_id}
                 name={@field.name}
                 class={[
                   "col-start-1 row-start-1 w-full appearance-none rounded-lg bg-white dark:bg-slate-700 py-2 pr-8 pl-3 text-base text-gray-900 dark:text-white outline-1 -outline-offset-1 outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm",
@@ -79,7 +82,7 @@ defmodule TrifleApp.DesignSystem.FormField do
             </div>
           <% "textarea" -> %>
             <textarea
-              id={@field.id}
+              id={@input_id}
               name={@field.name}
               rows={@rows}
               placeholder={@placeholder}
@@ -94,7 +97,7 @@ defmodule TrifleApp.DesignSystem.FormField do
               <input type="hidden" name={@field.name} value="false" />
               <input
                 type="checkbox"
-                id={@field.id}
+                id={@input_id}
                 name={@field.name}
                 value="true"
                 checked={@field.value}
@@ -105,7 +108,7 @@ defmodule TrifleApp.DesignSystem.FormField do
           <% type when type in ~w(text email password number hidden) -> %>
             <input
               type={@type}
-              id={@field.id}
+              id={@input_id}
               name={@field.name}
               value={@field.value}
               placeholder={@placeholder}

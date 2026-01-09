@@ -47,7 +47,12 @@ defmodule TrifleApp.UserForgotPasswordLive do
         
     <!-- Reset Form -->
         <div class="bg-white dark:bg-slate-800 py-8 px-6 shadow-xl rounded-xl border border-gray-100 dark:border-slate-700">
-          <.form_container for={@form} phx-submit="send_email" layout="simple">
+          <.form_container
+            id="reset_password_form"
+            for={@form}
+            phx-submit="send_email"
+            layout="simple"
+          >
             <.form_field
               field={@form[:email]}
               type="email"
