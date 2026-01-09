@@ -1,6 +1,6 @@
 # GitHub Actions Setup
 
-This repository uses GitHub Actions to automatically build and push Docker images to Docker Hub.
+This repository uses GitHub Actions to run tests and build/push Docker images to Docker Hub.
 
 ## Required Secrets
 
@@ -18,11 +18,21 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 
 ## What the Workflows Do
 
+### CI Tests (`ci.yml`)
+**Triggers**:
+- **Push to any branch**: Runs `mix test` in Docker
+
+**Process**:
+1. **Builds the app image** from `docker-compose.yml`
+2. **Starts Postgres/Mongo/Redis**
+3. **Runs `mix test`** inside the app container
+4. **Tears down** services after the run
+
 ### Application Build (`build-and-push-images.yml`)
 **Triggers**:
-- **Push to main**: Builds and pushes `trifle/app` images
-- **Push tags (v*)**: Builds and pushes with version tags
-- **Pull requests**: Builds for testing only
+- **Push to main**: Builds for validation (no push)
+- **Push tags (v*)**: Builds and pushes `trifle/app` with the git tag
+- **Pull requests**: Builds for testing only (no push)
 
 **Process**:
 1. **Uses existing environment image** from Docker Hub
@@ -44,30 +54,29 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 ### Image Tags Generated
 - `trifle/environment:ruby_3.2.0-erlang_28.0.2-elixir_1.18.4`
 - `trifle/environment:latest`
-- `trifle/app:latest`
 - `trifle/app:v1.2.3` (when you tag releases)
 
 ## Usage
 
 ### Automatic Deployment
-Every push to `main` automatically builds and pushes images to Docker Hub.
+Only git tag pushes (matching `v*`) build and push images to Docker Hub.
 
 ### Manual Trigger
 You can manually trigger the workflow from the GitHub Actions tab.
 
 ### Version Releases
 ```bash
-git tag v1.0.0
+git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
-This creates `trifle/app:v1.0.0` and `trifle/app:1.0` images.
+This creates `trifle/app:v1.0.0` images.
 
 ### Using in Kubernetes
 Your Helm charts will automatically pull the latest multi-platform images:
 ```yaml
 image:
   repository: trifle/app
-  tag: latest  # or specific version like "v1.0.0"
+  tag: v1.0.0  # or a newer release tag
 ```
 
 ## Security Scanning
