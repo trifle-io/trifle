@@ -20,11 +20,18 @@ defmodule TrifleWeb.Router do
     live_session :admin_authenticated,
       on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
       live "/", AdminLive, :index
+      live "/organizations", OrganizationsLive, :index
+      live "/organizations/:id/show", OrganizationsLive, :show
       live "/users", UsersLive, :index
+      live "/users/:id/show", UsersLive, :show
+      live "/projects", ProjectsLive, :index
+      live "/projects/:id/show", ProjectsLive, :show
       live "/databases", DatabasesLive, :index
-      live "/databases/new", DatabasesLive, :new
-      live "/databases/:id/edit", DatabasesLive, :edit
       live "/databases/:id/show", DatabasesLive, :show
+      live "/dashboards", DashboardsLive, :index
+      live "/dashboards/:id/show", DashboardsLive, :show
+      live "/monitors", MonitorsLive, :index
+      live "/monitors/:id/show", MonitorsLive, :show
     end
   end
 

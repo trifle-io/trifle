@@ -190,6 +190,91 @@ defmodule TrifleApp.DesignSystem.AdminTable do
     """
   end
 
+  @doc """
+  Renders pagination controls for admin tables.
+  """
+  attr :pagination, :map, required: true
+  attr :path, :string, required: true
+  attr :params, :list, default: []
+  attr :class, :string, default: ""
+
+  def admin_pagination(assigns) do
+    ~H"""
+    <div
+      class={[
+        "mt-6 flex flex-col gap-3 border-t border-gray-200 dark:border-gray-700 pt-4 sm:flex-row sm:items-center sm:justify-between",
+        @class
+      ]}
+    >
+      <div class="text-sm text-gray-600 dark:text-gray-300">
+        Showing
+        <span class="font-medium text-gray-900 dark:text-white">{@pagination.from}</span>
+        to
+        <span class="font-medium text-gray-900 dark:text-white">{@pagination.to}</span>
+        of
+        <span class="font-medium text-gray-900 dark:text-white">
+          {@pagination.total_count}
+        </span>
+        results
+      </div>
+
+      <%= if @pagination.total_pages > 1 do %>
+        <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+          <%= if @pagination.has_prev do %>
+            <.link
+              patch={page_path(@path, @params, @pagination.prev_page)}
+              class="relative inline-flex items-center rounded-l-md px-2.5 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition"
+            >
+              Prev
+            </.link>
+          <% else %>
+            <span class="relative inline-flex items-center rounded-l-md px-2.5 py-2 text-sm font-medium text-gray-400 dark:text-gray-500 ring-1 ring-inset ring-gray-300 dark:ring-gray-600">
+              Prev
+            </span>
+          <% end %>
+
+          <%= for page <- @pagination.pages do %>
+            <%= if page == :ellipsis do %>
+              <span class="relative inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 ring-1 ring-inset ring-gray-300 dark:ring-gray-600">
+                ...
+              </span>
+            <% else %>
+              <%= if page == @pagination.page do %>
+                <span
+                  aria-current="page"
+                  class="relative z-10 inline-flex items-center px-3.5 py-2 text-sm font-semibold text-white bg-teal-600 ring-1 ring-inset ring-teal-600"
+                >
+                  {page}
+                </span>
+              <% else %>
+                <.link
+                  patch={page_path(@path, @params, page)}
+                  class="relative inline-flex items-center px-3.5 py-2 text-sm font-medium text-gray-700 hover:text-teal-700 dark:text-gray-300 dark:hover:text-teal-300 ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition"
+                >
+                  {page}
+                </.link>
+              <% end %>
+            <% end %>
+          <% end %>
+
+          <%= if @pagination.has_next do %>
+            <.link
+              patch={page_path(@path, @params, @pagination.next_page)}
+              class="relative inline-flex items-center rounded-r-md px-2.5 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition"
+            >
+              Next
+            </.link>
+          <% else %>
+            <span class="relative inline-flex items-center rounded-r-md px-2.5 py-2 text-sm font-medium text-gray-400 dark:text-gray-500 ring-1 ring-inset ring-gray-300 dark:ring-gray-600">
+              Next
+            </span>
+          <% end %>
+        </nav>
+      <% end %>
+    </div>
+    """
+  end
+
   # Helper functions for consistent styling
   defp status_badge_classes("success"),
     do:
@@ -223,4 +308,24 @@ defmodule TrifleApp.DesignSystem.AdminTable do
 
   defp table_action_button_classes(_),
     do: "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300"
+
+  defp page_path(path, params, page) do
+    params =
+      params
+      |> Keyword.delete(:page)
+      |> maybe_add_page(page)
+
+    query = URI.encode_query(params)
+
+    if query == "" do
+      path
+    else
+      path <> "?" <> query
+    end
+  end
+
+  defp maybe_add_page(params, page) when is_integer(page) and page > 1,
+    do: Keyword.put(params, :page, page)
+
+  defp maybe_add_page(params, _page), do: params
 end

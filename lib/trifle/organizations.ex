@@ -29,7 +29,21 @@ defmodule Trifle.Organizations do
   ## Organizations
 
   def list_organizations do
-    Repo.all(Organization)
+    from(o in Organization, order_by: [asc: o.name])
+    |> Repo.all()
+  end
+
+  def count_organizations do
+    Repo.aggregate(Organization, :count, :id)
+  end
+
+  def count_memberships_by_role do
+    from(m in OrganizationMembership,
+      group_by: m.role,
+      select: {m.role, count(m.id)}
+    )
+    |> Repo.all()
+    |> Enum.into(%{})
   end
 
   def list_user_organizations(%User{} = user) do
@@ -163,6 +177,23 @@ defmodule Trifle.Organizations do
       order_by: [asc: u.email]
     )
     |> Repo.all()
+  end
+
+  def list_memberships_for_users(user_ids) when is_list(user_ids) do
+    ids = user_ids |> Enum.uniq() |> Enum.reject(&is_nil/1)
+
+    case ids do
+      [] ->
+        []
+
+      _ ->
+        from(m in OrganizationMembership,
+          where: m.user_id in ^ids,
+          join: o in assoc(m, :organization),
+          preload: [organization: o]
+        )
+        |> Repo.all()
+    end
   end
 
   def create_membership(
@@ -992,6 +1023,26 @@ defmodule Trifle.Organizations do
     Repo.all(Project)
   end
 
+  def list_projects_by_ids(ids) when is_list(ids) do
+    ids = ids |> Enum.uniq() |> Enum.reject(&is_nil/1)
+
+    case ids do
+      [] ->
+        []
+
+      _ ->
+        from(p in Project,
+          where: p.id in ^ids,
+          select: struct(p, [:id, :name])
+        )
+        |> Repo.all()
+    end
+  end
+
+  def count_projects do
+    Repo.aggregate(Project, :count, :id)
+  end
+
   def list_users_projects(%Trifle.Accounts.User{} = user) do
     query =
       from(
@@ -1242,8 +1293,28 @@ defmodule Trifle.Organizations do
   end
 
   def list_all_databases do
-    from(d in Database, order_by: [asc: d.inserted_at, asc: d.id])
+    from(d in Database, order_by: [asc: d.inserted_at, asc: d.id], preload: [:organization])
     |> Repo.all()
+  end
+
+  def list_databases_by_ids(ids) when is_list(ids) do
+    ids = ids |> Enum.uniq() |> Enum.reject(&is_nil/1)
+
+    case ids do
+      [] ->
+        []
+
+      _ ->
+        from(d in Database,
+          where: d.id in ^ids,
+          select: struct(d, [:id, :display_name])
+        )
+        |> Repo.all()
+    end
+  end
+
+  def count_databases do
+    Repo.aggregate(Database, :count, :id)
   end
 
   @deprecated "Use list_databases_for_org/1 or list_databases_for_user/1"
@@ -1270,7 +1341,9 @@ defmodule Trifle.Organizations do
     get_database_for_org!(membership.organization_id, id)
   end
 
-  def get_database!(id), do: Repo.get!(Database, id)
+  def get_database!(id) do
+    Repo.get!(Database, id)
+  end
 
   @doc """
   Creates a database within an organization.
@@ -2022,8 +2095,15 @@ defmodule Trifle.Organizations do
   Returns all dashboards across the organization (all databases).
   """
   def list_all_dashboards do
-    from(d in Dashboard, order_by: [asc: d.inserted_at, asc: d.id], preload: [:user, :database])
+    from(d in Dashboard,
+      order_by: [asc: d.inserted_at, asc: d.id],
+      preload: [:user, :database, :organization]
+    )
     |> Repo.all()
+  end
+
+  def count_dashboards do
+    Repo.aggregate(Dashboard, :count, :id)
   end
 
   # Removed database-scoped dashboard group listing in favor of global groups
