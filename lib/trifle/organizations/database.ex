@@ -29,6 +29,7 @@ defmodule Trifle.Organizations.Database do
     field :last_error, :string
 
     belongs_to :organization, Trifle.Organizations.Organization
+    has_many :database_tokens, Trifle.Organizations.DatabaseToken
 
     timestamps()
   end

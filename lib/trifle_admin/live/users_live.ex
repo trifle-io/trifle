@@ -124,7 +124,9 @@ defmodule TrifleAdmin.UsersLive do
                 <tr>
                   <.admin_table_cell first>
                     <.link
-                      patch={~p"/admin/users/#{user}/show?#{Pagination.list_params(@query, @pagination.page)}"}
+                      patch={
+                        ~p"/admin/users/#{user}/show?#{Pagination.list_params(@query, @pagination.page)}"
+                      }
                       class="group flex items-center space-x-3 text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400 transition-all duration-200 cursor-pointer"
                     >
                       <div class="flex-shrink-0">

@@ -23,7 +23,7 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
           <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
             <dt class="text-sm font-medium text-gray-900 dark:text-white">Organization</dt>
             <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-              {@database.organization && @database.organization.name || "N/A"}
+              {(@database.organization && @database.organization.name) || "N/A"}
             </dd>
           </div>
           <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">

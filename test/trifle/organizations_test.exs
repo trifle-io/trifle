@@ -107,8 +107,12 @@ defmodule Trifle.OrganizationsTest do
       attrs = %{
         "name" => "Project Total",
         "key" => "metrics::total",
-        "type" => "Trifle.Stats.Transponder.Add",
-        "config" => %{"path1" => "foo", "path2" => "bar"}
+        "type" => "Trifle.Stats.Transponder.Expression",
+        "config" => %{
+          "paths" => ["foo"],
+          "expression" => "a",
+          "response_path" => "total"
+        }
       }
 
       {:ok, transponder} = Organizations.create_transponder_for_project(project, attrs)
@@ -125,8 +129,12 @@ defmodule Trifle.OrganizationsTest do
         Organizations.create_transponder_for_project(project, %{
           "name" => "Project Ratio",
           "key" => "proj::ratio",
-          "type" => "Trifle.Stats.Transponder.Ratio",
-          "config" => %{"path1" => "foo", "path2" => "bar"}
+          "type" => "Trifle.Stats.Transponder.Expression",
+          "config" => %{
+            "paths" => ["foo"],
+            "expression" => "a",
+            "response_path" => "ratio"
+          }
         })
 
       assert Organizations.list_transponders_for_project(project) == [transponder]
@@ -139,8 +147,12 @@ defmodule Trifle.OrganizationsTest do
         Organizations.create_transponder_for_project(project, %{
           "name" => "Project Mean",
           "key" => "proj::mean",
-          "type" => "Trifle.Stats.Transponder.Mean",
-          "config" => %{"path" => "foo"}
+          "type" => "Trifle.Stats.Transponder.Expression",
+          "config" => %{
+            "paths" => ["foo"],
+            "expression" => "a",
+            "response_path" => "mean"
+          }
         })
 
       assert Organizations.get_transponder_for_source!(project, transponder.id).id ==
@@ -243,6 +255,98 @@ defmodule Trifle.OrganizationsTest do
       project = project_fixture(%{user: user})
       project_token = project_token_fixture(%{project: project})
       assert %Ecto.Changeset{} = Organizations.change_project_token(project_token)
+    end
+  end
+
+  describe "database_tokens" do
+    alias Trifle.Organizations.DatabaseToken
+
+    import Trifle.OrganizationsFixtures
+    import Trifle.AccountsFixtures
+
+    @invalid_attrs %{name: nil, read: nil, token: nil}
+
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "list_database_tokens/0 returns all database_tokens", %{user: _user} do
+      database = database_fixture()
+      database_token = database_token_fixture(%{database: database})
+      assert Enum.map(Organizations.list_database_tokens(), & &1.id) == [database_token.id]
+    end
+
+    test "get_database_token!/1 returns the database_token with given id", %{user: _user} do
+      database = database_fixture()
+      database_token = database_token_fixture(%{database: database})
+      assert Organizations.get_database_token!(database_token.id).id == database_token.id
+    end
+
+    test "create_database_token/1 with valid data creates a database_token", %{user: _user} do
+      database = database_fixture()
+
+      valid_attrs = %{
+        database: database,
+        name: "some name"
+      }
+
+      assert {:ok, %DatabaseToken{} = database_token} =
+               Organizations.create_database_token(valid_attrs)
+
+      assert database_token.name == "some name"
+      assert database_token.read == true
+      assert is_binary(database_token.token)
+      assert database_token.token != ""
+    end
+
+    test "create_database_token/1 with invalid data returns error changeset", %{user: _user} do
+      database = database_fixture()
+
+      assert {:error, %Ecto.Changeset{}} =
+               Organizations.create_database_token(Map.put(@invalid_attrs, :database, database))
+    end
+
+    test "update_database_token/2 with valid data updates the database_token", %{user: _user} do
+      database = database_fixture()
+      database_token = database_token_fixture(%{database: database})
+      original_token = database_token.token
+
+      update_attrs = %{
+        name: "some updated name"
+      }
+
+      assert {:ok, %DatabaseToken{} = database_token} =
+               Organizations.update_database_token(database_token, update_attrs)
+
+      assert database_token.name == "some updated name"
+      assert database_token.read == true
+      assert database_token.token == original_token
+    end
+
+    test "update_database_token/2 with invalid data returns error changeset", %{user: _user} do
+      database = database_fixture()
+      database_token = database_token_fixture(%{database: database})
+
+      assert {:error, %Ecto.Changeset{}} =
+               Organizations.update_database_token(database_token, @invalid_attrs)
+
+      assert Organizations.get_database_token!(database_token.id).id == database_token.id
+    end
+
+    test "delete_database_token/1 deletes the database_token", %{user: _user} do
+      database = database_fixture()
+      database_token = database_token_fixture(%{database: database})
+      assert {:ok, %DatabaseToken{}} = Organizations.delete_database_token(database_token)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Organizations.get_database_token!(database_token.id)
+      end
+    end
+
+    test "change_database_token/1 returns a database_token changeset", %{user: _user} do
+      database = database_fixture()
+      database_token = database_token_fixture(%{database: database})
+      assert %Ecto.Changeset{} = Organizations.change_database_token(database_token)
     end
   end
 end

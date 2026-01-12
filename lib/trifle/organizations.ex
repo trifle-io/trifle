@@ -12,6 +12,7 @@ defmodule Trifle.Organizations do
   alias Trifle.Organizations.{
     Project,
     ProjectToken,
+    DatabaseToken,
     Organization,
     OrganizationMembership,
     OrganizationInvitation,
@@ -1182,15 +1183,16 @@ defmodule Trifle.Organizations do
   def get_project_token!(id), do: Repo.get!(ProjectToken, id)
 
   def get_project_by_token(token) when is_binary(token) do
-    with token when not is_nil(token) <-
-           Repo.get_by(ProjectToken, token: token) |> Repo.preload(:project),
+    with %ProjectToken{} = record <- Repo.get_by(ProjectToken, token: token),
+         record <- Repo.preload(record, :project),
          {:ok, _id} <-
-           Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", token.token,
+           Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", record.token,
              max_age: 86400 * 365
-           ) do
-      {:ok, token.project, token}
+           ),
+         %Project{} = project <- record.project do
+      {:ok, project, record}
     else
-      nil ->
+      _ ->
         {:error, :not_found}
     end
   end
@@ -1266,6 +1268,135 @@ defmodule Trifle.Organizations do
   """
   def change_project_token(%ProjectToken{} = project_token, attrs \\ %{}) do
     ProjectToken.changeset(project_token, attrs)
+  end
+
+  ## Database tokens
+
+  @doc """
+  Returns the list of database_tokens.
+
+  ## Examples
+
+      iex> list_database_tokens()
+      [%DatabaseToken{}, ...]
+
+  """
+  def list_database_tokens do
+    Repo.all(DatabaseToken)
+  end
+
+  def list_databases_database_tokens(%Database{} = database) do
+    query =
+      from(
+        dt in DatabaseToken,
+        where: dt.database_id == ^database.id
+      )
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Gets a single database_token.
+
+  Raises `Ecto.NoResultsError` if the Database token does not exist.
+
+  ## Examples
+
+      iex> get_database_token!(123)
+      %DatabaseToken{}
+
+      iex> get_database_token!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_database_token!(id), do: Repo.get!(DatabaseToken, id)
+
+  def get_database_by_token(token) when is_binary(token) do
+    with %DatabaseToken{} = record <- Repo.get_by(DatabaseToken, token: token),
+         record <- Repo.preload(record, :database),
+         {:ok, _id} <-
+           Phoenix.Token.verify(TrifleWeb.Endpoint, "database auth", record.token,
+             max_age: 86400 * 365
+           ),
+         %Database{} = database <- record.database do
+      {:ok, database, record}
+    else
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Creates a database_token.
+
+  ## Examples
+
+      iex> create_database_token(%{field: value})
+      {:ok, %DatabaseToken{}}
+
+      iex> create_database_token(%{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def create_database_token(attrs \\ %{}) do
+    %DatabaseToken{}
+    |> DatabaseToken.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def create_databases_database_token(attrs \\ %{}, %Database{} = database) do
+    attrs = Map.put(attrs, "database", database)
+
+    %DatabaseToken{}
+    |> DatabaseToken.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a database_token.
+
+  ## Examples
+
+      iex> update_database_token(database_token, %{field: new_value})
+      {:ok, %DatabaseToken{}}
+
+      iex> update_database_token(database_token, %{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_database_token(%DatabaseToken{} = database_token, attrs) do
+    database_token
+    |> DatabaseToken.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a database_token.
+
+  ## Examples
+
+      iex> delete_database_token(database_token)
+      {:ok, %DatabaseToken{}}
+
+      iex> delete_database_token(database_token)
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def delete_database_token(%DatabaseToken{} = database_token) do
+    Repo.delete(database_token)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking database_token changes.
+
+  ## Examples
+
+      iex> change_database_token(database_token)
+      %Ecto.Changeset{data: %DatabaseToken{}}
+
+  """
+  def change_database_token(%DatabaseToken{} = database_token, attrs \\ %{}) do
+    DatabaseToken.changeset(database_token, attrs)
   end
 
   ## Database functions
@@ -1601,7 +1732,9 @@ defmodule Trifle.Organizations do
 
     base_query =
       from t in Transponder,
-        where: t.source_type == ^type_string and t.source_id == ^source_id,
+        where:
+          t.source_type == ^type_string and t.source_id == ^source_id and
+            t.type == ^Transponder.expression_type(),
         order_by: [asc: t.order, asc: t.key]
 
     query =
@@ -1635,7 +1768,9 @@ defmodule Trifle.Organizations do
 
     query =
       from(t in Transponder,
-        where: t.source_type == ^type_string and t.source_id == ^source_id,
+        where:
+          t.source_type == ^type_string and t.source_id == ^source_id and
+            t.type == ^Transponder.expression_type(),
         select: max(t.order)
       )
 

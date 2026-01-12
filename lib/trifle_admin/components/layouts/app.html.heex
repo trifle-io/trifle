@@ -35,7 +35,9 @@
             <div class="hidden md:block">
               <div class="ml-10 flex items-baseline space-x-4">
                 {live_active_link(@socket, :dashboard, "Overview", to: ~p"/admin")}
-                {live_active_link(@socket, :organizations, "Organizations", to: ~p"/admin/organizations")}
+                {live_active_link(@socket, :organizations, "Organizations",
+                  to: ~p"/admin/organizations"
+                )}
                 {live_active_link(@socket, :users, "Users", to: ~p"/admin/users")}
                 {live_active_link(@socket, :projects, "Projects", to: ~p"/admin/projects")}
                 {live_active_link(@socket, :databases, "Databases", to: ~p"/admin/databases")}

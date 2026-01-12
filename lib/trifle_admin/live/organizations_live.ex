@@ -172,7 +172,9 @@ defmodule TrifleAdmin.OrganizationsLive do
       :if={@live_action == :show}
       id="organization-details-modal"
       show
-      on_cancel={JS.patch(~p"/admin/organizations?#{Pagination.list_params(@query, @pagination.page)}")}
+      on_cancel={
+        JS.patch(~p"/admin/organizations?#{Pagination.list_params(@query, @pagination.page)}")
+      }
     >
       <:title>Organization Details</:title>
       <:body>

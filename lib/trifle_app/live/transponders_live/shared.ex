@@ -60,7 +60,8 @@ defmodule TrifleApp.TranspondersLive.Shared do
 
       {:new, _} ->
         Component.assign(socket, :transponder, %Transponder{
-          source_type: Atom.to_string(source_type)
+          source_type: Atom.to_string(source_type),
+          type: Transponder.expression_type()
         })
 
       {action, %{"transponder_id" => transponder_id}} when action in [:show, :edit] ->

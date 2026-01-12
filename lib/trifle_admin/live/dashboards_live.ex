@@ -39,8 +39,7 @@ defmodule TrifleAdmin.DashboardsLive do
   def handle_event("filter", %{"q" => query}, socket) do
     query = Pagination.sanitize_query(query)
 
-    {:noreply,
-     push_patch(socket, to: ~p"/admin/dashboards?#{Pagination.list_params(query, 1)}")}
+    {:noreply, push_patch(socket, to: ~p"/admin/dashboards?#{Pagination.list_params(query, 1)}")}
   end
 
   def handle_event("filter", %{"filters" => %{"q" => query}}, socket) do
@@ -447,6 +446,7 @@ defmodule TrifleAdmin.DashboardsLive do
   end
 
   defp format_json(nil), do: nil
+
   defp format_json(value) do
     normalized = normalize_json_value(value)
 
@@ -465,7 +465,9 @@ defmodule TrifleAdmin.DashboardsLive do
   defp normalize_json_value(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
   defp normalize_json_value(%DateTime{} = value), do: DateTime.to_iso8601(value)
   defp normalize_json_value(value) when is_atom(value), do: Atom.to_string(value)
-  defp normalize_json_value(%_{} = value), do: value |> Map.from_struct() |> normalize_json_value()
+
+  defp normalize_json_value(%_{} = value),
+    do: value |> Map.from_struct() |> normalize_json_value()
 
   defp normalize_json_value(value) when is_list(value) do
     Enum.map(value, &normalize_json_value/1)
