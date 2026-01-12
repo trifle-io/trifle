@@ -197,6 +197,15 @@ const parseJsonSafe = (value) => {
   }
 };
 
+const setHidden = (el, hidden) => {
+  if (!el) return;
+  if (hidden) {
+    el.classList.add('hidden');
+  } else {
+    el.classList.remove('hidden');
+  }
+};
+
 const findDashboardGridHook = (el) => {
   if (!el) return null;
   const gridId = el.dataset && el.dataset.gridId;
@@ -249,6 +258,56 @@ Hooks.DocumentTitle = {
     const title = this.el.dataset.title || 'Trifle'
     const suffix = this.el.dataset.suffix || ''
     document.title = `${title}${suffix}`
+  }
+}
+
+Hooks.CopyFeedback = {
+  mounted() {
+    this._copyFeedbackTimeout = null;
+    this._handleCopyFeedbackClick = () => {
+      const timeout = parseInt(this.el.dataset.copyTimeout || '2000', 10);
+      const delay = Number.isFinite(timeout) ? timeout : 2000;
+      const copyIcon = this.el.dataset.copyIcon
+        ? document.getElementById(this.el.dataset.copyIcon)
+        : null;
+      const copiedIcon = this.el.dataset.copiedIcon
+        ? document.getElementById(this.el.dataset.copiedIcon)
+        : null;
+      const copyLabel = this.el.dataset.copyLabel
+        ? document.getElementById(this.el.dataset.copyLabel)
+        : null;
+      const copiedLabel = this.el.dataset.copiedLabel
+        ? document.getElementById(this.el.dataset.copiedLabel)
+        : null;
+
+      setHidden(copyIcon, true);
+      setHidden(copiedIcon, false);
+      setHidden(copyLabel, true);
+      setHidden(copiedLabel, false);
+
+      if (this._copyFeedbackTimeout) {
+        clearTimeout(this._copyFeedbackTimeout);
+      }
+
+      this._copyFeedbackTimeout = setTimeout(() => {
+        setHidden(copyIcon, false);
+        setHidden(copiedIcon, true);
+        setHidden(copyLabel, false);
+        setHidden(copiedLabel, true);
+        this._copyFeedbackTimeout = null;
+      }, delay);
+    };
+
+    this.el.addEventListener('click', this._handleCopyFeedbackClick);
+  },
+  destroyed() {
+    if (this._handleCopyFeedbackClick) {
+      this.el.removeEventListener('click', this._handleCopyFeedbackClick);
+    }
+    if (this._copyFeedbackTimeout) {
+      clearTimeout(this._copyFeedbackTimeout);
+      this._copyFeedbackTimeout = null;
+    }
   }
 }
 
