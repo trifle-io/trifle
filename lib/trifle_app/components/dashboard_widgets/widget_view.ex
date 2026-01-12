@@ -1412,7 +1412,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     |> Map.get("grid") ||
       Map.get(payload, :grid) ||
       []
-    |> normalize_items()
+      |> normalize_items()
   end
 
   def grid_items(_dashboard), do: []

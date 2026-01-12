@@ -36,6 +36,7 @@ defmodule Trifle.Organizations.Transponder do
       :source_type,
       :source_id
     ])
+    |> maybe_put_expression_type()
     |> validate_required([:name, :key, :type, :source_type, :source_id])
     |> validate_source_type()
     |> validate_transponder_type()
@@ -44,126 +45,20 @@ defmodule Trifle.Organizations.Transponder do
     |> maybe_validate_organization_present()
   end
 
+  @expression_type "Trifle.Stats.Transponder.Expression"
+
+  def expression_type, do: @expression_type
+
   def available_types do
-    [
-      "Trifle.Stats.Transponder.Expression",
-      "Trifle.Stats.Transponder.Add",
-      "Trifle.Stats.Transponder.Subtract",
-      "Trifle.Stats.Transponder.Multiply",
-      "Trifle.Stats.Transponder.Divide",
-      "Trifle.Stats.Transponder.Sum",
-      "Trifle.Stats.Transponder.Mean",
-      "Trifle.Stats.Transponder.StandardDeviation",
-      "Trifle.Stats.Transponder.Min",
-      "Trifle.Stats.Transponder.Max",
-      "Trifle.Stats.Transponder.Ratio"
-    ]
+    [@expression_type]
   end
 
-  def get_transponder_fields(type) do
-    case type do
-      "Trifle.Stats.Transponder.Expression" ->
-        []
-
-      "Trifle.Stats.Transponder.Add" ->
-        [
-          %{name: "path1", type: "string", label: "First Path", required: true},
-          %{name: "path2", type: "string", label: "Second Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Subtract" ->
-        [
-          %{name: "path1", type: "string", label: "Minuend Path", required: true},
-          %{name: "path2", type: "string", label: "Subtrahend Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Multiply" ->
-        [
-          %{name: "path1", type: "string", label: "First Path", required: true},
-          %{name: "path2", type: "string", label: "Second Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Divide" ->
-        [
-          %{name: "path1", type: "string", label: "Dividend Path", required: true},
-          %{name: "path2", type: "string", label: "Divisor Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Sum" ->
-        [
-          %{name: "path", type: "string", label: "Array Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Mean" ->
-        [
-          %{name: "path", type: "string", label: "Array Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.StandardDeviation" ->
-        [
-          %{
-            name: "left",
-            type: "string",
-            label: "Sum Path",
-            required: true,
-            help: "Path to the sum of values"
-          },
-          %{
-            name: "right",
-            type: "string",
-            label: "Count Path",
-            required: true,
-            help: "Path to the count of values"
-          },
-          %{
-            name: "square",
-            type: "string",
-            label: "Sum of Squares Path",
-            required: true,
-            help: "Path to the sum of squares"
-          },
-          %{
-            name: "response_path",
-            type: "string",
-            label: "Response Path",
-            required: true,
-            help: "Path where standard deviation will be stored"
-          }
-        ]
-
-      "Trifle.Stats.Transponder.Min" ->
-        [
-          %{name: "path", type: "string", label: "Array Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Max" ->
-        [
-          %{name: "path", type: "string", label: "Array Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      "Trifle.Stats.Transponder.Ratio" ->
-        [
-          %{name: "path1", type: "string", label: "Numerator Path", required: true},
-          %{name: "path2", type: "string", label: "Denominator Path", required: true},
-          %{name: "response_path", type: "string", label: "Response Path", required: false}
-        ]
-
-      _ ->
-        []
+  defp maybe_put_expression_type(changeset) do
+    case get_field(changeset, :type) do
+      nil -> put_change(changeset, :type, @expression_type)
+      "" -> put_change(changeset, :type, @expression_type)
+      _ -> changeset
     end
-  end
-
-  def get_type_display_name(type) do
-    type
-    |> String.replace("Trifle.Stats.Transponder.", "")
   end
 
   defp validate_transponder_type(changeset) do
@@ -184,29 +79,15 @@ defmodule Trifle.Organizations.Transponder do
     type = get_field(changeset, :type)
     config = get_field(changeset, :config) || %{}
 
-    if type do
-      case type do
-        "Trifle.Stats.Transponder.Expression" ->
-          paths = Map.get(config, "paths") || Map.get(config, :paths)
-          expression = Map.get(config, "expression") || Map.get(config, :expression)
-          response_path = Map.get(config, "response_path") || Map.get(config, :response_path)
+    if type == @expression_type do
+      paths = Map.get(config, "paths") || Map.get(config, :paths)
+      expression = Map.get(config, "expression") || Map.get(config, :expression)
+      response_path = Map.get(config, "response_path") || Map.get(config, :response_path)
 
-          case Trifle.Stats.Transponder.Expression.validate(paths, expression, response_path) do
-            :ok -> changeset
-            {:error, %{message: message}} -> add_error(changeset, :config, message)
-            {:error, other} -> add_error(changeset, :config, inspect(other))
-          end
-
-        _ ->
-          required_fields = get_transponder_fields(type)
-
-          Enum.reduce(required_fields, changeset, fn field, acc ->
-            if field.required and is_nil(config[field.name]) do
-              add_error(acc, :config, "#{field.label} is required")
-            else
-              acc
-            end
-          end)
+      case Trifle.Stats.Transponder.Expression.validate(paths, expression, response_path) do
+        :ok -> changeset
+        {:error, %{message: message}} -> add_error(changeset, :config, message)
+        {:error, other} -> add_error(changeset, :config, inspect(other))
       end
     else
       changeset

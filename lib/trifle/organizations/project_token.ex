@@ -29,13 +29,23 @@ defmodule Trifle.Organizations.ProjectToken do
     |> maybe_put_project(project)
     |> put_change(
       :token,
-      project_token.token ||
-        if project do
-          Phoenix.Token.sign(TrifleWeb.Endpoint, "project auth", project.id, max_age: 86400 * 365)
-        end
+      project_token.token || build_token(project)
     )
     |> validate_required([:project, :name, :token, :read, :write])
     |> unique_constraint(:token)
+  end
+
+  defp build_token(nil), do: nil
+
+  defp build_token(project) do
+    payload = %{project_id: project.id, nonce: nonce()}
+
+    Phoenix.Token.sign(TrifleWeb.Endpoint, "project auth", payload, max_age: 86400 * 365)
+  end
+
+  defp nonce do
+    :crypto.strong_rand_bytes(16)
+    |> Base.url_encode64(padding: false)
   end
 
   defp maybe_put_project(changeset, nil), do: changeset

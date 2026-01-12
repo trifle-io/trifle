@@ -200,17 +200,13 @@ defmodule TrifleApp.DesignSystem.AdminTable do
 
   def admin_pagination(assigns) do
     ~H"""
-    <div
-      class={[
-        "mt-6 flex flex-col gap-3 border-t border-gray-200 dark:border-gray-700 pt-4 sm:flex-row sm:items-center sm:justify-between",
-        @class
-      ]}
-    >
+    <div class={[
+      "mt-6 flex flex-col gap-3 border-t border-gray-200 dark:border-gray-700 pt-4 sm:flex-row sm:items-center sm:justify-between",
+      @class
+    ]}>
       <div class="text-sm text-gray-600 dark:text-gray-300">
-        Showing
-        <span class="font-medium text-gray-900 dark:text-white">{@pagination.from}</span>
-        to
-        <span class="font-medium text-gray-900 dark:text-white">{@pagination.to}</span>
+        Showing <span class="font-medium text-gray-900 dark:text-white">{@pagination.from}</span>
+        to <span class="font-medium text-gray-900 dark:text-white">{@pagination.to}</span>
         of
         <span class="font-medium text-gray-900 dark:text-white">
           {@pagination.total_count}

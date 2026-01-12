@@ -21,7 +21,7 @@ defmodule TrifleApp.Router do
     plug TrifleApp.Plugs.RequireProjectsEnabled
   end
 
-  pipeline :projects_api_enabled do
+  pipeline :source_api_enabled do
     plug TrifleApp.Plugs.RequireProjectsEnabled, format: :json
   end
 
@@ -92,6 +92,8 @@ defmodule TrifleApp.Router do
       live "/dbs/new", DatabasesLive, :new
       live "/dbs/:id", DatabaseRedirectLive, :index
       live "/dbs/:id/settings", DatabaseSettingsLive, :show
+      live "/dbs/:id/tokens", DatabaseTokensLive, :index
+      live "/dbs/:id/tokens/new", DatabaseTokensLive, :new
       live "/explore", ExploreLive, :show
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
@@ -176,10 +178,13 @@ defmodule TrifleApp.Router do
     get("/health", MetricsController, :health)
 
     scope "/" do
-      pipe_through [:projects_api_enabled]
+      pipe_through [:source_api_enabled]
 
       post("/metrics", MetricsController, :create)
       get("/metrics", MetricsController, :index)
+      get("/transponders", TranspondersController, :index)
+      post("/transponders", TranspondersController, :create)
+      put("/transponders/:id", TranspondersController, :update)
     end
   end
 end

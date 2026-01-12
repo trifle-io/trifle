@@ -54,4 +54,71 @@ defmodule Trifle.OrganizationsFixtures do
 
     project_token
   end
+
+  @doc """
+  Generate an organization.
+  """
+  def organization_fixture(attrs \\ %{}) do
+    user = Map.get(attrs, :user) || Map.get(attrs, "user") || AccountsFixtures.user_fixture()
+
+    attrs =
+      attrs
+      |> Map.delete(:user)
+      |> Map.delete("user")
+      |> Enum.into(%{
+        name: "some organization"
+      })
+
+    {:ok, organization, _membership} =
+      Trifle.Organizations.create_organization_with_owner(attrs, user)
+
+    organization
+  end
+
+  @doc """
+  Generate a database.
+  """
+  def database_fixture(attrs \\ %{}) do
+    organization =
+      Map.get(attrs, :organization) || Map.get(attrs, "organization") || organization_fixture()
+
+    file_path =
+      Map.get(attrs, :file_path) ||
+        Map.get(attrs, "file_path") ||
+        Path.join(System.tmp_dir!(), "trifle-db-#{Ecto.UUID.generate()}.sqlite")
+
+    attrs =
+      attrs
+      |> Map.delete(:organization)
+      |> Map.delete("organization")
+      |> Enum.into(%{
+        display_name: "some database",
+        driver: "sqlite",
+        file_path: file_path
+      })
+
+    {:ok, database} = Trifle.Organizations.create_database_for_org(organization, attrs)
+
+    database
+  end
+
+  @doc """
+  Generate a database_token.
+  """
+  def database_token_fixture(attrs \\ %{}) do
+    database = Map.get(attrs, :database) || Map.get(attrs, "database") || database_fixture()
+
+    attrs =
+      attrs
+      |> Map.delete(:database)
+      |> Map.delete("database")
+      |> Enum.into(%{
+        database: database,
+        name: "some name"
+      })
+
+    {:ok, database_token} = Trifle.Organizations.create_database_token(attrs)
+
+    database_token
+  end
 end

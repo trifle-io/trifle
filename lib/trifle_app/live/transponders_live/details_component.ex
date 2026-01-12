@@ -1,7 +1,6 @@
 defmodule TrifleApp.TranspondersLive.DetailsComponent do
   use TrifleApp, :live_component
 
-  alias Trifle.Organizations.Transponder
   alias Trifle.Organizations.{Database, Project}
 
   def render(assigns) do
@@ -27,13 +26,6 @@ defmodule TrifleApp.TranspondersLive.DetailsComponent do
 
       <div class="mt-6">
         <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-          <div>
-            <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Type</dt>
-            <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              {Transponder.get_type_display_name(@transponder.type)}
-            </dd>
-          </div>
-
           <div>
             <dt class="text-sm font-medium leading-6 text-gray-900 dark:text-white">Status</dt>
             <dd class="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">

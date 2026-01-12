@@ -37,8 +37,7 @@ defmodule TrifleAdmin.DatabasesLive do
   def handle_event("filter", %{"q" => query}, socket) do
     query = Pagination.sanitize_query(query)
 
-    {:noreply,
-     push_patch(socket, to: ~p"/admin/databases?#{Pagination.list_params(query, 1)}")}
+    {:noreply, push_patch(socket, to: ~p"/admin/databases?#{Pagination.list_params(query, 1)}")}
   end
 
   def handle_event("filter", %{"filters" => %{"q" => query}}, socket) do
@@ -148,7 +147,7 @@ defmodule TrifleAdmin.DatabasesLive do
                     </.link>
                   </.admin_table_cell>
                   <.admin_table_cell>
-                    {database.organization && database.organization.name || "N/A"}
+                    {(database.organization && database.organization.name) || "N/A"}
                   </.admin_table_cell>
                   <.admin_table_cell>
                     <.database_label driver={database.driver} />

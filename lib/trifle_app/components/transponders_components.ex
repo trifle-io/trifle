@@ -4,7 +4,6 @@ defmodule TrifleApp.TranspondersComponents do
   """
 
   use TrifleApp, :html
-  alias Trifle.Organizations.Transponder
   alias TrifleApp.TranspondersLive.DetailsComponent
   alias TrifleApp.TranspondersLive.FormComponent
 
@@ -84,10 +83,7 @@ defmodule TrifleApp.TranspondersComponents do
                     </div>
 
                     <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2 mb-1">
-                        <span class="inline-flex items-center rounded-md bg-teal-50 dark:bg-teal-900 px-2 py-1 text-xs font-medium text-teal-700 dark:text-teal-200">
-                          {Transponder.get_type_display_name(transponder.type)}
-                        </span>
+                      <div class="flex items-center mb-1">
                         <.link
                           patch={@show_path.(transponder.id)}
                           class="text-sm font-medium text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"
