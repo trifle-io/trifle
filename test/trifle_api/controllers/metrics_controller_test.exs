@@ -60,9 +60,9 @@ defmodule TrifleApi.MetricsControllerTest do
     }
   end
 
-  describe "GET /api/metrics" do
+  describe "GET /api/v1/metrics" do
     test "returns 401 without token", %{conn: conn} do
-      conn = conn |> api_conn() |> get(~p"/api/metrics")
+      conn = conn |> api_conn() |> get(~p"/api/v1/metrics")
 
       assert %{"errors" => %{"detail" => "Bad token"}} = json_response(conn, 401)
     end
@@ -72,7 +72,7 @@ defmodule TrifleApi.MetricsControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> get(~p"/api/metrics", %{key: "metrics.total"})
+        |> get(~p"/api/v1/metrics", %{key: "metrics.total"})
 
       assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
     end
@@ -85,7 +85,7 @@ defmodule TrifleApi.MetricsControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> get(~p"/api/metrics", %{key: ""})
+        |> get(~p"/api/v1/metrics", %{key: ""})
 
       assert %{"errors" => %{"detail" => "Bad request"}} = json_response(conn, 400)
     end
@@ -102,7 +102,7 @@ defmodule TrifleApi.MetricsControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> get(~p"/api/metrics", %{
+        |> get(~p"/api/v1/metrics", %{
           key: "metrics.total",
           from: from,
           to: to,
@@ -115,13 +115,13 @@ defmodule TrifleApi.MetricsControllerTest do
     end
   end
 
-  describe "POST /api/metrics" do
+  describe "POST /api/v1/metrics" do
     test "rejects read-only project tokens", %{conn: conn, read_project_token: token} do
       conn =
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> post(~p"/api/metrics", %{})
+        |> post(~p"/api/v1/metrics", %{})
 
       assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
     end
@@ -131,7 +131,7 @@ defmodule TrifleApi.MetricsControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> post(~p"/api/metrics", %{})
+        |> post(~p"/api/v1/metrics", %{})
 
       assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
     end
@@ -144,7 +144,7 @@ defmodule TrifleApi.MetricsControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> post(~p"/api/metrics", %{})
+        |> post(~p"/api/v1/metrics", %{})
 
       assert %{"errors" => %{"detail" => "Bad request"}} = json_response(conn, 400)
     end

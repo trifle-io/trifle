@@ -98,8 +98,8 @@ defmodule TrifleAdmin.Pagination do
   defp total_pages(0, _per_page), do: 1
   defp total_pages(total_count, per_page), do: div(total_count + per_page - 1, per_page)
 
-  defp clamp(value, min, max) when value < min, do: min
-  defp clamp(value, min, max) when value > max, do: max
+  defp clamp(value, min, _max) when value < min, do: min
+  defp clamp(value, _min, max) when value > max, do: max
   defp clamp(value, _min, _max), do: value
 
   defp page_window(page, total_pages) do

@@ -58,9 +58,9 @@ defmodule TrifleApi.TranspondersControllerTest do
     }
   end
 
-  describe "GET /api/transponders" do
+  describe "GET /api/v1/transponders" do
     test "returns 401 without token", %{conn: conn} do
-      conn = conn |> api_conn() |> get(~p"/api/transponders")
+      conn = conn |> api_conn() |> get(~p"/api/v1/transponders")
 
       assert %{"errors" => %{"detail" => "Bad token"}} = json_response(conn, 401)
     end
@@ -70,7 +70,7 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> get(~p"/api/transponders")
+        |> get(~p"/api/v1/transponders")
 
       assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
     end
@@ -102,7 +102,7 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> get(~p"/api/transponders")
+        |> get(~p"/api/v1/transponders")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert length(data) == 1
@@ -110,13 +110,13 @@ defmodule TrifleApi.TranspondersControllerTest do
     end
   end
 
-  describe "POST /api/transponders" do
+  describe "POST /api/v1/transponders" do
     test "rejects database tokens", %{conn: conn, database_token: token} do
       conn =
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> post(~p"/api/transponders", expression_payload("API Total", "metrics.total"))
+        |> post(~p"/api/v1/transponders", expression_payload("API Total", "metrics.total"))
 
       assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
     end
@@ -129,7 +129,7 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> post(~p"/api/transponders", expression_payload("API Total", "metrics.total"))
+        |> post(~p"/api/v1/transponders", expression_payload("API Total", "metrics.total"))
 
       assert %{"data" => data} = json_response(conn, 201)
       assert data["name"] == "API Total"
@@ -146,14 +146,14 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> post(~p"/api/transponders", payload)
+        |> post(~p"/api/v1/transponders", payload)
 
       assert %{"errors" => %{"detail" => "Unsupported transponder type"}} =
                json_response(conn, 422)
     end
   end
 
-  describe "PUT /api/transponders/:id" do
+  describe "PUT /api/v1/transponders/:id" do
     test "rejects read-only project tokens", %{
       conn: conn,
       project: project,
@@ -169,7 +169,7 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> put(~p"/api/transponders/#{transponder.id}", %{"name" => "Updated"})
+        |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
       assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
     end
@@ -189,7 +189,7 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> put(~p"/api/transponders/#{transponder.id}", %{"name" => "Updated"})
+        |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["id"] == transponder.id
@@ -215,7 +215,7 @@ defmodule TrifleApi.TranspondersControllerTest do
         conn
         |> api_conn()
         |> auth_conn(token.token)
-        |> put(~p"/api/transponders/#{transponder.id}", %{"name" => "Updated"})
+        |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
       assert %{"errors" => %{"detail" => "Unsupported transponder type"}} =
                json_response(conn, 422)

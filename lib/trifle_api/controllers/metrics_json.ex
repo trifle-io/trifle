@@ -1,4 +1,6 @@
 defmodule TrifleApi.MetricsJSON do
+  alias TrifleApi.Version
+
   def create() do
     %{data: :ok}
   end
@@ -24,7 +26,12 @@ defmodule TrifleApi.MetricsJSON do
   end
 
   def render("health.json", _assigns) do
-    %{status: "ok", timestamp: DateTime.utc_now()}
+    %{
+      status: "ok",
+      timestamp: DateTime.utc_now(),
+      api_version: Version.api_version(),
+      server_version: Version.server_version()
+    }
   end
 
   defp format_series(series) when is_map(series) do
