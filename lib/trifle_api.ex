@@ -1,7 +1,7 @@
 defmodule TrifleApi do
   @moduledoc """
   The entrypoint for defining the Trifle API interface.
-  This module handles all API functionality under /api routes.
+  This module handles all API functionality under /api/v1 routes.
   """
 
   def controller do

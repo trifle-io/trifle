@@ -26,6 +26,9 @@ services:
       - mongo
       - postgres
     environment:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      ELIXIR_ERL_OPTIONS: "+fnu"
       PGHOST: postgres
       PGUSER: postgres
       REDIS_HOST: redis

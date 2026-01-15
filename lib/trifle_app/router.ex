@@ -172,7 +172,7 @@ defmodule TrifleApp.Router do
     end
   end
 
-  scope "/api", TrifleApi, as: :api do
+  scope "/api/v1", TrifleApi, as: :api do
     pipe_through [:api]
 
     get("/health", MetricsController, :health)
@@ -180,8 +180,10 @@ defmodule TrifleApp.Router do
     scope "/" do
       pipe_through [:source_api_enabled]
 
+      get("/source", SourceController, :show)
       post("/metrics", MetricsController, :create)
       get("/metrics", MetricsController, :index)
+      post("/metrics/query", MetricsQueryController, :create)
       get("/transponders", TranspondersController, :index)
       post("/transponders", TranspondersController, :create)
       put("/transponders/:id", TranspondersController, :update)

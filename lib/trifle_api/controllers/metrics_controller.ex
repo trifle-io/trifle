@@ -5,15 +5,17 @@ defmodule TrifleApi.MetricsController do
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Stats.Source
 
+  @system_key "__system__key__"
+
   plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :read} when action in [:index])
   plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :write} when action in [:create])
 
   def index(%{assigns: %{current_source: %Source{} = source}} = conn, params) do
-    with {:ok, key} <- fetch_param(params, "key"),
+    with {:ok, key} <- fetch_optional_param(params, "key"),
          {:ok, from} <- parse_datetime(params["from"]),
          {:ok, to} <- parse_datetime(params["to"]),
          {:ok, granularity} <- parse_granularity(source, params["granularity"]),
-         {:ok, result} <- Source.fetch_series(source, key, from, to, granularity) do
+         {:ok, result} <- fetch_series(source, key, from, to, granularity) do
       series = SeriesExport.extract_series(result.series)
 
       conn
@@ -77,8 +79,11 @@ defmodule TrifleApi.MetricsController do
     |> render("health.json")
   end
 
-  defp fetch_param(params, key) do
+  defp fetch_optional_param(params, key) do
     case Map.get(params, key) do
+      nil ->
+        {:ok, nil}
+
       value when is_binary(value) ->
         case String.trim(value) do
           "" -> {:error, :invalid_params}
@@ -132,5 +137,12 @@ defmodule TrifleApi.MetricsController do
       list when is_list(list) and list != [] -> granularity in list
       _ -> true
     end
+  end
+
+  defp fetch_series(%Source{} = source, key, from, to, granularity) do
+    query_key = key || @system_key
+    opts = if query_key == @system_key, do: [transponders: :none], else: []
+
+    Source.fetch_series(source, query_key, from, to, granularity, opts)
   end
 end
