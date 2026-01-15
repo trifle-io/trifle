@@ -164,7 +164,7 @@ initialUser:
 # Health checks
 healthCheck:
   enabled: true
-  path: "/api/health"
+  path: "/api/v1/health"
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5

@@ -41,7 +41,7 @@
 {{- end }}
 
 4. Health Check:
-   The application health endpoint is available at: /api/health
+   The application health endpoint is available at: /api/v1/health
 
 5. Useful Commands:
    # View application logs
