@@ -21,10 +21,6 @@ defmodule TrifleApp.Router do
     plug TrifleApp.Plugs.RequireProjectsEnabled
   end
 
-  pipeline :source_api_enabled do
-    plug TrifleApp.Plugs.RequireProjectsEnabled, format: :json
-  end
-
   scope "/", TrifleApp do
     pipe_through :browser
 
@@ -178,8 +174,6 @@ defmodule TrifleApp.Router do
     get("/health", MetricsController, :health)
 
     scope "/" do
-      pipe_through [:source_api_enabled]
-
       get("/source", SourceController, :show)
       post("/metrics", MetricsController, :create)
       get("/metrics", MetricsController, :index)
