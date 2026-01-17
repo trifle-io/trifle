@@ -37,6 +37,8 @@ npm-debug.log
 
 .DS_Store
 
+.cache
+
 trifle_stats_joined.sqlite
 trifle_stats_separated.sqlite
 .env
