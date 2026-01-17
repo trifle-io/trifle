@@ -3109,7 +3109,10 @@ defmodule TrifleApp.DashboardLive do
       "table" ->
         table_paths_param =
           params
-          |> Map.get("table_paths", Map.get(params, "table_paths[]", Map.get(widget, "paths", [])))
+          |> Map.get(
+            "table_paths",
+            Map.get(params, "table_paths[]", Map.get(widget, "paths", []))
+          )
 
         table_paths = DashboardWidgetHelpers.normalize_table_paths_for_edit(table_paths_param)
         expanded_paths = auto_expand_path_wildcards(table_paths, path_options)
@@ -3131,7 +3134,9 @@ defmodule TrifleApp.DashboardLive do
           params
           |> Map.get("dist_paths", Map.get(params, "dist_paths[]", Map.get(widget, "paths", [])))
 
-        dist_paths = DashboardWidgetHelpers.normalize_distribution_paths_for_edit(dist_paths_param)
+        dist_paths =
+          DashboardWidgetHelpers.normalize_distribution_paths_for_edit(dist_paths_param)
+
         expanded_paths = auto_expand_path_wildcards(dist_paths, path_options)
 
         fallback_path =

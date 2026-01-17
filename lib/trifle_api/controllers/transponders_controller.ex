@@ -8,12 +8,7 @@ defmodule TrifleApi.TranspondersController do
 
   @expression_type "Trifle.Stats.Transponder.Expression"
 
-  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :read} when action in [:index])
-
-  plug(
-    TrifleApi.Plugs.AuthenticateBySourceToken,
-    %{mode: :write} when action in [:create, :update]
-  )
+  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
 
   def index(%{assigns: %{current_source: %Source{} = source}} = conn, _params) do
     transponders =
