@@ -933,64 +933,25 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  def handle_event("change_widget_type", %{"widget_id" => id} = params, socket) do
-    w = socket.assigns.editing_widget || %{"id" => id}
+  def handle_event("widget_editor_change", params, socket) do
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
 
-    normalized =
-      params
-      |> Map.get("widget_type", w["type"] || "kpi")
-      |> to_string()
-      |> String.downcase()
+      is_nil(socket.assigns[:editing_widget]) ->
+        {:noreply, socket}
 
-    title_param = Map.get(params, "widget_title")
-
-    w =
-      w
-      |> Map.put("type", normalized)
-      |> maybe_put_widget_title(title_param)
-
-    w =
-      case normalized do
-        "text" ->
-          w
-          |> Map.put_new("subtype", "header")
-          |> Map.put_new("color", "default")
-
-        "list" ->
-          w
-          |> Map.put_new("limit", 20)
-          |> Map.put_new("sort", "desc")
-          |> Map.put_new("label_strategy", "short")
-
-        "distribution" ->
-          designators =
-            DashboardWidgetHelpers.normalize_distribution_designators(
-              params,
-              Map.get(w, "designators") || w || %{}
-            )
-
-          mode =
-            params
-            |> Map.get("dist_mode", Map.get(w, "mode"))
-            |> DashboardWidgetHelpers.normalize_distribution_mode()
-
-          legend =
-            params
-            |> Map.get("dist_legend", w["legend"])
-            |> DashboardWidgetHelpers.normalize_distribution_legend()
-
-          w
-          |> Map.put_new("paths", w["paths"] || [""])
-          |> Map.put("mode", mode)
-          |> Map.put("designators", designators)
-          |> Map.put("designator", Map.get(designators, "horizontal"))
-          |> Map.put("legend", legend)
-
-        _ ->
-          w
-      end
-
-    {:noreply, assign(socket, :editing_widget, w)}
+      true ->
+        with id when not is_nil(id) <- param(params, "widget_id"),
+             {:ok, widget} <- fetch_editing_widget(socket, id) do
+          socket = ensure_widget_path_options(socket)
+          path_options = socket.assigns[:widget_path_options] || []
+          updated = apply_widget_params_for_edit(widget, params, path_options)
+          {:noreply, assign(socket, :editing_widget, updated)}
+        else
+          _ -> {:noreply, socket}
+        end
+    end
   end
 
   def handle_event("set_kpi_function", params, socket) do
@@ -3027,17 +2988,6 @@ defmodule TrifleApp.DashboardLive do
 
   defp changeset_error_message(_), do: nil
 
-  defp maybe_put_widget_title(widget, nil), do: widget
-
-  defp maybe_put_widget_title(widget, title) do
-    trimmed =
-      title
-      |> to_string()
-      |> String.trim()
-
-    Map.put(widget, "title", trimmed)
-  end
-
   defp current_editing_widget_title(socket, id) do
     case socket.assigns[:editing_widget] do
       %{"id" => widget_id} = widget ->
@@ -3050,6 +3000,268 @@ defmodule TrifleApp.DashboardLive do
       _ ->
         nil
     end
+  end
+
+  defp apply_widget_params_for_edit(widget, params, path_options) when is_map(widget) do
+    type =
+      params
+      |> Map.get("widget_type", Map.get(widget, "type", "kpi"))
+      |> to_string()
+      |> String.downcase()
+
+    title =
+      params
+      |> Map.get("widget_title", Map.get(widget, "title", ""))
+      |> to_string()
+      |> String.trim()
+
+    widget =
+      widget
+      |> Map.put("type", type)
+      |> Map.put("title", title)
+
+    case type do
+      "kpi" ->
+        subtype =
+          params
+          |> Map.get("kpi_subtype", Map.get(widget, "subtype"))
+          |> DashboardWidgetHelpers.normalize_kpi_subtype(widget)
+
+        widget =
+          widget
+          |> Map.put("path", Map.get(params, "kpi_path", Map.get(widget, "path", "")))
+          |> Map.put(
+            "function",
+            Map.get(params, "kpi_function", Map.get(widget, "function", "mean"))
+          )
+          |> Map.put("size", Map.get(params, "kpi_size", Map.get(widget, "size", "m")))
+          |> Map.put("subtype", subtype)
+
+        case subtype do
+          "split" ->
+            widget
+            |> Map.put("split", true)
+            |> Map.put("diff", Map.has_key?(params, "kpi_diff"))
+            |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+
+          "goal" ->
+            widget
+            |> Map.put("split", false)
+            |> Map.put(
+              "goal_target",
+              params
+              |> Map.get("kpi_goal_target", Map.get(widget, "goal_target", ""))
+              |> to_string()
+              |> String.trim()
+            )
+            |> Map.put("goal_progress", Map.has_key?(params, "kpi_goal_progress"))
+            |> Map.put("goal_invert", Map.has_key?(params, "kpi_goal_invert"))
+
+          _ ->
+            widget
+            |> Map.put("split", false)
+            |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+        end
+
+      "timeseries" ->
+        paths =
+          params
+          |> Map.get("ts_paths", Map.get(params, "ts_paths[]", Map.get(widget, "paths", [])))
+          |> DashboardWidgetHelpers.normalize_timeseries_paths_for_edit()
+
+        expanded_paths = auto_expand_path_wildcards(paths, path_options)
+
+        widget
+        |> Map.put("paths", expanded_paths)
+        |> Map.put(
+          "chart_type",
+          Map.get(params, "ts_chart_type", Map.get(widget, "chart_type") || "line")
+        )
+        |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
+        |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
+        |> Map.put("legend", Map.has_key?(params, "ts_legend"))
+        |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
+
+      "category" ->
+        cat_paths_param =
+          params
+          |> Map.get("cat_paths", Map.get(params, "cat_paths[]", Map.get(widget, "paths", [])))
+
+        cat_paths = DashboardWidgetHelpers.normalize_category_paths_for_edit(cat_paths_param)
+        expanded_paths = auto_expand_path_wildcards(cat_paths, path_options)
+
+        fallback_path =
+          widget
+          |> Map.get("path", "")
+          |> to_string()
+          |> String.trim()
+
+        primary_path = primary_path_from_paths(expanded_paths, fallback_path)
+
+        widget
+        |> Map.put("paths", expanded_paths)
+        |> Map.put("path", primary_path)
+        |> Map.put(
+          "chart_type",
+          Map.get(params, "cat_chart_type", Map.get(widget, "chart_type") || "bar")
+        )
+
+      "table" ->
+        table_paths_param =
+          params
+          |> Map.get("table_paths", Map.get(params, "table_paths[]", Map.get(widget, "paths", [])))
+
+        table_paths = DashboardWidgetHelpers.normalize_table_paths_for_edit(table_paths_param)
+        expanded_paths = auto_expand_path_wildcards(table_paths, path_options)
+
+        fallback_path =
+          widget
+          |> Map.get("path", "")
+          |> to_string()
+          |> String.trim()
+
+        primary_path = primary_path_from_paths(expanded_paths, fallback_path)
+
+        widget
+        |> Map.put("paths", expanded_paths)
+        |> Map.put("path", primary_path)
+
+      "distribution" ->
+        dist_paths_param =
+          params
+          |> Map.get("dist_paths", Map.get(params, "dist_paths[]", Map.get(widget, "paths", [])))
+
+        dist_paths = DashboardWidgetHelpers.normalize_distribution_paths_for_edit(dist_paths_param)
+        expanded_paths = auto_expand_path_wildcards(dist_paths, path_options)
+
+        fallback_path =
+          widget
+          |> Map.get("path", "")
+          |> to_string()
+          |> String.trim()
+
+        primary_path = primary_path_from_paths(expanded_paths, fallback_path)
+
+        designators =
+          DashboardWidgetHelpers.normalize_distribution_designators(
+            params,
+            Map.get(widget, "designators") || widget || %{}
+          )
+
+        mode =
+          params
+          |> Map.get("dist_mode", Map.get(widget, "mode"))
+          |> DashboardWidgetHelpers.normalize_distribution_mode()
+
+        legend =
+          params
+          |> Map.get("dist_legend", Map.get(widget, "legend"))
+          |> DashboardWidgetHelpers.normalize_distribution_legend()
+
+        widget
+        |> Map.put("paths", expanded_paths)
+        |> Map.put("path", primary_path)
+        |> Map.put("designators", designators)
+        |> Map.put("designator", Map.get(designators, "horizontal"))
+        |> Map.put("mode", mode)
+        |> Map.put("legend", legend)
+
+      "list" ->
+        list_path =
+          params
+          |> Map.get("list_path", Map.get(widget, "path"))
+          |> case do
+            nil ->
+              nil
+
+            value ->
+              value
+              |> to_string()
+              |> String.trim()
+              |> case do
+                "" -> nil
+                trimmed -> trimmed
+              end
+          end
+
+        limit =
+          params
+          |> Map.get("list_limit", Map.get(widget, "limit"))
+          |> normalize_optional_positive_integer()
+
+        sort =
+          params
+          |> Map.get("list_sort", Map.get(widget, "sort") || "desc")
+          |> normalize_list_sort()
+
+        label_strategy =
+          params
+          |> Map.get("list_label_strategy", Map.get(widget, "label_strategy") || "short")
+          |> normalize_list_label_strategy()
+
+        widget
+        |> Map.put("path", list_path)
+        |> Map.put("limit", limit)
+        |> Map.put("sort", sort)
+        |> Map.put("label_strategy", label_strategy)
+
+      "text" ->
+        subtype =
+          params
+          |> Map.get("text_subtype", Map.get(widget, "subtype") || "header")
+          |> DashboardWidgetHelpers.normalize_text_subtype()
+
+        color_id =
+          params
+          |> Map.get("text_color", Map.get(widget, "color"))
+          |> DashboardWidgetHelpers.normalize_text_color_id()
+
+        widget =
+          widget
+          |> Map.put("type", "text")
+          |> Map.put("subtype", subtype)
+          |> Map.put("color", color_id)
+
+        widget =
+          if Map.has_key?(params, "text_payload") do
+            Map.put(widget, "payload", Map.get(params, "text_payload", "") |> to_string())
+          else
+            widget
+          end
+
+        widget
+        |> Map.put(
+          "title_size",
+          params
+          |> Map.get("text_title_size", Map.get(widget, "title_size", "large"))
+          |> DashboardWidgetHelpers.normalize_text_title_size()
+        )
+        |> Map.put(
+          "alignment",
+          params
+          |> Map.get("text_alignment", Map.get(widget, "alignment", "center"))
+          |> DashboardWidgetHelpers.normalize_text_alignment()
+        )
+        |> Map.put(
+          "subtitle",
+          params
+          |> Map.get("text_subtitle", Map.get(widget, "subtitle", ""))
+          |> to_string()
+          |> String.trim()
+        )
+
+      _ ->
+        widget
+    end
+  end
+
+  defp primary_path_from_paths(paths, fallback) when is_list(paths) do
+    paths
+    |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> List.first()
+    |> Kernel.||(fallback)
   end
 
   defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do

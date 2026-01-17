@@ -124,7 +124,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
             HTML Content
           </label>
           <textarea
-            name="text_html_content"
+            name="text_payload"
             rows="10"
             class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
             placeholder="<p>Write custom HTML here</p>"
