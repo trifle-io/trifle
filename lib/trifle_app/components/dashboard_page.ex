@@ -1191,7 +1191,7 @@ defmodule TrifleApp.Components.DashboardPage do
                 <.form
                   for={%{}}
                   id="widget-editor-form"
-                  phx-change="change_widget_type"
+                  phx-change="widget_editor_change"
                   phx-submit="save_widget"
                   class="space-y-4"
                 >
