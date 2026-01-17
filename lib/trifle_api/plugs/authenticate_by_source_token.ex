@@ -9,7 +9,7 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
 
   def init(params), do: params
 
-  def call(conn, params \\ %{mode: :none}) do
+  def call(conn, params \\ %{mode: :any}) do
     with {:ok, auth} <- find_source_from_header(conn, params.mode) do
       conn
       |> assign(:current_source, auth.source)
@@ -65,6 +65,9 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
     write = Map.get(token, :write, false)
 
     cond do
+      mode in [:any, :none, nil] ->
+        {:ok, :any}
+
       read && mode == :read ->
         {:ok, :read}
 

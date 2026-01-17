@@ -3,7 +3,7 @@ defmodule TrifleApi.SourceController do
 
   alias Trifle.Stats.Source
 
-  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :read} when action in [:show])
+  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
 
   def show(%{assigns: %{current_source: %Source{} = source}} = conn, _params) do
     render(conn, "show.json", source: source)

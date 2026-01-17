@@ -65,14 +65,14 @@ defmodule TrifleApi.TranspondersControllerTest do
       assert %{"errors" => %{"detail" => "Bad token"}} = json_response(conn, 401)
     end
 
-    test "rejects write-only project tokens", %{conn: conn, write_project_token: token} do
+    test "allows write-only project tokens", %{conn: conn, write_project_token: token} do
       conn =
         conn
         |> api_conn()
         |> auth_conn(token.token)
         |> get(~p"/api/v1/transponders")
 
-      assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
+      assert %{"data" => _data} = json_response(conn, 200)
     end
 
     test "returns expression transponders for database tokens", %{
@@ -111,14 +111,20 @@ defmodule TrifleApi.TranspondersControllerTest do
   end
 
   describe "POST /api/v1/transponders" do
-    test "rejects database tokens", %{conn: conn, database_token: token} do
+    test "creates expression transponder for database tokens", %{
+      conn: conn,
+      database_token: token
+    } do
       conn =
         conn
         |> api_conn()
         |> auth_conn(token.token)
         |> post(~p"/api/v1/transponders", expression_payload("API Total", "metrics.total"))
 
-      assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
+      assert %{"data" => data} = json_response(conn, 201)
+      assert data["name"] == "API Total"
+      assert data["type"] == @expression_type
+      assert data["source_type"] == "database"
     end
 
     test "creates expression transponder for project tokens", %{
@@ -154,7 +160,7 @@ defmodule TrifleApi.TranspondersControllerTest do
   end
 
   describe "PUT /api/v1/transponders/:id" do
-    test "rejects read-only project tokens", %{
+    test "allows read-only project tokens", %{
       conn: conn,
       project: project,
       read_project_token: token
@@ -171,7 +177,9 @@ defmodule TrifleApi.TranspondersControllerTest do
         |> auth_conn(token.token)
         |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
-      assert %{"errors" => %{"detail" => "Forbidden"}} = json_response(conn, 403)
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["id"] == transponder.id
+      assert data["name"] == "Updated"
     end
 
     test "updates expression transponders for project tokens", %{
