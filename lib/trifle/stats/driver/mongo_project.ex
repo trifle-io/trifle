@@ -13,7 +13,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
             write_concern: 1,
             joined_identifier: :partial,
             expire_after: nil,
-            system_tracking: true
+            system_tracking: true,
+            bulk_write: true
 
   @doc """
   Create a new MongoDB project driver instance.
@@ -26,7 +27,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
         write_concern \\ 1,
         joined_identifier \\ :partial,
         expire_after \\ nil,
-        system_tracking \\ true
+        system_tracking \\ true,
+        bulk_write \\ true
       ) do
     identifier_mode = normalize_joined_identifier(joined_identifier)
 
@@ -38,7 +40,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
       write_concern: write_concern,
       joined_identifier: identifier_mode,
       expire_after: expire_after,
-      system_tracking: system_tracking
+      system_tracking: system_tracking,
+      bulk_write: bulk_write
     }
   end
 
@@ -54,6 +57,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
     expire_after = Trifle.Stats.Configuration.driver_option(config, :expire_after, nil)
     system_tracking = Trifle.Stats.Configuration.driver_option(config, :system_tracking, true)
+    bulk_write = Trifle.Stats.Configuration.driver_option(config, :bulk_write, true)
 
     new(
       connection,
@@ -63,7 +67,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
       1,
       joined_identifier,
       expire_after,
-      system_tracking
+      system_tracking,
+      bulk_write
     )
   end
 
@@ -123,94 +128,179 @@ defmodule Trifle.Stats.Driver.MongoProject do
     setup!(connection, collection_name, joined_identifier, expire_after, system_tracking)
   end
 
-  def inc(keys, values, driver) do
+  def inc(keys, values, driver, count \\ 1) do
     data = Trifle.Stats.Packer.pack(%{data: values})
 
-    Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
-      filter =
-        key
-        |> identifier_for(driver)
-        |> convert_keys_to_strings()
-        |> with_reference_scope(driver)
+    if driver.bulk_write do
+      operations =
+        Enum.flat_map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+          filter =
+            key
+            |> identifier_for(driver)
+            |> convert_keys_to_strings()
+            |> with_reference_scope(driver)
 
-      expire_at =
-        if driver.expire_after, do: DateTime.add(key.at, driver.expire_after, :second), else: nil
+          expire_at =
+            if driver.expire_after,
+              do: DateTime.add(key.at, driver.expire_after, :second),
+              else: nil
 
-      update =
-        if expire_at do
-          %{"$inc" => data, "$set" => %{expire_at: expire_at}}
-        else
-          %{"$inc" => data}
-        end
+          main_op = %{
+            update_many: %{
+              filter: filter,
+              update: build_update("$inc", data, expire_at),
+              upsert: true
+            }
+          }
 
-      Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+          if driver.system_tracking do
+            system_filter =
+              key
+              |> system_identifier_for(driver)
+              |> convert_keys_to_strings()
+              |> with_reference_scope(driver)
 
-      if driver.system_tracking do
-        system_filter =
+            system_data = system_data_for(key, count)
+
+            system_op = %{
+              update_many: %{
+                filter: system_filter,
+                update: build_update("$inc", system_data, expire_at),
+                upsert: true
+              }
+            }
+
+            [main_op, system_op]
+          else
+            [main_op]
+          end
+        end)
+
+      Mongo.BulkWrite.write(driver.connection, driver.collection_name, operations, [])
+    else
+      Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+        filter =
           key
-          |> system_identifier_for(driver)
+          |> identifier_for(driver)
           |> convert_keys_to_strings()
           |> with_reference_scope(driver)
 
-        system_data = system_data_for(key)
+        expire_at =
+          if driver.expire_after,
+            do: DateTime.add(key.at, driver.expire_after, :second),
+            else: nil
 
-        system_update =
-          if expire_at do
-            %{"$inc" => system_data, "$set" => %{expire_at: expire_at}}
-          else
-            %{"$inc" => system_data}
-          end
+        update = build_update("$inc", data, expire_at)
 
-        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
-          upsert: true
-        )
-      end
-    end)
+        Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+
+        if driver.system_tracking do
+          system_filter =
+            key
+            |> system_identifier_for(driver)
+            |> convert_keys_to_strings()
+            |> with_reference_scope(driver)
+
+          system_data = system_data_for(key, count)
+          system_update = build_update("$inc", system_data, expire_at)
+
+          Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
+            upsert: true
+          )
+        end
+      end)
+    end
   end
 
-  def set(keys, values, driver) do
+  def set(keys, values, driver, count \\ 1) do
     packed_data = Trifle.Stats.Packer.pack(values)
 
-    Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
-      filter =
-        key
-        |> identifier_for(driver)
-        |> convert_keys_to_strings()
-        |> with_reference_scope(driver)
+    if driver.bulk_write do
+      operations =
+        Enum.flat_map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+          filter =
+            key
+            |> identifier_for(driver)
+            |> convert_keys_to_strings()
+            |> with_reference_scope(driver)
 
-      expire_at =
-        if driver.expire_after, do: DateTime.add(key.at, driver.expire_after, :second), else: nil
+          expire_at =
+            if driver.expire_after,
+              do: DateTime.add(key.at, driver.expire_after, :second),
+              else: nil
 
-      update =
-        if expire_at do
-          %{"$set" => %{data: packed_data, expire_at: expire_at}}
-        else
-          %{"$set" => %{data: packed_data}}
-        end
+          set_data = %{data: packed_data}
 
-      Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+          main_op = %{
+            update_many: %{
+              filter: filter,
+              update: build_update("$set", set_data, expire_at),
+              upsert: true
+            }
+          }
 
-      if driver.system_tracking do
-        system_filter =
+          if driver.system_tracking do
+            system_filter =
+              key
+              |> system_identifier_for(driver)
+              |> convert_keys_to_strings()
+              |> with_reference_scope(driver)
+
+            system_data = system_data_for(key, count)
+
+            system_op = %{
+              update_many: %{
+                filter: system_filter,
+                update: build_update("$inc", system_data, expire_at),
+                upsert: true
+              }
+            }
+
+            [main_op, system_op]
+          else
+            [main_op]
+          end
+        end)
+
+      Mongo.BulkWrite.write(driver.connection, driver.collection_name, operations, [])
+    else
+      Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
+        filter =
           key
-          |> system_identifier_for(driver)
+          |> identifier_for(driver)
           |> convert_keys_to_strings()
           |> with_reference_scope(driver)
 
-        system_data = system_data_for(key)
+        expire_at =
+          if driver.expire_after,
+            do: DateTime.add(key.at, driver.expire_after, :second),
+            else: nil
 
-        system_update =
+        update =
           if expire_at do
-            %{"$inc" => system_data, "$set" => %{expire_at: expire_at}}
+            %{"$set" => %{data: packed_data, expire_at: expire_at}}
           else
-            %{"$inc" => system_data}
+            %{"$set" => %{data: packed_data}}
           end
 
-        Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
-          upsert: true
-        )
-      end
-    end)
+        Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+
+        if driver.system_tracking do
+          system_filter =
+            key
+            |> system_identifier_for(driver)
+            |> convert_keys_to_strings()
+            |> with_reference_scope(driver)
+
+          system_data = system_data_for(key, count)
+          system_update = build_update("$inc", system_data, expire_at)
+
+          Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
+            upsert: true
+          )
+        end
+      end)
+    end
   end
 
   def get(keys, driver) do
@@ -319,6 +409,20 @@ defmodule Trifle.Stats.Driver.MongoProject do
     end
   end
 
+  defp build_update(operation, data, expire_at) do
+    if operation == "$set" && expire_at do
+      %{operation => Map.put(data, :expire_at, expire_at)}
+    else
+      base = %{operation => data}
+
+      if expire_at do
+        Map.put(base, "$set", %{expire_at: expire_at})
+      else
+        base
+      end
+    end
+  end
+
   defp system_identifier_for(%Trifle.Stats.Nocturnal.Key{} = key, driver) do
     system_key = %Trifle.Stats.Nocturnal.Key{
       key: "__system__key__",
@@ -329,8 +433,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
     identifier_for(system_key, driver)
   end
 
-  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key) do
-    Trifle.Stats.Packer.pack(%{data: %{count: 1, keys: %{key.key => 1}}})
+  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, count \\ 1) do
+    Trifle.Stats.Packer.pack(%{data: %{count: count, keys: %{key.key => count}}})
   end
 
   defp convert_keys_to_strings(map) when is_map(map) do

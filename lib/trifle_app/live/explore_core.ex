@@ -1870,9 +1870,13 @@ defmodule TrifleApp.ExploreCore do
           :erlang.float_to_binary(value, decimals: 2)
       end
 
-    # Remove trailing zeros and decimal point if not needed
-    formatted = String.replace(formatted, ~r/\.?0+$/, "")
-    "#{formatted}#{suffix}"
+    "#{trim_decimal_zeros(formatted)}#{suffix}"
+  end
+
+  defp trim_decimal_zeros(value) do
+    value
+    |> String.replace(~r/\.(\d*?)0+$/, ".\\1")
+    |> String.trim_trailing(".")
   end
 
   defp get_component_index_at_level(component, all_paths, path_so_far) do
