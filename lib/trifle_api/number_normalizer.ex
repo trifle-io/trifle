@@ -4,6 +4,12 @@ defmodule TrifleApi.NumberNormalizer do
   alias Decimal, as: D
 
   def normalize(%D{} = decimal), do: D.to_float(decimal)
+  def normalize(value) when is_binary(value) do
+    case D.parse(value) do
+      {decimal, ""} -> D.to_float(decimal)
+      _ -> value
+    end
+  end
   def normalize(%DateTime{} = dt), do: dt
   def normalize(%NaiveDateTime{} = ndt), do: ndt
 
