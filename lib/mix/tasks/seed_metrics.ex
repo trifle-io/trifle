@@ -57,7 +57,7 @@ defmodule Mix.Tasks.SeedMetrics do
     IO.puts("✅ Successfully loaded #{type} configuration")
 
     maybe_log_transponders(source)
-    designator_configs = build_designator_configs(config)
+    designators = build_designators()
 
     # Process metrics in batches
     total_batches = ceil(count / batch_size)
@@ -74,7 +74,7 @@ defmodule Mix.Tasks.SeedMetrics do
 
       # Process current batch
       batch_result =
-        process_batch(config, designator_configs, current_batch_size, hours, acc_submitted)
+        process_batch(config, designators, current_batch_size, hours, acc_submitted)
 
       case batch_result do
         {:ok, batch_submitted} ->
@@ -123,7 +123,7 @@ defmodule Mix.Tasks.SeedMetrics do
     end
   end
 
-  defp process_batch(config, designator_configs, batch_size, hours, offset) do
+  defp process_batch(config, designators, batch_size, hours, offset) do
     # Generate timestamps randomly distributed over the time range using the database's timezone
     timezone = config.time_zone || "Etc/UTC"
     now = DateTime.now!(timezone)
@@ -163,11 +163,11 @@ defmodule Mix.Tasks.SeedMetrics do
           nil ->
             _result = Trifle.Stats.track(key, timestamp, values, config)
 
-          designator ->
-            class_config = Map.fetch!(designator_configs, designator)
-            classified_values = classify_values(values, class_config.designator)
-            _result = Trifle.Stats.track(key, timestamp, classified_values, class_config)
-            maybe_track_3d_support(key, timestamp, values, designator_configs)
+          designator_key ->
+            designator = Map.fetch!(designators, designator_key)
+            classified_values = classify_values(values, designator)
+            _result = Trifle.Stats.track(key, timestamp, classified_values, config)
+            maybe_track_3d_support(key, timestamp, values, designators, config)
         end
 
         new_count = success_count + 1
@@ -214,13 +214,10 @@ defmodule Mix.Tasks.SeedMetrics do
     end
   end
 
-  defp build_designator_configs(config) do
-    latency_designator = Trifle.Stats.Designator.Linear.new(0, 2_000, 100)
-    payload_designator = Trifle.Stats.Designator.Geometric.new(1, 1_000_000)
-
+  defp build_designators do
     %{
-      latency: Trifle.Stats.Configuration.set_designator(config, latency_designator),
-      payload: Trifle.Stats.Configuration.set_designator(config, payload_designator)
+      latency: Trifle.Stats.Designator.Linear.new(0, 2_000, 100),
+      payload: Trifle.Stats.Designator.Geometric.new(1, 1_000_000)
     }
   end
 
@@ -232,11 +229,12 @@ defmodule Mix.Tasks.SeedMetrics do
          "latency_distribution",
          timestamp,
          %{"latency_ms" => latency_ms},
-         designator_configs
+         designators,
+         config
        )
        when is_number(latency_ms) do
-    case Map.fetch(designator_configs, :latency) do
-      {:ok, %{designator: designator} = config} when not is_nil(designator) ->
+    case Map.fetch(designators, :latency) do
+      {:ok, designator} when not is_nil(designator) ->
         x_bucket = bucket_label(designator, latency_ms)
         secondary = jitter_secondary_latency(latency_ms)
         normalized_secondary = normalize_secondary_latency(secondary, latency_ms)
@@ -252,7 +250,7 @@ defmodule Mix.Tasks.SeedMetrics do
     end
   end
 
-  defp maybe_track_3d_support(_key, _timestamp, _values, _designator_configs), do: :ok
+  defp maybe_track_3d_support(_key, _timestamp, _values, _designators, _config), do: :ok
 
   defp bucket_label(designator, value) when is_number(value) do
     designator.__struct__.designate(designator, value)
