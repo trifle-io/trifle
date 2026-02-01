@@ -65,6 +65,26 @@ defmodule TrifleApi.TranspondersController do
     end
   end
 
+  def delete(%{assigns: %{current_source: %Source{} = source}} = conn, %{"id" => id}) do
+    with {:ok, %Transponder{} = transponder} <- fetch_transponder(source, id),
+         :ok <- ensure_expression_transponder(transponder),
+         {:ok, %Transponder{} = deleted} <- Organizations.delete_transponder(transponder) do
+      render(conn, "show.json", transponder: deleted)
+    else
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> put_view(TrifleApi.ErrorJSON)
+        |> render("404.json")
+
+      {:error, :unsupported_type} ->
+        render_error(conn, :unprocessable_entity, "Unsupported transponder type")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render_changeset(conn, changeset)
+    end
+  end
+
   defp list_transponders(%Source{} = source) do
     record = Source.record(source)
 

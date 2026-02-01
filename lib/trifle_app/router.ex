@@ -181,6 +181,7 @@ defmodule TrifleApp.Router do
       get("/transponders", TranspondersController, :index)
       post("/transponders", TranspondersController, :create)
       put("/transponders/:id", TranspondersController, :update)
+      delete("/transponders/:id", TranspondersController, :delete)
       get("/dashboards", DashboardsController, :index)
       post("/dashboards", DashboardsController, :create)
       get("/dashboards/:id", DashboardsController, :show)
