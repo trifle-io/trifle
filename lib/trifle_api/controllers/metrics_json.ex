@@ -1,5 +1,6 @@
 defmodule TrifleApi.MetricsJSON do
   alias TrifleApi.Version
+  alias TrifleApi.NumberNormalizer
 
   def create() do
     %{data: :ok}
@@ -37,7 +38,7 @@ defmodule TrifleApi.MetricsJSON do
   defp format_series(series) when is_map(series) do
     %{
       at: format_timestamps(Map.get(series, :at, [])),
-      values: Map.get(series, :values, [])
+      values: NumberNormalizer.normalize(Map.get(series, :values, []))
     }
   end
 

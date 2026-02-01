@@ -1,6 +1,8 @@
 defmodule TrifleApi.MetricsQueryJSON do
+  alias TrifleApi.NumberNormalizer
+
   def render("show.json", %{payload: payload}) do
-    %{data: payload}
+    %{data: NumberNormalizer.normalize(payload)}
   end
 
   def render("error.json", %{error: error}) do
