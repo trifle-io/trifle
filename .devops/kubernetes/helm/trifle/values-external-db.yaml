@@ -22,6 +22,7 @@ externalPostgresql:
 # Application configuration
 app:
   secretKeyBase: "your-64-character-secret-key-base-here"
+  dbEncryptionKey: "your-32-byte-base64-key-here"
   host: "trifle.yourdomain.com"
   logLevel: "info"
   deploymentMode: "self_hosted"

@@ -25,6 +25,7 @@ This directory contains Kubernetes deployment configurations for Trifle using He
    ```bash
    helm install trifle ./helm/trifle \
      --set app.secretKeyBase="$(openssl rand -base64 48)" \
+     --set app.dbEncryptionKey="$(openssl rand -base64 32)" \
      --set postgresql.auth.password="$(openssl rand -base64 32)" \
      --set initialUser.email="admin@example.com"
    ```
@@ -44,6 +45,7 @@ Create a `values-prod.yaml` file:
 # Application configuration
 app:
   secretKeyBase: "your-64-character-secret-key"
+  dbEncryptionKey: "your-32-byte-base64-key"
   host: "trifle.yourdomain.com"
   logLevel: "info"  # Accepts debug, info, warn, error
 
@@ -291,6 +293,7 @@ For production, use external secret management:
    ```yaml
    app:
      secretKeyBase: ""  # Will be populated by external secret
+     dbEncryptionKey: ""  # Will be populated by external secret
    ```
 
 2. **Sealed Secrets**:

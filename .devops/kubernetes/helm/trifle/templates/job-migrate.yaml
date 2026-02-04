@@ -63,6 +63,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: secret-key-base
+            {{- if .Values.app.dbEncryptionKey }}
+            - name: TRIFLE_DB_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" . }}-secret
+                  key: db-encryption-key
+            {{- end }}
             - name: TRIFLE_DEPLOYMENT_MODE
               value: {{ .Values.app.deploymentMode | quote }}
             {{- with .Values.app.logLevel }}
