@@ -26,6 +26,7 @@ defmodule Trifle.Organizations.Organization do
     has_many :memberships, Trifle.Organizations.OrganizationMembership
     has_many :invitations, Trifle.Organizations.OrganizationInvitation
     has_many :databases, Trifle.Organizations.Database
+    has_many :projects, Trifle.Organizations.Project
     has_many :dashboards, Trifle.Organizations.Dashboard
     has_many :dashboard_groups, Trifle.Organizations.DashboardGroup
     has_many :transponders, Trifle.Organizations.Transponder

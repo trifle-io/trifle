@@ -148,6 +148,53 @@ defmodule TrifleApp.ProjectsLive do
             required
           />
 
+          <div class="space-y-2">
+            <label
+              for={@form[:project_cluster_id].id}
+              class="block text-sm font-medium text-gray-900 dark:text-white"
+            >
+              Datacenter location
+            </label>
+            <div class="grid grid-cols-1">
+              <select
+                id={@form[:project_cluster_id].id}
+                name={@form[:project_cluster_id].name}
+                class={[
+                  "col-start-1 row-start-1 w-full appearance-none rounded-lg bg-white dark:bg-slate-700 py-2 pr-8 pl-3 text-base text-gray-900 dark:text-white outline-1 -outline-offset-1 outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm",
+                  @form[:project_cluster_id].errors != [] && "outline-red-400 focus:outline-red-400"
+                ]}
+                required
+              >
+                <option value="">Select a datacenter</option>
+                <%= for option <- @project_cluster_options do %>
+                  <option
+                    value={option.id}
+                    disabled={option.disabled}
+                    selected={to_string(option.id) == to_string(@form[:project_cluster_id].value)}
+                  >
+                    {option.label}
+                  </option>
+                <% end %>
+              </select>
+              <svg
+                class="col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-400 dark:text-slate-500 sm:h-4 sm:w-4"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </div>
+            <p class="text-xs text-gray-600 dark:text-gray-400">
+              Choose where metrics are stored. Restricted locations require approval.
+            </p>
+            <.form_errors field={@form[:project_cluster_id]} />
+          </div>
+
           <.form_field
             field={@form[:time_zone]}
             type="select"
@@ -187,14 +234,6 @@ defmodule TrifleApp.ProjectsLive do
             <.form_errors field={@form[:granularities]} />
           </div>
 
-          <.form_field
-            field={@form[:expire_after]}
-            type="number"
-            label="Expire after (seconds)"
-            placeholder="86400"
-            help_text="Optional. Leave blank to keep metrics forever."
-          />
-
           <:actions>
             <.form_actions>
               <.secondary_button patch={~p"/projects"}>
@@ -210,8 +249,11 @@ defmodule TrifleApp.ProjectsLive do
   end
 
   def mount(params, _session, socket) do
-    projects = Organizations.list_users_projects(socket.assigns.current_user)
-    changeset = Organizations.change_project(%Project{})
+    membership = socket.assigns.current_membership
+    projects = list_projects_for_membership(membership)
+    cluster_choices = list_cluster_choices_for_membership(membership)
+    default_cluster_id = default_cluster_id(cluster_choices)
+    changeset = Organizations.change_project(%Project{project_cluster_id: default_cluster_id})
 
     socket =
       socket
@@ -219,6 +261,8 @@ defmodule TrifleApp.ProjectsLive do
       |> assign(:form, to_form(changeset))
       |> assign(:time_zones, time_zones())
       |> assign(:week_options, @week_options)
+      |> assign(:project_cluster_choices, cluster_choices)
+      |> assign(:project_cluster_options, cluster_options(cluster_choices))
       |> assign(:page_title, "Projects")
       |> assign(:show_new_modal, false)
 
@@ -230,17 +274,25 @@ defmodule TrifleApp.ProjectsLive do
   end
 
   defp apply_action(socket, :new, _params) do
+    cluster_choices = socket.assigns.project_cluster_choices
+    default_cluster_id = default_cluster_id(cluster_choices)
+
     socket
     |> assign(:page_title, "Projects · New")
     |> assign(:show_new_modal, true)
-    |> assign(:form, to_form(Organizations.change_project(%Project{})))
+    |> assign(
+      :form,
+      to_form(Organizations.change_project(%Project{project_cluster_id: default_cluster_id}))
+    )
   end
 
   defp apply_action(socket, :index, _params) do
+    membership = socket.assigns.current_membership
+
     socket
     |> assign(:page_title, "Projects")
     |> assign(:show_new_modal, false)
-    |> assign(:projects, Organizations.list_users_projects(socket.assigns.current_user))
+    |> assign(:projects, list_projects_for_membership(membership))
   end
 
   defp apply_action(socket, _action, _params), do: socket
@@ -260,16 +312,28 @@ defmodule TrifleApp.ProjectsLive do
   end
 
   def handle_event("create", %{"project" => project_params}, socket) do
-    case Organizations.create_users_project(project_params, socket.assigns.current_user) do
+    membership = socket.assigns.current_membership
+
+    case create_project_for_membership(project_params, membership, socket.assigns.current_user) do
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
 
       {:ok, project} ->
+        cluster_choices = list_cluster_choices_for_membership(membership)
+        default_cluster_id = default_cluster_id(cluster_choices)
+
         socket =
           socket
           |> put_flash(:info, "#{project.name} created")
-          |> assign(:projects, Organizations.list_users_projects(socket.assigns.current_user))
-          |> assign(:form, to_form(Organizations.change_project(%Project{})))
+          |> assign(:projects, list_projects_for_membership(membership))
+          |> assign(:project_cluster_choices, cluster_choices)
+          |> assign(:project_cluster_options, cluster_options(cluster_choices))
+          |> assign(
+            :form,
+            to_form(
+              Organizations.change_project(%Project{project_cluster_id: default_cluster_id})
+            )
+          )
           |> assign(:show_new_modal, false)
 
         {:noreply, push_patch(socket, to: ~p"/projects")}
@@ -318,35 +382,82 @@ defmodule TrifleApp.ProjectsLive do
   defp granularities_to_string(value) when is_binary(value), do: value
   defp granularities_to_string(_), do: ""
 
-  defp format_expire_after(nil), do: "never"
+  defp list_projects_for_membership(nil), do: []
 
-  defp format_expire_after(seconds) when is_integer(seconds) and seconds > 0 do
-    cond do
-      rem(seconds, 86_400) == 0 -> "#{div(seconds, 86_400)}d"
-      rem(seconds, 3_600) == 0 -> "#{div(seconds, 3_600)}h"
-      rem(seconds, 60) == 0 -> "#{div(seconds, 60)}m"
-      true -> "#{seconds}s"
-    end
+  defp list_projects_for_membership(membership) do
+    Organizations.list_projects_for_membership(membership)
   end
 
-  defp format_expire_after(seconds) when is_binary(seconds) do
-    seconds
-    |> Integer.parse()
+  defp list_cluster_choices_for_membership(nil), do: []
+
+  defp list_cluster_choices_for_membership(%{organization_id: organization_id}) do
+    Organizations.list_project_clusters_for_org(organization_id)
+  end
+
+  defp create_project_for_membership(_attrs, nil, _user) do
+    {:error, Organizations.change_project(%Project{})}
+  end
+
+  defp create_project_for_membership(attrs, membership, user) do
+    Organizations.create_project_for_membership(attrs, membership, user)
+  end
+
+  defp cluster_options(cluster_choices) do
+    Enum.map(cluster_choices, fn %{cluster: cluster, selectable: selectable, reason: reason} ->
+      %{
+        id: cluster.id,
+        label: cluster_option_label(cluster, reason),
+        disabled: !selectable
+      }
+    end)
+  end
+
+  defp cluster_option_label(cluster, reason) do
+    location =
+      [cluster.region, cluster.city, cluster.country]
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.join(" · ")
+
+    base =
+      if location == "" do
+        cluster.name
+      else
+        "#{cluster.name} · #{location}"
+      end
+
+    suffix =
+      case reason do
+        :coming_soon -> " (Coming soon)"
+        :contact_sales -> " (Contact sales)"
+        _ -> ""
+      end
+
+    base <> suffix
+  end
+
+  defp default_cluster_id([]), do: nil
+
+  defp default_cluster_id(cluster_choices) do
+    cluster_choices
+    |> Enum.find(fn %{cluster: cluster, selectable: selectable} ->
+      selectable && cluster.is_default
+    end)
     |> case do
-      {value, _} -> format_expire_after(value)
-      :error -> "never"
+      nil ->
+        case Enum.find(cluster_choices, & &1.selectable) do
+          nil -> nil
+          %{cluster: cluster} -> cluster.id
+        end
+
+      %{cluster: cluster} ->
+        cluster.id
     end
   end
-
-  defp format_expire_after(_), do: "never"
 
   defp project_list_meta(%Project{} = project) do
     []
     |> maybe_add_meta(project.default_timeframe, fn timeframe ->
       "Default timeframe #{timeframe}"
-    end)
-    |> maybe_add_meta(project.expire_after, fn expire ->
-      "Retention #{format_expire_after(expire)}"
     end)
   end
 

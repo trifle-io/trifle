@@ -95,6 +95,7 @@ defmodule Mix.Tasks.SeedMetrics do
     end)
 
     IO.puts("\n🎉 Completed seeding #{count} metrics!")
+    log_validation(source, config, hours)
   end
 
   defp load_source_and_config("project", id) do
@@ -184,6 +185,101 @@ defmodule Mix.Tasks.SeedMetrics do
           {:halt, {:error, error}}
       end
     end)
+  end
+
+  defp log_validation(
+         %Trifle.Stats.Source{} = source,
+         %Trifle.Stats.Configuration{} = config,
+         hours
+       ) do
+    now = DateTime.now!(config.time_zone || "Etc/UTC")
+    from = DateTime.add(now, -hours * 3600, :second)
+
+    IO.puts("\n🔎 Seed validation (last #{hours}h)")
+
+    IO.puts(
+      "   driver=#{inspect(config.driver.__struct__)} reference=#{Map.get(config.driver, :reference)}"
+    )
+
+    system_stats = Trifle.Stats.values("__system__key__", from, now, "1h", config)
+
+    keys_sum =
+      system_stats.values
+      |> Enum.map(&Map.get(&1, "keys"))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reduce(%{}, fn data, acc -> Trifle.Stats.Packer.deep_sum(acc, data) end)
+
+    IO.puts("   system keys=#{map_size(keys_sum)}")
+
+    keys_sum
+    |> Enum.sort_by(fn {_key, count} -> count end, :desc)
+    |> Enum.take(5)
+    |> Enum.each(fn {key, count} ->
+      IO.puts("   • #{key}: #{count}")
+    end)
+
+    sample_key = "page_views"
+
+    sample_stats = Trifle.Stats.values(sample_key, from, now, "1h", config)
+
+    non_empty =
+      sample_stats.values
+      |> Enum.count(fn
+        %{} = map -> map_size(map) > 0
+        _ -> true
+      end)
+
+    IO.puts("   #{sample_key} non-empty buckets=#{non_empty}")
+
+    case config.driver do
+      %Trifle.Stats.Driver.MongoProject{} = driver ->
+        sample =
+          driver.connection
+          |> Mongo.find(
+            driver.collection_name,
+            %{"reference" => driver.reference, "key" => "__system__key__::1h"},
+            limit: 1
+          )
+          |> Enum.take(1)
+          |> List.first()
+
+        if sample do
+          IO.puts("   system sample raw=#{inspect(Map.take(sample, ["key", "at", "data"]))}")
+        else
+          IO.puts("   system sample raw=nil")
+        end
+
+      _ ->
+        :ok
+    end
+
+    case Trifle.Stats.Source.fetch_series(
+           source,
+           "__system__key__",
+           from,
+           now,
+           "1h",
+           progressive: false,
+           transponders: :none
+         ) do
+      {:ok, result} ->
+        values =
+          case result.series do
+            %Trifle.Stats.Series{} = series -> series.series[:values] || []
+            %{} = series -> series[:values] || []
+            _ -> []
+          end
+
+        source_keys =
+          values
+          |> Enum.map(&Map.get(&1, "keys"))
+          |> Enum.reduce(%{}, fn data, acc -> Trifle.Stats.Packer.deep_sum(acc, data) end)
+
+        IO.puts("   source keys (via Source.fetch_series)=#{map_size(source_keys)}")
+
+      {:error, reason} ->
+        IO.puts("   source fetch failed=#{inspect(reason)}")
+    end
   end
 
   defp parse_source(opts) do

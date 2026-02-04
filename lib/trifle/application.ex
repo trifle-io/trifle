@@ -11,11 +11,14 @@ defmodule Trifle.Application do
       [
         # Start the Telemetry supervisor
         TrifleWeb.Telemetry,
+        # Start the encryption vault
+        Trifle.Vault,
         # Start the Ecto repository (main application PostgreSQL)
         Trifle.Repo,
         # Start dynamic database connection pool supervisors
         Trifle.DatabasePools.PostgresPoolSupervisor,
         Trifle.DatabasePools.MongoPoolSupervisor,
+        Trifle.DatabasePools.MongoProjectClusterPoolSupervisor,
         Trifle.DatabasePools.RedisPoolSupervisor,
         Trifle.DatabasePools.SqlitePoolSupervisor,
         Trifle.DatabasePools.MySQLPoolSupervisor,

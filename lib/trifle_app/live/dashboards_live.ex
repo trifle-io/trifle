@@ -89,7 +89,9 @@ defmodule TrifleApp.DashboardsLive do
       source =
         case original.source_type do
           "project" ->
-            Source.from_project(Organizations.get_project!(original.source_id))
+            Source.from_project(
+              Organizations.get_project_for_org!(membership.organization_id, original.source_id)
+            )
 
           _ ->
             database =

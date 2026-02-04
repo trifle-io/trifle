@@ -132,51 +132,53 @@ defmodule Trifle.Stats.Driver.MongoProject do
     data = Trifle.Stats.Packer.pack(%{data: values})
 
     if driver.bulk_write do
-      operations =
-        Enum.flat_map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
-          filter =
-            key
-            |> identifier_for(driver)
-            |> convert_keys_to_strings()
-            |> with_reference_scope(driver)
-
-          expire_at =
-            if driver.expire_after,
-              do: DateTime.add(key.at, driver.expire_after, :second),
-              else: nil
-
-          main_op = %{
-            update_many: %{
-              filter: filter,
-              update: build_update("$inc", data, expire_at),
-              upsert: true
-            }
-          }
-
-          if driver.system_tracking do
-            system_filter =
+      bulk =
+        Enum.reduce(keys, Mongo.UnorderedBulk.new(driver.collection_name), fn
+          %Trifle.Stats.Nocturnal.Key{} = key, bulk ->
+            filter =
               key
-              |> system_identifier_for(driver)
+              |> identifier_for(driver)
               |> convert_keys_to_strings()
               |> with_reference_scope(driver)
 
-            system_data = system_data_for(key, count)
+            expire_at =
+              if driver.expire_after,
+                do: DateTime.add(key.at, driver.expire_after, :second),
+                else: nil
 
-            system_op = %{
-              update_many: %{
-                filter: system_filter,
-                update: build_update("$inc", system_data, expire_at),
+            bulk =
+              Mongo.UnorderedBulk.update_many(
+                bulk,
+                filter,
+                build_update("$inc", data, expire_at),
                 upsert: true
-              }
-            }
+              )
 
-            [main_op, system_op]
-          else
-            [main_op]
-          end
+            if driver.system_tracking do
+              system_filter =
+                key
+                |> system_identifier_for(driver)
+                |> convert_keys_to_strings()
+                |> with_reference_scope(driver)
+
+              system_data = system_data_for(key, count)
+
+              Mongo.UnorderedBulk.update_many(
+                bulk,
+                system_filter,
+                build_update("$inc", system_data, expire_at),
+                upsert: true
+              )
+            else
+              bulk
+            end
         end)
 
-      Mongo.BulkWrite.write(driver.connection, driver.collection_name, operations, [])
+      if Mongo.UnorderedBulk.empty?(bulk) do
+        :ok
+      else
+        Mongo.BulkWrite.write(driver.connection, bulk, w: driver.write_concern)
+      end
     else
       Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
         filter =
@@ -204,7 +206,11 @@ defmodule Trifle.Stats.Driver.MongoProject do
           system_data = system_data_for(key, count)
           system_update = build_update("$inc", system_data, expire_at)
 
-          Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
+          Mongo.update_many(
+            driver.connection,
+            driver.collection_name,
+            system_filter,
+            system_update,
             upsert: true
           )
         end
@@ -216,53 +222,55 @@ defmodule Trifle.Stats.Driver.MongoProject do
     packed_data = Trifle.Stats.Packer.pack(values)
 
     if driver.bulk_write do
-      operations =
-        Enum.flat_map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
-          filter =
-            key
-            |> identifier_for(driver)
-            |> convert_keys_to_strings()
-            |> with_reference_scope(driver)
-
-          expire_at =
-            if driver.expire_after,
-              do: DateTime.add(key.at, driver.expire_after, :second),
-              else: nil
-
-          set_data = %{data: packed_data}
-
-          main_op = %{
-            update_many: %{
-              filter: filter,
-              update: build_update("$set", set_data, expire_at),
-              upsert: true
-            }
-          }
-
-          if driver.system_tracking do
-            system_filter =
+      bulk =
+        Enum.reduce(keys, Mongo.UnorderedBulk.new(driver.collection_name), fn
+          %Trifle.Stats.Nocturnal.Key{} = key, bulk ->
+            filter =
               key
-              |> system_identifier_for(driver)
+              |> identifier_for(driver)
               |> convert_keys_to_strings()
               |> with_reference_scope(driver)
 
-            system_data = system_data_for(key, count)
+            expire_at =
+              if driver.expire_after,
+                do: DateTime.add(key.at, driver.expire_after, :second),
+                else: nil
 
-            system_op = %{
-              update_many: %{
-                filter: system_filter,
-                update: build_update("$inc", system_data, expire_at),
+            set_data = %{data: packed_data}
+
+            bulk =
+              Mongo.UnorderedBulk.update_many(
+                bulk,
+                filter,
+                build_update("$set", set_data, expire_at),
                 upsert: true
-              }
-            }
+              )
 
-            [main_op, system_op]
-          else
-            [main_op]
-          end
+            if driver.system_tracking do
+              system_filter =
+                key
+                |> system_identifier_for(driver)
+                |> convert_keys_to_strings()
+                |> with_reference_scope(driver)
+
+              system_data = system_data_for(key, count)
+
+              Mongo.UnorderedBulk.update_many(
+                bulk,
+                system_filter,
+                build_update("$inc", system_data, expire_at),
+                upsert: true
+              )
+            else
+              bulk
+            end
         end)
 
-      Mongo.BulkWrite.write(driver.connection, driver.collection_name, operations, [])
+      if Mongo.UnorderedBulk.empty?(bulk) do
+        :ok
+      else
+        Mongo.BulkWrite.write(driver.connection, bulk, w: driver.write_concern)
+      end
     else
       Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
         filter =
@@ -295,7 +303,11 @@ defmodule Trifle.Stats.Driver.MongoProject do
           system_data = system_data_for(key, count)
           system_update = build_update("$inc", system_data, expire_at)
 
-          Mongo.update_many(driver.connection, driver.collection_name, system_filter, system_update,
+          Mongo.update_many(
+            driver.connection,
+            driver.collection_name,
+            system_filter,
+            system_update,
             upsert: true
           )
         end
@@ -336,7 +348,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
         simple_identifier = simple_identifier_for(temp_key, driver)
 
-        Map.put(acc, simple_identifier, d["data"])
+        Map.put(acc, simple_identifier, extract_mongo_data(d))
       end)
 
     Enum.map(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
@@ -433,7 +445,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     identifier_for(system_key, driver)
   end
 
-  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, count \\ 1) do
+  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, count) do
     Trifle.Stats.Packer.pack(%{data: %{count: count, keys: %{key.key => count}}})
   end
 
@@ -453,6 +465,15 @@ defmodule Trifle.Stats.Driver.MongoProject do
     case timestamp_value do
       %DateTime{} = dt ->
         dt
+
+      %NaiveDateTime{} = ndt ->
+        DateTime.from_naive!(ndt, "Etc/UTC")
+
+      %{__struct__: _} = struct ->
+        case Map.get(struct, :utc) do
+          ms when is_integer(ms) -> DateTime.from_unix!(ms, :millisecond)
+          _ -> struct
+        end
 
       timestamp when is_integer(timestamp) ->
         DateTime.from_unix!(timestamp)
@@ -513,7 +534,51 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
   defp timestamp_for_identifier(nil), do: nil
   defp timestamp_for_identifier(%DateTime{} = dt), do: DateTime.to_unix(dt)
+
+  defp timestamp_for_identifier(%NaiveDateTime{} = ndt),
+    do: ndt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix()
+
+  defp timestamp_for_identifier(%{__struct__: _} = struct) do
+    case Map.get(struct, :utc) do
+      ms when is_integer(ms) -> DateTime.from_unix!(ms, :millisecond) |> DateTime.to_unix()
+      _ -> struct
+    end
+  end
+
   defp timestamp_for_identifier(value), do: value
+
+  defp normalize_mongo_data(nil), do: %{}
+
+  defp normalize_mongo_data(%{} = data) when not is_struct(data) do
+    Enum.reduce(data, %{}, fn {k, v}, acc ->
+      key = if is_atom(k), do: Atom.to_string(k), else: k
+      value = if is_map(v) and not is_struct(v), do: normalize_mongo_data(v), else: v
+      Map.put(acc, key, value)
+    end)
+  end
+
+  defp normalize_mongo_data(other), do: other
+
+  defp extract_mongo_data(%{} = doc) do
+    case Map.get(doc, "data") do
+      %{} = data ->
+        normalize_mongo_data(data)
+
+      nil ->
+        doc
+        |> Enum.reduce(%{}, fn {key, value}, acc ->
+          if is_binary(key) and String.starts_with?(key, "data.") do
+            Map.put(acc, String.replace_prefix(key, "data.", ""), value)
+          else
+            acc
+          end
+        end)
+        |> Trifle.Stats.Packer.unpack()
+
+      other ->
+        other
+    end
+  end
 
   defp normalize_joined_identifier(nil), do: nil
   defp normalize_joined_identifier(:full), do: :full

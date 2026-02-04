@@ -45,6 +45,7 @@ defmodule TrifleAdmin.Layouts do
       {:organizations, TrifleAdmin.OrganizationsLive} -> true
       {:users, TrifleAdmin.UsersLive} -> true
       {:projects, TrifleAdmin.ProjectsLive} -> true
+      {:project_clusters, TrifleAdmin.ProjectClustersLive} -> true
       {:databases, TrifleAdmin.DatabasesLive} -> true
       {:dashboards, TrifleAdmin.DashboardsLive} -> true
       {:monitors, TrifleAdmin.MonitorsLive} -> true

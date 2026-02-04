@@ -11,6 +11,8 @@ defmodule Trifle.Organizations do
 
   alias Trifle.Organizations.{
     Project,
+    ProjectCluster,
+    ProjectClusterAccess,
     ProjectToken,
     DatabaseToken,
     Organization,
@@ -815,18 +817,14 @@ defmodule Trifle.Organizations do
 
   defp coerce_dashboard_source(attrs, membership, "project", id) do
     try do
-      project = get_project!(id)
+      project = get_project_for_org!(membership.organization_id, id)
 
-      if project.user_id == membership.user_id do
-        {:ok,
-         attrs
-         |> drop_source_param()
-         |> put_attr("database_id", nil)
-         |> put_attr("source_type", "project")
-         |> put_attr("source_id", project.id)}
-      else
-        {:error, "Project is not available to this user"}
-      end
+      {:ok,
+       attrs
+       |> drop_source_param()
+       |> put_attr("database_id", nil)
+       |> put_attr("source_type", "project")
+       |> put_attr("source_id", project.id)}
     rescue
       Ecto.NoResultsError ->
         {:error, "Project not found"}
@@ -1011,6 +1009,183 @@ defmodule Trifle.Organizations do
     end)
   end
 
+  ## Project clusters
+
+  def list_project_clusters do
+    from(c in ProjectCluster, order_by: [asc: c.name, asc: c.id])
+    |> Repo.all()
+  end
+
+  def get_project_cluster!(id) when is_binary(id), do: Repo.get!(ProjectCluster, id)
+  def get_project_cluster(id) when is_binary(id), do: Repo.get(ProjectCluster, id)
+
+  def get_default_project_cluster do
+    from(c in ProjectCluster, where: c.is_default == true, limit: 1)
+    |> Repo.one()
+  end
+
+  def list_project_clusters_for_org(%Organization{} = organization) do
+    list_project_clusters_for_org(organization.id)
+  end
+
+  def list_project_clusters_for_org(organization_id) when is_binary(organization_id) do
+    clusters = list_project_clusters()
+    access_ids = project_cluster_access_ids(organization_id)
+
+    clusters
+    |> Enum.filter(&project_cluster_visible_with_access_ids?(&1, access_ids))
+    |> Enum.map(fn cluster ->
+      selectable =
+        cluster.status == "active" and
+          project_cluster_accessible_with_access_ids?(cluster, access_ids)
+
+      reason =
+        cond do
+          cluster.status != "active" -> :coming_soon
+          selectable -> nil
+          true -> :contact_sales
+        end
+
+      %{
+        cluster: cluster,
+        selectable: selectable,
+        reason: reason
+      }
+    end)
+  end
+
+  def create_project_cluster(attrs \\ %{}) do
+    changeset = ProjectCluster.changeset(%ProjectCluster{}, attrs)
+
+    Multi.new()
+    |> Multi.insert(:cluster, changeset)
+    |> Multi.run(:clear_default, fn repo, %{cluster: cluster} ->
+      if cluster.is_default do
+        repo.update_all(
+          from(c in ProjectCluster, where: c.id != ^cluster.id),
+          set: [is_default: false]
+        )
+      end
+
+      {:ok, cluster}
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{cluster: cluster}} -> {:ok, cluster}
+      {:error, _step, reason, _changes} -> {:error, reason}
+    end
+  end
+
+  def update_project_cluster(%ProjectCluster{} = cluster, attrs) do
+    changeset = ProjectCluster.changeset(cluster, attrs)
+
+    Multi.new()
+    |> Multi.update(:cluster, changeset)
+    |> Multi.run(:clear_default, fn repo, %{cluster: updated} ->
+      if updated.is_default do
+        repo.update_all(
+          from(c in ProjectCluster, where: c.id != ^updated.id),
+          set: [is_default: false]
+        )
+      end
+
+      {:ok, updated}
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{cluster: updated}} -> {:ok, updated}
+      {:error, _step, reason, _changes} -> {:error, reason}
+    end
+  end
+
+  def change_project_cluster(%ProjectCluster{} = cluster, attrs \\ %{}) do
+    ProjectCluster.changeset(cluster, attrs)
+  end
+
+  def project_cluster_setup?(%ProjectCluster{} = cluster) do
+    ProjectCluster.is_setup?(cluster)
+  end
+
+  def check_project_cluster_status(%ProjectCluster{} = cluster) do
+    ProjectCluster.check_status(cluster)
+  end
+
+  def setup_project_cluster(%ProjectCluster{} = cluster) do
+    ProjectCluster.setup(cluster)
+  end
+
+  def list_project_cluster_accesses(%ProjectCluster{} = cluster) do
+    from(a in ProjectClusterAccess,
+      where: a.project_cluster_id == ^cluster.id,
+      join: o in assoc(a, :organization),
+      preload: [organization: o],
+      order_by: [asc: o.name]
+    )
+    |> Repo.all()
+  end
+
+  def grant_project_cluster_access(%ProjectCluster{} = cluster, %Organization{} = organization) do
+    %ProjectClusterAccess{}
+    |> ProjectClusterAccess.changeset(%{
+      project_cluster_id: cluster.id,
+      organization_id: organization.id
+    })
+    |> Repo.insert()
+  end
+
+  def revoke_project_cluster_access(%ProjectClusterAccess{} = access) do
+    Repo.delete(access)
+  end
+
+  def project_cluster_accessible?(%ProjectCluster{} = cluster, %Organization{} = organization) do
+    project_cluster_accessible_with_access_ids?(
+      cluster,
+      project_cluster_access_ids(organization.id)
+    )
+  end
+
+  defp project_cluster_accessible_with_access_ids?(
+         %ProjectCluster{visibility: "public"},
+         _access_ids
+       ),
+       do: true
+
+  defp project_cluster_accessible_with_access_ids?(
+         %ProjectCluster{visibility: visibility} = cluster,
+         access_ids
+       )
+       when visibility in ["restricted", "private"] do
+    MapSet.member?(access_ids, cluster.id)
+  end
+
+  defp project_cluster_visible_with_access_ids?(
+         %ProjectCluster{visibility: "public"},
+         _access_ids
+       ),
+       do: true
+
+  defp project_cluster_visible_with_access_ids?(
+         %ProjectCluster{visibility: "restricted"},
+         _access_ids
+       ),
+       do: true
+
+  defp project_cluster_visible_with_access_ids?(
+         %ProjectCluster{visibility: "private"} = cluster,
+         access_ids
+       ) do
+    MapSet.member?(access_ids, cluster.id)
+  end
+
+  defp project_cluster_access_ids(organization_id) when is_binary(organization_id) do
+    from(a in ProjectClusterAccess,
+      where: a.organization_id == ^organization_id,
+      select: a.project_cluster_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
   @doc """
   Returns the list of projects.
 
@@ -1044,14 +1219,27 @@ defmodule Trifle.Organizations do
     Repo.aggregate(Project, :count, :id)
   end
 
-  def list_users_projects(%Trifle.Accounts.User{} = user) do
-    query =
-      from(
-        p in Project,
-        where: p.user_id == ^user.id
-      )
+  def list_projects_for_org(%Organization{} = organization) do
+    list_projects_for_org(organization.id)
+  end
 
-    Repo.all(query)
+  def list_projects_for_org(organization_id) when is_binary(organization_id) do
+    from(p in Project,
+      where: p.organization_id == ^organization_id,
+      order_by: [asc: p.name, asc: p.id]
+    )
+    |> Repo.all()
+  end
+
+  def list_projects_for_membership(%OrganizationMembership{} = membership) do
+    list_projects_for_org(membership.organization_id)
+  end
+
+  def list_users_projects(%Trifle.Accounts.User{} = user) do
+    case get_membership_for_user(user) do
+      %OrganizationMembership{} = membership -> list_projects_for_membership(membership)
+      _ -> []
+    end
   end
 
   @doc """
@@ -1069,6 +1257,15 @@ defmodule Trifle.Organizations do
 
   """
   def get_project!(id), do: Repo.get!(Project, id)
+
+  def get_project_for_org!(%Organization{} = organization, id) when is_binary(id) do
+    Repo.get_by!(Project, id: id, organization_id: organization.id)
+  end
+
+  def get_project_for_org!(organization_id, id)
+      when is_binary(organization_id) and is_binary(id) do
+    Repo.get_by!(Project, id: id, organization_id: organization_id)
+  end
 
   @doc """
   Creates a project.
@@ -1089,10 +1286,24 @@ defmodule Trifle.Organizations do
   end
 
   def create_users_project(attrs \\ %{}, %Trifle.Accounts.User{} = user) do
-    attrs = Map.put(attrs, "user", user)
+    case get_membership_for_user(user) do
+      %OrganizationMembership{} = membership ->
+        create_project_for_membership(attrs, membership, user)
+
+      _ ->
+        {:error, :organization_required}
+    end
+  end
+
+  def create_project_for_membership(attrs, %OrganizationMembership{} = membership, %User{} = user) do
+    attrs =
+      attrs
+      |> Map.put("user", user)
+      |> Map.put("organization_id", membership.organization_id)
 
     %Project{}
     |> Project.changeset(attrs)
+    |> ensure_project_cluster(membership.organization_id)
     |> Repo.insert()
   end
 
@@ -1141,6 +1352,40 @@ defmodule Trifle.Organizations do
   """
   def change_project(%Project{} = project, attrs \\ %{}) do
     Project.changeset(project, attrs)
+  end
+
+  defp ensure_project_cluster(%Ecto.Changeset{} = changeset, organization_id) do
+    cluster_id = Ecto.Changeset.get_field(changeset, :project_cluster_id)
+    default_cluster = get_default_project_cluster()
+
+    cluster =
+      cond do
+        is_binary(cluster_id) -> get_project_cluster(cluster_id)
+        default_cluster -> default_cluster
+        true -> nil
+      end
+
+    changeset =
+      case cluster do
+        %ProjectCluster{} = cluster ->
+          selectable? =
+            cluster.status == "active" and
+              project_cluster_accessible_with_access_ids?(
+                cluster,
+                project_cluster_access_ids(organization_id)
+              )
+
+          if selectable? do
+            Ecto.Changeset.put_change(changeset, :project_cluster_id, cluster.id)
+          else
+            Ecto.Changeset.add_error(changeset, :project_cluster_id, "is not available")
+          end
+
+        nil ->
+          Ecto.Changeset.add_error(changeset, :project_cluster_id, "is required")
+      end
+
+    changeset
   end
 
   @doc """

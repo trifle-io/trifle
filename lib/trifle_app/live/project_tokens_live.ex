@@ -349,8 +349,12 @@ defmodule TrifleApp.ProjectTokensLive do
     """
   end
 
-  def mount(params, _session, socket) do
-    project = Organizations.get_project!(params["id"])
+  def mount(_params, _session, %{assigns: %{current_membership: nil}} = socket) do
+    {:ok, redirect(socket, to: ~p"/projects")}
+  end
+
+  def mount(params, _session, %{assigns: %{current_membership: membership}} = socket) do
+    project = Organizations.get_project_for_org!(membership.organization_id, params["id"])
     tokens = Organizations.list_projects_project_tokens(project)
     changeset = Organizations.change_project_token(%ProjectToken{}, %{"project" => project})
 
@@ -365,6 +369,12 @@ defmodule TrifleApp.ProjectTokensLive do
       |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Tokens"))
 
     {:ok, apply_action(socket, socket.assigns.live_action, params)}
+  rescue
+    Ecto.NoResultsError ->
+      {:ok,
+       socket
+       |> put_flash(:error, "You do not have access to that project.")
+       |> redirect(to: ~p"/projects")}
   end
 
   def handle_params(params, _url, socket) do

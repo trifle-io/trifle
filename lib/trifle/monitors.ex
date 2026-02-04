@@ -916,10 +916,10 @@ defmodule Trifle.Monitors do
     try do
       project = Organizations.get_project!(id)
 
-      if project.user_id == membership.user_id do
+      if project.organization_id == membership.organization_id do
         :ok
       else
-        {:error, "Project is not available to this user"}
+        {:error, "Project is not available to this organization"}
       end
     rescue
       Ecto.NoResultsError ->

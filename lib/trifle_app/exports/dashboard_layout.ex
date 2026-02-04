@@ -85,8 +85,8 @@ defmodule TrifleApp.Exports.DashboardLayout do
     e in Ecto.NoResultsError -> {:error, e}
   end
 
-  defp dashboard_source(%{source_type: "project", source_id: id}) do
-    {:ok, Organizations.get_project!(id) |> Source.from_project()}
+  defp dashboard_source(%{source_type: "project", source_id: id, organization_id: org_id}) do
+    {:ok, Organizations.get_project_for_org!(org_id, id) |> Source.from_project()}
   rescue
     e in Ecto.NoResultsError -> {:error, e}
   end

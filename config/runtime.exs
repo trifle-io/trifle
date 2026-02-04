@@ -67,6 +67,52 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+default_db_encryption_key = String.duplicate("0", 32)
+
+db_encryption_key =
+  case System.get_env("TRIFLE_DB_ENCRYPTION_KEY") do
+    nil ->
+      if config_env() in [:dev, :test] do
+        default_db_encryption_key
+      else
+        raise """
+        environment variable TRIFLE_DB_ENCRYPTION_KEY is missing.
+        Generate one with: openssl rand -base64 32
+        """
+      end
+
+    "" ->
+      if config_env() in [:dev, :test] do
+        default_db_encryption_key
+      else
+        raise """
+        environment variable TRIFLE_DB_ENCRYPTION_KEY is missing.
+        Generate one with: openssl rand -base64 32
+        """
+      end
+
+    value ->
+      case Base.decode64(value) do
+        {:ok, key} when byte_size(key) == 32 ->
+          key
+
+        _ ->
+          if config_env() in [:dev, :test] do
+            default_db_encryption_key
+          else
+            raise """
+            environment variable TRIFLE_DB_ENCRYPTION_KEY is invalid.
+            Generate one with: openssl rand -base64 32
+            """
+          end
+      end
+  end
+
+config :trifle, Trifle.Vault,
+  ciphers: [
+    default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: db_encryption_key}
+  ]
+
 # OpenAI configuration (applies to all environments)
 openai_model = System.get_env("OPENAI_MODEL", "gpt-5")
 

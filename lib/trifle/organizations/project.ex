@@ -3,6 +3,8 @@ defmodule Trifle.Organizations.Project do
   import Ecto.Changeset
 
   alias Trifle.Timeframe
+  alias Trifle.Organizations
+  alias Trifle.Organizations.ProjectCluster
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -18,6 +20,8 @@ defmodule Trifle.Organizations.Project do
     field :default_timeframe, :string
     field :default_granularity, :string
 
+    belongs_to :organization, Trifle.Organizations.Organization
+    belongs_to :project_cluster, Trifle.Organizations.ProjectCluster
     belongs_to :user, Trifle.Accounts.User
     has_many :project_tokens, Trifle.Organizations.ProjectToken
 
@@ -31,7 +35,9 @@ defmodule Trifle.Organizations.Project do
     "granularities" => :granularities,
     "expire_after" => :expire_after,
     "default_timeframe" => :default_timeframe,
-    "default_granularity" => :default_granularity
+    "default_granularity" => :default_granularity,
+    "organization_id" => :organization_id,
+    "project_cluster_id" => :project_cluster_id
   }
 
   @doc false
@@ -54,18 +60,26 @@ defmodule Trifle.Organizations.Project do
       :granularities,
       :expire_after,
       :default_timeframe,
-      :default_granularity
+      :default_granularity,
+      :organization_id,
+      :project_cluster_id
     ])
     |> maybe_put_user(user)
     |> ensure_granularities()
     |> validate_timeframe_field(:default_timeframe)
     |> ensure_default_granularity()
-    |> validate_required([:name, :time_zone, :beginning_of_week, :granularities])
+    |> validate_required([
+      :name,
+      :time_zone,
+      :beginning_of_week,
+      :granularities,
+      :organization_id
+    ])
     |> validate_number(:expire_after, greater_than: 0)
   end
 
   def stats_config(project) do
-    connection = get_mongo_connection()
+    {connection, cluster_config} = resolve_cluster_connection(project)
 
     granularities =
       case project.granularities do
@@ -73,15 +87,17 @@ defmodule Trifle.Organizations.Project do
         _ -> @default_granularities
       end
 
+    expire_after = cluster_config["expire_after"]
+
     driver =
       Trifle.Stats.Driver.MongoProject.new(
         connection,
         "proj_#{project.id}",
-        "trifle_stats",
+        cluster_config["collection_name"] || "trifle_stats",
         "::",
         1,
-        :partial,
-        project.expire_after,
+        cluster_config["joined_identifiers"] || :partial,
+        expire_after,
         true
       )
 
@@ -95,7 +111,42 @@ defmodule Trifle.Organizations.Project do
     )
   end
 
-  defp get_mongo_connection do
+  defp resolve_cluster_connection(%__MODULE__{} = project) do
+    case fetch_project_cluster(project) do
+      {:ok, %ProjectCluster{driver: "mongo"} = cluster} ->
+        {:ok, connection_name} =
+          Trifle.DatabasePools.MongoProjectClusterPoolSupervisor.start_mongo_pool(cluster)
+
+        {connection_name, cluster.config || %{}}
+
+      {:ok, %ProjectCluster{driver: driver}} ->
+        raise ArgumentError, "unsupported project cluster driver: #{inspect(driver)}"
+
+      :error ->
+        {get_legacy_mongo_connection(), %{}}
+    end
+  end
+
+  defp fetch_project_cluster(%__MODULE__{} = project) do
+    cond do
+      Ecto.assoc_loaded?(project.project_cluster) && project.project_cluster ->
+        {:ok, project.project_cluster}
+
+      is_binary(project.project_cluster_id) ->
+        case Organizations.get_project_cluster(project.project_cluster_id) do
+          nil -> :error
+          cluster -> {:ok, cluster}
+        end
+
+      true ->
+        case Organizations.get_default_project_cluster() do
+          nil -> :error
+          cluster -> {:ok, cluster}
+        end
+    end
+  end
+
+  defp get_legacy_mongo_connection do
     case Process.whereis(:trifle_mongo) do
       nil ->
         url = System.get_env("MONGODB_URL") || "mongodb://localhost:27017/trifle"

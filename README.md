@@ -44,22 +44,34 @@ This will launch these docker containers:
 
 ### Running the Application
 
-Run all commands inside of `app` docker container.
+Run all commands inside the `app` docker container. For one-off commands, use:
+
 ```bash
-docker compose exec app zsh
+docker compose exec -T app <command>
 ```
 
-And then follow:
+Fresh dev setup sequence:
 
 ```bash
 # Install dependencies
-mix deps.get
+docker compose exec -T app mix deps.get
+docker compose exec -T app mix deps.compile
 
-# Setup database
-mix ecto.setup
+# Create + migrate database
+docker compose exec -T app mix ecto.create
+docker compose exec -T app mix ecto.migrate
+
+# Seed data
+docker compose exec -T app mix run priv/repo/seeds.exs
 
 # Start Phoenix server
-mix phx.server
+docker compose exec -T app mix phx.server
+```
+
+Encryption key (required for encrypted fields):
+
+```bash
+export TRIFLE_DB_ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
 
 Visit [`http://localhost:4000`](http://localhost:4000) to access the application.
@@ -168,7 +180,7 @@ Both population methods generate realistic test data for these metric types:
 The metrics API uses standard `Authorization: Bearer` headers:
 
 ```bash
-curl -X POST "http://localhost:4000/api/metrics" \
+curl -X POST "http://localhost:4000/api/v1/metrics" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{

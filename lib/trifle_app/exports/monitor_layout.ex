@@ -136,9 +136,10 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end
   end
 
-  defp resolve_source(%Monitor{source_type: :project, source_id: id}) when is_binary(id) do
+  defp resolve_source(%Monitor{source_type: :project, source_id: id, organization_id: org_id})
+       when is_binary(id) do
     try do
-      {:ok, Organizations.get_project!(id) |> Source.from_project()}
+      {:ok, Organizations.get_project_for_org!(org_id, id) |> Source.from_project()}
     rescue
       Ecto.NoResultsError -> {:error, :source_not_found}
     end

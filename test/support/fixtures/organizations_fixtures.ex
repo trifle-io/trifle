@@ -11,13 +11,38 @@ defmodule Trifle.OrganizationsFixtures do
   """
   def project_fixture(attrs \\ %{}) do
     user = Map.get(attrs, :user) || Map.get(attrs, "user") || AccountsFixtures.user_fixture()
+    existing_membership = Trifle.Organizations.get_membership_for_user(user)
+
+    organization =
+      Map.get(attrs, :organization) ||
+        Map.get(attrs, "organization") ||
+        (existing_membership && existing_membership.organization) ||
+        organization_fixture(%{user: user})
+
+    membership =
+      existing_membership ||
+        Trifle.Organizations.get_membership_for_org(organization, user) ||
+        case Trifle.Organizations.create_membership(organization, user, "owner") do
+          {:ok, membership} -> membership
+          _ -> nil
+        end
+
+    project_cluster =
+      Map.get(attrs, :project_cluster) ||
+        Map.get(attrs, "project_cluster") ||
+        project_cluster_fixture()
 
     attrs =
       attrs
       |> Map.delete(:user)
       |> Map.delete("user")
+      |> Map.delete(:organization)
+      |> Map.delete("organization")
+      |> Map.delete(:project_cluster)
+      |> Map.delete("project_cluster")
       |> Enum.into(%{
         user: user,
+        project_cluster_id: project_cluster.id,
         beginning_of_week: 42,
         name: "some name",
         time_zone: "Etc/UTC",
@@ -27,9 +52,39 @@ defmodule Trifle.OrganizationsFixtures do
         default_granularity: "1h"
       })
 
-    {:ok, project} = Trifle.Organizations.create_project(attrs)
+    {:ok, project} = Trifle.Organizations.create_project_for_membership(attrs, membership, user)
 
     project
+  end
+
+  @doc """
+  Generate a project cluster.
+  """
+  def project_cluster_fixture(attrs \\ %{}) do
+    code =
+      Map.get(attrs, :code) ||
+        Map.get(attrs, "code") ||
+        "test-#{System.unique_integer([:positive])}"
+
+    attrs =
+      attrs
+      |> Map.put(:code, code)
+      |> Enum.into(%{
+        name: "Test Cluster",
+        driver: "mongo",
+        status: "active",
+        visibility: "public",
+        is_default: false,
+        region: "test",
+        host: "localhost",
+        port: 27017,
+        database_name: "trifle_test",
+        config: %{"collection_name" => "trifle_stats"}
+      })
+
+    {:ok, cluster} = Trifle.Organizations.create_project_cluster(attrs)
+
+    cluster
   end
 
   @doc """
