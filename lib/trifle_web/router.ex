@@ -26,6 +26,10 @@ defmodule TrifleWeb.Router do
       live "/users/:id/show", UsersLive, :show
       live "/projects", ProjectsLive, :index
       live "/projects/:id/show", ProjectsLive, :show
+      live "/project-clusters", ProjectClustersLive, :index
+      live "/project-clusters/new", ProjectClustersLive, :new
+      live "/project-clusters/:id/show", ProjectClustersLive, :show
+      live "/project-clusters/:id/edit", ProjectClustersLive, :edit
       live "/databases", DatabasesLive, :index
       live "/databases/:id/show", DatabasesLive, :show
       live "/dashboards", DashboardsLive, :index

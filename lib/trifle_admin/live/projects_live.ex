@@ -6,7 +6,6 @@ defmodule TrifleAdmin.ProjectsLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
   alias Trifle.Organizations.Organization
-  alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Repo
   alias TrifleAdmin.Pagination
 
@@ -18,7 +17,6 @@ defmodule TrifleAdmin.ProjectsLive do
        page_title: "Projects",
        projects: [],
        project: nil,
-       memberships_by_user_id: %{},
        query: "",
        pagination: Pagination.build(0, 1, @page_size)
      )}
@@ -50,11 +48,9 @@ defmodule TrifleAdmin.ProjectsLive do
     project =
       id
       |> Organizations.get_project!()
-      |> Repo.preload(:user)
+      |> Repo.preload([:user, :organization, :project_cluster])
 
-    memberships_by_user_id = ensure_memberships_for_user(socket, project.user_id)
-
-    assign(socket, project: project, memberships_by_user_id: memberships_by_user_id)
+    assign(socket, project: project)
   end
 
   defp apply_action(socket, :index, _params) do
@@ -149,7 +145,7 @@ defmodule TrifleAdmin.ProjectsLive do
                     {owner_email(project)}
                   </.admin_table_cell>
                   <.admin_table_cell>
-                    {organization_name(project, @memberships_by_user_id) || "N/A"}
+                    {organization_name(project) || "N/A"}
                   </.admin_table_cell>
                   <.admin_table_cell>
                     {project.time_zone || "N/A"}
@@ -204,7 +200,13 @@ defmodule TrifleAdmin.ProjectsLive do
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
               <dt class="text-sm font-medium text-gray-900 dark:text-white">Organization</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {organization_name(@project, @memberships_by_user_id) || "N/A"}
+                {organization_name(@project) || "N/A"}
+              </dd>
+            </div>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Project Cluster</dt>
+              <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+                {if @project.project_cluster, do: @project.project_cluster.name, else: "Default"}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
@@ -260,12 +262,6 @@ defmodule TrifleAdmin.ProjectsLive do
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">Expire After</dt>
-              <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {format_expire_after(@project.expire_after)}
-              </dd>
-            </div>
-            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
               <dt class="text-sm font-medium text-gray-900 dark:text-white">Project ID</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0 font-mono break-all">
                 {@project.id}
@@ -294,13 +290,10 @@ defmodule TrifleAdmin.ProjectsLive do
     base_query =
       from(p in Project,
         join: u in assoc(p, :user),
-        left_join: m in OrganizationMembership,
-        on: m.user_id == u.id,
-        left_join: o in Organization,
-        on: o.id == m.organization_id,
+        left_join: o in assoc(p, :organization),
         order_by: [asc: p.name, asc: p.id],
         distinct: p.id,
-        preload: [user: u]
+        preload: [user: u, organization: o]
       )
 
     base_query
@@ -310,36 +303,20 @@ defmodule TrifleAdmin.ProjectsLive do
 
   defp assign_projects(socket, query, page) do
     {projects, pagination} = list_projects(query, page)
-    memberships_by_user_id = memberships_by_user_id(projects)
 
     assign(socket,
       projects: projects,
       pagination: pagination,
-      query: query,
-      memberships_by_user_id: memberships_by_user_id
+      query: query
     )
-  end
-
-  defp memberships_by_user_id(projects) do
-    user_ids =
-      projects
-      |> Enum.map(& &1.user_id)
-      |> Enum.uniq()
-
-    Organizations.list_memberships_for_users(user_ids)
-    |> Map.new(&{&1.user_id, &1})
   end
 
   defp owner_email(%Project{user: %{email: email}}), do: email
   defp owner_email(%Project{user: nil}), do: "N/A"
   defp owner_email(_), do: "N/A"
 
-  defp organization_name(project, memberships_by_user_id) do
-    case Map.get(memberships_by_user_id, project.user_id) do
-      %{organization: organization} -> organization.name
-      _ -> nil
-    end
-  end
+  defp organization_name(%Project{organization: %Organization{name: name}}), do: name
+  defp organization_name(_), do: nil
 
   defp format_beginning_of_week(%Project{} = project) do
     project
@@ -350,37 +327,22 @@ defmodule TrifleAdmin.ProjectsLive do
     end
   end
 
-  defp format_expire_after(nil), do: "N/A"
-  defp format_expire_after(value) when is_integer(value), do: "#{value}"
-  defp format_expire_after(value), do: to_string(value)
-
   defp filter_projects(query, ""), do: query
 
   defp filter_projects(query, term) do
     like = "%#{term}%"
 
-    from([p, u, m, o] in query,
+    from([p, u, o] in query,
       where:
         ilike(p.name, ^like) or
           ilike(u.email, ^like) or
           ilike(u.name, ^like) or
           ilike(o.name, ^like) or
           ilike(o.slug, ^like) or
-          ilike(m.role, ^like) or
           ilike(p.time_zone, ^like) or
           ilike(p.default_timeframe, ^like) or
           ilike(p.default_granularity, ^like) or
           ilike(fragment("CAST(? AS text)", p.id), ^like)
     )
-  end
-
-  defp ensure_memberships_for_user(socket, user_id) do
-    if Map.has_key?(socket.assigns.memberships_by_user_id, user_id) do
-      socket.assigns.memberships_by_user_id
-    else
-      Organizations.list_memberships_for_users([user_id])
-      |> Map.new(&{&1.user_id, &1})
-      |> Map.merge(socket.assigns.memberships_by_user_id)
-    end
   end
 end

@@ -15,7 +15,7 @@ defmodule Trifle.Stats.Source.Project do
   def id(%Project{id: id}), do: id
 
   @impl true
-  def organization_id(%Project{}), do: nil
+  def organization_id(%Project{organization_id: organization_id}), do: organization_id
 
   @impl true
   def display_name(%Project{name: name}), do: name || "Project"

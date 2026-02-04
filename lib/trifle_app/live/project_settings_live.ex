@@ -20,28 +20,37 @@ defmodule TrifleApp.ProjectSettingsLive do
   ]
 
   @impl true
-  def mount(%{"id" => id}, _session, %{assigns: %{current_user: user}} = socket) do
-    project = Organizations.get_project!(id)
+  def mount(%{"id" => id}, _session, %{assigns: %{current_membership: membership}} = socket) do
+    cond do
+      is_nil(membership) ->
+        {:ok,
+         socket
+         |> put_flash(:error, "You do not have access to that project.")
+         |> redirect(to: ~p"/projects")}
 
-    if project.user_id == user.id do
-      changeset = Organizations.change_project(project)
+      true ->
+        project = Organizations.get_project_for_org!(membership.organization_id, id)
+        project_cluster = fetch_project_cluster(project)
+        changeset = Organizations.change_project(project)
 
-      {:ok,
-       socket
-       |> assign(:project, project)
-       |> assign(:page_title, "Projects · #{project.name} · Settings")
-       |> assign(:nav_section, :projects)
-       |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
-       |> assign(:show_edit_modal, false)
-       |> assign(:time_zones, time_zones())
-       |> assign(:week_options, @week_options)
-       |> assign_project_form(changeset)}
-    else
+        {:ok,
+         socket
+         |> assign(:project, project)
+         |> assign(:project_cluster, project_cluster)
+         |> assign(:page_title, "Projects · #{project.name} · Settings")
+         |> assign(:nav_section, :projects)
+         |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
+         |> assign(:show_edit_modal, false)
+         |> assign(:time_zones, time_zones())
+         |> assign(:week_options, @week_options)
+         |> assign_project_form(changeset)}
+    end
+  rescue
+    Ecto.NoResultsError ->
       {:ok,
        socket
        |> put_flash(:error, "You do not have access to that project.")
        |> redirect(to: ~p"/projects")}
-    end
   end
 
   @impl true
@@ -68,12 +77,14 @@ defmodule TrifleApp.ProjectSettingsLive do
   def handle_event("save", %{"project" => project_params}, socket) do
     case Organizations.update_project(socket.assigns.project, project_params) do
       {:ok, project} ->
+        project_cluster = fetch_project_cluster(project)
         changeset = Organizations.change_project(project)
 
         {:noreply,
          socket
          |> put_flash(:info, "Project updated successfully.")
          |> assign(:project, project)
+         |> assign(:project_cluster, project_cluster)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
          |> assign(:nav_section, :projects)
          |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
@@ -126,6 +137,9 @@ defmodule TrifleApp.ProjectSettingsLive do
               </.detail_row>
               <.detail_row label="Time zone">
                 {@project.time_zone}
+              </.detail_row>
+              <.detail_row label="Datacenter">
+                {format_project_cluster(@project_cluster)}
               </.detail_row>
               <.detail_row label="Beginning of week">
                 {format_week_start(@project)}
@@ -185,7 +199,7 @@ defmodule TrifleApp.ProjectSettingsLive do
                 <% end %>
               </.detail_row>
               <.detail_row label="Data retention">
-                {format_expire_after(@project.expire_after)}
+                {format_expire_after(project_cluster_expire_after(@project_cluster))}
               </.detail_row>
             </dl>
           </div>
@@ -261,14 +275,6 @@ defmodule TrifleApp.ProjectSettingsLive do
             options={@granularity_options}
             prompt="Select a granularity"
             help="Optional. Should match one of the configured granularities."
-          />
-
-          <.form_field
-            field={@form[:expire_after]}
-            type="number"
-            label="Expire after (seconds)"
-            placeholder="86400"
-            help_text="Optional. Leave blank to keep metrics forever."
           />
 
           <:actions>
@@ -364,6 +370,12 @@ defmodule TrifleApp.ProjectSettingsLive do
   defp present?(value) when value in [nil, ""], do: false
   defp present?(_), do: true
 
+  defp fetch_project_cluster(%Project{project_cluster_id: nil}), do: nil
+
+  defp fetch_project_cluster(%Project{project_cluster_id: cluster_id}) do
+    Organizations.get_project_cluster(cluster_id)
+  end
+
   defp format_week_start(%Project{} = project) do
     project
     |> Project.beginning_of_week_for()
@@ -412,6 +424,30 @@ defmodule TrifleApp.ProjectSettingsLive do
   end
 
   defp format_expire_after(_), do: "Keep metrics forever"
+
+  defp format_project_cluster(nil), do: "Not set"
+
+  defp format_project_cluster(%Trifle.Organizations.ProjectCluster{} = cluster) do
+    location =
+      [cluster.region, cluster.city, cluster.country]
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.join(" · ")
+
+    if location == "" do
+      cluster.name
+    else
+      "#{cluster.name} · #{location}"
+    end
+  end
+
+  defp project_cluster_expire_after(nil), do: nil
+
+  defp project_cluster_expire_after(%Trifle.Organizations.ProjectCluster{config: config})
+       when is_map(config) do
+    Map.get(config, "expire_after")
+  end
+
+  defp project_cluster_expire_after(_), do: nil
 
   defp pluralize(value, unit) when value == 1, do: "1 #{unit}"
   defp pluralize(value, unit), do: "#{value} #{unit}s"

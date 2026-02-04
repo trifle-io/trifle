@@ -94,12 +94,11 @@ defmodule Trifle.Stats.Source do
   @spec list_for_membership(OrganizationMembership.t() | nil) :: [t()]
   def list_for_membership(nil), do: []
 
-  def list_for_membership(%OrganizationMembership{organization_id: org_id, user_id: user_id}) do
+  def list_for_membership(%OrganizationMembership{organization_id: org_id}) do
     databases = list_for_organization(org_id)
 
     projects =
-      Organizations.list_projects()
-      |> Enum.filter(&(&1.user_id == user_id))
+      Organizations.list_projects_for_org(org_id)
       |> Enum.map(&from_project/1)
 
     (databases ++ projects)

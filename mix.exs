@@ -71,7 +71,9 @@ defmodule Trifle.MixProject do
       {:new_relic_agent, path: "vendor/new_relic_agent"},
       {:mint_web_socket, "~> 1.0"},
       {:oban, "~> 2.17"},
-      {:dotenvy, "~> 0.8", only: [:dev, :test], runtime: false}
+      {:dotenvy, "~> 0.8", only: [:dev, :test], runtime: false},
+      {:cloak, "~> 1.1"},
+      {:cloak_ecto, "~> 1.2"}
     ] ++ oban_web_dep()
   end
 

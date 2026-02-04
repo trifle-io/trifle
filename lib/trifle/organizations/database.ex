@@ -14,11 +14,11 @@ defmodule Trifle.Organizations.Database do
     field :driver, :string
     field :host, :string
     field :port, :integer
-    field :database_name, :string
+    field :database_name, Trifle.Encrypted.Binary
     field :file_path, :string
-    field :username, :string
-    field :password, :string
-    field :auth_database, :string
+    field :username, Trifle.Encrypted.Binary
+    field :password, Trifle.Encrypted.Binary
+    field :auth_database, Trifle.Encrypted.Binary
     field :config, :map, default: %{}
     field :granularities, {:array, :string}, default: []
     field :time_zone, :string, default: "UTC"
@@ -485,7 +485,7 @@ defmodule Trifle.Organizations.Database do
 
   defp update_check_status(database, status, error) do
     attrs = %{
-      last_check_at: DateTime.utc_now(),
+      last_check_at: DateTime.utc_now() |> DateTime.truncate(:second),
       last_check_status: status,
       last_error: error
     }

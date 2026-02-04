@@ -12,7 +12,11 @@ defmodule Trifle.OrganizationsTest do
     @invalid_attrs %{beginning_of_week: nil, name: nil, time_zone: nil, granularities: nil}
 
     setup do
-      %{user: user_fixture()}
+      user = user_fixture()
+      organization = organization_fixture(%{user: user})
+      project_cluster = project_cluster_fixture()
+
+      %{user: user, organization: organization, project_cluster: project_cluster}
     end
 
     test "list_projects/0 returns all projects", %{user: user} do
@@ -25,9 +29,15 @@ defmodule Trifle.OrganizationsTest do
       assert Organizations.get_project!(project.id).id == project.id
     end
 
-    test "create_project/1 with valid data creates a project", %{user: user} do
+    test "create_project/1 with valid data creates a project", %{
+      user: user,
+      organization: organization,
+      project_cluster: project_cluster
+    } do
       valid_attrs = %{
         user: user,
+        organization_id: organization.id,
+        project_cluster_id: project_cluster.id,
         beginning_of_week: 42,
         name: "some name",
         time_zone: "Etc/UTC",

@@ -14,6 +14,8 @@ config :trifle, :deployment_mode, :saas
 
 config :trifle, :projects_enabled, true
 
+config :trifle, Trifle.Vault, json_library: Jason
+
 # Configures the endpoint
 config :trifle, TrifleWeb.Endpoint,
   url: [host: "localhost"],

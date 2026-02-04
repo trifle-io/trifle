@@ -76,6 +76,31 @@ _membership =
       membership
   end
 
+# Project cluster configuration
+project_cluster_attrs = %{
+  name: "Dev Cluster",
+  code: "dev",
+  driver: "mongo",
+  status: "active",
+  visibility: "public",
+  is_default: true,
+  region: "local",
+  host: "mongo",
+  port: 27017,
+  database_name: "trifle",
+  config: %{"collection_name" => "trifle_stats", "joined_identifiers" => "partial"}
+}
+
+case Organizations.list_project_clusters()
+     |> Enum.find(&(&1.code == project_cluster_attrs.code)) do
+  nil ->
+    {:ok, _cluster} = Organizations.create_project_cluster(project_cluster_attrs)
+    IO.puts("✅ Created project cluster: #{project_cluster_attrs.name}")
+
+  _cluster ->
+    IO.puts("⚠️  Project cluster already exists: #{project_cluster_attrs.name}")
+end
+
 # Database configurations
 database_configs = [
   %{

@@ -29,6 +29,29 @@ config :trifle, Trifle.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
+# Encryption config for tests/migrations.
+default_db_encryption_key = String.duplicate("0", 32)
+
+db_encryption_key =
+  case System.get_env("TRIFLE_DB_ENCRYPTION_KEY") do
+    nil ->
+      default_db_encryption_key
+
+    "" ->
+      default_db_encryption_key
+
+    value ->
+      case Base.decode64(value) do
+        {:ok, key} when byte_size(key) == 32 -> key
+        _ -> default_db_encryption_key
+      end
+  end
+
+config :trifle, Trifle.Vault,
+  ciphers: [
+    default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: db_encryption_key}
+  ]
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

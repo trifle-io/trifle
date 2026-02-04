@@ -7,6 +7,10 @@ services:
   mongo:
     image: mongo:latest
     restart: unless-stopped
+    ports:
+      - 27017:27017
+    expose:
+      - 27017
   postgres:
     image: postgres:latest
     environment:

@@ -1720,7 +1720,9 @@ defmodule TrifleApp.DashboardLive do
     {source, database} =
       case dashboard.source_type do
         "project" ->
-          project = Organizations.get_project!(dashboard.source_id)
+          project =
+            Organizations.get_project_for_org!(dashboard.organization_id, dashboard.source_id)
+
           {Source.from_project(project), nil}
 
         _ ->
@@ -2963,13 +2965,8 @@ defmodule TrifleApp.DashboardLive do
 
   defp fetch_source(:project, id, %OrganizationMembership{} = membership) do
     try do
-      project = Organizations.get_project!(id)
-
-      if project.user_id == membership.user_id do
-        Source.from_project(project)
-      else
-        nil
-      end
+      project = Organizations.get_project_for_org!(membership.organization_id, id)
+      Source.from_project(project)
     rescue
       Ecto.NoResultsError -> nil
     end

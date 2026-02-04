@@ -81,6 +81,29 @@ config :phoenix, :plug_init_mode, :runtime
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
+# Encryption config for local dev/migrations.
+default_db_encryption_key = String.duplicate("0", 32)
+
+db_encryption_key =
+  case System.get_env("TRIFLE_DB_ENCRYPTION_KEY") do
+    nil ->
+      default_db_encryption_key
+
+    "" ->
+      default_db_encryption_key
+
+    value ->
+      case Base.decode64(value) do
+        {:ok, key} when byte_size(key) == 32 -> key
+        _ -> default_db_encryption_key
+      end
+  end
+
+config :trifle, Trifle.Vault,
+  ciphers: [
+    default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: db_encryption_key}
+  ]
+
 # OpenAI configuration is now in runtime.exs to support .env loading
 
 # config :trifle_stats,

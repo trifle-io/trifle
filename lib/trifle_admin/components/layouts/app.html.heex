@@ -40,6 +40,9 @@
                 )}
                 {live_active_link(@socket, :users, "Users", to: ~p"/admin/users")}
                 {live_active_link(@socket, :projects, "Projects", to: ~p"/admin/projects")}
+                {live_active_link(@socket, :project_clusters, "Project Clusters",
+                  to: ~p"/admin/project-clusters"
+                )}
                 {live_active_link(@socket, :databases, "Databases", to: ~p"/admin/databases")}
                 {live_active_link(@socket, :dashboards, "Dashboards", to: ~p"/admin/dashboards")}
                 {live_active_link(@socket, :monitors, "Monitors", to: ~p"/admin/monitors")}
@@ -198,6 +201,10 @@
           {live_active_link(@socket, :users, "Users", to: ~p"/admin/users", variant: :mobile)}
           {live_active_link(@socket, :projects, "Projects",
             to: ~p"/admin/projects",
+            variant: :mobile
+          )}
+          {live_active_link(@socket, :project_clusters, "Project Clusters",
+            to: ~p"/admin/project-clusters",
             variant: :mobile
           )}
           {live_active_link(@socket, :databases, "Databases",

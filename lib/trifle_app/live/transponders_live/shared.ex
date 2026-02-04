@@ -192,17 +192,16 @@ defmodule TrifleApp.TranspondersLive.Shared do
   end
 
   def resolve_project_source(%{"id" => project_id}, assigns) do
-    project = Organizations.get_project!(project_id)
-    current_user = assigns[:current_user]
+    current_membership = assigns[:current_membership]
 
     cond do
-      is_nil(current_user) ->
-        {:redirect, ~p"/projects"}
-
-      project.user_id != current_user.id ->
+      is_nil(current_membership) ->
         {:redirect, ~p"/projects"}
 
       true ->
+        project =
+          Organizations.get_project_for_org!(current_membership.organization_id, project_id)
+
         {:ok,
          %{
            source_type: :project,
