@@ -69,6 +69,7 @@ affinity: {}
 # Application configuration
 app:
   secretKeyBase: ""
+  dbEncryptionKey: ""
   host: "trifle.local"
   port: 4000
   poolSize: 10

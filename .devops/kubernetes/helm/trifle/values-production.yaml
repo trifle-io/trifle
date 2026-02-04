@@ -48,6 +48,8 @@ ingress:
 app:
   # IMPORTANT: Set this to a secure 64-character secret
   secretKeyBase: "CHANGE_ME_IN_PRODUCTION"
+  # IMPORTANT: 32-byte base64 key for encrypting database credentials
+  dbEncryptionKey: "CHANGE_ME_IN_PRODUCTION"
   host: "trifle.yourdomain.com"
   port: 4000
   poolSize: 20
