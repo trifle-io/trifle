@@ -159,7 +159,7 @@ defmodule Trifle.Chat.Tools do
               },
               "chart_type" => %{
                 "type" => "string",
-                "enum" => ["line", "area", "bar"],
+                "enum" => ["line", "area", "dots", "bar"],
                 "description" => "Optional chart presentation."
               },
               "stacked" => %{

@@ -128,7 +128,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     setup!(connection, collection_name, joined_identifier, expire_after, system_tracking)
   end
 
-  def inc(keys, values, driver, count \\ 1) do
+  def inc(keys, values, driver, tracking_key \\ nil) do
     data = Trifle.Stats.Packer.pack(%{data: values})
 
     if driver.bulk_write do
@@ -161,7 +161,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
                 |> convert_keys_to_strings()
                 |> with_reference_scope(driver)
 
-              system_data = system_data_for(key, count)
+              system_data = system_data_for(key, tracking_key)
 
               Mongo.UnorderedBulk.update_many(
                 bulk,
@@ -203,7 +203,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
             |> convert_keys_to_strings()
             |> with_reference_scope(driver)
 
-          system_data = system_data_for(key, count)
+          system_data = system_data_for(key, tracking_key)
           system_update = build_update("$inc", system_data, expire_at)
 
           Mongo.update_many(
@@ -218,7 +218,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     end
   end
 
-  def set(keys, values, driver, count \\ 1) do
+  def set(keys, values, driver, tracking_key \\ nil) do
     packed_data = Trifle.Stats.Packer.pack(values)
 
     if driver.bulk_write do
@@ -253,7 +253,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
                 |> convert_keys_to_strings()
                 |> with_reference_scope(driver)
 
-              system_data = system_data_for(key, count)
+              system_data = system_data_for(key, tracking_key)
 
               Mongo.UnorderedBulk.update_many(
                 bulk,
@@ -300,7 +300,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
             |> convert_keys_to_strings()
             |> with_reference_scope(driver)
 
-          system_data = system_data_for(key, count)
+          system_data = system_data_for(key, tracking_key)
           system_update = build_update("$inc", system_data, expire_at)
 
           Mongo.update_many(
@@ -445,8 +445,9 @@ defmodule Trifle.Stats.Driver.MongoProject do
     identifier_for(system_key, driver)
   end
 
-  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, count) do
-    Trifle.Stats.Packer.pack(%{data: %{count: count, keys: %{key.key => count}}})
+  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, tracking_key \\ nil, count \\ 1) do
+    tracking_key = tracking_key || key.key
+    Trifle.Stats.Packer.pack(%{data: %{count: count, keys: %{tracking_key => count}}})
   end
 
   defp convert_keys_to_strings(map) when is_map(map) do
