@@ -67,6 +67,13 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+honeybadger_api_key = System.get_env("HONEYBADGER_API_KEY")
+honeybadger_enabled = honeybadger_api_key not in [nil, ""]
+
+config :honeybadger,
+  api_key: honeybadger_api_key,
+  enabled: honeybadger_enabled
+
 default_db_encryption_key = String.duplicate("0", 32)
 
 db_encryption_key =

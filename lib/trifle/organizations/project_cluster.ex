@@ -55,6 +55,9 @@ defmodule Trifle.Organizations.ProjectCluster do
   def requires_password?("mongo"), do: false
   def requires_password?(_), do: true
 
+  def requires_database_name?("mongo"), do: true
+  def requires_database_name?(_), do: false
+
   def default_config_options("mongo") do
     %{
       "pool_size" => 5,
@@ -116,6 +119,7 @@ defmodule Trifle.Organizations.ProjectCluster do
       |> maybe_validate_required_field(:port, requires_port?(driver))
       |> maybe_validate_required_field(:username, requires_username?(driver))
       |> maybe_validate_required_field(:password, requires_password?(driver))
+      |> maybe_validate_required_field(:database_name, requires_database_name?(driver))
     end
   end
 
@@ -290,27 +294,32 @@ defmodule Trifle.Organizations.ProjectCluster do
     if is_nil(host) or host == "" do
       {:error, "MongoDB host is not configured"}
     else
-      url = "mongodb://"
+      db_name = cluster.database_name
 
-      url =
-        if cluster.username && cluster.password do
-          "#{url}#{cluster.username}:#{cluster.password}@"
-        else
-          url
-        end
+      if is_nil(db_name) or db_name == "" do
+        {:error, "MongoDB database name is not configured"}
+      else
+        url = "mongodb://"
 
-      port = cluster.port || 27017
-      db_name = cluster.database_name || "admin"
-      url = "#{url}#{host}:#{port}/#{db_name}"
+        url =
+          if cluster.username && cluster.password do
+            "#{url}#{cluster.username}:#{cluster.password}@"
+          else
+            url
+          end
 
-      url =
-        if cluster.auth_database && cluster.auth_database != "" do
-          "#{url}?authSource=#{cluster.auth_database}"
-        else
-          url
-        end
+        port = cluster.port || 27017
+        url = "#{url}#{host}:#{port}/#{db_name}"
 
-      {:ok, url}
+        url =
+          if cluster.auth_database && cluster.auth_database != "" do
+            "#{url}?authSource=#{cluster.auth_database}"
+          else
+            url
+          end
+
+        {:ok, url}
+      end
     end
   end
 
