@@ -3292,6 +3292,7 @@ defmodule TrifleApp.DashboardLive do
     case value |> to_string() |> String.downcase() do
       "area" -> "area"
       "bar" -> "bar"
+      "dots" -> "dots"
       _ -> "line"
     end
   end

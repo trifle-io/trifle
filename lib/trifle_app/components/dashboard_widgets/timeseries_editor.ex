@@ -128,6 +128,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
     [
       {"Line", "line", :first},
       {"Area", "area", :middle},
+      {"Dots", "dots", :middle},
       {"Bar", "bar", :last}
     ]
   end

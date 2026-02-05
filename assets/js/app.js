@@ -609,6 +609,10 @@ Hooks.ChatChart = {
     const dataset = chartData.dataset || {};
     const seriesConfig = Array.isArray(dataset.series) ? dataset.series : [];
     const chartType = (dataset.chart_type || 'line').toLowerCase();
+    const isBar = chartType === 'bar';
+    const isArea = chartType === 'area';
+    const isDots = chartType === 'dots';
+    const seriesType = isBar ? 'bar' : isDots ? 'scatter' : 'line';
     const stacked = !!dataset.stacked;
     const showLegend = dataset.legend === undefined ? seriesConfig.length > 1 : !!dataset.legend;
     const textColor = theme === 'dark' ? '#9CA3AF' : '#6B7280';
@@ -643,16 +647,20 @@ Hooks.ChatChart = {
 
       const base = {
         name: entry.name || `Series ${idx + 1}`,
-        type: chartType === 'bar' ? 'bar' : 'line',
+        type: seriesType,
         data: sanitized,
-        smooth: chartType !== 'bar',
-        showSymbol: false,
+        smooth: !isBar && !isDots,
+        showSymbol: isDots,
         emphasis: { focus: 'series' }
       };
 
-      if (chartType === 'area') base.areaStyle = { opacity: 0.12 };
-      if (stacked) base.stack = 'total';
-      if (chartType === 'bar') base.barMaxWidth = 26;
+      if (isDots) {
+        base.symbol = 'circle';
+        base.symbolSize = 5;
+      }
+      if (isArea) base.areaStyle = { opacity: 0.12 };
+      if (stacked && !isDots) base.stack = 'total';
+      if (isBar) base.barMaxWidth = 26;
       if (palette.length) base.itemStyle = { color: palette[idx % palette.length] };
 
       return base;
@@ -665,7 +673,7 @@ Hooks.ChatChart = {
       animation: false,
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: chartType === 'bar' ? 'shadow' : 'cross' }
+        axisPointer: { type: isBar ? 'shadow' : 'cross' }
       },
       legend: showLegend
         ? { bottom: 0, textStyle: { color: legendText } }
@@ -673,7 +681,7 @@ Hooks.ChatChart = {
       grid: { left: 48, right: 20, top: 20, bottom: gridBottom },
       xAxis: {
         type: 'time',
-        boundaryGap: chartType === 'bar',
+        boundaryGap: isBar,
         axisLabel: { color: textColor },
         axisLine: { lineStyle: { color: axisLineColor } },
         splitLine: { lineStyle: { color: gridLineColor } }
@@ -2130,6 +2138,10 @@ Hooks.DashboardGrid = {
           chart.group = this._tsSyncGroup;
         }
         const type = (it.chart_type || 'line');
+        const isBar = type === 'bar';
+        const isArea = type === 'area';
+        const isDots = type === 'dots';
+        const seriesType = isBar ? 'bar' : isDots ? 'scatter' : 'line';
         const stacked = !!it.stacked;
         const normalized = !!it.normalized;
         const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
@@ -2142,9 +2154,18 @@ Hooks.DashboardGrid = {
         const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
         const overlayLabelText = isDarkMode ? '#F8FAFC' : '#0F172A';
         const series = (it.series || []).map((s, idx) => {
-          const base = { name: s.name || `Series ${idx+1}`, type: (type === 'area') ? 'line' : type, data: s.data || [], showSymbol: false };
-          if (stacked) base.stack = 'total';
-          if (type === 'area') base.areaStyle = { opacity: 0.1 };
+          const base = {
+            name: s.name || `Series ${idx + 1}`,
+            type: seriesType,
+            data: s.data || [],
+            showSymbol: isDots
+          };
+          if (isDots) {
+            base.symbol = 'circle';
+            base.symbolSize = 5;
+          }
+          if (stacked && !isDots) base.stack = 'total';
+          if (isArea) base.areaStyle = { opacity: 0.1 };
           const customColor = typeof s.color === 'string' && s.color.trim() !== '' ? s.color.trim() : null;
           const paletteColor = colors.length ? colors[idx % colors.length] : null;
           const appliedColor = customColor || paletteColor;
@@ -2152,7 +2173,7 @@ Hooks.DashboardGrid = {
             base.color = appliedColor;
             base.itemStyle = Object.assign({}, base.itemStyle, { color: appliedColor });
             base.lineStyle = Object.assign({}, base.lineStyle, { color: appliedColor });
-            if (type === 'area') {
+            if (isArea) {
               base.areaStyle = Object.assign({ opacity: 0.1 }, { color: appliedColor });
             }
           }
@@ -4656,6 +4677,10 @@ Hooks.ExpandedWidgetView = {
     const theme = this.getTheme();
     const isDarkMode = theme === 'dark';
     const chartType = String(data.chart_type || 'line').toLowerCase();
+    const isBar = chartType === 'bar';
+    const isArea = chartType === 'area';
+    const isDots = chartType === 'dots';
+    const seriesType = isBar ? 'bar' : isDots ? 'scatter' : 'line';
     const stacked = !!data.stacked;
     const normalized = !!data.normalized;
     const showLegend = !!data.legend;
@@ -4669,12 +4694,16 @@ Hooks.ExpandedWidgetView = {
     const series = (data.series || []).map((s, idx) => {
       const base = {
         name: s.name || `Series ${idx + 1}`,
-        type: chartType === 'area' ? 'line' : chartType,
+        type: seriesType,
         data: Array.isArray(s.data) ? s.data : [],
-        showSymbol: false
+        showSymbol: isDots
       };
-      if (stacked) base.stack = 'total';
-      if (chartType === 'area') base.areaStyle = { opacity: 0.1 };
+      if (isDots) {
+        base.symbol = 'circle';
+        base.symbolSize = 5;
+      }
+      if (stacked && !isDots) base.stack = 'total';
+      if (isArea) base.areaStyle = { opacity: 0.1 };
       if (palette.length) {
         const color = palette[idx % palette.length];
         base.itemStyle = { color };
