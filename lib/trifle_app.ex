@@ -5,7 +5,7 @@ defmodule TrifleApp do
   authenticated application root.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images favicon.ico favicon_dark favicon_light robots.txt)
 
   def router do
     quote do
