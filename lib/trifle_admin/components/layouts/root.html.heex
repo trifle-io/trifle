@@ -7,7 +7,24 @@
     <.live_title suffix=" | Trifle">
       {page_title}
     </.live_title>
-    <link rel="icon" href={~p"/favicon.ico"} type="image/x-icon" />
+    <link rel="apple-touch-icon" sizes="180x180" href={~p"/favicon_dark/apple-touch-icon.png"} id="apple-touch-icon" />
+    <link rel="icon" type="image/png" sizes="32x32" href={~p"/favicon_dark/favicon-32x32.png"} id="favicon-32" />
+    <link rel="icon" type="image/png" sizes="16x16" href={~p"/favicon_dark/favicon-16x16.png"} id="favicon-16" />
+    <link rel="manifest" href={~p"/favicon_dark/site.webmanifest"} id="webmanifest" />
+    <script>
+      (function() {
+        function setFavicons(theme) {
+          var d = theme === 'dark' ? 'favicon_light' : 'favicon_dark';
+          document.getElementById('apple-touch-icon').href = '/' + d + '/apple-touch-icon.png';
+          document.getElementById('favicon-32').href = '/' + d + '/favicon-32x32.png';
+          document.getElementById('favicon-16').href = '/' + d + '/favicon-16x16.png';
+          document.getElementById('webmanifest').href = '/' + d + '/site.webmanifest';
+        }
+        var mq = window.matchMedia('(prefers-color-scheme: dark)');
+        setFavicons(mq.matches ? 'dark' : 'light');
+        mq.addEventListener('change', function(e) { setFavicons(e.matches ? 'dark' : 'light'); });
+      })();
+    </script>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>

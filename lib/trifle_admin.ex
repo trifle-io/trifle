@@ -4,7 +4,7 @@ defmodule TrifleAdmin do
   This module handles all admin functionality under /admin routes.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images favicon.ico favicon_dark favicon_light robots.txt)
 
   def router do
     quote do
