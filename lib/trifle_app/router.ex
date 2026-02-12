@@ -106,6 +106,14 @@ defmodule TrifleApp.Router do
       live "/chat", ChatLive, :show
     end
 
+    get "/organization/billing/success", BillingController, :success
+    post "/organization/billing/portal", BillingController, :portal
+    post "/organization/billing/checkout/app", BillingController, :checkout_app
+
+    post "/organization/billing/checkout/project/:project_id",
+         BillingController,
+         :checkout_project
+
     get "/integrations/slack/oauth/callback", Integrations.SlackController, :callback
     get "/integrations/discord/oauth/callback", Integrations.DiscordController, :callback
   end
@@ -123,9 +131,16 @@ defmodule TrifleApp.Router do
       live "/projects/:id/transponders/:transponder_id", ProjectTranspondersLive, :show
       live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
       live "/projects/:id/settings", ProjectSettingsLive
+      live "/projects/:id/billing", ProjectBillingLive, :show
       live "/projects/:id/tokens", ProjectTokensLive, :index
       live "/projects/:id/tokens/new", ProjectTokensLive, :new
     end
+  end
+
+  scope "/webhooks", TrifleApp do
+    pipe_through [:api]
+
+    post "/stripe", StripeWebhookController, :create
   end
 
   scope "/", TrifleApp do

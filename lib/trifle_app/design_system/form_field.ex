@@ -102,7 +102,7 @@ defmodule TrifleApp.DesignSystem.FormField do
                 id={@input_id}
                 name={@field.name}
                 value="true"
-                checked={@field.value}
+                checked={checkbox_checked?(@field.value)}
                 class="h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500"
                 disabled={@disabled}
               />
@@ -189,4 +189,8 @@ defmodule TrifleApp.DesignSystem.FormField do
   end
 
   defp translate_error(msg), do: msg
+
+  defp checkbox_checked?(value) do
+    Phoenix.HTML.Form.normalize_value("checkbox", value)
+  end
 end

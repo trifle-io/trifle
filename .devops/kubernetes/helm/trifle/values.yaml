@@ -112,6 +112,15 @@ app:
     apiKey: ""
     model: "gpt-5"
 
+  # Stripe secrets must never be committed in values files.
+  # Provide them via `helm --set`/`--values` overrides for:
+  # `app.stripe.secretKey`, `app.stripe.webhookSigningSecret`, and `app.stripe.portalConfigurationId`,
+  # or reference an existing Kubernetes Secret in templates via envFrom/secretKeyRef.
+  stripe:
+    secretKey: ""
+    webhookSigningSecret: ""
+    portalConfigurationId: ""
+
   slack:
     clientId: ""
     clientSecret: ""
