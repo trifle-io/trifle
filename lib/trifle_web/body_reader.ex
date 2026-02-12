@@ -24,9 +24,6 @@ defmodule TrifleWeb.BodyReader do
     end
   end
 
-  defp stripe_webhook_request?(%Plug.Conn{method: "POST", request_path: "/stripe/webhook"}),
-    do: true
-
   defp stripe_webhook_request?(%Plug.Conn{method: "POST", request_path: "/webhooks/stripe"}),
     do: true
 

@@ -127,19 +127,31 @@ defmodule Trifle.Billing do
          founder?,
          opts
        ) do
+    params =
+      app_subscription_update_params(
+        organization,
+        nil,
+        price_id,
+        tier,
+        interval,
+        founder?,
+        opts
+      )
+
     with {:ok, subscription_item_id} <- resolve_subscription_item_id(subscription),
+         params = put_in(params, ["items", 0, "id"], subscription_item_id),
          {:ok, payload} <-
-           stripe_client().update_subscription(
-             subscription.stripe_subscription_id,
-             app_subscription_update_params(
-               organization,
-               subscription_item_id,
-               price_id,
-               tier,
-               interval,
-               founder?,
-               opts
-             )
+           stripe_client_request(
+             stripe_client(),
+             :update_subscription,
+             [subscription.stripe_subscription_id, params],
+             idempotency_key:
+               stripe_idempotency_key([
+                 "app_subscription_update",
+                 organization.id,
+                 subscription.stripe_subscription_id,
+                 price_id
+               ])
            ),
          {:ok, organization_id} <-
            sync_subscription_from_stripe(payload, "customer.subscription.updated"),
@@ -401,6 +413,27 @@ defmodule Trifle.Billing do
       :stripe_client,
       Trifle.Billing.StripeClient.HTTP
     )
+  end
+
+  defp stripe_client_request(module, function, args, opts) do
+    args_with_opts = args ++ [opts]
+
+    if function_exported?(module, function, length(args_with_opts)) do
+      apply(module, function, args_with_opts)
+    else
+      apply(module, function, args)
+    end
+  end
+
+  defp stripe_idempotency_key(parts) when is_list(parts) do
+    digest =
+      parts
+      |> Enum.map(&to_string/1)
+      |> Enum.join(":")
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
+
+    "trifle:#{digest}"
   end
 
   defp stale_scope_subscription_event?(
@@ -2547,7 +2580,13 @@ defmodule Trifle.Billing do
               "metadata" => %{"organization_id" => organization.id}
             }
 
-            with {:ok, payload} <- stripe_client().create_customer(params),
+            with {:ok, payload} <-
+                   stripe_client_request(
+                     stripe_client(),
+                     :create_customer,
+                     [params],
+                     idempotency_key: stripe_idempotency_key(["customer", organization.id])
+                   ),
                  %{"id" => stripe_customer_id} <- payload,
                  {:ok, customer} <-
                    Trifle.Repo.insert(
@@ -2715,7 +2754,20 @@ defmodule Trifle.Billing do
              truthy?(retention_enabled),
              opts
            ),
-         {:ok, payload} <- stripe_client().create_checkout_session(params) do
+         {:ok, payload} <-
+           stripe_client_request(
+             stripe_client(),
+             :create_checkout_session,
+             [params],
+             idempotency_key:
+               stripe_idempotency_key([
+                 "project_checkout",
+                 organization.id,
+                 project.id,
+                 tier,
+                 truthy?(retention_enabled)
+               ])
+           ) do
       case payload do
         %{"id" => id, "url" => url}
         when :erlang.andalso(:erlang.is_binary(url), :erlang."/="(url, "")) ->
@@ -2738,7 +2790,12 @@ defmodule Trifle.Billing do
     with true <- enabled?(),
          {:ok, customer} <- ensure_customer_for_org(organization),
          {:ok, payload} <-
-           stripe_client().create_portal_session(portal_session_params(customer, opts)),
+           stripe_client_request(
+             stripe_client(),
+             :create_portal_session,
+             [portal_session_params(customer, opts)],
+             idempotency_key: stripe_idempotency_key(["portal_session", organization.id])
+           ),
          %{"url" => url} when :erlang.andalso(:erlang.is_binary(url), :erlang."/="(url, "")) <-
            payload do
       {:ok, %{url: url}}
@@ -2763,16 +2820,28 @@ defmodule Trifle.Billing do
          opts
        ) do
     with {:ok, payload} <-
-           stripe_client().create_checkout_session(
-             app_checkout_params(
-               organization,
-               customer,
-               price_id,
-               tier,
-               interval,
-               founder?,
-               opts
-             )
+           stripe_client_request(
+             stripe_client(),
+             :create_checkout_session,
+             [
+               app_checkout_params(
+                 organization,
+                 customer,
+                 price_id,
+                 tier,
+                 interval,
+                 founder?,
+                 opts
+               )
+             ],
+             idempotency_key:
+               stripe_idempotency_key([
+                 "app_checkout",
+                 organization.id,
+                 tier,
+                 interval,
+                 founder?
+               ])
            ) do
       case payload do
         %{"id" => id, "url" => url}

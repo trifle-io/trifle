@@ -54,7 +54,9 @@ defmodule Trifle.Billing.StripeSignature do
       header
       |> String.split(",", trim: true)
       |> Enum.reduce({nil, []}, fn part, {ts, sigs} ->
-        case String.split(part, "=", parts: 2) do
+        trimmed_part = String.trim(part)
+
+        case String.split(trimmed_part, "=", parts: 2) do
           ["t", value] -> {value, sigs}
           ["v1", value] -> {ts, [value | sigs]}
           _ -> {ts, sigs}

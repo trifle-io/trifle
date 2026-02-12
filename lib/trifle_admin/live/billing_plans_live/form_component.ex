@@ -162,7 +162,7 @@ defmodule TrifleAdmin.BillingPlansLive.FormComponent do
         socket.assigns.plan
         |> Billing.change_billing_plan(attrs)
         |> maybe_add_metadata_error(metadata_error)
-        |> Map.put(:action, :insert)
+        |> Map.put(:action, persist_action(socket))
 
       {:noreply,
        socket
@@ -266,6 +266,9 @@ defmodule TrifleAdmin.BillingPlansLive.FormComponent do
 
   defp maybe_add_metadata_error(changeset, message),
     do: Ecto.Changeset.add_error(changeset, :metadata, message)
+
+  defp persist_action(%{assigns: %{action: :edit}}), do: :update
+  defp persist_action(_socket), do: :insert
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset),
     do: assign(socket, :form, to_form(changeset))

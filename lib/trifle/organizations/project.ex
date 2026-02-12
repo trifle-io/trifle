@@ -10,6 +10,7 @@ defmodule Trifle.Organizations.Project do
   @foreign_key_type :binary_id
 
   @default_granularities ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
+  @billing_states ["pending_checkout", "active", "locked"]
 
   schema "projects" do
     field :beginning_of_week, :integer
@@ -38,6 +39,8 @@ defmodule Trifle.Organizations.Project do
     "expire_after" => :expire_after,
     "default_timeframe" => :default_timeframe,
     "default_granularity" => :default_granularity,
+    "billing_required" => :billing_required,
+    "billing_state" => :billing_state,
     "organization_id" => :organization_id,
     "project_cluster_id" => :project_cluster_id
   }
@@ -63,6 +66,8 @@ defmodule Trifle.Organizations.Project do
       :expire_after,
       :default_timeframe,
       :default_granularity,
+      :billing_required,
+      :billing_state,
       :organization_id,
       :project_cluster_id
     ])
@@ -78,6 +83,17 @@ defmodule Trifle.Organizations.Project do
       :organization_id
     ])
     |> validate_number(:expire_after, greater_than: 0)
+    |> validate_inclusion(:billing_state, @billing_states)
+    |> check_constraint(:billing_state, name: :projects_billing_state_check)
+  end
+
+  @doc false
+  def billing_changeset(project, attrs) do
+    project
+    |> cast(attrs, [:billing_required, :billing_state])
+    |> validate_required([:billing_required, :billing_state])
+    |> validate_inclusion(:billing_state, @billing_states)
+    |> check_constraint(:billing_state, name: :projects_billing_state_check)
   end
 
   def stats_config(project) do

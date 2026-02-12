@@ -453,7 +453,7 @@ defmodule TrifleAdmin.BillingPlansLive do
   defp format_amount(nil, _currency), do: "N/A"
 
   defp format_amount(amount_cents, currency),
-    do: "#{String.upcase(currency || "usd")} #{amount_cents / 100}"
+    do: Billing.format_amount(amount_cents, currency || "usd")
 
   defp flag_badge_class(true),
     do:

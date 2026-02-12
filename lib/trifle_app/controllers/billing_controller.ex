@@ -174,9 +174,7 @@ defmodule TrifleApp.BillingController do
 
   defp billing_return_url(conn), do: app_base_url(conn) <> "/organization/billing"
 
-  defp app_base_url(conn) do
-    "#{conn.scheme}://#{conn.host}:#{conn.port}"
-  end
+  defp app_base_url(_conn), do: TrifleWeb.Endpoint.url()
 
   defp format_reason(reason) when is_atom(reason),
     do: reason |> Atom.to_string() |> String.replace("_", " ")

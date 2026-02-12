@@ -7,6 +7,7 @@ defmodule TrifleApp.ProjectBillingLive do
 
   def mount(%{"id" => id}, _session, socket) do
     membership = socket.assigns[:current_membership]
+    socket = socket |> assign(:state, nil) |> assign(:show_plans_modal, false)
 
     cond do
       is_nil(socket.assigns[:current_user]) ->
@@ -49,29 +50,31 @@ defmodule TrifleApp.ProjectBillingLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="sm:p-4">
-        <.project_nav project={@state.project} current={:billing} />
-      </div>
+      <%= if @state do %>
+        <div class="sm:p-4">
+          <.project_nav project={@state.project} current={:billing} />
+        </div>
 
-      <div class="px-4 sm:px-6 lg:px-8 space-y-6">
-        <%= if @state.subscription && @state.subscription.status in ["active", "trialing", "past_due"] do %>
-          <.project_subscription_details
-            project={@state.project}
-            subscription={@state.subscription}
-            plan={@state.plan}
-            usage={@state.usage}
-          />
-        <% else %>
-          <.no_project_subscription project={@state.project} />
-        <% end %>
-      </div>
+        <div class="px-4 sm:px-6 lg:px-8 space-y-6">
+          <%= if @state.subscription && @state.subscription.status in ["active", "trialing", "past_due"] do %>
+            <.project_subscription_details
+              project={@state.project}
+              subscription={@state.subscription}
+              plan={@state.plan}
+              usage={@state.usage}
+            />
+          <% else %>
+            <.no_project_subscription project={@state.project} />
+          <% end %>
+        </div>
 
-      <.project_plans_modal
-        show={@show_plans_modal}
-        project={@state.project}
-        tiers={@state.available_project_tiers}
-        current_tier={current_project_tier(@state)}
-      />
+        <.project_plans_modal
+          show={@show_plans_modal}
+          project={@state.project}
+          tiers={@state.available_project_tiers}
+          current_tier={current_project_tier(@state)}
+        />
+      <% end %>
     </div>
     """
   end

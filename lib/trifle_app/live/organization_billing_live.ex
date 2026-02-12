@@ -44,6 +44,10 @@ defmodule TrifleApp.OrganizationBillingLive do
     {:noreply, assign(socket, :plans_interval, interval)}
   end
 
+  def handle_event("set_plans_interval", %{"interval" => _other}, socket) do
+    {:noreply, socket}
+  end
+
   def render(assigns) do
     ~H"""
     <div class="px-4 sm:px-6 lg:px-8 space-y-6">

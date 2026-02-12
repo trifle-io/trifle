@@ -50,6 +50,7 @@ defmodule Trifle.Billing.Subscription do
     ])
     |> validate_required([:organization_id, :scope_type, :stripe_subscription_id])
     |> validate_inclusion(:scope_type, @scope_types)
+    |> validate_scope_id_for_project()
     |> validate_interval()
     |> unique_constraint(:stripe_subscription_id,
       name: :billing_subscriptions_stripe_subscription_id_index
@@ -86,6 +87,13 @@ defmodule Trifle.Billing.Subscription do
 
       true ->
         add_error(changeset, :interval, "is invalid")
+    end
+  end
+
+  defp validate_scope_id_for_project(changeset) do
+    case get_field(changeset, :scope_type) do
+      "project" -> validate_required(changeset, [:scope_id])
+      _ -> changeset
     end
   end
 end

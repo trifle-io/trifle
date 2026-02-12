@@ -137,12 +137,6 @@ defmodule TrifleApp.Router do
     end
   end
 
-  scope "/stripe", TrifleApp do
-    pipe_through [:api]
-
-    post "/webhook", StripeWebhookController, :create
-  end
-
   scope "/webhooks", TrifleApp do
     pipe_through [:api]
 

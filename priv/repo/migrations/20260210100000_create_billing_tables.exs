@@ -93,10 +93,10 @@ defmodule Trifle.Repo.Migrations.CreateBillingTables do
       add :stripe_price_id, :string
       add :status, :string
       add :interval, :string
-      add :current_period_start, :naive_datetime
-      add :current_period_end, :naive_datetime
+      add :current_period_start, :utc_datetime
+      add :current_period_end, :utc_datetime
       add :cancel_at_period_end, :boolean, null: false, default: false
-      add :grace_until, :naive_datetime
+      add :grace_until, :utc_datetime
       add :founder_price, :boolean, null: false, default: false
       add :metadata, :map, null: false, default: %{}
 
@@ -133,7 +133,7 @@ defmodule Trifle.Repo.Migrations.CreateBillingTables do
       add :billing_locked, :boolean, null: false, default: false
       add :lock_reason, :string
       add :founder_offer_locked, :boolean, null: false, default: false
-      add :effective_at, :naive_datetime
+      add :effective_at, :utc_datetime
       add :metadata, :map, null: false, default: %{}
 
       timestamps()
@@ -146,7 +146,7 @@ defmodule Trifle.Repo.Migrations.CreateBillingTables do
       add :stripe_event_id, :string, null: false
       add :event_type, :string, null: false
       add :status, :string, null: false, default: "received"
-      add :processed_at, :naive_datetime
+      add :processed_at, :utc_datetime
       add :error, :text
       add :payload, :map, null: false, default: %{}
 
@@ -162,7 +162,7 @@ defmodule Trifle.Repo.Migrations.CreateBillingTables do
         null: false
 
       add :slot_number, :integer, null: false
-      add :claimed_at, :naive_datetime, null: false
+      add :claimed_at, :utc_datetime, null: false
 
       timestamps()
     end

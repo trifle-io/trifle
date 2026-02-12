@@ -50,11 +50,11 @@ defmodule Trifle.Billing.Plan do
       :metadata
     ])
     |> validate_required([:name, :scope_type, :tier_key, :interval, :stripe_price_id])
-    |> update_change(:name, &String.trim/1)
+    |> update_change(:name, &normalize_string/1)
     |> update_change(:scope_type, &normalize_string/1)
     |> update_change(:tier_key, &normalize_string/1)
     |> update_change(:interval, &normalize_string/1)
-    |> update_change(:stripe_price_id, &String.trim/1)
+    |> update_change(:stripe_price_id, &normalize_string/1)
     |> update_change(:currency, &normalize_string/1)
     |> validate_inclusion(:scope_type, @scope_types)
     |> validate_inclusion(:interval, @intervals)

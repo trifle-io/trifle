@@ -33,6 +33,9 @@ See [Kubernetes README](.devops/kubernetes/README.md) for detailed deployment in
 You can run databases locally using Docker:
 
 ```bash
+# Create local env (required by docker compose env_file)
+echo "TRIFLE_DB_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env.local
+
 # Start services
 docker compose up -d
 ```
@@ -68,11 +71,8 @@ docker compose exec -T app mix run priv/repo/seeds.exs
 docker compose exec -T app mix phx.server
 ```
 
-Encryption key (required for encrypted fields):
-
-```bash
-export TRIFLE_DB_ENCRYPTION_KEY=$(openssl rand -base64 32)
-```
+Keep `.env.local` uncommitted. If this key is missing, encrypted-field operations and
+billing-related startup paths may fail.
 
 Visit [`http://localhost:4000`](http://localhost:4000) to access the application.
 

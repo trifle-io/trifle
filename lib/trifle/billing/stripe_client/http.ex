@@ -1,7 +1,10 @@
 defmodule Trifle.Billing.StripeClient.HTTP do
-  def update_subscription(subscription_id, params)
-      when :erlang.andalso(:erlang.is_binary(subscription_id), :erlang.is_map(params)) do
-    request(:post, <<"/v1/subscriptions/", subscription_id::binary>>, params)
+  def update_subscription(subscription_id, params),
+    do: update_subscription(subscription_id, params, [])
+
+  def update_subscription(subscription_id, params, opts)
+      when is_binary(subscription_id) and is_map(params) and is_list(opts) do
+    request(:post, <<"/v1/subscriptions/", subscription_id::binary>>, params, opts)
   end
 
   defp stripe_error(%{"error" => %{"message" => message, "type" => type}} = body, status)
@@ -13,10 +16,12 @@ defmodule Trifle.Billing.StripeClient.HTTP do
     {:stripe_error, status, body}
   end
 
-  defp request(method, path, params) do
+  defp request(method, path, params, opts \\ []) do
+    idempotency_key = Keyword.get(opts, :idempotency_key)
+
     with {:ok, secret_key} <- fetch_secret_key(),
          {:ok, body} <- encode_form(params),
-         {:ok, response} <- do_request(method, path, body, secret_key),
+         {:ok, response} <- do_request(method, path, body, secret_key, idempotency_key),
          {:ok, decoded} <- decode_body(response.body) do
       case response.status do
         code
@@ -96,13 +101,22 @@ defmodule Trifle.Billing.StripeClient.HTTP do
     end
   end
 
-  defp do_request(method, path, body, secret_key) do
+  defp do_request(method, path, body, secret_key, idempotency_key) do
     url = <<"https://api.stripe.com"::binary, path::binary>>
 
     headers = [
       {"authorization", <<"Bearer ", secret_key::binary>>},
       {"content-type", "application/x-www-form-urlencoded"}
     ]
+
+    headers =
+      case {method, idempotency_key} do
+        {m, key} when m in [:post, "POST", "post"] and is_binary(key) and key != "" ->
+          [{"idempotency-key", key} | headers]
+
+        _ ->
+          headers
+      end
 
     request = Finch.build(method, url, headers, body)
 
@@ -123,15 +137,21 @@ defmodule Trifle.Billing.StripeClient.HTTP do
     end
   end
 
-  def create_portal_session(params) when :erlang.is_map(params) do
-    request(:post, "/v1/billing_portal/sessions", params)
+  def create_portal_session(params), do: create_portal_session(params, [])
+
+  def create_portal_session(params, opts) when is_map(params) and is_list(opts) do
+    request(:post, "/v1/billing_portal/sessions", params, opts)
   end
 
-  def create_customer(params) when :erlang.is_map(params) do
-    request(:post, "/v1/customers", params)
+  def create_customer(params), do: create_customer(params, [])
+
+  def create_customer(params, opts) when is_map(params) and is_list(opts) do
+    request(:post, "/v1/customers", params, opts)
   end
 
-  def create_checkout_session(params) when :erlang.is_map(params) do
-    request(:post, "/v1/checkout/sessions", params)
+  def create_checkout_session(params), do: create_checkout_session(params, [])
+
+  def create_checkout_session(params, opts) when is_map(params) and is_list(opts) do
+    request(:post, "/v1/checkout/sessions", params, opts)
   end
 end

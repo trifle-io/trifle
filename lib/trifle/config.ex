@@ -3,7 +3,9 @@ defmodule Trifle.Config do
 
   @spec deployment_mode() :: :saas | :self_hosted
   def deployment_mode do
-    Application.get_env(:trifle, :deployment_mode, :saas)
+    :trifle
+    |> Application.get_env(:deployment_mode, :saas)
+    |> normalize_deployment_mode()
   end
 
   @spec saas_mode?() :: boolean()
@@ -16,4 +18,19 @@ defmodule Trifle.Config do
   def projects_enabled? do
     Application.get_env(:trifle, :projects_enabled, true)
   end
+
+  defp normalize_deployment_mode(:saas), do: :saas
+  defp normalize_deployment_mode(:self_hosted), do: :self_hosted
+
+  defp normalize_deployment_mode(value) when is_binary(value) do
+    case value |> String.trim() |> String.downcase() do
+      "saas" -> :saas
+      "self_hosted" -> :self_hosted
+      "self-hosted" -> :self_hosted
+      "selfhosted" -> :self_hosted
+      _ -> :saas
+    end
+  end
+
+  defp normalize_deployment_mode(_), do: :saas
 end
