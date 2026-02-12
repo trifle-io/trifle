@@ -186,7 +186,6 @@ defmodule TrifleApp.BillingController do
       conn
     else
       not_found(conn)
-      |> halt()
     end
   end
 
@@ -195,5 +194,6 @@ defmodule TrifleApp.BillingController do
     |> put_status(:not_found)
     |> put_view(json: TrifleApi.ErrorJSON)
     |> render("404.json")
+    |> halt()
   end
 end

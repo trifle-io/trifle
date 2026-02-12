@@ -54,7 +54,7 @@ defmodule Trifle.Billing.Plan do
     |> update_change(:scope_type, &normalize_string/1)
     |> update_change(:tier_key, &normalize_string/1)
     |> update_change(:interval, &normalize_string/1)
-    |> update_change(:stripe_price_id, &normalize_string/1)
+    |> update_change(:stripe_price_id, &trim_external_id/1)
     |> update_change(:currency, &normalize_string/1)
     |> validate_inclusion(:scope_type, @scope_types)
     |> validate_inclusion(:interval, @intervals)
@@ -97,4 +97,7 @@ defmodule Trifle.Billing.Plan do
     do: value |> String.trim() |> String.downcase()
 
   defp normalize_string(value), do: value
+
+  defp trim_external_id(value) when is_binary(value), do: String.trim(value)
+  defp trim_external_id(value), do: value
 end

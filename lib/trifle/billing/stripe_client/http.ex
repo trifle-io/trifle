@@ -24,11 +24,7 @@ defmodule Trifle.Billing.StripeClient.HTTP do
          {:ok, response} <- do_request(method, path, body, secret_key, idempotency_key),
          {:ok, decoded} <- decode_body(response.body) do
       case response.status do
-        code
-        when :erlang.andalso(
-               :erlang.is_integer(code),
-               :erlang.andalso(:erlang.>=(code, 200), :erlang."=<"(code, 299))
-             ) ->
+        code when is_integer(code) and code >= 200 and code <= 299 ->
           {:ok, decoded}
 
         _ ->
@@ -37,7 +33,7 @@ defmodule Trifle.Billing.StripeClient.HTTP do
     end
   end
 
-  def get_subscription(subscription_id) when :erlang.is_binary(subscription_id) do
+  def get_subscription(subscription_id) when is_binary(subscription_id) do
     request(:get, <<"/v1/subscriptions/", subscription_id::binary>>, %{})
   end
 

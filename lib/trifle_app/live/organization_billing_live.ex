@@ -15,6 +15,7 @@ defmodule TrifleApp.OrganizationBillingLive do
       |> assign(:deployment_mode, deployment_mode())
       |> assign(:show_plans_modal, false)
       |> assign(:plans_interval, "month")
+      |> assign(:billing_snapshot, nil)
 
     cond do
       is_nil(socket.assigns[:current_user]) ->
@@ -61,52 +62,58 @@ defmodule TrifleApp.OrganizationBillingLive do
           </p>
         </div>
       <% else %>
-        <%= if app = @billing_snapshot.app_subscription do %>
-          <.subscription_details
-            subscription={app}
-            plan={@billing_snapshot.app_plan}
-            entitlement={@billing_snapshot.entitlement}
-            seats_used={@billing_snapshot.seats_used}
+        <%= if @billing_snapshot do %>
+          <%= if app = @billing_snapshot.app_subscription do %>
+            <.subscription_details
+              subscription={app}
+              plan={@billing_snapshot.app_plan}
+              entitlement={@billing_snapshot.entitlement}
+              seats_used={@billing_snapshot.seats_used}
+            />
+          <% else %>
+            <.no_subscription />
+          <% end %>
+
+          <div class="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Project Plans</h2>
+            <p class="mt-1 text-sm text-gray-600 dark:text-slate-300">
+              Review per-project usage and manage project data plans.
+            </p>
+
+            <div class="mt-4 divide-y divide-gray-200 dark:divide-slate-700">
+              <%= for entry <- @billing_snapshot.projects do %>
+                <div class="py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">
+                      {entry.project.name}
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-slate-400">
+                      Usage: {(entry.usage && entry.usage.events_count) || 0}
+                    </p>
+                  </div>
+                  <.link
+                    navigate={~p"/projects/#{entry.project.id}/billing"}
+                    class="inline-flex items-center rounded-md border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  >
+                    Manage
+                  </.link>
+                </div>
+              <% end %>
+            </div>
+          </div>
+
+          <.app_plans_modal
+            show={@show_plans_modal}
+            tiers={@billing_snapshot.available_app_tiers}
+            current_tier={current_app_tier(@billing_snapshot)}
+            current_interval={current_app_interval(@billing_snapshot)}
+            selected_interval={@plans_interval}
           />
         <% else %>
-          <.no_subscription />
-        <% end %>
-
-        <div class="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Project Plans</h2>
-          <p class="mt-1 text-sm text-gray-600 dark:text-slate-300">
-            Review per-project usage and manage project data plans.
-          </p>
-
-          <div class="mt-4 divide-y divide-gray-200 dark:divide-slate-700">
-            <%= for entry <- @billing_snapshot.projects do %>
-              <div class="py-3 flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
-                    {entry.project.name}
-                  </p>
-                  <p class="text-xs text-gray-500 dark:text-slate-400">
-                    Usage: {(entry.usage && entry.usage.events_count) || 0}
-                  </p>
-                </div>
-                <.link
-                  navigate={~p"/projects/#{entry.project.id}/billing"}
-                  class="inline-flex items-center rounded-md border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-                >
-                  Manage
-                </.link>
-              </div>
-            <% end %>
+          <div class="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
+            <p class="text-sm text-gray-600 dark:text-slate-300">Billing data is not available.</p>
           </div>
-        </div>
-
-        <.app_plans_modal
-          show={@show_plans_modal}
-          tiers={@billing_snapshot.available_app_tiers}
-          current_tier={current_app_tier(@billing_snapshot)}
-          current_interval={current_app_interval(@billing_snapshot)}
-          selected_interval={@plans_interval}
-        />
+        <% end %>
       <% end %>
     </div>
     """
