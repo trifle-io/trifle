@@ -21,6 +21,7 @@
                 {live_active_link(@socket, :databases, "Databases", to: ~p"/admin/databases")}
                 {live_active_link(@socket, :dashboards, "Dashboards", to: ~p"/admin/dashboards")}
                 {live_active_link(@socket, :monitors, "Monitors", to: ~p"/admin/monitors")}
+                {live_active_link(@socket, :billing, "Billing", to: ~p"/admin/billing")}
               </div>
             </div>
           </div>
@@ -192,6 +193,10 @@
           )}
           {live_active_link(@socket, :monitors, "Monitors",
             to: ~p"/admin/monitors",
+            variant: :mobile
+          )}
+          {live_active_link(@socket, :billing, "Billing",
+            to: ~p"/admin/billing",
             variant: :mobile
           )}
         </div>

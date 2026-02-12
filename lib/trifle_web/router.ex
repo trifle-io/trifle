@@ -36,6 +36,12 @@ defmodule TrifleWeb.Router do
       live "/dashboards/:id/show", DashboardsLive, :show
       live "/monitors", MonitorsLive, :index
       live "/monitors/:id/show", MonitorsLive, :show
+      live "/billing", BillingLive, :index
+      live "/billing/:id/show", BillingLive, :show
+      live "/billing/plans", BillingPlansLive, :index
+      live "/billing/plans/new", BillingPlansLive, :new
+      live "/billing/plans/:id/show", BillingPlansLive, :show
+      live "/billing/plans/:id/edit", BillingPlansLive, :edit
     end
   end
 

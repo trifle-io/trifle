@@ -19,6 +19,8 @@ defmodule Trifle.Organizations.Project do
     field :expire_after, :integer
     field :default_timeframe, :string
     field :default_granularity, :string
+    field :billing_required, :boolean, default: true
+    field :billing_state, :string, default: "pending_checkout"
 
     belongs_to :organization, Trifle.Organizations.Organization
     belongs_to :project_cluster, Trifle.Organizations.ProjectCluster
