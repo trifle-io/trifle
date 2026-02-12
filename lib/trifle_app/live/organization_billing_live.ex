@@ -315,51 +315,39 @@ defmodule TrifleApp.OrganizationBillingLive do
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <%= for tier <- @filtered_tiers do %>
             <% is_current = @current_tier == tier.tier && @current_interval == tier.interval %>
-            <% is_popular = tier.tier == "team" %>
+            <% founder_offer = tier[:founder_offer] %>
+            <% founder_available = founder_offer_available?(founder_offer) %>
             <div class={[
               "rounded-lg border p-5 flex flex-col relative",
-              cond do
-                is_popular ->
-                  "border-teal-500 dark:border-teal-400 border-2"
-
-                is_current ->
-                  "border-teal-500 dark:border-teal-400 ring-1 ring-teal-500 dark:ring-teal-400"
-
-                true ->
-                  "border-gray-200 dark:border-slate-700"
-              end
+              if(is_current,
+                do: "border-teal-500 dark:border-teal-400 ring-1 ring-teal-500 dark:ring-teal-400",
+                else: "border-gray-200 dark:border-slate-700"
+              )
             ]}>
-              <%= if is_popular do %>
-                <div class="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span class="inline-flex items-center rounded-full bg-teal-500 px-3 py-0.5 text-xs font-semibold text-white">
-                    Popular
-                  </span>
-                </div>
-              <% end %>
-
-              <div class="flex items-center justify-between">
+              <div>
                 <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-                  {String.capitalize(tier.tier)}
+                  {tier_title(tier, founder_available)}
                 </h3>
-                <%= if is_current do %>
-                  <span class="inline-flex items-center rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
-                    Current
-                  </span>
-                <% end %>
               </div>
 
               <div class="mt-3">
-                <span class="text-3xl font-bold text-gray-900 dark:text-white">{tier.amount}</span>
-                <span class="text-sm text-gray-500 dark:text-slate-400">
-                  /{interval_label(tier.interval)}
-                </span>
+                <%= if founder_available && is_binary(founder_offer_amount(founder_offer)) do %>
+                  <span class="text-lg font-medium text-gray-400 dark:text-slate-500 line-through">
+                    {tier.amount}
+                  </span>
+                  <span class="ml-2 text-3xl font-bold text-teal-600 dark:text-teal-300">
+                    {founder_offer_amount(founder_offer)}
+                  </span>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">
+                    /{interval_label(tier.interval)}
+                  </span>
+                <% else %>
+                  <span class="text-3xl font-bold text-gray-900 dark:text-white">{tier.amount}</span>
+                  <span class="text-sm text-gray-500 dark:text-slate-400">
+                    /{interval_label(tier.interval)}
+                  </span>
+                <% end %>
               </div>
-
-              <%= if founder = tier[:founder_offer] do %>
-                <p class="mt-2 text-xs text-teal-600 dark:text-teal-300">
-                  Founder offer: {founder_offer_label(founder)}
-                </p>
-              <% end %>
 
               <%!-- Feature list --%>
               <ul class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
@@ -402,15 +390,8 @@ defmodule TrifleApp.OrganizationBillingLive do
                     />
                     <input type="hidden" name="tier" value={tier.tier} />
                     <input type="hidden" name="interval" value={tier.interval} />
-                    <button class={[
-                      "w-full inline-flex justify-center rounded-md px-3 py-2 text-sm font-medium",
-                      if(is_popular,
-                        do: "bg-teal-600 text-white hover:bg-teal-700",
-                        else:
-                          "border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-                      )
-                    ]}>
-                      Get Started
+                    <button class="w-full inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                      Choose
                     </button>
                   </form>
                 <% end %>
@@ -467,6 +448,8 @@ defmodule TrifleApp.OrganizationBillingLive do
   defp tier_user_label(%{seat_limit: limit}) when is_integer(limit),
     do: "#{limit} users"
 
+  defp tier_user_label(%{tier: "pro"}), do: "Unlimited users"
+
   defp tier_user_label(_), do: "1 user"
 
   defp status_color("active"),
@@ -487,17 +470,16 @@ defmodule TrifleApp.OrganizationBillingLive do
   defp format_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%b %d, %Y")
   defp format_date(_), do: "—"
 
-  defp founder_offer_label(%{amount: amount, status: status})
-       when is_binary(amount) and is_binary(status) do
-    "#{amount} · #{String.replace(status, "_", " ")}"
-  end
+  defp founder_offer_available?(%{status: status}) when status in ["available", "claimed"],
+    do: true
 
-  defp founder_offer_label(%{amount: amount}) when is_binary(amount), do: amount
+  defp founder_offer_available?(_), do: false
 
-  defp founder_offer_label(%{status: status}) when is_binary(status),
-    do: String.replace(status, "_", " ")
+  defp founder_offer_amount(%{amount: amount}) when is_binary(amount), do: amount
+  defp founder_offer_amount(_), do: nil
 
-  defp founder_offer_label(_), do: "available"
+  defp tier_title(%{tier: "pro"}, true), do: "Pro - Founding customer"
+  defp tier_title(%{tier: tier}, _), do: String.capitalize(tier)
 
   defp deployment_mode do
     Application.get_env(:trifle, :deployment_mode, :saas)

@@ -139,7 +139,7 @@ defmodule Trifle.Billing do
       )
 
     with {:ok, subscription_item_id} <- resolve_subscription_item_id(subscription),
-         params = put_in(params, ["items", 0, "id"], subscription_item_id),
+         params = put_in(params, ["items", Access.at(0), "id"], subscription_item_id),
          {:ok, payload} <-
            stripe_client_request(
              stripe_client(),
