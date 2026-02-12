@@ -192,8 +192,8 @@ defmodule TrifleApp.BillingController do
   defp not_found(conn) do
     conn
     |> put_status(:not_found)
-    |> put_view(json: TrifleApi.ErrorJSON)
-    |> render("404.json")
+    |> put_view(html: TrifleApp.ErrorHTML)
+    |> render("404.html")
     |> halt()
   end
 end
