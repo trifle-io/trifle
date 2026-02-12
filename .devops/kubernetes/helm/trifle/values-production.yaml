@@ -89,6 +89,11 @@ app:
     apiKey: "CHANGE_ME_WITH_OPENAI_KEY"
     model: "gpt-5"
 
+  stripe:
+    secretKey: ""
+    webhookSigningSecret: ""
+    portalConfigurationId: ""
+
   # User registration settings
   registration:
     enabled: false  # Disable registration in production for security

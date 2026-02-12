@@ -144,6 +144,27 @@ spec:
                   name: {{ include "trifle.fullname" $ }}-secret
                   key: sendinblue-api-key
             {{- end }}
+            {{- with .Values.app.stripe.secretKey }}
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: stripe-secret-key
+            {{- end }}
+            {{- with .Values.app.stripe.webhookSigningSecret }}
+            - name: STRIPE_WEBHOOK_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: stripe-webhook-signing-secret
+            {{- end }}
+            {{- with .Values.app.stripe.portalConfigurationId }}
+            - name: STRIPE_PORTAL_CONFIGURATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: stripe-portal-configuration-id
+            {{- end }}
             {{- with .Values.app.slack.clientId }}
             - name: SLACK_CLIENT_ID
               value: {{ . | quote }}

@@ -112,6 +112,11 @@ app:
     apiKey: ""
     model: "gpt-5"
 
+  stripe:
+    secretKey: ""
+    webhookSigningSecret: ""
+    portalConfigurationId: ""
+
   slack:
     clientId: ""
     clientSecret: ""
