@@ -364,7 +364,7 @@ defmodule TrifleApp.ProjectsLive do
   end
 
   def handle_event("open_settings", %{"id" => project_id}, socket) do
-    {:noreply, push_patch(socket, to: ~p"/projects/#{project_id}/settings")}
+    {:noreply, push_navigate(socket, to: ~p"/projects/#{project_id}/settings")}
   end
 
   def handle_event("close_new_modal", _params, socket) do
