@@ -7,7 +7,12 @@ defmodule TrifleApp.ProjectBillingLive do
 
   def mount(%{"id" => id}, _session, socket) do
     membership = socket.assigns[:current_membership]
-    socket = socket |> assign(:state, nil) |> assign(:show_plans_modal, false)
+
+    socket =
+      socket
+      |> assign(:nav_section, :projects)
+      |> assign(:state, nil)
+      |> assign(:show_plans_modal, false)
 
     cond do
       is_nil(socket.assigns[:current_user]) ->

@@ -78,6 +78,9 @@ defmodule TrifleApp.Layouts do
       {:projects, TrifleApp.ProjectTranspondersLive} ->
         true
 
+      {:projects, TrifleApp.ProjectBillingLive} ->
+        true
+
       {:databases, TrifleApp.DatabasesLive} ->
         true
 
