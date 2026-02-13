@@ -199,7 +199,7 @@ defmodule TrifleApp.ProjectSettingsLive do
                 <% end %>
               </.detail_row>
               <.detail_row label="Data retention">
-                {format_expire_after(project_cluster_expire_after(@project_cluster))}
+                {Project.retention_label(@project)}
               </.detail_row>
             </dl>
           </div>
@@ -392,39 +392,6 @@ defmodule TrifleApp.ProjectSettingsLive do
     Calendar.strftime(timestamp, "%B %d, %Y at %I:%M %p")
   end
 
-  defp format_expire_after(nil), do: "Keep metrics forever"
-  defp format_expire_after(0), do: "Keep metrics forever"
-
-  defp format_expire_after(seconds) when is_integer(seconds) and seconds > 0 do
-    cond do
-      rem(seconds, 86_400) == 0 ->
-        days = div(seconds, 86_400)
-        pluralize(days, "day")
-
-      rem(seconds, 3_600) == 0 ->
-        hours = div(seconds, 3_600)
-        pluralize(hours, "hour")
-
-      rem(seconds, 60) == 0 ->
-        minutes = div(seconds, 60)
-        pluralize(minutes, "minute")
-
-      true ->
-        pluralize(seconds, "second")
-    end
-  end
-
-  defp format_expire_after(value) when is_binary(value) do
-    value
-    |> Integer.parse()
-    |> case do
-      {int, ""} -> format_expire_after(int)
-      _ -> "Keep metrics forever"
-    end
-  end
-
-  defp format_expire_after(_), do: "Keep metrics forever"
-
   defp format_project_cluster(nil), do: "Not set"
 
   defp format_project_cluster(%Trifle.Organizations.ProjectCluster{} = cluster) do
@@ -439,16 +406,4 @@ defmodule TrifleApp.ProjectSettingsLive do
       "#{cluster.name} · #{location}"
     end
   end
-
-  defp project_cluster_expire_after(nil), do: nil
-
-  defp project_cluster_expire_after(%Trifle.Organizations.ProjectCluster{config: config})
-       when is_map(config) do
-    Map.get(config, "expire_after")
-  end
-
-  defp project_cluster_expire_after(_), do: nil
-
-  defp pluralize(value, unit) when value == 1, do: "1 #{unit}"
-  defp pluralize(value, unit), do: "#{value} #{unit}s"
 end
