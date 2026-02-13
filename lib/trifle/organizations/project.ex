@@ -11,6 +11,13 @@ defmodule Trifle.Organizations.Project do
 
   @default_granularities ["1s", "1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
   @billing_states ["pending_checkout", "active", "locked"]
+  @basic_retention_seconds 15_778_476
+  @extended_retention_seconds 94_670_856
+  @retention_seconds [@basic_retention_seconds, @extended_retention_seconds]
+  @retention_options [
+    {"Basic (6m)", @basic_retention_seconds},
+    {"Extended (3y)", @extended_retention_seconds}
+  ]
 
   schema "projects" do
     field :beginning_of_week, :integer
@@ -80,11 +87,14 @@ defmodule Trifle.Organizations.Project do
       :time_zone,
       :beginning_of_week,
       :granularities,
+      :expire_after,
       :organization_id
     ])
-    |> validate_number(:expire_after, greater_than: 0)
+    |> validate_inclusion(:expire_after, @retention_seconds)
+    |> validate_retention_immutable(project)
     |> validate_inclusion(:billing_state, @billing_states)
     |> check_constraint(:billing_state, name: :projects_billing_state_check)
+    |> check_constraint(:expire_after, name: :projects_expire_after_retention_check)
   end
 
   @doc false
@@ -105,7 +115,7 @@ defmodule Trifle.Organizations.Project do
         _ -> @default_granularities
       end
 
-    expire_after = cluster_config["expire_after"]
+    expire_after = project_expire_after(project)
 
     driver =
       Trifle.Stats.Driver.MongoProject.new(
@@ -186,6 +196,18 @@ defmodule Trifle.Organizations.Project do
   end
 
   def default_granularities, do: @default_granularities
+  def retention_options, do: @retention_options
+  def basic_retention_seconds, do: @basic_retention_seconds
+  def extended_retention_seconds, do: @extended_retention_seconds
+
+  def retention_mode(%__MODULE__{expire_after: @extended_retention_seconds}), do: :extended
+  def retention_mode(%__MODULE__{expire_after: @basic_retention_seconds}), do: :basic
+  def retention_mode(%__MODULE__{}), do: :basic
+
+  def retention_label(%__MODULE__{} = project), do: retention_label(project.expire_after)
+  def retention_label(@extended_retention_seconds), do: "Extended (3y)"
+  def retention_label(@basic_retention_seconds), do: "Basic (6m)"
+  def retention_label(_), do: "Basic (6m)"
 
   defp normalize_attrs(attrs) when is_map(attrs) do
     Enum.reduce(attrs, %{}, fn
@@ -216,20 +238,31 @@ defmodule Trifle.Organizations.Project do
   end
 
   defp normalize_expire_after(attrs) do
-    case Map.get(attrs, :expire_after) do
-      value when value in [nil, ""] ->
-        Map.put(attrs, :expire_after, nil)
+    if Map.has_key?(attrs, :expire_after) do
+      case Map.get(attrs, :expire_after) do
+        value when value in [nil, ""] ->
+          Map.put(attrs, :expire_after, nil)
 
-      value when is_binary(value) ->
-        trimmed = String.trim(value)
+        value when is_binary(value) ->
+          case value |> String.trim() |> String.downcase() do
+            "basic" ->
+              Map.put(attrs, :expire_after, @basic_retention_seconds)
 
-        case Integer.parse(trimmed) do
-          {int, _rest} -> Map.put(attrs, :expire_after, int)
-          :error -> Map.put(attrs, :expire_after, nil)
-        end
+            "extended" ->
+              Map.put(attrs, :expire_after, @extended_retention_seconds)
 
-      value ->
-        Map.put(attrs, :expire_after, value)
+            trimmed ->
+              case Integer.parse(trimmed) do
+                {int, _rest} -> Map.put(attrs, :expire_after, int)
+                :error -> Map.put(attrs, :expire_after, nil)
+              end
+          end
+
+        value ->
+          Map.put(attrs, :expire_after, value)
+      end
+    else
+      attrs
     end
   end
 
@@ -307,6 +340,21 @@ defmodule Trifle.Organizations.Project do
       end
     end)
   end
+
+  defp validate_retention_immutable(changeset, %__MODULE__{id: nil}), do: changeset
+
+  defp validate_retention_immutable(changeset, %__MODULE__{}) do
+    case get_change(changeset, :expire_after) do
+      nil -> changeset
+      _ -> add_error(changeset, :expire_after, "cannot be changed after project creation")
+    end
+  end
+
+  defp project_expire_after(%__MODULE__{expire_after: expire_after})
+       when expire_after in @retention_seconds,
+       do: expire_after
+
+  defp project_expire_after(%__MODULE__{}), do: @basic_retention_seconds
 
   defp maybe_put_user(changeset, nil), do: changeset
   defp maybe_put_user(changeset, user), do: put_assoc(changeset, :user, user)

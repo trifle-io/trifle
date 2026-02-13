@@ -86,6 +86,7 @@ defmodule TrifleAdmin.ProjectsLive do
               <.admin_table_column>Owner</.admin_table_column>
               <.admin_table_column>Organization</.admin_table_column>
               <.admin_table_column>Time Zone</.admin_table_column>
+              <.admin_table_column>Data Retention</.admin_table_column>
               <.admin_table_column>Created</.admin_table_column>
             </:columns>
 
@@ -151,6 +152,11 @@ defmodule TrifleAdmin.ProjectsLive do
                     {project.time_zone || "N/A"}
                   </.admin_table_cell>
                   <.admin_table_cell>
+                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/30">
+                      {retention_label(project)}
+                    </span>
+                  </.admin_table_cell>
+                  <.admin_table_cell>
                     <div class="flex flex-col">
                       <div class="text-gray-900 dark:text-white">
                         {Calendar.strftime(project.inserted_at, "%Y-%m-%d")}
@@ -213,6 +219,12 @@ defmodule TrifleAdmin.ProjectsLive do
               <dt class="text-sm font-medium text-gray-900 dark:text-white">Time Zone</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
                 {@project.time_zone || "N/A"}
+              </dd>
+            </div>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Data Retention</dt>
+              <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+                {retention_label(@project)}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
@@ -317,6 +329,9 @@ defmodule TrifleAdmin.ProjectsLive do
 
   defp organization_name(%Project{organization: %Organization{name: name}}), do: name
   defp organization_name(_), do: nil
+
+  defp retention_label(%Project{} = project), do: Project.retention_label(project)
+  defp retention_label(_), do: "N/A"
 
   defp format_beginning_of_week(%Project{} = project) do
     project

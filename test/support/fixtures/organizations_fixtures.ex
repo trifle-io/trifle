@@ -5,6 +5,7 @@ defmodule Trifle.OrganizationsFixtures do
   """
 
   alias Trifle.AccountsFixtures
+  alias Trifle.Organizations.Project
 
   @doc """
   Generate a project.
@@ -47,7 +48,7 @@ defmodule Trifle.OrganizationsFixtures do
         name: "some name",
         time_zone: "Etc/UTC",
         granularities: ["1m", "1h", "1d"],
-        expire_after: 86_400,
+        expire_after: Project.basic_retention_seconds(),
         default_timeframe: "7d",
         default_granularity: "1h"
       })

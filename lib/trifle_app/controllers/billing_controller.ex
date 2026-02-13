@@ -39,9 +39,8 @@ defmodule TrifleApp.BillingController do
     with {:ok, membership} <- fetch_membership(conn),
          {:ok, project} <- fetch_project(membership.organization_id, project_id),
          tier when is_binary(tier) <- param(params, "tier"),
-         retention <- param(params, "retention", "false"),
          {:ok, %{url: url}} <-
-           Billing.create_project_checkout_session(project, tier, retention, checkout_urls(conn)) do
+           Billing.create_project_checkout_session(project, tier, checkout_urls(conn)) do
       redirect(conn, external: url)
     else
       {:error, :membership_required} ->

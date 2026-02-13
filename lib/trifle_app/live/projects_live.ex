@@ -148,6 +148,16 @@ defmodule TrifleApp.ProjectsLive do
             required
           />
 
+          <.form_field
+            field={@form[:expire_after]}
+            type="select"
+            label="Data retention"
+            options={project_retention_options()}
+            prompt="Select a retention policy"
+            help_text="Choose once at project creation. Retention cannot be changed later."
+            required
+          />
+
           <div class="space-y-2">
             <label
               for={@form[:project_cluster_id].id}
@@ -253,7 +263,12 @@ defmodule TrifleApp.ProjectsLive do
     projects = list_projects_for_membership(membership)
     cluster_choices = list_cluster_choices_for_membership(membership)
     default_cluster_id = default_cluster_id(cluster_choices)
-    changeset = Organizations.change_project(%Project{project_cluster_id: default_cluster_id})
+
+    changeset =
+      Organizations.change_project(%Project{
+        project_cluster_id: default_cluster_id,
+        expire_after: Project.basic_retention_seconds()
+      })
 
     socket =
       socket
@@ -282,7 +297,12 @@ defmodule TrifleApp.ProjectsLive do
     |> assign(:show_new_modal, true)
     |> assign(
       :form,
-      to_form(Organizations.change_project(%Project{project_cluster_id: default_cluster_id}))
+      to_form(
+        Organizations.change_project(%Project{
+          project_cluster_id: default_cluster_id,
+          expire_after: Project.basic_retention_seconds()
+        })
+      )
     )
   end
 
@@ -331,7 +351,10 @@ defmodule TrifleApp.ProjectsLive do
           |> assign(
             :form,
             to_form(
-              Organizations.change_project(%Project{project_cluster_id: default_cluster_id})
+              Organizations.change_project(%Project{
+                project_cluster_id: default_cluster_id,
+                expire_after: Project.basic_retention_seconds()
+              })
             )
           )
           |> assign(:show_new_modal, false)
@@ -395,7 +418,8 @@ defmodule TrifleApp.ProjectsLive do
   end
 
   defp create_project_for_membership(_attrs, nil, _user) do
-    {:error, Organizations.change_project(%Project{})}
+    {:error,
+     Organizations.change_project(%Project{expire_after: Project.basic_retention_seconds()})}
   end
 
   defp create_project_for_membership(attrs, membership, user) do
@@ -452,6 +476,10 @@ defmodule TrifleApp.ProjectsLive do
       %{cluster: cluster} ->
         cluster.id
     end
+  end
+
+  defp project_retention_options do
+    Project.retention_options()
   end
 
   defp project_list_meta(%Project{} = project) do

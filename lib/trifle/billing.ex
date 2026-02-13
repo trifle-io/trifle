@@ -2737,9 +2737,10 @@ defmodule Trifle.Billing do
   def create_project_checkout_session(
         %Trifle.Organizations.Project{} = project,
         tier_key,
-        retention_enabled,
         opts
       ) do
+    retention_enabled = project_extended_retention?(project)
+
     with true <- enabled?(),
          {:ok, %{organization: %Trifle.Organizations.Organization{} = organization}} <-
            organization_for_project(project),
@@ -2751,7 +2752,7 @@ defmodule Trifle.Billing do
              customer,
              project,
              tier,
-             truthy?(retention_enabled),
+             retention_enabled,
              opts
            ),
          {:ok, payload} <-
@@ -2765,7 +2766,7 @@ defmodule Trifle.Billing do
                  organization.id,
                  project.id,
                  tier,
-                 truthy?(retention_enabled)
+                 if(retention_enabled, do: "extended", else: "basic")
                ])
            ) do
       case payload do
@@ -2782,8 +2783,12 @@ defmodule Trifle.Billing do
     end
   end
 
-  def create_project_checkout_session(x0, x1, x2) do
-    create_project_checkout_session(x0, x1, x2, %{})
+  def create_project_checkout_session(x0, x1) do
+    create_project_checkout_session(x0, x1, %{})
+  end
+
+  defp project_extended_retention?(%Trifle.Organizations.Project{} = project) do
+    Trifle.Organizations.Project.retention_mode(project) == :extended
   end
 
   def create_portal_session(%Trifle.Organizations.Organization{} = organization, opts) do

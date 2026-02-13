@@ -242,6 +242,11 @@ defmodule TrifleApp.ProjectBillingLive do
     <.app_modal id="project-plans-modal" show={@show} on_cancel="hide_plans" size="lg">
       <:title>Choose a Data Plan</:title>
       <:body>
+        <p class="text-sm text-gray-600 dark:text-slate-300">
+          Retention: <span class="font-medium">{project_retention_label(@project)}</span>. This is fixed for
+          the lifetime of this project.
+        </p>
+
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-2">
           <%= for tier <- @tiers do %>
             <% is_current = @current_tier == tier.tier_key %>
@@ -264,7 +269,9 @@ defmodule TrifleApp.ProjectBillingLive do
               </div>
 
               <div class="mt-3">
-                <span class="text-3xl font-bold text-gray-900 dark:text-white">{tier.amount}</span>
+                <span class="text-3xl font-bold text-gray-900 dark:text-white">
+                  {tier_amount_for_project(tier, @project)}
+                </span>
                 <span class="text-sm text-gray-500 dark:text-slate-400">/mo</span>
               </div>
 
@@ -309,32 +316,10 @@ defmodule TrifleApp.ProjectBillingLive do
                       value={Phoenix.Controller.get_csrf_token()}
                     />
                     <input type="hidden" name="tier" value={tier.tier_key} />
-                    <input type="hidden" name="retention" value="false" />
                     <button class="w-full inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700">
                       Choose Tier
                     </button>
                   </form>
-
-                  <%= if tier[:retention_available] do %>
-                    <form
-                      action={~p"/organization/billing/checkout/project/#{@project.id}"}
-                      method="post"
-                    >
-                      <input
-                        type="hidden"
-                        name="_csrf_token"
-                        value={Phoenix.Controller.get_csrf_token()}
-                      />
-                      <input type="hidden" name="tier" value={tier.tier_key} />
-                      <input type="hidden" name="retention" value="true" />
-                      <button class="w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700">
-                        + Retention
-                        <%= if amount = tier[:retention_amount] do %>
-                          ({amount})
-                        <% end %>
-                      </button>
-                    </form>
-                  <% end %>
                 <% end %>
               </div>
             </div>
@@ -362,6 +347,7 @@ defmodule TrifleApp.ProjectBillingLive do
   defp fetch_state(membership, project_id) do
     project = Organizations.get_project_for_org!(membership.organization_id, project_id)
     snapshot = Billing.billing_snapshot_for_membership(membership)
+    available_tiers = filter_available_project_tiers(snapshot.available_project_tiers, project)
 
     entry = Enum.find(snapshot.projects, fn item -> item.project.id == project.id end)
 
@@ -371,7 +357,7 @@ defmodule TrifleApp.ProjectBillingLive do
        usage: entry && entry.usage,
        subscription: entry && entry.subscription,
        plan: entry && entry.plan,
-       available_project_tiers: snapshot.available_project_tiers
+       available_project_tiers: available_tiers
      }}
   rescue
     Ecto.NoResultsError -> {:error, :not_found}
@@ -380,6 +366,32 @@ defmodule TrifleApp.ProjectBillingLive do
   defp current_project_tier(%{plan: %Billing.Plan{tier_key: tier}}), do: tier
   defp current_project_tier(%{usage: %{tier_key: tier}}) when is_binary(tier), do: tier
   defp current_project_tier(_), do: nil
+
+  defp tier_amount_for_project(
+         %{amount: amount, retention_amount: retention_amount},
+         %Project{} = project
+       )
+       when is_binary(amount) and is_binary(retention_amount) do
+    case Project.retention_mode(project) do
+      :extended -> "#{amount} + #{retention_amount}"
+      _ -> amount
+    end
+  end
+
+  defp tier_amount_for_project(%{amount: amount}, _project) when is_binary(amount), do: amount
+  defp tier_amount_for_project(_tier, _project), do: "—"
+
+  defp filter_available_project_tiers(tiers, %Project{} = project) when is_list(tiers) do
+    case Project.retention_mode(project) do
+      :extended -> Enum.filter(tiers, & &1[:retention_available])
+      _ -> tiers
+    end
+  end
+
+  defp filter_available_project_tiers(_tiers, _project), do: []
+
+  defp project_retention_label(%Project{} = project), do: Project.retention_label(project)
+  defp project_retention_label(_), do: Project.retention_label(nil)
 
   defp tier_display_name(%Billing.Plan{tier_key: tier}, _usage), do: String.upcase(tier)
   defp tier_display_name(_, %{tier_key: tier}) when is_binary(tier), do: String.upcase(tier)

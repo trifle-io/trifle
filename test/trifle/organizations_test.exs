@@ -42,7 +42,7 @@ defmodule Trifle.OrganizationsTest do
         name: "some name",
         time_zone: "Etc/UTC",
         granularities: ["1m", "1h"],
-        expire_after: 3_600,
+        expire_after: Project.basic_retention_seconds(),
         default_timeframe: "24h",
         default_granularity: "1h"
       }
@@ -54,7 +54,7 @@ defmodule Trifle.OrganizationsTest do
       assert project.granularities == ["1m", "1h"]
       assert project.default_granularity == "1h"
       assert project.default_timeframe == "24h"
-      assert project.expire_after == 3_600
+      assert project.expire_after == Project.basic_retention_seconds()
     end
 
     test "create_project/1 with invalid data returns error changeset", %{user: user} do
@@ -70,7 +70,6 @@ defmodule Trifle.OrganizationsTest do
         name: "some updated name",
         time_zone: "America/New_York",
         granularities: ["1h", "1d"],
-        expire_after: 86_400,
         default_timeframe: "7d",
         default_granularity: "1d"
       }
@@ -82,7 +81,18 @@ defmodule Trifle.OrganizationsTest do
       assert project.granularities == ["1h", "1d"]
       assert project.default_granularity == "1d"
       assert project.default_timeframe == "7d"
-      assert project.expire_after == 86_400
+      assert project.expire_after == Project.basic_retention_seconds()
+    end
+
+    test "update_project/2 does not allow changing retention after creation", %{user: user} do
+      project = project_fixture(%{user: user})
+
+      assert {:error, changeset} =
+               Organizations.update_project(project, %{
+                 expire_after: Project.extended_retention_seconds()
+               })
+
+      assert {"cannot be changed after project creation", _} = changeset.errors[:expire_after]
     end
 
     test "update_project/2 with invalid data returns error changeset", %{user: user} do
