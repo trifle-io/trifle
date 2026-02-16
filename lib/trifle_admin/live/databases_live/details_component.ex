@@ -10,7 +10,7 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
           <div>
             <h3 class="text-base/7 font-semibold text-gray-900">{@database.display_name}</h3>
             <p class="mt-1 max-w-2xl text-sm/6 text-gray-500">
-              {String.capitalize(@database.driver)} database connection
+              {driver_display_name(@database.driver)} database connection
             </p>
           </div>
           <span class={status_badge_class(@database.last_check_status)}>

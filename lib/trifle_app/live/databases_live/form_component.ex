@@ -22,7 +22,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
           field={@form[:driver]}
           type="select"
           label="Driver"
-          options={Database.drivers() |> Enum.map(&{String.capitalize(&1), &1})}
+          options={Database.drivers() |> Enum.map(&{driver_display_name(&1), &1})}
           prompt="Choose a driver..."
           disabled={@action == :edit}
         />

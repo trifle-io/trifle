@@ -233,7 +233,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
                   Connection overview
                 </h2>
                 <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
-                  {String.capitalize(@database.driver)} database connection
+                  {driver_display_name(@database.driver)} database connection
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-3">

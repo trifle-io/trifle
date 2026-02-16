@@ -83,6 +83,7 @@ defmodule TrifleApp.DatabasesLive do
   defp is_supported_driver?("mongo"), do: true
   defp is_supported_driver?("postgres"), do: true
   defp is_supported_driver?("sqlite"), do: true
+  defp is_supported_driver?("mysql"), do: true
   defp is_supported_driver?(_), do: false
 
   @impl true
@@ -277,6 +278,8 @@ defmodule TrifleApp.DatabasesLive do
           <path d="M3.5 8.25 12 5l8.5 3.25L12 11.5 3.5 8.25Zm0 4L12 9l8.5 3.25L12 15.5 3.5 12.25Zm0 4L12 13l8.5 3.25L12 19.5 3.5 16.25Z" />
         <% "mongo" -> %>
           <path d="M12 2c.5 2 3.5 4 3.5 7.5S13 17 12 22c-1-5-3.5-9.5-3.5-12.5S11.5 4 12 2Z" />
+        <% "mysql" -> %>
+          <path d="M6 3h11a2 2 0 0 1 2 2v4H4V5a2 2 0 0 1 2-2Zm-2 8h15v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8Zm3 2v2h2v-2H7Zm4 0v2h5v-2h-5Z" />
         <% _ -> %>
           <path d="M4 6c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3Zm16 4c0 1.657-3.582 3-8 3s-8-1.343-8-3v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4Zm0 8c0 1.657-3.582 3-8 3s-8-1.343-8-3v2c0 1.657 3.582 3 8 3s8-1.343 8-3v-2Z" />
       <% end %>
@@ -290,6 +293,7 @@ defmodule TrifleApp.DatabasesLive do
       "sqlite" -> "bg-purple-500"
       "redis" -> "bg-red-500"
       "mongo" -> "bg-emerald-600"
+      "mysql" -> "bg-orange-500"
       _ -> "bg-slate-500"
     end
   end

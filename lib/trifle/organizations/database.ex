@@ -7,7 +7,7 @@ defmodule Trifle.Organizations.Database do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @drivers ["redis", "postgres", "mongo", "sqlite"]
+  @drivers ["redis", "postgres", "mongo", "sqlite", "mysql"]
 
   schema "databases" do
     field :display_name, :string
@@ -40,6 +40,7 @@ defmodule Trifle.Organizations.Database do
   def default_port("postgres"), do: 5432
   def default_port("mongo"), do: 27017
   def default_port("sqlite"), do: nil
+  def default_port("mysql"), do: 3306
 
   def requires_username?("sqlite"), do: false
   def requires_username?(_), do: true
@@ -95,6 +96,16 @@ defmodule Trifle.Organizations.Database do
     %{
       "pool_size" => 5,
       "timeout" => 5000,
+      "table_name" => "trifle_stats",
+      "joined_identifiers" => "full"
+    }
+  end
+
+  def default_config_options("mysql") do
+    %{
+      "pool_size" => 10,
+      "pool_timeout" => 15000,
+      "timeout" => 15000,
       "table_name" => "trifle_stats",
       "joined_identifiers" => "full"
     }
@@ -383,9 +394,19 @@ defmodule Trifle.Organizations.Database do
     end
   end
 
-  defp get_or_create_driver(%__MODULE__{driver: "mysql"} = _database) do
-    # TODO: Implement MySQL driver in trifle_stats first
-    raise ArgumentError, "MySQL driver not yet implemented in trifle_stats library"
+  defp get_or_create_driver(%__MODULE__{driver: "mysql"} = database) do
+    {:ok, connection_name} = Trifle.DatabasePools.MySQLPoolSupervisor.start_mysql_pool(database)
+    config = database.config || %{}
+
+    joined_identifiers =
+      normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
+
+    Trifle.Stats.Driver.Mysql.new(
+      connection_name,
+      config["table_name"] || "trifle_stats",
+      joined_identifiers,
+      config["ping_table_name"]
+    )
   end
 
   defp get_or_create_driver(%__MODULE__{driver: driver}) do
@@ -449,6 +470,9 @@ defmodule Trifle.Organizations.Database do
 
           "sqlite" ->
             {sqlite_exists_direct?(database), nil}
+
+          "mysql" ->
+            mysql_exists_direct?(database)
 
           _ ->
             {false, nil}
@@ -688,6 +712,52 @@ defmodule Trifle.Organizations.Database do
               {:error, "Failed to connect to PostgreSQL: #{error_msg}"}
           end
 
+        "mysql" ->
+          case MyXQL.start_link(
+                 hostname: database.host,
+                 port: database.port,
+                 username: database.username,
+                 password: database.password,
+                 database: database.database_name,
+                 pool_size: 1,
+                 pool_timeout: 5000,
+                 timeout: 5000
+               ) do
+            {:ok, conn} ->
+              table_name = config["table_name"] || "trifle_stats"
+
+              joined_identifiers =
+                normalize_joined_identifiers(Map.get(config, "joined_identifiers", "full"))
+
+              ping_table_name = config["ping_table_name"]
+
+              try do
+                result =
+                  Trifle.Stats.Driver.Mysql.setup!(
+                    conn,
+                    table_name,
+                    joined_identifiers,
+                    ping_table_name
+                  )
+
+                GenServer.stop(conn)
+
+                case result do
+                  :ok -> {:ok, "MySQL tables created successfully"}
+                  other -> {:error, "Setup returned unexpected result: #{inspect(other)}"}
+                end
+              rescue
+                error ->
+                  GenServer.stop(conn)
+                  error_msg = convert_mysql_error_to_friendly_message(error, database)
+                  {:error, "MySQL setup failed: #{error_msg}"}
+              end
+
+            {:error, reason} ->
+              error_msg = convert_mysql_error_to_friendly_message(reason, database)
+              {:error, "Failed to connect to MySQL: #{error_msg}"}
+          end
+
         _ ->
           {:error, "Unsupported database driver: #{database.driver}"}
       end
@@ -845,6 +915,86 @@ defmodule Trifle.Organizations.Database do
     end
   end
 
+  defp mysql_exists_direct?(database) do
+    config = database.config || %{}
+    table_name = config["table_name"] || "trifle_stats"
+
+    require Logger
+
+    Logger.info(
+      "MySQL status check attempting to connect to: #{database.host}:#{database.port}/#{database.database_name}"
+    )
+
+    case MyXQL.start_link(
+           hostname: database.host,
+           port: database.port,
+           username: database.username,
+           password: database.password,
+           database: database.database_name,
+           pool_size: 1,
+           pool_timeout: 5000,
+           timeout: 5000
+         ) do
+      {:ok, conn} ->
+        Logger.info("MySQL status check connection successful")
+
+        result =
+          try do
+            query = """
+            SELECT EXISTS (
+              SELECT 1
+              FROM information_schema.tables
+              WHERE table_schema = ? AND table_name = ?
+            ) AS table_exists
+            """
+
+            case MyXQL.query(conn, query, [database.database_name, table_name]) do
+              {:ok, %{rows: [[1]]}} ->
+                Logger.info("MySQL table #{table_name} exists: true")
+                {true, nil}
+
+              {:ok, %{rows: [[0]]}} ->
+                Logger.info("MySQL table #{table_name} exists: false")
+                {false, nil}
+
+              {:ok, %{rows: [[true]]}} ->
+                Logger.info("MySQL table #{table_name} exists: true")
+                {true, nil}
+
+              {:ok, %{rows: [[false]]}} ->
+                Logger.info("MySQL table #{table_name} exists: false")
+                {false, nil}
+
+              {:error, reason} ->
+                Logger.error("MySQL table check query failed: #{inspect(reason)}")
+                error_msg = convert_mysql_error_to_friendly_message(reason, database)
+                {false, error_msg}
+
+              other ->
+                Logger.error("MySQL table check returned unexpected result: #{inspect(other)}")
+                {false, "Unexpected result: #{inspect(other)}"}
+            end
+          rescue
+            error ->
+              Logger.error("MySQL table check failed: #{inspect(error)}")
+              error_msg = convert_mysql_error_to_friendly_message(error, database)
+              {false, error_msg}
+          end
+
+        GenServer.stop(conn)
+        result
+
+      {:error, reason} ->
+        Logger.error("MySQL status check connection failed: #{inspect(reason)}")
+        error_msg = convert_mysql_error_to_friendly_message(reason, database)
+        {false, error_msg}
+
+      _ ->
+        Logger.error("MySQL status check connection failed with unknown error")
+        {false, "Unable to connect to MySQL database"}
+    end
+  end
+
   defp sqlite_exists_direct?(database) do
     # Direct SQLite check without creating a driver
     config = database.config || %{}
@@ -896,6 +1046,74 @@ defmodule Trifle.Organizations.Database do
 
       error ->
         # Check if it's a DBConnection error in the message
+        message = Exception.message(error)
+
+        cond do
+          String.contains?(message, "queue") and String.contains?(message, "timeout") ->
+            "Cannot connect to host '#{database.host}' (connection timeout)"
+
+          String.contains?(message, "non-existing domain") or
+              String.contains?(message, "nxdomain") ->
+            "Cannot connect to host '#{database.host}' (host not found)"
+
+          String.contains?(message, "connection refused") ->
+            "Connection refused by '#{database.host}:#{database.port}' (service not running?)"
+
+          true ->
+            "Database query failed: #{message}"
+        end
+    end
+  end
+
+  defp convert_mysql_error_to_friendly_message(error, database) do
+    case error do
+      %DBConnection.ConnectionError{reason: :queue_timeout} ->
+        "Cannot connect to host '#{database.host}' (connection timeout)"
+
+      %DBConnection.ConnectionError{message: message} when is_binary(message) ->
+        cond do
+          String.contains?(message, "non-existing domain") or
+              String.contains?(message, "nxdomain") ->
+            "Cannot connect to host '#{database.host}' (host not found)"
+
+          String.contains?(message, "connection refused") ->
+            "Connection refused by '#{database.host}:#{database.port}' (service not running?)"
+
+          String.contains?(message, "timeout") or String.contains?(message, "queue") ->
+            "Cannot connect to host '#{database.host}' (connection timeout)"
+
+          true ->
+            "Unable to connect to MySQL database"
+        end
+
+      %DBConnection.ConnectionError{} ->
+        "Unable to connect to MySQL database"
+
+      %MyXQL.Error{mysql: %{code: 1049}} ->
+        "Database '#{database.database_name}' does not exist"
+
+      %MyXQL.Error{mysql: %{code: 1045}} ->
+        "Invalid username or password"
+
+      %MyXQL.Error{mysql: %{code: 1146}} ->
+        "Table '#{(database.config || %{})["table_name"] || "trifle_stats"}' does not exist"
+
+      %MyXQL.Error{message: message} when is_binary(message) ->
+        cond do
+          String.contains?(String.downcase(message), "access denied") ->
+            "Invalid username or password"
+
+          String.contains?(String.downcase(message), "unknown database") ->
+            "Database '#{database.database_name}' does not exist"
+
+          String.contains?(String.downcase(message), "connection refused") ->
+            "Connection refused by '#{database.host}:#{database.port}' (service not running?)"
+
+          true ->
+            "Database query failed: #{message}"
+        end
+
+      error ->
         message = Exception.message(error)
 
         cond do
