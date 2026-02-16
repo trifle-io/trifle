@@ -1,6 +1,6 @@
 # Trifle App
 
-Dashboards, alerts, and scheduled reports for your time-series metrics. Connect your existing database or push data via API — then visualize, monitor, and share insights with your team. Cloud hosted at [app.trifle.io](https://app.trifle.io) or self-hosted on your own infrastructure.
+Dashboards, alerts, and scheduled reports for your time-series metrics. Connect the database where you already track metrics with [Trifle Stats](https://github.com/trifle-io/trifle-stats), then visualize, monitor, and share insights with your team.
 
 Part of the [Trifle](https://trifle.io) ecosystem.
 
@@ -8,13 +8,13 @@ Part of the [Trifle](https://trifle.io) ecosystem.
 
 ## Features
 
-- **Real-time dashboards** — Phoenix LiveView-powered analytics with Apache ECharts visualizations
-- **Metrics API** — Push data via REST API with Bearer token authentication
-- **Monitors & alerts** — Scheduled checks with email, Slack, and Discord delivery
-- **AI-powered chat** — Conversational analytics assistant (OpenAI GPT integration)
-- **Multiple data sources** — Project sources (read/write via API) and database sources (read-only from your DB)
-- **Self-hosted or cloud** — Deploy on Kubernetes, Docker Compose, or use the hosted version
-- **Dark mode** — Full dark mode support across all components
+- **Real-time dashboards.** Phoenix LiveView-powered analytics with Apache ECharts visualizations.
+- **Metrics API.** Read metrics, manage dashboards and alerts programmatically via REST API.
+- **Monitors & alerts.** Scheduled checks with email, Slack, and Discord delivery.
+- **AI-powered chat.** Conversational analytics assistant (OpenAI GPT integration).
+- **Connect your database.** Read metrics directly from your existing Postgres, MongoDB, Redis, MySQL, or SQLite where you track with Trifle Stats.
+- **Self-hosted.** Deploy on Kubernetes or Docker Compose on your own infrastructure.
+- **Dark mode.** Full dark mode support across all components.
 
 ## Quick Start (Docker Compose)
 
@@ -22,7 +22,7 @@ Part of the [Trifle](https://trifle.io) ecosystem.
 # Create local env
 echo "TRIFLE_DB_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env.local
 
-# Start PostgreSQL, MongoDB, and the application
+# Start PostgreSQL and the application
 docker compose up -d
 
 # Inside the app container: install deps, setup DB, start server
@@ -41,36 +41,17 @@ Visit [http://localhost:4000](http://localhost:4000).
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Web** | Phoenix LiveView | Real-time dashboards and UI |
-| **Metrics storage** | MongoDB (via trifle_stats) | Time-series data with automatic aggregation |
-| **Application data** | PostgreSQL | Users, projects, tokens, organizations |
+| **Application data** | PostgreSQL | Users, organizations, dashboards, monitors |
+| **Your metrics database** | Postgres, MongoDB, Redis, MySQL, SQLite | Time-series data tracked with Trifle Stats |
 | **Background jobs** | Oban | Monitor scheduling, report delivery |
 | **Charts** | Apache ECharts | Time-series and stacked visualizations |
 | **Styling** | TailwindCSS + Alpine.js | UI components and interactions |
 
-## API
-
-Push metrics with a project token:
-
-```bash
-curl -X POST "http://localhost:4000/api/v1/metrics" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "key": "page_views",
-    "at": "2026-02-16T10:30:00Z",
-    "values": {
-      "total": 1250,
-      "unique": 890,
-      "pages": { "home": 650, "dashboard": 400 }
-    }
-  }'
-```
-
 ## Delivery Channels
 
-- **Email** — Configure `Trifle.Mailer` (see `EMAILS.md`). All organization members are available as delivery targets.
-- **Slack** — Set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, and `SLACK_REDIRECT_URI`. Authorize workspaces from **Organization > Delivery**.
-- **Discord** — Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, and `DISCORD_REDIRECT_URI`. Connect servers from **Organization > Delivery**.
+- **Email.** Configure `Trifle.Mailer` (see `EMAILS.md`). All organization members are available as delivery targets.
+- **Slack.** Set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, and `SLACK_REDIRECT_URI`. Authorize workspaces from **Organization > Delivery**.
+- **Discord.** Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, and `DISCORD_REDIRECT_URI`. Connect servers from **Organization > Delivery**.
 
 ## ChatLive Assistant
 
@@ -78,16 +59,16 @@ Conversational analytics assistant that queries your metrics using OpenAI GPT mo
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `OPENAI_API_KEY` | Required — OpenAI API token | — |
-| `OPENAI_MODEL` | Optional — model override | `gpt-5` |
+| `OPENAI_API_KEY` | Required. OpenAI API token. | |
+| `OPENAI_MODEL` | Optional. Model override. | `gpt-5` |
 
 ## Deployment
 
 ### Docker Images
 
 Automated builds via GitHub Actions on every push to `main` and version tags:
-- `trifle/app` — Application image (AMD64 + ARM64)
-- `trifle/environment` — Base image (Ruby, Erlang, Elixir)
+- `trifle/app`: Application image (AMD64 + ARM64)
+- `trifle/environment`: Base image (Ruby, Erlang, Elixir)
 
 Version is defined in the root `VERSION` file.
 
@@ -99,8 +80,6 @@ helm install trifle .devops/kubernetes/helm/trifle \
   --set postgresql.auth.password="$(openssl rand -base64 32)" \
   --set initialUser.email="admin@example.com"
 ```
-
-Self-hosted mode is enabled by default (`app.deploymentMode=self_hosted`). Override with `--set app.deploymentMode=saas` for multi-tenant.
 
 ### Docker Compose (Production)
 
@@ -131,8 +110,8 @@ app:
 
 ### Monitoring
 
-- **Honeybadger** — Set `app.honeybadger.apiKey` in Helm values
-- **AppSignal** — Set `app.appsignal.enabled: true` with `pushApiKey`
+- **Honeybadger.** Set `app.honeybadger.apiKey` in Helm values.
+- **AppSignal.** Set `app.appsignal.enabled: true` with `pushApiKey`.
 
 ## Background Jobs & Monitors
 
@@ -146,7 +125,7 @@ Oban Web UI is optional: set `OBAN_WEB_LICENSE_KEY` before `mix deps.get` to ena
 
 - Elixir 1.18.4
 - Phoenix Framework
-- PostgreSQL + MongoDB (or use Docker Compose)
+- PostgreSQL (or use Docker Compose)
 
 ### Test Data
 
