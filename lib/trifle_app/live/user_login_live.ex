@@ -123,10 +123,10 @@ defmodule TrifleApp.UserLoginLive do
         
     <!-- Navigation Links -->
         <%= if TrifleApp.RegistrationConfig.enabled?() or @invitation_token do %>
-          <div class="text-center">
+          <div class="text-center space-y-2">
             <p class="text-sm text-gray-600 dark:text-gray-400">
               <%= if @invitation_token && !TrifleApp.RegistrationConfig.enabled?() do %>
-                You were invited to join. Create your account below.
+                You were invited to join.
               <% else %>
                 Don't have an account?
               <% end %>
@@ -141,6 +141,25 @@ defmodule TrifleApp.UserLoginLive do
                 class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
               >
                 Sign up
+              </.link>
+            </p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+              <.link
+                navigate={~p"/users/confirm"}
+                class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
+              >
+                Resend confirmation instructions
+              </.link>
+            </p>
+          </div>
+        <% else %>
+          <div class="text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+              <.link
+                navigate={~p"/users/confirm"}
+                class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
+              >
+                Resend confirmation instructions
               </.link>
             </p>
           </div>

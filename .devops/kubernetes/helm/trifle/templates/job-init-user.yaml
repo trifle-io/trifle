@@ -191,6 +191,36 @@ spec:
             - name: SLACK_SCOPES
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.app.discord.clientId }}
+            - name: DISCORD_CLIENT_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.discord.clientSecret }}
+            - name: DISCORD_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: discord-client-secret
+            {{- end }}
+            {{- with .Values.app.discord.botToken }}
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" $ }}-secret
+                  key: discord-bot-token
+            {{- end }}
+            {{- with .Values.app.discord.redirectUri }}
+            - name: DISCORD_REDIRECT_URI
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.discord.scopes }}
+            - name: DISCORD_SCOPES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.discord.permissions }}
+            - name: DISCORD_BOT_PERMISSIONS
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.app.googleOAuth.clientId }}
             - name: GOOGLE_OAUTH_CLIENT_ID
               value: {{ . | quote }}

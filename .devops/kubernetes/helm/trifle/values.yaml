@@ -128,6 +128,14 @@ app:
     redirectUri: ""
     scopes: "chat:write,chat:write.public,channels:read,groups:read,incoming-webhook"
 
+  discord:
+    clientId: ""
+    clientSecret: ""
+    botToken: ""
+    redirectUri: ""
+    scopes: "bot,applications.commands,identify,guilds"
+    permissions: 52224
+
   googleOAuth:
     clientId: ""
     clientSecret: ""

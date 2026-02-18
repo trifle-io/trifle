@@ -3,18 +3,24 @@ defmodule Trifle.Accounts.UserNotifier do
 
   alias Trifle.Mailer
 
+  @default_from {"Trifle", "contact@example.com"}
+
   # Delivers the email using the application mailer.
   defp deliver(recipient, subject, body) do
     email =
       new()
       |> to(recipient)
-      |> from({"Trifle", "contact@example.com"})
+      |> from(from_address())
       |> subject(subject)
       |> text_body(body)
 
     with {:ok, _metadata} <- Mailer.deliver(email) do
       {:ok, email}
     end
+  end
+
+  defp from_address do
+    Application.get_env(:trifle, :mailer_from, @default_from)
   end
 
   @doc """

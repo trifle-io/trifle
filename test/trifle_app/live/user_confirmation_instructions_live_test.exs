@@ -14,6 +14,8 @@ defmodule TrifleApp.UserConfirmationInstructionsLiveTest do
   describe "Resend confirmation" do
     test "renders the resend confirmation page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/confirm")
+      assert html =~ "Resend confirmation email"
+      assert html =~ "Back to sign in"
       assert html =~ "Resend confirmation instructions"
     end
 

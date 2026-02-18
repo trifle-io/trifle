@@ -5,27 +5,69 @@ defmodule TrifleApp.UserConfirmationInstructionsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-sm">
-      <.header class="text-center">
-        No confirmation instructions received?
-        <:subtitle>We'll send a new confirmation link to your inbox</:subtitle>
-      </.header>
+    <div class="min-h-screen flex items-start justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 pt-16 pb-12 px-4 sm:px-6 lg:px-8">
+      <div class="max-w-md w-full space-y-8">
+        <div class="text-center">
+          <div class="flex justify-center">
+            <.trifle_logo class="h-20 w-20 text-teal-600 dark:text-teal-400" />
+          </div>
+          <h1 class="mt-6 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+            Resend confirmation email
+          </h1>
+          <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Enter your email and we'll send a fresh confirmation link
+          </p>
+        </div>
 
-      <.simple_form for={@form} id="resend_confirmation_form" phx-submit="send_instructions">
-        <.input field={@form[:email]} type="email" placeholder="Email" required />
-        <:actions>
-          <.button phx-disable-with="Sending..." class="w-full">
-            Resend confirmation instructions
-          </.button>
-        </:actions>
-      </.simple_form>
+        <div class="bg-white dark:bg-slate-800 py-8 px-6 shadow-xl rounded-xl border border-gray-100 dark:border-slate-700">
+          <.form_container
+            for={@form}
+            id="resend_confirmation_form"
+            phx-submit="send_instructions"
+            layout="simple"
+          >
+            <.form_field
+              field={@form[:email]}
+              type="email"
+              label="Email address"
+              required
+              placeholder="Enter your email address"
+            />
+            <:actions>
+              <.primary_button type="submit" phx-disable-with="Sending..." class="w-full">
+                Resend confirmation instructions
+              </.primary_button>
+            </:actions>
+          </.form_container>
+        </div>
 
-      <p class="text-center mt-4">
-        <%= if TrifleApp.RegistrationConfig.enabled?() do %>
-          <.link href={~p"/users/register"}>Register</.link> |
-        <% end %>
-        <.link href={~p"/users/log_in"}>Log in</.link>
-      </p>
+        <div class="text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-400">
+            <%= if TrifleApp.RegistrationConfig.enabled?() do %>
+              Don't have an account?
+              <.link
+                navigate={~p"/users/register"}
+                class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
+              >
+                Sign up
+              </.link>
+              <span class="mx-2 text-gray-400 dark:text-slate-500">|</span>
+            <% end %>
+            <.link
+              navigate={~p"/users/log_in"}
+              class="font-medium text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
+            >
+              Back to sign in
+            </.link>
+          </p>
+        </div>
+
+        <div class="text-center">
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            © {Date.utc_today().year} Trifle Analytics. Secure analytics platform.
+          </p>
+        </div>
+      </div>
     </div>
     """
   end

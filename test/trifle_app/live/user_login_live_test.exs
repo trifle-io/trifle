@@ -11,6 +11,7 @@ defmodule TrifleApp.UserLoginLiveTest do
       assert html =~ "Sign in"
       assert html =~ "Sign up"
       assert html =~ "Forgot password?"
+      assert html =~ "Resend confirmation instructions"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -82,6 +83,18 @@ defmodule TrifleApp.UserLoginLiveTest do
         |> follow_redirect(conn, ~p"/users/reset_password")
 
       assert html =~ "Forgot your password?"
+    end
+
+    test "redirects to resend confirmation page when the resend link is clicked", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log_in")
+
+      {:ok, _view, html} =
+        lv
+        |> element(~s|main a:fl-contains("Resend confirmation instructions")|)
+        |> render_click()
+        |> follow_redirect(conn, ~p"/users/confirm")
+
+      assert html =~ "Resend confirmation email"
     end
   end
 end

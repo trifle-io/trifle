@@ -379,6 +379,26 @@ defmodule Trifle.AccountsTest do
       assert user_token.sent_to == user.email
       assert user_token.context == "confirm"
     end
+
+    test "uses configured mailer sender", %{user: user} do
+      previous_from = Application.get_env(:trifle, :mailer_from)
+      Application.put_env(:trifle, :mailer_from, {"Trifle QA", "qa@example.com"})
+
+      on_exit(fn ->
+        case previous_from do
+          nil -> Application.delete_env(:trifle, :mailer_from)
+          value -> Application.put_env(:trifle, :mailer_from, value)
+        end
+      end)
+
+      {:ok, email} =
+        Accounts.deliver_user_confirmation_instructions(
+          user,
+          &"https://example.test/users/confirm/#{&1}"
+        )
+
+      assert email.from == {"Trifle QA", "qa@example.com"}
+    end
   end
 
   describe "confirm_user/1" do
