@@ -9,6 +9,7 @@ defmodule Trifle.Organizations.InvitationNotifier do
   require Logger
 
   alias Trifle.Mailer
+  alias Trifle.Mailer.Template
   alias Trifle.Organizations.OrganizationInvitation
   alias Trifle.Repo
 
@@ -25,13 +26,26 @@ defmodule Trifle.Organizations.InvitationNotifier do
   def deliver_invitation(%OrganizationInvitation{} = invitation) do
     invitation = Repo.preload(invitation, [:organization, :invited_by])
 
+    content =
+      Template.action_email(
+        headline: subject_line(invitation),
+        greeting: "Hi,",
+        intro_lines: [intro_line(invitation)],
+        action_label: "Accept invitation",
+        action_url: acceptance_url(invitation),
+        outro_lines: [expiration_sentence(invitation)],
+        footer_lines: [
+          "If you weren't expecting this invitation, you can safely ignore this email."
+        ]
+      )
+
     email =
       new()
       |> to(invitation.email)
       |> from(from_address())
       |> subject(subject_line(invitation))
-      |> text_body(text_body(invitation))
-      |> html_body(html_body(invitation))
+      |> text_body(content.text)
+      |> html_body(content.html)
 
     case Mailer.deliver(email) do
       {:ok, _metadata} ->
@@ -55,39 +69,10 @@ defmodule Trifle.Organizations.InvitationNotifier do
     "You're invited to join #{org_name} on Trifle"
   end
 
-  defp text_body(%OrganizationInvitation{} = invitation) do
+  defp intro_line(%OrganizationInvitation{} = invitation) do
     org_name = (invitation.organization && invitation.organization.name) || "the organization"
     inviter = inviter_name(invitation)
-    accept_url = acceptance_url(invitation)
-    expires = expiration_sentence(invitation)
-
-    """
-    Hi,
-
-    #{inviter} invited you to join #{org_name} on Trifle.
-
-    Accept your invitation using the link below:
-    #{accept_url}
-
-    #{expires}
-
-    If you weren't expecting this invitation, you can safely ignore this email.
-    """
-  end
-
-  defp html_body(%OrganizationInvitation{} = invitation) do
-    org_name = (invitation.organization && invitation.organization.name) || "the organization"
-    inviter = inviter_name(invitation)
-    accept_url = acceptance_url(invitation)
-    expires = expiration_sentence(invitation)
-
-    """
-    <p>Hi,</p>
-    <p>#{inviter} invited you to join #{org_name} on Trifle.</p>
-    <p><a href="#{accept_url}">Click here to accept your invitation</a>.</p>
-    <p>#{expires}</p>
-    <p>If you weren't expecting this invitation, you can safely ignore this email.</p>
-    """
+    "#{inviter} invited you to join #{org_name} on Trifle."
   end
 
   defp inviter_name(%OrganizationInvitation{invited_by: nil}), do: "Someone"

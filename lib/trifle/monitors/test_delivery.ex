@@ -13,6 +13,7 @@ defmodule Trifle.Monitors.TestDelivery do
   alias TrifleApp.Exporters.ExportLog
   alias TrifleApp.Exports.Layout
   alias Trifle.Mailer
+  alias Trifle.Mailer.Template
   alias Swoosh.Attachment
   alias Swoosh.Email
   alias Mint.TransportError
@@ -679,13 +680,16 @@ defmodule Trifle.Monitors.TestDelivery do
         mailer_opts = Keyword.get(opts, :mailer_opts, [])
         attachments = email_attachments(exports)
         trigger_type = delivery_trigger_type(alert, opts)
+        subject = email_subject(monitor, alert, trigger_type)
+        content = email_content(monitor, alert, params, trigger_type, subject)
 
         email =
           Email.new()
           |> Email.to(recipient)
           |> Email.from(email_from(opts))
-          |> Email.subject(email_subject(monitor, alert, trigger_type))
-          |> Email.text_body(email_body(monitor, alert, params, trigger_type))
+          |> Email.subject(subject)
+          |> Email.text_body(content.text)
+          |> Email.html_body(content.html)
           |> attach_exports(exports)
           |> put_email_client_options(client_options)
 
@@ -1408,34 +1412,42 @@ defmodule Trifle.Monitors.TestDelivery do
     alert_descriptor(monitor, alert, trigger_type)
   end
 
-  defp email_body(%Monitor{} = monitor, nil, params, _trigger_type) do
+  defp email_content(%Monitor{} = monitor, nil, params, _trigger_type, subject) do
     detail = window_details(params)
     window_line = window_detail_line(detail)
 
-    [
-      "Heads-up! Here's the latest snapshot for #{monitor.name}.",
-      window_line,
-      "",
-      "Preview attached. — Trifle"
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n")
+    Template.action_email(
+      headline: subject,
+      greeting: "Hi,",
+      intro_lines:
+        ["Heads-up! Here's the latest snapshot for #{monitor.name}."] ++ maybe_line(window_line),
+      footer_lines: ["Preview attached. — Trifle"]
+    )
   end
 
-  defp email_body(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type) do
+  defp email_content(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type, _subject) do
     descriptor = alert_descriptor(monitor, alert, trigger_type)
     detail = window_details(params)
     window_line = window_detail_line(detail)
 
-    [
-      descriptor,
-      window_line,
-      "",
-      "Snapshot attached. — Trifle"
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n")
+    Template.action_email(
+      headline: descriptor,
+      greeting: "Hi,",
+      intro_lines: maybe_line(window_line),
+      footer_lines: ["Snapshot attached. — Trifle"]
+    )
   end
+
+  defp maybe_line(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> []
+      line -> [line]
+    end
+  end
+
+  defp maybe_line(_), do: []
 
   defp slack_message(%Monitor{} = monitor, nil, params) do
     detail = window_details(params)
