@@ -6,6 +6,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
   upsert is filtered by the provided `reference`.
   """
 
+  require Logger
+
   defstruct connection: nil,
             reference: nil,
             collection_name: "trifle_stats",
@@ -325,7 +327,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
       end)
 
     data =
-      Mongo.find(driver.connection, driver.collection_name, %{"$or" => identifiers})
+      fetch_documents(identifiers, driver)
       |> Enum.reduce(%{}, fn d, acc ->
         temp_key =
           case driver.joined_identifier do
@@ -356,6 +358,55 @@ defmodule Trifle.Stats.Driver.MongoProject do
       Map.get(data, simple_identifier, %{})
     end)
   end
+
+  defp fetch_documents(identifiers, driver, retries_left \\ 1)
+  defp fetch_documents([], _driver, _retries_left), do: []
+
+  defp fetch_documents(identifiers, driver, retries_left) do
+    # A single batch avoids `getMore` for this lookup-heavy query path and
+    # significantly reduces cursor-not-found failures in production.
+    find_opts = [single_batch: true, batch_size: max(length(identifiers), 1)]
+
+    case Mongo.find(driver.connection, driver.collection_name, %{"$or" => identifiers}, find_opts) do
+      {:error, error} ->
+        handle_fetch_error(error, identifiers, driver, retries_left)
+
+      stream ->
+        try do
+          Enum.to_list(stream)
+        rescue
+          error ->
+            handle_fetch_error(error, identifiers, driver, retries_left)
+        end
+    end
+  end
+
+  defp handle_fetch_error(error, identifiers, driver, retries_left) do
+    if retries_left > 0 and cursor_not_found_error?(error) do
+      Logger.warning(fn ->
+        "[MongoProject] cursor not found while loading stats, retrying query once: #{inspect(error)}"
+      end)
+
+      fetch_documents(identifiers, driver, retries_left - 1)
+    else
+      raise_fetch_error(error)
+    end
+  end
+
+  defp cursor_not_found_error?(%Mongo.Error{code: 43}), do: true
+  defp cursor_not_found_error?({:error, %Mongo.Error{code: 43}}), do: true
+
+  defp cursor_not_found_error?(%ArgumentError{message: message}) when is_binary(message) do
+    String.contains?(message, "Cursor not found")
+  end
+
+  defp cursor_not_found_error?(_), do: false
+
+  defp raise_fetch_error(%{__struct__: _} = exception), do: raise(exception)
+  defp raise_fetch_error({:error, %{__struct__: _} = exception}), do: raise(exception)
+
+  defp raise_fetch_error(other),
+    do: raise(RuntimeError, "Mongo stats fetch failed: #{inspect(other)}")
 
   def ping(%Trifle.Stats.Nocturnal.Key{} = key, values, driver) do
     if driver.joined_identifier do
