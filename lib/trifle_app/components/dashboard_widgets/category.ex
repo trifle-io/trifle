@@ -2,6 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
   @moduledoc false
 
   alias Trifle.Stats.Series
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -70,19 +71,74 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
           1
       end
 
-    {merged_map, encounter_order} =
-      Enum.reduce(paths, {%{}, []}, fn path, acc ->
+    path_inputs =
+      item
+      |> WidgetHelpers.path_inputs_for_form("category")
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+
+    selectors =
+      item
+      |> Map.get("series_color_selectors", %{})
+      |> WidgetHelpers.normalize_series_color_selectors_map()
+
+    path_specs =
+      paths
+      |> Enum.with_index()
+      |> Enum.map(fn {path, index} ->
+        path_input =
+          path_inputs
+          |> Enum.at(index)
+          |> case do
+            nil -> path
+            "" -> path
+            value -> value
+          end
+
+        %{path: path, path_input: path_input}
+      end)
+
+    {merged_map, encounter_order, source_map} =
+      Enum.reduce(path_specs, {%{}, [], %{}}, fn %{path: path, path_input: path_input}, acc ->
         formatted = Series.format_category(series_struct, path, slice_count)
-        merge_category_formatted_with_order(acc, formatted)
+        merge_category_formatted_with_order(acc, formatted, path_input)
       end)
 
     wildcard_paths? = Enum.any?(paths, &String.contains?(&1, "*"))
     custom_order? = category_custom_order?(paths)
 
-    data =
+    base_entries =
       merged_map
-      |> Enum.map(fn {k, v} -> %{name: to_string(k), value: normalize_number(v)} end)
+      |> Enum.map(fn {k, v} ->
+        name = to_string(k)
+
+        %{
+          name: name,
+          value: normalize_number(v),
+          source_path: Map.get(source_map, name, name)
+        }
+      end)
       |> sort_category_entries(encounter_order, wildcard_paths?, custom_order?)
+
+    {data, _rotate_indexes} =
+      Enum.reduce(base_entries, {[], %{}}, fn entry, {acc, rotate_indexes} ->
+        selector = WidgetHelpers.selector_for_path(selectors, entry.source_path)
+        parsed_selector = WidgetHelpers.parse_series_color_selector(selector)
+
+        {color, next_rotate_indexes} =
+          case parsed_selector do
+            %{type: :palette_rotate} ->
+              rotate_index = Map.get(rotate_indexes, entry.source_path, 0)
+              next = Map.put(rotate_indexes, entry.source_path, rotate_index + 1)
+              {WidgetHelpers.resolve_series_color(selector, rotate_index), next}
+
+            _ ->
+              {WidgetHelpers.resolve_series_color(selector, 0), rotate_indexes}
+          end
+
+        item = %{name: entry.name, value: entry.value, color: color}
+        {acc ++ [item], next_rotate_indexes}
+      end)
 
     %{
       id: id,
@@ -91,28 +147,37 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
     }
   end
 
-  defp merge_category_formatted_with_order({acc_map, acc_order}, formatted) do
+  defp merge_category_formatted_with_order(
+         {acc_map, acc_order, source_map},
+         formatted,
+         source_path
+       ) do
     cond do
       is_list(formatted) ->
         formatted
         |> Enum.filter(&is_map/1)
-        |> Enum.reduce({acc_map, acc_order}, &merge_category_map_with_order(&2, &1))
+        |> Enum.reduce(
+          {acc_map, acc_order, source_map},
+          &merge_category_map_with_order(&2, &1, source_path)
+        )
 
       is_map(formatted) ->
-        merge_category_map_with_order({acc_map, acc_order}, formatted)
+        merge_category_map_with_order({acc_map, acc_order, source_map}, formatted, source_path)
 
       true ->
-        {acc_map, acc_order}
+        {acc_map, acc_order, source_map}
     end
   end
 
-  defp merge_category_map_with_order({acc_map, acc_order}, map) do
-    Enum.reduce(map, {acc_map, acc_order}, fn {key, value}, {map_acc, order_acc} ->
+  defp merge_category_map_with_order({acc_map, acc_order, source_map}, map, source_path) do
+    Enum.reduce(map, {acc_map, acc_order, source_map}, fn {key, value},
+                                                          {map_acc, order_acc, src_acc} ->
       name = to_string(key)
       number = normalize_number(value)
       updated_map = Map.update(map_acc, name, number, fn existing -> existing + number end)
       updated_order = if name in order_acc, do: order_acc, else: order_acc ++ [name]
-      {updated_map, updated_order}
+      updated_source_map = Map.put_new(src_acc, name, source_path)
+      {updated_map, updated_order, updated_source_map}
     end)
   end
 

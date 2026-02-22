@@ -1,7 +1,7 @@
 defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
   use ExUnit.Case, async: true
 
-  alias TrifleApp.Components.DashboardWidgets.{WidgetData, WidgetView}
+  alias TrifleApp.Components.DashboardWidgets.{Helpers, WidgetData, WidgetView}
 
   @grid_items [
     %{
@@ -159,5 +159,98 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
 
     assert Enum.find(data, &(&1.name == "metrics.category.A")).value == 7.0
     assert Enum.find(data, &(&1.name == "metrics.category.B")).value == 5.0
+  end
+
+  test "timeseries wildcard selector with fixed index applies one color across emitted series", %{
+    series: series
+  } do
+    items = [
+      %{
+        "id" => "ts-fixed",
+        "type" => "timeseries",
+        "paths" => ["metrics.category.*"],
+        "path_inputs" => ["metrics.category.*"],
+        "series_color_selectors" => %{"metrics.category.*" => "default.4"},
+        "chart_type" => "line"
+      }
+    ]
+
+    %{timeseries: [%{series: dataset_series}]} = WidgetData.datasets(series, items)
+
+    assert length(dataset_series) >= 2
+
+    assert Enum.uniq(Enum.map(dataset_series, & &1.color)) == [
+             Helpers.resolve_series_color("default.4", 0)
+           ]
+  end
+
+  test "category wildcard selector with fixed index applies one color across categories", %{
+    series: series
+  } do
+    items = [
+      %{
+        "id" => "cat-fixed",
+        "type" => "category",
+        "paths" => ["metrics.category.*"],
+        "path_inputs" => ["metrics.category.*"],
+        "series_color_selectors" => %{"metrics.category.*" => "default.2"},
+        "chart_type" => "bar"
+      }
+    ]
+
+    %{category: [%{data: data}]} = WidgetData.datasets(series, items)
+    assert length(data) >= 2
+    assert Enum.uniq(Enum.map(data, & &1.color)) == [Helpers.resolve_series_color("default.2", 0)]
+  end
+
+  test "category wildcard selector with palette rotation rotates colors per emitted category", %{
+    series: series
+  } do
+    items = [
+      %{
+        "id" => "cat-rotate",
+        "type" => "category",
+        "paths" => ["metrics.category.*"],
+        "path_inputs" => ["metrics.category.*"],
+        "series_color_selectors" => %{"metrics.category.*" => "default.*"},
+        "chart_type" => "bar"
+      }
+    ]
+
+    %{category: [%{data: data}]} = WidgetData.datasets(series, items)
+    assert length(data) >= 2
+
+    colors = Enum.map(data, & &1.color)
+    assert length(Enum.uniq(colors)) >= 2
+  end
+
+  test "distribution selectors apply per configured path", %{series: series} do
+    items = [
+      %{
+        "id" => "dist-colors",
+        "type" => "distribution",
+        "paths" => ["metrics.distribution.*", "metrics.other.*"],
+        "path_inputs" => ["metrics.distribution.*", "metrics.other.*"],
+        "series_color_selectors" => %{
+          "metrics.distribution.*" => "default.0",
+          "metrics.other.*" => "default.6"
+        },
+        "designator" => %{
+          "type" => "custom",
+          "buckets" => [10, 20]
+        }
+      }
+    ]
+
+    %{distribution: [%{series: dist_series}]} = WidgetData.datasets(series, items)
+
+    assert Enum.any?(dist_series, &(&1.path == "metrics.distribution.*"))
+    assert Enum.any?(dist_series, &(&1.path == "metrics.other.*"))
+
+    assert Enum.find(dist_series, &(&1.path == "metrics.distribution.*")).color ==
+             Helpers.resolve_series_color("default.0", 0)
+
+    assert Enum.find(dist_series, &(&1.path == "metrics.other.*")).color ==
+             Helpers.resolve_series_color("default.6", 0)
   end
 end
