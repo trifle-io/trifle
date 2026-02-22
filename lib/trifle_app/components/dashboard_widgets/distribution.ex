@@ -66,6 +66,35 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     chart_type = item |> Map.get("chart_type", "bar") |> normalize_chart_type()
     legend = !!item["legend"]
 
+    path_inputs =
+      item
+      |> WidgetHelpers.path_inputs_for_form("distribution")
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+
+    selectors =
+      item
+      |> Map.get("series_color_selectors", %{})
+      |> WidgetHelpers.normalize_series_color_selectors_map()
+
+    path_color_map =
+      paths
+      |> Enum.with_index()
+      |> Enum.reduce(%{}, fn {path, index}, acc ->
+        path_input =
+          path_inputs
+          |> Enum.at(index)
+          |> case do
+            nil -> path
+            "" -> path
+            value -> value
+          end
+
+        selector = WidgetHelpers.selector_for_path(selectors, path_input)
+        color = WidgetHelpers.resolve_series_color(selector, index)
+        Map.put(acc, path, color)
+      end)
+
     if paths == [] do
       %{
         id: id,
@@ -122,11 +151,18 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
                   paths,
                   horizontal_descriptor,
                   vertical_descriptor,
-                  item
+                  item,
+                  path_color_map
                 )
 
               _ ->
-                series_for_paths(series_struct, paths, horizontal_descriptor, item)
+                series_for_paths(
+                  series_struct,
+                  paths,
+                  horizontal_descriptor,
+                  item,
+                  path_color_map
+                )
             end
 
           series =
@@ -161,7 +197,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp series_for_paths(series_struct, paths, descriptor, item) do
+  defp series_for_paths(series_struct, paths, descriptor, item, color_map) do
     slice_count = slice_count(series_struct)
 
     Enum.map(paths, fn path ->
@@ -176,6 +212,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       %{
         name: path_label(path, item),
         path: path,
+        color: Map.get(color_map, path),
         values: values
       }
     end)
@@ -199,7 +236,14 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp series_for_paths_3d(series_struct, paths, horizontal_descriptor, vertical_descriptor, item) do
+  defp series_for_paths_3d(
+         series_struct,
+         paths,
+         horizontal_descriptor,
+         vertical_descriptor,
+         item,
+         color_map
+       ) do
     Enum.map(paths, fn path ->
       matrix = bucket_matrix(series_struct, path, horizontal_descriptor, vertical_descriptor)
 
@@ -218,6 +262,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       %{
         name: path_label(path, item),
         path: path,
+        color: Map.get(color_map, path),
         points: points
       }
     end)

@@ -2,6 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
   @moduledoc false
 
   alias Trifle.Stats.Series
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -98,20 +99,55 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
       [ts || 0, val]
     end
 
+    path_inputs =
+      item
+      |> WidgetHelpers.path_inputs_for_form("timeseries")
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+
+    selectors =
+      item
+      |> Map.get("series_color_selectors", %{})
+      |> WidgetHelpers.normalize_series_color_selectors_map()
+
+    path_specs =
+      paths
+      |> Enum.with_index()
+      |> Enum.map(fn {path, index} ->
+        path_input =
+          path_inputs
+          |> Enum.at(index)
+          |> case do
+            nil -> path
+            "" -> path
+            value -> value
+          end
+
+        %{path: path, path_input: path_input}
+      end)
+
     per_path =
-      Enum.reduce(paths, [], fn path, acc ->
+      Enum.reduce(path_specs, [], fn %{path: path, path_input: path_input}, acc ->
         timeline_map = format_timeline_map(series_struct, path, 1, timeline_callback)
 
-        Enum.reduce(timeline_map, acc, fn {series_path, data}, inner_acc ->
+        selector = WidgetHelpers.selector_for_path(selectors, path_input)
+
+        timeline_map
+        |> Enum.sort_by(fn {series_path, _data} -> to_string(series_path) end)
+        |> Enum.with_index()
+        |> Enum.reduce(acc, fn {{series_path, data}, emitted_index}, inner_acc ->
           name = to_string(series_path)
           normalized_data = normalize_timeline_points(data)
+          color = WidgetHelpers.resolve_series_color(selector, emitted_index)
+
+          series_entry = %{name: name, data: normalized_data, color: color}
 
           case Enum.find_index(inner_acc, &(&1.name == name)) do
             nil ->
-              inner_acc ++ [%{name: name, data: normalized_data}]
+              inner_acc ++ [series_entry]
 
             idx ->
-              List.update_at(inner_acc, idx, fn _ -> %{name: name, data: normalized_data} end)
+              List.update_at(inner_acc, idx, fn _ -> series_entry end)
           end
         end)
       end)

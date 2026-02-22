@@ -661,7 +661,15 @@ Hooks.ChatChart = {
       if (isArea) base.areaStyle = { opacity: 0.12 };
       if (stacked && !isDots) base.stack = 'total';
       if (isBar) base.barMaxWidth = 26;
-      if (palette.length) base.itemStyle = { color: palette[idx % palette.length] };
+      const customColor =
+        typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color.trim() : null;
+      const paletteColor = palette.length ? palette[idx % palette.length] : null;
+      const appliedColor = customColor || paletteColor;
+      if (appliedColor) {
+        base.itemStyle = { color: appliedColor };
+        base.lineStyle = { color: appliedColor };
+        if (isArea) base.areaStyle = { opacity: 0.12, color: appliedColor };
+      }
 
       return base;
     });
@@ -723,9 +731,12 @@ Hooks.ChatChart = {
             data: data.map((entry, idx) => {
               const numeric = Number(entry.value ?? 0);
               const value = Number.isFinite(numeric) ? numeric : 0;
+              const explicitColor =
+                typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color.trim() : null;
               return {
                 value,
-                name: entry.name || `Slice ${idx + 1}`
+                name: entry.name || `Slice ${idx + 1}`,
+                itemStyle: explicitColor ? { color: explicitColor } : undefined
               };
             }),
             label: { color: textColor }
@@ -738,9 +749,12 @@ Hooks.ChatChart = {
     const values = data.map((entry, idx) => {
       const numeric = Number(entry.value ?? 0);
       const value = Number.isFinite(numeric) ? numeric : 0;
+      const explicitColor =
+        typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color.trim() : null;
+      const paletteColor = palette.length ? palette[idx % palette.length] : undefined;
       return {
         value,
-        itemStyle: { color: palette[idx % palette.length] }
+        itemStyle: { color: explicitColor || paletteColor }
       };
     });
 
@@ -2611,9 +2625,13 @@ Hooks.DashboardGrid = {
               label: { color: labelColor },
               labelLine: { lineStyle: { color: labelLineColor } },
               itemStyle: {
-                color: (params) => (colors && colors.length)
-                  ? colors[params.dataIndex % colors.length]
-                  : params.color
+                color: (params) => {
+                  const explicit = data?.[params.dataIndex]?.color;
+                  if (typeof explicit === 'string' && explicit.trim() !== '') return explicit.trim();
+                  return (colors && colors.length)
+                    ? colors[params.dataIndex % colors.length]
+                    : params.color;
+                }
               }
             }]
           };
@@ -2632,10 +2650,15 @@ Hooks.DashboardGrid = {
             tooltip: { trigger: 'axis', appendToBody: true },
             series: [{
               type: 'bar',
-              data: data.map((d) => d.value),
-              itemStyle: {
-                color: (params) => colors[params.dataIndex % (colors.length || 1)] || '#14b8a6'
-              }
+              data: data.map((d, idx) => {
+                const explicit = typeof d?.color === 'string' && d.color.trim() !== '' ? d.color.trim() : null;
+                const paletteColor = colors[idx % (colors.length || 1)] || '#14b8a6';
+                const numeric = Number(d?.value);
+                return {
+                  value: Number.isFinite(numeric) ? numeric : 0,
+                  itemStyle: { color: explicit || paletteColor }
+                };
+              })
             }]
           };
         }
@@ -2734,7 +2757,9 @@ Hooks.DashboardGrid = {
             const name = series && series.name ? series.name : `Series ${idx + 1}`;
             legendNames.push(name);
             const points = Array.isArray(series && series.points) ? series.points : [];
-            const color = colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+            const explicitColor =
+              typeof series?.color === 'string' && series.color.trim() !== '' ? series.color.trim() : null;
+            const color = explicitColor || colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
             const data = points.map((p) => {
               const xIndex = labels.indexOf(p.bucket_x);
               const yIndex = verticalLabels.indexOf(p.bucket_y);
@@ -2862,7 +2887,9 @@ Hooks.DashboardGrid = {
           const name = series && series.name ? series.name : `Series ${idx + 1}`;
           legendNames.push(name);
           const values = Array.isArray(series && series.values) ? series.values : [];
-          const color = colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+          const explicitColor =
+            typeof series?.color === 'string' && series.color.trim() !== '' ? series.color.trim() : null;
+          const color = explicitColor || colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
           const data = labels.map((label) => {
             const match = values.find((v) => v && v.bucket === label);
             return match && Number.isFinite(match.value) ? Number(match.value) : 0;
@@ -4704,9 +4731,14 @@ Hooks.ExpandedWidgetView = {
       }
       if (stacked && !isDots) base.stack = 'total';
       if (isArea) base.areaStyle = { opacity: 0.1 };
-      if (palette.length) {
-        const color = palette[idx % palette.length];
+      const explicitColor =
+        typeof s.color === 'string' && s.color.trim() !== '' ? s.color.trim() : null;
+      const paletteColor = palette.length ? palette[idx % palette.length] : null;
+      const color = explicitColor || paletteColor;
+      if (color) {
         base.itemStyle = { color };
+        base.lineStyle = { color };
+        if (isArea) base.areaStyle = { opacity: 0.1, color };
       }
       return base;
     });
@@ -5497,7 +5529,11 @@ Hooks.ExpandedWidgetView = {
           label: { color: labelColor },
           labelLine: { lineStyle: { color: labelLineColor } },
           itemStyle: {
-            color: (params) => this.seriesColor(params.dataIndex)
+            color: (params) => {
+              const explicit = data.data?.[params.dataIndex]?.color;
+              if (typeof explicit === 'string' && explicit.trim() !== '') return explicit.trim();
+              return this.seriesColor(params.dataIndex);
+            }
           }
         }]
       };
@@ -5514,10 +5550,14 @@ Hooks.ExpandedWidgetView = {
         tooltip: { trigger: 'axis', appendToBody: true },
         series: [{
           type: 'bar',
-          data: data.data.map((d) => d.value),
-          itemStyle: {
-            color: (params) => this.seriesColor(params.dataIndex)
-          }
+          data: data.data.map((d, idx) => {
+            const explicit = typeof d?.color === 'string' && d.color.trim() !== '' ? d.color.trim() : null;
+            const numeric = Number(d?.value);
+            return {
+              value: Number.isFinite(numeric) ? numeric : 0,
+              itemStyle: { color: explicit || this.seriesColor(idx) }
+            };
+          })
         }]
       };
     }
@@ -5579,7 +5619,11 @@ Hooks.ExpandedWidgetView = {
         const name = seriesItem?.name || `Series ${idx + 1}`;
         legendNames.push(name);
         const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
-        const color = colors ? colors[idx % colors.length] : this.seriesColor(idx);
+        const explicitColor =
+          typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
+            ? seriesItem.color.trim()
+            : null;
+        const color = explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
         const dataPoints = points
           .map((p) => {
             if (!p) return null;
@@ -5704,7 +5748,11 @@ Hooks.ExpandedWidgetView = {
       const name = seriesItem?.name || `Series ${idx + 1}`;
       legendNames.push(name);
       const values = Array.isArray(seriesItem?.values) ? seriesItem.values : [];
-      const color = colors ? colors[idx % colors.length] : this.seriesColor(idx);
+      const explicitColor =
+        typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
+          ? seriesItem.color.trim()
+          : null;
+      const color = explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
       const dataPoints = labels.map((label) => {
         const match = values.find((v) => v && (v.bucket === label || v.bucket_x === label));
         const val = match && Number.isFinite(Number(match.value)) ? Number(match.value) : 0;

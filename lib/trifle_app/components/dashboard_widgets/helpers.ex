@@ -1,6 +1,8 @@
 defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   @moduledoc false
 
+  alias TrifleApp.DesignSystem.ChartColors
+
   @text_widget_colors [
     %{id: "default", label: "Default (white)", background: "#ffffff", text: "#0f172a"},
     %{id: "slate", label: "Slate", background: "#0f172a", text: "#f8fafc"},
@@ -9,6 +11,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
     %{id: "emerald", label: "Emerald", background: "#10b981", text: "#064e3b"},
     %{id: "rose", label: "Rose", background: "#f43f5e", text: "#fff1f2"}
   ]
+
+  @default_series_color_selector "default.*"
+  @palette_rotate_selector_regex ~r/^([a-z0-9_-]+)\.\*$/
+  @palette_fixed_selector_regex ~r/^([a-z0-9_-]+)\.(\d+)$/
+  @custom_color_selector_regex ~r/^custom\.(#[0-9a-fA-F]{6})$/
 
   ## Text helpers
 
@@ -127,6 +134,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def normalize_category_paths_param(value), do: normalize_timeseries_paths_param(value)
   def normalize_category_paths_for_edit(paths), do: normalize_timeseries_paths_for_edit(paths)
 
+  def normalize_chart_path_inputs_param(value), do: normalize_timeseries_paths_param(value)
+  def normalize_chart_path_inputs_for_edit(value), do: normalize_timeseries_paths_for_edit(value)
+
   def category_paths_for_form(%{} = widget) do
     paths = normalize_category_paths_for_edit(Map.get(widget, "paths"))
 
@@ -145,6 +155,327 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   def category_paths_for_form(paths), do: normalize_category_paths_for_edit(paths)
+
+  ## Chart color selector helpers
+
+  def default_series_color_selector, do: @default_series_color_selector
+
+  def color_selector_options(current_selector \\ nil) do
+    rotate_options =
+      ChartColors.palette_options()
+      |> Enum.map(fn palette ->
+        %{
+          value: "#{palette.id}.*",
+          label: "#{palette.label} series"
+        }
+      end)
+
+    fixed_options =
+      ChartColors.palette_options()
+      |> Enum.flat_map(fn palette ->
+        palette.colors
+        |> Enum.with_index()
+        |> Enum.map(fn {color, index} ->
+          %{
+            value: "#{palette.id}.#{index}",
+            label: "#{palette.label} ##{index}",
+            color: color
+          }
+        end)
+      end)
+
+    custom_option =
+      case parse_series_color_selector(current_selector) do
+        %{type: :single_custom, color: color} ->
+          [%{value: "custom.#{color}", label: "Custom #{color}", color: color}]
+
+        _ ->
+          []
+      end
+
+    %{
+      rotate: rotate_options,
+      fixed: fixed_options,
+      custom: custom_option
+    }
+  end
+
+  def path_inputs_for_form(widget, type) do
+    explicit_inputs =
+      widget
+      |> Map.get("path_inputs")
+      |> normalize_chart_path_inputs_for_edit()
+
+    has_explicit_inputs? =
+      explicit_inputs
+      |> Enum.map(&String.trim/1)
+      |> Enum.any?(&(&1 != ""))
+
+    if has_explicit_inputs? do
+      explicit_inputs
+    else
+      case normalize_chart_type(type) do
+        "timeseries" ->
+          timeseries_paths_for_form(Map.get(widget, "paths", Map.get(widget, "path")))
+
+        "category" ->
+          category_paths_for_form(widget)
+
+        "distribution" ->
+          distribution_paths_for_form(widget)
+
+        _ ->
+          [""]
+      end
+    end
+  end
+
+  def chart_path_rows(widget, type) do
+    chart_type = normalize_chart_type(type)
+    path_inputs = path_inputs_for_form(widget, chart_type)
+    expanded_paths = expanded_paths_for_rows(widget, chart_type, path_inputs)
+
+    selectors =
+      normalize_series_color_selectors_for_paths(
+        path_inputs,
+        [],
+        Map.get(widget, "series_color_selectors", %{})
+      )
+
+    path_inputs
+    |> Enum.with_index()
+    |> Enum.map(fn {path_input, index} ->
+      expanded_path = Enum.at(expanded_paths, index) || path_input
+      normalized_path = String.trim(to_string(path_input || ""))
+      selector = selector_for_path(selectors, normalized_path)
+      parsed = parse_series_color_selector(selector)
+
+      %{
+        index: index,
+        path_input: path_input,
+        expanded_path: expanded_path,
+        selector: selector,
+        selector_type: selector_type(parsed),
+        selector_palette_id: Map.get(parsed, :palette_id),
+        selector_color: resolve_series_color(selector, 0),
+        wildcard: wildcard_state(path_input, expanded_path)
+      }
+    end)
+  end
+
+  def normalize_series_color_selectors_map(value) when is_map(value) do
+    value
+    |> Enum.reduce(%{}, fn {raw_path, raw_selector}, acc ->
+      path =
+        raw_path
+        |> to_string()
+        |> String.trim()
+
+      if path == "" do
+        acc
+      else
+        selector = normalize_series_color_selector(raw_selector)
+        Map.put(acc, path, selector)
+      end
+    end)
+  end
+
+  def normalize_series_color_selectors_map(_), do: %{}
+
+  def normalize_series_color_selectors_for_paths(
+        path_inputs,
+        selectors_param,
+        existing_selectors \\ %{}
+      ) do
+    normalized_paths = normalize_chart_path_inputs_for_edit(path_inputs)
+    existing_map = normalize_series_color_selectors_map(existing_selectors)
+
+    selector_values =
+      selectors_param
+      |> selector_values_for_form()
+      |> Enum.map(&normalize_series_color_selector/1)
+
+    selector_values_provided? = selector_values != []
+
+    normalized_paths
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {raw_path, index}, acc ->
+      path =
+        raw_path
+        |> to_string()
+        |> String.trim()
+
+      if path == "" do
+        acc
+      else
+        selector =
+          cond do
+            selector_values_provided? ->
+              selector_values
+              |> Enum.at(index)
+              |> case do
+                nil -> Map.get(existing_map, path, @default_series_color_selector)
+                value -> value
+              end
+
+            true ->
+              Map.get(existing_map, path, @default_series_color_selector)
+          end
+
+        Map.put(acc, path, selector)
+      end
+    end)
+  end
+
+  def normalize_series_color_selector(selector) do
+    normalized =
+      selector
+      |> to_string()
+      |> String.trim()
+      |> String.downcase()
+
+    cond do
+      normalized == "" ->
+        @default_series_color_selector
+
+      Regex.match?(@palette_rotate_selector_regex, normalized) ->
+        normalized
+
+      Regex.match?(@palette_fixed_selector_regex, normalized) ->
+        normalized
+
+      Regex.match?(@custom_color_selector_regex, normalized) ->
+        [_, raw_color] = Regex.run(@custom_color_selector_regex, normalized)
+        "custom.#{String.upcase(raw_color)}"
+
+      true ->
+        @default_series_color_selector
+    end
+  end
+
+  def parse_series_color_selector(selector) do
+    normalized = normalize_series_color_selector(selector)
+
+    cond do
+      Regex.match?(@palette_rotate_selector_regex, normalized) ->
+        [_, palette_id] = Regex.run(@palette_rotate_selector_regex, normalized)
+        %{type: :palette_rotate, palette_id: palette_id}
+
+      Regex.match?(@palette_fixed_selector_regex, normalized) ->
+        [_, palette_id, raw_index] = Regex.run(@palette_fixed_selector_regex, normalized)
+        %{type: :single_palette, palette_id: palette_id, index: String.to_integer(raw_index)}
+
+      Regex.match?(@custom_color_selector_regex, normalized) ->
+        [_, color] = Regex.run(@custom_color_selector_regex, normalized)
+        %{type: :single_custom, color: String.upcase(color)}
+
+      true ->
+        %{type: :palette_rotate, palette_id: "default"}
+    end
+  end
+
+  def resolve_series_color(selector, series_index \\ 0) when is_integer(series_index) do
+    safe_index = max(series_index, 0)
+
+    case parse_series_color_selector(selector) do
+      %{type: :palette_rotate, palette_id: palette_id} ->
+        ChartColors.color_for(palette_id, safe_index)
+
+      %{type: :single_palette, palette_id: palette_id, index: index} ->
+        ChartColors.color_at(palette_id, index) || ChartColors.color_for(palette_id, 0)
+
+      %{type: :single_custom, color: color} ->
+        color
+    end
+  end
+
+  def selector_for_path(selectors, path_input) when is_map(selectors) do
+    path =
+      path_input
+      |> to_string()
+      |> String.trim()
+
+    selectors
+    |> Map.get(path, @default_series_color_selector)
+    |> normalize_series_color_selector()
+  end
+
+  def selector_for_path(_selectors, _path_input), do: @default_series_color_selector
+
+  defp normalize_chart_type(type) do
+    type
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "timeseries" -> "timeseries"
+      "category" -> "category"
+      "distribution" -> "distribution"
+      other -> other
+    end
+  end
+
+  defp expanded_paths_for_rows(widget, chart_type, _path_inputs) do
+    case chart_type do
+      "timeseries" ->
+        widget
+        |> Map.get("paths", Map.get(widget, "path"))
+        |> normalize_timeseries_paths_for_edit()
+
+      "category" ->
+        category_paths_for_form(widget)
+
+      "distribution" ->
+        distribution_paths_for_form(widget)
+
+      _ ->
+        [""]
+    end
+  end
+
+  defp selector_type(%{type: :palette_rotate}), do: "palette"
+  defp selector_type(_), do: "single"
+
+  defp wildcard_state(path_input, expanded_path) do
+    typed_path = to_string(path_input || "") |> String.trim()
+    normalized_expanded = to_string(expanded_path || "") |> String.trim()
+    explicit_wildcard? = String.contains?(typed_path, "*")
+    auto_wildcard? = !explicit_wildcard? and String.contains?(normalized_expanded, "*")
+
+    cond do
+      typed_path == "" -> :unknown
+      explicit_wildcard? -> :explicit
+      auto_wildcard? -> :auto
+      true -> :single
+    end
+  end
+
+  defp selector_values_for_form(value) do
+    value
+    |> case do
+      nil -> []
+      map when is_map(map) -> selector_values_from_map(map)
+      list when is_list(list) -> list
+      other -> [other]
+    end
+    |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+  end
+
+  defp selector_values_from_map(map) do
+    map
+    |> Enum.sort_by(fn {raw_key, _value} ->
+      raw_key
+      |> to_string()
+      |> String.trim()
+      |> Integer.parse()
+      |> case do
+        {index, ""} -> {0, index}
+        _ -> {1, to_string(raw_key)}
+      end
+    end)
+    |> Enum.map(fn {_key, value} -> value end)
+  end
 
   ## Table helpers
 
