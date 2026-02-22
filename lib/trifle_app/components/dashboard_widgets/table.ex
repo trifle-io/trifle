@@ -160,7 +160,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
       end
       |> Enum.map(&to_string/1)
       |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
 
     if inputs == [], do: fallback_filters, else: inputs
   end
