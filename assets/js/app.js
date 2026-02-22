@@ -1993,8 +1993,10 @@ Hooks.DashboardGrid = {
   _render_kpi_visuals(items) {
     if (!Array.isArray(items)) return;
     const isDarkMode = document.documentElement.classList.contains('dark');
-    const lineColor = (this.colors && this.colors[0]) || '#14b8a6';
+    const defaultLineColor = (this.colors && this.colors[0]) || '#14b8a6';
     items.forEach((it) => {
+      const lineColor =
+        typeof it.color === 'string' && it.color.trim() !== '' ? it.color.trim() : defaultLineColor;
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');
       if (!body) return;
@@ -4691,6 +4693,14 @@ Hooks.ExpandedWidgetView = {
     return fallback[index % fallback.length];
   },
 
+  normalizedExplicitColor(color) {
+    return typeof color === 'string' && color.trim() !== '' ? color.trim() : null;
+  },
+
+  resolveSeriesColor(color, index = 0) {
+    return this.normalizedExplicitColor(color) || this.seriesColor(index);
+  },
+
   renderTimeseries(data) {
     if (!data || !Array.isArray(data.series) || data.series.length === 0) {
       this.showChartPlaceholder('No chart data available yet.');
@@ -5189,7 +5199,7 @@ Hooks.ExpandedWidgetView = {
       wrapper.appendChild(chartWrapper);
 
       const theme = this.getTheme();
-      const lineColor = this.seriesColor(0);
+      const lineColor = this.resolveSeriesColor(visual && visual.color, 0);
       const initSparkline = () => {
         if (chartDiv.clientWidth === 0 || chartDiv.clientHeight === 0) {
           if (this._sparklineTimer) clearTimeout(this._sparklineTimer);
@@ -5255,7 +5265,8 @@ Hooks.ExpandedWidgetView = {
         Number.isFinite(progressCurrent) && axisMax !== 0 ? Math.max(0, Math.min(1, progressCurrent / axisMax)) : 0;
       barInner.className = 'h-4 rounded-full';
       barInner.style.width = `${ratio * 100}%`;
-      barInner.style.background = this.getProgressColor(visual);
+      const lineColor = this.resolveSeriesColor(visual && visual.color, 0);
+      barInner.style.background = this.getProgressColor(visual, lineColor);
       barOuter.appendChild(barInner);
       container.appendChild(barOuter);
 
@@ -5265,7 +5276,7 @@ Hooks.ExpandedWidgetView = {
         seriesEntries = [{
           name: baseSeriesName,
           data: [[Date.now(), progressCurrent]],
-          color: this.seriesColor(0)
+          color: lineColor
         }];
       }
     }
@@ -5278,10 +5289,11 @@ Hooks.ExpandedWidgetView = {
         null;
 
       if (fallbackValue != null && Number.isFinite(fallbackValue)) {
+        const lineColor = this.resolveSeriesColor(visual && visual.color, 0);
         seriesEntries = [{
           name: baseSeriesName,
           data: [[Date.now(), fallbackValue]],
-          color: this.seriesColor(0)
+          color: lineColor
         }];
       }
     }
@@ -5337,7 +5349,7 @@ Hooks.ExpandedWidgetView = {
       ? data.series.map((series, idx) => ({
           name: series.name || `Series ${idx + 1}`,
           data: series.data || [],
-          color: this.seriesColor(idx)
+          color: this.resolveSeriesColor(series && series.color, idx)
         }))
       : [];
 
@@ -5485,7 +5497,9 @@ Hooks.ExpandedWidgetView = {
     return '';
   },
 
-  getProgressColor(visual) {
+  getProgressColor(visual, preferredColor) {
+    const explicit = this.normalizedExplicitColor(preferredColor);
+    if (explicit) return explicit;
     if (!visual) return '#14b8a6';
     const ratio = Number.isFinite(Number(visual.ratio)) ? Number(visual.ratio) : null;
     if (ratio == null) return '#14b8a6';
@@ -5814,7 +5828,7 @@ Hooks.ExpandedWidgetView = {
 
     series.forEach((seriesItem, idx) => {
       const name = seriesItem?.name || `Series ${idx + 1}`;
-      const color = this.seriesColor(idx);
+      const color = this.resolveSeriesColor(seriesItem && seriesItem.color, idx);
 
       if (is3d) {
         const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
@@ -5977,7 +5991,7 @@ Hooks.ExpandedWidgetView = {
     const rows = items.map((item, idx) => {
       const name = escapeHtml(String(item.name ?? `Item ${idx + 1}`));
       const value = Number(item.value);
-      const color = this.seriesColor(idx);
+      const color = this.resolveSeriesColor(item && item.color, idx);
       const formatted = Number.isFinite(value) ? formatCompactNumber(value) : '—';
       const raw = escapeHtml(formatRaw(value));
 

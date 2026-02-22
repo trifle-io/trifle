@@ -11,7 +11,7 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
   alias Decimal
   alias Trifle.Stats.Series
-  alias TrifleApp.DesignSystem.ChartColors
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
 
   @spec datasets(Series.t() | nil, list()) :: list()
   def datasets(nil, _grid_items), do: []
@@ -39,6 +39,14 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
       normalized_entries = normalize_category_entries(raw_category)
 
+      selectors =
+        widget
+        |> Map.get("series_color_selectors", %{})
+        |> WidgetHelpers.normalize_series_color_selectors_map()
+
+      selector = WidgetHelpers.selector_for_path(selectors, path)
+      parsed_selector = WidgetHelpers.parse_series_color_selector(selector)
+
       items =
         normalized_entries
         |> Enum.reject(&zero_entry?/1)
@@ -46,12 +54,18 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
         |> maybe_limit(limit)
         |> Enum.with_index()
         |> Enum.map(fn {{full_path, value}, index} ->
+          color =
+            case parsed_selector do
+              %{type: :palette_rotate} -> WidgetHelpers.resolve_series_color(selector, index)
+              _ -> WidgetHelpers.resolve_series_color(selector, 0)
+            end
+
           %{
             path: full_path,
             label: display_label(full_path, widget),
             value: value,
             formatted_value: format_value(value),
-            color: ChartColors.color_for(index)
+            color: color
           }
         end)
 

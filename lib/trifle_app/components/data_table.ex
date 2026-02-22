@@ -245,16 +245,23 @@ defmodule TrifleApp.Components.DataTable do
       |> Enum.map(fn row ->
         path = get_field(row, :path)
         display_path = get_field(row, :display_path)
+        custom_path_html = get_field(row, :path_html)
 
         formatted_path =
-          ExploreCore.format_nested_path(
-            display_path,
-            color_paths,
-            transponder_info || %{},
-            transponder_path: path,
-            display_path: display_path
-          )
-          |> Phoenix.HTML.safe_to_string()
+          case custom_path_html do
+            value when is_binary(value) and value != "" ->
+              value
+
+            _ ->
+              ExploreCore.format_nested_path(
+                display_path,
+                color_paths,
+                transponder_info || %{},
+                transponder_path: path,
+                display_path: display_path
+              )
+              |> Phoenix.HTML.safe_to_string()
+          end
 
         values =
           column_refs

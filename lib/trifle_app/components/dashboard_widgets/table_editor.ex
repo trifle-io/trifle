@@ -6,18 +6,19 @@ defmodule TrifleApp.Components.DashboardWidgets.TableEditor do
   import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
 
   alias TrifleApp.Components.DashboardWidgets.Helpers
+  alias TrifleApp.Components.DashboardWidgets.SeriesColorSelector
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
-    paths = Helpers.table_paths_for_form(widget)
+    rows = Helpers.chart_path_rows(widget, "table")
 
     assigns =
       assigns
       |> assign(:widget, widget)
-      |> assign(:paths, paths)
+      |> assign(:rows, rows)
 
     ~H"""
     <div class="space-y-4">
@@ -32,25 +33,36 @@ defmodule TrifleApp.Components.DashboardWidgets.TableEditor do
           Paths
         </label>
         <div class="space-y-2">
-          <%= for {path, index} <- Enum.with_index(@paths) do %>
-            <div class="flex items-center gap-2">
-              <div class="flex-1 min-w-0">
+          <%= for row <- @rows do %>
+            <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_12rem_auto] gap-2 lg:items-start">
+              <div class="min-w-0">
                 <.path_autocomplete_input
-                  id={"widget-table-path-#{Map.get(@widget, "id")}-#{index}"}
+                  id={"widget-table-path-#{Map.get(@widget, "id")}-#{row.index}"}
                   name="table_paths[]"
-                  value={path}
+                  value={row.path_input}
                   placeholder="payment_methods.*"
                   path_options={@path_options}
                   input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
                 />
               </div>
+              <div>
+                <SeriesColorSelector.input
+                  id_prefix={"widget-table-color-#{Map.get(@widget, "id")}"}
+                  name="table_color_selector"
+                  index={row.index}
+                  selector={row.selector}
+                />
+                <p class="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
+                  {wildcard_hint(row.wildcard, row.expanded_path)}
+                </p>
+              </div>
               <button
                 type="button"
                 data-action="remove"
-                data-index={index}
+                data-index={row.index}
                 class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                 aria-label="Remove path"
-                disabled={length(@paths) == 1}
+                disabled={length(@rows) == 1}
               >
                 &minus;
               </button>
@@ -73,4 +85,9 @@ defmodule TrifleApp.Components.DashboardWidgets.TableEditor do
     </div>
     """
   end
+
+  defp wildcard_hint(:explicit, _expanded_path), do: "Wildcard path"
+  defp wildcard_hint(:auto, expanded_path), do: "Auto-expanded to #{expanded_path}"
+  defp wildcard_hint(:single, _expanded_path), do: "Single series path"
+  defp wildcard_hint(_, _expanded_path), do: "Path pending"
 end

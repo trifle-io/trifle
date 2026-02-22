@@ -635,12 +635,30 @@ defmodule TrifleApp.DashboardLive do
                       i
                     )
 
+                  kpi_path =
+                    params
+                    |> Map.get("kpi_path", "")
+                    |> to_string()
+                    |> String.trim()
+
+                  selectors =
+                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+                      [kpi_path],
+                      Map.get(
+                        params,
+                        "kpi_color_selector",
+                        Map.get(params, "kpi_color_selector[]", [])
+                      ),
+                      Map.get(i, "series_color_selectors", %{})
+                    )
+
                   base =
                     base
-                    |> Map.put("path", Map.get(params, "kpi_path", ""))
+                    |> Map.put("path", kpi_path)
                     |> Map.put("function", Map.get(params, "kpi_function", "mean"))
                     |> Map.put("size", Map.get(params, "kpi_size", "m"))
                     |> Map.put("subtype", subtype)
+                    |> Map.put("series_color_selectors", selectors)
 
                   case subtype do
                     "split" ->
@@ -776,6 +794,17 @@ defmodule TrifleApp.DashboardLive do
 
                   expanded_paths = auto_expand_path_wildcards(paths, path_options)
 
+                  selectors =
+                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+                      paths,
+                      Map.get(
+                        params,
+                        "table_color_selector",
+                        Map.get(params, "table_color_selector[]", [])
+                      ),
+                      Map.get(i, "series_color_selectors", %{})
+                    )
+
                   primary_path =
                     expanded_paths
                     |> Enum.reject(&(&1 == ""))
@@ -783,7 +812,9 @@ defmodule TrifleApp.DashboardLive do
                     |> Kernel.||(fallback_path)
 
                   base
+                  |> Map.put("path_inputs", paths)
                   |> Map.put("paths", expanded_paths)
+                  |> Map.put("series_color_selectors", selectors)
                   |> Map.put("path", primary_path)
 
                 "distribution" ->
@@ -870,11 +901,23 @@ defmodule TrifleApp.DashboardLive do
                     |> Map.get("list_label_strategy", Map.get(i, "label_strategy") || "short")
                     |> normalize_list_label_strategy()
 
+                  selectors =
+                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+                      if(is_nil(list_path), do: [], else: [list_path]),
+                      Map.get(
+                        params,
+                        "list_color_selector",
+                        Map.get(params, "list_color_selector[]", [])
+                      ),
+                      Map.get(i, "series_color_selectors", %{})
+                    )
+
                   base
                   |> Map.put("path", list_path)
                   |> Map.put("limit", limit)
                   |> Map.put("sort", sort)
                   |> Map.put("label_strategy", label_strategy)
+                  |> Map.put("series_color_selectors", selectors)
                   |> Map.delete("empty_message")
 
                 "text" ->
@@ -2034,6 +2077,24 @@ defmodule TrifleApp.DashboardLive do
     type = widget["type"] |> to_string() |> String.downcase()
 
     case type do
+      "kpi" ->
+        path =
+          widget
+          |> Map.get("path", "")
+          |> to_string()
+          |> String.trim()
+
+        selectors =
+          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+            [path],
+            [],
+            Map.get(widget, "series_color_selectors", %{})
+          )
+
+        widget
+        |> Map.put("path", path)
+        |> Map.put("series_color_selectors", selectors)
+
       "timeseries" ->
         path_inputs =
           widget
@@ -2106,11 +2167,19 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("path", primary)
 
       "table" ->
-        paths =
+        path_inputs =
           widget
-          |> Map.get("paths", widget["path"])
+          |> Map.get("path_inputs", Map.get(widget, "paths", widget["path"]))
           |> DashboardWidgetHelpers.normalize_table_paths_for_edit()
-          |> auto_expand_path_wildcards(options)
+
+        paths = auto_expand_path_wildcards(path_inputs, options)
+
+        selectors =
+          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+            path_inputs,
+            [],
+            Map.get(widget, "series_color_selectors", %{})
+          )
 
         primary =
           paths
@@ -2119,8 +2188,34 @@ defmodule TrifleApp.DashboardLive do
           |> Kernel.||(widget["path"] || "")
 
         widget
+        |> Map.put("path_inputs", path_inputs)
         |> Map.put("paths", paths)
+        |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary)
+
+      "list" ->
+        path =
+          widget
+          |> Map.get("path")
+          |> to_string()
+          |> String.trim()
+
+        normalized_path =
+          case path do
+            "" -> nil
+            value -> value
+          end
+
+        selectors =
+          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+            if(is_nil(normalized_path), do: [], else: [normalized_path]),
+            [],
+            Map.get(widget, "series_color_selectors", %{})
+          )
+
+        widget
+        |> Map.put("path", normalized_path)
+        |> Map.put("series_color_selectors", selectors)
 
       _ ->
         widget
@@ -3141,15 +3236,33 @@ defmodule TrifleApp.DashboardLive do
           |> Map.get("kpi_subtype", Map.get(widget, "subtype"))
           |> DashboardWidgetHelpers.normalize_kpi_subtype(widget)
 
+        kpi_path =
+          params
+          |> Map.get("kpi_path", Map.get(widget, "path", ""))
+          |> to_string()
+          |> String.trim()
+
+        selectors =
+          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+            [kpi_path],
+            Map.get(
+              params,
+              "kpi_color_selector",
+              Map.get(params, "kpi_color_selector[]", [])
+            ),
+            Map.get(widget, "series_color_selectors", %{})
+          )
+
         widget =
           widget
-          |> Map.put("path", Map.get(params, "kpi_path", Map.get(widget, "path", "")))
+          |> Map.put("path", kpi_path)
           |> Map.put(
             "function",
             Map.get(params, "kpi_function", Map.get(widget, "function", "mean"))
           )
           |> Map.put("size", Map.get(params, "kpi_size", Map.get(widget, "size", "m")))
           |> Map.put("subtype", subtype)
+          |> Map.put("series_color_selectors", selectors)
 
         case subtype do
           "split" ->
@@ -3263,6 +3376,17 @@ defmodule TrifleApp.DashboardLive do
         table_paths = DashboardWidgetHelpers.normalize_table_paths_for_edit(table_paths_param)
         expanded_paths = auto_expand_path_wildcards(table_paths, path_options)
 
+        selectors =
+          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+            table_paths,
+            Map.get(
+              params,
+              "table_color_selector",
+              Map.get(params, "table_color_selector[]", [])
+            ),
+            Map.get(widget, "series_color_selectors", %{})
+          )
+
         fallback_path =
           widget
           |> Map.get("path", "")
@@ -3272,7 +3396,9 @@ defmodule TrifleApp.DashboardLive do
         primary_path = primary_path_from_paths(expanded_paths, fallback_path)
 
         widget
+        |> Map.put("path_inputs", table_paths)
         |> Map.put("paths", expanded_paths)
+        |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary_path)
 
       "distribution" ->
@@ -3366,11 +3492,19 @@ defmodule TrifleApp.DashboardLive do
           |> Map.get("list_label_strategy", Map.get(widget, "label_strategy") || "short")
           |> normalize_list_label_strategy()
 
+        selectors =
+          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+            if(is_nil(list_path), do: [], else: [list_path]),
+            Map.get(params, "list_color_selector", Map.get(params, "list_color_selector[]", [])),
+            Map.get(widget, "series_color_selectors", %{})
+          )
+
         widget
         |> Map.put("path", list_path)
         |> Map.put("limit", limit)
         |> Map.put("sort", sort)
         |> Map.put("label_strategy", label_strategy)
+        |> Map.put("series_color_selectors", selectors)
 
       "text" ->
         subtype =

@@ -221,6 +221,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
         "category" ->
           category_paths_for_form(widget)
 
+        "table" ->
+          table_paths_for_form(widget)
+
         "distribution" ->
           distribution_paths_for_form(widget)
 
@@ -410,6 +413,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
     |> case do
       "timeseries" -> "timeseries"
       "category" -> "category"
+      "table" -> "table"
       "distribution" -> "distribution"
       other -> other
     end
@@ -424,6 +428,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
 
       "category" ->
         category_paths_for_form(widget)
+
+      "table" ->
+        table_paths_for_form(widget)
 
       "distribution" ->
         distribution_paths_for_form(widget)

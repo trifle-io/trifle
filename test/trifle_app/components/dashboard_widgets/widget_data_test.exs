@@ -253,4 +253,85 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert Enum.find(dist_series, &(&1.path == "metrics.other.*")).color ==
              Helpers.resolve_series_color("default.6", 0)
   end
+
+  test "kpi selector applies visual color", %{series: series} do
+    items = [
+      %{
+        "id" => "kpi-color",
+        "type" => "kpi",
+        "path" => "metrics.count",
+        "function" => "mean",
+        "timeseries" => true,
+        "series_color_selectors" => %{"metrics.count" => "warm.4"}
+      }
+    ]
+
+    %{kpi_visuals: [%{id: "kpi-color", color: color}]} = WidgetData.datasets(series, items)
+
+    assert color == Helpers.resolve_series_color("warm.4", 0)
+  end
+
+  test "list wildcard selector with fixed index applies one color across entries", %{
+    series: series
+  } do
+    items = [
+      %{
+        "id" => "list-fixed",
+        "type" => "list",
+        "path" => "metrics.category.*",
+        "series_color_selectors" => %{"metrics.category.*" => "default.3"}
+      }
+    ]
+
+    %{list: [%{items: list_items}]} = WidgetData.datasets(series, items)
+
+    assert length(list_items) >= 2
+
+    assert Enum.uniq(Enum.map(list_items, & &1.color)) == [
+             Helpers.resolve_series_color("default.3", 0)
+           ]
+  end
+
+  test "list wildcard selector with palette rotation rotates colors per entry", %{series: series} do
+    items = [
+      %{
+        "id" => "list-rotate",
+        "type" => "list",
+        "path" => "metrics.category.*",
+        "series_color_selectors" => %{"metrics.category.*" => "default.*"}
+      }
+    ]
+
+    %{list: [%{items: list_items}]} = WidgetData.datasets(series, items)
+    assert length(list_items) >= 2
+
+    first_color = list_items |> Enum.at(0) |> Map.get(:color)
+    second_color = list_items |> Enum.at(1) |> Map.get(:color)
+
+    assert first_color == Helpers.resolve_series_color("default.*", 0)
+    assert second_color == Helpers.resolve_series_color("default.*", 1)
+  end
+
+  test "table selectors apply per configured path", %{series: series} do
+    items = [
+      %{
+        "id" => "table-colors",
+        "type" => "table",
+        "paths" => ["metrics.table.payments.credit", "metrics.table.payments.digital"],
+        "path_inputs" => ["metrics.table.payments.credit", "metrics.table.payments.digital"],
+        "series_color_selectors" => %{
+          "metrics.table.payments.credit" => "default.1",
+          "metrics.table.payments.digital" => "default.6"
+        }
+      }
+    ]
+
+    %{table: [%{rows: rows}]} = WidgetData.datasets(series, items)
+
+    credit_row = Enum.find(rows, &(&1.path == "metrics.table.payments.credit"))
+    digital_row = Enum.find(rows, &(&1.path == "metrics.table.payments.digital"))
+
+    assert credit_row.path_html =~ Helpers.resolve_series_color("default.1", 0)
+    assert digital_row.path_html =~ Helpers.resolve_series_color("default.6", 0)
+  end
 end
