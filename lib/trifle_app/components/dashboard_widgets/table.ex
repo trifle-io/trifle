@@ -303,10 +303,23 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   defp normalize_hex_color(color) when is_binary(color) do
     trimmed = String.trim(color)
 
-    if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, trimmed) do
-      trimmed
-    else
-      nil
+    cond do
+      Regex.match?(~r/^#([0-9a-fA-F]{6})$/, trimmed) ->
+        trimmed
+
+      true ->
+        case Regex.run(~r/^#([0-9a-fA-F]{3})$/, trimmed) do
+          [_, short_hex] ->
+            expanded =
+              short_hex
+              |> String.graphemes()
+              |> Enum.map_join(fn nibble -> nibble <> nibble end)
+
+            "#" <> expanded
+
+          _ ->
+            nil
+        end
     end
   end
 
