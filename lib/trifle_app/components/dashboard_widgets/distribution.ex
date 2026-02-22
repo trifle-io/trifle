@@ -91,7 +91,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
           end
 
         selector = WidgetHelpers.selector_for_path(selectors, path_input)
-        color = WidgetHelpers.resolve_series_color(selector, 0)
+        color = WidgetHelpers.resolve_series_color(selector, index)
         Map.put(acc, path, color)
       end)
 

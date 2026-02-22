@@ -137,8 +137,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
           end
 
         item = %{name: entry.name, value: entry.value, color: color}
-        {acc ++ [item], next_rotate_indexes}
+        {[item | acc], next_rotate_indexes}
       end)
+      |> then(fn {acc, rotate_indexes} -> {Enum.reverse(acc), rotate_indexes} end)
 
     %{
       id: id,

@@ -382,7 +382,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
         ChartColors.color_for(palette_id, safe_index)
 
       %{type: :single_palette, palette_id: palette_id, index: index} ->
-        ChartColors.color_at(palette_id, index) || ChartColors.color_for(0)
+        ChartColors.color_at(palette_id, index) || ChartColors.color_for(palette_id, 0)
 
       %{type: :single_custom, color: color} ->
         color

@@ -70,7 +70,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
               <%= for palette <- @palettes do %>
                 <% rotate_value = "#{palette.id}.*" %>
                 <% rotate_option_id = option_id(@id_prefix, @index, "rotate", palette.id, nil) %>
-                <% palette_selected? = selected_palette?(@selector, palette.id) %>
+                <% palette_selected? = selected_palette?(@parsed, palette.id) %>
                 <div class={[
                   "grid w-max grid-cols-[5.75rem_auto] items-center gap-1.5 rounded-md border px-1.5 py-1 transition",
                   if(palette_selected?,
@@ -207,12 +207,8 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
     end
   end
 
-  defp selected_palette?(selector, palette_id) do
-    case Helpers.parse_series_color_selector(selector) do
-      %{palette_id: id} -> id == palette_id
-      _ -> false
-    end
-  end
+  defp selected_palette?(%{palette_id: id}, palette_id), do: id == palette_id
+  defp selected_palette?(_parsed, _palette_id), do: false
 
   defp option_id(id_prefix, index, section, palette_id, color_index) do
     base = "#{id_prefix}-#{index}-#{section}-#{palette_id}"
