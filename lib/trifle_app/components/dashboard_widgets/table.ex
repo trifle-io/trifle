@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Tabler
   alias TrifleApp.Components.DataTable
+  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -38,9 +39,32 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
       nil
     else
       normalized_stats = ensure_table_stats(table_stats, series_struct)
+      path_inputs = table_path_inputs(widget, filters)
+
+      selectors =
+        widget
+        |> Map.get("series_color_selectors", %{})
+        |> WidgetHelpers.normalize_series_color_selectors_map()
+
+      path_specs =
+        filters
+        |> Enum.with_index()
+        |> Enum.map(fn {filter_path, index} ->
+          path_input =
+            path_inputs
+            |> Enum.at(index)
+            |> case do
+              nil -> filter_path
+              "" -> filter_path
+              value -> value
+            end
+
+          %{filter_path: filter_path, path_input: path_input}
+        end)
 
       paths = normalized_stats[:paths] || []
       matching_paths = filter_paths(paths, filters)
+      path_color_map = build_path_color_map(matching_paths, path_specs, selectors)
 
       display_overrides =
         matching_paths
@@ -66,6 +90,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
           empty_message: empty_message,
           id: widget_id(widget)
         )
+        |> apply_row_path_colors(path_color_map)
 
       log_debug(widget, "table dataset prepared",
         filters: filters,
@@ -120,10 +145,75 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
     |> Enum.uniq()
   end
 
+  defp table_path_inputs(widget, fallback_filters) do
+    raw_inputs =
+      Map.get(widget, "path_inputs") ||
+        Map.get(widget, :path_inputs) ||
+        fallback_filters
+
+    inputs =
+      raw_inputs
+      |> case do
+        list when is_list(list) -> list
+        nil -> []
+        other -> [other]
+      end
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    if inputs == [], do: fallback_filters, else: inputs
+  end
+
   defp filter_paths(paths, filters) do
     Enum.filter(paths, fn path ->
       Enum.any?(filters, &match_path?(to_string(path), &1))
     end)
+  end
+
+  defp build_path_color_map(paths, path_specs, selectors) do
+    {color_map, _rotate_indexes} =
+      Enum.reduce(paths, {%{}, %{}}, fn path, {acc, rotate_indexes} ->
+        {selector_key, selector} =
+          case selector_spec_for_path(path, path_specs) do
+            %{path_input: path_input} ->
+              normalized_input = path_input |> to_string() |> String.trim()
+              {normalized_input, WidgetHelpers.selector_for_path(selectors, normalized_input)}
+
+            _ ->
+              {"__default__", WidgetHelpers.default_series_color_selector()}
+          end
+
+        parsed_selector = WidgetHelpers.parse_series_color_selector(selector)
+
+        {color, next_rotate_indexes} =
+          case parsed_selector do
+            %{type: :palette_rotate} ->
+              rotate_index = Map.get(rotate_indexes, selector_key, 0)
+
+              {
+                WidgetHelpers.resolve_series_color(selector, rotate_index),
+                Map.put(rotate_indexes, selector_key, rotate_index + 1)
+              }
+
+            _ ->
+              {WidgetHelpers.resolve_series_color(selector, 0), rotate_indexes}
+          end
+
+        {Map.put(acc, path, color), next_rotate_indexes}
+      end)
+
+    color_map
+  end
+
+  defp selector_spec_for_path(path, path_specs) do
+    normalized_path = to_string(path)
+
+    path_specs
+    |> Enum.filter(fn %{filter_path: filter_path} ->
+      match_path?(normalized_path, filter_path)
+    end)
+    |> Enum.max_by(fn %{filter_path: filter_path} -> String.length(filter_path) end, fn -> nil end)
   end
 
   defp match_path?(_path, ""), do: false
@@ -171,6 +261,56 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
         String.replace_prefix(normalized_path, best_prefix <> ".", "")
     end
   end
+
+  defp apply_row_path_colors(dataset, path_color_map) when is_map(dataset) do
+    rows =
+      dataset
+      |> Map.get(:rows, [])
+      |> Enum.map(fn row ->
+        path = row |> Map.get(:path) |> to_string()
+        display_path = row |> Map.get(:display_path, path) |> to_string()
+        color = Map.get(path_color_map, path)
+
+        row
+        |> Map.put(:color, color)
+        |> Map.put(:path_html, colored_path_html(display_path, color))
+      end)
+
+    Map.put(dataset, :rows, rows)
+  end
+
+  defp apply_row_path_colors(dataset, _path_color_map), do: dataset
+
+  defp colored_path_html(path, color) do
+    with safe_color when is_binary(safe_color) <- normalize_hex_color(color),
+         safe_path when safe_path != "" <- path |> to_string() |> String.trim() do
+      safe_path
+      |> String.split(".")
+      |> Enum.map(fn segment ->
+        escaped_segment =
+          segment
+          |> Phoenix.HTML.html_escape()
+          |> Phoenix.HTML.safe_to_string()
+
+        "<span style=\"color: #{safe_color} !important\">#{escaped_segment}</span>"
+      end)
+      |> Enum.join(".")
+    else
+      _ -> nil
+    end
+  end
+
+  defp normalize_hex_color(color) when is_binary(color) do
+    trimmed = String.trim(color)
+
+    if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, trimmed) do
+      trimmed
+    else
+      nil
+    end
+  end
+
+  defp normalize_hex_color(_), do: nil
 
   defp series_granularity(%Series{series: series_map}) when is_map(series_map) do
     Map.get(series_map, :granularity) ||

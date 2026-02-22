@@ -40,6 +40,14 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
     size = to_string(item["size"] || "m")
     subtype = WidgetHelpers.normalize_kpi_subtype(item["subtype"], item)
 
+    selectors =
+      item
+      |> Map.get("series_color_selectors", %{})
+      |> WidgetHelpers.normalize_series_color_selectors_map()
+
+    selector = WidgetHelpers.selector_for_path(selectors, path)
+    visual_color = WidgetHelpers.resolve_series_color(selector, 0)
+
     case subtype do
       "split" ->
         list =
@@ -69,7 +77,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
 
         visual_map =
           if has_visual do
-            %{id: id, type: "sparkline", data: build_timeline(series_struct, path)}
+            %{
+              id: id,
+              type: "sparkline",
+              data: build_timeline(series_struct, path),
+              color: visual_color
+            }
           end
 
         {value_map, visual_map}
@@ -118,7 +131,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
               current: value || 0.0,
               target: target,
               ratio: ratio,
-              invert: invert_goal
+              invert: invert_goal,
+              color: visual_color
             }
           end
 
@@ -146,7 +160,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
 
         visual_map =
           if has_visual do
-            %{id: id, type: "sparkline", data: build_timeline(series_struct, path)}
+            %{
+              id: id,
+              type: "sparkline",
+              data: build_timeline(series_struct, path),
+              color: visual_color
+            }
           end
 
         {value_map, visual_map}
