@@ -123,6 +123,116 @@ const heatmapColorScale = (baseColor, isDarkMode) => {
   ];
 };
 
+const HEATMAP_PALETTES = Object.freeze({
+  default: ['#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#3b82f6', '#84cc16', '#f43f5e', '#6366f1'],
+  purple: ['#C4B5FD', '#A78BFA', '#8B5CF6', '#7C3AED', '#6D28D9', '#5B21B6', '#4C1D95'],
+  cool: ['#BFDBFE', '#93C5FD', '#60A5FA', '#38BDF8', '#0EA5E9', '#0284C7', '#0369A1'],
+  green: ['#BBF7D0', '#86EFAC', '#4ADE80', '#22C55E', '#16A34A', '#15803D', '#166534'],
+  warm: ['#FDE68A', '#FCD34D', '#FBBF24', '#F59E0B', '#F97316', '#EF4444', '#DC2626']
+});
+
+const heatmapColorWithAlpha = (hexColor, alpha) => {
+  const rgb = hexToRgb(hexColor);
+  if (!rgb) return null;
+  const safeAlpha = Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${safeAlpha})`;
+};
+
+const normalizeHeatmapColorMode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'single' || normalized === 'palette' || normalized === 'diverging') return normalized;
+  return 'auto';
+};
+
+const normalizeHeatmapColorConfig = (config, fallbackSingleColor = '#14b8a6') => {
+  const source = config && typeof config === 'object' ? config : {};
+  const singleColor = normalizeHexColor(source.single_color || source.singleColor || fallbackSingleColor) || '#14b8a6';
+  const paletteIdRaw = String(source.palette_id || source.paletteId || 'default').trim().toLowerCase();
+  const paletteId = Object.prototype.hasOwnProperty.call(HEATMAP_PALETTES, paletteIdRaw) ? paletteIdRaw : 'default';
+  const negativeColor = normalizeHexColor(source.negative_color || source.negativeColor || '#0EA5E9') || '#0EA5E9';
+  const positiveColor = normalizeHexColor(source.positive_color || source.positiveColor || '#EF4444') || '#EF4444';
+  const centerRaw = Number(source.center_value ?? source.centerValue ?? 0);
+  const centerValue = Number.isFinite(centerRaw) ? centerRaw : 0;
+  const symmetricRaw = source.symmetric;
+  const symmetric =
+    symmetricRaw === true || symmetricRaw === 'true' || symmetricRaw === 1 || symmetricRaw === '1';
+
+  return {
+    singleColor,
+    paletteId,
+    negativeColor,
+    positiveColor,
+    centerValue,
+    symmetric
+  };
+};
+
+const heatmapPaletteScale = (paletteId, isDarkMode) => {
+  const palette = HEATMAP_PALETTES[paletteId] || HEATMAP_PALETTES.default;
+  if (!Array.isArray(palette) || !palette.length) return heatmapColorScale('#14b8a6', isDarkMode);
+  const start = heatmapColorWithAlpha(palette[0], isDarkMode ? 0.08 : 0.05) || palette[0];
+  return [start, ...palette];
+};
+
+const resolveHeatmapVisualMap = ({
+  payload,
+  heatmapData,
+  series,
+  fallbackHeatColor,
+  isDarkMode
+}) => {
+  const values = (Array.isArray(heatmapData) ? heatmapData : [])
+    .map((point) => Number(point && point[2]))
+    .filter((value) => Number.isFinite(value));
+
+  const rawMin = values.length ? Math.min(...values) : 0;
+  const rawMax = values.length ? Math.max(...values) : 0;
+  const mode = normalizeHeatmapColorMode(payload && payload.color_mode);
+  const config = normalizeHeatmapColorConfig(payload && payload.color_config, fallbackHeatColor || '#14b8a6');
+
+  if (mode === 'diverging') {
+    const center = config.symmetric ? 0 : config.centerValue;
+    const span = Math.max(Math.abs(rawMax - center), Math.abs(rawMin - center), 1);
+    const min = center - span;
+    const max = center + span;
+    const centerColor = isDarkMode ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.18)';
+    const negativeMid = heatmapColorWithAlpha(config.negativeColor, isDarkMode ? 0.45 : 0.35) || config.negativeColor;
+    const positiveMid = heatmapColorWithAlpha(config.positiveColor, isDarkMode ? 0.45 : 0.35) || config.positiveColor;
+
+    return {
+      min,
+      max,
+      colorScale: [config.negativeColor, negativeMid, centerColor, positiveMid, config.positiveColor]
+    };
+  }
+
+  const min = rawMin >= 0 ? 0 : rawMin;
+  const max = rawMax > min ? rawMax : min + 1;
+
+  if (mode === 'palette') {
+    return {
+      min,
+      max,
+      colorScale: heatmapPaletteScale(config.paletteId, isDarkMode)
+    };
+  }
+
+  if (mode === 'single') {
+    return {
+      min,
+      max,
+      colorScale: heatmapColorScale(config.singleColor, isDarkMode)
+    };
+  }
+
+  const baseColor = pickHeatmapBaseColor(series, fallbackHeatColor);
+  return {
+    min,
+    max,
+    colorScale: heatmapColorScale(baseColor, isDarkMode)
+  };
+};
+
 const extractTimestamp = (point) => {
   if (Array.isArray(point) && point.length) return Number(point[0]);
   if (point && typeof point === 'object') {
@@ -2854,15 +2964,17 @@ Hooks.DashboardGrid = {
               })
               .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
-            const maxValue =
-              heatmapData.reduce((max, point) => Math.max(max, Number(point[2]) || 0), 0) || 0;
-
             const showScale = it.legend === undefined ? true : !!it.legend;
             const gridBottom = showScale ? 72 : 20;
             const visualMapBottom = 8;
             const fallbackHeatColor = colors[0] || '#14b8a6';
-            const heatBaseColor = pickHeatmapBaseColor(it.series, fallbackHeatColor);
-            const heatmapScale = heatmapColorScale(heatBaseColor, isDarkMode);
+            const visualSettings = resolveHeatmapVisualMap({
+              payload: it,
+              heatmapData,
+              series: Array.isArray(it.series) ? it.series : [],
+              fallbackHeatColor,
+              isDarkMode
+            });
 
             const option = {
               backgroundColor: 'transparent',
@@ -2904,33 +3016,39 @@ Hooks.DashboardGrid = {
               xAxis: {
                 type: 'category',
                 data: labels,
-                splitArea: { show: true },
                 splitLine: {
                   show: true,
-                  lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#cbd5e1', opacity: isDarkMode ? 0.5 : 0.9 }
+                  lineStyle: {
+                    type: 'dashed',
+                    color: isDarkMode ? '#1f2937' : '#e2e8f0',
+                    opacity: isDarkMode ? 0.4 : 0.9
+                  }
                 },
                 axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
               },
               yAxis: {
                 type: 'category',
                 data: verticalLabels,
-                splitArea: { show: true },
                 splitLine: {
                   show: true,
-                  lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#cbd5e1', opacity: isDarkMode ? 0.5 : 0.9 }
+                  lineStyle: {
+                    type: 'dashed',
+                    color: isDarkMode ? '#1f2937' : '#e2e8f0',
+                    opacity: isDarkMode ? 0.4 : 0.9
+                  }
                 },
                 axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
               },
               visualMap: showScale
                 ? {
-                    min: 0,
-                    max: maxValue > 0 ? maxValue : 1,
+                    min: visualSettings.min,
+                    max: visualSettings.max,
                     calculable: false,
                     orient: 'horizontal',
                     left: 'center',
                     bottom: visualMapBottom,
                     textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-                    inRange: { color: heatmapScale }
+                    inRange: { color: visualSettings.colorScale }
                   }
                 : { show: false },
               series: [{
@@ -5874,13 +5992,16 @@ Hooks.ExpandedWidgetView = {
           return;
         }
 
-        const maxValue =
-          heatmapData.reduce((max, point) => Math.max(max, Number(point[2]) || 0), 0) || 0;
         const showScale = legendFlag === undefined ? true : !!legendFlag;
         const gridBottom = showScale ? 72 : 20;
         const fallbackHeatColor = colors ? colors[0] : this.seriesColor(0);
-        const heatBaseColor = pickHeatmapBaseColor(series, fallbackHeatColor);
-        const heatmapScale = heatmapColorScale(heatBaseColor, isDarkMode);
+        const visualSettings = resolveHeatmapVisualMap({
+          payload: data,
+          heatmapData,
+          series,
+          fallbackHeatColor,
+          isDarkMode
+        });
 
         const option = {
           backgroundColor: 'transparent',
@@ -5922,33 +6043,39 @@ Hooks.ExpandedWidgetView = {
           xAxis: {
             type: 'category',
             data: labels,
-            splitArea: { show: true },
             splitLine: {
               show: true,
-              lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#cbd5e1', opacity: isDarkMode ? 0.5 : 0.9 }
+              lineStyle: {
+                type: 'dashed',
+                color: isDarkMode ? '#1f2937' : '#e2e8f0',
+                opacity: isDarkMode ? 0.4 : 0.9
+              }
             },
             axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
           },
           yAxis: {
             type: 'category',
             data: verticalLabels,
-            splitArea: { show: true },
             splitLine: {
               show: true,
-              lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#cbd5e1', opacity: isDarkMode ? 0.5 : 0.9 }
+              lineStyle: {
+                type: 'dashed',
+                color: isDarkMode ? '#1f2937' : '#e2e8f0',
+                opacity: isDarkMode ? 0.4 : 0.9
+              }
             },
             axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
           },
           visualMap: showScale
             ? {
-                min: 0,
-                max: maxValue > 0 ? maxValue : 1,
+                min: visualSettings.min,
+                max: visualSettings.max,
                 calculable: false,
                 orient: 'horizontal',
                 left: 'center',
                 bottom: 8,
                 textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-                inRange: { color: heatmapScale }
+                inRange: { color: visualSettings.colorScale }
               }
             : { show: false },
           series: [{

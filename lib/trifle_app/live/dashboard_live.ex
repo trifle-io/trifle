@@ -866,6 +866,38 @@ defmodule TrifleApp.DashboardLive do
                     |> Map.get("dist_legend", Map.get(i, "legend"))
                     |> DashboardWidgetHelpers.normalize_distribution_legend()
 
+                  path_aggregation =
+                    params
+                    |> Map.get("dist_path_aggregation", Map.get(i, "path_aggregation"))
+                    |> DashboardWidgetHelpers.normalize_distribution_path_aggregation()
+
+                  fallback_heatmap_color =
+                    DashboardWidgetHelpers.heatmap_single_color_from_paths(typed_paths, selectors)
+
+                  color_mode =
+                    case widget_type do
+                      "heatmap" ->
+                        params
+                        |> Map.get("dist_heatmap_color_mode", Map.get(i, "color_mode"))
+                        |> DashboardWidgetHelpers.normalize_heatmap_color_mode()
+
+                      _ ->
+                        nil
+                    end
+
+                  color_config =
+                    case widget_type do
+                      "heatmap" ->
+                        DashboardWidgetHelpers.normalize_heatmap_color_config_params(
+                          params,
+                          Map.get(i, "color_config", %{}),
+                          fallback_heatmap_color
+                        )
+
+                      _ ->
+                        nil
+                    end
+
                   base
                   |> Map.put("path_inputs", typed_paths)
                   |> Map.put("paths", expanded_paths)
@@ -876,6 +908,8 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("mode", mode)
                   |> Map.put("chart_type", chart_type)
                   |> Map.put("legend", legend)
+                  |> Map.put("path_aggregation", path_aggregation)
+                  |> put_heatmap_color_fields(widget_type, color_mode, color_config)
 
                 "list" ->
                   list_path =
@@ -2169,6 +2203,36 @@ defmodule TrifleApp.DashboardLive do
             Map.get(widget, "series_color_selectors", %{})
           )
 
+        path_aggregation =
+          widget
+          |> Map.get("path_aggregation")
+          |> DashboardWidgetHelpers.normalize_distribution_path_aggregation()
+
+        fallback_heatmap_color =
+          DashboardWidgetHelpers.heatmap_single_color_from_paths(path_inputs, selectors)
+
+        color_mode =
+          case type do
+            "heatmap" ->
+              widget
+              |> Map.get("color_mode")
+              |> DashboardWidgetHelpers.normalize_heatmap_color_mode()
+
+            _ ->
+              nil
+          end
+
+        color_config =
+          case type do
+            "heatmap" ->
+              widget
+              |> Map.get("color_config", %{})
+              |> DashboardWidgetHelpers.normalize_heatmap_color_config(fallback_heatmap_color)
+
+            _ ->
+              nil
+          end
+
         widget
         |> Map.put("path_inputs", path_inputs)
         |> Map.put("paths", paths)
@@ -2176,6 +2240,8 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("path", primary)
         |> Map.put("mode", if(type == "heatmap", do: "3d", else: Map.get(widget, "mode", "2d")))
         |> Map.put("chart_type", if(type == "heatmap", do: "heatmap", else: "bar"))
+        |> Map.put("path_aggregation", path_aggregation)
+        |> put_heatmap_color_fields(type, color_mode, color_config)
 
       "table" ->
         path_inputs =
@@ -3468,6 +3534,38 @@ defmodule TrifleApp.DashboardLive do
           |> Map.get("dist_legend", Map.get(widget, "legend"))
           |> DashboardWidgetHelpers.normalize_distribution_legend()
 
+        path_aggregation =
+          params
+          |> Map.get("dist_path_aggregation", Map.get(widget, "path_aggregation"))
+          |> DashboardWidgetHelpers.normalize_distribution_path_aggregation()
+
+        fallback_heatmap_color =
+          DashboardWidgetHelpers.heatmap_single_color_from_paths(typed_paths, selectors)
+
+        color_mode =
+          case widget_type do
+            "heatmap" ->
+              params
+              |> Map.get("dist_heatmap_color_mode", Map.get(widget, "color_mode"))
+              |> DashboardWidgetHelpers.normalize_heatmap_color_mode()
+
+            _ ->
+              nil
+          end
+
+        color_config =
+          case widget_type do
+            "heatmap" ->
+              DashboardWidgetHelpers.normalize_heatmap_color_config_params(
+                params,
+                Map.get(widget, "color_config", %{}),
+                fallback_heatmap_color
+              )
+
+            _ ->
+              nil
+          end
+
         widget
         |> Map.put("path_inputs", typed_paths)
         |> Map.put("paths", expanded_paths)
@@ -3478,6 +3576,8 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("mode", mode)
         |> Map.put("chart_type", chart_type)
         |> Map.put("legend", legend)
+        |> Map.put("path_aggregation", path_aggregation)
+        |> put_heatmap_color_fields(widget_type, color_mode, color_config)
 
       "list" ->
         list_path =
@@ -3576,6 +3676,18 @@ defmodule TrifleApp.DashboardLive do
       _ ->
         widget
     end
+  end
+
+  defp put_heatmap_color_fields(widget, "heatmap", color_mode, color_config) do
+    widget
+    |> Map.put("color_mode", color_mode || "auto")
+    |> Map.put("color_config", color_config || %{})
+  end
+
+  defp put_heatmap_color_fields(widget, _widget_type, _color_mode, _color_config) do
+    widget
+    |> Map.delete("color_mode")
+    |> Map.delete("color_config")
   end
 
   defp primary_path_from_paths(paths, fallback) when is_list(paths) do

@@ -72,4 +72,35 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
              "metrics.b" => "default.3"
            }
   end
+
+  test "normalizes distribution path aggregation options" do
+    assert Helpers.normalize_distribution_path_aggregation("sum") == "sum"
+    assert Helpers.normalize_distribution_path_aggregation("avg") == "mean"
+    assert Helpers.normalize_distribution_path_aggregation("MEAN") == "mean"
+    assert Helpers.normalize_distribution_path_aggregation("unknown") == "none"
+  end
+
+  test "normalizes heatmap color mode and config" do
+    config =
+      Helpers.normalize_heatmap_color_config(
+        %{
+          "single_color" => "#14b8a6",
+          "palette_id" => "warm",
+          "negative_color" => "#0ea5e9",
+          "positive_color" => "#ef4444",
+          "center_value" => "5.5",
+          "symmetric" => "false"
+        },
+        "#22c55e"
+      )
+
+    assert Helpers.normalize_heatmap_color_mode("single") == "single"
+    assert Helpers.normalize_heatmap_color_mode("unknown") == "auto"
+    assert config["single_color"] == "#14B8A6"
+    assert config["palette_id"] == "warm"
+    assert config["negative_color"] == "#0EA5E9"
+    assert config["positive_color"] == "#EF4444"
+    assert config["center_value"] == 5.5
+    refute config["symmetric"]
+  end
 end

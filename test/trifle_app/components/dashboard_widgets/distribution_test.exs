@@ -171,6 +171,75 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
     assert dataset.errors == []
   end
 
+  test "aggregates multi-path 2d series when path aggregation is sum" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{
+              "left" => %{"10" => 1, "20" => 2},
+              "right" => %{"10" => 3, "20" => 1}
+            }
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "dist-agg-sum",
+      "type" => "distribution",
+      "paths" => ["left.*", "right.*"],
+      "path_aggregation" => "sum",
+      "designator" => %{"type" => "custom", "buckets" => [10, 20]}
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.path_aggregation == "sum"
+    assert [%{name: "Sum", values: values}] = dataset.series
+    assert Enum.find(values, &(&1.bucket == "10")).value == 4.0
+    assert Enum.find(values, &(&1.bucket == "20")).value == 3.0
+    assert Enum.find(values, &(&1.bucket == "20+")).value == 0.0
+  end
+
+  test "aggregates multi-path 3d series when path aggregation is mean" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{
+              "left" => %{"100" => %{"200" => 1}},
+              "right" => %{"100" => %{"200" => 3}, "200" => %{"200" => 1}}
+            }
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "dist-agg-mean",
+      "type" => "distribution",
+      "mode" => "3d",
+      "paths" => ["left", "right"],
+      "path_aggregation" => "mean",
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => [100, 200]},
+        "vertical" => %{"type" => "custom", "buckets" => [200]}
+      }
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.path_aggregation == "mean"
+    assert [%{name: "Average", points: points}] = dataset.series
+
+    assert Enum.any?(points, fn point ->
+             point.bucket_x == "100" and point.bucket_y == "200" and point.value == 2.0
+           end)
+
+    assert Enum.any?(points, fn point ->
+             point.bucket_x == "200" and point.bucket_y == "200" and point.value == 0.5
+           end)
+  end
+
   test "forces heatmap widgets into 3d matrix mode" do
     series =
       %Trifle.Stats.Series{
@@ -196,6 +265,8 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
 
     assert dataset.mode == "3d"
     assert dataset.chart_type == "heatmap"
+    assert dataset.color_mode == "auto"
+    assert dataset.path_aggregation == "none"
     assert dataset.points?
     assert dataset.errors == []
 

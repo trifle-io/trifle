@@ -261,6 +261,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
         "type" => "heatmap",
         "mode" => "2d",
         "paths" => ["metrics.distribution.*"],
+        "path_aggregation" => "avg",
+        "color_mode" => "single",
+        "color_config" => %{"single_color" => "#14b8a6"},
         "designators" => %{
           "horizontal" => %{"type" => "custom", "buckets" => [10, 20]},
           "vertical" => %{"type" => "custom", "buckets" => [10, 20]}
@@ -268,11 +271,26 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
       }
     ]
 
-    %{distribution: [%{id: "heat-1", mode: mode, chart_type: chart_type, points?: points?}]} =
+    %{
+      distribution: [
+        %{
+          id: "heat-1",
+          mode: mode,
+          chart_type: chart_type,
+          points?: points?,
+          path_aggregation: path_aggregation,
+          color_mode: color_mode,
+          color_config: color_config
+        }
+      ]
+    } =
       WidgetData.datasets(series, items)
 
     assert mode == "3d"
     assert chart_type == "heatmap"
+    assert path_aggregation == "mean"
+    assert color_mode == "single"
+    assert color_config["single_color"] == "#14B8A6"
     assert points?
   end
 

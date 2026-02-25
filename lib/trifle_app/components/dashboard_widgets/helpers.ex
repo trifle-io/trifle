@@ -16,6 +16,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   @palette_rotate_selector_regex ~r/^([a-z0-9_-]+)\.\*$/
   @palette_fixed_selector_regex ~r/^([a-z0-9_-]+)\.(\d+)$/
   @custom_color_selector_regex ~r/^custom\.(#[0-9a-fA-F]{6})$/
+  @distribution_path_aggregations ["none", "sum", "mean", "max", "min"]
+  @heatmap_color_modes ["auto", "single", "palette", "diverging"]
+  @default_heatmap_palette_id "default"
+  @default_heatmap_negative_color "#0EA5E9"
+  @default_heatmap_positive_color "#EF4444"
 
   ## Text helpers
 
@@ -515,6 +520,135 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
     end
   end
 
+  def normalize_distribution_path_aggregation(value) do
+    normalized =
+      value
+      |> to_string()
+      |> String.trim()
+      |> String.downcase()
+
+    case normalized do
+      v when v in ["avg", "average"] -> "mean"
+      v when v in @distribution_path_aggregations -> v
+      _ -> "none"
+    end
+  end
+
+  def distribution_path_aggregation_for_form(widget) when is_map(widget) do
+    widget
+    |> Map.get("path_aggregation", Map.get(widget, :path_aggregation))
+    |> normalize_distribution_path_aggregation()
+  end
+
+  def distribution_path_aggregation_for_form(_widget), do: "none"
+
+  def normalize_heatmap_color_mode(value) do
+    normalized =
+      value
+      |> to_string()
+      |> String.trim()
+      |> String.downcase()
+
+    if normalized in @heatmap_color_modes, do: normalized, else: "auto"
+  end
+
+  def heatmap_color_mode_for_form(widget) when is_map(widget) do
+    widget
+    |> Map.get("color_mode", Map.get(widget, :color_mode))
+    |> normalize_heatmap_color_mode()
+  end
+
+  def heatmap_color_mode_for_form(_widget), do: "auto"
+
+  def heatmap_palette_options, do: ChartColors.palette_options()
+
+  def heatmap_single_color_fallback(widget) when is_map(widget) do
+    path_inputs = path_inputs_for_form(widget, "distribution")
+
+    selectors =
+      widget
+      |> Map.get("series_color_selectors", Map.get(widget, :series_color_selectors, %{}))
+      |> normalize_series_color_selectors_map()
+
+    heatmap_single_color_from_paths(path_inputs, selectors)
+  end
+
+  def heatmap_single_color_fallback(_widget), do: ChartColors.primary()
+
+  def heatmap_single_color_from_paths(path_inputs, selectors) do
+    normalized_path =
+      path_inputs
+      |> normalize_chart_path_inputs_for_edit()
+      |> Enum.map(&String.trim/1)
+      |> Enum.find(&(&1 != ""))
+
+    selector =
+      case normalized_path do
+        nil -> @default_series_color_selector
+        path -> selector_for_path(selectors, path)
+      end
+
+    resolve_series_color(selector, 0)
+  end
+
+  def normalize_heatmap_color_config(config, fallback_single_color \\ nil) do
+    config_map = normalize_string_key_map(config)
+
+    fallback_color =
+      fallback_single_color
+      |> normalize_hex_color()
+      |> Kernel.||(normalize_hex_color(ChartColors.primary()))
+      |> Kernel.||("#14B8A6")
+
+    %{
+      "single_color" =>
+        normalize_hex_color(Map.get(config_map, "single_color")) || fallback_color,
+      "palette_id" => normalize_palette_id(Map.get(config_map, "palette_id")),
+      "negative_color" =>
+        normalize_hex_color(Map.get(config_map, "negative_color")) ||
+          @default_heatmap_negative_color,
+      "positive_color" =>
+        normalize_hex_color(Map.get(config_map, "positive_color")) ||
+          @default_heatmap_positive_color,
+      "center_value" => normalize_designator_number(Map.get(config_map, "center_value"), 0.0),
+      "symmetric" => normalize_boolean(Map.get(config_map, "symmetric"), true)
+    }
+  end
+
+  def normalize_heatmap_color_config_params(
+        params,
+        existing_config \\ %{},
+        fallback_single_color \\ nil
+      ) do
+    existing = normalize_heatmap_color_config(existing_config, fallback_single_color)
+
+    config =
+      %{
+        "single_color" =>
+          Map.get(params, "dist_heatmap_single_color", Map.get(existing, "single_color")),
+        "palette_id" =>
+          Map.get(params, "dist_heatmap_palette_id", Map.get(existing, "palette_id")),
+        "negative_color" =>
+          Map.get(params, "dist_heatmap_negative_color", Map.get(existing, "negative_color")),
+        "positive_color" =>
+          Map.get(params, "dist_heatmap_positive_color", Map.get(existing, "positive_color")),
+        "center_value" =>
+          Map.get(params, "dist_heatmap_center_value", Map.get(existing, "center_value")),
+        "symmetric" => Map.get(params, "dist_heatmap_symmetric", Map.get(existing, "symmetric"))
+      }
+
+    normalize_heatmap_color_config(config, fallback_single_color)
+  end
+
+  def heatmap_color_config_for_form(widget) when is_map(widget) do
+    widget
+    |> Map.get("color_config", Map.get(widget, :color_config, %{}))
+    |> normalize_heatmap_color_config(heatmap_single_color_fallback(widget))
+  end
+
+  def heatmap_color_config_for_form(_widget),
+    do: normalize_heatmap_color_config(%{}, ChartColors.primary())
+
   def distribution_designators_for_form(widget) do
     designators = existing_distribution_designators(widget)
 
@@ -819,4 +953,74 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       number -> number
     end
   end
+
+  defp normalize_boolean(value, default) do
+    case value do
+      v when v in [true, "true", 1, "1", "on"] -> true
+      v when v in [false, "false", 0, "0", nil, ""] -> false
+      _ -> default
+    end
+  end
+
+  defp normalize_hex_color(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      <<?#, a::binary-size(6)>> = full ->
+        if String.match?(a, ~r/^[0-9a-f]{6}$/), do: String.upcase(full), else: nil
+
+      <<?#, a::binary-size(3)>> ->
+        if String.match?(a, ~r/^[0-9a-f]{3}$/) do
+          a
+          |> String.graphemes()
+          |> Enum.map_join(&(&1 <> &1))
+          |> then(&String.upcase("##{&1}"))
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp normalize_hex_color(_), do: nil
+
+  defp normalize_palette_id(value) do
+    palette_id =
+      value
+      |> to_string()
+      |> String.trim()
+      |> String.downcase()
+
+    palette_ids = ChartColors.palette_options() |> Enum.map(& &1.id)
+
+    cond do
+      palette_id == "" ->
+        @default_heatmap_palette_id
+
+      palette_id in palette_ids ->
+        palette_id
+
+      true ->
+        @default_heatmap_palette_id
+    end
+  end
+
+  defp normalize_string_key_map(value) when is_map(value) do
+    Enum.reduce(value, %{}, fn {k, v}, acc ->
+      key =
+        k
+        |> case do
+          atom when is_atom(atom) -> Atom.to_string(atom)
+          other -> to_string(other)
+        end
+        |> String.trim()
+
+      if key == "", do: acc, else: Map.put(acc, key, v)
+    end)
+  end
+
+  defp normalize_string_key_map(_), do: %{}
 end
