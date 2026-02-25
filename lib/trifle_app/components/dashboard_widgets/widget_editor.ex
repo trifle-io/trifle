@@ -32,6 +32,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
         <CategoryEditor.editor widget={@widget} path_options={@path_options} />
       <% "distribution" -> %>
         <DistributionEditor.editor widget={@widget} path_options={@path_options} />
+      <% "heatmap" -> %>
+        <DistributionEditor.editor widget={@widget} path_options={@path_options} />
       <% "table" -> %>
         <TableEditor.editor widget={@widget} path_options={@path_options} />
       <% "text" -> %>

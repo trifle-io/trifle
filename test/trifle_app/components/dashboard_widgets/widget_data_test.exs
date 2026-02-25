@@ -254,6 +254,28 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
              Helpers.resolve_series_color("default.6", 0)
   end
 
+  test "heatmap widgets reuse distribution datasets in 3d mode", %{series: series} do
+    items = [
+      %{
+        "id" => "heat-1",
+        "type" => "heatmap",
+        "mode" => "2d",
+        "paths" => ["metrics.distribution.*"],
+        "designators" => %{
+          "horizontal" => %{"type" => "custom", "buckets" => [10, 20]},
+          "vertical" => %{"type" => "custom", "buckets" => [10, 20]}
+        }
+      }
+    ]
+
+    %{distribution: [%{id: "heat-1", mode: mode, chart_type: chart_type, points?: points?}]} =
+      WidgetData.datasets(series, items)
+
+    assert mode == "3d"
+    assert chart_type == "heatmap"
+    assert points?
+  end
+
   test "kpi selector applies visual color", %{series: series} do
     items = [
       %{

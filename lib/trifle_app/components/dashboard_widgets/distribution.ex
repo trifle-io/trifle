@@ -8,6 +8,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
   @type dataset :: %{
           id: String.t(),
+          widget_type: String.t(),
           mode: String.t(),
           chart_type: String.t(),
           legend: boolean(),
@@ -27,7 +28,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     items =
       grid_items
       |> Enum.filter(fn item ->
-        String.downcase(to_string(item["type"] || "")) == "distribution"
+        item_type = String.downcase(to_string(item["type"] || ""))
+        item_type in ["distribution", "heatmap"]
       end)
       |> Enum.map(&dataset(series_struct, &1))
       |> Enum.reject(&is_nil/1)
@@ -61,9 +63,26 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
   def dataset(series_struct, item) do
     id = to_string(item["id"])
+    widget_type = item |> Map.get("type", "distribution") |> normalize_widget_type()
     paths = normalized_paths(item)
-    mode = item |> Map.get("mode", "2d") |> normalize_mode()
-    chart_type = item |> Map.get("chart_type", "bar") |> normalize_chart_type()
+    default_mode = if widget_type == "heatmap", do: "3d", else: "2d"
+
+    mode =
+      item
+      |> Map.get("mode", default_mode)
+      |> normalize_mode()
+      |> case do
+        "2d" when widget_type == "heatmap" -> "3d"
+        value -> value
+      end
+
+    default_chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
+
+    chart_type =
+      item
+      |> Map.get("chart_type", default_chart_type)
+      |> normalize_chart_type(default_chart_type)
+
     legend = !!item["legend"]
 
     path_inputs =
@@ -98,6 +117,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     if paths == [] do
       %{
         id: id,
+        widget_type: widget_type,
         mode: mode,
         chart_type: chart_type,
         legend: legend,
@@ -125,6 +145,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         is_nil(horizontal_descriptor) ->
           %{
             id: id,
+            widget_type: widget_type,
             mode: mode,
             chart_type: chart_type,
             legend: legend,
@@ -182,6 +203,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
           %{
             id: id,
+            widget_type: widget_type,
             mode: mode,
             chart_type: chart_type,
             legend: legend,
@@ -432,13 +454,26 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp normalize_chart_type(value) do
+  defp normalize_chart_type(value, default) do
     value
     |> to_string()
     |> String.downcase()
     |> case do
+      "heatmap" -> "heatmap"
       "bar" -> "bar"
+      _ when default == "heatmap" -> "heatmap"
       _ -> "bar"
+    end
+  end
+
+  defp normalize_widget_type(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "heatmap" -> "heatmap"
+      _ -> "distribution"
     end
   end
 

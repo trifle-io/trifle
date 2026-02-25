@@ -170,4 +170,37 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
 
     assert dataset.errors == []
   end
+
+  test "forces heatmap widgets into 3d matrix mode" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{"latency" => %{"100" => %{"200" => 1}, "200" => %{"200" => 2}}}
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "heatmap-1",
+      "type" => "heatmap",
+      "mode" => "2d",
+      "paths" => ["latency"],
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => [100, 200]},
+        "vertical" => %{"type" => "custom", "buckets" => [200]}
+      }
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.mode == "3d"
+    assert dataset.chart_type == "heatmap"
+    assert dataset.points?
+    assert dataset.errors == []
+
+    assert [%{points: points}] = dataset.series
+    assert Enum.any?(points, &(&1.bucket_x == "100" && &1.bucket_y == "200" && &1.value == 1.0))
+    assert Enum.any?(points, &(&1.bucket_x == "200" && &1.bucket_y == "200" && &1.value == 2.0))
+  end
 end

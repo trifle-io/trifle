@@ -817,7 +817,7 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("series_color_selectors", selectors)
                   |> Map.put("path", primary_path)
 
-                "distribution" ->
+                widget_type when widget_type in ["distribution", "heatmap"] ->
                   typed_paths =
                     params
                     |> Map.get("dist_paths", Map.get(params, "dist_paths[]", []))
@@ -849,9 +849,17 @@ defmodule TrifleApp.DashboardLive do
                     )
 
                   mode =
-                    DashboardWidgetHelpers.normalize_distribution_mode(
-                      Map.get(params, "dist_mode", Map.get(i, "mode"))
-                    )
+                    case widget_type do
+                      "heatmap" ->
+                        "3d"
+
+                      _ ->
+                        DashboardWidgetHelpers.normalize_distribution_mode(
+                          Map.get(params, "dist_mode", Map.get(i, "mode"))
+                        )
+                    end
+
+                  chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
 
                   legend =
                     params
@@ -866,6 +874,7 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("designators", designators)
                   |> Map.put("designator", Map.get(designators, "horizontal"))
                   |> Map.put("mode", mode)
+                  |> Map.put("chart_type", chart_type)
                   |> Map.put("legend", legend)
 
                 "list" ->
@@ -1720,7 +1729,7 @@ defmodule TrifleApp.DashboardLive do
           list_data -> Map.put(base, :list_data, list_data)
         end
 
-      type == "distribution" ->
+      type in ["distribution", "heatmap"] ->
         stats
         |> Distribution.datasets([widget])
         |> List.first()
@@ -2140,7 +2149,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary)
 
-      "distribution" ->
+      type when type in ["distribution", "heatmap"] ->
         path_inputs =
           widget
           |> DashboardWidgetHelpers.path_inputs_for_form("distribution")
@@ -2165,6 +2174,8 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("paths", paths)
         |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary)
+        |> Map.put("mode", if(type == "heatmap", do: "3d", else: Map.get(widget, "mode", "2d")))
+        |> Map.put("chart_type", if(type == "heatmap", do: "heatmap", else: "bar"))
 
       "table" ->
         path_inputs =
@@ -3401,7 +3412,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary_path)
 
-      "distribution" ->
+      widget_type when widget_type in ["distribution", "heatmap"] ->
         dist_paths_param =
           params
           |> Map.get(
@@ -3440,9 +3451,17 @@ defmodule TrifleApp.DashboardLive do
           )
 
         mode =
-          params
-          |> Map.get("dist_mode", Map.get(widget, "mode"))
-          |> DashboardWidgetHelpers.normalize_distribution_mode()
+          case widget_type do
+            "heatmap" ->
+              "3d"
+
+            _ ->
+              params
+              |> Map.get("dist_mode", Map.get(widget, "mode"))
+              |> DashboardWidgetHelpers.normalize_distribution_mode()
+          end
+
+        chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
 
         legend =
           params
@@ -3457,6 +3476,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("designators", designators)
         |> Map.put("designator", Map.get(designators, "horizontal"))
         |> Map.put("mode", mode)
+        |> Map.put("chart_type", chart_type)
         |> Map.put("legend", legend)
 
       "list" ->

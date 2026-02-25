@@ -145,6 +145,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "text" -> render_text_body(assigns)
       "list" -> render_list_body(assigns)
       "distribution" -> render_distribution_body(assigns)
+      "heatmap" -> render_distribution_body(assigns)
       _ -> render_placeholder_body(assigns)
     end
   end
@@ -1309,6 +1310,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           encode_dataset(fetch_dataset(assigns.distribution, widget_id))
         )
 
+      "heatmap" ->
+        Map.put(
+          base,
+          :distribution,
+          encode_dataset(fetch_dataset(assigns.distribution, widget_id))
+        )
+
       _ ->
         base
     end
@@ -1433,11 +1441,17 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> String.downcase()
 
     case type do
-      "distribution" ->
+      widget_type when widget_type in ["distribution", "heatmap"] ->
         normalized_mode =
-          item
-          |> Map.get("mode")
-          |> WidgetHelpers.normalize_distribution_mode()
+          case widget_type do
+            "heatmap" ->
+              "3d"
+
+            _ ->
+              item
+              |> Map.get("mode")
+              |> WidgetHelpers.normalize_distribution_mode()
+          end
 
         normalized_paths =
           item
@@ -1452,6 +1466,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         item
         |> Map.put("mode", normalized_mode)
         |> Map.put("paths", normalized_paths)
+        |> Map.put("chart_type", if(widget_type == "heatmap", do: "heatmap", else: "bar"))
         |> Map.put("designators", designators)
         |> Map.put("designator", designator)
         |> Map.put_new("legend", true)

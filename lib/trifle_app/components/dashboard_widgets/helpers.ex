@@ -227,6 +227,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
         "distribution" ->
           distribution_paths_for_form(widget)
 
+        "heatmap" ->
+          distribution_paths_for_form(widget)
+
         _ ->
           [""]
       end
@@ -415,6 +418,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       "category" -> "category"
       "table" -> "table"
       "distribution" -> "distribution"
+      "heatmap" -> "heatmap"
       other -> other
     end
   end
@@ -433,6 +437,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
         table_paths_for_form(widget)
 
       "distribution" ->
+        distribution_paths_for_form(widget)
+
+      "heatmap" ->
         distribution_paths_for_form(widget)
 
       _ ->

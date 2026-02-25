@@ -13,8 +13,17 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
+    widget_type = widget |> Map.get("type", "distribution") |> to_string() |> String.downcase()
+    is_heatmap = widget_type == "heatmap"
     rows = Helpers.chart_path_rows(widget, "distribution")
-    mode = Helpers.normalize_distribution_mode(Map.get(widget, "mode"))
+
+    mode =
+      if is_heatmap do
+        "3d"
+      else
+        Helpers.normalize_distribution_mode(Map.get(widget, "mode"))
+      end
+
     designator_forms = Helpers.distribution_designators_for_form(widget)
 
     assigns =
@@ -22,6 +31,7 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
       |> assign(:widget, widget)
       |> assign(:rows, rows)
       |> assign(:mode, mode)
+      |> assign(:is_heatmap, is_heatmap)
       |> assign(:designator_forms, designator_forms)
       |> assign(:legend?, Map.get(widget, "legend", true))
 
@@ -96,13 +106,20 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
             Chart Mode
           </label>
-          <select
-            name="dist_mode"
-            class="mt-2 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-          >
-            <option value="2d" selected={@mode == "2d"}>2D Bar</option>
-            <option value="3d" selected={@mode == "3d"}>3D Scatter</option>
-          </select>
+          <%= if @is_heatmap do %>
+            <input type="hidden" name="dist_mode" value="3d" />
+            <div class="mt-2 rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100">
+              Heatmap
+            </div>
+          <% else %>
+            <select
+              name="dist_mode"
+              class="mt-2 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            >
+              <option value="2d" selected={@mode == "2d"}>2D Bar</option>
+              <option value="3d" selected={@mode == "3d"}>3D Scatter</option>
+            </select>
+          <% end %>
         </div>
 
         <div>
@@ -130,7 +147,7 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
         title="Horizontal Designator"
         prefix="dist_designator"
         form={@designator_forms.horizontal}
-        note="X-axis buckets for both 2D and 3D distributions."
+        note="X-axis buckets for 2D bars, 3D scatter, and heatmap views."
       />
 
       <%= if @mode == "3d" do %>
@@ -138,7 +155,7 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
           title="Vertical Designator"
           prefix="dist_v_designator"
           form={@designator_forms.vertical}
-          note="Y-axis buckets for 3D distributions."
+          note="Y-axis buckets for 3D scatter and heatmap views."
         />
       <% end %>
     </div>
