@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Designator.{Custom, Geometric, Linear}
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.SharedParse
   require Logger
 
   @type dataset :: %{
@@ -1010,7 +1011,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   defp bucket_sort_key(label) do
     trimmed = String.trim(label || "")
     overflow = String.ends_with?(trimmed, "+")
-    number = parse_float(trimmed |> String.trim_trailing("+")) || 0.0
+    number = parse_number(trimmed |> String.trim_trailing("+")) || 0.0
     {number, overflow}
   end
 
@@ -1070,22 +1071,10 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp parse_number(value) when is_integer(value), do: value * 1.0
-  defp parse_number(value) when is_float(value), do: value * 1.0
-
-  defp parse_number(value) when is_binary(value) do
-    value
-    |> String.trim()
-    |> case do
-      "" -> nil
-      trimmed -> parse_float(trimmed)
-    end
-  end
-
-  defp parse_number(_), do: nil
+  defp parse_number(value), do: SharedParse.parse_numeric_bucket(value)
 
   defp normalize_custom_bucket(value) when is_integer(value), do: value * 1.0
-  defp normalize_custom_bucket(value) when is_float(value), do: value * 1.0
+  defp normalize_custom_bucket(value) when is_float(value), do: value
 
   defp normalize_custom_bucket(value) when is_binary(value) do
     trimmed = String.trim(value)
@@ -1095,7 +1084,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         nil
 
       _ ->
-        case parse_number(trimmed) do
+        case SharedParse.parse_numeric_bucket(trimmed) do
           nil -> trimmed
           number -> number
         end
@@ -1103,18 +1092,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   end
 
   defp normalize_custom_bucket(_), do: nil
-
-  defp parse_float(string) when is_binary(string) do
-    trimmed = string |> String.trim()
-
-    try do
-      String.to_float(trimmed)
-    rescue
-      ArgumentError -> nil
-    end
-  end
-
-  defp parse_float(_), do: nil
 
   defp normalize_number(%Decimal{} = decimal), do: decimal |> Decimal.to_float()
   defp normalize_number(value) when is_integer(value), do: value * 1.0

@@ -2,6 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   @moduledoc false
 
   alias TrifleApp.DesignSystem.ChartColors
+  alias TrifleApp.Components.DashboardWidgets.SharedParse
 
   @text_widget_colors [
     %{id: "default", label: "Default (white)", background: "#ffffff", text: "#0f172a"},
@@ -846,7 +847,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   defp normalize_distribution_buckets(_other), do: []
 
   defp normalize_distribution_bucket_value(value) when is_integer(value), do: value * 1.0
-  defp normalize_distribution_bucket_value(value) when is_float(value), do: value * 1.0
+  defp normalize_distribution_bucket_value(value) when is_float(value), do: value
 
   defp normalize_distribution_bucket_value(value) when is_binary(value) do
     trimmed = String.trim(value)
@@ -856,7 +857,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
         nil
 
       _ ->
-        case parse_number(trimmed) do
+        case SharedParse.parse_numeric_bucket(trimmed) do
           nil -> trimmed
           number -> number
         end

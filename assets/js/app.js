@@ -299,9 +299,10 @@ const formatHeatmapTooltip = ({
   if (!xLabel && !yLabel) return '';
 
   const key = `${xIdx}:${yIdx}`;
-  const breakdown = aggregateHeatmapBreakdown(
-    breakdownByCell instanceof Map ? breakdownByCell.get(key) || [] : []
-  );
+  const breakdown =
+    breakdownByCell instanceof Map && Array.isArray(breakdownByCell.get(key))
+      ? breakdownByCell.get(key)
+      : [];
 
   const safeEscape =
     typeof escapeHtml === 'function'
@@ -328,6 +329,89 @@ const formatHeatmapTooltip = ({
 
   return lines.join('<br/>');
 };
+
+const buildHeatmapOptions = ({
+  labels,
+  verticalLabels,
+  breakdownByCell,
+  isDarkMode,
+  gridBottom,
+  visualMapBottom,
+  visualSettings,
+  showScale,
+  heatmapData,
+  chartFontFamily,
+  escapeHtml
+}) => ({
+  backgroundColor: 'transparent',
+  legend: { show: false },
+  tooltip: {
+    trigger: 'item',
+    appendToBody: true,
+    formatter: (params) =>
+      formatHeatmapTooltip({
+        params,
+        labels,
+        verticalLabels,
+        breakdownByCell,
+        escapeHtml
+      })
+  },
+  axisPointer: {
+    show: true,
+    type: 'line',
+    lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+    link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }],
+    label: { show: true }
+  },
+  grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
+  xAxis: {
+    type: 'category',
+    data: labels,
+    splitLine: {
+      show: true,
+      lineStyle: {
+        type: 'dashed',
+        color: isDarkMode ? '#1f2937' : '#e2e8f0',
+        opacity: isDarkMode ? 0.4 : 0.9
+      }
+    },
+    axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
+  },
+  yAxis: {
+    type: 'category',
+    data: verticalLabels,
+    splitLine: {
+      show: true,
+      lineStyle: {
+        type: 'dashed',
+        color: isDarkMode ? '#1f2937' : '#e2e8f0',
+        opacity: isDarkMode ? 0.4 : 0.9
+      }
+    },
+    axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
+  },
+  visualMap: showScale
+    ? {
+        min: visualSettings.min,
+        max: visualSettings.max,
+        calculable: false,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: visualMapBottom,
+        textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+        inRange: { color: visualSettings.colorScale }
+      }
+    : { show: false },
+  series: [{
+    name: 'Heat',
+    type: 'heatmap',
+    data: heatmapData,
+    progressive: 1000,
+    emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
+    select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
+  }]
+});
 
 const extractTimestamp = (point) => {
   if (Array.isArray(point) && point.length) return Number(point[0]);
@@ -3029,7 +3113,7 @@ Hooks.DashboardGrid = {
         if (is3d) {
           if (isHeatmap) {
             const totalsByCell = new Map();
-            const breakdownByCell = new Map();
+            const breakdownTotalsByCell = new Map();
             const labelIndexMap = buildBucketIndexMap(labels);
             const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
 
@@ -3048,10 +3132,23 @@ Hooks.DashboardGrid = {
                 const key = `${xIndex}:${yIndex}`;
                 totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
 
-                const breakdown = breakdownByCell.get(key) || [];
-                breakdown.push({ name, value: val });
-                breakdownByCell.set(key, breakdown);
+                const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
+                seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
+                breakdownTotalsByCell.set(key, seriesTotals);
               });
+            });
+
+            const breakdownByCell = new Map();
+            breakdownTotalsByCell.forEach((seriesTotals, key) => {
+              breakdownByCell.set(
+                key,
+                aggregateHeatmapBreakdown(
+                  Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
+                    name: seriesName,
+                    value: totalValue
+                  }))
+                )
+              );
             });
 
             const heatmapData = Array.from(totalsByCell.entries())
@@ -3075,76 +3172,19 @@ Hooks.DashboardGrid = {
               isDarkMode
             });
 
-            const option = {
-              backgroundColor: 'transparent',
-              legend: { show: false },
-              tooltip: {
-                trigger: 'item',
-                appendToBody: true,
-                formatter: (params) =>
-                  formatHeatmapTooltip({
-                    params,
-                    labels,
-                    verticalLabels,
-                    breakdownByCell,
-                    escapeHtml: this.escapeHtml.bind(this)
-                  })
-              },
-              axisPointer: {
-                show: true,
-                type: 'line',
-                lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
-                link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }],
-                label: { show: true }
-              },
-              grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
-              xAxis: {
-                type: 'category',
-                data: labels,
-                splitLine: {
-                  show: true,
-                  lineStyle: {
-                    type: 'dashed',
-                    color: isDarkMode ? '#1f2937' : '#e2e8f0',
-                    opacity: isDarkMode ? 0.4 : 0.9
-                  }
-                },
-                axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
-              },
-              yAxis: {
-                type: 'category',
-                data: verticalLabels,
-                splitLine: {
-                  show: true,
-                  lineStyle: {
-                    type: 'dashed',
-                    color: isDarkMode ? '#1f2937' : '#e2e8f0',
-                    opacity: isDarkMode ? 0.4 : 0.9
-                  }
-                },
-                axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
-              },
-              visualMap: showScale
-                ? {
-                    min: visualSettings.min,
-                    max: visualSettings.max,
-                    calculable: false,
-                    orient: 'horizontal',
-                    left: 'center',
-                    bottom: visualMapBottom,
-                    textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-                    inRange: { color: visualSettings.colorScale }
-                  }
-                : { show: false },
-              series: [{
-                name: 'Heat',
-                type: 'heatmap',
-                data: heatmapData,
-                progressive: 1000,
-                emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
-                select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
-              }]
-            };
+            const option = buildHeatmapOptions({
+              labels,
+              verticalLabels,
+              breakdownByCell,
+              isDarkMode,
+              gridBottom,
+              visualMapBottom,
+              visualSettings,
+              showScale,
+              heatmapData,
+              chartFontFamily,
+              escapeHtml: this.escapeHtml.bind(this)
+            });
 
             chart.setOption(option, true);
             try {
@@ -6042,7 +6082,7 @@ Hooks.ExpandedWidgetView = {
     if (is3d) {
       if (isHeatmap) {
         const totalsByCell = new Map();
-        const breakdownByCell = new Map();
+        const breakdownTotalsByCell = new Map();
         const labelIndexMap = buildBucketIndexMap(labels);
         const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
 
@@ -6061,10 +6101,23 @@ Hooks.ExpandedWidgetView = {
             const key = `${xIdx}:${yIdx}`;
             totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
 
-            const breakdown = breakdownByCell.get(key) || [];
-            breakdown.push({ name, value: val });
-            breakdownByCell.set(key, breakdown);
+            const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
+            seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
+            breakdownTotalsByCell.set(key, seriesTotals);
           });
+        });
+
+        const breakdownByCell = new Map();
+        breakdownTotalsByCell.forEach((seriesTotals, key) => {
+          breakdownByCell.set(
+            key,
+            aggregateHeatmapBreakdown(
+              Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
+                name: seriesName,
+                value: totalValue
+              }))
+            )
+          );
         });
 
         const heatmapData = Array.from(totalsByCell.entries())
@@ -6084,6 +6137,7 @@ Hooks.ExpandedWidgetView = {
 
         const showScale = legendFlag === undefined ? true : !!legendFlag;
         const gridBottom = showScale ? 72 : 20;
+        const visualMapBottom = 8;
         const fallbackHeatColor = colors ? colors[0] : this.seriesColor(0);
         const visualSettings = resolveHeatmapVisualMap({
           payload: data,
@@ -6093,76 +6147,19 @@ Hooks.ExpandedWidgetView = {
           isDarkMode
         });
 
-        const option = {
-          backgroundColor: 'transparent',
-          legend: { show: false },
-          tooltip: {
-            trigger: 'item',
-            appendToBody: true,
-            formatter: (params) =>
-              formatHeatmapTooltip({
-                params,
-                labels,
-                verticalLabels,
-                breakdownByCell,
-                escapeHtml: this.escapeHtml.bind(this)
-              })
-          },
-          axisPointer: {
-            show: true,
-            type: 'line',
-            lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
-            link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }],
-            label: { show: true }
-          },
-          grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
-          xAxis: {
-            type: 'category',
-            data: labels,
-            splitLine: {
-              show: true,
-              lineStyle: {
-                type: 'dashed',
-                color: isDarkMode ? '#1f2937' : '#e2e8f0',
-                opacity: isDarkMode ? 0.4 : 0.9
-              }
-            },
-            axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
-          },
-          yAxis: {
-            type: 'category',
-            data: verticalLabels,
-            splitLine: {
-              show: true,
-              lineStyle: {
-                type: 'dashed',
-                color: isDarkMode ? '#1f2937' : '#e2e8f0',
-                opacity: isDarkMode ? 0.4 : 0.9
-              }
-            },
-            axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
-          },
-          visualMap: showScale
-            ? {
-                min: visualSettings.min,
-                max: visualSettings.max,
-                calculable: false,
-                orient: 'horizontal',
-                left: 'center',
-                bottom: 8,
-                textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-                inRange: { color: visualSettings.colorScale }
-              }
-            : { show: false },
-          series: [{
-            name: 'Heat',
-            type: 'heatmap',
-            data: heatmapData,
-            progressive: 1000,
-            emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
-            select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
-          }]
-        };
+        const option = buildHeatmapOptions({
+          labels,
+          verticalLabels,
+          breakdownByCell,
+          isDarkMode,
+          gridBottom,
+          visualMapBottom,
+          visualSettings,
+          showScale,
+          heatmapData,
+          chartFontFamily,
+          escapeHtml: this.escapeHtml.bind(this)
+        });
 
         chart.setOption(option, true);
         try { chart.resize(); } catch (_) {}

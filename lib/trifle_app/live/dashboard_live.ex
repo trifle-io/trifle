@@ -3165,11 +3165,9 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp distribution_widget_source_for_save(socket, id, fallback) do
+    # editing_widget originates from dashboard payload maps, so widget IDs are string-keyed.
     case socket.assigns[:editing_widget] do
       %{"id" => widget_id} = widget ->
-        if to_string(widget_id) == to_string(id), do: widget, else: fallback
-
-      %{id: widget_id} = widget ->
         if to_string(widget_id) == to_string(id), do: widget, else: fallback
 
       _ ->
