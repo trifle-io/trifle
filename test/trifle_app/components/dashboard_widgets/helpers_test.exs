@@ -116,4 +116,39 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     refute config["symmetric"]
     assert config_no_symmetric["symmetric"]
   end
+
+  test "preserves custom string buckets for both distribution axes" do
+    existing = %{
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => [10.0, 20.0]},
+        "vertical" => %{"type" => "custom", "buckets" => [100.0, 200.0]}
+      }
+    }
+
+    updated =
+      Helpers.normalize_distribution_designators(
+        %{
+          "dist_designator_type" => "custom",
+          "dist_designator_buckets" => "kg_0_5, kg_1_0, kg_1_5",
+          "dist_v_designator_type" => "custom",
+          "dist_v_designator_buckets" => "aed_100, aed_200"
+        },
+        existing
+      )
+
+    assert updated["horizontal"]["buckets"] == ["kg_0_5", "kg_1_0", "kg_1_5"]
+    assert updated["vertical"]["buckets"] == ["aed_100", "aed_200"]
+
+    updated_vertical_only =
+      Helpers.normalize_distribution_designators(
+        %{
+          "dist_v_designator_type" => "custom",
+          "dist_v_designator_buckets" => "aed_500, aed_1000"
+        },
+        %{"designators" => updated}
+      )
+
+    assert updated_vertical_only["horizontal"]["buckets"] == ["kg_0_5", "kg_1_0", "kg_1_5"]
+    assert updated_vertical_only["vertical"]["buckets"] == ["aed_500", "aed_1000"]
+  end
 end

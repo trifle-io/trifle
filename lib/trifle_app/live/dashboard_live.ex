@@ -818,7 +818,15 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("path", primary_path)
 
                 widget_type when widget_type in ["distribution", "heatmap"] ->
-                  build_distribution_widget(base, widget_type, params, i, path_options)
+                  source_widget = distribution_widget_source_for_save(socket, id, i)
+
+                  build_distribution_widget(
+                    base,
+                    widget_type,
+                    params,
+                    source_widget,
+                    path_options
+                  )
 
                 "list" ->
                   list_path =
@@ -3194,6 +3202,19 @@ defmodule TrifleApp.DashboardLive do
 
       _ ->
         nil
+    end
+  end
+
+  defp distribution_widget_source_for_save(socket, id, fallback) do
+    case socket.assigns[:editing_widget] do
+      %{"id" => widget_id} = widget ->
+        if to_string(widget_id) == to_string(id), do: widget, else: fallback
+
+      %{id: widget_id} = widget ->
+        if to_string(widget_id) == to_string(id), do: widget, else: fallback
+
+      _ ->
+        fallback
     end
   end
 

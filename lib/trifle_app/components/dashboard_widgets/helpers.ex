@@ -813,11 +813,27 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   defp normalize_distribution_buckets(value) when is_list(value) do
-    value
-    |> Enum.map(&parse_number/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-    |> Enum.sort()
+    buckets =
+      value
+      |> Enum.map(&normalize_distribution_bucket_value/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reduce({[], MapSet.new()}, fn bucket, {acc, seen} ->
+        key = distribution_bucket_dedup_key(bucket)
+
+        if MapSet.member?(seen, key) do
+          {acc, seen}
+        else
+          {[bucket | acc], MapSet.put(seen, key)}
+        end
+      end)
+      |> elem(0)
+      |> Enum.reverse()
+
+    if Enum.all?(buckets, &is_number/1) do
+      Enum.sort(buckets)
+    else
+      buckets
+    end
   end
 
   defp normalize_distribution_buckets(value) when is_binary(value) do
@@ -827,6 +843,30 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   defp normalize_distribution_buckets(_other), do: []
+
+  defp normalize_distribution_bucket_value(value) when is_integer(value), do: value * 1.0
+  defp normalize_distribution_bucket_value(value) when is_float(value), do: value * 1.0
+
+  defp normalize_distribution_bucket_value(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    case trimmed do
+      "" ->
+        nil
+
+      _ ->
+        case parse_number(trimmed) do
+          nil -> trimmed
+          number -> number
+        end
+    end
+  end
+
+  defp normalize_distribution_bucket_value(_other), do: nil
+
+  defp distribution_bucket_dedup_key(value) when is_number(value), do: {:number, value * 1.0}
+  defp distribution_bucket_dedup_key(value) when is_binary(value), do: {:text, value}
+  defp distribution_bucket_dedup_key(value), do: {:other, value}
 
   defp normalize_distribution_designator_type(value) do
     value

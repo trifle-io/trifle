@@ -851,25 +851,46 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     buckets =
       config
       |> Map.get("buckets", [])
-      |> Enum.map(&parse_number/1)
+      |> Enum.map(&normalize_custom_bucket/1)
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
-      |> Enum.sort()
 
-    if buckets == [] do
-      {:error, "Custom designator requires at least one bucket value"}
-    else
-      labels = Enum.map(buckets, &format_bucket_label/1)
-      overflow = (List.last(labels) || "0") <> "+"
-      struct = Custom.new(buckets)
+    cond do
+      buckets == [] ->
+        {:error, "Custom designator requires at least one bucket value"}
 
-      {:ok,
-       %{
-         type: :custom,
-         struct: struct,
-         bucket_labels: labels ++ [overflow],
-         config: %{buckets: buckets}
-       }}
+      Enum.all?(buckets, &is_number/1) ->
+        numeric_buckets = Enum.sort(buckets)
+        labels = Enum.map(numeric_buckets, &format_bucket_label/1)
+        overflow = (List.last(labels) || "0") <> "+"
+        struct = Custom.new(numeric_buckets)
+
+        {:ok,
+         %{
+           type: :custom,
+           struct: struct,
+           bucket_labels: labels ++ [overflow],
+           config: %{buckets: numeric_buckets}
+         }}
+
+      true ->
+        labels =
+          buckets
+          |> Enum.map(&format_bucket_label/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.uniq()
+
+        if labels == [] do
+          {:error, "Custom designator requires at least one bucket value"}
+        else
+          {:ok,
+           %{
+             type: :custom,
+             struct: nil,
+             bucket_labels: labels,
+             config: %{buckets: labels}
+           }}
+        end
     end
   end
 
@@ -1062,6 +1083,26 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   end
 
   defp parse_number(_), do: nil
+
+  defp normalize_custom_bucket(value) when is_integer(value), do: value * 1.0
+  defp normalize_custom_bucket(value) when is_float(value), do: value * 1.0
+
+  defp normalize_custom_bucket(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    case trimmed do
+      "" ->
+        nil
+
+      _ ->
+        case parse_number(trimmed) do
+          nil -> trimmed
+          number -> number
+        end
+    end
+  end
+
+  defp normalize_custom_bucket(_), do: nil
 
   defp parse_float(string) when is_binary(string) do
     trimmed = string |> String.trim()

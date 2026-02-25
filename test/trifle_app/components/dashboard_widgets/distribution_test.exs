@@ -274,4 +274,66 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
     assert Enum.any?(points, &(&1.bucket_x == "100" && &1.bucket_y == "200" && &1.value == 1.0))
     assert Enum.any?(points, &(&1.bucket_x == "200" && &1.bucket_y == "200" && &1.value == 2.0))
   end
+
+  test "supports categorical custom buckets for heatmap axes" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{
+              "absolute" => %{
+                "kg_0_5" => %{"aed_100" => 1, "aed_200" => 2},
+                "kg_1_0" => %{"aed_100" => 3}
+              }
+            }
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "heatmap-categorical",
+      "type" => "heatmap",
+      "paths" => ["absolute"],
+      "mode" => "3d",
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => ["kg_0_5", "kg_1_0", "kg_1_5"]},
+        "vertical" => %{"type" => "custom", "buckets" => ["aed_100", "aed_200"]}
+      }
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.errors == []
+    assert dataset.bucket_labels == ["kg_0_5", "kg_1_0", "kg_1_5"]
+    assert dataset.vertical_bucket_labels == ["aed_100", "aed_200"]
+
+    assert %{
+             bucket_labels: ["kg_0_5", "kg_1_0", "kg_1_5"],
+             config: %{buckets: ["kg_0_5", "kg_1_0", "kg_1_5"]},
+             type: :custom
+           } = dataset.designators["horizontal"]
+
+    assert %{
+             bucket_labels: ["aed_100", "aed_200"],
+             config: %{buckets: ["aed_100", "aed_200"]},
+             type: :custom
+           } = dataset.designators["vertical"]
+
+    assert [%{points: points}] = dataset.series
+
+    assert Enum.any?(
+             points,
+             &(&1.bucket_x == "kg_0_5" and &1.bucket_y == "aed_100" and &1.value == 1.0)
+           )
+
+    assert Enum.any?(
+             points,
+             &(&1.bucket_x == "kg_0_5" and &1.bucket_y == "aed_200" and &1.value == 2.0)
+           )
+
+    assert Enum.any?(
+             points,
+             &(&1.bucket_x == "kg_1_0" and &1.bucket_y == "aed_100" and &1.value == 3.0)
+           )
+  end
 end
