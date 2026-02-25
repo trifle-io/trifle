@@ -66,7 +66,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
   def dataset(series_struct, item) do
     id = to_string(item["id"])
-    widget_type = item |> Map.get("type", "distribution") |> normalize_widget_type()
+
+    widget_type =
+      item
+      |> Map.get("widget_type", Map.get(item, "type", "distribution"))
+      |> normalize_widget_type()
+
     paths = normalized_paths(item)
     default_mode = if widget_type == "heatmap", do: "3d", else: "2d"
 
@@ -85,6 +90,10 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       item
       |> Map.get("chart_type", default_chart_type)
       |> normalize_chart_type(default_chart_type)
+      |> case do
+        _ when widget_type == "heatmap" -> "heatmap"
+        value -> value
+      end
 
     legend = !!item["legend"]
 
@@ -373,7 +382,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
           value: value
         }
       end)
-      |> Enum.filter(fn point -> point.value != 0.0 end)
+      |> Enum.filter(fn point -> not is_nil(point.value) end)
       |> sort_points(horizontal_labels, vertical_labels)
 
     [

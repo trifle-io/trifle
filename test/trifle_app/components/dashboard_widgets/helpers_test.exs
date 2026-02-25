@@ -94,6 +94,18 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
         "#22c55e"
       )
 
+    config_no_symmetric =
+      Helpers.normalize_heatmap_color_config(
+        %{
+          "single_color" => "#14b8a6",
+          "palette_id" => "warm",
+          "negative_color" => "#0ea5e9",
+          "positive_color" => "#ef4444",
+          "center_value" => "5.5"
+        },
+        "#22c55e"
+      )
+
     assert Helpers.normalize_heatmap_color_mode("single") == "single"
     assert Helpers.normalize_heatmap_color_mode("unknown") == "auto"
     assert config["single_color"] == "#14B8A6"
@@ -102,5 +114,6 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     assert config["positive_color"] == "#EF4444"
     assert config["center_value"] == 5.5
     refute config["symmetric"]
+    assert config_no_symmetric["symmetric"]
   end
 end

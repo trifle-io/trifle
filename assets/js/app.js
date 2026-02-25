@@ -185,8 +185,18 @@ const resolveHeatmapVisualMap = ({
     .map((point) => Number(point && point[2]))
     .filter((value) => Number.isFinite(value));
 
-  const rawMin = values.length ? Math.min(...values) : 0;
-  const rawMax = values.length ? Math.max(...values) : 0;
+  let rawMin = 0;
+  let rawMax = 0;
+  if (values.length) {
+    let min = Infinity;
+    let max = -Infinity;
+    values.forEach((value) => {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    });
+    rawMin = min;
+    rawMax = max;
+  }
   const mode = normalizeHeatmapColorMode(payload && payload.color_mode);
   const config = normalizeHeatmapColorConfig(payload && payload.color_config, fallbackHeatColor || '#14b8a6');
 
@@ -240,6 +250,14 @@ const heatmapFocusItemStyle = (isDarkMode) => ({
   shadowOffsetY: 0
 });
 
+const buildBucketIndexMap = (labels) => {
+  const map = new Map();
+  (Array.isArray(labels) ? labels : []).forEach((label, idx) => {
+    map.set(String(label), idx);
+  });
+  return map;
+};
+
 const aggregateHeatmapBreakdown = (entries) => {
   const totals = new Map();
 
@@ -292,8 +310,10 @@ const formatHeatmapTooltip = ({
 
   const marker = params?.marker || '';
   const primaryLabel = breakdown.length === 1 ? breakdown[0].name : 'Total';
+  const safeXLabel = safeEscape(xLabel);
+  const safeYLabel = safeEscape(yLabel);
   const lines = [
-    `${xLabel} × ${yLabel}`,
+    `${safeXLabel} × ${safeYLabel}`,
     `${marker}${safeEscape(primaryLabel)}  <strong>${formatCompactNumber(val)}</strong>`
   ];
 
@@ -3010,15 +3030,17 @@ Hooks.DashboardGrid = {
           if (isHeatmap) {
             const totalsByCell = new Map();
             const breakdownByCell = new Map();
+            const labelIndexMap = buildBucketIndexMap(labels);
+            const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
 
             (Array.isArray(it.series) ? it.series : []).forEach((series, idx) => {
               const name = series && series.name ? series.name : `Series ${idx + 1}`;
               const points = Array.isArray(series && series.points) ? series.points : [];
 
               points.forEach((p) => {
-                const xIndex = labels.indexOf(p.bucket_x);
-                const yIndex = verticalLabels.indexOf(p.bucket_y);
-                if (xIndex === -1 || yIndex === -1) return;
+                const xIndex = labelIndexMap.get(String(p.bucket_x));
+                const yIndex = verticalLabelIndexMap.get(String(p.bucket_y));
+                if (xIndex == null || yIndex == null) return;
                 const val = Number(p.value);
                 if (!Number.isFinite(val)) return;
 
@@ -6018,6 +6040,8 @@ Hooks.ExpandedWidgetView = {
       if (isHeatmap) {
         const totalsByCell = new Map();
         const breakdownByCell = new Map();
+        const labelIndexMap = buildBucketIndexMap(labels);
+        const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
 
         series.forEach((seriesItem, idx) => {
           const name = seriesItem?.name || `Series ${idx + 1}`;
@@ -6025,9 +6049,9 @@ Hooks.ExpandedWidgetView = {
 
           points.forEach((p) => {
             if (!p) return;
-            const xIdx = labels.indexOf(p.bucket_x);
-            const yIdx = verticalLabels.indexOf(p.bucket_y);
-            if (xIdx === -1 || yIdx === -1) return;
+            const xIdx = labelIndexMap.get(String(p.bucket_x));
+            const yIdx = verticalLabelIndexMap.get(String(p.bucket_y));
+            if (xIdx == null || yIdx == null) return;
             const val = Number(p.value);
             if (!Number.isFinite(val)) return;
 
@@ -6340,7 +6364,8 @@ Hooks.ExpandedWidgetView = {
     if (!this.tableRoot) return;
     const is3d =
       String(data?.mode || '2d').toLowerCase() === '3d' ||
-      String(data?.chart_type || '').toLowerCase() === 'heatmap';
+      String(data?.chart_type || '').toLowerCase() === 'heatmap' ||
+      String(data?.widget_type || '').toLowerCase() === 'heatmap';
     const series = Array.isArray(data?.series) ? data.series : [];
     const rows = [];
 

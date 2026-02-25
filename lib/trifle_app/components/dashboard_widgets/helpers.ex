@@ -957,7 +957,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   defp normalize_boolean(value, default) do
     case value do
       v when v in [true, "true", 1, "1", "on"] -> true
-      v when v in [false, "false", 0, "0", nil, ""] -> false
+      v when v in [false, "false", 0, "0"] -> false
+      v when v in [nil, ""] -> default
       _ -> default
     end
   end
