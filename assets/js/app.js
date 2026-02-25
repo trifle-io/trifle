@@ -233,6 +233,75 @@ const resolveHeatmapVisualMap = ({
   };
 };
 
+const aggregateHeatmapBreakdown = (entries) => {
+  const totals = new Map();
+
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    if (!entry) return;
+    const rawName = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const name = rawName !== '' ? rawName : 'Series';
+    const value = Number(entry.value);
+    if (!Number.isFinite(value)) return;
+    totals.set(name, (totals.get(name) || 0) + value);
+  });
+
+  return Array.from(totals.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
+};
+
+const formatHeatmapTooltip = ({
+  params,
+  labels,
+  verticalLabels,
+  breakdownByCell,
+  escapeHtml
+}) => {
+  const valueArr =
+    Array.isArray(params?.value) && params.value.length >= 3
+      ? params.value
+      : Array.isArray(params?.data) && params.data.length >= 3
+        ? params.data
+        : null;
+
+  if (!valueArr) return '';
+
+  const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
+  const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
+  const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
+  const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
+  const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
+  if (!xLabel && !yLabel) return '';
+
+  const key = `${xIdx}:${yIdx}`;
+  const breakdown = aggregateHeatmapBreakdown(
+    breakdownByCell instanceof Map ? breakdownByCell.get(key) || [] : []
+  );
+
+  const safeEscape =
+    typeof escapeHtml === 'function'
+      ? escapeHtml
+      : (value) => String(value == null ? '' : value);
+
+  const marker = params?.marker || '';
+  const primaryLabel = breakdown.length === 1 ? breakdown[0].name : 'Total';
+  const lines = [
+    `${xLabel} × ${yLabel}`,
+    `${marker}${safeEscape(primaryLabel)}  <strong>${formatCompactNumber(val)}</strong>`
+  ];
+
+  if (breakdown.length > 1) {
+    breakdown.slice(0, 5).forEach((entry) => {
+      lines.push(`${safeEscape(entry.name)}: ${formatCompactNumber(entry.value)}`);
+    });
+    if (breakdown.length > 5) {
+      lines.push(`+${breakdown.length - 5} more`);
+    }
+  }
+
+  return lines.join('<br/>');
+};
+
 const extractTimestamp = (point) => {
   if (Array.isArray(point) && point.length) return Number(point[0]);
   if (point && typeof point === 'object') {
@@ -2982,35 +3051,21 @@ Hooks.DashboardGrid = {
               tooltip: {
                 trigger: 'item',
                 appendToBody: true,
-                formatter: (params) => {
-                  const valueArr = Array.isArray(params.value) ? params.value : [];
-                  if (valueArr.length < 3) return '';
-
-                  const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
-                  const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
-                  const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
-                  const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
-                  const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
-                  if (!xLabel && !yLabel) return '';
-
-                  const key = `${xIdx}:${yIdx}`;
-                  const breakdown = (breakdownByCell.get(key) || [])
-                    .slice()
-                    .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
-
-                  const lines = [`${xLabel} × ${yLabel}`, `<strong>${formatCompactNumber(val)}</strong>`];
-
-                  if (breakdown.length > 1) {
-                    breakdown.slice(0, 5).forEach((entry) => {
-                      lines.push(`${this.escapeHtml(entry.name)}: ${formatCompactNumber(entry.value)}`);
-                    });
-                    if (breakdown.length > 5) {
-                      lines.push(`+${breakdown.length - 5} more`);
-                    }
-                  }
-
-                  return lines.join('<br/>');
-                }
+                formatter: (params) =>
+                  formatHeatmapTooltip({
+                    params,
+                    labels,
+                    verticalLabels,
+                    breakdownByCell,
+                    escapeHtml: this.escapeHtml.bind(this)
+                  })
+              },
+              axisPointer: {
+                show: true,
+                type: 'line',
+                lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+                link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }],
+                label: { show: true }
               },
               grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
               xAxis: {
@@ -6009,35 +6064,21 @@ Hooks.ExpandedWidgetView = {
           tooltip: {
             trigger: 'item',
             appendToBody: true,
-            formatter: (params) => {
-              const valueArr = Array.isArray(params.value) ? params.value : [];
-              if (valueArr.length < 3) return '';
-
-              const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
-              const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
-              const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
-              const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
-              const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
-              if (!xLabel && !yLabel) return '';
-
-              const key = `${xIdx}:${yIdx}`;
-              const breakdown = (breakdownByCell.get(key) || [])
-                .slice()
-                .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
-
-              const lines = [`${xLabel} × ${yLabel}`, `<strong>${formatCompactNumber(val)}</strong>`];
-
-              if (breakdown.length > 1) {
-                breakdown.slice(0, 5).forEach((entry) => {
-                  lines.push(`${this.escapeHtml(entry.name)}: ${formatCompactNumber(entry.value)}`);
-                });
-                if (breakdown.length > 5) {
-                  lines.push(`+${breakdown.length - 5} more`);
-                }
-              }
-
-              return lines.join('<br/>');
-            }
+            formatter: (params) =>
+              formatHeatmapTooltip({
+                params,
+                labels,
+                verticalLabels,
+                breakdownByCell,
+                escapeHtml: this.escapeHtml.bind(this)
+              })
+          },
+          axisPointer: {
+            show: true,
+            type: 'line',
+            lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+            link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }],
+            label: { show: true }
           },
           grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
           xAxis: {
