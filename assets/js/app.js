@@ -233,6 +233,13 @@ const resolveHeatmapVisualMap = ({
   };
 };
 
+const heatmapFocusItemStyle = (isDarkMode) => ({
+  shadowBlur: isDarkMode ? 16 : 12,
+  shadowColor: isDarkMode ? 'rgba(248, 250, 252, 0.45)' : 'rgba(15, 23, 42, 0.35)',
+  shadowOffsetX: 0,
+  shadowOffsetY: 0
+});
+
 const aggregateHeatmapBreakdown = (entries) => {
   const totals = new Map();
 
@@ -3111,7 +3118,8 @@ Hooks.DashboardGrid = {
                 type: 'heatmap',
                 data: heatmapData,
                 progressive: 1000,
-                emphasis: { itemStyle: { borderWidth: 1, borderColor: isDarkMode ? '#0f172a' : '#ffffff' } }
+                emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
+                select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
               }]
             };
 
@@ -6124,7 +6132,8 @@ Hooks.ExpandedWidgetView = {
             type: 'heatmap',
             data: heatmapData,
             progressive: 1000,
-            emphasis: { itemStyle: { borderWidth: 1, borderColor: isDarkMode ? '#0f172a' : '#ffffff' } }
+            emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
+            select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
           }]
         };
 
