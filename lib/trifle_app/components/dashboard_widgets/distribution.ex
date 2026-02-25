@@ -31,7 +31,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     items =
       grid_items
       |> Enum.filter(fn item ->
-        item_type = String.downcase(to_string(item["type"] || ""))
+        item_type = String.downcase(to_string(item["type"] || item["widget_type"] || ""))
         item_type in ["distribution", "heatmap"]
       end)
       |> Enum.map(&dataset(series_struct, &1))

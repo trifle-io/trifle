@@ -21,6 +21,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   @default_heatmap_palette_id "default"
   @default_heatmap_negative_color "#0EA5E9"
   @default_heatmap_positive_color "#EF4444"
+  @palette_ids ChartColors.palette_options() |> Enum.map(& &1.id)
 
   ## Text helpers
 
@@ -1035,13 +1036,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       |> String.trim()
       |> String.downcase()
 
-    palette_ids = ChartColors.palette_options() |> Enum.map(& &1.id)
-
     cond do
       palette_id == "" ->
         @default_heatmap_palette_id
 
-      palette_id in palette_ids ->
+      palette_id in @palette_ids ->
         palette_id
 
       true ->

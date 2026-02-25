@@ -2101,64 +2101,23 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("path", primary)
 
       type when type in ["distribution", "heatmap"] ->
-        path_inputs =
+        path_inputs = DashboardWidgetHelpers.path_inputs_for_form(widget, "distribution")
+
+        fallback_path =
           widget
-          |> DashboardWidgetHelpers.path_inputs_for_form("distribution")
-
-        paths = auto_expand_path_wildcards(path_inputs, options)
-
-        primary =
-          paths
-          |> Enum.reject(&(&1 == ""))
-          |> List.first()
-          |> Kernel.||(widget["path"] || "")
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        path_aggregation =
-          widget
-          |> Map.get("path_aggregation")
-          |> DashboardWidgetHelpers.normalize_distribution_path_aggregation()
-
-        fallback_heatmap_color =
-          DashboardWidgetHelpers.heatmap_single_color_from_paths(path_inputs, selectors)
-
-        color_mode =
-          case type do
-            "heatmap" ->
-              widget
-              |> Map.get("color_mode")
-              |> DashboardWidgetHelpers.normalize_heatmap_color_mode()
-
-            _ ->
-              nil
-          end
-
-        color_config =
-          case type do
-            "heatmap" ->
-              widget
-              |> Map.get("color_config", %{})
-              |> DashboardWidgetHelpers.normalize_heatmap_color_config(fallback_heatmap_color)
-
-            _ ->
-              nil
-          end
+          |> Map.get("path", "")
+          |> to_string()
+          |> String.trim()
 
         widget
-        |> Map.put("path_inputs", path_inputs)
-        |> Map.put("paths", paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary)
-        |> Map.put("mode", if(type == "heatmap", do: "3d", else: Map.get(widget, "mode", "2d")))
-        |> Map.put("chart_type", if(type == "heatmap", do: "heatmap", else: "bar"))
-        |> Map.put("path_aggregation", path_aggregation)
-        |> put_heatmap_color_fields(type, color_mode, color_config)
+        |> build_distribution_widget(type, %{}, widget, options,
+          paths_param: path_inputs,
+          path_normalizer: &DashboardWidgetHelpers.normalize_distribution_paths_for_edit/1,
+          fallback_path: fallback_path
+        )
+        |> preserve_widget_field(widget, "legend")
+        |> preserve_widget_field(widget, "designator")
+        |> preserve_widget_field(widget, "designators")
 
       "table" ->
         path_inputs =
@@ -3653,6 +3612,14 @@ defmodule TrifleApp.DashboardLive do
     |> Enum.reject(&(&1 == ""))
     |> List.first()
     |> Kernel.||(fallback)
+  end
+
+  defp preserve_widget_field(updated, original, key) do
+    if Map.has_key?(original, key) do
+      Map.put(updated, key, Map.get(original, key))
+    else
+      Map.delete(updated, key)
+    end
   end
 
   defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do

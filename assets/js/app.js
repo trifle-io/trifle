@@ -3038,6 +3038,7 @@ Hooks.DashboardGrid = {
               const points = Array.isArray(series && series.points) ? series.points : [];
 
               points.forEach((p) => {
+                if (!p || p.bucket_x == null || p.bucket_y == null) return;
                 const xIndex = labelIndexMap.get(String(p.bucket_x));
                 const yIndex = verticalLabelIndexMap.get(String(p.bucket_y));
                 if (xIndex == null || yIndex == null) return;
@@ -5991,7 +5992,9 @@ Hooks.ExpandedWidgetView = {
   renderDistribution(data) {
     const widgetType = (this.el.dataset.type || '').toLowerCase();
     const isHeatmap =
-      widgetType === 'heatmap' || String(data?.chart_type || '').toLowerCase() === 'heatmap';
+      widgetType === 'heatmap' ||
+      String(data?.chart_type || '').toLowerCase() === 'heatmap' ||
+      String(data?.widget_type || '').toLowerCase() === 'heatmap';
     const is3d = isHeatmap || String(data?.mode || '2d').toLowerCase() === '3d';
     const labels = Array.isArray(data?.bucket_labels) ? data.bucket_labels : [];
     const verticalLabelsRaw = Array.isArray(data?.vertical_bucket_labels) ? data.vertical_bucket_labels : [];
@@ -6048,7 +6051,7 @@ Hooks.ExpandedWidgetView = {
           const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
 
           points.forEach((p) => {
-            if (!p) return;
+            if (!p || p.bucket_x == null || p.bucket_y == null) return;
             const xIdx = labelIndexMap.get(String(p.bucket_x));
             const yIdx = verticalLabelIndexMap.get(String(p.bucket_y));
             if (xIdx == null || yIdx == null) return;
