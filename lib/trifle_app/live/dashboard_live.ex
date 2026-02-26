@@ -3588,6 +3588,7 @@ defmodule TrifleApp.DashboardLive do
     |> Map.put("chart_type", chart_type)
     |> Map.put("legend", legend)
     |> Map.put("path_aggregation", path_aggregation)
+    |> Map.put("widget_type", widget_type)
     |> put_heatmap_color_fields(widget_type, color_mode, color_config)
   end
 
