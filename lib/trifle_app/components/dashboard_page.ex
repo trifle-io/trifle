@@ -1216,6 +1216,9 @@ defmodule TrifleApp.Components.DashboardPage do
                         <option value="distribution" selected={sel == "distribution"}>
                           Distribution
                         </option>
+                        <option value="heatmap" selected={sel == "heatmap"}>
+                          Heatmap
+                        </option>
                         <option value="table" selected={sel == "table"}>Table</option>
                         <option value="list" selected={sel == "list"}>List</option>
                         <option value="text" selected={sel == "text"}>Text</option>

@@ -72,4 +72,83 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
              "metrics.b" => "default.3"
            }
   end
+
+  test "normalizes distribution path aggregation options" do
+    assert Helpers.normalize_distribution_path_aggregation("sum") == "sum"
+    assert Helpers.normalize_distribution_path_aggregation("avg") == "mean"
+    assert Helpers.normalize_distribution_path_aggregation("MEAN") == "mean"
+    assert Helpers.normalize_distribution_path_aggregation("unknown") == "none"
+  end
+
+  test "normalizes heatmap color mode and config" do
+    config =
+      Helpers.normalize_heatmap_color_config(
+        %{
+          "single_color" => "#14b8a6",
+          "palette_id" => "warm",
+          "negative_color" => "#0ea5e9",
+          "positive_color" => "#ef4444",
+          "center_value" => "5.5",
+          "symmetric" => "false"
+        },
+        "#22c55e"
+      )
+
+    config_no_symmetric =
+      Helpers.normalize_heatmap_color_config(
+        %{
+          "single_color" => "#14b8a6",
+          "palette_id" => "warm",
+          "negative_color" => "#0ea5e9",
+          "positive_color" => "#ef4444",
+          "center_value" => "5.5"
+        },
+        "#22c55e"
+      )
+
+    assert Helpers.normalize_heatmap_color_mode("single") == "single"
+    assert Helpers.normalize_heatmap_color_mode("unknown") == "auto"
+    assert config["single_color"] == "#14B8A6"
+    assert config["palette_id"] == "warm"
+    assert config["negative_color"] == "#0EA5E9"
+    assert config["positive_color"] == "#EF4444"
+    assert config["center_value"] == 5.5
+    refute config["symmetric"]
+    assert config_no_symmetric["symmetric"]
+  end
+
+  test "preserves custom string buckets for both distribution axes" do
+    existing = %{
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => [10.0, 20.0]},
+        "vertical" => %{"type" => "custom", "buckets" => [100.0, 200.0]}
+      }
+    }
+
+    updated =
+      Helpers.normalize_distribution_designators(
+        %{
+          "dist_designator_type" => "custom",
+          "dist_designator_buckets" => "kg_0_5, kg_1_0, kg_1_5",
+          "dist_v_designator_type" => "custom",
+          "dist_v_designator_buckets" => "aed_100, aed_200"
+        },
+        existing
+      )
+
+    assert updated["horizontal"]["buckets"] == ["kg_0_5", "kg_1_0", "kg_1_5"]
+    assert updated["vertical"]["buckets"] == ["aed_100", "aed_200"]
+
+    updated_vertical_only =
+      Helpers.normalize_distribution_designators(
+        %{
+          "dist_v_designator_type" => "custom",
+          "dist_v_designator_buckets" => "aed_500, aed_1000"
+        },
+        %{"designators" => updated}
+      )
+
+    assert updated_vertical_only["horizontal"]["buckets"] == ["kg_0_5", "kg_1_0", "kg_1_5"]
+    assert updated_vertical_only["vertical"]["buckets"] == ["aed_500", "aed_1000"]
+  end
 end

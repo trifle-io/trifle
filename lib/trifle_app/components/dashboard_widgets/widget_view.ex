@@ -145,6 +145,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "text" -> render_text_body(assigns)
       "list" -> render_list_body(assigns)
       "distribution" -> render_distribution_body(assigns)
+      "heatmap" -> render_distribution_body(assigns)
       _ -> render_placeholder_body(assigns)
     end
   end
@@ -1309,6 +1310,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           encode_dataset(fetch_dataset(assigns.distribution, widget_id))
         )
 
+      "heatmap" ->
+        Map.put(
+          base,
+          :distribution,
+          encode_dataset(fetch_dataset(assigns.distribution, widget_id))
+        )
+
       _ ->
         base
     end
@@ -1433,16 +1441,63 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> String.downcase()
 
     case type do
-      "distribution" ->
+      widget_type when widget_type in ["distribution", "heatmap"] ->
         normalized_mode =
+          case widget_type do
+            "heatmap" ->
+              "3d"
+
+            _ ->
+              item
+              |> Map.get("mode")
+              |> WidgetHelpers.normalize_distribution_mode()
+          end
+
+        path_inputs =
           item
-          |> Map.get("mode")
-          |> WidgetHelpers.normalize_distribution_mode()
+          |> WidgetHelpers.path_inputs_for_form("distribution")
 
         normalized_paths =
           item
           |> Map.get("paths", item["path"])
           |> WidgetHelpers.normalize_distribution_paths_for_edit()
+
+        selectors =
+          WidgetHelpers.normalize_series_color_selectors_for_paths(
+            path_inputs,
+            [],
+            Map.get(item, "series_color_selectors", %{})
+          )
+
+        path_aggregation =
+          item
+          |> Map.get("path_aggregation")
+          |> WidgetHelpers.normalize_distribution_path_aggregation()
+
+        fallback_heatmap_color =
+          WidgetHelpers.heatmap_single_color_from_paths(path_inputs, selectors)
+
+        color_mode =
+          case widget_type do
+            "heatmap" ->
+              item
+              |> Map.get("color_mode")
+              |> WidgetHelpers.normalize_heatmap_color_mode()
+
+            _ ->
+              nil
+          end
+
+        color_config =
+          case widget_type do
+            "heatmap" ->
+              item
+              |> Map.get("color_config", %{})
+              |> WidgetHelpers.normalize_heatmap_color_config(fallback_heatmap_color)
+
+            _ ->
+              nil
+          end
 
         designators = WidgetHelpers.normalize_distribution_designators(%{}, item)
 
@@ -1450,11 +1505,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           Map.get(designators, "horizontal") || WidgetHelpers.default_distribution_designator()
 
         item
+        |> Map.put("path_inputs", path_inputs)
         |> Map.put("mode", normalized_mode)
         |> Map.put("paths", normalized_paths)
+        |> Map.put("series_color_selectors", selectors)
+        |> Map.put("chart_type", if(widget_type == "heatmap", do: "heatmap", else: "bar"))
+        |> Map.put("path_aggregation", path_aggregation)
         |> Map.put("designators", designators)
         |> Map.put("designator", designator)
         |> Map.put_new("legend", true)
+        |> put_heatmap_color_fields(widget_type, color_mode, color_config)
 
       _ ->
         item
@@ -1462,4 +1522,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   end
 
   defp normalize_widget(other), do: other
+
+  defp put_heatmap_color_fields(widget, "heatmap", color_mode, color_config) do
+    widget
+    |> Map.put("color_mode", color_mode || "auto")
+    |> Map.put("color_config", color_config || %{})
+  end
+
+  defp put_heatmap_color_fields(widget, _widget_type, _color_mode, _color_config) do
+    widget
+    |> Map.delete("color_mode")
+    |> Map.delete("color_config")
+  end
 end

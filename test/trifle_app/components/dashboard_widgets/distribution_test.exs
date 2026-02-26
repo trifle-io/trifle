@@ -170,4 +170,170 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
 
     assert dataset.errors == []
   end
+
+  test "aggregates multi-path 2d series when path aggregation is sum" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{
+              "left" => %{"10" => 1, "20" => 2},
+              "right" => %{"10" => 3, "20" => 1}
+            }
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "dist-agg-sum",
+      "type" => "distribution",
+      "paths" => ["left.*", "right.*"],
+      "path_aggregation" => "sum",
+      "designator" => %{"type" => "custom", "buckets" => [10, 20]}
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.path_aggregation == "sum"
+    assert [%{name: "Sum", values: values}] = dataset.series
+    assert Enum.find(values, &(&1.bucket == "10")).value == 4.0
+    assert Enum.find(values, &(&1.bucket == "20")).value == 3.0
+    assert Enum.find(values, &(&1.bucket == "20+")).value == 0.0
+  end
+
+  test "aggregates multi-path 3d series when path aggregation is mean" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{
+              "left" => %{"100" => %{"200" => 1}},
+              "right" => %{"100" => %{"200" => 3}, "200" => %{"200" => 1}}
+            }
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "dist-agg-mean",
+      "type" => "distribution",
+      "mode" => "3d",
+      "paths" => ["left", "right"],
+      "path_aggregation" => "mean",
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => [100, 200]},
+        "vertical" => %{"type" => "custom", "buckets" => [200]}
+      }
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.path_aggregation == "mean"
+    assert [%{name: "Average", points: points}] = dataset.series
+
+    assert Enum.any?(points, fn point ->
+             point.bucket_x == "100" and point.bucket_y == "200" and point.value == 2.0
+           end)
+
+    assert Enum.any?(points, fn point ->
+             point.bucket_x == "200" and point.bucket_y == "200" and point.value == 0.5
+           end)
+  end
+
+  test "forces heatmap widgets into 3d matrix mode" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{"latency" => %{"100" => %{"200" => 1}, "200" => %{"200" => 2}}}
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "heatmap-1",
+      "type" => "heatmap",
+      "mode" => "2d",
+      "paths" => ["latency"],
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => [100, 200]},
+        "vertical" => %{"type" => "custom", "buckets" => [200]}
+      }
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.mode == "3d"
+    assert dataset.chart_type == "heatmap"
+    assert dataset.color_mode == "auto"
+    assert dataset.path_aggregation == "none"
+    assert dataset.points?
+    assert dataset.errors == []
+
+    assert [%{points: points}] = dataset.series
+    assert Enum.any?(points, &(&1.bucket_x == "100" && &1.bucket_y == "200" && &1.value == 1.0))
+    assert Enum.any?(points, &(&1.bucket_x == "200" && &1.bucket_y == "200" && &1.value == 2.0))
+  end
+
+  test "supports categorical custom buckets for heatmap axes" do
+    series =
+      %Trifle.Stats.Series{
+        series: %{
+          values: [
+            %{
+              "absolute" => %{
+                "kg_0_5" => %{"aed_100" => 1, "aed_200" => 2},
+                "kg_1_0" => %{"aed_100" => 3}
+              }
+            }
+          ]
+        }
+      }
+
+    widget = %{
+      "id" => "heatmap-categorical",
+      "type" => "heatmap",
+      "paths" => ["absolute"],
+      "mode" => "3d",
+      "designators" => %{
+        "horizontal" => %{"type" => "custom", "buckets" => ["kg_0_5", "kg_1_0", "kg_1_5"]},
+        "vertical" => %{"type" => "custom", "buckets" => ["aed_100", "aed_200"]}
+      }
+    }
+
+    dataset = Distribution.dataset(series, widget)
+
+    assert dataset.errors == []
+    assert dataset.bucket_labels == ["kg_0_5", "kg_1_0", "kg_1_5"]
+    assert dataset.vertical_bucket_labels == ["aed_100", "aed_200"]
+
+    assert %{
+             bucket_labels: ["kg_0_5", "kg_1_0", "kg_1_5"],
+             config: %{buckets: ["kg_0_5", "kg_1_0", "kg_1_5"]},
+             type: :custom
+           } = dataset.designators["horizontal"]
+
+    assert %{
+             bucket_labels: ["aed_100", "aed_200"],
+             config: %{buckets: ["aed_100", "aed_200"]},
+             type: :custom
+           } = dataset.designators["vertical"]
+
+    assert [%{points: points}] = dataset.series
+
+    assert Enum.any?(
+             points,
+             &(&1.bucket_x == "kg_0_5" and &1.bucket_y == "aed_100" and &1.value == 1.0)
+           )
+
+    assert Enum.any?(
+             points,
+             &(&1.bucket_x == "kg_0_5" and &1.bucket_y == "aed_200" and &1.value == 2.0)
+           )
+
+    assert Enum.any?(
+             points,
+             &(&1.bucket_x == "kg_1_0" and &1.bucket_y == "aed_100" and &1.value == 3.0)
+           )
+  end
 end

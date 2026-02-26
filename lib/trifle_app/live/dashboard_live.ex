@@ -817,56 +817,16 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("series_color_selectors", selectors)
                   |> Map.put("path", primary_path)
 
-                "distribution" ->
-                  typed_paths =
-                    params
-                    |> Map.get("dist_paths", Map.get(params, "dist_paths[]", []))
-                    |> DashboardWidgetHelpers.normalize_chart_path_inputs_param()
+                widget_type when widget_type in ["distribution", "heatmap"] ->
+                  source_widget = distribution_widget_source_for_save(socket, id, i)
 
-                  expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
-
-                  selectors =
-                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-                      typed_paths,
-                      Map.get(
-                        params,
-                        "dist_color_selector",
-                        Map.get(params, "dist_color_selector[]", [])
-                      ),
-                      Map.get(i, "series_color_selectors", %{})
-                    )
-
-                  primary_path =
-                    expanded_paths
-                    |> Enum.reject(&(&1 == ""))
-                    |> List.first()
-                    |> Kernel.||("")
-
-                  designators =
-                    DashboardWidgetHelpers.normalize_distribution_designators(
-                      params,
-                      Map.get(i, "designators") || i || %{}
-                    )
-
-                  mode =
-                    DashboardWidgetHelpers.normalize_distribution_mode(
-                      Map.get(params, "dist_mode", Map.get(i, "mode"))
-                    )
-
-                  legend =
-                    params
-                    |> Map.get("dist_legend", Map.get(i, "legend"))
-                    |> DashboardWidgetHelpers.normalize_distribution_legend()
-
-                  base
-                  |> Map.put("path_inputs", typed_paths)
-                  |> Map.put("paths", expanded_paths)
-                  |> Map.put("series_color_selectors", selectors)
-                  |> Map.put("path", primary_path)
-                  |> Map.put("designators", designators)
-                  |> Map.put("designator", Map.get(designators, "horizontal"))
-                  |> Map.put("mode", mode)
-                  |> Map.put("legend", legend)
+                  build_distribution_widget(
+                    base,
+                    widget_type,
+                    params,
+                    source_widget,
+                    path_options
+                  )
 
                 "list" ->
                   list_path =
@@ -1720,7 +1680,7 @@ defmodule TrifleApp.DashboardLive do
           list_data -> Map.put(base, :list_data, list_data)
         end
 
-      type == "distribution" ->
+      type in ["distribution", "heatmap"] ->
         stats
         |> Distribution.datasets([widget])
         |> List.first()
@@ -2140,31 +2100,24 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary)
 
-      "distribution" ->
-        path_inputs =
+      type when type in ["distribution", "heatmap"] ->
+        path_inputs = DashboardWidgetHelpers.path_inputs_for_form(widget, "distribution")
+
+        fallback_path =
           widget
-          |> DashboardWidgetHelpers.path_inputs_for_form("distribution")
-
-        paths = auto_expand_path_wildcards(path_inputs, options)
-
-        primary =
-          paths
-          |> Enum.reject(&(&1 == ""))
-          |> List.first()
-          |> Kernel.||(widget["path"] || "")
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
+          |> Map.get("path", "")
+          |> to_string()
+          |> String.trim()
 
         widget
-        |> Map.put("path_inputs", path_inputs)
-        |> Map.put("paths", paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary)
+        |> build_distribution_widget(type, %{}, widget, options,
+          paths_param: path_inputs,
+          path_normalizer: &DashboardWidgetHelpers.normalize_distribution_paths_for_edit/1,
+          fallback_path: fallback_path
+        )
+        |> preserve_widget_field(widget, "legend")
+        |> preserve_widget_field(widget, "designator")
+        |> preserve_widget_field(widget, "designators")
 
       "table" ->
         path_inputs =
@@ -3211,6 +3164,17 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  defp distribution_widget_source_for_save(socket, id, fallback) do
+    # editing_widget originates from dashboard payload maps, so widget IDs are string-keyed.
+    case socket.assigns[:editing_widget] do
+      %{"id" => widget_id} = widget ->
+        if to_string(widget_id) == to_string(id), do: widget, else: fallback
+
+      _ ->
+        fallback
+    end
+  end
+
   defp apply_widget_params_for_edit(widget, params, path_options) when is_map(widget) do
     type =
       params
@@ -3401,7 +3365,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("series_color_selectors", selectors)
         |> Map.put("path", primary_path)
 
-      "distribution" ->
+      widget_type when widget_type in ["distribution", "heatmap"] ->
         dist_paths_param =
           params
           |> Map.get(
@@ -3413,51 +3377,17 @@ defmodule TrifleApp.DashboardLive do
             )
           )
 
-        typed_paths =
-          DashboardWidgetHelpers.normalize_distribution_paths_for_edit(dist_paths_param)
-
-        expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            typed_paths,
-            Map.get(params, "dist_color_selector", Map.get(params, "dist_color_selector[]", [])),
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
         fallback_path =
           widget
           |> Map.get("path", "")
           |> to_string()
           |> String.trim()
 
-        primary_path = primary_path_from_paths(expanded_paths, fallback_path)
-
-        designators =
-          DashboardWidgetHelpers.normalize_distribution_designators(
-            params,
-            Map.get(widget, "designators") || widget || %{}
-          )
-
-        mode =
-          params
-          |> Map.get("dist_mode", Map.get(widget, "mode"))
-          |> DashboardWidgetHelpers.normalize_distribution_mode()
-
-        legend =
-          params
-          |> Map.get("dist_legend", Map.get(widget, "legend"))
-          |> DashboardWidgetHelpers.normalize_distribution_legend()
-
-        widget
-        |> Map.put("path_inputs", typed_paths)
-        |> Map.put("paths", expanded_paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary_path)
-        |> Map.put("designators", designators)
-        |> Map.put("designator", Map.get(designators, "horizontal"))
-        |> Map.put("mode", mode)
-        |> Map.put("legend", legend)
+        build_distribution_widget(widget, widget_type, params, widget, path_options,
+          paths_param: dist_paths_param,
+          path_normalizer: &DashboardWidgetHelpers.normalize_distribution_paths_for_edit/1,
+          fallback_path: fallback_path
+        )
 
       "list" ->
         list_path =
@@ -3558,6 +3488,122 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  defp build_distribution_widget(
+         base,
+         widget_type,
+         params,
+         source_widget,
+         path_options,
+         opts \\ []
+       ) do
+    paths_param =
+      Keyword.get_lazy(opts, :paths_param, fn ->
+        Map.get(params, "dist_paths", Map.get(params, "dist_paths[]", []))
+      end)
+
+    path_normalizer =
+      Keyword.get(
+        opts,
+        :path_normalizer,
+        &DashboardWidgetHelpers.normalize_chart_path_inputs_param/1
+      )
+
+    typed_paths = path_normalizer.(paths_param)
+    expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
+
+    selectors =
+      DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
+        typed_paths,
+        Map.get(params, "dist_color_selector", Map.get(params, "dist_color_selector[]", [])),
+        Map.get(source_widget, "series_color_selectors", %{})
+      )
+
+    fallback_path = Keyword.get(opts, :fallback_path, "")
+    primary_path = primary_path_from_paths(expanded_paths, fallback_path)
+
+    designators =
+      DashboardWidgetHelpers.normalize_distribution_designators(
+        params,
+        Map.get(source_widget, "designators") || source_widget || %{}
+      )
+
+    mode =
+      case widget_type do
+        "heatmap" ->
+          "3d"
+
+        _ ->
+          params
+          |> Map.get("dist_mode", Map.get(source_widget, "mode"))
+          |> DashboardWidgetHelpers.normalize_distribution_mode()
+      end
+
+    chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
+
+    legend =
+      params
+      |> Map.get("dist_legend", Map.get(source_widget, "legend"))
+      |> DashboardWidgetHelpers.normalize_distribution_legend()
+
+    path_aggregation =
+      params
+      |> Map.get("dist_path_aggregation", Map.get(source_widget, "path_aggregation"))
+      |> DashboardWidgetHelpers.normalize_distribution_path_aggregation()
+
+    fallback_heatmap_color =
+      DashboardWidgetHelpers.heatmap_single_color_from_paths(typed_paths, selectors)
+
+    color_mode =
+      case widget_type do
+        "heatmap" ->
+          params
+          |> Map.get("dist_heatmap_color_mode", Map.get(source_widget, "color_mode"))
+          |> DashboardWidgetHelpers.normalize_heatmap_color_mode()
+
+        _ ->
+          nil
+      end
+
+    color_config =
+      case widget_type do
+        "heatmap" ->
+          DashboardWidgetHelpers.normalize_heatmap_color_config_params(
+            params,
+            Map.get(source_widget, "color_config", %{}),
+            fallback_heatmap_color
+          )
+
+        _ ->
+          nil
+      end
+
+    base
+    |> Map.put("path_inputs", typed_paths)
+    |> Map.put("paths", expanded_paths)
+    |> Map.put("series_color_selectors", selectors)
+    |> Map.put("path", primary_path)
+    |> Map.put("designators", designators)
+    |> Map.put("designator", Map.get(designators, "horizontal"))
+    |> Map.put("mode", mode)
+    |> Map.put("chart_type", chart_type)
+    |> Map.put("legend", legend)
+    |> Map.put("path_aggregation", path_aggregation)
+    |> Map.put("widget_type", widget_type)
+    |> put_heatmap_color_fields(widget_type, color_mode, color_config)
+  end
+
+  defp put_heatmap_color_fields(widget, "heatmap", color_mode, color_config) do
+    widget
+    |> Map.put("color_mode", color_mode || "auto")
+    |> Map.put("color_config", color_config || %{})
+  end
+
+  defp put_heatmap_color_fields(widget, _widget_type, _color_mode, _color_config) do
+    widget
+    |> Map.delete("color_mode")
+    |> Map.delete("color_config")
+  end
+
   defp primary_path_from_paths(paths, fallback) when is_list(paths) do
     paths
     |> Enum.map(&to_string/1)
@@ -3565,6 +3611,14 @@ defmodule TrifleApp.DashboardLive do
     |> Enum.reject(&(&1 == ""))
     |> List.first()
     |> Kernel.||(fallback)
+  end
+
+  defp preserve_widget_field(updated, original, key) do
+    if Map.has_key?(original, key) do
+      Map.put(updated, key, Map.get(original, key))
+    else
+      Map.delete(updated, key)
+    end
   end
 
   defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do

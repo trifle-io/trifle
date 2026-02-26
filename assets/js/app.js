@@ -62,6 +62,357 @@ const formatCompactNumber = (value) => {
     .replace(/(\.\d*?[1-9])0+$/, '$1');
 };
 
+const normalizeHexColor = (color) => {
+  if (typeof color !== 'string') return null;
+  const trimmed = color.trim();
+  const full = trimmed.match(/^#([0-9a-f]{6})$/i);
+  if (full) return `#${full[1].toLowerCase()}`;
+
+  const short = trimmed.match(/^#([0-9a-f]{3})$/i);
+  if (!short) return null;
+  const [r, g, b] = short[1].toLowerCase().split('');
+  return `#${r}${r}${g}${g}${b}${b}`;
+};
+
+const hexToRgb = (hexColor) => {
+  const normalized = normalizeHexColor(hexColor);
+  if (!normalized) return null;
+  const hex = normalized.slice(1);
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16)
+  };
+};
+
+const pickHeatmapBaseColor = (seriesList, fallbackColor = null) => {
+  const configuredColors = (Array.isArray(seriesList) ? seriesList : [])
+    .map((series) => {
+      const color = series && typeof series.color === 'string' ? series.color.trim() : '';
+      return color !== '' ? color : null;
+    })
+    .filter(Boolean);
+
+  if (!configuredColors.length) return fallbackColor;
+
+  const uniqueConfiguredColors = Array.from(new Set(configuredColors.map((color) => color.toLowerCase())));
+  if (uniqueConfiguredColors.length === 1) return configuredColors[0];
+  return fallbackColor;
+};
+
+const heatmapColorScale = (baseColor, isDarkMode) => {
+  const fallbackScale = isDarkMode
+    ? ['#0f172a', '#1d4ed8', '#06b6d4', '#f59e0b', '#ef4444']
+    : ['#ecfeff', '#bae6fd', '#67e8f9', '#fbbf24', '#dc2626'];
+
+  const rgb = hexToRgb(baseColor);
+  if (!rgb) return fallbackScale;
+
+  const { r, g, b } = rgb;
+  const minAlpha = isDarkMode ? 0.08 : 0.05;
+  const lowAlpha = isDarkMode ? 0.25 : 0.2;
+  const midAlpha = isDarkMode ? 0.48 : 0.42;
+  const highAlpha = isDarkMode ? 0.72 : 0.68;
+
+  return [
+    `rgba(${r}, ${g}, ${b}, ${minAlpha})`,
+    `rgba(${r}, ${g}, ${b}, ${lowAlpha})`,
+    `rgba(${r}, ${g}, ${b}, ${midAlpha})`,
+    `rgba(${r}, ${g}, ${b}, ${highAlpha})`,
+    `rgba(${r}, ${g}, ${b}, 1)`
+  ];
+};
+
+const HEATMAP_PALETTES = Object.freeze({
+  default: ['#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#3b82f6', '#84cc16', '#f43f5e', '#6366f1'],
+  purple: ['#C4B5FD', '#A78BFA', '#8B5CF6', '#7C3AED', '#6D28D9', '#5B21B6', '#4C1D95'],
+  cool: ['#BFDBFE', '#93C5FD', '#60A5FA', '#38BDF8', '#0EA5E9', '#0284C7', '#0369A1'],
+  green: ['#BBF7D0', '#86EFAC', '#4ADE80', '#22C55E', '#16A34A', '#15803D', '#166534'],
+  warm: ['#FDE68A', '#FCD34D', '#FBBF24', '#F59E0B', '#F97316', '#EF4444', '#DC2626']
+});
+
+const heatmapColorWithAlpha = (hexColor, alpha) => {
+  const rgb = hexToRgb(hexColor);
+  if (!rgb) return null;
+  const safeAlpha = Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${safeAlpha})`;
+};
+
+const normalizeHeatmapColorMode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'single' || normalized === 'palette' || normalized === 'diverging') return normalized;
+  return 'auto';
+};
+
+const normalizeHeatmapColorConfig = (config, fallbackSingleColor = '#14b8a6') => {
+  const source = config && typeof config === 'object' ? config : {};
+  const singleColor = normalizeHexColor(source.single_color || source.singleColor || fallbackSingleColor) || '#14b8a6';
+  const paletteIdRaw = String(source.palette_id || source.paletteId || 'default').trim().toLowerCase();
+  const paletteId = Object.prototype.hasOwnProperty.call(HEATMAP_PALETTES, paletteIdRaw) ? paletteIdRaw : 'default';
+  const negativeColor = normalizeHexColor(source.negative_color || source.negativeColor || '#0EA5E9') || '#0EA5E9';
+  const positiveColor = normalizeHexColor(source.positive_color || source.positiveColor || '#EF4444') || '#EF4444';
+  const centerRaw = Number(source.center_value ?? source.centerValue ?? 0);
+  const centerValue = Number.isFinite(centerRaw) ? centerRaw : 0;
+  const symmetricRaw = source.symmetric;
+  const symmetric =
+    symmetricRaw === true || symmetricRaw === 'true' || symmetricRaw === 1 || symmetricRaw === '1';
+
+  return {
+    singleColor,
+    paletteId,
+    negativeColor,
+    positiveColor,
+    centerValue,
+    symmetric
+  };
+};
+
+const heatmapPaletteScale = (paletteId, isDarkMode) => {
+  const palette = HEATMAP_PALETTES[paletteId] || HEATMAP_PALETTES.default;
+  if (!Array.isArray(palette) || !palette.length) return heatmapColorScale('#14b8a6', isDarkMode);
+  const start = heatmapColorWithAlpha(palette[0], isDarkMode ? 0.08 : 0.05) || palette[0];
+  return [start, ...palette];
+};
+
+const resolveHeatmapVisualMap = ({
+  payload,
+  heatmapData,
+  series,
+  fallbackHeatColor,
+  isDarkMode
+}) => {
+  const values = (Array.isArray(heatmapData) ? heatmapData : [])
+    .map((point) => Number(point && point[2]))
+    .filter((value) => Number.isFinite(value));
+
+  let rawMin = 0;
+  let rawMax = 0;
+  if (values.length) {
+    let min = Infinity;
+    let max = -Infinity;
+    values.forEach((value) => {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    });
+    rawMin = min;
+    rawMax = max;
+  }
+  const mode = normalizeHeatmapColorMode(payload && payload.color_mode);
+  const config = normalizeHeatmapColorConfig(payload && payload.color_config, fallbackHeatColor || '#14b8a6');
+
+  if (mode === 'diverging') {
+    const center = config.symmetric ? 0 : config.centerValue;
+    const span = Math.max(Math.abs(rawMax - center), Math.abs(rawMin - center), 1);
+    const min = center - span;
+    const max = center + span;
+    const centerColor = isDarkMode ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.18)';
+    const negativeMid = heatmapColorWithAlpha(config.negativeColor, isDarkMode ? 0.45 : 0.35) || config.negativeColor;
+    const positiveMid = heatmapColorWithAlpha(config.positiveColor, isDarkMode ? 0.45 : 0.35) || config.positiveColor;
+
+    return {
+      min,
+      max,
+      colorScale: [config.negativeColor, negativeMid, centerColor, positiveMid, config.positiveColor]
+    };
+  }
+
+  const min = rawMin >= 0 ? 0 : rawMin;
+  const max = rawMax > min ? rawMax : min + 1;
+
+  if (mode === 'palette') {
+    return {
+      min,
+      max,
+      colorScale: heatmapPaletteScale(config.paletteId, isDarkMode)
+    };
+  }
+
+  if (mode === 'single') {
+    return {
+      min,
+      max,
+      colorScale: heatmapColorScale(config.singleColor, isDarkMode)
+    };
+  }
+
+  const baseColor = pickHeatmapBaseColor(series, fallbackHeatColor);
+  return {
+    min,
+    max,
+    colorScale: heatmapColorScale(baseColor, isDarkMode)
+  };
+};
+
+const heatmapFocusItemStyle = (isDarkMode) => ({
+  shadowBlur: isDarkMode ? 16 : 12,
+  shadowColor: isDarkMode ? 'rgba(248, 250, 252, 0.45)' : 'rgba(15, 23, 42, 0.35)',
+  shadowOffsetX: 0,
+  shadowOffsetY: 0
+});
+
+const buildBucketIndexMap = (labels) => {
+  const map = new Map();
+  (Array.isArray(labels) ? labels : []).forEach((label, idx) => {
+    map.set(String(label), idx);
+  });
+  return map;
+};
+
+const aggregateHeatmapBreakdown = (entries) => {
+  const totals = new Map();
+
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    if (!entry) return;
+    const rawName = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const name = rawName !== '' ? rawName : 'Series';
+    const value = Number(entry.value);
+    if (!Number.isFinite(value)) return;
+    totals.set(name, (totals.get(name) || 0) + value);
+  });
+
+  return Array.from(totals.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
+};
+
+const formatHeatmapTooltip = ({
+  params,
+  labels,
+  verticalLabels,
+  breakdownByCell,
+  escapeHtml
+}) => {
+  const valueArr =
+    Array.isArray(params?.value) && params.value.length >= 3
+      ? params.value
+      : Array.isArray(params?.data) && params.data.length >= 3
+        ? params.data
+        : null;
+
+  if (!valueArr) return '';
+
+  const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
+  const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
+  const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
+  const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
+  const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
+  if (!xLabel && !yLabel) return '';
+
+  const key = `${xIdx}:${yIdx}`;
+  const breakdown =
+    breakdownByCell instanceof Map && Array.isArray(breakdownByCell.get(key))
+      ? breakdownByCell.get(key)
+      : [];
+
+  const safeEscape =
+    typeof escapeHtml === 'function'
+      ? escapeHtml
+      : (value) => String(value == null ? '' : value);
+
+  const marker = params?.marker || '';
+  const primaryLabel = breakdown.length === 1 ? breakdown[0].name : 'Total';
+  const safeXLabel = safeEscape(xLabel);
+  const safeYLabel = safeEscape(yLabel);
+  const lines = [
+    `${safeXLabel} × ${safeYLabel}`,
+    `${marker}${safeEscape(primaryLabel)}  <strong>${formatCompactNumber(val)}</strong>`
+  ];
+
+  if (breakdown.length > 1) {
+    breakdown.slice(0, 5).forEach((entry) => {
+      lines.push(`${safeEscape(entry.name)}: ${formatCompactNumber(entry.value)}`);
+    });
+    if (breakdown.length > 5) {
+      lines.push(`+${breakdown.length - 5} more`);
+    }
+  }
+
+  return lines.join('<br/>');
+};
+
+const buildHeatmapOptions = ({
+  labels,
+  verticalLabels,
+  breakdownByCell,
+  isDarkMode,
+  gridBottom,
+  visualMapBottom,
+  visualSettings,
+  showScale,
+  heatmapData,
+  chartFontFamily,
+  escapeHtml
+}) => ({
+  backgroundColor: 'transparent',
+  legend: { show: false },
+  tooltip: {
+    trigger: 'item',
+    appendToBody: true,
+    formatter: (params) =>
+      formatHeatmapTooltip({
+        params,
+        labels,
+        verticalLabels,
+        breakdownByCell,
+        escapeHtml
+      })
+  },
+  axisPointer: {
+    show: true,
+    type: 'line',
+    lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+    link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }],
+    label: { show: true }
+  },
+  grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
+  xAxis: {
+    type: 'category',
+    data: labels,
+    splitLine: {
+      show: true,
+      lineStyle: {
+        type: 'dashed',
+        color: isDarkMode ? '#1f2937' : '#e2e8f0',
+        opacity: isDarkMode ? 0.4 : 0.9
+      }
+    },
+    axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
+  },
+  yAxis: {
+    type: 'category',
+    data: verticalLabels,
+    splitLine: {
+      show: true,
+      lineStyle: {
+        type: 'dashed',
+        color: isDarkMode ? '#1f2937' : '#e2e8f0',
+        opacity: isDarkMode ? 0.4 : 0.9
+      }
+    },
+    axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
+  },
+  visualMap: showScale
+    ? {
+        min: visualSettings.min,
+        max: visualSettings.max,
+        calculable: false,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: visualMapBottom,
+        textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+        inRange: { color: visualSettings.colorScale }
+      }
+    : { show: false },
+  series: [{
+    name: 'Heat',
+    type: 'heatmap',
+    data: heatmapData,
+    progressive: 1000,
+    emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
+    select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
+  }]
+});
+
 const extractTimestamp = (point) => {
   if (Array.isArray(point) && point.length) return Number(point[0]);
   if (point && typeof point === 'object') {
@@ -2702,12 +3053,18 @@ Hooks.DashboardGrid = {
 
       const labels = Array.isArray(it.bucket_labels) ? it.bucket_labels : [];
       const verticalLabels = Array.isArray(it.vertical_bucket_labels) ? it.vertical_bucket_labels : [];
-      const is3d = (it.mode || '').toLowerCase() === '3d';
+      const widgetType = (it.widget_type || '').toLowerCase();
+      const isHeatmap = widgetType === 'heatmap' || (it.chart_type || '').toLowerCase() === 'heatmap';
+      const is3d = isHeatmap || (it.mode || '').toLowerCase() === '3d';
       if (is3d) {
         if (!labels.length || !verticalLabels.length) {
+          const emptyMessage = isHeatmap
+            ? 'No heatmap buckets available. Add both horizontal and vertical bucket definitions in the editor.'
+            : 'No 3D buckets available. Add both horizontal and vertical bucket definitions in the editor.';
+
           body.innerHTML = `
             <div class="flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-3">
-              No 3D buckets available. Add both horizontal and vertical bucket definitions in the editor.
+              ${emptyMessage}
             </div>`;
           return;
         }
@@ -2754,6 +3111,92 @@ Hooks.DashboardGrid = {
 
         let seriesData;
         if (is3d) {
+          if (isHeatmap) {
+            const totalsByCell = new Map();
+            const breakdownTotalsByCell = new Map();
+            const labelIndexMap = buildBucketIndexMap(labels);
+            const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+
+            (Array.isArray(it.series) ? it.series : []).forEach((series, idx) => {
+              const name = series && series.name ? series.name : `Series ${idx + 1}`;
+              const points = Array.isArray(series && series.points) ? series.points : [];
+
+              points.forEach((p) => {
+                if (!p || p.bucket_x == null || p.bucket_y == null) return;
+                const xIndex = labelIndexMap.get(String(p.bucket_x));
+                const yIndex = verticalLabelIndexMap.get(String(p.bucket_y));
+                if (xIndex == null || yIndex == null) return;
+                const val = Number(p.value);
+                if (!Number.isFinite(val)) return;
+
+                const key = `${xIndex}:${yIndex}`;
+                totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
+
+                const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
+                seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
+                breakdownTotalsByCell.set(key, seriesTotals);
+              });
+            });
+
+            const breakdownByCell = new Map();
+            breakdownTotalsByCell.forEach((seriesTotals, key) => {
+              breakdownByCell.set(
+                key,
+                aggregateHeatmapBreakdown(
+                  Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
+                    name: seriesName,
+                    value: totalValue
+                  }))
+                )
+              );
+            });
+
+            const heatmapData = Array.from(totalsByCell.entries())
+              .map(([key, value]) => {
+                const [xIdxRaw, yIdxRaw] = key.split(':');
+                const xIdx = Number(xIdxRaw);
+                const yIdx = Number(yIdxRaw);
+                return [xIdx, yIdx, value];
+              })
+              .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
+
+            const showScale = it.legend === undefined ? true : !!it.legend;
+            const gridBottom = showScale ? 72 : 20;
+            const visualMapBottom = 8;
+            const fallbackHeatColor = colors[0] || '#14b8a6';
+            const visualSettings = resolveHeatmapVisualMap({
+              payload: it,
+              heatmapData,
+              series: Array.isArray(it.series) ? it.series : [],
+              fallbackHeatColor,
+              isDarkMode
+            });
+
+            const option = buildHeatmapOptions({
+              labels,
+              verticalLabels,
+              breakdownByCell,
+              isDarkMode,
+              gridBottom,
+              visualMapBottom,
+              visualSettings,
+              showScale,
+              heatmapData,
+              chartFontFamily,
+              escapeHtml: this.escapeHtml.bind(this)
+            });
+
+            chart.setOption(option, true);
+            try {
+              chart.off('finished');
+              chart.on('finished', () => {
+                try { container.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch (_) {}
+              });
+            } catch (_) {}
+            chart.resize();
+            return;
+          }
+
           let maxValue = 0;
           seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
             const name = series && series.name ? series.name : `Series ${idx + 1}`;
@@ -4106,9 +4549,13 @@ Hooks.DashboardGrid = {
       return;
     }
 
-    if (type === 'distribution') {
+    if (type === 'distribution' || type === 'heatmap') {
+      const resolvedWidgetType = type === 'heatmap' ? 'heatmap' : 'distribution';
       if (payload) {
-        registry.distribution[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
+        registry.distribution[normalizedId] = Object.assign({}, payload, {
+          id: payload.id || normalizedId,
+          widget_type: payload.widget_type || resolvedWidgetType
+        });
       } else {
         delete registry.distribution[normalizedId];
       }
@@ -4515,9 +4962,10 @@ Hooks.DashboardWidgetData = {
         const data = parseJsonSafe(this.el.dataset.list || '');
         if (data && data.id == null) data.id = id;
         payload = data;
-      } else if (type === 'distribution') {
+      } else if (type === 'distribution' || type === 'heatmap') {
         const data = parseJsonSafe(this.el.dataset.distribution || '');
         if (data && data.id == null) data.id = id;
+        if (data && !data.widget_type) data.widget_type = type;
         payload = data;
       }
 
@@ -4665,7 +5113,7 @@ Hooks.ExpandedWidgetView = {
       return;
     }
 
-    if (type === 'distribution') {
+    if (type === 'distribution' || type === 'heatmap') {
       this.renderDistribution(chartData);
       return;
     }
@@ -5582,7 +6030,12 @@ Hooks.ExpandedWidgetView = {
     this.renderCategoryTable(data);
   },
   renderDistribution(data) {
-    const is3d = String(data?.mode || '2d').toLowerCase() === '3d';
+    const widgetType = (this.el.dataset.type || '').toLowerCase();
+    const isHeatmap =
+      widgetType === 'heatmap' ||
+      String(data?.chart_type || '').toLowerCase() === 'heatmap' ||
+      String(data?.widget_type || '').toLowerCase() === 'heatmap';
+    const is3d = isHeatmap || String(data?.mode || '2d').toLowerCase() === '3d';
     const labels = Array.isArray(data?.bucket_labels) ? data.bucket_labels : [];
     const verticalLabelsRaw = Array.isArray(data?.vertical_bucket_labels) ? data.vertical_bucket_labels : [];
     const series = Array.isArray(data?.series) ? data.series : [];
@@ -5627,6 +6080,93 @@ Hooks.ExpandedWidgetView = {
     const colors = Array.isArray(this.colors) && this.colors.length ? this.colors : null;
 
     if (is3d) {
+      if (isHeatmap) {
+        const totalsByCell = new Map();
+        const breakdownTotalsByCell = new Map();
+        const labelIndexMap = buildBucketIndexMap(labels);
+        const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+
+        series.forEach((seriesItem, idx) => {
+          const name = seriesItem?.name || `Series ${idx + 1}`;
+          const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
+
+          points.forEach((p) => {
+            if (!p || p.bucket_x == null || p.bucket_y == null) return;
+            const xIdx = labelIndexMap.get(String(p.bucket_x));
+            const yIdx = verticalLabelIndexMap.get(String(p.bucket_y));
+            if (xIdx == null || yIdx == null) return;
+            const val = Number(p.value);
+            if (!Number.isFinite(val)) return;
+
+            const key = `${xIdx}:${yIdx}`;
+            totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
+
+            const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
+            seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
+            breakdownTotalsByCell.set(key, seriesTotals);
+          });
+        });
+
+        const breakdownByCell = new Map();
+        breakdownTotalsByCell.forEach((seriesTotals, key) => {
+          breakdownByCell.set(
+            key,
+            aggregateHeatmapBreakdown(
+              Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
+                name: seriesName,
+                value: totalValue
+              }))
+            )
+          );
+        });
+
+        const heatmapData = Array.from(totalsByCell.entries())
+          .map(([key, value]) => {
+            const [xIdxRaw, yIdxRaw] = key.split(':');
+            const xIdx = Number(xIdxRaw);
+            const yIdx = Number(yIdxRaw);
+            return [xIdx, yIdx, value];
+          })
+          .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
+
+        if (!heatmapData.length) {
+          this.showChartPlaceholder('No distribution data available yet.');
+          this.renderDistributionTable(data);
+          return;
+        }
+
+        const showScale = legendFlag === undefined ? true : !!legendFlag;
+        const gridBottom = showScale ? 72 : 20;
+        const visualMapBottom = 8;
+        const fallbackHeatColor = colors ? colors[0] : this.seriesColor(0);
+        const visualSettings = resolveHeatmapVisualMap({
+          payload: data,
+          heatmapData,
+          series,
+          fallbackHeatColor,
+          isDarkMode
+        });
+
+        const option = buildHeatmapOptions({
+          labels,
+          verticalLabels,
+          breakdownByCell,
+          isDarkMode,
+          gridBottom,
+          visualMapBottom,
+          visualSettings,
+          showScale,
+          heatmapData,
+          chartFontFamily,
+          escapeHtml: this.escapeHtml.bind(this)
+        });
+
+        chart.setOption(option, true);
+        try { chart.resize(); } catch (_) {}
+        this.renderDistributionTable(data);
+        return;
+      }
+
       let maxValue = 0;
       const legendNames = [];
       let seriesData = series.map((seriesItem, idx) => {
@@ -5822,7 +6362,10 @@ Hooks.ExpandedWidgetView = {
 
   renderDistributionTable(data) {
     if (!this.tableRoot) return;
-    const is3d = String(data?.mode || '2d').toLowerCase() === '3d';
+    const is3d =
+      String(data?.mode || '2d').toLowerCase() === '3d' ||
+      String(data?.chart_type || '').toLowerCase() === 'heatmap' ||
+      String(data?.widget_type || '').toLowerCase() === 'heatmap';
     const series = Array.isArray(data?.series) ? data.series : [];
     const rows = [];
 

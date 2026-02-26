@@ -1727,7 +1727,7 @@ defmodule TrifleApp.MonitorLive do
         |> Kpi.dataset(widget)
         |> maybe_put_kpi_data(base)
 
-      type == "distribution" ->
+      type in ["distribution", "heatmap"] ->
         stats
         |> Distribution.datasets([widget])
         |> List.first()

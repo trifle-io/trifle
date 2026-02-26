@@ -4,12 +4,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Designator.{Custom, Geometric, Linear}
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.SharedParse
   require Logger
 
   @type dataset :: %{
           id: String.t(),
+          widget_type: String.t(),
           mode: String.t(),
           chart_type: String.t(),
+          path_aggregation: String.t(),
+          color_mode: String.t() | nil,
+          color_config: map() | nil,
           legend: boolean(),
           bucket_labels: list(String.t()),
           vertical_bucket_labels: list(String.t()) | nil,
@@ -27,7 +32,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     items =
       grid_items
       |> Enum.filter(fn item ->
-        String.downcase(to_string(item["type"] || "")) == "distribution"
+        item_type = String.downcase(to_string(item["type"] || item["widget_type"] || ""))
+        item_type in ["distribution", "heatmap"]
       end)
       |> Enum.map(&dataset(series_struct, &1))
       |> Enum.reject(&is_nil/1)
@@ -61,9 +67,35 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
   def dataset(series_struct, item) do
     id = to_string(item["id"])
+
+    widget_type =
+      item
+      |> Map.get("widget_type", Map.get(item, "type", "distribution"))
+      |> normalize_widget_type()
+
     paths = normalized_paths(item)
-    mode = item |> Map.get("mode", "2d") |> normalize_mode()
-    chart_type = item |> Map.get("chart_type", "bar") |> normalize_chart_type()
+    default_mode = if widget_type == "heatmap", do: "3d", else: "2d"
+
+    mode =
+      item
+      |> Map.get("mode", default_mode)
+      |> normalize_mode()
+      |> case do
+        "2d" when widget_type == "heatmap" -> "3d"
+        value -> value
+      end
+
+    default_chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
+
+    chart_type =
+      item
+      |> Map.get("chart_type", default_chart_type)
+      |> normalize_chart_type(default_chart_type)
+      |> case do
+        _ when widget_type == "heatmap" -> "heatmap"
+        value -> value
+      end
+
     legend = !!item["legend"]
 
     path_inputs =
@@ -95,11 +127,44 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         Map.put(acc, path, color)
       end)
 
+    path_aggregation =
+      item
+      |> Map.get("path_aggregation")
+      |> WidgetHelpers.normalize_distribution_path_aggregation()
+
+    fallback_heatmap_color = fallback_heatmap_color(paths, path_color_map)
+
+    color_mode =
+      case widget_type do
+        "heatmap" ->
+          item
+          |> Map.get("color_mode")
+          |> WidgetHelpers.normalize_heatmap_color_mode()
+
+        _ ->
+          nil
+      end
+
+    color_config =
+      case widget_type do
+        "heatmap" ->
+          item
+          |> Map.get("color_config", %{})
+          |> WidgetHelpers.normalize_heatmap_color_config(fallback_heatmap_color)
+
+        _ ->
+          nil
+      end
+
     if paths == [] do
       %{
         id: id,
+        widget_type: widget_type,
         mode: mode,
         chart_type: chart_type,
+        path_aggregation: path_aggregation,
+        color_mode: color_mode,
+        color_config: color_config,
         legend: legend,
         bucket_labels: [],
         vertical_bucket_labels: nil,
@@ -125,8 +190,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         is_nil(horizontal_descriptor) ->
           %{
             id: id,
+            widget_type: widget_type,
             mode: mode,
             chart_type: chart_type,
+            path_aggregation: path_aggregation,
+            color_mode: color_mode,
+            color_config: color_config,
             legend: legend,
             bucket_labels: [],
             vertical_bucket_labels:
@@ -171,6 +240,15 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
               _ -> series
             end
 
+          series =
+            maybe_aggregate_path_series(
+              series,
+              mode,
+              path_aggregation,
+              horizontal_descriptor.bucket_labels,
+              descriptor_bucket_labels(Map.get(descriptors, "vertical"))
+            )
+
           derived_vertical_labels =
             designators_summary
             |> Map.get("vertical")
@@ -182,8 +260,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
           %{
             id: id,
+            widget_type: widget_type,
             mode: mode,
             chart_type: chart_type,
+            path_aggregation: path_aggregation,
+            color_mode: color_mode,
+            color_config: color_config,
             legend: legend,
             bucket_labels: horizontal_descriptor.bucket_labels,
             vertical_bucket_labels: derived_vertical_labels,
@@ -265,6 +347,220 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         color: Map.get(color_map, path),
         points: points
       }
+    end)
+  end
+
+  defp maybe_aggregate_path_series(series, _mode, "none", _horizontal_labels, _vertical_labels),
+    do: series
+
+  defp maybe_aggregate_path_series(
+         series,
+         _mode,
+         _aggregation,
+         _horizontal_labels,
+         _vertical_labels
+       )
+       when not is_list(series) or length(series) <= 1,
+       do: series
+
+  defp maybe_aggregate_path_series(series, "3d", aggregation, horizontal_labels, vertical_labels) do
+    point_maps = Enum.map(series, &series_points_map/1)
+
+    keys =
+      point_maps
+      |> Enum.flat_map(&Map.keys/1)
+      |> Enum.uniq()
+
+    points =
+      keys
+      |> Enum.map(fn {bucket_x, bucket_y} ->
+        values = Enum.map(point_maps, fn map -> Map.get(map, {bucket_x, bucket_y}, 0.0) end)
+        value = aggregate_values(values, aggregation)
+
+        %{
+          bucket_x: bucket_x,
+          bucket_y: bucket_y,
+          value: value
+        }
+      end)
+      |> Enum.filter(fn point -> not is_nil(point.value) end)
+      |> sort_points(horizontal_labels, vertical_labels)
+
+    [
+      %{
+        name: aggregation_series_name(aggregation),
+        path: "__aggregate__",
+        color: aggregated_series_color(series),
+        points: points
+      }
+    ]
+  end
+
+  defp maybe_aggregate_path_series(
+         series,
+         _mode,
+         aggregation,
+         horizontal_labels,
+         _vertical_labels
+       ) do
+    value_maps = Enum.map(series, &series_values_map/1)
+
+    labels =
+      case List.wrap(horizontal_labels) do
+        [] ->
+          value_maps
+          |> Enum.flat_map(&Map.keys/1)
+          |> Enum.uniq()
+
+        list ->
+          list
+      end
+
+    values =
+      Enum.map(labels, fn label ->
+        bucket_values = Enum.map(value_maps, fn map -> Map.get(map, label, 0.0) end)
+
+        %{
+          bucket: label,
+          value: aggregate_values(bucket_values, aggregation)
+        }
+      end)
+
+    [
+      %{
+        name: aggregation_series_name(aggregation),
+        path: "__aggregate__",
+        color: aggregated_series_color(series),
+        values: values
+      }
+    ]
+  end
+
+  defp series_values_map(series) do
+    series
+    |> Map.get(:values, [])
+    |> Enum.reduce(%{}, fn entry, acc ->
+      bucket =
+        entry
+        |> Map.get(:bucket, Map.get(entry, "bucket", ""))
+        |> to_string()
+        |> String.trim()
+
+      if bucket == "" do
+        acc
+      else
+        value = entry |> Map.get(:value, Map.get(entry, "value")) |> normalize_number()
+        Map.put(acc, bucket, value)
+      end
+    end)
+  end
+
+  defp series_points_map(series) do
+    series
+    |> Map.get(:points, [])
+    |> Enum.reduce(%{}, fn entry, acc ->
+      bucket_x =
+        entry
+        |> Map.get(:bucket_x, Map.get(entry, "bucket_x", ""))
+        |> to_string()
+        |> String.trim()
+
+      bucket_y =
+        entry
+        |> Map.get(:bucket_y, Map.get(entry, "bucket_y", ""))
+        |> to_string()
+        |> String.trim()
+
+      cond do
+        bucket_x == "" or bucket_y == "" ->
+          acc
+
+        true ->
+          value = entry |> Map.get(:value, Map.get(entry, "value")) |> normalize_number()
+          Map.update(acc, {bucket_x, bucket_y}, value, &(&1 + value))
+      end
+    end)
+  end
+
+  defp aggregate_values([], _aggregation), do: 0.0
+
+  defp aggregate_values(values, aggregation) do
+    numeric = Enum.map(values, &normalize_number/1)
+
+    case aggregation do
+      "sum" -> Enum.sum(numeric)
+      "min" -> Enum.min(numeric)
+      "max" -> Enum.max(numeric)
+      "mean" -> Enum.sum(numeric) / max(length(numeric), 1)
+      _ -> Enum.sum(numeric)
+    end
+  end
+
+  defp sort_points(points, horizontal_labels, vertical_labels) do
+    horizontal_index =
+      horizontal_labels
+      |> List.wrap()
+      |> Enum.with_index()
+      |> Map.new()
+
+    vertical_index =
+      vertical_labels
+      |> List.wrap()
+      |> Enum.with_index()
+      |> Map.new()
+
+    Enum.sort_by(points, fn point ->
+      {
+        Map.get(horizontal_index, point.bucket_x, 1_000_000),
+        Map.get(vertical_index, point.bucket_y, 1_000_000),
+        point.bucket_x,
+        point.bucket_y
+      }
+    end)
+  end
+
+  defp aggregation_series_name(aggregation) do
+    case aggregation do
+      "sum" -> "Sum"
+      "mean" -> "Average"
+      "min" -> "Min"
+      "max" -> "Max"
+      _ -> "Aggregate"
+    end
+  end
+
+  defp aggregated_series_color(series) do
+    series
+    |> Enum.find_value(fn entry ->
+      entry
+      |> Map.get(:color)
+      |> case do
+        value when is_binary(value) ->
+          trimmed = String.trim(value)
+          if trimmed == "", do: nil, else: trimmed
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
+  defp descriptor_bucket_labels(%{bucket_labels: labels}) when is_list(labels), do: labels
+  defp descriptor_bucket_labels(_), do: []
+
+  defp fallback_heatmap_color(paths, path_color_map) do
+    paths
+    |> Enum.find_value(fn path ->
+      path_color_map
+      |> Map.get(path)
+      |> case do
+        value when is_binary(value) ->
+          trimmed = String.trim(value)
+          if trimmed == "", do: nil, else: trimmed
+
+        _ ->
+          nil
+      end
     end)
   end
 
@@ -432,13 +728,26 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp normalize_chart_type(value) do
+  defp normalize_chart_type(value, default) do
     value
     |> to_string()
     |> String.downcase()
     |> case do
+      "heatmap" -> "heatmap"
       "bar" -> "bar"
+      _ when default == "heatmap" -> "heatmap"
       _ -> "bar"
+    end
+  end
+
+  defp normalize_widget_type(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "heatmap" -> "heatmap"
+      _ -> "distribution"
     end
   end
 
@@ -543,25 +852,46 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     buckets =
       config
       |> Map.get("buckets", [])
-      |> Enum.map(&parse_number/1)
+      |> Enum.map(&normalize_custom_bucket/1)
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
-      |> Enum.sort()
 
-    if buckets == [] do
-      {:error, "Custom designator requires at least one bucket value"}
-    else
-      labels = Enum.map(buckets, &format_bucket_label/1)
-      overflow = (List.last(labels) || "0") <> "+"
-      struct = Custom.new(buckets)
+    cond do
+      buckets == [] ->
+        {:error, "Custom designator requires at least one bucket value"}
 
-      {:ok,
-       %{
-         type: :custom,
-         struct: struct,
-         bucket_labels: labels ++ [overflow],
-         config: %{buckets: buckets}
-       }}
+      Enum.all?(buckets, &is_number/1) ->
+        numeric_buckets = Enum.sort(buckets)
+        labels = Enum.map(numeric_buckets, &format_bucket_label/1)
+        overflow = (List.last(labels) || "0") <> "+"
+        struct = Custom.new(numeric_buckets)
+
+        {:ok,
+         %{
+           type: :custom,
+           struct: struct,
+           bucket_labels: labels ++ [overflow],
+           config: %{buckets: numeric_buckets}
+         }}
+
+      true ->
+        labels =
+          buckets
+          |> Enum.map(&format_bucket_label/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.uniq()
+
+        if labels == [] do
+          {:error, "Custom designator requires at least one bucket value"}
+        else
+          {:ok,
+           %{
+             type: :custom,
+             struct: nil,
+             bucket_labels: labels,
+             config: %{buckets: labels}
+           }}
+        end
     end
   end
 
@@ -681,7 +1011,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   defp bucket_sort_key(label) do
     trimmed = String.trim(label || "")
     overflow = String.ends_with?(trimmed, "+")
-    number = parse_float(trimmed |> String.trim_trailing("+")) || 0.0
+    number = parse_number(trimmed |> String.trim_trailing("+")) || 0.0
     {number, overflow}
   end
 
@@ -741,31 +1071,27 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp parse_number(value) when is_integer(value), do: value * 1.0
-  defp parse_number(value) when is_float(value), do: value * 1.0
+  defp parse_number(value), do: SharedParse.parse_numeric_bucket(value)
 
-  defp parse_number(value) when is_binary(value) do
-    value
-    |> String.trim()
-    |> case do
-      "" -> nil
-      trimmed -> parse_float(trimmed)
+  defp normalize_custom_bucket(value) when is_integer(value), do: value * 1.0
+  defp normalize_custom_bucket(value) when is_float(value), do: value
+
+  defp normalize_custom_bucket(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    case trimmed do
+      "" ->
+        nil
+
+      _ ->
+        case SharedParse.parse_numeric_bucket(trimmed) do
+          nil -> trimmed
+          number -> number
+        end
     end
   end
 
-  defp parse_number(_), do: nil
-
-  defp parse_float(string) when is_binary(string) do
-    trimmed = string |> String.trim()
-
-    try do
-      String.to_float(trimmed)
-    rescue
-      ArgumentError -> nil
-    end
-  end
-
-  defp parse_float(_), do: nil
+  defp normalize_custom_bucket(_), do: nil
 
   defp normalize_number(%Decimal{} = decimal), do: decimal |> Decimal.to_float()
   defp normalize_number(value) when is_integer(value), do: value * 1.0
