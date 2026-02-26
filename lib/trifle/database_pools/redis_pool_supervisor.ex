@@ -33,21 +33,21 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
   def start_redis_pool(%{id: database_id} = database) do
     pool_name = redis_pool_name(database_id)
     supervisor_name = redis_supervisor_name(database_id)
+    expected_version = pool_version(database)
 
     case Process.whereis(supervisor_name) do
       nil ->
-        # Start new pool supervisor with multiple connections
-        child_spec = redis_pool_spec(database, pool_name, supervisor_name)
-
-        case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-          {:ok, _pid} -> {:ok, pool_name}
-          {:error, {:already_started, _pid}} -> {:ok, pool_name}
-          error -> error
-        end
+        start_new_redis_pool(database, pool_name, supervisor_name, expected_version)
 
       _pid ->
-        # Pool already exists
-        {:ok, pool_name}
+        case Trifle.DatabasePools.VersionRegistry.get(:redis, database_id) do
+          {:ok, ^expected_version} ->
+            {:ok, pool_name}
+
+          _ ->
+            _ = stop_redis_pool(database_id)
+            start_new_redis_pool(database, pool_name, supervisor_name, expected_version)
+        end
     end
   end
 
@@ -72,10 +72,15 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
   def stop_redis_pool(database_id) do
     supervisor_name = redis_supervisor_name(database_id)
 
-    case Process.whereis(supervisor_name) do
-      nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(__MODULE__, pid)
-    end
+    result =
+      case Process.whereis(supervisor_name) do
+        nil -> :ok
+        pid -> DynamicSupervisor.terminate_child(__MODULE__, pid)
+      end
+
+    _ = Trifle.DatabasePools.VersionRegistry.delete(:redis, database_id)
+
+    result
   end
 
   @doc """
@@ -123,8 +128,32 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
     :"trifle_redis_pool_#{database_id}"
   end
 
+  defp start_new_redis_pool(database, pool_name, supervisor_name, expected_version) do
+    child_spec = redis_pool_spec(database, pool_name, supervisor_name)
+
+    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+      {:ok, _pid} ->
+        _ = Trifle.DatabasePools.VersionRegistry.put(:redis, database.id, expected_version)
+        {:ok, pool_name}
+
+      {:error, {:already_started, _pid}} ->
+        _ = Trifle.DatabasePools.VersionRegistry.put(:redis, database.id, expected_version)
+        {:ok, pool_name}
+
+      error ->
+        error
+    end
+  end
+
   defp redis_supervisor_name(database_id) do
     :"trifle_redis_supervisor_#{database_id}"
+  end
+
+  defp pool_version(database) do
+    case Map.get(database, :pool_version) do
+      version when is_integer(version) and version > 0 -> version
+      _ -> 1
+    end
   end
 
   defp redis_pool_spec(database, pool_name, supervisor_name) do

@@ -8,6 +8,17 @@ defmodule Trifle.Organizations.Database do
   @foreign_key_type :binary_id
 
   @drivers ["redis", "postgres", "mongo", "sqlite", "mysql"]
+  @pool_relevant_fields [
+    :driver,
+    :host,
+    :port,
+    :database_name,
+    :file_path,
+    :username,
+    :password,
+    :auth_database,
+    :config
+  ]
 
   schema "databases" do
     field :display_name, :string
@@ -24,6 +35,7 @@ defmodule Trifle.Organizations.Database do
     field :time_zone, :string, default: "UTC"
     field :default_timeframe, :string
     field :default_granularity, :string
+    field :pool_version, :integer, default: 1
     field :last_check_at, :utc_datetime
     field :last_check_status, :string, default: "pending"
     field :last_error, :string
@@ -35,6 +47,7 @@ defmodule Trifle.Organizations.Database do
   end
 
   def drivers, do: @drivers
+  def pool_relevant_fields, do: @pool_relevant_fields
 
   def default_port("redis"), do: 6379
   def default_port("postgres"), do: 5432

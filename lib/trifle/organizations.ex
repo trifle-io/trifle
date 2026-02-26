@@ -1745,16 +1745,49 @@ defmodule Trifle.Organizations do
   Updates a database.
   """
   def update_database(%Database{} = database, attrs) do
-    database
-    |> Database.changeset(attrs)
-    |> Repo.update()
+    changeset = Database.changeset(database, attrs)
+
+    if pool_relevant_changes?(changeset) do
+      Repo.transaction(fn ->
+        case Repo.update(changeset) do
+          {:ok, updated_database} ->
+            {1, _} =
+              from(d in Database, where: d.id == ^updated_database.id)
+              |> Repo.update_all(inc: [pool_version: 1])
+
+            Repo.get!(Database, updated_database.id)
+
+          {:error, %Ecto.Changeset{} = failed_changeset} ->
+            Repo.rollback({:changeset, failed_changeset})
+        end
+      end)
+      |> case do
+        {:ok, updated_database} ->
+          {:ok, updated_database}
+
+        {:error, {:changeset, %Ecto.Changeset{} = failed_changeset}} ->
+          {:error, failed_changeset}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      Repo.update(changeset)
+    end
   end
 
   @doc """
   Deletes a database.
   """
   def delete_database(%Database{} = database) do
-    Repo.delete(database)
+    case Repo.delete(database) do
+      {:ok, deleted_database} ->
+        _ = Trifle.DatabasePools.PoolManager.stop_all_pools_for_database(deleted_database.id)
+        {:ok, deleted_database}
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -1790,6 +1823,14 @@ defmodule Trifle.Organizations do
   """
   def nuke_database(%Database{} = database) do
     Database.nuke(database)
+  end
+
+  defp pool_relevant_changes?(%Ecto.Changeset{} = changeset) do
+    changed_fields = Map.keys(changeset.changes)
+
+    Enum.any?(Database.pool_relevant_fields(), fn field ->
+      field in changed_fields
+    end)
   end
 
   ## Transponder functions

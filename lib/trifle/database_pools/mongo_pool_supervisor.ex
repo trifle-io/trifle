@@ -29,21 +29,21 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
   """
   def start_mongo_pool(%{id: database_id} = database) do
     connection_name = mongo_connection_name(database_id)
+    expected_version = pool_version(database)
 
     case Process.whereis(connection_name) do
       nil ->
-        # Start new pool
-        child_spec = mongo_pool_spec(database, connection_name)
-
-        case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-          {:ok, _pid} -> {:ok, connection_name}
-          {:error, {:already_started, _pid}} -> {:ok, connection_name}
-          error -> error
-        end
+        start_new_mongo_pool(database, connection_name, expected_version)
 
       _pid ->
-        # Pool already exists
-        {:ok, connection_name}
+        case Trifle.DatabasePools.VersionRegistry.get(:mongo, database_id) do
+          {:ok, ^expected_version} ->
+            {:ok, connection_name}
+
+          _ ->
+            _ = stop_mongo_pool(database_id)
+            start_new_mongo_pool(database, connection_name, expected_version)
+        end
     end
   end
 
@@ -67,10 +67,15 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
   def stop_mongo_pool(database_id) do
     connection_name = mongo_connection_name(database_id)
 
-    case Process.whereis(connection_name) do
-      nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(__MODULE__, pid)
-    end
+    result =
+      case Process.whereis(connection_name) do
+        nil -> :ok
+        pid -> DynamicSupervisor.terminate_child(__MODULE__, pid)
+      end
+
+    _ = Trifle.DatabasePools.VersionRegistry.delete(:mongo, database_id)
+
+    result
   end
 
   @doc """
@@ -97,6 +102,30 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
 
   defp mongo_connection_name(database_id) do
     :"trifle_mongo_pool_#{database_id}"
+  end
+
+  defp start_new_mongo_pool(database, connection_name, expected_version) do
+    child_spec = mongo_pool_spec(database, connection_name)
+
+    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+      {:ok, _pid} ->
+        _ = Trifle.DatabasePools.VersionRegistry.put(:mongo, database.id, expected_version)
+        {:ok, connection_name}
+
+      {:error, {:already_started, _pid}} ->
+        _ = Trifle.DatabasePools.VersionRegistry.put(:mongo, database.id, expected_version)
+        {:ok, connection_name}
+
+      error ->
+        error
+    end
+  end
+
+  defp pool_version(database) do
+    case Map.get(database, :pool_version) do
+      version when is_integer(version) and version > 0 -> version
+      _ -> 1
+    end
   end
 
   defp mongo_pool_spec(database, connection_name) do

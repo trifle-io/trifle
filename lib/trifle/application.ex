@@ -15,6 +15,8 @@ defmodule Trifle.Application do
         Trifle.Vault,
         # Start the Ecto repository (main application PostgreSQL)
         Trifle.Repo,
+        # Track active database pool versions per node
+        Trifle.DatabasePools.VersionRegistry,
         # Start dynamic database connection pool supervisors
         Trifle.DatabasePools.PostgresPoolSupervisor,
         Trifle.DatabasePools.MongoPoolSupervisor,
