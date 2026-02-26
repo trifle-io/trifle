@@ -97,8 +97,34 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert database.database_name == "trifle_stats"
       assert database.username == "trifle"
       assert database.last_check_status == "pending"
+      assert database.pool_version == 1
       assert database.config["table_name"] == "trifle_stats"
       assert database.config["joined_identifiers"] == "full"
+    end
+  end
+
+  describe "update_database/2 pool versioning" do
+    test "increments pool_version when connection config changes" do
+      database = database_fixture()
+      assert database.pool_version == 1
+
+      new_file_path = Path.join(System.tmp_dir!(), "trifle-db-#{Ecto.UUID.generate()}.sqlite")
+
+      assert {:ok, updated_database} =
+               Organizations.update_database(database, %{file_path: new_file_path})
+
+      assert updated_database.pool_version == 2
+      assert updated_database.file_path == new_file_path
+    end
+
+    test "does not increment pool_version for non-connection fields" do
+      database = database_fixture()
+
+      assert {:ok, updated_database} =
+               Organizations.update_database(database, %{display_name: "Renamed database"})
+
+      assert updated_database.pool_version == database.pool_version
+      assert updated_database.display_name == "Renamed database"
     end
   end
 
