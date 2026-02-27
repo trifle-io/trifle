@@ -1636,19 +1636,6 @@ defmodule TrifleApp.DashboardLive do
     navigate_timeframe(socket, :forward)
   end
 
-  defp find_dashboard_widget(nil, _id), do: nil
-
-  defp find_dashboard_widget(%{payload: payload}, id) when is_map(payload) do
-    id = to_string(id)
-    grid_items = Map.get(payload, "grid") || []
-
-    Enum.find(grid_items, fn item ->
-      to_string(item["id"]) == id
-    end)
-  end
-
-  defp find_dashboard_widget(_, _id), do: nil
-
   defp build_expanded_widget(socket, widget) when is_map(widget) do
     id = to_string(widget["id"])
     stats = socket.assigns[:stats]
@@ -1735,26 +1722,16 @@ defmodule TrifleApp.DashboardLive do
     |> String.downcase()
   end
 
-  defp maybe_refresh_expanded_widget(socket) do
+  defp maybe_refresh_widget_workspace_preview(socket) do
     case socket.assigns[:widget_workspace] do
       %{draft_widget: %{} = draft_widget} = workspace ->
         preview = build_expanded_widget(socket, draft_widget)
 
         socket
-        |> assign(:expanded_widget, preview)
         |> assign(:widget_workspace, Map.put(workspace, :preview, preview))
 
       _ ->
-        case socket.assigns[:expanded_widget] do
-          %{widget_id: widget_id} ->
-            case find_dashboard_widget(socket.assigns.dashboard, widget_id) do
-              nil -> assign(socket, :expanded_widget, nil)
-              widget -> assign(socket, :expanded_widget, build_expanded_widget(socket, widget))
-            end
-
-          _ ->
-            socket
-        end
+        socket
     end
   end
 
@@ -1883,7 +1860,6 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:show_export_dropdown, false)
     |> assign(:widget_path_options, [])
     |> assign(:widget_path_options_loaded, false)
-    |> assign(:expanded_widget, nil)
     |> assign(:widget_workspace, nil)
     |> assign(:widget_kpi_values, %{})
     |> assign(:widget_kpi_visuals, %{})
@@ -2716,7 +2692,7 @@ defmodule TrifleApp.DashboardLive do
       end)
       |> assign(load_duration_microseconds: load_duration)
       |> refresh_widget_datasets()
-      |> maybe_refresh_expanded_widget()
+      |> maybe_refresh_widget_workspace_preview()
 
     {:noreply, socket}
   end
@@ -3725,7 +3701,6 @@ defmodule TrifleApp.DashboardLive do
 
     socket
     |> assign(:editing_widget, widget)
-    |> assign(:expanded_widget, preview)
     |> assign(:widget_workspace, workspace)
   end
 
@@ -3755,7 +3730,6 @@ defmodule TrifleApp.DashboardLive do
   defp clear_widget_workspace(socket) do
     socket
     |> assign(:editing_widget, nil)
-    |> assign(:expanded_widget, nil)
     |> assign(:widget_workspace, nil)
   end
 
@@ -3776,7 +3750,6 @@ defmodule TrifleApp.DashboardLive do
             |> Map.put(:show_discard_confirm?, false)
 
           socket
-          |> assign(:expanded_widget, preview)
           |> assign(:widget_workspace, updated_workspace)
         else
           socket

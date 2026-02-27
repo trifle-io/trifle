@@ -47,7 +47,8 @@ defmodule TrifleApp.DesignSystem.Modal do
         </div>
 
         <div class={[
-          "relative transform overflow-hidden rounded-lg bg-white dark:bg-slate-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:p-6",
+          "relative transform rounded-lg bg-white dark:bg-slate-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:p-6",
+          modal_panel_layout_classes(@size),
           modal_size_classes(@size)
         ]}>
           <!-- Close button -->
@@ -73,7 +74,7 @@ defmodule TrifleApp.DesignSystem.Modal do
           <% end %>
           
     <!-- Title -->
-          <div class="sm:flex sm:items-start">
+          <div class={["sm:flex sm:items-start", if(@size == "full", do: "flex-none")]}>
             <div class="mt-3 w-full text-center sm:ml-0 sm:mt-0 sm:text-left">
               <h3
                 class="text-base font-semibold leading-6 text-gray-900 dark:text-white"
@@ -85,25 +86,28 @@ defmodule TrifleApp.DesignSystem.Modal do
           </div>
           
     <!-- Body -->
-          <div class="mt-4">
+          <div class={["mt-4", if(@size == "full", do: "flex-1 min-h-0 overflow-y-auto")]}>
             {render_slot(@body)}
           </div>
           
     <!-- Actions -->
           <%= if @actions != [] do %>
-            <div class="mt-5 sm:mt-6 sm:flex sm:justify-end sm:space-x-3">
+            <div class={[
+              "mt-5 sm:mt-6 sm:flex sm:justify-end sm:space-x-3",
+              if(@size == "full", do: "flex-none")
+            ]}>
               {render_slot(@actions)}
             </div>
           <% end %>
 
           <%= if @below_actions != [] do %>
-            <div class="mt-6 space-y-4">
+            <div class={["mt-6 space-y-4", if(@size == "full", do: "flex-none")]}>
               {render_slot(@below_actions)}
             </div>
           <% end %>
 
           <%= if @footer != [] do %>
-            <div class="mt-6 space-y-4">
+            <div class={["mt-6 space-y-4", if(@size == "full", do: "flex-none")]}>
               {render_slot(@footer)}
             </div>
           <% end %>
@@ -119,9 +123,12 @@ defmodule TrifleApp.DesignSystem.Modal do
       "md" -> "sm:max-w-2xl sm:w-full"
       "lg" -> "sm:max-w-4xl sm:w-full"
       "xl" -> "sm:max-w-6xl sm:w-full"
-      "full" -> "sm:max-w-[95vw] sm:w-full max-h-[90vh]"
+      "full" -> "sm:max-w-[95vw] sm:w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)]"
     end
   end
+
+  defp modal_panel_layout_classes("full"), do: "overflow-hidden flex min-h-0 flex-col"
+  defp modal_panel_layout_classes(_), do: "overflow-hidden"
 
   defp cancel_action(nil), do: nil
   defp cancel_action(%JS{} = js), do: js

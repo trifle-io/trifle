@@ -1234,12 +1234,12 @@ defmodule TrifleApp.Components.DashboardPage do
               </div>
             </:title>
             <:body>
-              <div class="h-[76vh] flex flex-col gap-4 overflow-y-auto">
+              <div class="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
                 <%= if preview_type == "table" do %>
                   <% render_table = preview[:table_data] %>
                   <% aggrid_payload =
                     DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
-                  <div class="h-[36vh] min-h-[260px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                  <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col">
                     <%= cond do %>
                       <% is_nil(render_table) -> %>
                         <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
@@ -1255,8 +1255,10 @@ defmodule TrifleApp.Components.DashboardPage do
                           data-table={Jason.encode!(aggrid_payload)}
                         >
                           <div
+                            id={"workspace-aggrid-root-#{workspace.widget_id || "new"}"}
                             class="flex-1 min-h-0 ag-theme-alpine"
                             data-role="aggrid-table-root"
+                            phx-update="ignore"
                             style="width: 100%; height: 100%;"
                           >
                             <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
@@ -1273,7 +1275,7 @@ defmodule TrifleApp.Components.DashboardPage do
                 <% else %>
                   <%= if preview_type == "list" do %>
                     <% list_data = preview[:list_data] %>
-                    <div class="h-[36vh] min-h-[260px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                    <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
                       <%= if list_data do %>
                         <% items = expanded_list_items(list_data) %>
                         <% empty_message = expanded_list_empty_message(list_data) %>
@@ -1341,7 +1343,7 @@ defmodule TrifleApp.Components.DashboardPage do
                   <% else %>
                     <div
                       id={"workspace-widget-#{workspace.widget_id}"}
-                      class="w-full flex flex-col gap-4"
+                      class="w-full flex-1 min-h-0 flex flex-col gap-4"
                       phx-hook="ExpandedWidgetView"
                       data-tab={active_tab}
                       data-type={preview_type}
@@ -1351,13 +1353,13 @@ defmodule TrifleApp.Components.DashboardPage do
                       data-visual={if visual_data, do: Jason.encode!(visual_data)}
                       data-text={if text_data, do: Jason.encode!(text_data)}
                     >
-                      <div class="h-[36vh] min-h-[260px]">
+                      <div class="flex-1 min-h-0">
                         <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
                           <div data-role="chart" class="h-full w-full overflow-hidden"></div>
                         </div>
                       </div>
                       <div class={[
-                        "h-[36vh] min-h-[260px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto",
+                        "flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto",
                         if(active_tab == "summary", do: "block", else: "hidden")
                       ]}>
                         <div data-role="table-root" class="h-full w-full overflow-auto"></div>
@@ -1367,7 +1369,7 @@ defmodule TrifleApp.Components.DashboardPage do
                 <% end %>
 
                 <%= if active_tab == "summary" and preview_type in ["table", "list"] do %>
-                  <div class="h-[36vh] min-h-[260px] overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
+                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
                     <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Summary</h4>
                     <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
                       Summary metrics are currently available for chart-oriented widgets. Use the preview above to validate this widget output.
@@ -1376,7 +1378,7 @@ defmodule TrifleApp.Components.DashboardPage do
                 <% end %>
 
                 <%= if active_tab == "edit" and editable do %>
-                  <div class="h-[36vh] min-h-[260px] overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
+                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
                     <.form
                       for={%{}}
                       id="widget-workspace-form"

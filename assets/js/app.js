@@ -382,6 +382,132 @@ const buildBucketIndexMap = (labels) => {
   return map;
 };
 
+const distributionSeriesName = (seriesItem, idx) => {
+  const rawName =
+    typeof (seriesItem && seriesItem.name) === 'string'
+      ? seriesItem.name.trim()
+      : '';
+  return rawName !== '' ? rawName : `Series ${idx + 1}`;
+};
+
+const buildDistributionHeatmapAggregation = ({
+  seriesList,
+  labelIndexMap,
+  verticalLabelIndexMap
+}) => {
+  const totalsByCell = new Map();
+  const breakdownTotalsByCell = new Map();
+  const safeSeries = Array.isArray(seriesList) ? seriesList : [];
+
+  safeSeries.forEach((seriesItem, idx) => {
+    const name = distributionSeriesName(seriesItem, idx);
+    const points = Array.isArray(seriesItem && seriesItem.points) ? seriesItem.points : [];
+
+    points.forEach((point) => {
+      if (!point || point.bucket_x == null || point.bucket_y == null) return;
+      const xIdx = labelIndexMap.get(String(point.bucket_x));
+      const yIdx = verticalLabelIndexMap.get(String(point.bucket_y));
+      if (xIdx == null || yIdx == null) return;
+
+      const value = Number(point.value);
+      if (!Number.isFinite(value)) return;
+
+      const key = `${xIdx}:${yIdx}`;
+      totalsByCell.set(key, (totalsByCell.get(key) || 0) + value);
+
+      const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
+      seriesTotals.set(name, (seriesTotals.get(name) || 0) + value);
+      breakdownTotalsByCell.set(key, seriesTotals);
+    });
+  });
+
+  const breakdownByCell = new Map();
+  breakdownTotalsByCell.forEach((seriesTotals, key) => {
+    breakdownByCell.set(
+      key,
+      aggregateHeatmapBreakdown(
+        Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
+          name: seriesName,
+          value: totalValue
+        }))
+      )
+    );
+  });
+
+  const heatmapData = Array.from(totalsByCell.entries())
+    .map(([key, value]) => {
+      const [xIdxRaw, yIdxRaw] = key.split(':');
+      const xIdx = Number(xIdxRaw);
+      const yIdx = Number(yIdxRaw);
+      return [xIdx, yIdx, value];
+    })
+    .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
+
+  return { heatmapData, breakdownByCell };
+};
+
+const buildDistributionScatterSeries = ({
+  seriesList,
+  labelIndexMap,
+  verticalLabelIndexMap,
+  resolveColor
+}) => {
+  let maxValue = 0;
+  const legendNames = [];
+  const safeSeries = Array.isArray(seriesList) ? seriesList : [];
+
+  const seriesData = safeSeries.map((seriesItem, idx) => {
+    const name = distributionSeriesName(seriesItem, idx);
+    legendNames.push(name);
+
+    const points = Array.isArray(seriesItem && seriesItem.points) ? seriesItem.points : [];
+    const color = resolveColor(seriesItem, idx);
+
+    const data = points
+      .map((point) => {
+        if (!point || point.bucket_x == null || point.bucket_y == null) return null;
+
+        const xIdx = labelIndexMap.get(String(point.bucket_x));
+        const yIdx = verticalLabelIndexMap.get(String(point.bucket_y));
+        if (xIdx == null || yIdx == null) return null;
+
+        const value = Number(point.value);
+        if (!Number.isFinite(value)) return null;
+
+        maxValue = Math.max(maxValue, value);
+        return [xIdx, yIdx, value];
+      })
+      .filter(Boolean);
+
+    return {
+      name,
+      type: 'scatter',
+      data,
+      symbolSize: (val) => {
+        const v = val && val[2] ? val[2] : 0;
+        if (!maxValue) return 10;
+        const size = 8 + (v / maxValue) * 24;
+        return Math.max(6, size);
+      },
+      itemStyle: { color, opacity: 1 },
+      hoverAnimation: false,
+      emphasis: {
+        disabled: true,
+        focus: 'none',
+        scale: false,
+        blurScope: 'none',
+        itemStyle: { opacity: 1 }
+      },
+      select: { disabled: true }
+    };
+  });
+
+  return {
+    seriesData: seriesData.filter((entry) => Array.isArray(entry.data) && entry.data.length),
+    legendNames
+  };
+};
+
 const aggregateHeatmapBreakdown = (entries) => {
   const totals = new Map();
 
@@ -3236,53 +3362,14 @@ Hooks.DashboardGrid = {
         let seriesData;
         if (is3d) {
           if (isHeatmap) {
-            const totalsByCell = new Map();
-            const breakdownTotalsByCell = new Map();
+            const seriesList = Array.isArray(it.series) ? it.series : [];
             const labelIndexMap = buildBucketIndexMap(labels);
             const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
-
-            (Array.isArray(it.series) ? it.series : []).forEach((series, idx) => {
-              const name = series && series.name ? series.name : `Series ${idx + 1}`;
-              const points = Array.isArray(series && series.points) ? series.points : [];
-
-              points.forEach((p) => {
-                if (!p || p.bucket_x == null || p.bucket_y == null) return;
-                const xIndex = labelIndexMap.get(String(p.bucket_x));
-                const yIndex = verticalLabelIndexMap.get(String(p.bucket_y));
-                if (xIndex == null || yIndex == null) return;
-                const val = Number(p.value);
-                if (!Number.isFinite(val)) return;
-
-                const key = `${xIndex}:${yIndex}`;
-                totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
-
-                const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
-                seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
-                breakdownTotalsByCell.set(key, seriesTotals);
-              });
+            const { heatmapData, breakdownByCell } = buildDistributionHeatmapAggregation({
+              seriesList,
+              labelIndexMap,
+              verticalLabelIndexMap
             });
-
-            const breakdownByCell = new Map();
-            breakdownTotalsByCell.forEach((seriesTotals, key) => {
-              breakdownByCell.set(
-                key,
-                aggregateHeatmapBreakdown(
-                  Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
-                    name: seriesName,
-                    value: totalValue
-                  }))
-                )
-              );
-            });
-
-            const heatmapData = Array.from(totalsByCell.entries())
-              .map(([key, value]) => {
-                const [xIdxRaw, yIdxRaw] = key.split(':');
-                const xIdx = Number(xIdxRaw);
-                const yIdx = Number(yIdxRaw);
-                return [xIdx, yIdx, value];
-              })
-              .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
             const showScale = it.legend === undefined ? true : !!it.legend;
             const gridBottom = showScale ? 72 : 20;
@@ -3291,7 +3378,7 @@ Hooks.DashboardGrid = {
             const visualSettings = resolveHeatmapVisualMap({
               payload: it,
               heatmapData,
-              series: Array.isArray(it.series) ? it.series : [],
+              series: seriesList,
               fallbackHeatColor,
               isDarkMode
             });
@@ -3321,44 +3408,23 @@ Hooks.DashboardGrid = {
             return;
           }
 
-          let maxValue = 0;
-          seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
-            const name = series && series.name ? series.name : `Series ${idx + 1}`;
-            legendNames.push(name);
-            const points = Array.isArray(series && series.points) ? series.points : [];
-            const explicitColor =
-              typeof series?.color === 'string' && series.color.trim() !== '' ? series.color.trim() : null;
-            const color = explicitColor || colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
-            const data = points.map((p) => {
-              const xIndex = labels.indexOf(p.bucket_x);
-              const yIndex = verticalLabels.indexOf(p.bucket_y);
-              if (xIndex === -1 || yIndex === -1) return null;
-              const val = Number(p.value) || 0;
-              maxValue = Math.max(maxValue, val);
-              return [xIndex, yIndex, val];
-            }).filter(Boolean);
-            return {
-              name,
-              type: 'scatter',
-              data,
-              symbolSize: (val) => {
-                const v = val && val[2] ? val[2] : 0;
-                if (!maxValue) return 10;
-                const size = 8 + (v / maxValue) * 24;
-                return Math.max(6, size);
-              },
-              itemStyle: { color, opacity: 1 },
-              hoverAnimation: false,
-              emphasis: {
-                disabled: true,
-                focus: 'none',
-                scale: false,
-                blurScope: 'none',
-                itemStyle: { opacity: 1 }
-              },
-              select: { disabled: true }
-            };
+          const seriesList = Array.isArray(it.series) ? it.series : [];
+          const labelIndexMap = buildBucketIndexMap(labels);
+          const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+          const scatterData = buildDistributionScatterSeries({
+            seriesList,
+            labelIndexMap,
+            verticalLabelIndexMap,
+            resolveColor: (series, idx) => {
+              const explicitColor =
+                typeof series?.color === 'string' && series.color.trim() !== ''
+                  ? series.color.trim()
+                  : null;
+              return explicitColor || colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+            }
           });
+          legendNames.push(...scatterData.legendNames);
+          seriesData = scatterData.seriesData;
 
           if (!seriesData.length) {
             const fallbackColor = colors[0] || '#14b8a6';
@@ -6315,53 +6381,14 @@ Hooks.ExpandedWidgetView = {
 
     if (is3d) {
       if (isHeatmap) {
-        const totalsByCell = new Map();
-        const breakdownTotalsByCell = new Map();
+        const seriesList = Array.isArray(series) ? series : [];
         const labelIndexMap = buildBucketIndexMap(labels);
         const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
-
-        series.forEach((seriesItem, idx) => {
-          const name = seriesItem?.name || `Series ${idx + 1}`;
-          const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
-
-          points.forEach((p) => {
-            if (!p || p.bucket_x == null || p.bucket_y == null) return;
-            const xIdx = labelIndexMap.get(String(p.bucket_x));
-            const yIdx = verticalLabelIndexMap.get(String(p.bucket_y));
-            if (xIdx == null || yIdx == null) return;
-            const val = Number(p.value);
-            if (!Number.isFinite(val)) return;
-
-            const key = `${xIdx}:${yIdx}`;
-            totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
-
-            const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
-            seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
-            breakdownTotalsByCell.set(key, seriesTotals);
-          });
+        const { heatmapData, breakdownByCell } = buildDistributionHeatmapAggregation({
+          seriesList,
+          labelIndexMap,
+          verticalLabelIndexMap
         });
-
-        const breakdownByCell = new Map();
-        breakdownTotalsByCell.forEach((seriesTotals, key) => {
-          breakdownByCell.set(
-            key,
-            aggregateHeatmapBreakdown(
-              Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
-                name: seriesName,
-                value: totalValue
-              }))
-            )
-          );
-        });
-
-        const heatmapData = Array.from(totalsByCell.entries())
-          .map(([key, value]) => {
-            const [xIdxRaw, yIdxRaw] = key.split(':');
-            const xIdx = Number(xIdxRaw);
-            const yIdx = Number(yIdxRaw);
-            return [xIdx, yIdx, value];
-          })
-          .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
         if (!heatmapData.length) {
           this.renderEmptyChart('No distribution data available yet.');
@@ -6376,7 +6403,7 @@ Hooks.ExpandedWidgetView = {
         const visualSettings = resolveHeatmapVisualMap({
           payload: data,
           heatmapData,
-          series,
+          series: seriesList,
           fallbackHeatColor,
           isDarkMode
         });
@@ -6401,53 +6428,22 @@ Hooks.ExpandedWidgetView = {
         return;
       }
 
-      let maxValue = 0;
-      const legendNames = [];
-      let seriesData = series.map((seriesItem, idx) => {
-        const name = seriesItem?.name || `Series ${idx + 1}`;
-        legendNames.push(name);
-        const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
-        const explicitColor =
-          typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
-            ? seriesItem.color.trim()
-            : null;
-        const color = explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
-        const dataPoints = points
-          .map((p) => {
-            if (!p) return null;
-            const xIdx = labels.indexOf(p.bucket_x);
-            const yIdx = verticalLabels.indexOf(p.bucket_y);
-            if (xIdx === -1 || yIdx === -1) return null;
-            const val = Number(p.value) || 0;
-            maxValue = Math.max(maxValue, val);
-            return [xIdx, yIdx, val];
-          })
-          .filter(Boolean);
-
-        return {
-          name,
-          type: 'scatter',
-          data: dataPoints,
-          symbolSize: (val) => {
-            const v = val && val[2] ? val[2] : 0;
-            if (!maxValue) return 10;
-            const size = 8 + (v / maxValue) * 24;
-            return Math.max(6, size);
-          },
-          itemStyle: { color, opacity: 1 },
-          hoverAnimation: false,
-          emphasis: {
-            disabled: true,
-            focus: 'none',
-            scale: false,
-            blurScope: 'none',
-            itemStyle: { opacity: 1 }
-          },
-          select: { disabled: true }
-        };
+      const labelIndexMap = buildBucketIndexMap(labels);
+      const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+      const scatterData = buildDistributionScatterSeries({
+        seriesList: series,
+        labelIndexMap,
+        verticalLabelIndexMap,
+        resolveColor: (seriesItem, idx) => {
+          const explicitColor =
+            typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
+              ? seriesItem.color.trim()
+              : null;
+          return explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
+        }
       });
-
-      seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
+      const legendNames = scatterData.legendNames;
+      const seriesData = scatterData.seriesData;
 
       if (!seriesData.length) {
         this.renderEmptyChart('No distribution data available yet.');
@@ -6854,6 +6850,23 @@ Hooks.ExpandedAgGridTable = {
 
   render() {
     const payloadString = this.el.dataset.table || '';
+    const root = this.el.querySelector('[data-role="aggrid-table-root"]');
+    const gridRootReplaced =
+      !!this.grid &&
+      (
+        !this.grid.root ||
+        this.grid.root !== root ||
+        !this.grid.root.isConnected
+      );
+    const gridDomWiped =
+      !!this.grid &&
+      !!root &&
+      !root.querySelector('.ag-root-wrapper, .ag-root');
+
+    if (gridRootReplaced || gridDomWiped) {
+      this.destroyGrid();
+    }
+
     if (!payloadString) {
       this.showEmpty();
       return;
