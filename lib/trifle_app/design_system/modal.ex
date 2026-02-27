@@ -123,12 +123,12 @@ defmodule TrifleApp.DesignSystem.Modal do
       "md" -> "sm:max-w-2xl sm:w-full"
       "lg" -> "sm:max-w-4xl sm:w-full"
       "xl" -> "sm:max-w-6xl sm:w-full"
-      "full" -> "sm:max-w-[95vw] sm:w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)]"
+      "full" -> "w-full max-w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)]"
     end
   end
 
   defp modal_panel_layout_classes("full"), do: "overflow-hidden flex min-h-0 flex-col"
-  defp modal_panel_layout_classes(_), do: "overflow-hidden"
+  defp modal_panel_layout_classes(_), do: nil
 
   defp cancel_action(nil), do: nil
   defp cancel_action(%JS{} = js), do: js

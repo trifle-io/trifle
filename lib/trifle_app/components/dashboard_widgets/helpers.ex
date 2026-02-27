@@ -27,24 +27,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
                               ~w[a b blockquote br code div em h1 h2 h3 h4 h5 h6 hr i li ol p pre s span strong table tbody td th thead tr u ul]
                             )
   @void_text_widget_tags MapSet.new(~w[br hr])
-  @dangerous_text_widget_tags ~w[
-    script
-    style
-    iframe
-    object
-    embed
-    link
-    meta
-    base
-    form
-    input
-    button
-    textarea
-    select
-    option
-    svg
-    math
-  ]
   @global_text_widget_attrs MapSet.new(~w[class title role])
   @text_widget_tag_attrs %{
     "a" => MapSet.new(~w[href target rel]),
@@ -183,11 +165,56 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def normalize_chart_path_inputs_for_edit(value), do: normalize_timeseries_paths_for_edit(value)
 
   defp remove_dangerous_text_widget_blocks(html) do
-    Enum.reduce(@dangerous_text_widget_tags, html, fn tag, acc ->
-      acc
-      |> then(&Regex.replace(~r/<\s*#{tag}\b[^>]*>.*?<\s*\/\s*#{tag}\s*>/is, &1, ""))
-      |> then(&Regex.replace(~r/<\s*#{tag}\b[^>]*\/\s*>/is, &1, ""))
+    html =
+      Enum.reduce(dangerous_block_regexes(), html, fn regex, acc ->
+        Regex.replace(regex, acc, "")
+      end)
+
+    Enum.reduce(dangerous_self_closing_regexes(), html, fn regex, acc ->
+      Regex.replace(regex, acc, "")
     end)
+  end
+
+  defp dangerous_block_regexes do
+    [
+      ~r/<\s*script\b[^>]*>.*?<\s*\/\s*script\s*>/is,
+      ~r/<\s*style\b[^>]*>.*?<\s*\/\s*style\s*>/is,
+      ~r/<\s*iframe\b[^>]*>.*?<\s*\/\s*iframe\s*>/is,
+      ~r/<\s*object\b[^>]*>.*?<\s*\/\s*object\s*>/is,
+      ~r/<\s*embed\b[^>]*>.*?<\s*\/\s*embed\s*>/is,
+      ~r/<\s*link\b[^>]*>.*?<\s*\/\s*link\s*>/is,
+      ~r/<\s*meta\b[^>]*>.*?<\s*\/\s*meta\s*>/is,
+      ~r/<\s*base\b[^>]*>.*?<\s*\/\s*base\s*>/is,
+      ~r/<\s*form\b[^>]*>.*?<\s*\/\s*form\s*>/is,
+      ~r/<\s*input\b[^>]*>.*?<\s*\/\s*input\s*>/is,
+      ~r/<\s*button\b[^>]*>.*?<\s*\/\s*button\s*>/is,
+      ~r/<\s*textarea\b[^>]*>.*?<\s*\/\s*textarea\s*>/is,
+      ~r/<\s*select\b[^>]*>.*?<\s*\/\s*select\s*>/is,
+      ~r/<\s*option\b[^>]*>.*?<\s*\/\s*option\s*>/is,
+      ~r/<\s*svg\b[^>]*>.*?<\s*\/\s*svg\s*>/is,
+      ~r/<\s*math\b[^>]*>.*?<\s*\/\s*math\s*>/is
+    ]
+  end
+
+  defp dangerous_self_closing_regexes do
+    [
+      ~r/<\s*script\b[^>]*\/\s*>/is,
+      ~r/<\s*style\b[^>]*\/\s*>/is,
+      ~r/<\s*iframe\b[^>]*\/\s*>/is,
+      ~r/<\s*object\b[^>]*\/\s*>/is,
+      ~r/<\s*embed\b[^>]*\/\s*>/is,
+      ~r/<\s*link\b[^>]*\/\s*>/is,
+      ~r/<\s*meta\b[^>]*\/\s*>/is,
+      ~r/<\s*base\b[^>]*\/\s*>/is,
+      ~r/<\s*form\b[^>]*\/\s*>/is,
+      ~r/<\s*input\b[^>]*\/\s*>/is,
+      ~r/<\s*button\b[^>]*\/\s*>/is,
+      ~r/<\s*textarea\b[^>]*\/\s*>/is,
+      ~r/<\s*select\b[^>]*\/\s*>/is,
+      ~r/<\s*option\b[^>]*\/\s*>/is,
+      ~r/<\s*svg\b[^>]*\/\s*>/is,
+      ~r/<\s*math\b[^>]*\/\s*>/is
+    ]
   end
 
   defp sanitize_text_widget_tags(html) do
@@ -294,6 +321,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       value
       |> to_string()
       |> String.trim()
+      |> String.replace(~r/[\x00-\x1F\x7F\s]+/u, "")
 
     cond do
       href == "" ->

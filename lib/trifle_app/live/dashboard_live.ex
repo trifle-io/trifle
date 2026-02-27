@@ -581,9 +581,6 @@ defmodule TrifleApp.DashboardLive do
         {:noreply,
          assign(socket, :widget_workspace, Map.put(workspace, :show_discard_confirm?, true))}
 
-      %{} ->
-        {:noreply, clear_widget_workspace(socket)}
-
       _ ->
         {:noreply, clear_widget_workspace(socket)}
     end
@@ -3764,8 +3761,43 @@ defmodule TrifleApp.DashboardLive do
 
   defp widget_workspace_dirty?(workspace, draft_widget) do
     base_widget = Map.get(workspace, :base_widget, %{})
-    base_widget != draft_widget
+    normalize_widget(base_widget) != normalize_widget(draft_widget)
   end
+
+  defp normalize_widget(%_{} = struct) do
+    struct
+    |> Map.from_struct()
+    |> normalize_widget()
+  end
+
+  defp normalize_widget(map) when is_map(map) do
+    map
+    |> Enum.reduce(%{}, fn {key, value}, acc ->
+      normalized_key = normalize_widget_key(key)
+
+      if normalized_key in ["__struct__", "__meta__"] do
+        acc
+      else
+        Map.put(acc, normalized_key, normalize_widget(value))
+      end
+    end)
+  end
+
+  defp normalize_widget(list) when is_list(list) do
+    Enum.map(list, &normalize_widget/1)
+  end
+
+  defp normalize_widget(tuple) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> Enum.map(&normalize_widget/1)
+  end
+
+  defp normalize_widget(value), do: value
+
+  defp normalize_widget_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp normalize_widget_key(key) when is_binary(key), do: key
+  defp normalize_widget_key(key), do: inspect(key)
 
   defp normalize_ts_chart_type(value) do
     case value |> to_string() |> String.downcase() do

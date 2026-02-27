@@ -151,7 +151,9 @@ const sanitizeRichHtml = (rawHtml) => {
           .filter(Boolean)
       );
 
-      ['noopener', 'noreferrer', 'nofollow'].forEach((token) => relTokens.add(token));
+      ['noopener', 'noreferrer', 'nofollow'].forEach((token) => {
+        relTokens.add(token);
+      });
       element.setAttribute('rel', Array.from(relTokens).sort().join(' '));
     }
   };
@@ -172,7 +174,9 @@ const sanitizeRichHtml = (rawHtml) => {
       return;
     }
 
-    Array.from(node.childNodes).forEach((child) => sanitizeNode(child));
+    Array.from(node.childNodes).forEach((child) => {
+      sanitizeNode(child);
+    });
 
     if (!SAFE_HTML_ALLOWED_TAGS.has(tag)) {
       node.replaceWith(...Array.from(node.childNodes));
@@ -182,7 +186,9 @@ const sanitizeRichHtml = (rawHtml) => {
     sanitizeAttrs(node, tag);
   };
 
-  Array.from(template.content.childNodes).forEach((node) => sanitizeNode(node));
+  Array.from(template.content.childNodes).forEach((node) => {
+    sanitizeNode(node);
+  });
   return template.innerHTML;
 };
 
@@ -453,12 +459,10 @@ const buildDistributionScatterSeries = ({
   resolveColor
 }) => {
   let maxValue = 0;
-  const legendNames = [];
   const safeSeries = Array.isArray(seriesList) ? seriesList : [];
 
   const seriesData = safeSeries.map((seriesItem, idx) => {
     const name = distributionSeriesName(seriesItem, idx);
-    legendNames.push(name);
 
     const points = Array.isArray(seriesItem && seriesItem.points) ? seriesItem.points : [];
     const color = resolveColor(seriesItem, idx);
@@ -502,8 +506,13 @@ const buildDistributionScatterSeries = ({
     };
   });
 
+  const filteredSeries = seriesData.filter(
+    (entry) => Array.isArray(entry.data) && entry.data.length
+  );
+  const legendNames = filteredSeries.map((entry) => entry.name);
+
   return {
-    seriesData: seriesData.filter((entry) => Array.isArray(entry.data) && entry.data.length),
+    seriesData: filteredSeries,
     legendNames
   };
 };
