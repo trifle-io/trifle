@@ -5151,6 +5151,9 @@ Hooks.ExpandedWidgetView = {
   },
 
   updated() {
+    // LiveView patches may replace inner nodes; refresh targets before rendering.
+    this.chartTarget = this.el.querySelector('[data-role="chart"]');
+    this.tableRoot = this.el.querySelector('[data-role="table-root"]');
     this.render();
   },
 
@@ -5212,15 +5215,57 @@ Hooks.ExpandedWidgetView = {
   },
 
   render(force = false) {
+    this.chartTarget = this.el.querySelector('[data-role="chart"]');
+    this.tableRoot = this.el.querySelector('[data-role="table-root"]');
+
     const type = (this.el.dataset.type || '').toLowerCase();
+    const tab = this.el.dataset.tab || '';
     const chartRaw = this.el.dataset.chart || '';
     const paletteRaw = this.el.dataset.colors || '';
     const visualRaw = this.el.dataset.visual || '';
     const textRaw = this.el.dataset.text || '';
-    const key = [type, chartRaw, paletteRaw, visualRaw, textRaw].join('||');
-    if (!force && key === this.lastPayloadKey) {
+    const key = [type, tab, chartRaw, paletteRaw, visualRaw, textRaw].join('||');
+    const chartWidgetTypes = ['timeseries', 'category', 'distribution', 'heatmap', 'kpi'];
+    const chartContentMissing =
+      chartWidgetTypes.includes(type) &&
+      !!this.chartTarget &&
+      this.chartTarget.childElementCount === 0;
+    const tableContentMissing = !!this.tableRoot && this.tableRoot.childElementCount === 0;
+    const tableRootChanged = !!this._lastTableRoot && this._lastTableRoot !== this.tableRoot;
+    this._lastTableRoot = this.tableRoot;
+
+    const chartContainerChanged =
+      !!this.chart &&
+      (
+        this.chartElement !== this.chartTarget ||
+        !this.chartElement ||
+        !this.chartElement.isConnected
+      );
+
+    const chartDomWiped =
+      !!this.chart &&
+      !!this.chartTarget &&
+      !this.chartTarget.querySelector('canvas, svg');
+
+    if (chartContainerChanged || chartDomWiped || tableRootChanged) {
+      this.disposeChart();
+      force = true;
+    }
+
+    if (!force && key === this.lastPayloadKey && !chartContentMissing && !tableContentMissing) {
       if (this.chart && typeof this.chart.resize === 'function') {
         try { this.chart.resize(); } catch (_) {}
+        // Reflow can complete after LiveView patch; do a deferred resize pass as well.
+        requestAnimationFrame(() => {
+          if (this.chart && typeof this.chart.resize === 'function') {
+            try { this.chart.resize(); } catch (_) {}
+          }
+        });
+        setTimeout(() => {
+          if (this.chart && typeof this.chart.resize === 'function') {
+            try { this.chart.resize(); } catch (_) {}
+          }
+        }, 90);
       }
       return;
     }
@@ -6164,6 +6209,7 @@ Hooks.ExpandedWidgetView = {
       const labelLineColor = isDarkMode ? '#475569' : '#94A3B8';
       option = {
         backgroundColor: 'transparent',
+        legend: { show: false },
         tooltip: {
           trigger: 'item',
           appendToBody: true,
@@ -6252,12 +6298,12 @@ Hooks.ExpandedWidgetView = {
       series.length === 0 ||
       (is3d && (!verticalLabels || verticalLabels.length === 0))
     ) {
-      this.renderEmptyChart('No distribution data available yet.', { height: 480 });
+      this.renderEmptyChart('No distribution data available yet.');
       this.renderDistributionTable(data);
       return;
     }
 
-    const chart = this.ensureChart({ height: 480 });
+    const chart = this.ensureChart();
     if (!chart) {
       this.renderDistributionTable(data);
       return;
@@ -6318,7 +6364,7 @@ Hooks.ExpandedWidgetView = {
           .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
         if (!heatmapData.length) {
-          this.renderEmptyChart('No distribution data available yet.', { height: 480 });
+          this.renderEmptyChart('No distribution data available yet.');
           this.renderDistributionTable(data);
           return;
         }
@@ -6404,7 +6450,7 @@ Hooks.ExpandedWidgetView = {
       seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
 
       if (!seriesData.length) {
-        this.renderEmptyChart('No distribution data available yet.', { height: 480 });
+        this.renderEmptyChart('No distribution data available yet.');
         this.renderDistributionTable(data);
         return;
       }
@@ -6699,6 +6745,17 @@ Hooks.ExpandedWidgetView = {
         ${message}
       </div>
     `;
+  },
+
+  escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/[&<>"']/g, (s) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    }[s]));
   },
 
   renderCategoryTable(data) {

@@ -555,40 +555,53 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       true ->
-        socket = ensure_widget_path_options(socket)
-        items = socket.assigns.dashboard.payload["grid"] || []
-        path_options = socket.assigns[:widget_path_options] || []
-
-        widget =
-          Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
-          |> case do
-            nil -> %{"id" => id, "title" => "", "type" => "kpi"}
-            found -> Map.put_new(found, "type", "kpi")
-          end
-          |> maybe_auto_expand_widget_paths(path_options)
-
-        {:noreply, assign(socket, :editing_widget, widget)}
+        {:noreply, open_widget_workspace(socket, id, "edit")}
     end
   end
 
   def handle_event("close_widget_editor", _params, socket) do
-    {:noreply, assign(socket, :editing_widget, nil)}
+    handle_event("request_close_widget_workspace", %{}, socket)
   end
 
   def handle_event("expand_widget", %{"id" => id}, socket) do
-    expanded =
-      socket.assigns.dashboard
-      |> find_dashboard_widget(id)
-      |> case do
-        nil -> nil
-        widget -> build_expanded_widget(socket, widget)
-      end
-
-    {:noreply, assign(socket, :expanded_widget, expanded)}
+    {:noreply, open_widget_workspace(socket, id, "summary")}
   end
 
   def handle_event("close_expanded_widget", _params, socket) do
-    {:noreply, assign(socket, :expanded_widget, nil)}
+    handle_event("request_close_widget_workspace", %{}, socket)
+  end
+
+  def handle_event("set_widget_workspace_tab", %{"tab" => tab}, socket) do
+    {:noreply, set_widget_workspace_tab(socket, tab)}
+  end
+
+  def handle_event("request_close_widget_workspace", _params, socket) do
+    case socket.assigns[:widget_workspace] do
+      %{dirty?: true} = workspace ->
+        {:noreply,
+         assign(socket, :widget_workspace, Map.put(workspace, :show_discard_confirm?, true))}
+
+      %{} ->
+        {:noreply, clear_widget_workspace(socket)}
+
+      _ ->
+        {:noreply, clear_widget_workspace(socket)}
+    end
+  end
+
+  def handle_event("confirm_close_widget_workspace", _params, socket) do
+    {:noreply, clear_widget_workspace(socket)}
+  end
+
+  def handle_event("cancel_close_widget_workspace", _params, socket) do
+    case socket.assigns[:widget_workspace] do
+      %{} = workspace ->
+        {:noreply,
+         assign(socket, :widget_workspace, Map.put(workspace, :show_discard_confirm?, false))}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("save_widget", params, socket) do
@@ -968,9 +981,8 @@ defmodule TrifleApp.DashboardLive do
             socket =
               socket
               |> assign_dashboard(dashboard)
-              |> assign(:editing_widget, nil)
-              |> maybe_refresh_expanded_widget()
               |> refresh_widget_datasets()
+              |> clear_widget_workspace()
 
             {:noreply,
              socket
@@ -996,7 +1008,7 @@ defmodule TrifleApp.DashboardLive do
           socket = ensure_widget_path_options(socket)
           path_options = socket.assigns[:widget_path_options] || []
           updated = apply_widget_params_for_edit(widget, params, path_options)
-          {:noreply, assign(socket, :editing_widget, updated)}
+          {:noreply, assign_editing_widget(socket, updated)}
         else
           _ -> {:noreply, socket}
         end
@@ -1058,7 +1070,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("subtype", normalized)
         |> Map.put_new("color", "default")
 
-      {:noreply, assign(socket, :editing_widget, w)}
+      {:noreply, assign_editing_widget(socket, w)}
     else
       _ -> {:noreply, socket}
     end
@@ -1071,7 +1083,7 @@ defmodule TrifleApp.DashboardLive do
       normalized = DashboardWidgetHelpers.normalize_text_color_id(color)
       w = Map.put(w, "color", normalized)
 
-      {:noreply, assign(socket, :editing_widget, w)}
+      {:noreply, assign_editing_widget(socket, w)}
     else
       _ -> {:noreply, socket}
     end
@@ -1106,7 +1118,7 @@ defmodule TrifleApp.DashboardLive do
          subtype when not is_nil(subtype) <- param(params, "kpi_subtype") do
       w = socket.assigns.editing_widget || %{"id" => id}
       normalized = DashboardWidgetHelpers.normalize_kpi_subtype(subtype, w)
-      {:noreply, assign(socket, :editing_widget, Map.put(w, "subtype", normalized))}
+      {:noreply, assign_editing_widget(socket, Map.put(w, "subtype", normalized))}
     else
       _ -> {:noreply, socket}
     end
@@ -1145,7 +1157,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.put("paths", expanded_paths)
           |> Map.put("series_color_selectors", selectors)
 
-        {:noreply, assign(socket, :editing_widget, widget)}
+        {:noreply, assign_editing_widget(socket, widget)}
     end
   end
 
@@ -1193,7 +1205,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.put("series_color_selectors", selectors)
           |> Map.put("path", primary_path)
 
-        {:noreply, assign(socket, :editing_widget, widget)}
+        {:noreply, assign_editing_widget(socket, widget)}
     end
   end
 
@@ -1244,7 +1256,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.put("series_color_selectors", selectors)
           |> Map.put("path", primary_path)
 
-        {:noreply, assign(socket, :editing_widget, widget)}
+        {:noreply, assign_editing_widget(socket, widget)}
     end
   end
 
@@ -1277,9 +1289,8 @@ defmodule TrifleApp.DashboardLive do
             socket =
               socket
               |> assign_dashboard(dashboard)
-              |> assign(:editing_widget, nil)
-              |> maybe_refresh_expanded_widget()
               |> refresh_widget_datasets()
+              |> clear_widget_workspace()
               |> push_event("dashboard_grid_widget_deleted", %{id: widget_id})
 
             {:noreply, socket}
@@ -1725,15 +1736,25 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp maybe_refresh_expanded_widget(socket) do
-    case socket.assigns[:expanded_widget] do
-      %{widget_id: widget_id} ->
-        case find_dashboard_widget(socket.assigns.dashboard, widget_id) do
-          nil -> assign(socket, :expanded_widget, nil)
-          widget -> assign(socket, :expanded_widget, build_expanded_widget(socket, widget))
-        end
+    case socket.assigns[:widget_workspace] do
+      %{draft_widget: %{} = draft_widget} = workspace ->
+        preview = build_expanded_widget(socket, draft_widget)
+
+        socket
+        |> assign(:expanded_widget, preview)
+        |> assign(:widget_workspace, Map.put(workspace, :preview, preview))
 
       _ ->
-        socket
+        case socket.assigns[:expanded_widget] do
+          %{widget_id: widget_id} ->
+            case find_dashboard_widget(socket.assigns.dashboard, widget_id) do
+              nil -> assign(socket, :expanded_widget, nil)
+              widget -> assign(socket, :expanded_widget, build_expanded_widget(socket, widget))
+            end
+
+          _ ->
+            socket
+        end
     end
   end
 
@@ -1863,6 +1884,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_path_options, [])
     |> assign(:widget_path_options_loaded, false)
     |> assign(:expanded_widget, nil)
+    |> assign(:widget_workspace, nil)
     |> assign(:widget_kpi_values, %{})
     |> assign(:widget_kpi_visuals, %{})
     |> assign(:widget_timeseries, %{})
@@ -3635,7 +3657,7 @@ defmodule TrifleApp.DashboardLive do
     case fetch_editing_widget(socket, id) do
       {:ok, widget} ->
         updated = updater.(widget)
-        {:noreply, assign(socket, :editing_widget, updated)}
+        {:noreply, assign_editing_widget(socket, updated)}
 
       :error ->
         {:noreply, socket}
@@ -3643,7 +3665,17 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp fetch_editing_widget(socket, id) do
-    widget = socket.assigns[:editing_widget]
+    widget =
+      case socket.assigns[:editing_widget] do
+        %{} = editing ->
+          editing
+
+        _ ->
+          case socket.assigns[:widget_workspace] do
+            %{draft_widget: %{} = draft} -> draft
+            _ -> nil
+          end
+      end
 
     cond do
       is_nil(widget) -> :error
@@ -3651,6 +3683,115 @@ defmodule TrifleApp.DashboardLive do
       to_string(widget["id"]) != to_string(id) -> :error
       true -> {:ok, widget}
     end
+  end
+
+  defp open_widget_workspace(socket, id, requested_tab) do
+    editable? =
+      !socket.assigns.is_public_access &&
+        !is_nil(socket.assigns[:current_user]) &&
+        socket.assigns.can_edit_dashboard
+
+    socket =
+      if editable? do
+        ensure_widget_path_options(socket)
+      else
+        socket
+      end
+
+    items = socket.assigns.dashboard.payload["grid"] || []
+    path_options = socket.assigns[:widget_path_options] || []
+
+    widget =
+      Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
+      |> case do
+        nil -> %{"id" => id, "title" => "", "type" => "kpi"}
+        found -> Map.put_new(found, "type", "kpi")
+      end
+      |> maybe_auto_expand_widget_paths(path_options)
+
+    active_tab = normalize_widget_workspace_tab(requested_tab, editable?)
+    preview = build_expanded_widget(socket, widget)
+
+    workspace = %{
+      widget_id: to_string(Map.get(widget, "id", id)),
+      base_widget: widget,
+      draft_widget: widget,
+      preview: preview,
+      active_tab: active_tab,
+      editable?: editable?,
+      dirty?: false,
+      show_discard_confirm?: false
+    }
+
+    socket
+    |> assign(:editing_widget, widget)
+    |> assign(:expanded_widget, preview)
+    |> assign(:widget_workspace, workspace)
+  end
+
+  defp normalize_widget_workspace_tab(tab, editable?) do
+    normalized =
+      tab
+      |> to_string()
+      |> String.downcase()
+
+    case normalized do
+      "edit" when editable? -> "edit"
+      _ -> "summary"
+    end
+  end
+
+  defp set_widget_workspace_tab(socket, tab) do
+    case socket.assigns[:widget_workspace] do
+      %{editable?: editable?} = workspace ->
+        active_tab = normalize_widget_workspace_tab(tab, editable?)
+        assign(socket, :widget_workspace, Map.put(workspace, :active_tab, active_tab))
+
+      _ ->
+        socket
+    end
+  end
+
+  defp clear_widget_workspace(socket) do
+    socket
+    |> assign(:editing_widget, nil)
+    |> assign(:expanded_widget, nil)
+    |> assign(:widget_workspace, nil)
+  end
+
+  defp assign_editing_widget(socket, widget) when is_map(widget) do
+    socket = assign(socket, :editing_widget, widget)
+
+    case socket.assigns[:widget_workspace] do
+      %{widget_id: widget_id} = workspace ->
+        if to_string(widget_id) == to_string(widget["id"]) do
+          preview = build_expanded_widget(socket, widget)
+          dirty? = widget_workspace_dirty?(workspace, widget)
+
+          updated_workspace =
+            workspace
+            |> Map.put(:draft_widget, widget)
+            |> Map.put(:preview, preview)
+            |> Map.put(:dirty?, dirty?)
+            |> Map.put(:show_discard_confirm?, false)
+
+          socket
+          |> assign(:expanded_widget, preview)
+          |> assign(:widget_workspace, updated_workspace)
+        else
+          socket
+        end
+
+      _ ->
+        socket
+    end
+  end
+
+  defp assign_editing_widget(socket, _), do: socket
+
+  defp widget_workspace_dirty?(workspace, draft_widget) do
+    base_widget = Map.get(workspace, :base_widget, %{})
+    base_widget != draft_widget
   end
 
   defp normalize_ts_chart_type(value) do
