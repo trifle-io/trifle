@@ -3485,10 +3485,16 @@ Hooks.DashboardGrid = {
 
                 const seriesName = params.seriesName || '';
                 const marker = params.marker || '';
-                const lines = [`${xLabel} × ${yLabel}`];
+                const escapedXLabel = this.escapeHtml(xLabel);
+                const escapedYLabel = this.escapeHtml(yLabel);
+                const escapedSeriesName = this.escapeHtml(seriesName);
+                const escapedMarker = this.escapeHtml(marker);
+                const lines = [`${escapedXLabel} × ${escapedYLabel}`];
 
-                if (seriesName || marker) {
-                  lines.push(`${marker}${seriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+                if (escapedSeriesName || escapedMarker) {
+                  lines.push(
+                    `${escapedMarker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`
+                  );
                 }
 
                 return lines.join('<br/>');

@@ -178,7 +178,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   defp dangerous_block_regexes do
     [
       ~r/<\s*script\b[^>]*>.*?<\s*\/\s*script\s*>/is,
+      ~r/<\s*noscript\b[^>]*>.*?<\s*\/\s*noscript\s*>/is,
       ~r/<\s*style\b[^>]*>.*?<\s*\/\s*style\s*>/is,
+      ~r/<\s*template\b[^>]*>.*?<\s*\/\s*template\s*>/is,
       ~r/<\s*iframe\b[^>]*>.*?<\s*\/\s*iframe\s*>/is,
       ~r/<\s*object\b[^>]*>.*?<\s*\/\s*object\s*>/is,
       ~r/<\s*embed\b[^>]*>.*?<\s*\/\s*embed\s*>/is,
@@ -199,7 +201,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   defp dangerous_self_closing_regexes do
     [
       ~r/<\s*script\b[^>]*\/\s*>/is,
+      ~r/<\s*noscript\b[^>]*\/\s*>/is,
       ~r/<\s*style\b[^>]*\/\s*>/is,
+      ~r/<\s*template\b[^>]*\/\s*>/is,
       ~r/<\s*iframe\b[^>]*\/\s*>/is,
       ~r/<\s*object\b[^>]*\/\s*>/is,
       ~r/<\s*embed\b[^>]*\/\s*>/is,

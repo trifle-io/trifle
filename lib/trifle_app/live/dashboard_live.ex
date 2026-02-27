@@ -3734,6 +3734,9 @@ defmodule TrifleApp.DashboardLive do
     socket = assign(socket, :editing_widget, widget)
 
     case socket.assigns[:widget_workspace] do
+      %{widget_id: _widget_id, editable?: editable?} when not editable? ->
+        socket
+
       %{widget_id: widget_id} = workspace ->
         if to_string(widget_id) == to_string(widget["id"]) do
           preview = build_expanded_widget(socket, widget)
