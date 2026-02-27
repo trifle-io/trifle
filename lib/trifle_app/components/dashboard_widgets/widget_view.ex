@@ -798,6 +798,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp text_widget_html(html) do
     html
     |> to_string()
+    |> WidgetHelpers.sanitize_text_widget_html()
     |> case do
       "" -> "<div class=\"text-xs opacity-60 italic\">No HTML content</div>"
       other -> other

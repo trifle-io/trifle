@@ -1812,14 +1812,27 @@ defmodule TrifleApp.ExploreCore do
   defp build_nested_html([component], all_paths, path_so_far) do
     index = get_component_index_at_level(component, all_paths, path_so_far)
     color = ChartColors.color_for(index)
-    ["<span style=\"color: #{color} !important\">#{component}</span>"]
+
+    escaped_component =
+      component
+      |> to_string()
+      |> Phoenix.HTML.html_escape()
+      |> Phoenix.HTML.safe_to_string()
+
+    ["<span style=\"color: #{color} !important\">#{escaped_component}</span>"]
   end
 
   defp build_nested_html([component | rest], all_paths, path_so_far) do
     index = get_component_index_at_level(component, all_paths, path_so_far)
     color = ChartColors.color_for(index)
 
-    current_html = "<span style=\"color: #{color} !important\">#{component}</span>"
+    escaped_component =
+      component
+      |> to_string()
+      |> Phoenix.HTML.html_escape()
+      |> Phoenix.HTML.safe_to_string()
+
+    current_html = "<span style=\"color: #{color} !important\">#{escaped_component}</span>"
     new_path_so_far = path_so_far ++ [component]
 
     [current_html | build_nested_html(rest, all_paths, new_path_so_far)]

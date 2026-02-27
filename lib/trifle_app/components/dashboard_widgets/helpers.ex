@@ -23,6 +23,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   @default_heatmap_negative_color "#0EA5E9"
   @default_heatmap_positive_color "#EF4444"
   @palette_ids ChartColors.palette_options() |> Enum.map(& &1.id)
+  @allowed_text_widget_tags MapSet.new(
+                              ~w[a b blockquote br code div em h1 h2 h3 h4 h5 h6 hr i li ol p pre s span strong table tbody td th thead tr u ul]
+                            )
+  @void_text_widget_tags MapSet.new(~w[br hr])
+  @global_text_widget_attrs MapSet.new(~w[class title role])
+  @text_widget_tag_attrs %{
+    "a" => MapSet.new(~w[href target rel]),
+    "th" => MapSet.new(~w[colspan rowspan scope]),
+    "td" => MapSet.new(~w[colspan rowspan])
+  }
+  @safe_url_schemes ["http", "https", "mailto", "tel"]
 
   ## Text helpers
 
@@ -78,6 +89,26 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
 
   def normalize_text_color_id(value) do
     resolve_text_widget_color(value).id
+  end
+
+  def sanitize_text_widget_html(value) do
+    safe_html =
+      case value do
+        v when is_binary(v) ->
+          v
+
+        v when is_integer(v) or is_float(v) or is_boolean(v) ->
+          Kernel.to_string(v)
+
+        _ ->
+          ""
+      end
+
+    safe_html
+    |> String.replace("\u0000", "")
+    |> remove_dangerous_text_widget_blocks()
+    |> String.replace(~r/<!--[\s\S]*?-->/, "")
+    |> sanitize_text_widget_tags()
   end
 
   ## KPI helpers
@@ -143,6 +174,232 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
 
   def normalize_chart_path_inputs_param(value), do: normalize_timeseries_paths_param(value)
   def normalize_chart_path_inputs_for_edit(value), do: normalize_timeseries_paths_for_edit(value)
+
+  defp remove_dangerous_text_widget_blocks(html) do
+    html =
+      Enum.reduce(dangerous_block_regexes(), html, fn regex, acc ->
+        Regex.replace(regex, acc, "")
+      end)
+
+    Enum.reduce(dangerous_self_closing_regexes(), html, fn regex, acc ->
+      Regex.replace(regex, acc, "")
+    end)
+  end
+
+  defp dangerous_block_regexes do
+    [
+      ~r/<\s*script\b[^>]*>.*?<\s*\/\s*script\s*>/is,
+      ~r/<\s*noscript\b[^>]*>.*?<\s*\/\s*noscript\s*>/is,
+      ~r/<\s*style\b[^>]*>.*?<\s*\/\s*style\s*>/is,
+      ~r/<\s*template\b[^>]*>.*?<\s*\/\s*template\s*>/is,
+      ~r/<\s*iframe\b[^>]*>.*?<\s*\/\s*iframe\s*>/is,
+      ~r/<\s*object\b[^>]*>.*?<\s*\/\s*object\s*>/is,
+      ~r/<\s*embed\b[^>]*>.*?<\s*\/\s*embed\s*>/is,
+      ~r/<\s*link\b[^>]*>.*?<\s*\/\s*link\s*>/is,
+      ~r/<\s*meta\b[^>]*>.*?<\s*\/\s*meta\s*>/is,
+      ~r/<\s*base\b[^>]*>.*?<\s*\/\s*base\s*>/is,
+      ~r/<\s*form\b[^>]*>.*?<\s*\/\s*form\s*>/is,
+      ~r/<\s*input\b[^>]*>.*?<\s*\/\s*input\s*>/is,
+      ~r/<\s*button\b[^>]*>.*?<\s*\/\s*button\s*>/is,
+      ~r/<\s*textarea\b[^>]*>.*?<\s*\/\s*textarea\s*>/is,
+      ~r/<\s*select\b[^>]*>.*?<\s*\/\s*select\s*>/is,
+      ~r/<\s*option\b[^>]*>.*?<\s*\/\s*option\s*>/is,
+      ~r/<\s*svg\b[^>]*>.*?<\s*\/\s*svg\s*>/is,
+      ~r/<\s*math\b[^>]*>.*?<\s*\/\s*math\s*>/is
+    ]
+  end
+
+  defp dangerous_self_closing_regexes do
+    [
+      ~r/<\s*script\b[^>]*\/\s*>/is,
+      ~r/<\s*noscript\b[^>]*\/\s*>/is,
+      ~r/<\s*style\b[^>]*\/\s*>/is,
+      ~r/<\s*template\b[^>]*\/\s*>/is,
+      ~r/<\s*iframe\b[^>]*\/\s*>/is,
+      ~r/<\s*object\b[^>]*\/\s*>/is,
+      ~r/<\s*embed\b[^>]*\/\s*>/is,
+      ~r/<\s*link\b[^>]*\/\s*>/is,
+      ~r/<\s*meta\b[^>]*\/\s*>/is,
+      ~r/<\s*base\b[^>]*\/\s*>/is,
+      ~r/<\s*form\b[^>]*\/\s*>/is,
+      ~r/<\s*input\b[^>]*\/\s*>/is,
+      ~r/<\s*button\b[^>]*\/\s*>/is,
+      ~r/<\s*textarea\b[^>]*\/\s*>/is,
+      ~r/<\s*select\b[^>]*\/\s*>/is,
+      ~r/<\s*option\b[^>]*\/\s*>/is,
+      ~r/<\s*svg\b[^>]*\/\s*>/is,
+      ~r/<\s*math\b[^>]*\/\s*>/is
+    ]
+  end
+
+  defp sanitize_text_widget_tags(html) do
+    Regex.replace(~r/<\s*(\/?)\s*([a-zA-Z0-9:-]+)([^>]*)>/, html, fn _full,
+                                                                     closing,
+                                                                     raw_tag,
+                                                                     attrs ->
+      tag =
+        raw_tag
+        |> to_string()
+        |> String.downcase()
+
+      cond do
+        !MapSet.member?(@allowed_text_widget_tags, tag) ->
+          ""
+
+        closing == "/" ->
+          if MapSet.member?(@void_text_widget_tags, tag), do: "", else: "</#{tag}>"
+
+        true ->
+          "<#{tag}#{sanitize_text_widget_attrs(tag, attrs)}>"
+      end
+    end)
+  end
+
+  defp sanitize_text_widget_attrs(tag, attrs_raw) do
+    attrs =
+      Regex.scan(
+        ~r/([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/,
+        to_string(attrs_raw),
+        capture: :all_but_first
+      )
+
+    attrs
+    |> Enum.reduce(%{}, fn captures, acc ->
+      [raw_name | raw_values] = captures
+
+      name =
+        raw_name
+        |> to_string()
+        |> String.downcase()
+
+      value = first_non_empty(raw_values)
+
+      cond do
+        String.starts_with?(name, "on") ->
+          acc
+
+        name in ["style", "srcdoc"] ->
+          acc
+
+        String.contains?(name, ":") ->
+          acc
+
+        !allowed_text_widget_attr_for_tag?(tag, name) ->
+          acc
+
+        true ->
+          case normalize_text_widget_attr_value(tag, name, value) do
+            nil -> acc
+            normalized -> Map.put(acc, name, normalized)
+          end
+      end
+    end)
+    |> maybe_enforce_text_widget_anchor_rel()
+    |> Enum.sort_by(fn {name, _value} -> name end)
+    |> Enum.map_join(fn {name, value} ->
+      escaped_value = html_escape_to_string(value)
+      " #{name}=\"#{escaped_value}\""
+    end)
+  end
+
+  defp allowed_text_widget_attr_for_tag?(tag, name) do
+    MapSet.member?(@global_text_widget_attrs, name) or
+      MapSet.member?(Map.get(@text_widget_tag_attrs, tag, MapSet.new()), name)
+  end
+
+  defp normalize_text_widget_attr_value("a", "href", value) do
+    sanitize_text_widget_href(value)
+  end
+
+  defp normalize_text_widget_attr_value("a", "target", value) do
+    case value
+         |> to_string()
+         |> String.trim()
+         |> String.downcase() do
+      target when target in ["_blank", "_self", "_parent", "_top"] -> target
+      _ -> nil
+    end
+  end
+
+  defp normalize_text_widget_attr_value(_tag, _name, value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> case do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp sanitize_text_widget_href(value) do
+    href =
+      value
+      |> to_string()
+      |> String.trim()
+      |> String.replace(~r/[\x00-\x1F\x7F\s]+/u, "")
+
+    cond do
+      href == "" ->
+        nil
+
+      String.starts_with?(href, "#") ->
+        href
+
+      String.starts_with?(href, "//") ->
+        nil
+
+      String.starts_with?(href, "/") and !String.starts_with?(href, "//") ->
+        href
+
+      true ->
+        case URI.parse(href) do
+          %URI{scheme: nil} ->
+            href
+
+          %URI{scheme: scheme} ->
+            if String.downcase(scheme || "") in @safe_url_schemes do
+              href
+            else
+              nil
+            end
+        end
+    end
+  end
+
+  defp maybe_enforce_text_widget_anchor_rel(attrs) when is_map(attrs) do
+    case Map.get(attrs, "target") do
+      "_blank" ->
+        rel_tokens =
+          attrs
+          |> Map.get("rel", "")
+          |> to_string()
+          |> String.downcase()
+          |> String.split(~r/\s+/, trim: true)
+          |> MapSet.new()
+          |> MapSet.union(MapSet.new(["noopener", "noreferrer", "nofollow"]))
+          |> MapSet.to_list()
+          |> Enum.sort()
+          |> Enum.join(" ")
+
+        Map.put(attrs, "rel", rel_tokens)
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp first_non_empty(values) do
+    Enum.find(values, "", fn value ->
+      !is_nil(value) and to_string(value) != ""
+    end)
+  end
+
+  defp html_escape_to_string(value) do
+    value
+    |> to_string()
+    |> Phoenix.HTML.html_escape()
+    |> Phoenix.HTML.safe_to_string()
+  end
 
   def category_paths_for_form(%{} = widget) do
     paths = normalize_category_paths_for_edit(Map.get(widget, "paths"))

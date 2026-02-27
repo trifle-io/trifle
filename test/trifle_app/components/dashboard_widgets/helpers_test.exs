@@ -151,4 +151,33 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     assert updated_vertical_only["horizontal"]["buckets"] == ["kg_0_5", "kg_1_0", "kg_1_5"]
     assert updated_vertical_only["vertical"]["buckets"] == ["aed_500", "aed_1000"]
   end
+
+  test "sanitizes unsafe html payload for text widgets" do
+    html =
+      """
+      <div onclick="alert(1)">
+        <script>alert('x')</script>
+        <a href="javascript:alert(1)" target="_blank">bad</a>
+        <a href="https://example.com" target="_blank">good</a>
+      </div>
+      """
+
+    sanitized = Helpers.sanitize_text_widget_html(html)
+
+    refute String.contains?(sanitized, "<script")
+    refute String.contains?(sanitized, "onclick=")
+    refute String.contains?(sanitized, "javascript:")
+    assert String.contains?(sanitized, ~s(href="https://example.com"))
+    assert String.contains?(sanitized, ~s(target="_blank"))
+    assert String.contains?(sanitized, ~s(rel="nofollow noopener noreferrer"))
+  end
+
+  test "removes disallowed tags but preserves inner text" do
+    html = "<p>Hello <img src=x onerror=alert(1)>world</p>"
+    sanitized = Helpers.sanitize_text_widget_html(html)
+
+    assert String.contains?(sanitized, "<p>")
+    assert String.contains?(sanitized, "Hello world")
+    refute String.contains?(sanitized, "<img")
+  end
 end

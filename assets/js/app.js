@@ -62,6 +62,136 @@ const formatCompactNumber = (value) => {
     .replace(/(\.\d*?[1-9])0+$/, '$1');
 };
 
+const SAFE_HTML_ALLOWED_TAGS = new Set([
+  'a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'hr', 'i', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'table', 'tbody', 'td', 'th',
+  'thead', 'tr', 'u', 'ul'
+]);
+const SAFE_HTML_DROP_TAGS = new Set([
+  'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input',
+  'button', 'textarea', 'select', 'option', 'svg', 'math'
+]);
+const SAFE_HTML_GLOBAL_ATTRS = new Set(['class', 'title', 'role']);
+const SAFE_HTML_TAG_ATTRS = {
+  a: new Set(['href', 'target', 'rel']),
+  th: new Set(['colspan', 'rowspan', 'scope']),
+  td: new Set(['colspan', 'rowspan'])
+};
+
+const isSafeHtmlHref = (value) => {
+  const href = String(value || '').trim();
+  if (href === '') return false;
+  if (href.startsWith('#')) return true;
+  if (href.startsWith('/')) return !href.startsWith('//');
+
+  try {
+    const baseOrigin =
+      window.location && window.location.origin ? window.location.origin : 'http://localhost';
+    const parsed = new URL(href, baseOrigin);
+    const protocol = String(parsed.protocol || '').toLowerCase();
+    return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:' || protocol === 'tel:';
+  } catch (_) {
+    return false;
+  }
+};
+
+const sanitizeRichHtml = (rawHtml) => {
+  if (typeof rawHtml !== 'string' || rawHtml.trim() === '') return '';
+  const template = document.createElement('template');
+  template.innerHTML = rawHtml;
+
+  const sanitizeAttrs = (element, tag) => {
+    const tagAllowedAttrs = SAFE_HTML_TAG_ATTRS[tag] || new Set();
+
+    Array.from(element.attributes).forEach((attr) => {
+      const name = String(attr.name || '').toLowerCase();
+      const value = String(attr.value || '');
+      const isAria = name.startsWith('aria-');
+      const allowed = isAria || SAFE_HTML_GLOBAL_ATTRS.has(name) || tagAllowedAttrs.has(name);
+
+      if (
+        !allowed ||
+        name.startsWith('on') ||
+        name === 'style' ||
+        name === 'srcdoc' ||
+        name.includes(':')
+      ) {
+        element.removeAttribute(attr.name);
+        return;
+      }
+
+      if (tag === 'a' && name === 'href') {
+        const href = value.trim();
+        if (!isSafeHtmlHref(href)) {
+          element.removeAttribute(attr.name);
+        } else {
+          element.setAttribute('href', href);
+        }
+      }
+
+      if (tag === 'a' && name === 'target') {
+        const target = value.trim().toLowerCase();
+        if (!['_blank', '_self', '_parent', '_top'].includes(target)) {
+          element.removeAttribute(attr.name);
+        } else {
+          element.setAttribute('target', target);
+        }
+      }
+
+      if ((name === 'colspan' || name === 'rowspan') && !/^\d+$/.test(value.trim())) {
+        element.removeAttribute(attr.name);
+      }
+    });
+
+    if (tag === 'a' && String(element.getAttribute('target') || '').toLowerCase() === '_blank') {
+      const relTokens = new Set(
+        String(element.getAttribute('rel') || '')
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean)
+      );
+
+      ['noopener', 'noreferrer', 'nofollow'].forEach((token) => {
+        relTokens.add(token);
+      });
+      element.setAttribute('rel', Array.from(relTokens).sort().join(' '));
+    }
+  };
+
+  const sanitizeNode = (node) => {
+    if (!node) return;
+
+    if (node.nodeType === 8) {
+      node.remove();
+      return;
+    }
+
+    if (node.nodeType !== 1) return;
+
+    const tag = String(node.tagName || '').toLowerCase();
+    if (SAFE_HTML_DROP_TAGS.has(tag)) {
+      node.remove();
+      return;
+    }
+
+    Array.from(node.childNodes).forEach((child) => {
+      sanitizeNode(child);
+    });
+
+    if (!SAFE_HTML_ALLOWED_TAGS.has(tag)) {
+      node.replaceWith(...Array.from(node.childNodes));
+      return;
+    }
+
+    sanitizeAttrs(node, tag);
+  };
+
+  Array.from(template.content.childNodes).forEach((node) => {
+    sanitizeNode(node);
+  });
+  return template.innerHTML;
+};
+
 const normalizeHexColor = (color) => {
   if (typeof color !== 'string') return null;
   const trimmed = color.trim();
@@ -256,6 +386,135 @@ const buildBucketIndexMap = (labels) => {
     map.set(String(label), idx);
   });
   return map;
+};
+
+const distributionSeriesName = (seriesItem, idx) => {
+  const rawName =
+    typeof (seriesItem && seriesItem.name) === 'string'
+      ? seriesItem.name.trim()
+      : '';
+  return rawName !== '' ? rawName : `Series ${idx + 1}`;
+};
+
+const buildDistributionHeatmapAggregation = ({
+  seriesList,
+  labelIndexMap,
+  verticalLabelIndexMap
+}) => {
+  const totalsByCell = new Map();
+  const breakdownTotalsByCell = new Map();
+  const safeSeries = Array.isArray(seriesList) ? seriesList : [];
+
+  safeSeries.forEach((seriesItem, idx) => {
+    const name = distributionSeriesName(seriesItem, idx);
+    const points = Array.isArray(seriesItem && seriesItem.points) ? seriesItem.points : [];
+
+    points.forEach((point) => {
+      if (!point || point.bucket_x == null || point.bucket_y == null) return;
+      const xIdx = labelIndexMap.get(String(point.bucket_x));
+      const yIdx = verticalLabelIndexMap.get(String(point.bucket_y));
+      if (xIdx == null || yIdx == null) return;
+
+      const value = Number(point.value);
+      if (!Number.isFinite(value)) return;
+
+      const key = `${xIdx}:${yIdx}`;
+      totalsByCell.set(key, (totalsByCell.get(key) || 0) + value);
+
+      const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
+      seriesTotals.set(name, (seriesTotals.get(name) || 0) + value);
+      breakdownTotalsByCell.set(key, seriesTotals);
+    });
+  });
+
+  const breakdownByCell = new Map();
+  breakdownTotalsByCell.forEach((seriesTotals, key) => {
+    breakdownByCell.set(
+      key,
+      aggregateHeatmapBreakdown(
+        Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
+          name: seriesName,
+          value: totalValue
+        }))
+      )
+    );
+  });
+
+  const heatmapData = Array.from(totalsByCell.entries())
+    .map(([key, value]) => {
+      const [xIdxRaw, yIdxRaw] = key.split(':');
+      const xIdx = Number(xIdxRaw);
+      const yIdx = Number(yIdxRaw);
+      return [xIdx, yIdx, value];
+    })
+    .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
+
+  return { heatmapData, breakdownByCell };
+};
+
+const buildDistributionScatterSeries = ({
+  seriesList,
+  labelIndexMap,
+  verticalLabelIndexMap,
+  resolveColor
+}) => {
+  let maxValue = 0;
+  const safeSeries = Array.isArray(seriesList) ? seriesList : [];
+
+  const seriesData = safeSeries.map((seriesItem, idx) => {
+    const name = distributionSeriesName(seriesItem, idx);
+
+    const points = Array.isArray(seriesItem && seriesItem.points) ? seriesItem.points : [];
+    const color = resolveColor(seriesItem, idx);
+
+    const data = points
+      .map((point) => {
+        if (!point || point.bucket_x == null || point.bucket_y == null) return null;
+
+        const xIdx = labelIndexMap.get(String(point.bucket_x));
+        const yIdx = verticalLabelIndexMap.get(String(point.bucket_y));
+        if (xIdx == null || yIdx == null) return null;
+
+        const value = Number(point.value);
+        if (!Number.isFinite(value)) return null;
+
+        maxValue = Math.max(maxValue, value);
+        return [xIdx, yIdx, value];
+      })
+      .filter(Boolean);
+
+    return {
+      name,
+      type: 'scatter',
+      data,
+      symbolSize: (val) => {
+        const v = val && val[2] ? val[2] : 0;
+        if (!maxValue) return 10;
+        const size = 8 + (v / maxValue) * 24;
+        return Math.max(6, size);
+      },
+      itemStyle: { color, opacity: 1 },
+      hoverAnimation: false,
+      emphasis: {
+        disabled: true,
+        focus: 'none',
+        scale: false,
+        blurScope: 'none',
+        itemStyle: { opacity: 1 }
+      },
+      select: { disabled: true }
+    };
+  });
+
+  const filteredSeries = seriesData.filter(
+    (entry) => Array.isArray(entry.data) && entry.data.length
+  );
+  const legendNames = filteredSeries.map((entry) => entry.name);
+
+  return {
+    seriesData: filteredSeries,
+    legendNames
+  };
 };
 
 const aggregateHeatmapBreakdown = (entries) => {
@@ -3112,53 +3371,14 @@ Hooks.DashboardGrid = {
         let seriesData;
         if (is3d) {
           if (isHeatmap) {
-            const totalsByCell = new Map();
-            const breakdownTotalsByCell = new Map();
+            const seriesList = Array.isArray(it.series) ? it.series : [];
             const labelIndexMap = buildBucketIndexMap(labels);
             const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
-
-            (Array.isArray(it.series) ? it.series : []).forEach((series, idx) => {
-              const name = series && series.name ? series.name : `Series ${idx + 1}`;
-              const points = Array.isArray(series && series.points) ? series.points : [];
-
-              points.forEach((p) => {
-                if (!p || p.bucket_x == null || p.bucket_y == null) return;
-                const xIndex = labelIndexMap.get(String(p.bucket_x));
-                const yIndex = verticalLabelIndexMap.get(String(p.bucket_y));
-                if (xIndex == null || yIndex == null) return;
-                const val = Number(p.value);
-                if (!Number.isFinite(val)) return;
-
-                const key = `${xIndex}:${yIndex}`;
-                totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
-
-                const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
-                seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
-                breakdownTotalsByCell.set(key, seriesTotals);
-              });
+            const { heatmapData, breakdownByCell } = buildDistributionHeatmapAggregation({
+              seriesList,
+              labelIndexMap,
+              verticalLabelIndexMap
             });
-
-            const breakdownByCell = new Map();
-            breakdownTotalsByCell.forEach((seriesTotals, key) => {
-              breakdownByCell.set(
-                key,
-                aggregateHeatmapBreakdown(
-                  Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
-                    name: seriesName,
-                    value: totalValue
-                  }))
-                )
-              );
-            });
-
-            const heatmapData = Array.from(totalsByCell.entries())
-              .map(([key, value]) => {
-                const [xIdxRaw, yIdxRaw] = key.split(':');
-                const xIdx = Number(xIdxRaw);
-                const yIdx = Number(yIdxRaw);
-                return [xIdx, yIdx, value];
-              })
-              .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
             const showScale = it.legend === undefined ? true : !!it.legend;
             const gridBottom = showScale ? 72 : 20;
@@ -3167,7 +3387,7 @@ Hooks.DashboardGrid = {
             const visualSettings = resolveHeatmapVisualMap({
               payload: it,
               heatmapData,
-              series: Array.isArray(it.series) ? it.series : [],
+              series: seriesList,
               fallbackHeatColor,
               isDarkMode
             });
@@ -3197,44 +3417,23 @@ Hooks.DashboardGrid = {
             return;
           }
 
-          let maxValue = 0;
-          seriesData = (Array.isArray(it.series) ? it.series : []).map((series, idx) => {
-            const name = series && series.name ? series.name : `Series ${idx + 1}`;
-            legendNames.push(name);
-            const points = Array.isArray(series && series.points) ? series.points : [];
-            const explicitColor =
-              typeof series?.color === 'string' && series.color.trim() !== '' ? series.color.trim() : null;
-            const color = explicitColor || colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
-            const data = points.map((p) => {
-              const xIndex = labels.indexOf(p.bucket_x);
-              const yIndex = verticalLabels.indexOf(p.bucket_y);
-              if (xIndex === -1 || yIndex === -1) return null;
-              const val = Number(p.value) || 0;
-              maxValue = Math.max(maxValue, val);
-              return [xIndex, yIndex, val];
-            }).filter(Boolean);
-            return {
-              name,
-              type: 'scatter',
-              data,
-              symbolSize: (val) => {
-                const v = val && val[2] ? val[2] : 0;
-                if (!maxValue) return 10;
-                const size = 8 + (v / maxValue) * 24;
-                return Math.max(6, size);
-              },
-              itemStyle: { color, opacity: 1 },
-              hoverAnimation: false,
-              emphasis: {
-                disabled: true,
-                focus: 'none',
-                scale: false,
-                blurScope: 'none',
-                itemStyle: { opacity: 1 }
-              },
-              select: { disabled: true }
-            };
+          const seriesList = Array.isArray(it.series) ? it.series : [];
+          const labelIndexMap = buildBucketIndexMap(labels);
+          const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+          const scatterData = buildDistributionScatterSeries({
+            seriesList,
+            labelIndexMap,
+            verticalLabelIndexMap,
+            resolveColor: (series, idx) => {
+              const explicitColor =
+                typeof series?.color === 'string' && series.color.trim() !== ''
+                  ? series.color.trim()
+                  : null;
+              return explicitColor || colors[idx % (colors.length || 1)] || colors[0] || '#14b8a6';
+            }
           });
+          legendNames.push(...scatterData.legendNames);
+          seriesData = scatterData.seriesData;
 
           if (!seriesData.length) {
             const fallbackColor = colors[0] || '#14b8a6';
@@ -3286,10 +3485,15 @@ Hooks.DashboardGrid = {
 
                 const seriesName = params.seriesName || '';
                 const marker = params.marker || '';
-                const lines = [`${xLabel} × ${yLabel}`];
+                const escapedXLabel = this.escapeHtml(xLabel);
+                const escapedYLabel = this.escapeHtml(yLabel);
+                const escapedSeriesName = this.escapeHtml(seriesName);
+                const lines = [`${escapedXLabel} × ${escapedYLabel}`];
 
-                if (seriesName || marker) {
-                  lines.push(`${marker}${seriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+                if (escapedSeriesName || marker) {
+                  lines.push(
+                    `${marker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`
+                  );
                 }
 
                 return lines.join('<br/>');
@@ -3980,7 +4184,11 @@ Hooks.DashboardGrid = {
         body.style.overflowY = 'auto';
 
         const raw = typeof it.payload === 'string' ? it.payload : '';
-        const finalHtml = raw && raw.trim().length ? raw : '<div class="text-xs opacity-60 italic">No HTML content</div>';
+        const sanitizedHtml = sanitizeRichHtml(raw);
+        const finalHtml =
+          sanitizedHtml && sanitizedHtml.trim().length
+            ? sanitizedHtml
+            : '<div class="text-xs opacity-60 italic">No HTML content</div>';
         body.innerHTML = `<div class="text-widget-html w-full leading-relaxed">${finalHtml}</div>`;
       } else {
         const align = (it.alignment || 'center').toLowerCase();
@@ -5023,6 +5231,9 @@ Hooks.ExpandedWidgetView = {
   },
 
   updated() {
+    // LiveView patches may replace inner nodes; refresh targets before rendering.
+    this.chartTarget = this.el.querySelector('[data-role="chart"]');
+    this.tableRoot = this.el.querySelector('[data-role="table-root"]');
     this.render();
   },
 
@@ -5084,15 +5295,67 @@ Hooks.ExpandedWidgetView = {
   },
 
   render(force = false) {
+    this.chartTarget = this.el.querySelector('[data-role="chart"]');
+    this.tableRoot = this.el.querySelector('[data-role="table-root"]');
+
     const type = (this.el.dataset.type || '').toLowerCase();
+    const tab = this.el.dataset.tab || '';
     const chartRaw = this.el.dataset.chart || '';
     const paletteRaw = this.el.dataset.colors || '';
     const visualRaw = this.el.dataset.visual || '';
     const textRaw = this.el.dataset.text || '';
-    const key = [type, chartRaw, paletteRaw, visualRaw, textRaw].join('||');
-    if (!force && key === this.lastPayloadKey) {
+    const key = [type, tab, chartRaw, paletteRaw, visualRaw, textRaw].join('||');
+    const chartWidgetTypes = ['timeseries', 'category', 'distribution', 'heatmap', 'kpi'];
+    const chartContentMissing =
+      chartWidgetTypes.includes(type) &&
+      !!this.chartTarget &&
+      this.chartTarget.childElementCount === 0;
+    const textContentMissing =
+      type === 'text' &&
+      !!this.chartTarget &&
+      this.chartTarget.childElementCount === 0;
+    const tableContentMissing = !!this.tableRoot && this.tableRoot.childElementCount === 0;
+    const tableRootChanged = !!this._lastTableRoot && this._lastTableRoot !== this.tableRoot;
+    this._lastTableRoot = this.tableRoot;
+
+    const chartContainerChanged =
+      !!this.chart &&
+      (
+        this.chartElement !== this.chartTarget ||
+        !this.chartElement ||
+        !this.chartElement.isConnected
+      );
+
+    const chartDomWiped =
+      !!this.chart &&
+      !!this.chartTarget &&
+      !this.chartTarget.querySelector('canvas, svg');
+
+    if (chartContainerChanged || chartDomWiped || tableRootChanged) {
+      this.disposeChart();
+      force = true;
+    }
+
+    if (
+      !force &&
+      key === this.lastPayloadKey &&
+      !chartContentMissing &&
+      !textContentMissing &&
+      !tableContentMissing
+    ) {
       if (this.chart && typeof this.chart.resize === 'function') {
         try { this.chart.resize(); } catch (_) {}
+        // Reflow can complete after LiveView patch; do a deferred resize pass as well.
+        requestAnimationFrame(() => {
+          if (this.chart && typeof this.chart.resize === 'function') {
+            try { this.chart.resize(); } catch (_) {}
+          }
+        });
+        setTimeout(() => {
+          if (this.chart && typeof this.chart.resize === 'function') {
+            try { this.chart.resize(); } catch (_) {}
+          }
+        }, 90);
       }
       return;
     }
@@ -5149,9 +5412,101 @@ Hooks.ExpandedWidgetView = {
     return this.normalizedExplicitColor(color) || this.seriesColor(index);
   },
 
+  getWidgetConfig(data) {
+    if (!data || typeof data !== 'object') return {};
+
+    if (data.widgetConfig && typeof data.widgetConfig === 'object') {
+      return data.widgetConfig;
+    }
+
+    if (data.widget_config && typeof data.widget_config === 'object') {
+      return data.widget_config;
+    }
+
+    return {};
+  },
+
+  resolveCategoryLegendVisible(data, chartType, seriesCount) {
+    const widgetConfig = this.getWidgetConfig(data);
+    const explicitLegendVisible =
+      widgetConfig.legendVisible !== undefined
+        ? widgetConfig.legendVisible
+        : widgetConfig.legend_visible !== undefined
+          ? widgetConfig.legend_visible
+          : data && data.legend !== undefined
+            ? data.legend
+            : undefined;
+
+    if (explicitLegendVisible !== undefined) {
+      return !!explicitLegendVisible;
+    }
+
+    if (chartType === 'pie' || chartType === 'donut') {
+      return seriesCount > 1;
+    }
+
+    return true;
+  },
+
+  renderEmptyChart(message, opts = {}) {
+    const chart = this.ensureChart(opts);
+    if (!chart) return;
+
+    const isDarkMode = this.getTheme() === 'dark';
+    const emptyText =
+      typeof message === 'string' && message.trim() !== ''
+        ? message
+        : 'No data available yet.';
+
+    chart.setOption({
+      backgroundColor: 'transparent',
+      animation: false,
+      grid: { top: 20, bottom: 36, left: 52, right: 24, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: [],
+        axisLine: { lineStyle: { color: isDarkMode ? '#334155' : '#e2e8f0' } },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 1,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: {
+          lineStyle: {
+            color: isDarkMode ? '#1f2937' : '#e2e8f0',
+            opacity: isDarkMode ? 0.35 : 1
+          }
+        }
+      },
+      tooltip: { show: false },
+      series: [{ type: 'line', data: [], silent: true }],
+      graphic: [{
+        type: 'text',
+        left: 'center',
+        top: 'middle',
+        silent: true,
+        style: {
+          text: emptyText,
+          fill: isDarkMode ? '#94a3b8' : '#64748b',
+          textAlign: 'center',
+          font:
+            '500 13px Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        }
+      }]
+    }, true);
+
+    try { chart.resize(); } catch (_) {}
+  },
+
   renderTimeseries(data) {
     if (!data || !Array.isArray(data.series) || data.series.length === 0) {
-      this.showChartPlaceholder('No chart data available yet.');
+      this.renderEmptyChart('No chart data available yet.');
       this.showTablePlaceholder('No series data available yet.');
       return;
     }
@@ -5603,7 +5958,7 @@ Hooks.ExpandedWidgetView = {
     this.chartTarget.innerHTML = '';
 
     if (!data) {
-      this.showChartPlaceholder('No KPI data available yet.');
+      this.renderEmptyChart('No KPI data available yet.');
       this.showTablePlaceholder('Series summary is only available when a sparkline is enabled.');
       return;
     }
@@ -5766,7 +6121,11 @@ Hooks.ExpandedWidgetView = {
     if ((data.subtype || '').toLowerCase() === 'html' && data.payload) {
       const html = document.createElement('div');
       html.className = 'w-full h-full overflow-auto text-left text-slate-900 dark:text-slate-100 p-6';
-      html.innerHTML = data.payload;
+      const sanitizedHtml = sanitizeRichHtml(data.payload);
+      html.innerHTML =
+        sanitizedHtml && sanitizedHtml.trim().length
+          ? sanitizedHtml
+          : '<div class="text-sm text-slate-500 dark:text-slate-300 italic">No HTML content</div>';
       this.chartTarget.appendChild(html);
       return;
     }
@@ -5959,23 +6318,25 @@ Hooks.ExpandedWidgetView = {
 
   renderCategory(data) {
     if (!data || !Array.isArray(data.data) || data.data.length === 0) {
-      this.showChartPlaceholder('No category data available yet.');
+      this.renderEmptyChart('No category data available yet.');
       this.showTablePlaceholder('No categories available yet.');
       return;
     }
     const chart = this.ensureChart();
     if (!chart) return;
 
-    const theme = this.getTheme();
-    const isDarkMode = theme === 'dark';
-    const type = String(data.chart_type || 'bar').toLowerCase();
+    const isDarkMode = this.getTheme() === 'dark';
+    const chartType = String(data.chart_type || 'bar').toLowerCase();
+    const series = Array.isArray(data?.data) ? data.data : [];
+    const legendVisible = this.resolveCategoryLegendVisible(data, chartType, series.length);
 
     let option;
-    if (type === 'pie' || type === 'donut') {
+    if (chartType === 'pie' || chartType === 'donut') {
       const labelColor = isDarkMode ? '#E2E8F0' : '#1F2937';
       const labelLineColor = isDarkMode ? '#475569' : '#94A3B8';
       option = {
         backgroundColor: 'transparent',
+        legend: { show: legendVisible },
         tooltip: {
           trigger: 'item',
           appendToBody: true,
@@ -5986,8 +6347,8 @@ Hooks.ExpandedWidgetView = {
         color: this.colors.length ? this.colors : undefined,
         series: [{
           type: 'pie',
-          radius: type === 'donut' ? ['50%', '72%'] : '70%',
-          data: data.data,
+          radius: chartType === 'donut' ? ['50%', '72%'] : '70%',
+          data: series,
           label: { color: labelColor },
           labelLine: { lineStyle: { color: labelLineColor } },
           itemStyle: {
@@ -6064,12 +6425,12 @@ Hooks.ExpandedWidgetView = {
       series.length === 0 ||
       (is3d && (!verticalLabels || verticalLabels.length === 0))
     ) {
-      this.showChartPlaceholder('No distribution data available yet.');
+      this.renderEmptyChart('No distribution data available yet.');
       this.renderDistributionTable(data);
       return;
     }
 
-    const chart = this.ensureChart({ height: 480 });
+    const chart = this.ensureChart();
     if (!chart) {
       this.renderDistributionTable(data);
       return;
@@ -6081,56 +6442,17 @@ Hooks.ExpandedWidgetView = {
 
     if (is3d) {
       if (isHeatmap) {
-        const totalsByCell = new Map();
-        const breakdownTotalsByCell = new Map();
+        const seriesList = Array.isArray(series) ? series : [];
         const labelIndexMap = buildBucketIndexMap(labels);
         const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
-
-        series.forEach((seriesItem, idx) => {
-          const name = seriesItem?.name || `Series ${idx + 1}`;
-          const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
-
-          points.forEach((p) => {
-            if (!p || p.bucket_x == null || p.bucket_y == null) return;
-            const xIdx = labelIndexMap.get(String(p.bucket_x));
-            const yIdx = verticalLabelIndexMap.get(String(p.bucket_y));
-            if (xIdx == null || yIdx == null) return;
-            const val = Number(p.value);
-            if (!Number.isFinite(val)) return;
-
-            const key = `${xIdx}:${yIdx}`;
-            totalsByCell.set(key, (totalsByCell.get(key) || 0) + val);
-
-            const seriesTotals = breakdownTotalsByCell.get(key) || new Map();
-            seriesTotals.set(name, (seriesTotals.get(name) || 0) + val);
-            breakdownTotalsByCell.set(key, seriesTotals);
-          });
+        const { heatmapData, breakdownByCell } = buildDistributionHeatmapAggregation({
+          seriesList,
+          labelIndexMap,
+          verticalLabelIndexMap
         });
-
-        const breakdownByCell = new Map();
-        breakdownTotalsByCell.forEach((seriesTotals, key) => {
-          breakdownByCell.set(
-            key,
-            aggregateHeatmapBreakdown(
-              Array.from(seriesTotals.entries()).map(([seriesName, totalValue]) => ({
-                name: seriesName,
-                value: totalValue
-              }))
-            )
-          );
-        });
-
-        const heatmapData = Array.from(totalsByCell.entries())
-          .map(([key, value]) => {
-            const [xIdxRaw, yIdxRaw] = key.split(':');
-            const xIdx = Number(xIdxRaw);
-            const yIdx = Number(yIdxRaw);
-            return [xIdx, yIdx, value];
-          })
-          .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
         if (!heatmapData.length) {
-          this.showChartPlaceholder('No distribution data available yet.');
+          this.renderEmptyChart('No distribution data available yet.');
           this.renderDistributionTable(data);
           return;
         }
@@ -6142,7 +6464,7 @@ Hooks.ExpandedWidgetView = {
         const visualSettings = resolveHeatmapVisualMap({
           payload: data,
           heatmapData,
-          series,
+          series: seriesList,
           fallbackHeatColor,
           isDarkMode
         });
@@ -6167,56 +6489,25 @@ Hooks.ExpandedWidgetView = {
         return;
       }
 
-      let maxValue = 0;
-      const legendNames = [];
-      let seriesData = series.map((seriesItem, idx) => {
-        const name = seriesItem?.name || `Series ${idx + 1}`;
-        legendNames.push(name);
-        const points = Array.isArray(seriesItem?.points) ? seriesItem.points : [];
-        const explicitColor =
-          typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
-            ? seriesItem.color.trim()
-            : null;
-        const color = explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
-        const dataPoints = points
-          .map((p) => {
-            if (!p) return null;
-            const xIdx = labels.indexOf(p.bucket_x);
-            const yIdx = verticalLabels.indexOf(p.bucket_y);
-            if (xIdx === -1 || yIdx === -1) return null;
-            const val = Number(p.value) || 0;
-            maxValue = Math.max(maxValue, val);
-            return [xIdx, yIdx, val];
-          })
-          .filter(Boolean);
-
-        return {
-          name,
-          type: 'scatter',
-          data: dataPoints,
-          symbolSize: (val) => {
-            const v = val && val[2] ? val[2] : 0;
-            if (!maxValue) return 10;
-            const size = 8 + (v / maxValue) * 24;
-            return Math.max(6, size);
-          },
-          itemStyle: { color, opacity: 1 },
-          hoverAnimation: false,
-          emphasis: {
-            disabled: true,
-            focus: 'none',
-            scale: false,
-            blurScope: 'none',
-            itemStyle: { opacity: 1 }
-          },
-          select: { disabled: true }
-        };
+      const labelIndexMap = buildBucketIndexMap(labels);
+      const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+      const scatterData = buildDistributionScatterSeries({
+        seriesList: series,
+        labelIndexMap,
+        verticalLabelIndexMap,
+        resolveColor: (seriesItem, idx) => {
+          const explicitColor =
+            typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
+              ? seriesItem.color.trim()
+              : null;
+          return explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
+        }
       });
-
-      seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
+      const legendNames = scatterData.legendNames;
+      const seriesData = scatterData.seriesData;
 
       if (!seriesData.length) {
-        this.showChartPlaceholder('No distribution data available yet.');
+        this.renderEmptyChart('No distribution data available yet.');
         this.renderDistributionTable(data);
         return;
       }
@@ -6255,10 +6546,13 @@ Hooks.ExpandedWidgetView = {
 
             const seriesName = params.seriesName || '';
             const marker = params.marker || '';
-            const lines = [`${xLabel} × ${yLabel}`];
+            const escapedXLabel = this.escapeHtml(xLabel);
+            const escapedYLabel = this.escapeHtml(yLabel);
+            const escapedSeriesName = this.escapeHtml(seriesName);
+            const lines = [`${escapedXLabel} × ${escapedYLabel}`];
 
-            if (seriesName || marker) {
-              lines.push(`${marker}${seriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+            if (escapedSeriesName || marker) {
+              lines.push(`${marker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`);
             }
 
             return lines.join('<br/>');
@@ -6513,6 +6807,17 @@ Hooks.ExpandedWidgetView = {
     `;
   },
 
+  escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/[&<>"']/g, (s) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    }[s]));
+  },
+
   renderCategoryTable(data) {
     if (!this.tableRoot) return;
     const items = Array.isArray(data?.data) ? data.data : [];
@@ -6609,6 +6914,23 @@ Hooks.ExpandedAgGridTable = {
 
   render() {
     const payloadString = this.el.dataset.table || '';
+    const root = this.el.querySelector('[data-role="aggrid-table-root"]');
+    const gridRootReplaced =
+      !!this.grid &&
+      (
+        !this.grid.root ||
+        this.grid.root !== root ||
+        !this.grid.root.isConnected
+      );
+    const gridDomWiped =
+      !!this.grid &&
+      !!root &&
+      !root.querySelector('.ag-root-wrapper, .ag-root');
+
+    if (gridRootReplaced || gridDomWiped) {
+      this.destroyGrid();
+    }
+
     if (!payloadString) {
       this.showEmpty();
       return;

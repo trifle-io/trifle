@@ -33,7 +33,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Text do
 
     case subtype do
       "html" ->
-        Map.put(base, :payload, to_string(item["payload"] || ""))
+        payload =
+          item
+          |> Map.get("payload")
+          |> WidgetHelpers.sanitize_text_widget_html()
+
+        Map.put(base, :payload, payload)
 
       _ ->
         base

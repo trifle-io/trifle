@@ -1181,142 +1181,65 @@ defmodule TrifleApp.Components.DashboardPage do
           </.app_modal>
         <% end %>
         
-    <!-- Widget Edit Modal -->
-        <%= if !@is_public_access && @editing_widget do %>
-          <% widget_cancel = JS.push("close_widget_editor") %>
-          <.app_modal id="widget-modal" show={true} on_cancel={widget_cancel}>
-            <:title>Edit Widget</:title>
-            <:body>
-              <div class="space-y-6">
-                <.form
-                  for={%{}}
-                  id="widget-editor-form"
-                  phx-change="widget_editor_change"
-                  phx-submit="save_widget"
-                  class="space-y-4"
-                >
-                  <input type="hidden" name="widget_id" value={@editing_widget["id"]} />
-                  <div>
-                    <label
-                      for="widget_type"
-                      class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
-                    >
-                      Widget Type
-                    </label>
-                    <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                      <select
-                        id="widget_type"
-                        name="widget_type"
-                        class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                      >
-                        <% sel = @editing_widget["type"] || "kpi" %>
-                        <option value="kpi" selected={sel == "kpi"}>KPI</option>
-                        <option value="timeseries" selected={sel == "timeseries"}>Timeseries</option>
-                        <option value="category" selected={sel == "category"}>Category</option>
-                        <option value="distribution" selected={sel == "distribution"}>
-                          Distribution
-                        </option>
-                        <option value="heatmap" selected={sel == "heatmap"}>
-                          Heatmap
-                        </option>
-                        <option value="table" selected={sel == "table"}>Table</option>
-                        <option value="list" selected={sel == "list"}>List</option>
-                        <option value="text" selected={sel == "text"}>Text</option>
-                      </select>
-                      <svg
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        data-slot="icon"
-                        aria-hidden="true"
-                        class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                      >
-                        <path
-                          d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                          clip-rule="evenodd"
-                          fill-rule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div>
-                    <label
-                      for="widget_title"
-                      class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
-                    >
-                      Title
-                    </label>
-                    <input
-                      type="text"
-                      id="widget_title"
-                      name="widget_title"
-                      value={@editing_widget["title"] || ""}
-                      phx-debounce="400"
-                      class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                      placeholder="Widget title"
-                    />
-                  </div>
-
-                  <WidgetEditor.editor widget={@editing_widget} path_options={@widget_path_options} />
-                </.form>
-              </div>
-            </:body>
-            <:actions>
-              <.form_actions>
-                <.secondary_button type="button" phx-click={widget_cancel}>
-                  Cancel
-                </.secondary_button>
-                <.primary_button form="widget-editor-form" phx-disable-with="Saving...">
-                  Save
-                </.primary_button>
-              </.form_actions>
-            </:actions>
-            <:below_actions>
-              <div class="border-t border-gray-200 dark:border-slate-600 pt-4">
-                <h3 class="text-sm font-medium text-red-600 dark:text-red-400">Danger Zone</h3>
-                <p class="text-xs text-gray-500 dark:text-slate-400">
-                  Delete this widget permanently from the dashboard.
-                </p>
-                <div class="mt-3">
-                  <button
-                    type="button"
-                    phx-click="delete_widget"
-                    phx-value-id={@editing_widget["id"]}
-                    data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
-                    class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
-                  >
-                    Delete Widget
-                  </button>
-                </div>
-              </div>
-            </:below_actions>
-          </.app_modal>
-        <% end %>
-        
-    <!-- Expanded Widget Modal -->
-        <%= if @expanded_widget do %>
+    <!-- Unified Widget Workspace Modal -->
+        <%= if @widget_workspace do %>
+          <% workspace = @widget_workspace %>
+          <% preview = workspace.preview || %{} %>
+          <% draft_widget = workspace.draft_widget || %{} %>
+          <% editable = workspace.editable? %>
+          <% active_tab = workspace.active_tab || "summary" %>
+          <% preview_type = preview.type || draft_widget["type"] || "kpi" %>
+          <% preview_title = preview.title || draft_widget["title"] || "Untitled Widget" %>
+          <% chart_data = preview[:chart_data] %>
+          <% visual_data = preview[:visual_data] %>
+          <% text_data = preview[:text_data] %>
           <.app_modal
-            id="widget-expand-modal"
+            id="widget-workspace-modal"
             show={true}
             size="full"
-            on_cancel={JS.push("close_expanded_widget")}
+            on_cancel={JS.push("request_close_widget_workspace")}
           >
             <:title>
-              <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                <div class="flex items-center gap-3">
-                  <span>{@expanded_widget.title}</span>
+              <div class="relative flex min-h-[2.5rem] items-center pr-14">
+                <div class="flex min-w-0 items-center gap-3">
+                  <span class="truncate">{preview_title}</span>
                   <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
-                    {String.capitalize(@expanded_widget.type || "widget")}
+                    {String.capitalize(to_string(preview_type))}
                   </span>
+                  <span :if={workspace.dirty?} class="text-xs text-amber-600 dark:text-amber-300">
+                    Unsaved changes
+                  </span>
+                </div>
+                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <div class="inline-flex rounded-md border border-gray-300 dark:border-slate-600 overflow-hidden">
+                    <button
+                      type="button"
+                      phx-click="set_widget_workspace_tab"
+                      phx-value-tab="summary"
+                      class={workspace_tab_button_classes(active_tab == "summary", :first)}
+                    >
+                      Summary
+                    </button>
+                    <button
+                      :if={editable}
+                      type="button"
+                      phx-click="set_widget_workspace_tab"
+                      phx-value-tab="edit"
+                      class={workspace_tab_button_classes(active_tab == "edit", :last)}
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
               </div>
             </:title>
             <:body>
-              <%= if @expanded_widget.type == "table" do %>
-                <% render_table = @expanded_widget[:table_data] %>
-                <% aggrid_payload =
-                  DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
-                <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
-                  <div class="flex-1 min-h-[500px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+              <div class="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
+                <%= if preview_type == "table" do %>
+                  <% render_table = preview[:table_data] %>
+                  <% aggrid_payload =
+                    DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
+                  <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col">
                     <%= cond do %>
                       <% is_nil(render_table) -> %>
                         <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
@@ -1324,7 +1247,7 @@ defmodule TrifleApp.Components.DashboardPage do
                         </div>
                       <% aggrid_payload -> %>
                         <div
-                          id={"expanded-aggrid-shell-#{@expanded_widget.widget_id}"}
+                          id={"workspace-aggrid-shell-#{workspace.widget_id}"}
                           class="aggrid-table-shell flex-1 flex flex-col min-h-0"
                           data-role="aggrid-table"
                           data-theme="light"
@@ -1332,9 +1255,11 @@ defmodule TrifleApp.Components.DashboardPage do
                           data-table={Jason.encode!(aggrid_payload)}
                         >
                           <div
+                            id={"workspace-aggrid-root-#{workspace.widget_id || "new"}"}
                             class="flex-1 min-h-0 ag-theme-alpine"
                             data-role="aggrid-table-root"
-                            style="width: 100%; min-height: 400px;"
+                            phx-update="ignore"
+                            style="width: 100%; height: 100%;"
                           >
                             <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
                               Loading AG Grid table...
@@ -1347,12 +1272,10 @@ defmodule TrifleApp.Components.DashboardPage do
                         </div>
                     <% end %>
                   </div>
-                </div>
-              <% else %>
-                <%= if @expanded_widget.type == "list" do %>
-                  <% list_data = @expanded_widget[:list_data] %>
-                  <div class="h-[80vh] flex flex-col gap-6 overflow-y-auto">
-                    <div class="flex-1 min-h-[400px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                <% else %>
+                  <%= if preview_type == "list" do %>
+                    <% list_data = preview[:list_data] %>
+                    <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
                       <%= if list_data do %>
                         <% items = expanded_list_items(list_data) %>
                         <% empty_message = expanded_list_empty_message(list_data) %>
@@ -1417,34 +1340,121 @@ defmodule TrifleApp.Components.DashboardPage do
                         </div>
                       <% end %>
                     </div>
-                  </div>
-                <% else %>
-                  <% chart_data = @expanded_widget[:chart_data] %>
-                  <% visual_data = @expanded_widget[:visual_data] %>
-                  <% text_data = @expanded_widget[:text_data] %>
-                  <div
-                    id={"expanded-widget-#{@expanded_widget.widget_id}"}
-                    class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
-                    phx-hook="ExpandedWidgetView"
-                    data-type={@expanded_widget.type}
-                    data-title={@expanded_widget.title}
-                    data-colors={ChartColors.json_palette()}
-                    data-chart={if chart_data, do: Jason.encode!(chart_data)}
-                    data-visual={if visual_data, do: Jason.encode!(visual_data)}
-                    data-text={if text_data, do: Jason.encode!(text_data)}
-                  >
-                    <div class="flex-1 min-h-[500px]">
-                      <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                        <div data-role="chart" class="h-full w-full"></div>
+                  <% else %>
+                    <div
+                      id={"workspace-widget-#{workspace.widget_id}"}
+                      class="w-full flex-1 min-h-0 flex flex-col gap-4"
+                      phx-hook="ExpandedWidgetView"
+                      data-tab={active_tab}
+                      data-type={preview_type}
+                      data-title={preview_title}
+                      data-colors={ChartColors.json_palette()}
+                      data-chart={if chart_data, do: Jason.encode!(chart_data)}
+                      data-visual={if visual_data, do: Jason.encode!(visual_data)}
+                      data-text={if text_data, do: Jason.encode!(text_data)}
+                    >
+                      <div class="flex-1 min-h-0">
+                        <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                          <div data-role="chart" class="h-full w-full overflow-hidden"></div>
+                        </div>
+                      </div>
+                      <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                        <%= if active_tab == "summary" do %>
+                          <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                        <% else %>
+                          <%= if editable do %>
+                            <div class="h-full overflow-auto p-4">
+                              <.widget_workspace_edit_form
+                                draft_widget={draft_widget}
+                                widget_path_options={@widget_path_options}
+                              />
+                            </div>
+                          <% end %>
+                        <% end %>
                       </div>
                     </div>
-                    <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                      <div data-role="table-root" class="h-full w-full overflow-auto"></div>
-                    </div>
+                  <% end %>
+                <% end %>
+
+                <%= if active_tab == "summary" and preview_type in ["table", "list"] do %>
+                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Summary</h4>
+                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                      Summary metrics are currently available for chart-oriented widgets. Use the preview above to validate this widget output.
+                    </p>
                   </div>
                 <% end %>
-              <% end %>
+
+                <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
+                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
+                    <.widget_workspace_edit_form
+                      draft_widget={draft_widget}
+                      widget_path_options={@widget_path_options}
+                    />
+                  </div>
+                <% end %>
+              </div>
             </:body>
+            <:actions>
+              <div class="w-full flex items-center justify-between gap-3">
+                <div :if={editable} class="flex flex-col items-start gap-1">
+                  <span class={[
+                    "text-xs font-medium text-red-600 dark:text-red-400",
+                    if(active_tab == "edit", do: "visible", else: "invisible")
+                  ]}>
+                    Danger Zone
+                  </span>
+                  <.danger_button
+                    type="button"
+                    phx-click="delete_widget"
+                    phx-value-id={draft_widget["id"]}
+                    disabled={active_tab != "edit"}
+                    data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
+                    class={"px-3 py-2 " <> if(active_tab == "edit", do: "visible", else: "invisible")}
+                  >
+                    Delete Widget
+                  </.danger_button>
+                </div>
+                <.form_actions class="ml-auto">
+                  <.secondary_button
+                    type="button"
+                    phx-click={JS.push("request_close_widget_workspace")}
+                  >
+                    Close
+                  </.secondary_button>
+                  <.primary_button
+                    :if={editable && active_tab == "edit"}
+                    form="widget-workspace-form"
+                    phx-disable-with="Saving..."
+                  >
+                    Save
+                  </.primary_button>
+                </.form_actions>
+              </div>
+            </:actions>
+            <:footer :if={workspace.show_discard_confirm?}>
+              <div class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800/70 dark:bg-amber-900/20 px-4 py-3">
+                <p class="text-sm text-amber-900 dark:text-amber-200">
+                  You have unsaved changes. Discard them and close?
+                </p>
+                <div class="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    phx-click="cancel_close_widget_workspace"
+                    class="inline-flex items-center rounded-md bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  >
+                    Keep Editing
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="confirm_close_widget_workspace"
+                    class="inline-flex items-center rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-500"
+                  >
+                    Discard Changes
+                  </button>
+                </div>
+              </div>
+            </:footer>
           </.app_modal>
         <% end %>
         
@@ -1545,6 +1555,104 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp source_selected?(%{type: type, id: id}, source) do
     type == Source.type(source) && id == to_string(Source.id(source))
+  end
+
+  defp widget_workspace_edit_form(assigns) do
+    ~H"""
+    <.form
+      for={%{}}
+      id="widget-workspace-form"
+      phx-change="widget_editor_change"
+      phx-submit="save_widget"
+      class="space-y-4"
+    >
+      <input type="hidden" name="widget_id" value={@draft_widget["id"]} />
+      <div>
+        <label
+          for="widget_type"
+          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+        >
+          Widget Type
+        </label>
+        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+          <select
+            id="widget_type"
+            name="widget_type"
+            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+          >
+            <% sel = @draft_widget["type"] || "kpi" %>
+            <option value="kpi" selected={sel == "kpi"}>KPI</option>
+            <option value="timeseries" selected={sel == "timeseries"}>
+              Timeseries
+            </option>
+            <option value="category" selected={sel == "category"}>Category</option>
+            <option value="distribution" selected={sel == "distribution"}>
+              Distribution
+            </option>
+            <option value="heatmap" selected={sel == "heatmap"}>
+              Heatmap
+            </option>
+            <option value="table" selected={sel == "table"}>Table</option>
+            <option value="list" selected={sel == "list"}>List</option>
+            <option value="text" selected={sel == "text"}>Text</option>
+          </select>
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            data-slot="icon"
+            aria-hidden="true"
+            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+          >
+            <path
+              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+              clip-rule="evenodd"
+              fill-rule="evenodd"
+            />
+          </svg>
+        </div>
+      </div>
+      <div>
+        <label
+          for="widget_title"
+          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+        >
+          Title
+        </label>
+        <input
+          type="text"
+          id="widget_title"
+          name="widget_title"
+          value={@draft_widget["title"] || ""}
+          phx-debounce="400"
+          class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+          placeholder="Widget title"
+        />
+      </div>
+
+      <WidgetEditor.editor widget={@draft_widget} path_options={@widget_path_options} />
+    </.form>
+    """
+  end
+
+  defp workspace_tab_button_classes(selected, position) do
+    base =
+      "px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+
+    corners =
+      case position do
+        :first -> "rounded-l-md"
+        :last -> "rounded-r-md border-l border-gray-300 dark:border-slate-600"
+        _ -> ""
+      end
+
+    state =
+      if selected do
+        "bg-teal-600 text-white hover:bg-teal-500"
+      else
+        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      end
+
+    Enum.join([base, corners, state], " ")
   end
 
   defp expanded_list_items(data) when is_map(data) do

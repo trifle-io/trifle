@@ -3007,8 +3007,10 @@ defmodule TrifleApp.MonitorLive do
                         data-table={Jason.encode!(aggrid_payload)}
                       >
                         <div
+                          id={"expanded-aggrid-root-#{@expanded_widget.widget_id || "new"}"}
                           class="flex-1 min-h-0 ag-theme-alpine"
                           data-role="aggrid-table-root"
+                          phx-update="ignore"
                           style="width: 100%; min-height: 400px;"
                         >
                           <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
