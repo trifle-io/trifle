@@ -62,6 +62,130 @@ const formatCompactNumber = (value) => {
     .replace(/(\.\d*?[1-9])0+$/, '$1');
 };
 
+const SAFE_HTML_ALLOWED_TAGS = new Set([
+  'a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'hr', 'i', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'table', 'tbody', 'td', 'th',
+  'thead', 'tr', 'u', 'ul'
+]);
+const SAFE_HTML_DROP_TAGS = new Set([
+  'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input',
+  'button', 'textarea', 'select', 'option', 'svg', 'math'
+]);
+const SAFE_HTML_GLOBAL_ATTRS = new Set(['class', 'title', 'role']);
+const SAFE_HTML_TAG_ATTRS = {
+  a: new Set(['href', 'target', 'rel']),
+  th: new Set(['colspan', 'rowspan', 'scope']),
+  td: new Set(['colspan', 'rowspan'])
+};
+
+const isSafeHtmlHref = (value) => {
+  const href = String(value || '').trim();
+  if (href === '') return false;
+  if (href.startsWith('#')) return true;
+  if (href.startsWith('/')) return !href.startsWith('//');
+
+  try {
+    const baseOrigin =
+      window.location && window.location.origin ? window.location.origin : 'http://localhost';
+    const parsed = new URL(href, baseOrigin);
+    const protocol = String(parsed.protocol || '').toLowerCase();
+    return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:' || protocol === 'tel:';
+  } catch (_) {
+    return false;
+  }
+};
+
+const sanitizeRichHtml = (rawHtml) => {
+  if (typeof rawHtml !== 'string' || rawHtml.trim() === '') return '';
+  const template = document.createElement('template');
+  template.innerHTML = rawHtml;
+
+  const sanitizeAttrs = (element, tag) => {
+    const tagAllowedAttrs = SAFE_HTML_TAG_ATTRS[tag] || new Set();
+
+    Array.from(element.attributes).forEach((attr) => {
+      const name = String(attr.name || '').toLowerCase();
+      const value = String(attr.value || '');
+      const isAria = name.startsWith('aria-');
+      const allowed = isAria || SAFE_HTML_GLOBAL_ATTRS.has(name) || tagAllowedAttrs.has(name);
+
+      if (
+        !allowed ||
+        name.startsWith('on') ||
+        name === 'style' ||
+        name === 'srcdoc' ||
+        name.includes(':')
+      ) {
+        element.removeAttribute(attr.name);
+        return;
+      }
+
+      if (tag === 'a' && name === 'href') {
+        const href = value.trim();
+        if (!isSafeHtmlHref(href)) {
+          element.removeAttribute(attr.name);
+        } else {
+          element.setAttribute('href', href);
+        }
+      }
+
+      if (tag === 'a' && name === 'target') {
+        const target = value.trim().toLowerCase();
+        if (!['_blank', '_self', '_parent', '_top'].includes(target)) {
+          element.removeAttribute(attr.name);
+        } else {
+          element.setAttribute('target', target);
+        }
+      }
+
+      if ((name === 'colspan' || name === 'rowspan') && !/^\d+$/.test(value.trim())) {
+        element.removeAttribute(attr.name);
+      }
+    });
+
+    if (tag === 'a' && String(element.getAttribute('target') || '').toLowerCase() === '_blank') {
+      const relTokens = new Set(
+        String(element.getAttribute('rel') || '')
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean)
+      );
+
+      ['noopener', 'noreferrer', 'nofollow'].forEach((token) => relTokens.add(token));
+      element.setAttribute('rel', Array.from(relTokens).sort().join(' '));
+    }
+  };
+
+  const sanitizeNode = (node) => {
+    if (!node) return;
+
+    if (node.nodeType === 8) {
+      node.remove();
+      return;
+    }
+
+    if (node.nodeType !== 1) return;
+
+    const tag = String(node.tagName || '').toLowerCase();
+    if (SAFE_HTML_DROP_TAGS.has(tag)) {
+      node.remove();
+      return;
+    }
+
+    Array.from(node.childNodes).forEach((child) => sanitizeNode(child));
+
+    if (!SAFE_HTML_ALLOWED_TAGS.has(tag)) {
+      node.replaceWith(...Array.from(node.childNodes));
+      return;
+    }
+
+    sanitizeAttrs(node, tag);
+  };
+
+  Array.from(template.content.childNodes).forEach((node) => sanitizeNode(node));
+  return template.innerHTML;
+};
+
 const normalizeHexColor = (color) => {
   if (typeof color !== 'string') return null;
   const trimmed = color.trim();
@@ -3980,7 +4104,11 @@ Hooks.DashboardGrid = {
         body.style.overflowY = 'auto';
 
         const raw = typeof it.payload === 'string' ? it.payload : '';
-        const finalHtml = raw && raw.trim().length ? raw : '<div class="text-xs opacity-60 italic">No HTML content</div>';
+        const sanitizedHtml = sanitizeRichHtml(raw);
+        const finalHtml =
+          sanitizedHtml && sanitizedHtml.trim().length
+            ? sanitizedHtml
+            : '<div class="text-xs opacity-60 italic">No HTML content</div>';
         body.innerHTML = `<div class="text-widget-html w-full leading-relaxed">${finalHtml}</div>`;
       } else {
         const align = (it.alignment || 'center').toLowerCase();
@@ -5149,9 +5277,65 @@ Hooks.ExpandedWidgetView = {
     return this.normalizedExplicitColor(color) || this.seriesColor(index);
   },
 
+  renderEmptyChart(message, opts = {}) {
+    const chart = this.ensureChart(opts);
+    if (!chart) return;
+
+    const isDarkMode = this.getTheme() === 'dark';
+    const emptyText =
+      typeof message === 'string' && message.trim() !== ''
+        ? message
+        : 'No data available yet.';
+
+    chart.setOption({
+      backgroundColor: 'transparent',
+      animation: false,
+      grid: { top: 20, bottom: 36, left: 52, right: 24, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: [],
+        axisLine: { lineStyle: { color: isDarkMode ? '#334155' : '#e2e8f0' } },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 1,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: {
+          lineStyle: {
+            color: isDarkMode ? '#1f2937' : '#e2e8f0',
+            opacity: isDarkMode ? 0.35 : 1
+          }
+        }
+      },
+      tooltip: { show: false },
+      series: [{ type: 'line', data: [], silent: true }],
+      graphic: [{
+        type: 'text',
+        left: 'center',
+        top: 'middle',
+        silent: true,
+        style: {
+          text: emptyText,
+          fill: isDarkMode ? '#94a3b8' : '#64748b',
+          textAlign: 'center',
+          font:
+            '500 13px Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        }
+      }]
+    }, true);
+
+    try { chart.resize(); } catch (_) {}
+  },
+
   renderTimeseries(data) {
     if (!data || !Array.isArray(data.series) || data.series.length === 0) {
-      this.showChartPlaceholder('No chart data available yet.');
+      this.renderEmptyChart('No chart data available yet.');
       this.showTablePlaceholder('No series data available yet.');
       return;
     }
@@ -5603,7 +5787,7 @@ Hooks.ExpandedWidgetView = {
     this.chartTarget.innerHTML = '';
 
     if (!data) {
-      this.showChartPlaceholder('No KPI data available yet.');
+      this.renderEmptyChart('No KPI data available yet.');
       this.showTablePlaceholder('Series summary is only available when a sparkline is enabled.');
       return;
     }
@@ -5766,7 +5950,11 @@ Hooks.ExpandedWidgetView = {
     if ((data.subtype || '').toLowerCase() === 'html' && data.payload) {
       const html = document.createElement('div');
       html.className = 'w-full h-full overflow-auto text-left text-slate-900 dark:text-slate-100 p-6';
-      html.innerHTML = data.payload;
+      const sanitizedHtml = sanitizeRichHtml(data.payload);
+      html.innerHTML =
+        sanitizedHtml && sanitizedHtml.trim().length
+          ? sanitizedHtml
+          : '<div class="text-sm text-slate-500 dark:text-slate-300 italic">No HTML content</div>';
       this.chartTarget.appendChild(html);
       return;
     }
@@ -5959,7 +6147,7 @@ Hooks.ExpandedWidgetView = {
 
   renderCategory(data) {
     if (!data || !Array.isArray(data.data) || data.data.length === 0) {
-      this.showChartPlaceholder('No category data available yet.');
+      this.renderEmptyChart('No category data available yet.');
       this.showTablePlaceholder('No categories available yet.');
       return;
     }
@@ -6064,7 +6252,7 @@ Hooks.ExpandedWidgetView = {
       series.length === 0 ||
       (is3d && (!verticalLabels || verticalLabels.length === 0))
     ) {
-      this.showChartPlaceholder('No distribution data available yet.');
+      this.renderEmptyChart('No distribution data available yet.', { height: 480 });
       this.renderDistributionTable(data);
       return;
     }
@@ -6130,7 +6318,7 @@ Hooks.ExpandedWidgetView = {
           .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
 
         if (!heatmapData.length) {
-          this.showChartPlaceholder('No distribution data available yet.');
+          this.renderEmptyChart('No distribution data available yet.', { height: 480 });
           this.renderDistributionTable(data);
           return;
         }
@@ -6216,7 +6404,7 @@ Hooks.ExpandedWidgetView = {
       seriesData = seriesData.filter((s) => Array.isArray(s.data) && s.data.length);
 
       if (!seriesData.length) {
-        this.showChartPlaceholder('No distribution data available yet.');
+        this.renderEmptyChart('No distribution data available yet.', { height: 480 });
         this.renderDistributionTable(data);
         return;
       }

@@ -915,7 +915,12 @@ defmodule TrifleApp.DashboardLive do
                   case subtype do
                     "html" ->
                       base
-                      |> Map.put("payload", Map.get(params, "text_payload", "") |> to_string())
+                      |> Map.put(
+                        "payload",
+                        params
+                        |> Map.get("text_payload", "")
+                        |> DashboardWidgetHelpers.sanitize_text_widget_html()
+                      )
                       |> Map.delete("subtitle")
                       |> Map.delete("alignment")
                       |> Map.delete("title_size")
@@ -1646,6 +1651,14 @@ defmodule TrifleApp.DashboardLive do
     }
 
     cond do
+      type == "text" ->
+        widget
+        |> Text.widget()
+        |> case do
+          nil -> base
+          text_data -> Map.put(base, :text_data, text_data)
+        end
+
       is_nil(stats) ->
         base
 
@@ -1685,14 +1698,6 @@ defmodule TrifleApp.DashboardLive do
         |> Distribution.datasets([widget])
         |> List.first()
         |> maybe_put_chart(base)
-
-      type == "text" ->
-        widget
-        |> Text.widget()
-        |> case do
-          nil -> base
-          text_data -> Map.put(base, :text_data, text_data)
-        end
 
       true ->
         base
@@ -3457,7 +3462,12 @@ defmodule TrifleApp.DashboardLive do
 
         widget =
           if Map.has_key?(params, "text_payload") do
-            Map.put(widget, "payload", Map.get(params, "text_payload", "") |> to_string())
+            payload =
+              params
+              |> Map.get("text_payload", "")
+              |> DashboardWidgetHelpers.sanitize_text_widget_html()
+
+            Map.put(widget, "payload", payload)
           else
             widget
           end
