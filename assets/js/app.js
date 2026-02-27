@@ -5412,6 +5412,42 @@ Hooks.ExpandedWidgetView = {
     return this.normalizedExplicitColor(color) || this.seriesColor(index);
   },
 
+  getWidgetConfig(data) {
+    if (!data || typeof data !== 'object') return {};
+
+    if (data.widgetConfig && typeof data.widgetConfig === 'object') {
+      return data.widgetConfig;
+    }
+
+    if (data.widget_config && typeof data.widget_config === 'object') {
+      return data.widget_config;
+    }
+
+    return {};
+  },
+
+  resolveCategoryLegendVisible(data, chartType, seriesCount) {
+    const widgetConfig = this.getWidgetConfig(data);
+    const explicitLegendVisible =
+      widgetConfig.legendVisible !== undefined
+        ? widgetConfig.legendVisible
+        : widgetConfig.legend_visible !== undefined
+          ? widgetConfig.legend_visible
+          : data && data.legend !== undefined
+            ? data.legend
+            : undefined;
+
+    if (explicitLegendVisible !== undefined) {
+      return !!explicitLegendVisible;
+    }
+
+    if (chartType === 'pie' || chartType === 'donut') {
+      return seriesCount > 1;
+    }
+
+    return true;
+  },
+
   renderEmptyChart(message, opts = {}) {
     const chart = this.ensureChart(opts);
     if (!chart) return;
@@ -6289,17 +6325,18 @@ Hooks.ExpandedWidgetView = {
     const chart = this.ensureChart();
     if (!chart) return;
 
-    const theme = this.getTheme();
-    const isDarkMode = theme === 'dark';
-    const type = String(data.chart_type || 'bar').toLowerCase();
+    const isDarkMode = this.getTheme() === 'dark';
+    const chartType = String(data.chart_type || 'bar').toLowerCase();
+    const series = Array.isArray(data?.data) ? data.data : [];
+    const legendVisible = this.resolveCategoryLegendVisible(data, chartType, series.length);
 
     let option;
-    if (type === 'pie' || type === 'donut') {
+    if (chartType === 'pie' || chartType === 'donut') {
       const labelColor = isDarkMode ? '#E2E8F0' : '#1F2937';
       const labelLineColor = isDarkMode ? '#475569' : '#94A3B8';
       option = {
         backgroundColor: 'transparent',
-        legend: { show: false },
+        legend: { show: legendVisible },
         tooltip: {
           trigger: 'item',
           appendToBody: true,
@@ -6310,8 +6347,8 @@ Hooks.ExpandedWidgetView = {
         color: this.colors.length ? this.colors : undefined,
         series: [{
           type: 'pie',
-          radius: type === 'donut' ? ['50%', '72%'] : '70%',
-          data: data.data,
+          radius: chartType === 'donut' ? ['50%', '72%'] : '70%',
+          data: series,
           label: { color: labelColor },
           labelLine: { lineStyle: { color: labelLineColor } },
           itemStyle: {

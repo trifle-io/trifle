@@ -92,8 +92,19 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   def sanitize_text_widget_html(value) do
-    value
-    |> to_string()
+    safe_html =
+      case value do
+        v when is_binary(v) ->
+          v
+
+        v when is_integer(v) or is_float(v) or is_boolean(v) ->
+          Kernel.to_string(v)
+
+        _ ->
+          ""
+      end
+
+    safe_html
     |> String.replace("\u0000", "")
     |> remove_dangerous_text_widget_blocks()
     |> String.replace(~r/<!--[\s\S]*?-->/, "")
