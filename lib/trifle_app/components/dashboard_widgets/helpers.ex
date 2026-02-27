@@ -334,6 +334,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       String.starts_with?(href, "#") ->
         href
 
+      String.starts_with?(href, "//") ->
+        nil
+
       String.starts_with?(href, "/") and !String.starts_with?(href, "//") ->
         href
 

@@ -3731,13 +3731,13 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp assign_editing_widget(socket, widget) when is_map(widget) do
-    socket = assign(socket, :editing_widget, widget)
-
     case socket.assigns[:widget_workspace] do
       %{widget_id: _widget_id, editable?: editable?} when not editable? ->
         socket
 
       %{widget_id: widget_id} = workspace ->
+        socket = assign(socket, :editing_widget, widget)
+
         if to_string(widget_id) == to_string(widget["id"]) do
           preview = build_expanded_widget(socket, widget)
           dirty? = widget_workspace_dirty?(workspace, widget)
@@ -3756,7 +3756,7 @@ defmodule TrifleApp.DashboardLive do
         end
 
       _ ->
-        socket
+        assign(socket, :editing_widget, widget)
     end
   end
 

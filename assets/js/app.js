@@ -3488,12 +3488,11 @@ Hooks.DashboardGrid = {
                 const escapedXLabel = this.escapeHtml(xLabel);
                 const escapedYLabel = this.escapeHtml(yLabel);
                 const escapedSeriesName = this.escapeHtml(seriesName);
-                const escapedMarker = this.escapeHtml(marker);
                 const lines = [`${escapedXLabel} × ${escapedYLabel}`];
 
-                if (escapedSeriesName || escapedMarker) {
+                if (escapedSeriesName || marker) {
                   lines.push(
-                    `${escapedMarker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`
+                    `${marker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`
                   );
                 }
 
@@ -5311,6 +5310,10 @@ Hooks.ExpandedWidgetView = {
       chartWidgetTypes.includes(type) &&
       !!this.chartTarget &&
       this.chartTarget.childElementCount === 0;
+    const textContentMissing =
+      type === 'text' &&
+      !!this.chartTarget &&
+      this.chartTarget.childElementCount === 0;
     const tableContentMissing = !!this.tableRoot && this.tableRoot.childElementCount === 0;
     const tableRootChanged = !!this._lastTableRoot && this._lastTableRoot !== this.tableRoot;
     this._lastTableRoot = this.tableRoot;
@@ -5333,7 +5336,13 @@ Hooks.ExpandedWidgetView = {
       force = true;
     }
 
-    if (!force && key === this.lastPayloadKey && !chartContentMissing && !tableContentMissing) {
+    if (
+      !force &&
+      key === this.lastPayloadKey &&
+      !chartContentMissing &&
+      !textContentMissing &&
+      !tableContentMissing
+    ) {
       if (this.chart && typeof this.chart.resize === 'function') {
         try { this.chart.resize(); } catch (_) {}
         // Reflow can complete after LiveView patch; do a deferred resize pass as well.
@@ -6500,10 +6509,13 @@ Hooks.ExpandedWidgetView = {
 
             const seriesName = params.seriesName || '';
             const marker = params.marker || '';
-            const lines = [`${xLabel} × ${yLabel}`];
+            const escapedXLabel = this.escapeHtml(xLabel);
+            const escapedYLabel = this.escapeHtml(yLabel);
+            const escapedSeriesName = this.escapeHtml(seriesName);
+            const lines = [`${escapedXLabel} × ${escapedYLabel}`];
 
-            if (seriesName || marker) {
-              lines.push(`${marker}${seriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+            if (escapedSeriesName || marker) {
+              lines.push(`${marker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`);
             }
 
             return lines.join('<br/>');
