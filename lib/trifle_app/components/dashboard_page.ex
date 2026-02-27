@@ -1358,11 +1358,19 @@ defmodule TrifleApp.Components.DashboardPage do
                           <div data-role="chart" class="h-full w-full overflow-hidden"></div>
                         </div>
                       </div>
-                      <div class={[
-                        "flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto",
-                        if(active_tab == "summary", do: "block", else: "hidden")
-                      ]}>
-                        <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                      <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                        <%= if active_tab == "summary" do %>
+                          <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                        <% else %>
+                          <%= if editable do %>
+                            <div class="h-full overflow-auto p-4">
+                              <.widget_workspace_edit_form
+                                draft_widget={draft_widget}
+                                widget_path_options={@widget_path_options}
+                              />
+                            </div>
+                          <% end %>
+                        <% end %>
                       </div>
                     </div>
                   <% end %>
@@ -1377,80 +1385,12 @@ defmodule TrifleApp.Components.DashboardPage do
                   </div>
                 <% end %>
 
-                <%= if active_tab == "edit" and editable do %>
+                <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
                   <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
-                    <.form
-                      for={%{}}
-                      id="widget-workspace-form"
-                      phx-change="widget_editor_change"
-                      phx-submit="save_widget"
-                      class="space-y-4"
-                    >
-                      <input type="hidden" name="widget_id" value={draft_widget["id"]} />
-                      <div>
-                        <label
-                          for="widget_type"
-                          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
-                        >
-                          Widget Type
-                        </label>
-                        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-                          <select
-                            id="widget_type"
-                            name="widget_type"
-                            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
-                          >
-                            <% sel = draft_widget["type"] || "kpi" %>
-                            <option value="kpi" selected={sel == "kpi"}>KPI</option>
-                            <option value="timeseries" selected={sel == "timeseries"}>
-                              Timeseries
-                            </option>
-                            <option value="category" selected={sel == "category"}>Category</option>
-                            <option value="distribution" selected={sel == "distribution"}>
-                              Distribution
-                            </option>
-                            <option value="heatmap" selected={sel == "heatmap"}>
-                              Heatmap
-                            </option>
-                            <option value="table" selected={sel == "table"}>Table</option>
-                            <option value="list" selected={sel == "list"}>List</option>
-                            <option value="text" selected={sel == "text"}>Text</option>
-                          </select>
-                          <svg
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                            data-slot="icon"
-                            aria-hidden="true"
-                            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                          >
-                            <path
-                              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                              clip-rule="evenodd"
-                              fill-rule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                      </div>
-                      <div>
-                        <label
-                          for="widget_title"
-                          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
-                        >
-                          Title
-                        </label>
-                        <input
-                          type="text"
-                          id="widget_title"
-                          name="widget_title"
-                          value={draft_widget["title"] || ""}
-                          phx-debounce="400"
-                          class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                          placeholder="Widget title"
-                        />
-                      </div>
-
-                      <WidgetEditor.editor widget={draft_widget} path_options={@widget_path_options} />
-                    </.form>
+                    <.widget_workspace_edit_form
+                      draft_widget={draft_widget}
+                      widget_path_options={@widget_path_options}
+                    />
                   </div>
                 <% end %>
               </div>
@@ -1615,6 +1555,83 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp source_selected?(%{type: type, id: id}, source) do
     type == Source.type(source) && id == to_string(Source.id(source))
+  end
+
+  defp widget_workspace_edit_form(assigns) do
+    ~H"""
+    <.form
+      for={%{}}
+      id="widget-workspace-form"
+      phx-change="widget_editor_change"
+      phx-submit="save_widget"
+      class="space-y-4"
+    >
+      <input type="hidden" name="widget_id" value={@draft_widget["id"]} />
+      <div>
+        <label
+          for="widget_type"
+          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+        >
+          Widget Type
+        </label>
+        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+          <select
+            id="widget_type"
+            name="widget_type"
+            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+          >
+            <% sel = @draft_widget["type"] || "kpi" %>
+            <option value="kpi" selected={sel == "kpi"}>KPI</option>
+            <option value="timeseries" selected={sel == "timeseries"}>
+              Timeseries
+            </option>
+            <option value="category" selected={sel == "category"}>Category</option>
+            <option value="distribution" selected={sel == "distribution"}>
+              Distribution
+            </option>
+            <option value="heatmap" selected={sel == "heatmap"}>
+              Heatmap
+            </option>
+            <option value="table" selected={sel == "table"}>Table</option>
+            <option value="list" selected={sel == "list"}>List</option>
+            <option value="text" selected={sel == "text"}>Text</option>
+          </select>
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            data-slot="icon"
+            aria-hidden="true"
+            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+          >
+            <path
+              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+              clip-rule="evenodd"
+              fill-rule="evenodd"
+            />
+          </svg>
+        </div>
+      </div>
+      <div>
+        <label
+          for="widget_title"
+          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
+        >
+          Title
+        </label>
+        <input
+          type="text"
+          id="widget_title"
+          name="widget_title"
+          value={@draft_widget["title"] || ""}
+          phx-debounce="400"
+          class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+          placeholder="Widget title"
+        />
+      </div>
+
+      <WidgetEditor.editor widget={@draft_widget} path_options={@widget_path_options} />
+    </.form>
+    """
   end
 
   defp workspace_tab_button_classes(selected, position) do
