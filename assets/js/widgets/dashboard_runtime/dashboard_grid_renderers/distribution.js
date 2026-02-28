@@ -1,4 +1,6 @@
 export const createDashboardGridDistributionRendererMethods = ({
+  echarts,
+  withChartOpts,
   buildBucketIndexMap,
   buildDistributionHeatmapAggregation,
   buildDistributionScatterSeries,
@@ -10,15 +12,19 @@ export const createDashboardGridDistributionRendererMethods = ({
     if (!Array.isArray(items)) return;
     const isDarkMode = document.documentElement.classList.contains('dark');
     const colors = this.colors || [];
+    const chartFontFamily =
+      'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
     this._distCharts = this._distCharts || {};
 
     items.forEach((it) => {
+      const widgetId = String(it && it.id != null ? it.id : '');
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');
       if (!body) return;
 
       const errors = Array.isArray(it.errors) ? it.errors.filter(Boolean) : [];
       if (errors.length) {
+        this._disposeChartEntry(this._distCharts, widgetId);
         body.innerHTML = `
           <div class="flex items-center justify-center text-sm text-red-600 dark:text-red-300 text-center px-3">
             ${this.escapeHtml(errors.join(', '))}
@@ -33,6 +39,7 @@ export const createDashboardGridDistributionRendererMethods = ({
       const is3d = isHeatmap || (it.mode || '').toLowerCase() === '3d';
       if (is3d) {
         if (!labels.length || !verticalLabels.length) {
+          this._disposeChartEntry(this._distCharts, widgetId);
           const emptyMessage = isHeatmap
             ? 'No heatmap buckets available. Add both horizontal and vertical bucket definitions in the editor.'
             : 'No 3D buckets available. Add both horizontal and vertical bucket definitions in the editor.';
@@ -45,6 +52,7 @@ export const createDashboardGridDistributionRendererMethods = ({
         }
       } else {
         if (!labels.length) {
+          this._disposeChartEntry(this._distCharts, widgetId);
           body.innerHTML = `
             <div class="flex items-center justify-center text-sm text-gray-500 dark:text-slate-400 text-center px-3">
               No distribution buckets available. Add bucket definitions in the editor.

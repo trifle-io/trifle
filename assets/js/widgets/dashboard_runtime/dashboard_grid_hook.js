@@ -37,8 +37,14 @@ export const registerDashboardGridHook = (Hooks, deps) => {
     detectOngoingSegment,
     extractTimestamp
   });
-  const categoryRendererMethods = createDashboardGridCategoryRendererMethods({ formatCompactNumber });
+  const categoryRendererMethods = createDashboardGridCategoryRendererMethods({
+    echarts,
+    withChartOpts,
+    formatCompactNumber
+  });
   const distributionRendererMethods = createDashboardGridDistributionRendererMethods({
+    echarts,
+    withChartOpts,
     buildBucketIndexMap,
     buildDistributionHeatmapAggregation,
     buildDistributionScatterSeries,
@@ -52,7 +58,8 @@ export const registerDashboardGridHook = (Hooks, deps) => {
     AGGRID_PATH_COL_MIN_WIDTH,
     AGGRID_PATH_COL_MAX_WIDTH,
     ensureAgGridCommunity,
-    getAggridHeaderComponentClass
+    getAggridHeaderComponentClass,
+    sanitizeRichHtml
   });
   const textRendererMethods = createDashboardGridTextRendererMethods({ sanitizeRichHtml });
   const listRendererMethods = createDashboardGridListRendererMethods();
@@ -207,6 +214,7 @@ Hooks.DashboardGrid = {
     // Toggle to one column on MD and smaller screens
     // Tailwind defaults: md=768px, lg=1024px; we want < lg (i.e., MD and below)
     this._applyResponsiveGrid = () => {
+      if (printMode) return;
       if (!this.grid) return;
       const oneCol = window.innerWidth < 1024; // MD and below
       if (oneCol !== this._isOneCol) {
@@ -311,7 +319,9 @@ Hooks.DashboardGrid = {
     try {
       window.TRIFLE_READY = false;
       const requireChartsReady = () => {
-        const rawNodes = Array.from(document.querySelectorAll('.ts-chart, .cat-chart, .kpi-visual'));
+        const rawNodes = Array.from(
+          document.querySelectorAll('.ts-chart, .cat-chart, .kpi-visual, .distribution-chart')
+        );
         const chartNodes = rawNodes.filter((node) => {
           if (!node) return false;
           if (node.classList && node.classList.contains('kpi-visual')) {
@@ -679,6 +689,21 @@ Hooks.DashboardGrid = {
     }
   },
 
+  _disposeChartEntry(map, id) {
+    if (!map || !id) return;
+    const chart = map[id];
+    if (chart) {
+      try {
+        if (typeof chart.dispose === 'function') {
+          chart.dispose();
+        } else if (typeof chart.destroy === 'function') {
+          chart.destroy();
+        }
+      } catch (_) {}
+    }
+    delete map[id];
+  },
+
   registerWidget(type, id, payload = null) {
     if (!id) return;
     const normalizedId = String(id);
@@ -706,6 +731,7 @@ Hooks.DashboardGrid = {
         registry.kpiVisuals[normalizedId] = visual;
       } else {
         delete registry.kpiVisuals[normalizedId];
+        this._disposeChartEntry(this._sparklines, normalizedId);
       }
       this._render_kpi_values(this._sortedWidgetValues(registry.kpiValues));
       this._seen.kpi_values = true;
@@ -722,6 +748,8 @@ Hooks.DashboardGrid = {
         if (this._tsSeriesData) {
           delete this._tsSeriesData[normalizedId];
         }
+        this._disposeChartEntry(this._tsCharts, normalizedId);
+        this._disposeChartEntry(this._sparklines, normalizedId);
       }
       this._render_timeseries(this._sortedWidgetValues(registry.timeseries));
       return;
@@ -732,6 +760,7 @@ Hooks.DashboardGrid = {
         registry.category[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
       } else {
         delete registry.category[normalizedId];
+        this._disposeChartEntry(this._catCharts, normalizedId);
       }
       this._render_category(this._sortedWidgetValues(registry.category));
       return;
@@ -780,6 +809,7 @@ Hooks.DashboardGrid = {
         });
       } else {
         delete registry.distribution[normalizedId];
+        this._disposeChartEntry(this._distCharts, normalizedId);
       }
       this._render_distribution(this._sortedWidgetValues(registry.distribution));
       return;

@@ -143,10 +143,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
 
   @spec widget_payloads(Trifle.Stats.Series.t() | nil, list()) :: map()
   def widget_payloads(stats, grid_items) do
-    stats
-    |> datasets(grid_items)
-    |> dataset_maps()
-    |> widget_payloads_from_dataset_maps(grid_items)
+    dataset_maps =
+      stats
+      |> datasets(grid_items)
+      |> dataset_maps()
+
+    widget_payloads_from_dataset_maps(grid_items, dataset_maps)
   end
 
   defp widget_id(widget) when is_map(widget) do

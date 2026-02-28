@@ -405,6 +405,15 @@ export const createDashboardGridTimeseriesRendererMethods = ({
             yAxis.max = axisMax + pad;
           }
         }
+        const escapeHtml = (value) =>
+          String(value == null ? '' : value).replace(/[&<>"']/g, (s) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+          }[s]));
+
         chart.setOption({
           backgroundColor: 'transparent',
           textStyle: { fontFamily: chartFontFamily },
@@ -423,10 +432,10 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         trigger: 'axis',
         appendToBody: true,
         textStyle: { fontFamily: chartFontFamily },
-        formatter: (params) => {
+            formatter: (params) => {
               const list = Array.isArray(params) ? params : [];
               if (!list.length) return '';
-              const header = list[0].axisValueLabel || '';
+              const header = escapeHtml(list[0].axisValueLabel || '');
               const formatValue = (val) => {
                 if (val == null) return '-';
                 if (normalized) {
@@ -437,7 +446,8 @@ export const createDashboardGridTimeseriesRendererMethods = ({
               };
               const lines = list.map((p) => {
                 const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
-                return `${p.marker || ''}${p.seriesName || ''}: <strong>${formatValue(raw)}</strong>`;
+                const seriesName = escapeHtml(p.seriesName || '');
+                return `${p.marker || ''}${seriesName}: <strong>${formatValue(raw)}</strong>`;
               });
               const note = ongoingInfo ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>' : '';
               return `<div>${header}</div><div>${lines.join('<br/>')}</div>${note}`;

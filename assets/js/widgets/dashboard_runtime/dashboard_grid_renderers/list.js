@@ -117,13 +117,13 @@ export const createDashboardGridListRendererMethods = () => ({
     const selectEvent = typeof dataset.select_event === 'string' && dataset.select_event.trim() !== '' ? dataset.select_event.trim() : null;
     const deselectEvent = typeof dataset.deselect_event === 'string' && dataset.deselect_event.trim() !== '' ? dataset.deselect_event.trim() : null;
     const interactive = Boolean(selectEvent);
+    const widgetId = String(dataset.id ?? '');
 
-    if (interactive) {
-      this._currentListSelectionPath = selectedPath;
-      this._currentListSelectionKey = selectedKey;
-    } else {
-      this._currentListSelectionPath = null;
-      this._currentListSelectionKey = null;
+    this._selectionByWidgetId = this._selectionByWidgetId || {};
+    if (interactive && widgetId) {
+      this._selectionByWidgetId[widgetId] = { path: selectedPath, key: selectedKey };
+    } else if (widgetId) {
+      delete this._selectionByWidgetId[widgetId];
     }
 
     const list = document.createElement('ul');
@@ -225,19 +225,28 @@ export const createDashboardGridListRendererMethods = () => ({
           event.stopPropagation();
           const keyToSend = payloadKey;
           if (!keyToSend || !selectEvent) return;
+          const selectionState =
+            (widgetId && this._selectionByWidgetId && this._selectionByWidgetId[widgetId]) || {};
+          const currentPath = selectionState.path || null;
+          const currentKey = selectionState.key || null;
           const currentlySelected =
-            (this._currentListSelectionPath && entryPath === this._currentListSelectionPath) ||
-            (this._currentListSelectionKey && keyToSend === this._currentListSelectionKey) ||
+            (currentPath && entryPath === currentPath) ||
+            (currentKey && keyToSend === currentKey) ||
             isSelected;
 
           if (currentlySelected && deselectEvent) {
             this.pushEvent(deselectEvent, {});
-            this._currentListSelectionKey = null;
-            this._currentListSelectionPath = null;
+            if (widgetId) {
+              this._selectionByWidgetId[widgetId] = { key: null, path: null };
+            }
           } else {
             this.pushEvent(selectEvent, { key: keyToSend });
-            this._currentListSelectionKey = keyToSend;
-            this._currentListSelectionPath = entryPath || null;
+            if (widgetId) {
+              this._selectionByWidgetId[widgetId] = {
+                key: keyToSend,
+                path: entryPath || null
+              };
+            }
           }
         });
       }

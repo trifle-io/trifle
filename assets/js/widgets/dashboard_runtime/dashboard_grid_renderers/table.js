@@ -4,7 +4,8 @@ export const createDashboardGridTableRendererMethods = ({
   AGGRID_PATH_COL_MIN_WIDTH,
   AGGRID_PATH_COL_MAX_WIDTH,
   ensureAgGridCommunity,
-  getAggridHeaderComponentClass
+  getAggridHeaderComponentClass,
+  sanitizeRichHtml
 }) => ({
   _render_table(items) {
     if (!Array.isArray(items)) return;
@@ -168,7 +169,13 @@ export const createDashboardGridTableRendererMethods = ({
           const wrapper = document.createElement('div');
           wrapper.className = 'aggrid-path-cell';
           if (pathHtml && typeof pathHtml === 'string') {
-            wrapper.innerHTML = pathHtml;
+            const safeHtml =
+              typeof sanitizeRichHtml === 'function' ? sanitizeRichHtml(pathHtml) : '';
+            if (safeHtml && safeHtml.trim() !== '') {
+              wrapper.innerHTML = safeHtml;
+            } else {
+              wrapper.textContent = value == null ? '' : String(value);
+            }
           } else {
             wrapper.textContent = value == null ? '' : String(value);
           }

@@ -51,11 +51,6 @@ Hooks.ExpandedWidgetView = {
     window.removeEventListener('trifle:theme-changed', this.handleThemeChange);
   },
 
-  parseJsonString(str) {
-    if (!str) return null;
-    try { return JSON.parse(str); } catch (_) { return null; }
-  },
-
   getTheme() {
     return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
   },
@@ -165,10 +160,10 @@ Hooks.ExpandedWidgetView = {
     }
     this.lastPayloadKey = key;
     this.disposeChart();
-    this.colors = this.parseJsonString(paletteRaw) || [];
-    const chartData = this.parseJsonString(chartRaw);
-    const visualData = this.parseJsonString(visualRaw);
-    const textData = this.parseJsonString(textRaw);
+    this.colors = parseJsonSafe(paletteRaw) || [];
+    const chartData = parseJsonSafe(chartRaw);
+    const visualData = parseJsonSafe(visualRaw);
+    const textData = parseJsonSafe(textRaw);
 
     if (type === 'timeseries') {
       this.renderTimeseries(chartData);
@@ -363,209 +358,22 @@ Hooks.ExpandedWidgetView = {
     const overlay = data.alert_overlay || null;
     const alertStrategy = String(data.alert_strategy || '').toLowerCase();
     const shouldApplyAlertAxis = !!overlay && (alertStrategy === 'threshold' || alertStrategy === 'range');
-    const baselineSeries = [];
+
     if (overlay && series.length) {
       const primarySeries = series[0];
-      const markAreas = [];
-      const defaultSegmentColor = 'rgba(248,113,113,0.22)';
-      const defaultBandColor = 'rgba(16,185,129,0.08)';
-      const defaultLineColor = '#f87171';
-      const defaultPointColor = '#f97316';
-      const isoValue = (iso, ts) => {
-        if (iso) return iso;
-        if (typeof ts === 'number') {
-          const dt = new Date(ts);
-          if (!Number.isNaN(dt.getTime())) return dt.toISOString();
-        }
-        return null;
-      };
+      const overlayMarks = this.buildOverlayMarkAreas({
+        overlay,
+        overlayLabelText,
+        overlayLabelBackground,
+        chartFontFamily
+      });
 
-      if (Array.isArray(overlay.segments)) {
-        overlay.segments.forEach((segment, index) => {
-          const startIso = isoValue(segment.from_iso, segment.from_ts);
-          let endIso = isoValue(segment.to_iso, segment.to_ts);
-          if (startIso && endIso && startIso === endIso) {
-            const adjusted = new Date(startIso);
-            if (!Number.isNaN(adjusted.getTime())) {
-              adjusted.setMinutes(adjusted.getMinutes() + 1);
-              endIso = adjusted.toISOString();
-            }
-          }
-          if (startIso && endIso) {
-            const itemStyle = segment.color ? { color: segment.color } : { color: defaultSegmentColor };
-            const label = segment.label || `Alert window #${index + 1}`;
-            markAreas.push([
-              {
-                name: label,
-                xAxis: startIso,
-                itemStyle,
-                label: {
-                  color: overlayLabelText,
-                  fontFamily: chartFontFamily,
-                  position: 'insideTop',
-                  distance: 6,
-                  overflow: 'break',
-                  align: 'left',
-                  backgroundColor: overlayLabelBackground,
-                  padding: [2, 6],
-                  borderRadius: 4
-                },
-                emphasis: { disabled: true }
-              },
-              { xAxis: endIso }
-            ]);
-          }
-        });
-      }
-
-      if (Array.isArray(overlay.bands)) {
-        overlay.bands.forEach((band) => {
-          if (typeof band.min === 'number' && typeof band.max === 'number') {
-            const itemStyle = band.color ? { color: band.color } : { color: defaultBandColor };
-            const label = band.label || 'Target band';
-            markAreas.push([
-              {
-                name: label,
-                yAxis: band.min,
-                xAxis: 'min',
-                itemStyle,
-                label: {
-                  color: overlayLabelText,
-                  fontFamily: chartFontFamily,
-                  position: 'insideTop',
-                  distance: 6,
-                  overflow: 'break',
-                  align: 'left',
-                  backgroundColor: overlayLabelBackground,
-                  padding: [2, 6],
-                  borderRadius: 4
-                },
-                emphasis: { disabled: true }
-              },
-              { yAxis: band.max, xAxis: 'max' }
-            ]);
-          }
-        });
-      }
-
-      if (markAreas.length) {
-        primarySeries.markArea = { data: markAreas, silent: true, emphasis: { disabled: true } };
-      }
-
-      if (Array.isArray(overlay.reference_lines) && overlay.reference_lines.length) {
-        primarySeries.markLine = {
-          symbol: 'none',
-          silent: true,
-          animation: false,
-          emphasis: { disabled: true },
-          data: overlay.reference_lines
-            .filter((line) => typeof line.value === 'number')
-            .map((line) => ({
-              yAxis: line.value,
-              name: line.label || formatCompactNumber(line.value),
-              lineStyle: {
-                color: line.color || defaultLineColor,
-                type: 'dashed',
-                width: 1.2
-              },
-              label: {
-                formatter: line.label || formatCompactNumber(line.value),
-                color: overlayLabelText,
-                fontFamily: chartFontFamily,
-                position: 'insideEndTop',
-                distance: 8,
-                overflow: 'break',
-                backgroundColor: overlayLabelBackground,
-                padding: [2, 6],
-                borderRadius: 4
-              },
-              emphasis: { disabled: true }
-            }))
-        };
-      }
-
-      if (Array.isArray(overlay.points)) {
-        const markPoints = overlay.points
-          .filter((point) => typeof point.value === 'number')
-          .map((point, idx) => {
-            const coordX = isoValue(point.at_iso, point.ts);
-            if (!coordX) return null;
-            const color = point.color || defaultPointColor;
-            return {
-              coord: [coordX, point.value],
-              value: point.value,
-              name: point.label || `Alert point #${idx + 1}`,
-              itemStyle: { color },
-              label: {
-                color: overlayLabelText,
-                formatter: point.label || formatCompactNumber(point.value),
-                fontFamily: chartFontFamily,
-                position: 'top',
-                distance: 10,
-                backgroundColor: overlayLabelBackground,
-                padding: [2, 6],
-                borderRadius: 4,
-                overflow: 'truncate'
-              }
-            };
-          })
-          .filter(Boolean);
-
-        if (markPoints.length) {
-          primarySeries.markPoint = {
-            symbol: 'circle',
-            symbolSize: 16,
-            animation: false,
-            silent: true,
-            emphasis: { disabled: true },
-            data: markPoints
-          };
-        }
-      }
+      if (overlayMarks.markArea) primarySeries.markArea = overlayMarks.markArea;
+      if (overlayMarks.markLine) primarySeries.markLine = overlayMarks.markLine;
+      if (overlayMarks.markPoint) primarySeries.markPoint = overlayMarks.markPoint;
     }
 
-    const baselineCandidates = []
-      .concat(Array.isArray(data.alert_baseline_series) ? data.alert_baseline_series : [])
-      .concat(overlay && Array.isArray(overlay.baseline_series) ? overlay.baseline_series : []);
-    const seenBaselineKeys = new Set();
-    baselineCandidates
-      .filter((baseline) => {
-        if (!baseline || !Array.isArray(baseline.data) || baseline.data.length === 0) return false;
-        const key = baseline.name || `${baseline.color || 'baseline'}-${baseline.line_type || 'line'}`;
-        if (seenBaselineKeys.has(key)) return false;
-        seenBaselineKeys.add(key);
-        return true;
-      })
-      .forEach((baseline) => {
-        const baselineData = Array.isArray(baseline.data) ? baseline.data : [];
-        if (!baselineData.length) return;
-        const baselineColor = baseline.color || overlayLabelText;
-        const lineType = baseline.line_type || 'dashed';
-        const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
-        const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
-        baselineSeries.push({
-          name: baseline.name || 'Detection baseline',
-          type: 'line',
-          data: baselineData,
-          showSymbol: false,
-          smooth: false,
-          connectNulls: true,
-          animation: false,
-          lineStyle: {
-            width: lineWidth,
-            type: lineType,
-            color: baselineColor,
-            opacity: lineOpacity
-          },
-          itemStyle: { color: baselineColor, opacity: lineOpacity },
-          emphasis: { focus: 'series' },
-          tooltip: {
-            valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
-          },
-          zlevel: 1,
-          z: 25
-        });
-      });
+    const baselineSeries = this.buildBaselineSeries(data, overlay, overlayLabelText);
 
     const ongoingInfo = detectOngoingSegment(data.series || []);
     if (ongoingInfo && series.length) {
@@ -590,7 +398,6 @@ Hooks.ExpandedWidgetView = {
     const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
-    const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
     const legendText = isDarkMode ? '#D1D5DB' : '#374151';
 
     const extractPointValue = (point) => {
@@ -614,94 +421,15 @@ Hooks.ExpandedWidgetView = {
       (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
     });
 
-    let alertAxis = null;
-    if (shouldApplyAlertAxis) {
-      const overlayBounds = { min: Infinity, max: -Infinity };
-      if (overlay) {
-        if (Array.isArray(overlay.reference_lines)) {
-          overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
-        }
-        if (Array.isArray(overlay.bands)) {
-          overlay.bands.forEach((band) => {
-            updateBounds(overlayBounds, Number(band.min));
-            updateBounds(overlayBounds, Number(band.max));
-          });
-        }
-        if (Array.isArray(overlay.points)) {
-          overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
-        }
-      }
-      const minCandidates = [seriesBounds.min, overlayBounds.min].filter(Number.isFinite);
-      const maxCandidates = [seriesBounds.max, overlayBounds.max].filter(Number.isFinite);
-      const positiveOnly = minCandidates.length === 0 || minCandidates.every((value) => value >= 0);
-      let axisMinCandidate = minCandidates.length ? Math.min(...minCandidates) : (positiveOnly ? 0 : -1);
-      let axisMaxCandidate = maxCandidates.length ? Math.max(...maxCandidates) : (axisMinCandidate > 0 ? axisMinCandidate : 1);
-      if (Number.isFinite(axisMaxCandidate)) {
-        if (!Number.isFinite(axisMinCandidate)) {
-          axisMinCandidate = positiveOnly ? 0 : axisMaxCandidate;
-        }
-        alertAxis = { positiveOnly, axisMinCandidate, axisMaxCandidate };
-      }
-    }
-
-    const yAxis = {
-      type: 'value',
-      min: 0,
-      name: normalized ? (data.y_label || 'Percentage') : (data.y_label || ''),
-      nameLocation: 'middle',
-      nameGap: 44,
-      nameTextStyle: { color: textColor, fontFamily: chartFontFamily },
-      axisLine: { lineStyle: { color: axisLineColor } },
-      axisLabel: {
-        color: textColor,
-        margin: 10,
-        hideOverlap: true,
-        fontFamily: chartFontFamily
-      },
-      splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
-    };
-
-    if (normalized) {
-      yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, { formatter: (v) => `${v}%` });
-      if (alertAxis) {
-        const normalizedMax = Math.max(alertAxis.axisMaxCandidate, 100);
-        const topPad = normalizedMax * 0.05 || 5;
-        yAxis.min = 0;
-        yAxis.max = normalizedMax + topPad;
-      } else {
-        yAxis.max = 100;
-      }
-    } else {
-      yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, {
-        formatter: (value) => formatCompactNumber(value)
-      });
-      if (alertAxis) {
-        let axisMin = alertAxis.positiveOnly ? 0 : alertAxis.axisMinCandidate;
-        let axisMax = Math.max(alertAxis.axisMaxCandidate, axisMin + 1);
-        if (!Number.isFinite(axisMin)) axisMin = 0;
-        if (!Number.isFinite(axisMax)) axisMax = axisMin + 1;
-        if (axisMax <= axisMin) axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
-        const span = axisMax - axisMin;
-        const topPad = span * 0.12 || Math.max(Math.abs(axisMax), 1) * 0.12;
-        const bottomPad = alertAxis.positiveOnly ? 0 : (span * 0.05 || topPad * 0.5);
-        axisMax += topPad;
-        axisMin -= bottomPad;
-        if (alertAxis.positiveOnly && axisMin < 0) axisMin = 0;
-        yAxis.min = axisMin;
-        yAxis.max = axisMax;
-      } else if (Number.isFinite(seriesBounds.min) && seriesBounds.min < 0) {
-        const axisMin = seriesBounds.min;
-        const rawMax = Number.isFinite(seriesBounds.max) ? seriesBounds.max : 0;
-        let axisMax = rawMax;
-        if (!Number.isFinite(axisMax) || axisMax <= axisMin) {
-          axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
-        }
-        const span = axisMax - axisMin;
-        const pad = span * 0.1 || Math.max(Math.abs(axisMax), 1) * 0.1;
-        yAxis.min = axisMin - pad * 0.4;
-        yAxis.max = axisMax + pad;
-      }
-    }
+    const yAxis = this.buildYAxisConfig({
+      normalized,
+      data,
+      seriesBounds,
+      overlay,
+      isDarkMode,
+      shouldApplyAlertAxis,
+      chartFontFamily
+    });
 
     chart.setOption({
       backgroundColor: 'transparent',
@@ -754,6 +482,337 @@ Hooks.ExpandedWidgetView = {
 
     try { chart.resize(); } catch (_) {}
     this.renderTimeseriesTable(data);
+  },
+
+  buildOverlayMarkAreas({ overlay, overlayLabelText, overlayLabelBackground, chartFontFamily }) {
+    if (!overlay || typeof overlay !== 'object') {
+      return { markArea: null, markLine: null, markPoint: null };
+    }
+
+    const markAreas = [];
+    const defaultSegmentColor = 'rgba(248,113,113,0.22)';
+    const defaultBandColor = 'rgba(16,185,129,0.08)';
+    const defaultLineColor = '#f87171';
+    const defaultPointColor = '#f97316';
+
+    const isoValue = (iso, ts) => {
+      if (iso) return iso;
+      if (typeof ts === 'number') {
+        const dt = new Date(ts);
+        if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+      }
+      return null;
+    };
+
+    if (Array.isArray(overlay.segments)) {
+      overlay.segments.forEach((segment, index) => {
+        const startIso = isoValue(segment.from_iso, segment.from_ts);
+        let endIso = isoValue(segment.to_iso, segment.to_ts);
+        if (startIso && endIso && startIso === endIso) {
+          const adjusted = new Date(startIso);
+          if (!Number.isNaN(adjusted.getTime())) {
+            adjusted.setMinutes(adjusted.getMinutes() + 1);
+            endIso = adjusted.toISOString();
+          }
+        }
+        if (startIso && endIso) {
+          const itemStyle = segment.color ? { color: segment.color } : { color: defaultSegmentColor };
+          const label = segment.label || `Alert window #${index + 1}`;
+          markAreas.push([
+            {
+              name: label,
+              xAxis: startIso,
+              itemStyle,
+              label: {
+                color: overlayLabelText,
+                fontFamily: chartFontFamily,
+                position: 'insideTop',
+                distance: 6,
+                overflow: 'break',
+                align: 'left',
+                backgroundColor: overlayLabelBackground,
+                padding: [2, 6],
+                borderRadius: 4
+              },
+              emphasis: { disabled: true }
+            },
+            { xAxis: endIso }
+          ]);
+        }
+      });
+    }
+
+    if (Array.isArray(overlay.bands)) {
+      overlay.bands.forEach((band) => {
+        if (typeof band.min === 'number' && typeof band.max === 'number') {
+          const itemStyle = band.color ? { color: band.color } : { color: defaultBandColor };
+          const label = band.label || 'Target band';
+          markAreas.push([
+            {
+              name: label,
+              yAxis: band.min,
+              xAxis: 'min',
+              itemStyle,
+              label: {
+                color: overlayLabelText,
+                fontFamily: chartFontFamily,
+                position: 'insideTop',
+                distance: 6,
+                overflow: 'break',
+                align: 'left',
+                backgroundColor: overlayLabelBackground,
+                padding: [2, 6],
+                borderRadius: 4
+              },
+              emphasis: { disabled: true }
+            },
+            { yAxis: band.max, xAxis: 'max' }
+          ]);
+        }
+      });
+    }
+
+    const markLine =
+      Array.isArray(overlay.reference_lines) && overlay.reference_lines.length
+        ? {
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            emphasis: { disabled: true },
+            data: overlay.reference_lines
+              .filter((line) => typeof line.value === 'number')
+              .map((line) => ({
+                yAxis: line.value,
+                name: line.label || formatCompactNumber(line.value),
+                lineStyle: {
+                  color: line.color || defaultLineColor,
+                  type: 'dashed',
+                  width: 1.2
+                },
+                label: {
+                  formatter: line.label || formatCompactNumber(line.value),
+                  color: overlayLabelText,
+                  fontFamily: chartFontFamily,
+                  position: 'insideEndTop',
+                  distance: 8,
+                  overflow: 'break',
+                  backgroundColor: overlayLabelBackground,
+                  padding: [2, 6],
+                  borderRadius: 4
+                },
+                emphasis: { disabled: true }
+              }))
+          }
+        : null;
+
+    const markPointData = Array.isArray(overlay.points)
+      ? overlay.points
+          .filter((point) => typeof point.value === 'number')
+          .map((point, idx) => {
+            const coordX = isoValue(point.at_iso, point.ts);
+            if (!coordX) return null;
+            const color = point.color || defaultPointColor;
+            return {
+              coord: [coordX, point.value],
+              value: point.value,
+              name: point.label || `Alert point #${idx + 1}`,
+              itemStyle: { color },
+              label: {
+                color: overlayLabelText,
+                formatter: point.label || formatCompactNumber(point.value),
+                fontFamily: chartFontFamily,
+                position: 'top',
+                distance: 10,
+                backgroundColor: overlayLabelBackground,
+                padding: [2, 6],
+                borderRadius: 4,
+                overflow: 'truncate'
+              }
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+    const markPoint = markPointData.length
+      ? {
+          symbol: 'circle',
+          symbolSize: 16,
+          animation: false,
+          silent: true,
+          emphasis: { disabled: true },
+          data: markPointData
+        }
+      : null;
+
+    return {
+      markArea: markAreas.length ? { data: markAreas, silent: true, emphasis: { disabled: true } } : null,
+      markLine,
+      markPoint
+    };
+  },
+
+  buildBaselineSeries(data, overlay, overlayLabelText) {
+    const baselineSeries = [];
+    const baselineCandidates = []
+      .concat(Array.isArray(data?.alert_baseline_series) ? data.alert_baseline_series : [])
+      .concat(overlay && Array.isArray(overlay.baseline_series) ? overlay.baseline_series : []);
+    const seenBaselineKeys = new Set();
+
+    baselineCandidates
+      .filter((baseline) => {
+        if (!baseline || !Array.isArray(baseline.data) || baseline.data.length === 0) return false;
+        const key = baseline.name || `${baseline.color || 'baseline'}-${baseline.line_type || 'line'}`;
+        if (seenBaselineKeys.has(key)) return false;
+        seenBaselineKeys.add(key);
+        return true;
+      })
+      .forEach((baseline) => {
+        const baselineData = Array.isArray(baseline.data) ? baseline.data : [];
+        if (!baselineData.length) return;
+        const baselineColor = baseline.color || overlayLabelText;
+        const lineType = baseline.line_type || 'dashed';
+        const lineWidth = typeof baseline.width === 'number' ? baseline.width : 1.3;
+        const lineOpacity = typeof baseline.opacity === 'number' ? baseline.opacity : 0.85;
+        baselineSeries.push({
+          name: baseline.name || 'Detection baseline',
+          type: 'line',
+          data: baselineData,
+          showSymbol: false,
+          smooth: false,
+          connectNulls: true,
+          animation: false,
+          lineStyle: {
+            width: lineWidth,
+            type: lineType,
+            color: baselineColor,
+            opacity: lineOpacity
+          },
+          itemStyle: { color: baselineColor, opacity: lineOpacity },
+          emphasis: { focus: 'series' },
+          tooltip: {
+            valueFormatter: (v) => (v == null ? '-' : formatCompactNumber(v))
+          },
+          zlevel: 1,
+          z: 25
+        });
+      });
+
+    return baselineSeries;
+  },
+
+  buildYAxisConfig({
+    normalized,
+    data,
+    seriesBounds,
+    overlay,
+    isDarkMode,
+    shouldApplyAlertAxis,
+    chartFontFamily
+  }) {
+    const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
+    const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+    const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
+
+    const updateBounds = (bounds, value) => {
+      if (!Number.isFinite(value)) return;
+      if (value < bounds.min) bounds.min = value;
+      if (value > bounds.max) bounds.max = value;
+    };
+
+    let alertAxis = null;
+    if (shouldApplyAlertAxis) {
+      const overlayBounds = { min: Infinity, max: -Infinity };
+      if (overlay) {
+        if (Array.isArray(overlay.reference_lines)) {
+          overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
+        }
+        if (Array.isArray(overlay.bands)) {
+          overlay.bands.forEach((band) => {
+            updateBounds(overlayBounds, Number(band.min));
+            updateBounds(overlayBounds, Number(band.max));
+          });
+        }
+        if (Array.isArray(overlay.points)) {
+          overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
+        }
+      }
+
+      const minCandidates = [seriesBounds.min, overlayBounds.min].filter(Number.isFinite);
+      const maxCandidates = [seriesBounds.max, overlayBounds.max].filter(Number.isFinite);
+      const positiveOnly = minCandidates.length === 0 || minCandidates.every((value) => value >= 0);
+      let axisMinCandidate = minCandidates.length ? Math.min(...minCandidates) : (positiveOnly ? 0 : -1);
+      let axisMaxCandidate =
+        maxCandidates.length ? Math.max(...maxCandidates) : (axisMinCandidate > 0 ? axisMinCandidate : 1);
+      if (Number.isFinite(axisMaxCandidate)) {
+        if (!Number.isFinite(axisMinCandidate)) {
+          axisMinCandidate = positiveOnly ? 0 : axisMaxCandidate;
+        }
+        alertAxis = { positiveOnly, axisMinCandidate, axisMaxCandidate };
+      }
+    }
+
+    const yAxis = {
+      type: 'value',
+      min: 0,
+      name: normalized ? (data.y_label || 'Percentage') : (data.y_label || ''),
+      nameLocation: 'middle',
+      nameGap: 44,
+      nameTextStyle: { color: textColor, fontFamily: chartFontFamily },
+      axisLine: { lineStyle: { color: axisLineColor } },
+      axisLabel: {
+        color: textColor,
+        margin: 10,
+        hideOverlap: true,
+        fontFamily: chartFontFamily
+      },
+      splitLine: { lineStyle: { color: gridLineColor, opacity: isDarkMode ? 0.4 : 1 } }
+    };
+
+    if (normalized) {
+      yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, { formatter: (v) => `${v}%` });
+      if (alertAxis) {
+        const normalizedMax = Math.max(alertAxis.axisMaxCandidate, 100);
+        const topPad = normalizedMax * 0.05 || 5;
+        yAxis.min = 0;
+        yAxis.max = normalizedMax + topPad;
+      } else {
+        yAxis.max = 100;
+      }
+      return yAxis;
+    }
+
+    yAxis.axisLabel = Object.assign({}, yAxis.axisLabel, {
+      formatter: (value) => formatCompactNumber(value)
+    });
+
+    if (alertAxis) {
+      let axisMin = alertAxis.positiveOnly ? 0 : alertAxis.axisMinCandidate;
+      let axisMax = Math.max(alertAxis.axisMaxCandidate, axisMin + 1);
+      if (!Number.isFinite(axisMin)) axisMin = 0;
+      if (!Number.isFinite(axisMax)) axisMax = axisMin + 1;
+      if (axisMax <= axisMin) axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
+      const span = axisMax - axisMin;
+      const topPad = span * 0.12 || Math.max(Math.abs(axisMax), 1) * 0.12;
+      const bottomPad = alertAxis.positiveOnly ? 0 : (span * 0.05 || topPad * 0.5);
+      axisMax += topPad;
+      axisMin -= bottomPad;
+      if (alertAxis.positiveOnly && axisMin < 0) axisMin = 0;
+      yAxis.min = axisMin;
+      yAxis.max = axisMax;
+    } else if (Number.isFinite(seriesBounds.min) && seriesBounds.min < 0) {
+      const axisMin = seriesBounds.min;
+      const rawMax = Number.isFinite(seriesBounds.max) ? seriesBounds.max : 0;
+      let axisMax = rawMax;
+      if (!Number.isFinite(axisMax) || axisMax <= axisMin) {
+        axisMax = axisMin + Math.max(Math.abs(axisMin), 1);
+      }
+      const span = axisMax - axisMin;
+      const pad = span * 0.1 || Math.max(Math.abs(axisMax), 1) * 0.1;
+      yAxis.min = axisMin - pad * 0.4;
+      yAxis.max = axisMax + pad;
+    }
+
+    return yAxis;
   },
 
   renderKpi(data, visual) {
@@ -1240,161 +1299,181 @@ Hooks.ExpandedWidgetView = {
       return;
     }
 
-    const theme = this.getTheme();
-    const isDarkMode = theme === 'dark';
-    const colors = Array.isArray(this.colors) && this.colors.length ? this.colors : null;
+    const options = {
+      isDarkMode: this.getTheme() === 'dark',
+      colors: Array.isArray(this.colors) && this.colors.length ? this.colors : null,
+      legendFlag,
+      showLegend,
+      bottomPadding,
+      chartFontFamily
+    };
+
+    if (is3d && isHeatmap) {
+      this.renderHeatmapDistribution(data, chart, labels, verticalLabels, series, options);
+      return;
+    }
 
     if (is3d) {
-      if (isHeatmap) {
-        const seriesList = Array.isArray(series) ? series : [];
-        const labelIndexMap = buildBucketIndexMap(labels);
-        const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
-        const { heatmapData, breakdownByCell } = buildDistributionHeatmapAggregation({
-          seriesList,
-          labelIndexMap,
-          verticalLabelIndexMap
-        });
+      this.render3DScatterDistribution(data, chart, labels, verticalLabels, series, options);
+      return;
+    }
 
-        if (!heatmapData.length) {
-          this.renderEmptyChart('No distribution data available yet.');
-          this.renderDistributionTable(data);
-          return;
-        }
+    this.render2DBarDistribution(data, chart, labels, series, options);
+  },
 
-        const showScale = legendFlag === undefined ? true : !!legendFlag;
-        const gridBottom = showScale ? 72 : 20;
-        const visualMapBottom = 8;
-        const fallbackHeatColor = colors ? colors[0] : this.seriesColor(0);
-        const visualSettings = resolveHeatmapVisualMap({
-          payload: data,
-          heatmapData,
-          series: seriesList,
-          fallbackHeatColor,
-          isDarkMode
-        });
+  renderHeatmapDistribution(data, chart, labels, verticalLabels, series, options) {
+    const { isDarkMode, legendFlag, chartFontFamily, colors } = options;
+    const labelIndexMap = buildBucketIndexMap(labels);
+    const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+    const seriesList = Array.isArray(series) ? series : [];
+    const { heatmapData, breakdownByCell } = buildDistributionHeatmapAggregation({
+      seriesList,
+      labelIndexMap,
+      verticalLabelIndexMap
+    });
 
-        const option = buildHeatmapOptions({
-          labels,
-          verticalLabels,
-          breakdownByCell,
-          isDarkMode,
-          gridBottom,
-          visualMapBottom,
-          visualSettings,
-          showScale,
-          heatmapData,
-          chartFontFamily,
-          escapeHtml: this.escapeHtml.bind(this)
-        });
-
-        chart.setOption(option, true);
-        try { chart.resize(); } catch (_) {}
-        this.renderDistributionTable(data);
-        return;
-      }
-
-      const labelIndexMap = buildBucketIndexMap(labels);
-      const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
-      const scatterData = buildDistributionScatterSeries({
-        seriesList: series,
-        labelIndexMap,
-        verticalLabelIndexMap,
-        resolveColor: (seriesItem, idx) => {
-          const explicitColor =
-            typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
-              ? seriesItem.color.trim()
-              : null;
-          return explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
-        }
-      });
-      const legendNames = scatterData.legendNames;
-      const seriesData = scatterData.seriesData;
-
-      if (!seriesData.length) {
-        this.renderEmptyChart('No distribution data available yet.');
-        this.renderDistributionTable(data);
-        return;
-      }
-
-      const option = {
-        backgroundColor: 'transparent',
-        legend: showLegend
-          ? {
-              data: legendNames,
-              textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-              bottom: 0,
-              type: legendNames.length > 4 ? 'scroll' : 'plain'
-            }
-          : { show: false },
-        grid: { top: 16, left: 64, right: 16, bottom: bottomPadding },
-        tooltip: {
-          trigger: 'item',
-          appendToBody: true,
-          formatter: (params) => {
-            const valueArr =
-              Array.isArray(params.value) && params.value.length >= 3
-                ? params.value
-                : Array.isArray(params.data) && params.data.length >= 3
-                  ? params.data
-                  : null;
-
-            if (!valueArr) return '';
-
-            const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
-            const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
-            const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
-            const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
-            const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
-
-            if (!xLabel && !yLabel) return '';
-
-            const seriesName = params.seriesName || '';
-            const marker = params.marker || '';
-            const escapedXLabel = this.escapeHtml(xLabel);
-            const escapedYLabel = this.escapeHtml(yLabel);
-            const escapedSeriesName = this.escapeHtml(seriesName);
-            const lines = [`${escapedXLabel} × ${escapedYLabel}`];
-
-            if (escapedSeriesName || marker) {
-              lines.push(`${marker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`);
-            }
-
-            return lines.join('<br/>');
-          }
-        },
-        axisPointer: {
-          show: true,
-          type: 'line',
-          lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
-          link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }]
-        },
-        xAxis: {
-          type: 'category',
-          data: labels,
-          splitLine: {
-            show: true,
-            lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 }
-          },
-          axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
-        },
-        yAxis: {
-          type: 'category',
-          data: verticalLabels,
-          splitLine: {
-            show: true,
-            lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 }
-          },
-          axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
-        },
-        series: seriesData
-      };
-
-      chart.setOption(option, true);
-      try { chart.resize(); } catch (_) {}
+    if (!heatmapData.length) {
+      this.renderEmptyChart('No distribution data available yet.');
       this.renderDistributionTable(data);
       return;
     }
 
+    const showScale = legendFlag === undefined ? true : !!legendFlag;
+    const gridBottom = showScale ? 72 : 20;
+    const visualMapBottom = 8;
+    const fallbackHeatColor = colors ? colors[0] : this.seriesColor(0);
+    const visualSettings = resolveHeatmapVisualMap({
+      payload: data,
+      heatmapData,
+      series: seriesList,
+      fallbackHeatColor,
+      isDarkMode
+    });
+
+    const option = buildHeatmapOptions({
+      labels,
+      verticalLabels,
+      breakdownByCell,
+      isDarkMode,
+      gridBottom,
+      visualMapBottom,
+      visualSettings,
+      showScale,
+      heatmapData,
+      chartFontFamily,
+      escapeHtml: this.escapeHtml.bind(this)
+    });
+
+    chart.setOption(option, true);
+    try { chart.resize(); } catch (_) {}
+    this.renderDistributionTable(data);
+  },
+
+  render3DScatterDistribution(data, chart, labels, verticalLabels, series, options) {
+    const { isDarkMode, colors, showLegend, bottomPadding, chartFontFamily } = options;
+    const labelIndexMap = buildBucketIndexMap(labels);
+    const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
+    const scatterData = buildDistributionScatterSeries({
+      seriesList: series,
+      labelIndexMap,
+      verticalLabelIndexMap,
+      resolveColor: (seriesItem, idx) => {
+        const explicitColor =
+          typeof seriesItem?.color === 'string' && seriesItem.color.trim() !== ''
+            ? seriesItem.color.trim()
+            : null;
+        return explicitColor || (colors ? colors[idx % colors.length] : this.seriesColor(idx));
+      }
+    });
+    const legendNames = scatterData.legendNames;
+    const seriesData = scatterData.seriesData;
+
+    if (!seriesData.length) {
+      this.renderEmptyChart('No distribution data available yet.');
+      this.renderDistributionTable(data);
+      return;
+    }
+
+    const option = {
+      backgroundColor: 'transparent',
+      legend: showLegend
+        ? {
+            data: legendNames,
+            textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+            bottom: 0,
+            type: legendNames.length > 4 ? 'scroll' : 'plain'
+          }
+        : { show: false },
+      grid: { top: 16, left: 64, right: 16, bottom: bottomPadding },
+      tooltip: {
+        trigger: 'item',
+        appendToBody: true,
+        formatter: (params) => {
+          const valueArr =
+            Array.isArray(params.value) && params.value.length >= 3
+              ? params.value
+              : Array.isArray(params.data) && params.data.length >= 3
+                ? params.data
+                : null;
+
+          if (!valueArr) return '';
+
+          const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
+          const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
+          const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
+          const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
+          const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
+
+          if (!xLabel && !yLabel) return '';
+
+          const seriesName = params.seriesName || '';
+          const marker = params.marker || '';
+          const escapedXLabel = this.escapeHtml(xLabel);
+          const escapedYLabel = this.escapeHtml(yLabel);
+          const escapedSeriesName = this.escapeHtml(seriesName);
+          const lines = [`${escapedXLabel} × ${escapedYLabel}`];
+
+          if (escapedSeriesName || marker) {
+            lines.push(`${marker}${escapedSeriesName}  <strong>${formatCompactNumber(val)}</strong>`);
+          }
+
+          return lines.join('<br/>');
+        }
+      },
+      axisPointer: {
+        show: true,
+        type: 'line',
+        lineStyle: { type: 'dashed', color: isDarkMode ? '#94a3b8' : '#0f172a' },
+        link: [{ xAxisIndex: 'all' }, { yAxisIndex: 'all' }]
+      },
+      xAxis: {
+        type: 'category',
+        data: labels,
+        splitLine: {
+          show: true,
+          lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 }
+        },
+        axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
+      },
+      yAxis: {
+        type: 'category',
+        data: verticalLabels,
+        splitLine: {
+          show: true,
+          lineStyle: { type: 'dashed', color: isDarkMode ? '#1f2937' : '#e2e8f0', opacity: isDarkMode ? 0.4 : 0.9 }
+        },
+        axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569' }
+      },
+      series: seriesData
+    };
+
+    chart.setOption(option, true);
+    try { chart.resize(); } catch (_) {}
+    this.renderDistributionTable(data);
+  },
+
+  render2DBarDistribution(data, chart, labels, series, options) {
+    const { isDarkMode, colors, showLegend, bottomPadding, chartFontFamily } = options;
     const legendNames = [];
     const seriesData = series.map((seriesItem, idx) => {
       const name = seriesItem?.name || `Series ${idx + 1}`;
@@ -1604,11 +1683,12 @@ Hooks.ExpandedWidgetView = {
 
   showTablePlaceholder(message) {
     if (!this.tableRoot) return;
-    this.tableRoot.innerHTML = `
-      <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-        ${message}
-      </div>
-    `;
+    this.tableRoot.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className =
+      'h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center';
+    wrapper.textContent = message == null ? '' : String(message);
+    this.tableRoot.appendChild(wrapper);
   },
 
   escapeHtml(str) {

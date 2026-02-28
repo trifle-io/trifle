@@ -2,10 +2,19 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
   _render_kpi_values(items) {
     if (!Array.isArray(items)) return;
 
+    const escapeHtml = (value) =>
+      String(value == null ? '' : value).replace(/[&<>"']/g, (s) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      }[s]));
+
     const formatNumber = (value) => {
       if (value === null || value === undefined || value === '') return '—';
       const n = Number(value);
-      if (!Number.isFinite(n)) return String(value);
+      if (!Number.isFinite(n)) return escapeHtml(value);
       if (Math.abs(n) >= 1000) {
         const units = ['', 'K', 'M', 'B', 'T'];
         let idx = 0;

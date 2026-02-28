@@ -143,8 +143,10 @@ Hooks.DashboardWidgetData = {
     const gridHook = findDashboardGridHook(this.el);
     const root = gridHook && gridHook.el ? gridHook.el : document;
     const item =
-      root && root.querySelector
-        ? root.querySelector(`.grid-stack-item[gs-id="${this.widgetId}"]`)
+      root && root.querySelectorAll
+        ? Array.from(root.querySelectorAll('.grid-stack-item')).find(
+            (node) => node && node.getAttribute && node.getAttribute('gs-id') === this.widgetId
+          )
         : null;
     if (!item) return;
     const titleEl = item.querySelector('.grid-widget-title');

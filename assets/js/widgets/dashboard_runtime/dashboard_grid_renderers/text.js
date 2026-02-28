@@ -1,4 +1,68 @@
-export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => ({
+export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => {
+  const resetTextWidget = (content) => {
+    if (!content) return;
+    delete content.dataset.textWidget;
+    delete content.dataset.widgetTitle;
+    content.style.paddingTop = '';
+    content.style.backgroundColor = '';
+    content.style.color = '';
+    content.style.borderColor = '';
+    delete content.dataset.customBg;
+
+    const header = content.querySelector('.grid-widget-header');
+    if (header) {
+      header.classList.remove('text-widget-header');
+      header.style.borderColor = '';
+      header.style.marginBottom = '';
+      header.style.paddingBottom = '';
+      header.style.minHeight = '';
+    }
+
+    const titleBar = content.querySelector('.grid-widget-title');
+    if (titleBar) {
+      const originalTitle = titleBar.dataset.originalTitle;
+      if (originalTitle !== undefined) {
+        titleBar.textContent = originalTitle;
+      }
+      delete titleBar.dataset.originalTitle;
+      titleBar.removeAttribute('aria-hidden');
+      titleBar.style.opacity = '';
+      titleBar.style.pointerEvents = '';
+      titleBar.style.minHeight = '';
+      titleBar.style.display = '';
+    }
+
+    const body = content.querySelector('.grid-widget-body');
+    if (body) {
+      delete body.dataset.textSubtype;
+      body.className =
+        'grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400';
+      body.style.textAlign = '';
+      body.style.alignItems = '';
+      body.style.justifyContent = '';
+      body.style.overflowY = '';
+      body.style.paddingTop = '';
+      body.style.paddingBottom = '';
+      body.innerHTML = 'Chart is coming soon';
+    }
+  };
+
+  const isHexColor = (color) =>
+    !!(color && typeof color === 'string' && /^#?[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color.trim()));
+
+  const isColorDark = (color) => {
+    if (!color || typeof color !== 'string') return false;
+    const hexMatch = color.trim().match(/^#?([0-9a-f]{6})$/i);
+    if (!hexMatch) return false;
+    const hex = hexMatch[1];
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return Number.isFinite(luminance) ? luminance < 0.5 : false;
+  };
+
+  return ({
   _render_text(items) {
     if (!Array.isArray(items)) return;
     const cloned = this._deepClone(items);
@@ -10,7 +74,7 @@ export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => 
       const parent = content.closest('.grid-stack-item');
       const id = parent && parent.getAttribute('gs-id');
       if (!activeIds.has(id)) {
-        this._resetTextWidget(content);
+        resetTextWidget(content);
       }
     });
 
@@ -31,12 +95,12 @@ export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => 
       const fg = typeof it.text_color === 'string' ? it.text_color : '';
 
       const colorId = (it.color_id || 'default').toLowerCase();
-      const hasCustomColor = colorId !== 'default' && bg && this._isHexColor(bg);
+      const hasCustomColor = colorId !== 'default' && bg && isHexColor(bg);
 
       if (hasCustomColor) {
         content.style.backgroundColor = bg;
         content.style.color = fg || '';
-        const isDark = this._isColorDark(bg);
+        const isDark = isColorDark(bg);
         content.style.borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)';
         content.dataset.customBg = '1';
       } else {
@@ -116,4 +180,5 @@ export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => 
     if (typeof this._scheduleReadyMark === 'function') this._scheduleReadyMark();
   },
 
-});
+  });
+};

@@ -1,4 +1,8 @@
-export const createDashboardGridCategoryRendererMethods = ({ formatCompactNumber }) => ({
+export const createDashboardGridCategoryRendererMethods = ({
+  echarts,
+  withChartOpts,
+  formatCompactNumber
+}) => ({
   _render_category(items) {
     if (!Array.isArray(items)) return;
     const isDarkMode = document.documentElement.classList.contains('dark');
