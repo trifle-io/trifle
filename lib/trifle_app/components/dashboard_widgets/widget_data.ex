@@ -114,9 +114,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
   defp normalize_id(other), do: to_string(other)
 
   @spec widget_payloads_from_dataset_maps(list(), map()) :: map()
-  def widget_payloads_from_dataset_maps(grid_items, dataset_maps) when is_list(grid_items) do
-    Enum.reduce(grid_items, %{}, fn widget, acc ->
-      widget_id = widget_id(widget)
+  def widget_payloads_from_dataset_maps(grid_items, dataset_maps)
+      when is_list(grid_items) and is_map(dataset_maps) do
+    grid_items
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {widget, index}, acc ->
+      widget_id =
+        widget
+        |> widget_id()
+        |> fallback_widget_id(index)
+
       widget_type = Registry.widget_type(widget)
 
       envelope = %{
@@ -142,11 +149,26 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
 
   defp widget_id(widget) when is_map(widget) do
     widget
-    |> Map.get("id", Map.get(widget, :id, ""))
+    |> Map.get("id")
+    |> case do
+      nil -> Map.get(widget, :id)
+      value -> value
+    end
+    |> case do
+      nil -> Map.get(widget, "uuid")
+      value -> value
+    end
+    |> case do
+      nil -> Map.get(widget, :uuid)
+      value -> value
+    end
     |> normalize_id()
   end
 
   defp widget_id(_widget), do: nil
+
+  defp fallback_widget_id(id, _index) when is_binary(id) and id != "", do: id
+  defp fallback_widget_id(_id, index), do: "widget-#{index}"
 
   defp widget_title(widget) when is_map(widget) do
     widget

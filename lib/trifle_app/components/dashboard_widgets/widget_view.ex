@@ -1276,16 +1276,19 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp build_dataset_maps(assigns) do
     %{
-      kpi_values: Map.get(assigns, :kpi_values, %{}),
-      kpi_visuals: Map.get(assigns, :kpi_visuals, %{}),
-      timeseries: Map.get(assigns, :timeseries, %{}),
-      category: Map.get(assigns, :category, %{}),
-      table: Map.get(assigns, :table, %{}),
-      text: Map.get(assigns, :text_widgets, %{}),
-      list: Map.get(assigns, :list, %{}),
-      distribution: Map.get(assigns, :distribution, %{})
+      kpi_values: map_or_empty(Map.get(assigns, :kpi_values, %{})),
+      kpi_visuals: map_or_empty(Map.get(assigns, :kpi_visuals, %{})),
+      timeseries: map_or_empty(Map.get(assigns, :timeseries, %{})),
+      category: map_or_empty(Map.get(assigns, :category, %{})),
+      table: map_or_empty(Map.get(assigns, :table, %{})),
+      text: map_or_empty(Map.get(assigns, :text_widgets, %{})),
+      list: map_or_empty(Map.get(assigns, :list, %{})),
+      distribution: map_or_empty(Map.get(assigns, :distribution, %{}))
     }
   end
+
+  defp map_or_empty(value) when is_map(value), do: value
+  defp map_or_empty(_value), do: %{}
 
   defp fetch_dataset(map, id) when is_map(map) do
     map

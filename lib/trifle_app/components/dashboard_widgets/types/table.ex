@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Table do
   @behaviour TrifleApp.Components.DashboardWidgets.WidgetType
 
   alias TrifleApp.Components.DataTable
+  alias TrifleApp.Components.DashboardWidgets.Registry
   alias TrifleApp.Components.DashboardWidgets.{Table, TableEditor}
   alias TrifleApp.DesignSystem.ChartColors
 
@@ -18,7 +19,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Table do
 
   @impl true
   def client_payload(widget_id, dataset_maps) do
-    dataset = fetch(dataset_maps, :table, widget_id)
+    dataset = Registry.fetch_dataset(dataset_maps, :table, widget_id)
 
     case dataset do
       %{} = table_dataset ->
@@ -41,10 +42,4 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Table do
 
   @impl true
   def normalize_widget(widget), do: widget
-
-  defp fetch(dataset_maps, key, id) do
-    dataset_maps
-    |> Map.get(key, %{})
-    |> Map.get(id)
-  end
 end

@@ -33,7 +33,19 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
 
   def widget_type(widget) when is_map(widget) do
     widget
-    |> Map.get("type", Map.get(widget, :type, "kpi"))
+    |> Map.get("type")
+    |> case do
+      nil -> Map.get(widget, "widget_type")
+      value -> value
+    end
+    |> case do
+      nil -> Map.get(widget, :type)
+      value -> value
+    end
+    |> case do
+      nil -> Map.get(widget, :widget_type, "kpi")
+      value -> value
+    end
     |> widget_type()
   end
 
@@ -74,4 +86,19 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
     |> type_module()
     |> apply(:client_payload, [widget_id, dataset_maps])
   end
+
+  @doc """
+  Fetches a widget dataset payload by bucket and widget id from a dataset maps struct.
+  """
+  @spec fetch_dataset(map(), atom(), String.t()) :: any()
+  def fetch_dataset(dataset_maps, key, id) when is_map(dataset_maps) and is_atom(key) do
+    dataset_maps
+    |> Map.get(key, %{})
+    |> case do
+      map when is_map(map) -> Map.get(map, id)
+      _ -> nil
+    end
+  end
+
+  def fetch_dataset(_dataset_maps, _key, _id), do: nil
 end

@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Kpi do
   @behaviour TrifleApp.Components.DashboardWidgets.WidgetType
 
   alias TrifleApp.Components.DashboardWidgets.{Kpi, KpiEditor}
+  alias TrifleApp.Components.DashboardWidgets.Registry
 
   @impl true
   def type, do: "kpi"
@@ -21,8 +22,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Kpi do
 
   @impl true
   def client_payload(widget_id, dataset_maps) do
-    value = fetch(dataset_maps, :kpi_values, widget_id)
-    visual = fetch(dataset_maps, :kpi_visuals, widget_id)
+    value = Registry.fetch_dataset(dataset_maps, :kpi_values, widget_id)
+    visual = Registry.fetch_dataset(dataset_maps, :kpi_visuals, widget_id)
 
     if is_nil(value) and is_nil(visual) do
       nil
@@ -33,10 +34,4 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Kpi do
 
   @impl true
   def normalize_widget(widget), do: widget
-
-  defp fetch(dataset_maps, key, id) do
-    dataset_maps
-    |> Map.get(key, %{})
-    |> Map.get(id)
-  end
 end

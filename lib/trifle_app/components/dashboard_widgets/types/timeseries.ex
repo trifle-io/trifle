@@ -3,6 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Timeseries do
 
   @behaviour TrifleApp.Components.DashboardWidgets.WidgetType
 
+  alias TrifleApp.Components.DashboardWidgets.Registry
   alias TrifleApp.Components.DashboardWidgets.{Timeseries, TimeseriesEditor}
 
   @impl true
@@ -15,14 +16,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Timeseries do
   def dataset(series, widget), do: Timeseries.dataset(series, widget)
 
   @impl true
-  def client_payload(widget_id, dataset_maps), do: fetch(dataset_maps, :timeseries, widget_id)
+  def client_payload(widget_id, dataset_maps),
+    do: Registry.fetch_dataset(dataset_maps, :timeseries, widget_id)
 
   @impl true
   def normalize_widget(widget), do: widget
-
-  defp fetch(dataset_maps, key, id) do
-    dataset_maps
-    |> Map.get(key, %{})
-    |> Map.get(id)
-  end
 end

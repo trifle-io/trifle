@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Heatmap do
   @behaviour TrifleApp.Components.DashboardWidgets.WidgetType
 
   alias TrifleApp.Components.DashboardWidgets.{Distribution, DistributionEditor}
+  alias TrifleApp.Components.DashboardWidgets.Registry
   alias TrifleApp.Components.DashboardWidgets.Types.NormalizeDistribution
 
   @impl true
@@ -17,7 +18,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Heatmap do
 
   @impl true
   def client_payload(widget_id, dataset_maps) do
-    case fetch(dataset_maps, :distribution, widget_id) do
+    case Registry.fetch_dataset(dataset_maps, :distribution, widget_id) do
       %{} = payload -> Map.put_new(payload, :widget_type, "heatmap")
       _ -> nil
     end
@@ -25,10 +26,4 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Heatmap do
 
   @impl true
   def normalize_widget(widget), do: NormalizeDistribution.normalize(widget, "heatmap")
-
-  defp fetch(dataset_maps, key, id) do
-    dataset_maps
-    |> Map.get(key, %{})
-    |> Map.get(id)
-  end
 end
