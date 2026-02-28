@@ -6,6 +6,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
     Distribution,
     Kpi,
     List,
+    Registry,
     Table,
     Text,
     Timeseries,
@@ -111,4 +112,47 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
   defp normalize_id(id) when is_float(id), do: :erlang.float_to_binary(id, decimals: 0)
   defp normalize_id(nil), do: nil
   defp normalize_id(other), do: to_string(other)
+
+  @spec widget_payloads_from_dataset_maps(list(), map()) :: map()
+  def widget_payloads_from_dataset_maps(grid_items, dataset_maps) when is_list(grid_items) do
+    Enum.reduce(grid_items, %{}, fn widget, acc ->
+      widget_id = widget_id(widget)
+      widget_type = Registry.widget_type(widget)
+
+      envelope = %{
+        id: widget_id,
+        type: widget_type,
+        title: widget_title(widget),
+        payload: Registry.client_payload(widget_type, widget_id, dataset_maps)
+      }
+
+      Map.put(acc, widget_id, envelope)
+    end)
+  end
+
+  def widget_payloads_from_dataset_maps(_grid_items, _dataset_maps), do: %{}
+
+  @spec widget_payloads(Trifle.Stats.Series.t() | nil, list()) :: map()
+  def widget_payloads(stats, grid_items) do
+    stats
+    |> datasets(grid_items)
+    |> dataset_maps()
+    |> widget_payloads_from_dataset_maps(grid_items)
+  end
+
+  defp widget_id(widget) when is_map(widget) do
+    widget
+    |> Map.get("id", Map.get(widget, :id, ""))
+    |> normalize_id()
+  end
+
+  defp widget_id(_widget), do: nil
+
+  defp widget_title(widget) when is_map(widget) do
+    widget
+    |> Map.get("title", Map.get(widget, :title, ""))
+    |> to_string()
+  end
+
+  defp widget_title(_widget), do: ""
 end

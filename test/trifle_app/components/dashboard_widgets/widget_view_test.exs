@@ -128,26 +128,28 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
 
     [{"div", kpi_attrs, _}] = Floki.find(document, "#widget-data-kpi-1")
 
-    kpi_payload =
+    kpi_payload_envelope =
       kpi_attrs
       |> Map.new()
-      |> Map.fetch!("data-kpi-values")
+      |> Map.fetch!("data-widget-payload")
       |> Jason.decode!()
 
-    assert kpi_payload["id"] == "kpi-1"
-    assert is_number(kpi_payload["value"])
+    assert kpi_payload_envelope["id"] == "kpi-1"
+    assert kpi_payload_envelope["type"] == "kpi"
+    assert is_number(kpi_payload_envelope["payload"]["value"]["value"])
 
     [{"div", text_attrs, _}] = Floki.find(document, "#widget-data-text-1")
 
-    text_payload =
+    text_payload_envelope =
       text_attrs
       |> Map.new()
-      |> Map.fetch!("data-text")
+      |> Map.fetch!("data-widget-payload")
       |> Jason.decode!()
 
-    assert text_payload["id"] == "text-1"
-    assert text_payload["subtype"] == "header"
-    assert text_payload["title"] == "Highlights"
+    assert text_payload_envelope["id"] == "text-1"
+    assert text_payload_envelope["type"] == "text"
+    assert text_payload_envelope["payload"]["subtype"] == "header"
+    assert text_payload_envelope["payload"]["title"] == "Highlights"
   end
 
   test "exposes grid metadata for GridStack initialisation", %{

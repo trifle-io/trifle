@@ -124,6 +124,31 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
              dataset_maps.distribution
   end
 
+  test "widget payload envelopes are derived from dataset maps", %{series: series} do
+    dataset_maps =
+      series
+      |> WidgetData.datasets(@grid_items)
+      |> WidgetData.dataset_maps()
+
+    payloads = WidgetData.widget_payloads_from_dataset_maps(@grid_items, dataset_maps)
+
+    assert %{
+             "kpi-1" => %{
+               id: "kpi-1",
+               type: "kpi",
+               payload: %{value: %{id: "kpi-1"}, visual: %{id: "kpi-1"}}
+             }
+           } = payloads
+
+    assert %{
+             "text-1" => %{
+               id: "text-1",
+               type: "text",
+               payload: %{id: "text-1", title: "Hello World"}
+             }
+           } = payloads
+  end
+
   test "datasets_from_dashboard delegates grid extraction", %{series: series} do
     dashboard = %{payload: %{"grid" => @grid_items}}
 

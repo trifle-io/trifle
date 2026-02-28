@@ -3,15 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
 
   use Phoenix.Component
 
-  alias TrifleApp.Components.DashboardWidgets.{
-    CategoryEditor,
-    DistributionEditor,
-    KpiEditor,
-    ListEditor,
-    TableEditor,
-    TextEditor,
-    TimeseriesEditor
-  }
+  alias TrifleApp.Components.DashboardWidgets.Registry
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
@@ -23,33 +15,24 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
       assigns
       |> assign(:widget, widget)
       |> assign_new(:type, fn -> widget_type(widget) end)
+      |> assign(:editor_module, Registry.editor_module(widget_type(widget)))
 
     ~H"""
-    <%= case @type do %>
-      <% "timeseries" -> %>
-        <TimeseriesEditor.editor widget={@widget} path_options={@path_options} />
-      <% "category" -> %>
-        <CategoryEditor.editor widget={@widget} path_options={@path_options} />
-      <% "distribution" -> %>
-        <DistributionEditor.editor widget={@widget} path_options={@path_options} />
-      <% "heatmap" -> %>
-        <DistributionEditor.editor widget={@widget} path_options={@path_options} />
-      <% "table" -> %>
-        <TableEditor.editor widget={@widget} path_options={@path_options} />
-      <% "text" -> %>
-        <TextEditor.editor widget={@widget} />
-      <% "list" -> %>
-        <ListEditor.editor widget={@widget} path_options={@path_options} />
-      <% _ -> %>
-        <KpiEditor.editor widget={@widget} path_options={@path_options} />
-    <% end %>
+    {render_editor_component(@editor_module, @widget, @path_options)}
     """
   end
 
+  defp render_editor_component(nil, _widget, _path_options), do: nil
+
+  defp render_editor_component(editor_module, widget, path_options) do
+    editor_module.editor(%{
+      widget: widget,
+      path_options: path_options,
+      __changed__: %{}
+    })
+  end
+
   defp widget_type(widget) do
-    widget
-    |> Map.get("type", "kpi")
-    |> to_string()
-    |> String.downcase()
+    Registry.widget_type(widget)
   end
 end

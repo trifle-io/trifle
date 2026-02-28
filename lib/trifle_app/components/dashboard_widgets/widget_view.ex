@@ -3,8 +3,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   use TrifleApp, :html
 
-  alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.Registry
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
   alias TrifleApp.DesignSystem.ChartColors
   require Logger
@@ -57,6 +57,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
       |> assign(:grid_dom_id, "dashboard-grid")
       |> assign_new(:print_width, fn -> nil end)
+      |> assign(:dataset_maps, build_dataset_maps(assigns))
 
     assigns = assign(assigns, :print_container_style, build_print_container_style(assigns))
 
@@ -113,20 +114,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     <div class="hidden" aria-hidden="true">
       <%= for widget <- @grid_items do %>
-        <% data = widget_dataset(assigns, widget) %>
+        <% payload = widget_payload(assigns, widget) %>
         <div
-          id={"widget-data-#{data.widget_id}"}
-          data-widget-id={data.widget_id}
-          data-widget-type={data.widget_type}
-          data-title={data.title}
-          data-kpi-values={data.kpi_values}
-          data-kpi-visual={data.kpi_visual}
-          data-timeseries={data.timeseries}
-          data-category={data.category}
-          data-table={data.table}
-          data-text={data.text}
-          data-list={data.list}
-          data-distribution={data.distribution}
+          id={"widget-data-#{payload.widget_id}"}
+          data-widget-id={payload.widget_id}
+          data-widget-type={payload.widget_type}
+          data-title={payload.title}
+          data-widget-payload={payload.payload_json}
           data-grid-id={@grid_dom_id}
           phx-hook="DashboardWidgetData"
         >
@@ -1259,68 +1253,38 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     """
   end
 
-  defp widget_dataset(assigns, widget) do
+  defp widget_payload(assigns, widget) do
     widget_id = widget_id(widget)
     widget_type = widget_type(widget)
+    dataset_maps = Map.get(assigns, :dataset_maps, %{})
+    payload = Registry.client_payload(widget_type, widget_id, dataset_maps)
 
-    base = %{
+    envelope = %{
+      id: widget_id,
+      type: widget_type,
+      title: widget_title(widget),
+      payload: payload
+    }
+
+    %{
       widget_id: widget_id,
       widget_type: widget_type,
       title: widget_title(widget),
-      kpi_values: nil,
-      kpi_visual: nil,
-      timeseries: nil,
-      category: nil,
-      table: nil,
-      text: nil,
-      list: nil,
-      distribution: nil
+      payload_json: Jason.encode!(envelope)
     }
+  end
 
-    case widget_type do
-      "kpi" ->
-        base
-        |> Map.put(:kpi_values, encode_dataset(fetch_dataset(assigns.kpi_values, widget_id)))
-        |> Map.put(:kpi_visual, encode_dataset(fetch_dataset(assigns.kpi_visuals, widget_id)))
-
-      "timeseries" ->
-        Map.put(base, :timeseries, encode_dataset(fetch_dataset(assigns.timeseries, widget_id)))
-
-      "category" ->
-        Map.put(base, :category, encode_dataset(fetch_dataset(assigns.category, widget_id)))
-
-      "table" ->
-        payload =
-          assigns
-          |> Map.get(:table, %{})
-          |> fetch_dataset(widget_id)
-          |> table_payload(assigns.transponder_info)
-
-        Map.put(base, :table, encode_dataset(payload))
-
-      "text" ->
-        Map.put(base, :text, encode_dataset(fetch_dataset(assigns.text_widgets, widget_id)))
-
-      "list" ->
-        Map.put(base, :list, encode_dataset(fetch_dataset(assigns.list, widget_id)))
-
-      "distribution" ->
-        Map.put(
-          base,
-          :distribution,
-          encode_dataset(fetch_dataset(assigns.distribution, widget_id))
-        )
-
-      "heatmap" ->
-        Map.put(
-          base,
-          :distribution,
-          encode_dataset(fetch_dataset(assigns.distribution, widget_id))
-        )
-
-      _ ->
-        base
-    end
+  defp build_dataset_maps(assigns) do
+    %{
+      kpi_values: Map.get(assigns, :kpi_values, %{}),
+      kpi_visuals: Map.get(assigns, :kpi_visuals, %{}),
+      timeseries: Map.get(assigns, :timeseries, %{}),
+      category: Map.get(assigns, :category, %{}),
+      table: Map.get(assigns, :table, %{}),
+      text: Map.get(assigns, :text_widgets, %{}),
+      list: Map.get(assigns, :list, %{}),
+      distribution: Map.get(assigns, :distribution, %{})
+    }
   end
 
   defp fetch_dataset(map, id) when is_map(map) do
@@ -1334,14 +1298,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp fetch_dataset(_map, _id), do: nil
 
-  defp encode_dataset(nil), do: nil
-  defp encode_dataset(data), do: Jason.encode!(data)
-
   defp widget_type(widget) do
-    widget
-    |> Map.get("type", "kpi")
-    |> to_string()
-    |> String.downcase()
+    Registry.widget_type(widget)
   end
 
   defp widget_id(widget) do
@@ -1350,23 +1308,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       widget
       |> Map.get(:uuid)
       |> to_string()
-  end
-
-  defp table_payload(nil, _transponder_info), do: nil
-
-  defp table_payload(dataset, transponder_info) do
-    dataset
-    |> DataTable.to_aggrid_payload(transponder_info)
-    |> case do
-      nil ->
-        nil
-
-      payload ->
-        Map.merge(payload, %{
-          color_paths: Map.get(dataset, :color_paths, []),
-          color_palette: ChartColors.palette()
-        })
-    end
   end
 
   defp log_table_render(assigns, %{} = dataset) do
@@ -1429,110 +1370,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   def text_items(grid_items), do: TextWidgets.widgets(grid_items)
 
   defp normalize_items(items) when is_list(items) do
-    Enum.map(items, &normalize_widget/1)
+    Enum.map(items, &Registry.normalize_widget/1)
   end
 
   defp normalize_items(_other), do: []
-
-  defp normalize_widget(item) when is_map(item) do
-    type =
-      item
-      |> Map.get("type", "kpi")
-      |> to_string()
-      |> String.downcase()
-
-    case type do
-      widget_type when widget_type in ["distribution", "heatmap"] ->
-        normalized_mode =
-          case widget_type do
-            "heatmap" ->
-              "3d"
-
-            _ ->
-              item
-              |> Map.get("mode")
-              |> WidgetHelpers.normalize_distribution_mode()
-          end
-
-        path_inputs =
-          item
-          |> WidgetHelpers.path_inputs_for_form("distribution")
-
-        normalized_paths =
-          item
-          |> Map.get("paths", item["path"])
-          |> WidgetHelpers.normalize_distribution_paths_for_edit()
-
-        selectors =
-          WidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(item, "series_color_selectors", %{})
-          )
-
-        path_aggregation =
-          item
-          |> Map.get("path_aggregation")
-          |> WidgetHelpers.normalize_distribution_path_aggregation()
-
-        fallback_heatmap_color =
-          WidgetHelpers.heatmap_single_color_from_paths(path_inputs, selectors)
-
-        color_mode =
-          case widget_type do
-            "heatmap" ->
-              item
-              |> Map.get("color_mode")
-              |> WidgetHelpers.normalize_heatmap_color_mode()
-
-            _ ->
-              nil
-          end
-
-        color_config =
-          case widget_type do
-            "heatmap" ->
-              item
-              |> Map.get("color_config", %{})
-              |> WidgetHelpers.normalize_heatmap_color_config(fallback_heatmap_color)
-
-            _ ->
-              nil
-          end
-
-        designators = WidgetHelpers.normalize_distribution_designators(%{}, item)
-
-        designator =
-          Map.get(designators, "horizontal") || WidgetHelpers.default_distribution_designator()
-
-        item
-        |> Map.put("path_inputs", path_inputs)
-        |> Map.put("mode", normalized_mode)
-        |> Map.put("paths", normalized_paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("chart_type", if(widget_type == "heatmap", do: "heatmap", else: "bar"))
-        |> Map.put("path_aggregation", path_aggregation)
-        |> Map.put("designators", designators)
-        |> Map.put("designator", designator)
-        |> Map.put_new("legend", true)
-        |> put_heatmap_color_fields(widget_type, color_mode, color_config)
-
-      _ ->
-        item
-    end
-  end
-
-  defp normalize_widget(other), do: other
-
-  defp put_heatmap_color_fields(widget, "heatmap", color_mode, color_config) do
-    widget
-    |> Map.put("color_mode", color_mode || "auto")
-    |> Map.put("color_config", color_config || %{})
-  end
-
-  defp put_heatmap_color_fields(widget, _widget_type, _color_mode, _color_config) do
-    widget
-    |> Map.delete("color_mode")
-    |> Map.delete("color_config")
-  end
 end
