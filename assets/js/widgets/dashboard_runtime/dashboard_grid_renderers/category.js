@@ -7,6 +7,7 @@ export const createDashboardGridCategoryRendererMethods = ({
     if (!Array.isArray(items)) return;
     const isDarkMode = document.documentElement.classList.contains('dark');
     const colors = this.colors || [];
+    this._catCharts = this._catCharts || {};
     items.forEach((it) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');

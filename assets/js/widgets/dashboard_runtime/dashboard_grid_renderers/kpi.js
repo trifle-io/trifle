@@ -323,7 +323,11 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
 
         if (!this._sparkResize) {
           this._sparkResize = () => {
-            Object.values(this._sparklines || {}).forEach((c) => c && !c.isDisposed() && c.resize());
+            Object.values(this._sparklines || {}).forEach((c) => {
+              if (c && !c.isDisposed()) {
+                c.resize();
+              }
+            });
           };
           window.addEventListener('resize', this._sparkResize);
         }

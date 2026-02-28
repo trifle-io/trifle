@@ -453,9 +453,14 @@ export const createDashboardGridTableRendererMethods = ({
 
   _strip_html(value) {
     if (!value || typeof value !== 'string') return '';
-    const div = document.createElement('div');
-    div.innerHTML = value;
-    return div.textContent || div.innerText || '';
+    try {
+      const parser = new DOMParser();
+      const parsed = parser.parseFromString(value, 'text/html');
+      const body = parsed && parsed.body ? parsed.body : null;
+      return (body && (body.textContent || body.innerText)) || '';
+    } catch (_) {
+      return value.replace(/<[^>]*>/g, '');
+    }
   },
 
   _ensure_unique_labels(labels) {

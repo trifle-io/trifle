@@ -418,7 +418,9 @@ Hooks.ExpandedWidgetView = {
 
     const seriesBounds = { min: Infinity, max: -Infinity };
     finalSeries.forEach((s) => {
-      (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
+      (s.data || []).forEach((point) => {
+        updateBounds(seriesBounds, extractPointValue(point));
+      });
     });
 
     const yAxis = this.buildYAxisConfig({
@@ -724,7 +726,9 @@ Hooks.ExpandedWidgetView = {
       const overlayBounds = { min: Infinity, max: -Infinity };
       if (overlay) {
         if (Array.isArray(overlay.reference_lines)) {
-          overlay.reference_lines.forEach((line) => updateBounds(overlayBounds, Number(line.value)));
+          overlay.reference_lines.forEach((line) => {
+            updateBounds(overlayBounds, Number(line.value));
+          });
         }
         if (Array.isArray(overlay.bands)) {
           overlay.bands.forEach((band) => {
@@ -733,7 +737,9 @@ Hooks.ExpandedWidgetView = {
           });
         }
         if (Array.isArray(overlay.points)) {
-          overlay.points.forEach((point) => updateBounds(overlayBounds, Number(point.value)));
+          overlay.points.forEach((point) => {
+            updateBounds(overlayBounds, Number(point.value));
+          });
         }
       }
 

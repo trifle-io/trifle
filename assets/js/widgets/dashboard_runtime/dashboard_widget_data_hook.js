@@ -8,6 +8,7 @@ Hooks.DashboardWidgetData = {
     this._retryTimer = null;
     this._lastKey = null;
     this._registeredType = null;
+    this._registeredWidgetId = null;
     this.register();
   },
 
@@ -27,9 +28,12 @@ Hooks.DashboardWidgetData = {
       this._retryTimer = null;
     }
     const gridHook = findDashboardGridHook(this.el);
-    if (gridHook && this.widgetId) {
+    if (gridHook) {
       const cleanupType = this._registeredType || this.widgetType || null;
-      gridHook.unregisterWidget(cleanupType, this.widgetId);
+      const cleanupId = this._registeredWidgetId || this.widgetId || null;
+      if (cleanupType && cleanupId) {
+        gridHook.unregisterWidget(cleanupType, cleanupId);
+      }
     }
   },
 
@@ -86,9 +90,14 @@ Hooks.DashboardWidgetData = {
       this.widgetId = id;
       this.widgetType = type;
 
-      if (this._registeredType && this._registeredType !== type && id) {
-        gridHook.unregisterWidget(this._registeredType, id);
+      if (
+        this._registeredType &&
+        this._registeredWidgetId &&
+        (this._registeredType !== type || this._registeredWidgetId !== id)
+      ) {
+        gridHook.unregisterWidget(this._registeredType, this._registeredWidgetId);
         this._registeredType = null;
+        this._registeredWidgetId = null;
       }
 
       // Backward compatibility path while old markup exists during rollout.
@@ -129,6 +138,7 @@ Hooks.DashboardWidgetData = {
 
       gridHook.registerWidget(type || null, id, payload);
       this._registeredType = type || null;
+      this._registeredWidgetId = id || null;
       this.updateWidgetTitle(titleData, type);
     };
 
