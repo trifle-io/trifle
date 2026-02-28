@@ -90,13 +90,19 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
   @doc """
   Fetches a widget dataset payload by bucket and widget id from a dataset maps struct.
   """
-  @spec fetch_dataset(map(), atom(), String.t()) :: any()
+  @spec fetch_dataset(map(), atom(), any()) :: any()
   def fetch_dataset(dataset_maps, key, id) when is_map(dataset_maps) and is_atom(key) do
     dataset_maps
     |> Map.get(key, %{})
     |> case do
-      map when is_map(map) -> Map.get(map, id)
-      _ -> nil
+      map when is_map(map) ->
+        case Map.get(map, id) do
+          nil -> Map.get(map, to_string(id))
+          value -> value
+        end
+
+      _ ->
+        nil
     end
   end
 

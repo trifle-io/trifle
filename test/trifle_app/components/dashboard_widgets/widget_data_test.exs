@@ -1,7 +1,7 @@
 defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
   use ExUnit.Case, async: true
 
-  alias TrifleApp.Components.DashboardWidgets.{Helpers, WidgetData, WidgetView}
+  alias TrifleApp.Components.DashboardWidgets.{Helpers, Registry, WidgetData, WidgetView}
 
   @grid_items [
     %{
@@ -147,6 +147,38 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
                payload: %{id: "text-1", title: "Hello World"}
              }
            } = payloads
+  end
+
+  test "fetch_dataset resolves string-keyed payloads for non-string ids" do
+    dataset_maps = %{text: %{"42" => %{id: "42", title: "Hello"}}}
+
+    assert %{id: "42", title: "Hello"} = Registry.fetch_dataset(dataset_maps, :text, 42)
+  end
+
+  test "generated fallback widget ids do not overwrite real widget ids" do
+    grid_items = [
+      %{"id" => "__generated-widget-1", "type" => "text", "title" => "Real"},
+      %{"type" => "text", "title" => "Missing ID"}
+    ]
+
+    dataset_maps = %{
+      text: %{
+        "__generated-widget-1" => %{id: "__generated-widget-1", title: "Real"}
+      }
+    }
+
+    payloads = WidgetData.widget_payloads_from_dataset_maps(grid_items, dataset_maps)
+
+    assert map_size(payloads) == 2
+    assert payloads["__generated-widget-1"].title == "Real"
+    assert payloads["__generated-widget-1"].id == "__generated-widget-1"
+
+    assert Enum.any?(payloads, fn {id, envelope} ->
+             id != "__generated-widget-1" and
+               String.starts_with?(id, "__generated-widget-") and
+               envelope.id == id and
+               envelope.title == "Missing ID"
+           end)
   end
 
   test "datasets_from_dashboard delegates grid extraction", %{series: series} do
