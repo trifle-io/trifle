@@ -14,6 +14,7 @@ defmodule TrifleApp.UserSettingsLiveTest do
 
       assert html =~ "Email Address"
       assert html =~ "Password"
+      assert html =~ "API Tokens"
     end
 
     test "redirects if user is not logged in", %{conn: conn} do
@@ -22,6 +23,34 @@ defmodule TrifleApp.UserSettingsLiveTest do
       assert {:redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/users/log_in"
       assert %{"error" => "You must log in to access this page."} = flash
+    end
+
+    test "creates and deletes a user api token", %{conn: conn} do
+      user = user_fixture()
+
+      {:ok, lv, _html} =
+        conn
+        |> log_in_user(user)
+        |> live(~p"/users/settings")
+
+      lv
+      |> element("button[phx-click=\"open_user_token_modal\"]")
+      |> render_click()
+
+      lv
+      |> form("#user-token-form", %{"user_token" => %{"name" => "Agent CLI"}})
+      |> render_submit()
+
+      assert render(lv) =~ "Token created successfully."
+      assert render(lv) =~ "Created by web-ui"
+      assert [%{name: "Agent CLI"} = token] = Accounts.list_user_api_tokens(user)
+
+      lv
+      |> element("button[phx-click=\"delete_user_token\"][phx-value-id=\"#{token.id}\"]")
+      |> render_click()
+
+      assert render(lv) =~ "Token deleted successfully."
+      assert Accounts.list_user_api_tokens(user) == []
     end
   end
 

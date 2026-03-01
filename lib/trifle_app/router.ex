@@ -188,6 +188,18 @@ defmodule TrifleApp.Router do
 
     get("/health", MetricsController, :health)
 
+    scope "/bootstrap" do
+      post("/signup", BootstrapController, :signup)
+      post("/login", BootstrapController, :login)
+      get("/me", BootstrapController, :me)
+      post("/organizations", BootstrapController, :create_organization)
+      get("/sources", BootstrapController, :list_sources)
+      post("/databases", BootstrapController, :create_database)
+      post("/databases/:id/setup", BootstrapController, :setup_database)
+      post("/projects", BootstrapController, :create_project)
+      post("/source-tokens", BootstrapController, :create_source_token)
+    end
+
     scope "/" do
       get("/source", SourceController, :show)
       post("/metrics", MetricsController, :create)

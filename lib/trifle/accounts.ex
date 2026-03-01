@@ -6,7 +6,7 @@ defmodule Trifle.Accounts do
   import Ecto.Query, warn: false
   alias Trifle.Repo
 
-  alias Trifle.Accounts.{User, UserToken, UserNotifier}
+  alias Trifle.Accounts.{User, UserApiToken, UserToken, UserNotifier}
 
   @sso_generated_password_length 32
 
@@ -45,6 +45,19 @@ defmodule Trifle.Accounts do
     user = Repo.get_by(User, email: email)
     if User.valid_password?(user, password), do: user
   end
+
+  @doc """
+  Gets a user by a user API token.
+  """
+  def get_user_by_api_token(token) when is_binary(token) do
+    token
+    |> UserApiToken.valid_query()
+    |> join(:inner, [t], user in assoc(t, :user))
+    |> select([_t, user], user)
+    |> Repo.one()
+  end
+
+  def get_user_by_api_token(_), do: nil
 
   @doc """
   Gets a single user.
@@ -354,6 +367,78 @@ defmodule Trifle.Accounts do
   end
 
   @doc """
+  Creates and persists a user API token.
+  """
+  def create_user_api_token(%User{} = user, attrs \\ %{}) do
+    token = UserApiToken.build_token()
+    attrs = attrs || %{}
+    attrs = Map.new(attrs)
+
+    attrs =
+      attrs
+      |> Map.put(:user_id, user.id)
+      |> Map.put_new(:name, "CLI token")
+      |> Map.put(:token_hash, UserApiToken.hash_token(token))
+      |> put_metadata(:created_by, attrs)
+      |> put_metadata(:created_from, attrs)
+
+    case %UserApiToken{}
+         |> UserApiToken.changeset(attrs)
+         |> Repo.insert() do
+      {:ok, record} -> {:ok, record, token}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc """
+  Updates the last-used timestamp for a user API token.
+  """
+  def touch_user_api_token(token, attrs \\ %{})
+
+  def touch_user_api_token(token, attrs) when is_binary(token) do
+    attrs = attrs || %{}
+    attrs = Map.new(attrs)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    updates =
+      [last_used_at: now]
+      |> maybe_put_update(:last_used_from, metadata_value(attrs, :last_used_from))
+
+    token
+    |> UserApiToken.valid_query()
+    |> Repo.update_all(set: updates)
+
+    :ok
+  end
+
+  def touch_user_api_token(_token, _attrs), do: :ok
+
+  @doc """
+  Lists user API tokens for the given user.
+  """
+  def list_user_api_tokens(%User{} = user) do
+    from(t in UserApiToken, where: t.user_id == ^user.id, order_by: [desc: t.inserted_at])
+    |> Repo.all()
+  end
+
+  @doc """
+  Deletes a user API token belonging to the given user.
+  """
+  def delete_user_api_token(%User{} = user, token_id) when is_binary(token_id) do
+    case get_user_api_token(user, token_id) do
+      nil -> {:error, :not_found}
+      token -> Repo.delete(token)
+    end
+  end
+
+  def delete_user_api_token(_user, _token_id), do: {:error, :not_found}
+
+  defp get_user_api_token(%User{} = user, token_id) do
+    from(t in UserApiToken, where: t.user_id == ^user.id and t.id == ^token_id)
+    |> Repo.one()
+  end
+
+  @doc """
   Gets the user with the given signed token.
   """
   def get_user_by_session_token(token) do
@@ -520,4 +605,36 @@ defmodule Trifle.Accounts do
     |> Ecto.Changeset.change(is_admin: is_admin)
     |> Repo.update()
   end
+
+  defp put_metadata(attrs, key, source) do
+    case metadata_value(source, key) do
+      nil -> attrs
+      value -> Map.put(attrs, key, value)
+    end
+  end
+
+  defp metadata_value(attrs, key) do
+    attrs
+    |> Map.get(key)
+    |> case do
+      nil -> Map.get(attrs, Atom.to_string(key))
+      value -> value
+    end
+    |> normalize_metadata(key)
+  end
+
+  defp normalize_metadata(value, key) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> String.slice(trimmed, 0, metadata_limit(key))
+    end
+  end
+
+  defp normalize_metadata(_value, _key), do: nil
+
+  defp metadata_limit(:created_by), do: 160
+  defp metadata_limit(_), do: 255
+
+  defp maybe_put_update(updates, _key, nil), do: updates
+  defp maybe_put_update(updates, key, value), do: Keyword.put(updates, key, value)
 end
