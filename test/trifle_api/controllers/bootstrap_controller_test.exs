@@ -45,6 +45,21 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert record.created_by == "trifle-cli-test"
       assert record.created_from == "agent-host"
     end
+
+    test "rolls back user creation when organization creation fails", %{conn: conn} do
+      email = unique_user_email()
+      invalid_org_name = String.duplicate("x", 256)
+
+      conn =
+        post(conn, ~p"/api/v1/bootstrap/signup", %{
+          "email" => email,
+          "password" => valid_user_password(),
+          "organization_name" => invalid_org_name
+        })
+
+      assert %{"errors" => %{"name" => _}} = json_response(conn, 422)
+      assert Accounts.get_user_by_email(email) == nil
+    end
   end
 
   describe "POST /api/v1/bootstrap/login" do
@@ -115,6 +130,57 @@ defmodule TrifleApi.BootstrapControllerTest do
                  "membership" => %{"role" => "owner"}
                }
              } = json_response(conn, 201)
+    end
+
+    test "source-token validation errors", %{conn: conn, user: user, user_token: user_token} do
+      {:ok, _organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      missing_source_id_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/source-tokens", %{
+          "source_type" => "project",
+          "name" => "Missing source id",
+          "read" => true,
+          "write" => true
+        })
+
+      assert %{"errors" => %{"source_id" => source_id_errors}} =
+               json_response(missing_source_id_conn, 422)
+
+      assert "can't be blank" in source_id_errors
+
+      missing_source_type_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/source-tokens", %{
+          "source_id" => Ecto.UUID.generate(),
+          "name" => "Missing source type",
+          "read" => true,
+          "write" => true
+        })
+
+      assert %{"errors" => %{"source_type" => source_type_errors}} =
+               json_response(missing_source_type_conn, 422)
+
+      assert "can't be blank" in source_type_errors
+
+      unknown_source_type_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/source-tokens", %{
+          "source_type" => "bogus",
+          "source_id" => Ecto.UUID.generate(),
+          "name" => "Unknown source type",
+          "read" => true,
+          "write" => true
+        })
+
+      assert %{"errors" => %{"source_type" => invalid_source_type_errors}} =
+               json_response(unknown_source_type_conn, 422)
+
+      assert "is invalid" in invalid_source_type_errors
     end
 
     test "can create project/database sources and issue source token", %{

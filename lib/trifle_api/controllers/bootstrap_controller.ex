@@ -7,6 +7,7 @@ defmodule TrifleApi.BootstrapController do
   alias Trifle.Config
   alias Trifle.Organizations
   alias Trifle.Organizations.{Database, Organization, OrganizationMembership, Project}
+  alias Trifle.Repo
   alias TrifleApp.RegistrationConfig
 
   plug(
@@ -25,11 +26,8 @@ defmodule TrifleApi.BootstrapController do
   def signup(conn, params) do
     with :ok <- ensure_registration_enabled(),
          {:ok, attrs} <- signup_attrs(params),
-         {:ok, %User{} = user} <- Accounts.register_user(attrs),
-         {:ok, %{organization: organization, membership: membership}} <-
-           maybe_create_signup_organization(user, params),
-         {:ok, _record, token} <-
-           Accounts.create_user_api_token(user, user_token_attrs(conn, params)) do
+         {:ok, %{user: user, organization: organization, membership: membership, token: token}} <-
+           create_signup_context(attrs, params, conn) do
       conn
       |> put_status(:created)
       |> json(%{
@@ -340,6 +338,26 @@ defmodule TrifleApi.BootstrapController do
     end
   end
 
+  defp create_signup_context(attrs, params, conn) do
+    Repo.transaction(fn ->
+      with {:ok, %User{} = user} <- Accounts.register_user(attrs),
+           {:ok, %{organization: organization, membership: membership}} <-
+             maybe_create_signup_organization(user, params),
+           {:ok, _record, token} <-
+             Accounts.create_user_api_token(user, user_token_attrs(conn, params)) do
+        %{
+          user: user,
+          organization: organization,
+          membership: membership,
+          token: token
+        }
+      else
+        {:error, reason} -> Repo.rollback(reason)
+        reason -> Repo.rollback(reason)
+      end
+    end)
+  end
+
   defp normalize_database_attrs(params, membership) do
     attrs =
       (Map.get(params, "database") || params)
@@ -386,17 +404,35 @@ defmodule TrifleApi.BootstrapController do
     read = normalize_boolean(payload["read"], true)
     write = normalize_boolean(payload["write"], true)
 
-    if is_binary(source_type) and is_binary(source_id) do
+    changeset =
+      {%{},
+       %{source_type: :string, source_id: :string, name: :string, read: :boolean, write: :boolean}}
+      |> Ecto.Changeset.cast(
+        %{
+          source_type: source_type,
+          source_id: source_id,
+          name: name,
+          read: read,
+          write: write
+        },
+        [:source_type, :source_id, :name, :read, :write]
+      )
+      |> Ecto.Changeset.validate_required([:source_type, :source_id])
+      |> Ecto.Changeset.validate_inclusion(:source_type, ["database", "project"])
+
+    if changeset.valid? do
+      attrs = Ecto.Changeset.apply_changes(changeset)
+
       {:ok,
        %{
-         source_type: source_type,
-         source_id: source_id,
-         name: name || "CLI source token",
-         read: read,
-         write: write
+         source_type: attrs.source_type,
+         source_id: attrs.source_id,
+         name: attrs.name || "CLI source token",
+         read: attrs.read,
+         write: attrs.write
        }}
     else
-      {:error, :invalid_source_type}
+      {:error, changeset}
     end
   end
 
