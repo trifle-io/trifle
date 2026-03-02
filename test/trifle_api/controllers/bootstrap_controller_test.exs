@@ -181,6 +181,39 @@ defmodule TrifleApi.BootstrapControllerTest do
                json_response(unknown_source_type_conn, 422)
 
       assert "is invalid" in invalid_source_type_errors
+
+      malformed_source_id_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/source-tokens", %{
+          "source_type" => "project",
+          "source_id" => "not-a-uuid",
+          "name" => "Malformed source id",
+          "read" => true,
+          "write" => true
+        })
+
+      assert %{"errors" => %{"source_id" => malformed_source_id_errors}} =
+               json_response(malformed_source_id_conn, 422)
+
+      assert "is invalid" in malformed_source_id_errors
+    end
+
+    test "database setup returns validation error for invalid source id", %{
+      conn: conn,
+      user: user,
+      user_token: user_token
+    } do
+      {:ok, _organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases/not-a-uuid/setup", %{})
+
+      assert %{"errors" => %{"source_id" => source_id_errors}} = json_response(conn, 422)
+      assert "is invalid" in source_id_errors
     end
 
     test "can create project/database sources and issue source token", %{

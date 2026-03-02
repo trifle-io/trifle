@@ -1,7 +1,7 @@
 defmodule TrifleApi.BootstrapController do
   use TrifleApi, :controller
 
-  alias Ecto.NoResultsError
+  alias Ecto.{NoResultsError, Query.CastError}
   alias Trifle.Accounts
   alias Trifle.Accounts.User
   alias Trifle.Config
@@ -207,6 +207,9 @@ defmodule TrifleApi.BootstrapController do
       {:error, :organization_required} ->
         render_error(conn, :conflict, "User does not belong to an organization")
 
+      {:error, :bad_request} ->
+        render_changeset(conn, invalid_source_id_changeset())
+
       {:error, :not_found} ->
         render_not_found(conn)
 
@@ -388,12 +391,14 @@ defmodule TrifleApi.BootstrapController do
     {:ok, Organizations.get_database_for_org!(membership.organization_id, id)}
   rescue
     NoResultsError -> {:error, :not_found}
+    CastError -> {:error, :bad_request}
   end
 
   defp fetch_project(%OrganizationMembership{} = membership, id) do
     {:ok, Organizations.get_project_for_org!(membership.organization_id, id)}
   rescue
     NoResultsError -> {:error, :not_found}
+    CastError -> {:error, :bad_request}
   end
 
   defp source_token_payload(params) do
@@ -401,8 +406,8 @@ defmodule TrifleApi.BootstrapController do
     source_type = payload |> Map.get("source_type") |> normalize_string()
     source_id = payload |> Map.get("source_id") |> normalize_string()
     name = payload |> Map.get("name") |> normalize_string()
-    read = normalize_boolean(payload["read"], true)
-    write = normalize_boolean(payload["write"], true)
+    read = Map.get(payload, "read")
+    write = Map.get(payload, "write")
 
     changeset =
       {%{},
@@ -419,6 +424,12 @@ defmodule TrifleApi.BootstrapController do
       )
       |> Ecto.Changeset.validate_required([:source_type, :source_id])
       |> Ecto.Changeset.validate_inclusion(:source_type, ["database", "project"])
+      |> Ecto.Changeset.validate_change(:source_id, fn :source_id, value ->
+        case Ecto.UUID.cast(value) do
+          {:ok, _casted} -> []
+          :error -> [source_id: "is invalid"]
+        end
+      end)
 
     if changeset.valid? do
       attrs = Ecto.Changeset.apply_changes(changeset)
@@ -428,8 +439,8 @@ defmodule TrifleApi.BootstrapController do
          source_type: attrs.source_type,
          source_id: attrs.source_id,
          name: attrs.name || "CLI source token",
-         read: attrs.read,
-         write: attrs.write
+         read: if(is_nil(attrs.read), do: true, else: attrs.read),
+         write: if(is_nil(attrs.write), do: true, else: attrs.write)
        }}
     else
       {:error, changeset}
@@ -625,18 +636,11 @@ defmodule TrifleApi.BootstrapController do
 
   defp normalize_string(_), do: nil
 
-  defp normalize_boolean(nil, default), do: default
-  defp normalize_boolean(value, _default) when is_boolean(value), do: value
-
-  defp normalize_boolean(value, default) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
-      "true" -> true
-      "false" -> false
-      _ -> default
-    end
+  defp invalid_source_id_changeset do
+    {%{}, %{source_id: :string}}
+    |> Ecto.Changeset.cast(%{source_id: "invalid"}, [:source_id])
+    |> Ecto.Changeset.add_error(:source_id, "is invalid")
   end
-
-  defp normalize_boolean(_value, default), do: default
 
   defp maybe_put(attrs, _key, nil), do: attrs
   defp maybe_put(attrs, key, value), do: Map.put(attrs, key, value)
