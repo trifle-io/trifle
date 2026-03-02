@@ -16,7 +16,6 @@ defmodule TrifleApi.Plugs.AuthenticateByUserToken do
 
       conn
       |> assign(:current_api_user, user)
-      |> assign(:current_user_api_token, token)
     else
       _ ->
         conn

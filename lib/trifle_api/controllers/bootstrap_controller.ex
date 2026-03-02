@@ -44,6 +44,9 @@ defmodule TrifleApi.BootstrapController do
       {:error, :registration_disabled} ->
         render_error(conn, :forbidden, "Self-service registration is disabled")
 
+      {:error, :missing_credentials} ->
+        render_error(conn, :bad_request, "Missing signup credentials")
+
       {:error, %Ecto.Changeset{} = changeset} ->
         render_changeset(conn, changeset)
 
@@ -353,7 +356,7 @@ defmodule TrifleApi.BootstrapController do
     payload
     |> Map.drop(["organization_id", "id", "inserted_at", "updated_at"])
     |> Map.put_new("time_zone", "UTC")
-    |> Map.put_new("beginning_of_week", 42)
+    |> Map.put_new("beginning_of_week", 1)
     |> Map.put_new("expire_after", Project.basic_retention_seconds())
     |> Map.put("organization_id", membership.organization_id)
     |> maybe_put("granularities", granularities)

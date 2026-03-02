@@ -156,7 +156,7 @@ defmodule TrifleApi.BootstrapControllerTest do
                }
              } = json_response(setup_conn, 200)
 
-      assert status in ["success", "pending", "error"]
+      assert status in ["success", "pending"]
 
       create_project_conn =
         conn
