@@ -205,17 +205,20 @@ defmodule Trifle.SqliteUploads do
   end
 
   defp with_download_lock(cache_path, fun) when is_function(fun, 0) do
-    case :global.trans(
-           {:sqlite_cache_download, cache_path},
-           fun,
-           [node()],
-           @download_lock_timeout_ms
-         ) do
-      {:aborted, reason} ->
-        {:error, "SQLite cache lock acquisition failed: #{inspect(reason)}"}
+    task =
+      Task.async(fn ->
+        :global.trans({:sqlite_cache_download, cache_path}, fun, [node()], 0)
+      end)
 
-      result ->
+    case Task.yield(task, @download_lock_timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, :aborted} ->
+        {:error, "SQLite cache lock acquisition failed"}
+
+      {:ok, result} ->
         result
+
+      nil ->
+        {:error, "SQLite cache lock acquisition failed"}
     end
   end
 

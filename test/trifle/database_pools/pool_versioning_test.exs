@@ -66,5 +66,17 @@ defmodule Trifle.DatabasePools.PoolVersioningTest do
       assert {:ok, connection_name} = SqlitePoolSupervisor.start_sqlite_pool(database)
       assert is_pid(Process.whereis(connection_name))
     end
+
+    test "falls back to default pool size for unexpected pool_size types" do
+      database = database_fixture(%{config: %{"pool_size" => %{"bad" => "value"}}})
+
+      on_exit(fn ->
+        _ = SqlitePoolSupervisor.stop_sqlite_pool(database.id)
+        _ = File.rm(database.file_path)
+      end)
+
+      assert {:ok, connection_name} = SqlitePoolSupervisor.start_sqlite_pool(database)
+      assert is_pid(Process.whereis(connection_name))
+    end
   end
 end

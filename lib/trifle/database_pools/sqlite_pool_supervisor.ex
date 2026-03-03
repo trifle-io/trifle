@@ -140,8 +140,7 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
             {:ok, connection_name}
 
           {:error, {:already_started, _pid}} ->
-            _ = Trifle.DatabasePools.VersionRegistry.put(:sqlite, database.id, expected_version)
-            {:ok, connection_name}
+            reconcile_existing_pool(database, connection_name, expected_version)
 
           error ->
             error
@@ -179,6 +178,9 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
               {parsed, ""} -> parsed
               _ -> 3
             end
+
+          _ ->
+            3
         end
 
       # For SQLite, we'll create a simple GenServer wrapper that manages a single connection
@@ -199,6 +201,24 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
          restart: :permanent,
          shutdown: 5000
        }}
+    end
+  end
+
+  defp reconcile_existing_pool(database, connection_name, expected_version) do
+    case Trifle.DatabasePools.VersionRegistry.get(:sqlite, database.id) do
+      {:ok, actual_version} ->
+        _ = Trifle.DatabasePools.VersionRegistry.put(:sqlite, database.id, actual_version)
+
+        if actual_version == expected_version do
+          {:ok, connection_name}
+        else
+          _ = stop_sqlite_pool(database.id)
+          start_new_sqlite_pool(database, connection_name, expected_version)
+        end
+
+      :error ->
+        _ = stop_sqlite_pool(database.id)
+        start_new_sqlite_pool(database, connection_name, expected_version)
     end
   end
 
