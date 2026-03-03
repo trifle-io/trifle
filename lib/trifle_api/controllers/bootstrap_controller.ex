@@ -160,7 +160,7 @@ defmodule TrifleApi.BootstrapController do
   def create_database(%{assigns: %{current_api_user: %User{} = user}} = conn, params) do
     with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
          attrs <- normalize_database_attrs(params, membership),
-         {:ok, attrs, uploaded_path} <- maybe_store_sqlite_upload(attrs, params, membership) do
+         {:ok, attrs, uploaded_upload} <- maybe_store_sqlite_upload(attrs, params, membership) do
       case Organizations.create_database(attrs) do
         {:ok, %Database{} = database} ->
           conn
@@ -172,11 +172,11 @@ defmodule TrifleApi.BootstrapController do
           })
 
         {:error, %Ecto.Changeset{} = changeset} ->
-          cleanup_uploaded_sqlite_file(uploaded_path)
+          cleanup_uploaded_sqlite_upload(uploaded_upload)
           render_changeset(conn, changeset)
 
         {:error, reason} ->
-          cleanup_uploaded_sqlite_file(uploaded_path)
+          cleanup_uploaded_sqlite_upload(uploaded_upload)
           render_error(conn, :unprocessable_entity, error_message(reason))
       end
     else
@@ -396,9 +396,17 @@ defmodule TrifleApi.BootstrapController do
         {:error, "invalid sqlite_file upload"}
 
       match?(%Plug.Upload{}, sqlite_upload) ->
-        case Trifle.SqliteUploads.store_upload(sqlite_upload, membership.organization_id) do
-          {:ok, uploaded_path} ->
-            {:ok, Map.put(attrs, "file_path", uploaded_path), uploaded_path}
+        case Trifle.SqliteUploads.store_upload_for_database(
+               sqlite_upload,
+               membership.organization_id
+             ) do
+          {:ok, %{file_path: uploaded_path, config_patch: config_patch} = uploaded_upload} ->
+            updated_attrs =
+              attrs
+              |> Map.put("file_path", uploaded_path)
+              |> Trifle.SqliteUploads.apply_config_patch(config_patch)
+
+            {:ok, updated_attrs, uploaded_upload}
 
           {:error, reason} ->
             {:error, reason}
@@ -414,8 +422,12 @@ defmodule TrifleApi.BootstrapController do
     Map.get(params, "sqlite_file") || Map.get(payload, "sqlite_file")
   end
 
-  defp cleanup_uploaded_sqlite_file(path) do
-    case Trifle.SqliteUploads.delete_managed_file(path) do
+  defp cleanup_uploaded_sqlite_upload(nil), do: :ok
+
+  defp cleanup_uploaded_sqlite_upload(%{file_path: path, config_patch: config_patch}) do
+    config = if is_map(config_patch), do: config_patch, else: %{}
+
+    case Trifle.SqliteUploads.delete_managed_upload(path, config) do
       :ok ->
         :ok
 
@@ -429,6 +441,8 @@ defmodule TrifleApi.BootstrapController do
         :ok
     end
   end
+
+  defp cleanup_uploaded_sqlite_upload(_), do: :ok
 
   defp normalize_project_attrs(params, membership) do
     payload = Map.get(params, "project") || params

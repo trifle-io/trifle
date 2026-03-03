@@ -16,6 +16,18 @@ config :trifle, :projects_enabled, true
 
 config :trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024
 config :trifle, :sqlite_upload_root, Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")
+config :trifle, :sqlite_storage_backend, :local
+config :trifle, :sqlite_cache_root, Path.join(System.tmp_dir!(), "trifle_sqlite_cache")
+
+config :trifle, :sqlite_object_store,
+  endpoint: nil,
+  bucket: nil,
+  region: "us-east-1",
+  access_key_id: nil,
+  secret_access_key: nil,
+  force_path_style: true,
+  prefix: "sqlite-files"
+
 config :trifle, :request_body_max_bytes, 8_000_000
 
 config :trifle, Trifle.Vault, json_library: Jason

@@ -290,8 +290,8 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   def handle_event("save", %{"database" => database_params}, socket) do
     case maybe_attach_sqlite_upload(socket, database_params) do
-      {:ok, database_params, uploaded_path} ->
-        save_database(socket, socket.assigns.action, database_params, uploaded_path)
+      {:ok, database_params, uploaded_upload} ->
+        save_database(socket, socket.assigns.action, database_params, uploaded_upload)
 
       {:error, reason} ->
         changeset =
@@ -304,7 +304,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
     end
   end
 
-  defp save_database(socket, :edit, database_params, uploaded_path) do
+  defp save_database(socket, :edit, database_params, uploaded_upload) do
     case Organizations.update_database(socket.assigns.database, database_params) do
       {:ok, database} ->
         notify_parent({:saved, database})
@@ -315,12 +315,12 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        cleanup_uploaded_sqlite_file(uploaded_path)
+        cleanup_uploaded_sqlite_upload(uploaded_upload)
         {:noreply, assign_form(socket, changeset)}
     end
   end
 
-  defp save_database(socket, :new, database_params, uploaded_path) do
+  defp save_database(socket, :new, database_params, uploaded_upload) do
     with org_id when is_binary(org_id) <- socket.assigns.database.organization_id do
       params = Map.put(database_params, "organization_id", org_id)
 
@@ -334,12 +334,12 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
            |> push_patch(to: socket.assigns.patch)}
 
         {:error, %Ecto.Changeset{} = changeset} ->
-          cleanup_uploaded_sqlite_file(uploaded_path)
+          cleanup_uploaded_sqlite_upload(uploaded_upload)
           {:noreply, assign_form(socket, changeset)}
       end
     else
       _ ->
-        cleanup_uploaded_sqlite_file(uploaded_path)
+        cleanup_uploaded_sqlite_upload(uploaded_upload)
 
         {:noreply,
          socket
@@ -502,8 +502,13 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
           {:ok, nil} ->
             {:ok, database_params, nil}
 
-          {:ok, uploaded_path} ->
-            {:ok, Map.put(database_params, "file_path", uploaded_path), uploaded_path}
+          {:ok, %{file_path: uploaded_path, config_patch: config_patch} = uploaded_upload} ->
+            updated_database_params =
+              database_params
+              |> Map.put("file_path", uploaded_path)
+              |> SqliteUploads.apply_config_patch(config_patch)
+
+            {:ok, updated_database_params, uploaded_upload}
 
           {:error, reason} ->
             {:error, reason}
@@ -528,21 +533,21 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
         organization_id = socket.assigns.database.organization_id
 
         try do
-          uploaded_paths =
+          uploaded_uploads =
             consume_uploaded_entries(socket, :sqlite_file, fn %{path: path}, entry ->
-              case SqliteUploads.store_upload(
+              case SqliteUploads.store_upload_for_database(
                      %{path: path, filename: entry.client_name},
                      organization_id
                    ) do
-                {:ok, uploaded_path} ->
-                  {:ok, uploaded_path}
+                {:ok, uploaded_upload} ->
+                  {:ok, uploaded_upload}
 
                 {:error, reason} ->
                   throw({:sqlite_upload_failed, reason})
               end
             end)
 
-          {:ok, List.last(uploaded_paths)}
+          {:ok, List.last(uploaded_uploads)}
         catch
           {:sqlite_upload_failed, reason} ->
             {:error, reason}
@@ -550,8 +555,13 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
     end
   end
 
-  defp cleanup_uploaded_sqlite_file(nil), do: :ok
-  defp cleanup_uploaded_sqlite_file(path), do: SqliteUploads.delete_managed_file(path)
+  defp cleanup_uploaded_sqlite_upload(nil), do: :ok
+
+  defp cleanup_uploaded_sqlite_upload(%{file_path: path, config_patch: config_patch}) do
+    SqliteUploads.delete_managed_upload(path, config_patch || %{})
+  end
+
+  defp cleanup_uploaded_sqlite_upload(_), do: :ok
 
   defp selected_driver(socket, database_params) do
     case database_params["driver"] do

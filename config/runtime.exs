@@ -102,8 +102,111 @@ sqlite_upload_root =
       String.trim(value)
   end
 
+sqlite_storage_backend =
+  case System.get_env("TRIFLE_SQLITE_STORAGE_BACKEND") do
+    value when value in ["s3", "S3"] -> :s3
+    value when value in ["local", "LOCAL"] -> :local
+    _ -> Application.get_env(:trifle, :sqlite_storage_backend, :local)
+  end
+
+sqlite_cache_root =
+  case System.get_env("TRIFLE_SQLITE_CACHE_ROOT") do
+    nil ->
+      Application.get_env(
+        :trifle,
+        :sqlite_cache_root,
+        Path.join(System.tmp_dir!(), "trifle_sqlite_cache")
+      )
+
+    "" ->
+      Application.get_env(
+        :trifle,
+        :sqlite_cache_root,
+        Path.join(System.tmp_dir!(), "trifle_sqlite_cache")
+      )
+
+    value ->
+      String.trim(value)
+  end
+
+sqlite_object_store_defaults =
+  case Application.get_env(:trifle, :sqlite_object_store, []) do
+    value when is_map(value) -> value
+    value when is_list(value) -> Enum.into(value, %{})
+    _ -> %{}
+  end
+
+sqlite_object_store_endpoint =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_ENDPOINT") do
+    nil -> sqlite_object_store_defaults[:endpoint]
+    "" -> sqlite_object_store_defaults[:endpoint]
+    value -> String.trim(value)
+  end
+
+sqlite_object_store_bucket =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_BUCKET") do
+    nil -> sqlite_object_store_defaults[:bucket]
+    "" -> sqlite_object_store_defaults[:bucket]
+    value -> String.trim(value)
+  end
+
+sqlite_object_store_region =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_REGION") do
+    nil -> sqlite_object_store_defaults[:region] || "us-east-1"
+    "" -> sqlite_object_store_defaults[:region] || "us-east-1"
+    value -> String.trim(value)
+  end
+
+sqlite_object_store_access_key_id =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_ACCESS_KEY_ID") do
+    nil -> sqlite_object_store_defaults[:access_key_id]
+    "" -> sqlite_object_store_defaults[:access_key_id]
+    value -> String.trim(value)
+  end
+
+sqlite_object_store_secret_access_key =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_SECRET_ACCESS_KEY") do
+    nil -> sqlite_object_store_defaults[:secret_access_key]
+    "" -> sqlite_object_store_defaults[:secret_access_key]
+    value -> String.trim(value)
+  end
+
+sqlite_object_store_force_path_style =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_FORCE_PATH_STYLE") do
+    nil ->
+      Map.get(sqlite_object_store_defaults, :force_path_style, true)
+
+    "" ->
+      Map.get(sqlite_object_store_defaults, :force_path_style, true)
+
+    value ->
+      case String.downcase(String.trim(value)) do
+        v when v in ["1", "true", "yes", "on", "enabled"] -> true
+        v when v in ["0", "false", "no", "off", "disabled"] -> false
+        _ -> Map.get(sqlite_object_store_defaults, :force_path_style, true)
+      end
+  end
+
+sqlite_object_store_prefix =
+  case System.get_env("TRIFLE_SQLITE_OBJECT_STORE_PREFIX") do
+    nil -> sqlite_object_store_defaults[:prefix] || "sqlite-files"
+    "" -> sqlite_object_store_defaults[:prefix] || "sqlite-files"
+    value -> String.trim(value)
+  end
+
 config :trifle, :sqlite_upload_max_bytes, sqlite_upload_max_bytes
 config :trifle, :sqlite_upload_root, sqlite_upload_root
+config :trifle, :sqlite_storage_backend, sqlite_storage_backend
+config :trifle, :sqlite_cache_root, sqlite_cache_root
+
+config :trifle, :sqlite_object_store,
+  endpoint: sqlite_object_store_endpoint,
+  bucket: sqlite_object_store_bucket,
+  region: sqlite_object_store_region,
+  access_key_id: sqlite_object_store_access_key_id,
+  secret_access_key: sqlite_object_store_secret_access_key,
+  force_path_style: sqlite_object_store_force_path_style,
+  prefix: sqlite_object_store_prefix
 
 honeybadger_api_key = System.get_env("HONEYBADGER_API_KEY")
 honeybadger_enabled = honeybadger_api_key not in [nil, ""]

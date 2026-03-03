@@ -1012,31 +1012,38 @@ defmodule Trifle.Organizations do
   end
 
   defp maybe_cleanup_replaced_sqlite_file(
-         %Database{driver: "sqlite", file_path: old_path},
-         %Database{file_path: new_path}
+         %Database{driver: "sqlite", file_path: old_path, config: old_config},
+         %Database{file_path: new_path, config: new_config}
        ) do
+    old_storage = SqliteUploads.extract_storage_metadata(old_config || %{})
+    new_storage = SqliteUploads.extract_storage_metadata(new_config || %{})
+
     cond do
       old_path in [nil, ""] ->
         :ok
 
-      old_path == new_path ->
+      old_path == new_path and old_storage == new_storage ->
         :ok
 
       true ->
-        maybe_delete_sqlite_file(old_path)
+        maybe_delete_sqlite_file(old_path, old_config)
     end
   end
 
   defp maybe_cleanup_replaced_sqlite_file(_previous, _updated), do: :ok
 
-  defp maybe_cleanup_deleted_sqlite_file(%Database{driver: "sqlite", file_path: path}) do
-    maybe_delete_sqlite_file(path)
+  defp maybe_cleanup_deleted_sqlite_file(%Database{
+         driver: "sqlite",
+         file_path: path,
+         config: config
+       }) do
+    maybe_delete_sqlite_file(path, config)
   end
 
   defp maybe_cleanup_deleted_sqlite_file(_database), do: :ok
 
-  defp maybe_delete_sqlite_file(path) when is_binary(path) and path != "" do
-    case SqliteUploads.delete_managed_file(path) do
+  defp maybe_delete_sqlite_file(path, config) when is_binary(path) and path != "" do
+    case SqliteUploads.delete_managed_upload(path, config || %{}) do
       :ok ->
         :ok
 
@@ -1046,7 +1053,7 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp maybe_delete_sqlite_file(_path), do: :ok
+  defp maybe_delete_sqlite_file(_path, _config), do: :ok
 
   ## Project clusters
 
