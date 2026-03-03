@@ -1,6 +1,8 @@
 defmodule TrifleApi.BootstrapController do
   use TrifleApi, :controller
 
+  require Logger
+
   alias Ecto.{NoResultsError, Query.CastError}
   alias Trifle.Accounts
   alias Trifle.Accounts.User
@@ -413,8 +415,19 @@ defmodule TrifleApi.BootstrapController do
   end
 
   defp cleanup_uploaded_sqlite_file(path) do
-    _ = Trifle.SqliteUploads.delete_managed_file(path)
-    :ok
+    case Trifle.SqliteUploads.delete_managed_file(path) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "Failed to delete managed sqlite upload during bootstrap cleanup",
+          sqlite_upload_path: path,
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
   end
 
   defp normalize_project_attrs(params, membership) do

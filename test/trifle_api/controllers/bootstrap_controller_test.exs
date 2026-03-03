@@ -345,12 +345,12 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       database = Organizations.get_database!(database_id)
 
-      assert database.file_path =~ "/organization_#{organization.id}/sqlite/"
-      assert File.exists?(database.file_path)
-
       on_exit(fn ->
         _ = Organizations.delete_database(database)
       end)
+
+      assert database.file_path =~ "/organization_#{organization.id}/sqlite/"
+      assert File.exists?(database.file_path)
     end
 
     test "rejects invalid sqlite upload extension", %{

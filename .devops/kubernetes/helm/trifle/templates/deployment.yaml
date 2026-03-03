@@ -21,6 +21,8 @@ spec:
         {{- include "trifle.selectorLabels" . | nindent 8 }}
     spec:
       {{- $mongoSidecar := and .Values.features.projects.enabled .Values.mongo.sidecar.enabled }}
+      {{- $appEnv := .Values.app.env | default (dict) }}
+      {{- $sqliteUpload := .Values.app.sqliteUpload | default (dict) }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -39,7 +41,7 @@ spec:
               containerPort: {{ .Values.app.port }}
               protocol: TCP
           env:
-            {{- range $key, $value := .Values.app.env }}
+            {{- range $key, $value := $appEnv }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
@@ -120,13 +122,13 @@ spec:
               value: {{ .Values.app.deploymentMode | quote }}
             - name: TRIFLE_PROJECTS_ENABLED
               value: {{ ternary "true" "false" .Values.features.projects.enabled | quote }}
-            {{- if not (hasKey .Values.app.env "TRIFLE_SQLITE_UPLOAD_MAX_BYTES") }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_UPLOAD_MAX_BYTES")) (hasKey $sqliteUpload "maxBytes") }}
             - name: TRIFLE_SQLITE_UPLOAD_MAX_BYTES
-              value: {{ .Values.app.sqliteUpload.maxBytes | quote }}
+              value: {{ index $sqliteUpload "maxBytes" | quote }}
             {{- end }}
-            {{- if not (hasKey .Values.app.env "TRIFLE_SQLITE_UPLOAD_ROOT") }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_UPLOAD_ROOT")) (hasKey $sqliteUpload "rootPath") }}
             - name: TRIFLE_SQLITE_UPLOAD_ROOT
-              value: {{ .Values.app.sqliteUpload.rootPath | quote }}
+              value: {{ index $sqliteUpload "rootPath" | quote }}
             {{- end }}
             - name: LANG
               value: "en_US.UTF-8"
