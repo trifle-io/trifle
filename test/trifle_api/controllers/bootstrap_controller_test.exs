@@ -307,6 +307,84 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert Enum.any?(projects, &(&1["id"] == project_id))
       assert Enum.any?(databases, &(&1["id"] == database_id))
     end
+
+    test "can upload sqlite file when creating bootstrap database source", %{
+      conn: conn,
+      user: user,
+      user_token: user_token
+    } do
+      {:ok, organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      temp_input_path =
+        Path.join(System.tmp_dir!(), "bootstrap-upload-#{Ecto.UUID.generate()}.sqlite")
+
+      File.write!(temp_input_path, "sqlite")
+      on_exit(fn -> File.rm(temp_input_path) end)
+
+      upload = %Plug.Upload{
+        path: temp_input_path,
+        filename: "metrics.sqlite",
+        content_type: "application/octet-stream"
+      }
+
+      create_db_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Bootstrap Upload DB",
+          "driver" => "sqlite",
+          "sqlite_file" => upload
+        })
+
+      assert %{
+               "data" => %{
+                 "source" => %{"id" => database_id, "type" => "database"}
+               }
+             } = json_response(create_db_conn, 201)
+
+      database = Organizations.get_database!(database_id)
+
+      assert database.file_path =~ "/organization_#{organization.id}/sqlite/"
+      assert File.exists?(database.file_path)
+
+      on_exit(fn ->
+        _ = Organizations.delete_database(database)
+      end)
+    end
+
+    test "rejects invalid sqlite upload extension", %{
+      conn: conn,
+      user: user,
+      user_token: user_token
+    } do
+      {:ok, _organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      temp_input_path =
+        Path.join(System.tmp_dir!(), "bootstrap-upload-#{Ecto.UUID.generate()}.txt")
+
+      File.write!(temp_input_path, "not sqlite")
+      on_exit(fn -> File.rm(temp_input_path) end)
+
+      upload = %Plug.Upload{
+        path: temp_input_path,
+        filename: "metrics.txt",
+        content_type: "text/plain"
+      }
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Bootstrap Upload DB",
+          "driver" => "sqlite",
+          "sqlite_file" => upload
+        })
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
+      assert detail =~ "Unsupported SQLite file type"
+    end
   end
 
   defp api_conn(conn) do

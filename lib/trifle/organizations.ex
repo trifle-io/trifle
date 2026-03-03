@@ -4,8 +4,10 @@ defmodule Trifle.Organizations do
   """
 
   import Ecto.Query, warn: false
+  require Logger
   alias Ecto.Multi
   alias Trifle.Repo
+  alias Trifle.SqliteUploads
 
   alias Trifle.Accounts.User
 
@@ -1009,6 +1011,43 @@ defmodule Trifle.Organizations do
     end)
   end
 
+  defp maybe_cleanup_replaced_sqlite_file(
+         %Database{driver: "sqlite", file_path: old_path},
+         %Database{file_path: new_path}
+       ) do
+    cond do
+      old_path in [nil, ""] ->
+        :ok
+
+      old_path == new_path ->
+        :ok
+
+      true ->
+        maybe_delete_sqlite_file(old_path)
+    end
+  end
+
+  defp maybe_cleanup_replaced_sqlite_file(_previous, _updated), do: :ok
+
+  defp maybe_cleanup_deleted_sqlite_file(%Database{driver: "sqlite", file_path: path}) do
+    maybe_delete_sqlite_file(path)
+  end
+
+  defp maybe_cleanup_deleted_sqlite_file(_database), do: :ok
+
+  defp maybe_delete_sqlite_file(path) when is_binary(path) and path != "" do
+    case SqliteUploads.delete_managed_file(path) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Failed to delete managed SQLite file #{path}: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  defp maybe_delete_sqlite_file(_path), do: :ok
+
   ## Project clusters
 
   def list_project_clusters do
@@ -1763,6 +1802,7 @@ defmodule Trifle.Organizations do
       end)
       |> case do
         {:ok, updated_database} ->
+          maybe_cleanup_replaced_sqlite_file(database, updated_database)
           {:ok, updated_database}
 
         {:error, {:changeset, %Ecto.Changeset{} = failed_changeset}} ->
@@ -1772,7 +1812,14 @@ defmodule Trifle.Organizations do
           {:error, reason}
       end
     else
-      Repo.update(changeset)
+      case Repo.update(changeset) do
+        {:ok, updated_database} ->
+          maybe_cleanup_replaced_sqlite_file(database, updated_database)
+          {:ok, updated_database}
+
+        error ->
+          error
+      end
     end
   end
 
@@ -1783,6 +1830,7 @@ defmodule Trifle.Organizations do
     case Repo.delete(database) do
       {:ok, deleted_database} ->
         _ = Trifle.DatabasePools.PoolManager.stop_all_pools_for_database(deleted_database.id)
+        maybe_cleanup_deleted_sqlite_file(deleted_database)
         {:ok, deleted_database}
 
       error ->

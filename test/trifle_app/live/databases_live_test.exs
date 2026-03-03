@@ -20,6 +20,17 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "MySQL"
   end
 
+  test "new database form shows sqlite upload field when sqlite driver selected", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("form")
+      |> render_change(%{"database" => %{"driver" => "sqlite"}})
+
+    assert html =~ "SQLite File Upload"
+  end
+
   test "mysql database is rendered as supported in databases list", %{
     conn: conn,
     organization: organization
@@ -43,6 +54,27 @@ defmodule TrifleApp.DatabasesLiveTest do
     {:ok, _lv, html} = live(conn, ~p"/dbs/#{database.id}/settings")
 
     assert html =~ "MySQL database connection"
+  end
+
+  test "database edit modal shows sqlite upload field", %{conn: conn, organization: organization} do
+    sqlite_path = Path.join(System.tmp_dir!(), "settings-sqlite-#{Ecto.UUID.generate()}.sqlite")
+    on_exit(fn -> File.rm(sqlite_path) end)
+
+    assert {:ok, database} =
+             Organizations.create_database_for_org(organization, %{
+               display_name: "SQLite Source",
+               driver: "sqlite",
+               file_path: sqlite_path
+             })
+
+    {:ok, lv, _html} = live(conn, ~p"/dbs/#{database.id}/settings")
+
+    html =
+      lv
+      |> element("button[phx-click=\"edit\"]")
+      |> render_click()
+
+    assert html =~ "SQLite File Upload"
   end
 
   defp mysql_attrs(overrides \\ %{}) do

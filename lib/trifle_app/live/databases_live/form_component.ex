@@ -7,6 +7,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   alias Ecto.Changeset
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
+  alias Trifle.SqliteUploads
   alias TrifleApp.Granularity
 
   @impl true
@@ -47,10 +48,40 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
         <% end %>
 
         <%= if @selected_driver && @selected_driver == "sqlite" do %>
+          <div class="space-y-2 mb-4">
+            <label class="block text-sm font-medium text-gray-900 dark:text-white">
+              SQLite File Upload
+            </label>
+            <.live_file_input
+              upload={@uploads.sqlite_file}
+              phx-target={@myself}
+              class="block w-full text-sm text-gray-900 dark:text-white file:mr-4 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-teal-700 hover:file:bg-teal-100 dark:file:bg-teal-500/20 dark:file:text-teal-200"
+            />
+            <p class="text-xs text-gray-600 dark:text-gray-400">
+              {sqlite_upload_help_text()}
+            </p>
+
+            <%= for entry <- @uploads.sqlite_file.entries do %>
+              <div class="text-xs text-gray-600 dark:text-gray-400">
+                {entry.client_name} ({entry.progress}%)
+              </div>
+              <%= for error <- upload_errors(@uploads.sqlite_file, entry) do %>
+                <p class="text-sm text-red-600 dark:text-red-400">
+                  {upload_error_message(error)}
+                </p>
+              <% end %>
+            <% end %>
+
+            <%= for error <- upload_errors(@uploads.sqlite_file) do %>
+              <p class="text-sm text-red-600 dark:text-red-400">{upload_error_message(error)}</p>
+            <% end %>
+          </div>
+
           <.form_field
             field={@form[:file_path]}
             label="Database File Path"
             placeholder="e.g., /path/to/database.sqlite"
+            help_text="Optional fallback for manual server-side paths. Uploaded file is used when provided."
           />
         <% end %>
 
@@ -229,6 +260,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
     {:ok,
      socket
+     |> ensure_sqlite_upload()
      |> assign(assigns)
      |> assign(:selected_driver, selected_driver)
      |> assign(:config_options, config_options)
@@ -238,12 +270,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   @impl true
   def handle_event("validate", %{"database" => database_params}, socket) do
-    selected_driver =
-      case database_params["driver"] do
-        nil -> socket.assigns.database.driver
-        "" -> nil
-        driver -> driver
-      end
+    selected_driver = selected_driver(socket, database_params)
 
     config_options =
       if selected_driver, do: Database.default_config_options(selected_driver), else: %{}
@@ -255,16 +282,29 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
     {:noreply,
      socket
+     |> maybe_cancel_sqlite_upload(selected_driver)
      |> assign(:selected_driver, selected_driver)
      |> assign(:config_options, config_options)
      |> assign_form(changeset)}
   end
 
   def handle_event("save", %{"database" => database_params}, socket) do
-    save_database(socket, socket.assigns.action, database_params)
+    case maybe_attach_sqlite_upload(socket, database_params) do
+      {:ok, database_params, uploaded_path} ->
+        save_database(socket, socket.assigns.action, database_params, uploaded_path)
+
+      {:error, reason} ->
+        changeset =
+          socket.assigns.database
+          |> Organizations.change_database(database_params)
+          |> Ecto.Changeset.add_error(:file_path, reason)
+          |> Map.put(:action, :validate)
+
+        {:noreply, assign_form(socket, changeset)}
+    end
   end
 
-  defp save_database(socket, :edit, database_params) do
+  defp save_database(socket, :edit, database_params, uploaded_path) do
     case Organizations.update_database(socket.assigns.database, database_params) do
       {:ok, database} ->
         notify_parent({:saved, database})
@@ -275,11 +315,12 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
+        cleanup_uploaded_sqlite_file(uploaded_path)
         {:noreply, assign_form(socket, changeset)}
     end
   end
 
-  defp save_database(socket, :new, database_params) do
+  defp save_database(socket, :new, database_params, uploaded_path) do
     with org_id when is_binary(org_id) <- socket.assigns.database.organization_id do
       params = Map.put(database_params, "organization_id", org_id)
 
@@ -293,10 +334,13 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
            |> push_patch(to: socket.assigns.patch)}
 
         {:error, %Ecto.Changeset{} = changeset} ->
+          cleanup_uploaded_sqlite_file(uploaded_path)
           {:noreply, assign_form(socket, changeset)}
       end
     else
       _ ->
+        cleanup_uploaded_sqlite_file(uploaded_path)
+
         {:noreply,
          socket
          |> put_flash(:error, "Unable to determine organization for this database.")}
@@ -448,6 +492,111 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
       true ->
         options ++ Granularity.options([value])
+    end
+  end
+
+  defp maybe_attach_sqlite_upload(socket, database_params) do
+    case selected_driver(socket, database_params) do
+      "sqlite" ->
+        case consume_sqlite_upload(socket) do
+          {:ok, nil} ->
+            {:ok, database_params, nil}
+
+          {:ok, uploaded_path} ->
+            {:ok, Map.put(database_params, "file_path", uploaded_path), uploaded_path}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      _ ->
+        {:ok, database_params, nil}
+    end
+  end
+
+  defp consume_sqlite_upload(socket) do
+    {completed_entries, in_progress_entries} = uploaded_entries(socket, :sqlite_file)
+
+    cond do
+      in_progress_entries != [] ->
+        {:error, "SQLite upload is still in progress. Wait for completion and try again."}
+
+      completed_entries == [] ->
+        {:ok, nil}
+
+      true ->
+        organization_id = socket.assigns.database.organization_id
+
+        try do
+          uploaded_paths =
+            consume_uploaded_entries(socket, :sqlite_file, fn %{path: path}, entry ->
+              case SqliteUploads.store_upload(
+                     %{path: path, filename: entry.client_name},
+                     organization_id
+                   ) do
+                {:ok, uploaded_path} ->
+                  {:ok, uploaded_path}
+
+                {:error, reason} ->
+                  throw({:sqlite_upload_failed, reason})
+              end
+            end)
+
+          {:ok, List.last(uploaded_paths)}
+        catch
+          {:sqlite_upload_failed, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  defp cleanup_uploaded_sqlite_file(nil), do: :ok
+  defp cleanup_uploaded_sqlite_file(path), do: SqliteUploads.delete_managed_file(path)
+
+  defp selected_driver(socket, database_params) do
+    case database_params["driver"] do
+      nil -> socket.assigns.database.driver
+      "" -> nil
+      driver -> driver
+    end
+  end
+
+  defp maybe_cancel_sqlite_upload(socket, "sqlite"), do: socket
+
+  defp maybe_cancel_sqlite_upload(socket, _selected_driver) do
+    case socket.assigns do
+      %{uploads: %{sqlite_file: upload}} ->
+        Enum.reduce(upload.entries, socket, fn entry, acc ->
+          cancel_upload(acc, :sqlite_file, entry.ref)
+        end)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp sqlite_upload_help_text do
+    max_mb = Trifle.Config.sqlite_upload_max_bytes() / 1_048_576
+    "Accepted: .sqlite, .sqlite3, .db. Max size: #{Float.round(max_mb, 1)} MB."
+  end
+
+  defp upload_error_message(:too_large), do: "SQLite upload exceeded size limit."
+  defp upload_error_message(:too_many_files), do: "Only one SQLite file can be uploaded."
+  defp upload_error_message(:not_accepted), do: "Unsupported file type."
+  defp upload_error_message(_), do: "Upload failed."
+
+  defp ensure_sqlite_upload(socket) do
+    case socket.assigns do
+      %{uploads: %{sqlite_file: _upload}} ->
+        socket
+
+      _ ->
+        allow_upload(socket, :sqlite_file,
+          accept: :any,
+          max_entries: 1,
+          max_file_size: Trifle.Config.sqlite_upload_max_bytes(),
+          auto_upload: true
+        )
     end
   end
 end
