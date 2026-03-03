@@ -120,6 +120,14 @@ spec:
               value: {{ .Values.app.deploymentMode | quote }}
             - name: TRIFLE_PROJECTS_ENABLED
               value: {{ ternary "true" "false" .Values.features.projects.enabled | quote }}
+            {{- if not (hasKey .Values.app.env "TRIFLE_SQLITE_UPLOAD_MAX_BYTES") }}
+            - name: TRIFLE_SQLITE_UPLOAD_MAX_BYTES
+              value: {{ .Values.app.sqliteUpload.maxBytes | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.app.env "TRIFLE_SQLITE_UPLOAD_ROOT") }}
+            - name: TRIFLE_SQLITE_UPLOAD_ROOT
+              value: {{ .Values.app.sqliteUpload.rootPath | quote }}
+            {{- end }}
             - name: LANG
               value: "en_US.UTF-8"
             - name: LC_ALL

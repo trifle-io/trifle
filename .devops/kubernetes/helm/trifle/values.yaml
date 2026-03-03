@@ -101,6 +101,13 @@ app:
   
   # Deployment mode: "self_hosted" (default) or "saas"
   deploymentMode: "self_hosted"
+
+  # SQLite upload settings
+  sqliteUpload:
+    # Max upload size in bytes (default: 100MB)
+    maxBytes: 104857600
+    # Destination root for uploaded SQLite files
+    rootPath: "/home/app/uploads/sqlite"
   
   # Environment variables
   env:
