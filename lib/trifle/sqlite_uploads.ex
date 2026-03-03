@@ -114,7 +114,7 @@ defmodule Trifle.SqliteUploads do
 
         case storage_metadata do
           %{"backend" => "s3", "object_key" => object_key} when is_binary(object_key) ->
-            ensure_cached_object(path, storage_metadata)
+            ensure_cached_object(object_key, storage_metadata)
 
           _ ->
             with :ok <- ensure_parent_directory(path) do
@@ -143,10 +143,9 @@ defmodule Trifle.SqliteUploads do
   defp store_to_object_storage(path, organization_id, extension, byte_size) do
     with {:ok, object_store_config} <- object_store_config(),
          {:ok, checksum} <- sha256_file(path),
-         {:ok, generated_filename} <- generated_filename(extension) do
-      object_key = object_key(object_store_config, organization_id, generated_filename)
-      cache_path = cache_path_for_object_key(object_key)
-
+         {:ok, generated_filename} <- generated_filename(extension),
+         object_key = object_key(object_store_config, organization_id, generated_filename),
+         {:ok, cache_path} <- cache_path_for_object_key(object_key) do
       with :ok <- ensure_parent_directory(cache_path),
            :ok <- object_store_client().put_object(object_key, path, object_store_config) do
         maybe_seed_local_cache(path, cache_path)
@@ -168,8 +167,9 @@ defmodule Trifle.SqliteUploads do
     end
   end
 
-  defp ensure_cached_object(cache_path, storage_metadata) do
-    with {:ok, object_store_config} <- object_store_config(storage_metadata),
+  defp ensure_cached_object(object_key, storage_metadata) do
+    with {:ok, cache_path} <- cache_path_for_object_key(object_key),
+         {:ok, object_store_config} <- object_store_config(storage_metadata),
          :ok <- ensure_parent_directory(cache_path),
          :ok <-
            with_download_lock(cache_path, fn ->
@@ -220,15 +220,42 @@ defmodule Trifle.SqliteUploads do
   end
 
   defp cached_file_valid?(path, storage_metadata) do
-    case File.stat(path) do
-      {:ok, stat} ->
-        case expected_size(storage_metadata) do
-          nil -> true
-          expected when is_integer(expected) -> stat.size == expected
-        end
+    with {:ok, stat} <- File.stat(path),
+         :ok <- validate_cached_size(stat.size, storage_metadata),
+         :ok <- validate_cached_checksum(path, storage_metadata) do
+      true
+    else
+      _ -> false
+    end
+  end
 
-      {:error, _reason} ->
-        false
+  defp validate_cached_size(size, storage_metadata) do
+    case expected_size(storage_metadata) do
+      nil -> :ok
+      expected when is_integer(expected) -> if(size == expected, do: :ok, else: :error)
+    end
+  end
+
+  defp validate_cached_checksum(path, storage_metadata) do
+    case expected_checksum(storage_metadata) do
+      nil ->
+        :ok
+
+      :unsupported ->
+        :error
+
+      {:sha256, expected_checksum} ->
+        case sha256_file(path) do
+          {:ok, actual_checksum} ->
+            if String.downcase(actual_checksum) == expected_checksum do
+              :ok
+            else
+              :error
+            end
+
+          {:error, _reason} ->
+            :error
+        end
     end
   end
 
@@ -314,13 +341,13 @@ defmodule Trifle.SqliteUploads do
     end
   end
 
-  defp object_store_config(storage_metadata \\ %{}) do
+  defp object_store_config(_storage_metadata \\ %{}) do
     base_config = Trifle.Config.sqlite_object_store_config()
 
     config = %{
-      endpoint: Map.get(storage_metadata, "endpoint") || base_config[:endpoint],
-      bucket: Map.get(storage_metadata, "bucket") || base_config[:bucket],
-      region: Map.get(storage_metadata, "region") || base_config[:region],
+      endpoint: base_config[:endpoint],
+      bucket: base_config[:bucket],
+      region: base_config[:region],
       access_key_id: base_config[:access_key_id],
       secret_access_key: base_config[:secret_access_key],
       force_path_style: base_config[:force_path_style],
@@ -372,15 +399,35 @@ defmodule Trifle.SqliteUploads do
     |> Enum.join("/")
   end
 
-  defp cache_path_for_object_key(object_key) do
-    safe_object_key =
-      object_key
-      |> String.split("/", trim: true)
-      |> Enum.reject(&(&1 in [".", "..", ""]))
-      |> Enum.join("/")
+  defp cache_path_for_object_key(object_key) when is_binary(object_key) do
+    cache_root = Trifle.Config.sqlite_cache_root()
+    expanded_cache_root = Path.expand(cache_root)
 
-    Path.join(Trifle.Config.sqlite_cache_root(), safe_object_key)
+    object_segments =
+      object_key
+      |> then(&Regex.split(~r{[\\/]+}, &1, trim: true))
+      |> Enum.reject(&(&1 == ""))
+
+    has_path_traversal? = Enum.any?(object_segments, &(&1 in [".", ".."]))
+    absolute_path? = Path.type(object_key) == :absolute
+
+    cond do
+      absolute_path? or has_path_traversal? or object_segments == [] ->
+        {:error, "Invalid SQLite object storage key"}
+
+      true ->
+        cache_path = Path.join([expanded_cache_root | object_segments])
+        expanded_cache_path = Path.expand(cache_path)
+
+        if path_under_root?(expanded_cache_path, expanded_cache_root) do
+          {:ok, expanded_cache_path}
+        else
+          {:error, "Invalid SQLite object storage key"}
+        end
+    end
   end
+
+  defp cache_path_for_object_key(_object_key), do: {:error, "Invalid SQLite object storage key"}
 
   defp local_destination_path(organization_id, extension) do
     base_dir =
@@ -461,6 +508,28 @@ defmodule Trifle.SqliteUploads do
 
       _ ->
         nil
+    end
+  end
+
+  defp expected_checksum(storage_metadata) do
+    case Map.fetch(storage_metadata, "checksum_sha256") do
+      :error ->
+        nil
+
+      {:ok, checksum} when is_binary(checksum) ->
+        normalized_checksum =
+          checksum
+          |> String.trim()
+          |> String.downcase()
+
+        if normalized_checksum == "" do
+          :unsupported
+        else
+          {:sha256, normalized_checksum}
+        end
+
+      {:ok, _} ->
+        :unsupported
     end
   end
 

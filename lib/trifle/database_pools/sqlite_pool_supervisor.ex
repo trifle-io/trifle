@@ -168,9 +168,17 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
       _pool_size =
         case db_config["pool_size"] do
           # Smaller default pool for SQLite
-          nil -> 3
-          val when is_integer(val) -> val
-          val when is_binary(val) -> String.to_integer(val)
+          nil ->
+            3
+
+          val when is_integer(val) ->
+            val
+
+          val when is_binary(val) ->
+            case Integer.parse(val) do
+              {parsed, ""} -> parsed
+              _ -> 3
+            end
         end
 
       # For SQLite, we'll create a simple GenServer wrapper that manages a single connection

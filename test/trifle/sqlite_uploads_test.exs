@@ -4,7 +4,8 @@ defmodule Trifle.SqliteUploadsTest do
   alias Trifle.SqliteUploads
 
   defmodule MockObjectStoreClient do
-    def put_object(object_key, source_path, _config) do
+    def put_object(object_key, source_path, config) do
+      maybe_notify({:put_object_config, object_key, config})
       destination = object_path(object_key)
 
       with :ok <- File.mkdir_p(Path.dirname(destination)),
@@ -13,7 +14,8 @@ defmodule Trifle.SqliteUploadsTest do
       end
     end
 
-    def get_object(object_key, destination_path, _config) do
+    def get_object(object_key, destination_path, config) do
+      maybe_notify({:get_object_config, object_key, config})
       source = object_path(object_key)
 
       with :ok <- File.mkdir_p(Path.dirname(destination_path)),
@@ -25,7 +27,9 @@ defmodule Trifle.SqliteUploadsTest do
       end
     end
 
-    def delete_object(object_key, _config) do
+    def delete_object(object_key, config) do
+      maybe_notify({:delete_object_config, object_key, config})
+
       case File.rm(object_path(object_key)) do
         :ok -> :ok
         {:error, :enoent} -> :ok
@@ -42,6 +46,13 @@ defmodule Trifle.SqliteUploadsTest do
     defp mock_root do
       Application.fetch_env!(:trifle, :sqlite_object_store_mock_root)
     end
+
+    defp maybe_notify(message) do
+      case Application.get_env(:trifle, :sqlite_object_store_test_pid) do
+        pid when is_pid(pid) -> send(pid, message)
+        _ -> :ok
+      end
+    end
   end
 
   setup do
@@ -52,6 +63,7 @@ defmodule Trifle.SqliteUploadsTest do
     previous_object_store = Application.get_env(:trifle, :sqlite_object_store)
     previous_object_store_client = Application.get_env(:trifle, :sqlite_object_store_client)
     previous_mock_root = Application.get_env(:trifle, :sqlite_object_store_mock_root)
+    previous_test_pid = Application.get_env(:trifle, :sqlite_object_store_test_pid)
 
     root = Path.join(System.tmp_dir!(), "trifle-sqlite-upload-test-#{Ecto.UUID.generate()}")
     cache_root = Path.join(System.tmp_dir!(), "trifle-sqlite-cache-test-#{Ecto.UUID.generate()}")
@@ -76,6 +88,7 @@ defmodule Trifle.SqliteUploadsTest do
 
     Application.put_env(:trifle, :sqlite_object_store_client, MockObjectStoreClient)
     Application.put_env(:trifle, :sqlite_object_store_mock_root, mock_root)
+    Application.delete_env(:trifle, :sqlite_object_store_test_pid)
 
     on_exit(fn ->
       _ = File.rm_rf(root)
@@ -88,6 +101,7 @@ defmodule Trifle.SqliteUploadsTest do
       Application.put_env(:trifle, :sqlite_object_store, previous_object_store)
       Application.put_env(:trifle, :sqlite_object_store_client, previous_object_store_client)
       Application.put_env(:trifle, :sqlite_object_store_mock_root, previous_mock_root)
+      Application.put_env(:trifle, :sqlite_object_store_test_pid, previous_test_pid)
     end)
 
     :ok
@@ -192,6 +206,158 @@ defmodule Trifle.SqliteUploadsTest do
     assert :ok = SqliteUploads.delete_managed_upload(cache_path, config_patch)
     refute File.exists?(cache_path)
     refute MockObjectStoreClient.object_exists?(object_key)
+  end
+
+  test "resolves s3-backed sqlite path from object_key instead of persisted file_path" do
+    Application.put_env(:trifle, :sqlite_storage_backend, :s3)
+
+    org_id = Ecto.UUID.generate()
+    input_path = Path.join(System.tmp_dir!(), "sqlite-input-#{Ecto.UUID.generate()}.sqlite")
+    payload = "sqlite-safe-cache-path"
+    File.write!(input_path, payload)
+
+    on_exit(fn -> File.rm(input_path) end)
+
+    assert {:ok, %{config_patch: config_patch}} =
+             SqliteUploads.store_upload_for_database(
+               %{path: input_path, filename: "metrics.sqlite"},
+               org_id
+             )
+
+    persisted_path =
+      Path.join(System.tmp_dir!(), "sqlite-persisted-path-#{Ecto.UUID.generate()}.sqlite")
+
+    database = %{
+      id: Ecto.UUID.generate(),
+      file_path: persisted_path,
+      config: config_patch
+    }
+
+    assert {:ok, resolved_path} = SqliteUploads.resolve_database_path(database)
+    refute resolved_path == persisted_path
+    assert String.starts_with?(resolved_path, Trifle.Config.sqlite_cache_root())
+    assert File.read!(resolved_path) == payload
+  end
+
+  test "rejects invalid s3 object key when resolving sqlite cache path" do
+    Application.put_env(:trifle, :sqlite_storage_backend, :s3)
+
+    database = %{
+      id: Ecto.UUID.generate(),
+      file_path: "/tmp/ignored.sqlite",
+      config: %{
+        "sqlite_storage" => %{
+          "backend" => "s3",
+          "object_key" => "../escape.sqlite",
+          "size_bytes" => 10
+        }
+      }
+    }
+
+    assert {:error, reason} = SqliteUploads.resolve_database_path(database)
+    assert reason =~ "Invalid SQLite object storage key"
+  end
+
+  test "re-downloads cached sqlite file when checksum does not match" do
+    Application.put_env(:trifle, :sqlite_storage_backend, :s3)
+
+    org_id = Ecto.UUID.generate()
+    input_path = Path.join(System.tmp_dir!(), "sqlite-input-#{Ecto.UUID.generate()}.sqlite")
+    payload = "abcdef"
+    File.write!(input_path, payload)
+
+    on_exit(fn -> File.rm(input_path) end)
+
+    assert {:ok, %{file_path: cache_path, config_patch: config_patch}} =
+             SqliteUploads.store_upload_for_database(
+               %{path: input_path, filename: "metrics.sqlite"},
+               org_id
+             )
+
+    File.write!(cache_path, "ghijkl")
+
+    database = %{
+      id: Ecto.UUID.generate(),
+      file_path: cache_path,
+      config: config_patch
+    }
+
+    assert {:ok, resolved_path} = SqliteUploads.resolve_database_path(database)
+    assert File.read!(resolved_path) == payload
+  end
+
+  test "uses configured object store endpoint bucket and region over metadata overrides" do
+    Application.put_env(:trifle, :sqlite_storage_backend, :s3)
+
+    org_id = Ecto.UUID.generate()
+    input_path = Path.join(System.tmp_dir!(), "sqlite-input-#{Ecto.UUID.generate()}.sqlite")
+    File.write!(input_path, "sqlite-delete")
+
+    on_exit(fn -> File.rm(input_path) end)
+
+    assert {:ok, %{file_path: cache_path, config_patch: config_patch}} =
+             SqliteUploads.store_upload_for_database(
+               %{path: input_path, filename: "metrics.sqlite"},
+               org_id
+             )
+
+    object_key = get_in(config_patch, ["sqlite_storage", "object_key"])
+
+    tampered_config =
+      config_patch
+      |> put_in(["sqlite_storage", "endpoint"], "https://evil.example.test")
+      |> put_in(["sqlite_storage", "bucket"], "evil-bucket")
+      |> put_in(["sqlite_storage", "region"], "eu-west-1")
+
+    Application.put_env(:trifle, :sqlite_object_store_test_pid, self())
+
+    on_exit(fn ->
+      Application.delete_env(:trifle, :sqlite_object_store_test_pid)
+    end)
+
+    assert :ok = SqliteUploads.delete_managed_upload(cache_path, tampered_config)
+
+    assert_receive {:delete_object_config, ^object_key, object_store_config}
+    assert object_store_config.endpoint == "https://objects.example.test"
+    assert object_store_config.bucket == "sqlite-files"
+    assert object_store_config.region == "us-east-1"
+    refute MockObjectStoreClient.object_exists?(object_key)
+  end
+
+  test "treats unsupported checksum metadata as invalid cached file" do
+    Application.put_env(:trifle, :sqlite_storage_backend, :s3)
+
+    org_id = Ecto.UUID.generate()
+    input_path = Path.join(System.tmp_dir!(), "sqlite-input-#{Ecto.UUID.generate()}.sqlite")
+    payload = "abcdef"
+    File.write!(input_path, payload)
+
+    on_exit(fn -> File.rm(input_path) end)
+
+    assert {:ok, %{file_path: cache_path, config_patch: config_patch}} =
+             SqliteUploads.store_upload_for_database(
+               %{path: input_path, filename: "metrics.sqlite"},
+               org_id
+             )
+
+    Application.put_env(:trifle, :sqlite_object_store_test_pid, self())
+
+    on_exit(fn ->
+      Application.delete_env(:trifle, :sqlite_object_store_test_pid)
+    end)
+
+    File.write!(cache_path, "ghijkl")
+    object_key = get_in(config_patch, ["sqlite_storage", "object_key"])
+
+    database = %{
+      id: Ecto.UUID.generate(),
+      file_path: cache_path,
+      config: put_in(config_patch, ["sqlite_storage", "checksum_sha256"], 123)
+    }
+
+    assert {:ok, resolved_path} = SqliteUploads.resolve_database_path(database)
+    assert_receive {:get_object_config, ^object_key, _object_store_config}
+    assert File.read!(resolved_path) == payload
   end
 
   test "rejects unsupported sqlite upload extension" do

@@ -118,7 +118,10 @@ defmodule Trifle.Config do
   defp normalize_deployment_mode(_), do: :saas
 
   defp fetch_config_value(map, atom_key, string_key) do
-    Map.get(map, atom_key) || Map.get(map, string_key)
+    case Map.fetch(map, atom_key) do
+      {:ok, value} -> value
+      :error -> Map.get(map, string_key)
+    end
   end
 
   defp normalize_string(value) when is_binary(value) do
