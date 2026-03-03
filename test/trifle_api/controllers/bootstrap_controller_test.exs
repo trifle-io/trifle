@@ -385,6 +385,27 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
       assert detail =~ "Unsupported SQLite file type"
     end
+
+    test "rejects malformed sqlite upload payload", %{
+      conn: conn,
+      user: user,
+      user_token: user_token
+    } do
+      {:ok, _organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Bootstrap Upload DB",
+          "driver" => "sqlite",
+          "sqlite_file" => "not-an-upload"
+        })
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
+      assert detail == "invalid sqlite_file upload"
+    end
   end
 
   defp api_conn(conn) do

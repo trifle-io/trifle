@@ -389,6 +389,10 @@ defmodule TrifleApi.BootstrapController do
       not is_nil(sqlite_upload) and driver != "sqlite" ->
         {:error, "sqlite_file is only supported for sqlite driver"}
 
+      driver == "sqlite" and not is_nil(sqlite_upload) and
+          not match?(%Plug.Upload{}, sqlite_upload) ->
+        {:error, "invalid sqlite_file upload"}
+
       match?(%Plug.Upload{}, sqlite_upload) ->
         case Trifle.SqliteUploads.store_upload(sqlite_upload, membership.organization_id) do
           {:ok, uploaded_path} ->

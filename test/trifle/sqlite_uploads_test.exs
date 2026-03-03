@@ -67,4 +67,16 @@ defmodule Trifle.SqliteUploadsTest do
 
     assert reason =~ "size limit"
   end
+
+  test "rejects invalid organization id" do
+    input_path = Path.join(System.tmp_dir!(), "sqlite-input-#{Ecto.UUID.generate()}.sqlite")
+    File.write!(input_path, "sqlite")
+
+    on_exit(fn -> File.rm(input_path) end)
+
+    assert {:error, reason} =
+             SqliteUploads.store_upload(%{path: input_path, filename: "metrics.sqlite"}, "../bad")
+
+    assert reason == "Unable to resolve organization for upload"
+  end
 end

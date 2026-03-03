@@ -11,11 +11,11 @@ defmodule Trifle.SqliteUploads do
 
   def store_upload(%{path: path, filename: filename}, organization_id)
       when is_binary(path) and is_binary(filename) do
-    with :ok <- validate_organization_id(organization_id),
+    with {:ok, normalized_org_id} <- validate_organization_id(organization_id),
          :ok <- validate_extension(filename),
          {:ok, stat} <- File.stat(path),
          :ok <- validate_size(stat.size),
-         {:ok, destination} <- destination_path(organization_id, filename),
+         {:ok, destination} <- destination_path(normalized_org_id, filename),
          :ok <- File.cp(path, destination) do
       {:ok, destination}
     else
@@ -49,9 +49,12 @@ defmodule Trifle.SqliteUploads do
 
   def delete_managed_file(_), do: :ok
 
-  defp validate_organization_id(organization_id)
-       when is_binary(organization_id) and organization_id != "",
-       do: :ok
+  defp validate_organization_id(organization_id) when is_binary(organization_id) do
+    case Ecto.UUID.cast(organization_id) do
+      {:ok, normalized_org_id} -> {:ok, normalized_org_id}
+      :error -> {:error, "Unable to resolve organization for upload"}
+    end
+  end
 
   defp validate_organization_id(_), do: {:error, "Unable to resolve organization for upload"}
 
