@@ -1,4 +1,5 @@
 name: Build and Push Docker Images
+run-name: Build and Push Docker Images (${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }})
 
 on:
   push:
@@ -29,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_tag: ${{ steps.image_tag.outputs.version }}
+      is_tag_build: ${{ steps.image_tag.outputs.is_tag_build }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,17 +50,32 @@ jobs:
             TAG_NAME="${GITHUB_REF_NAME}"
           fi
 
-          if [[ -n "${TAG_NAME}" ]]; then
+          if [[ "${TAG_NAME}" == v* ]]; then
+            echo "is_tag_build=true" >> "${GITHUB_OUTPUT}"
             echo "version=${TAG_NAME#v}" >> "${GITHUB_OUTPUT}"
           else
+            echo "is_tag_build=false" >> "${GITHUB_OUTPUT}"
             echo "version=" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Verify checked out tag for manual run
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+        run: |
+          EXPECTED_TAG="${{ github.event.inputs.tag }}"
+          ACTUAL_TAG="$(git describe --tags --exact-match HEAD || true)"
+          echo "Expected tag: ${EXPECTED_TAG}"
+          echo "Checked out tag: ${ACTUAL_TAG:-<none>}"
+
+          if [[ "${ACTUAL_TAG}" != "${EXPECTED_TAG}" ]]; then
+            echo "::error::Expected checkout at tag ${EXPECTED_TAG}, got ${ACTUAL_TAG:-<none>}."
+            exit 1
           fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v'))
+        if: steps.image_tag.outputs.is_tag_build == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -101,10 +118,10 @@ jobs:
         with:
           images: ${{ env.APP_IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}},enable=${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v')) }}
+            type=raw,value=${{ steps.image_tag.outputs.version }},enable=${{ steps.image_tag.outputs.is_tag_build == 'true' }}
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ steps.image_tag.outputs.is_tag_build != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Create production Dockerfile
         run: |
@@ -184,14 +201,14 @@ jobs:
           context: .
           file: ./Dockerfile.production
           platforms: linux/amd64
-          push: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v')) }}
+          push: ${{ steps.image_tag.outputs.is_tag_build == 'true' }}
           tags: ${{ steps.meta-app.outputs.tags }}
           labels: ${{ steps.meta-app.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   security-scan:
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v'))
+    if: needs.build-app.outputs.is_tag_build == 'true'
     needs: [build-app]
     runs-on: ubuntu-latest
     steps:
