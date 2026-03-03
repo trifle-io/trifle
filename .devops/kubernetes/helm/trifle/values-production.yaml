@@ -56,6 +56,9 @@ app:
   timezone: "UTC"
   logLevel: "info"
   deploymentMode: "self_hosted"  # Set to "saas" for multi-tenant mode
+  sqliteUpload:
+    maxBytes: 104857600
+    rootPath: "/home/app/uploads/sqlite"
   env:
     MIX_ENV: "prod"
     PHX_SERVER: "true"

@@ -67,6 +67,44 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+sqlite_upload_max_bytes =
+  case System.get_env("TRIFLE_SQLITE_UPLOAD_MAX_BYTES") do
+    nil ->
+      Application.get_env(:trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024)
+
+    "" ->
+      Application.get_env(:trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024)
+
+    value ->
+      case Integer.parse(value) do
+        {parsed, ""} when parsed > 0 -> parsed
+        _ -> Application.get_env(:trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024)
+      end
+  end
+
+sqlite_upload_root =
+  case System.get_env("TRIFLE_SQLITE_UPLOAD_ROOT") do
+    nil ->
+      Application.get_env(
+        :trifle,
+        :sqlite_upload_root,
+        Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")
+      )
+
+    "" ->
+      Application.get_env(
+        :trifle,
+        :sqlite_upload_root,
+        Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")
+      )
+
+    value ->
+      String.trim(value)
+  end
+
+config :trifle, :sqlite_upload_max_bytes, sqlite_upload_max_bytes
+config :trifle, :sqlite_upload_root, sqlite_upload_root
+
 honeybadger_api_key = System.get_env("HONEYBADGER_API_KEY")
 honeybadger_enabled = honeybadger_api_key not in [nil, ""]
 

@@ -126,6 +126,58 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert updated_database.pool_version == database.pool_version
       assert updated_database.display_name == "Renamed database"
     end
+
+    test "removes previous managed sqlite file when file_path changes" do
+      organization = organization_fixture()
+
+      managed_dir =
+        Trifle.Config.sqlite_upload_root()
+        |> Path.join("organization_#{organization.id}")
+        |> Path.join("sqlite")
+
+      :ok = File.mkdir_p(managed_dir)
+
+      old_file_path = Path.join(managed_dir, "#{Ecto.UUID.generate()}.sqlite")
+      :ok = File.write(old_file_path, "old")
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(organization, %{
+                 display_name: "Managed SQLite",
+                 driver: "sqlite",
+                 file_path: old_file_path
+               })
+
+      new_file_path = Path.join(System.tmp_dir!(), "trifle-db-#{Ecto.UUID.generate()}.sqlite")
+      on_exit(fn -> File.rm(new_file_path) end)
+
+      assert {:ok, _updated_database} =
+               Organizations.update_database(database, %{file_path: new_file_path})
+
+      refute File.exists?(old_file_path)
+    end
+
+    test "keeps external sqlite files when file_path changes" do
+      organization = organization_fixture()
+
+      old_file_path = Path.join(System.tmp_dir!(), "external-db-#{Ecto.UUID.generate()}.sqlite")
+      :ok = File.write(old_file_path, "old")
+      on_exit(fn -> File.rm(old_file_path) end)
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(organization, %{
+                 display_name: "External SQLite",
+                 driver: "sqlite",
+                 file_path: old_file_path
+               })
+
+      new_file_path = Path.join(System.tmp_dir!(), "trifle-db-#{Ecto.UUID.generate()}.sqlite")
+      on_exit(fn -> File.rm(new_file_path) end)
+
+      assert {:ok, _updated_database} =
+               Organizations.update_database(database, %{file_path: new_file_path})
+
+      assert File.exists?(old_file_path)
+    end
   end
 
   defp mysql_attrs(overrides \\ %{}) do

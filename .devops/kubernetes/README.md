@@ -48,6 +48,9 @@ app:
   dbEncryptionKey: "your-32-byte-base64-key"
   host: "trifle.yourdomain.com"
   logLevel: "info"  # Accepts debug, info, warn, error
+  sqliteUpload:
+    maxBytes: 104857600
+    rootPath: "/home/app/uploads/sqlite"
 
 # Initial user creation
 initialUser:
@@ -170,6 +173,9 @@ postgresql:
       storageClass: "fast-ssd"
       size: 100Gi
 ```
+
+SQLite uploads use `app.sqliteUpload.rootPath`.  
+When `persistence.enabled: true`, keep this path under the mounted uploads directory (default `/home/app/uploads/sqlite`).
 
 ### Autoscaling
 

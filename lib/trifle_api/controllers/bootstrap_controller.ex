@@ -1,6 +1,8 @@
 defmodule TrifleApi.BootstrapController do
   use TrifleApi, :controller
 
+  require Logger
+
   alias Ecto.{NoResultsError, Query.CastError}
   alias Trifle.Accounts
   alias Trifle.Accounts.User
@@ -158,14 +160,25 @@ defmodule TrifleApi.BootstrapController do
   def create_database(%{assigns: %{current_api_user: %User{} = user}} = conn, params) do
     with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
          attrs <- normalize_database_attrs(params, membership),
-         {:ok, %Database{} = database} <- Organizations.create_database(attrs) do
-      conn
-      |> put_status(:created)
-      |> json(%{
-        data: %{
-          source: source_payload(:database, database)
-        }
-      })
+         {:ok, attrs, uploaded_path} <- maybe_store_sqlite_upload(attrs, params, membership) do
+      case Organizations.create_database(attrs) do
+        {:ok, %Database{} = database} ->
+          conn
+          |> put_status(:created)
+          |> json(%{
+            data: %{
+              source: source_payload(:database, database)
+            }
+          })
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          cleanup_uploaded_sqlite_file(uploaded_path)
+          render_changeset(conn, changeset)
+
+        {:error, reason} ->
+          cleanup_uploaded_sqlite_file(uploaded_path)
+          render_error(conn, :unprocessable_entity, error_message(reason))
+      end
     else
       {:error, :organization_required} ->
         render_error(conn, :conflict, "User does not belong to an organization")
@@ -368,6 +381,53 @@ defmodule TrifleApi.BootstrapController do
       |> Map.put("organization_id", membership.organization_id)
 
     attrs
+  end
+
+  defp maybe_store_sqlite_upload(attrs, params, %OrganizationMembership{} = membership) do
+    driver = attrs |> Map.get("driver") |> normalize_string()
+    sqlite_upload = sqlite_upload_from_params(params)
+
+    cond do
+      not is_nil(sqlite_upload) and driver != "sqlite" ->
+        {:error, "sqlite_file is only supported for sqlite driver"}
+
+      driver == "sqlite" and not is_nil(sqlite_upload) and
+          not match?(%Plug.Upload{}, sqlite_upload) ->
+        {:error, "invalid sqlite_file upload"}
+
+      match?(%Plug.Upload{}, sqlite_upload) ->
+        case Trifle.SqliteUploads.store_upload(sqlite_upload, membership.organization_id) do
+          {:ok, uploaded_path} ->
+            {:ok, Map.put(attrs, "file_path", uploaded_path), uploaded_path}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      true ->
+        {:ok, attrs, nil}
+    end
+  end
+
+  defp sqlite_upload_from_params(params) do
+    payload = Map.get(params, "database") || %{}
+    Map.get(params, "sqlite_file") || Map.get(payload, "sqlite_file")
+  end
+
+  defp cleanup_uploaded_sqlite_file(path) do
+    case Trifle.SqliteUploads.delete_managed_file(path) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "Failed to delete managed sqlite upload during bootstrap cleanup",
+          sqlite_upload_path: path,
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
   end
 
   defp normalize_project_attrs(params, membership) do
