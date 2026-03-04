@@ -132,19 +132,22 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
   end
 
   defp start_new_sqlite_pool(database, connection_name, expected_version) do
-    child_spec = sqlite_pool_spec(database, connection_name)
+    case sqlite_pool_spec(database, connection_name) do
+      {:ok, child_spec} ->
+        case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+          {:ok, _pid} ->
+            _ = Trifle.DatabasePools.VersionRegistry.put(:sqlite, database.id, expected_version)
+            {:ok, connection_name}
 
-    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-      {:ok, _pid} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:sqlite, database.id, expected_version)
-        {:ok, connection_name}
+          {:error, {:already_started, _pid}} ->
+            reconcile_existing_pool(database, connection_name, expected_version)
 
-      {:error, {:already_started, _pid}} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:sqlite, database.id, expected_version)
-        {:ok, connection_name}
+          error ->
+            error
+        end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -157,59 +160,42 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
 
   defp sqlite_pool_spec(database, connection_name) do
     # SQLite database path - can be file path or :memory:
-    database_path = resolve_database_path(database)
+    with {:ok, database_path} <- resolve_database_path(database) do
+      # For SQLite, we'll create a simple GenServer wrapper that manages a single connection
+      # since SQLite doesn't benefit from connection pooling the same way as other databases
 
-    # Extract pool_size from config
-    db_config = database.config || %{}
+      # Create a simple wrapper process that holds the SQLite connection
+      {:ok,
+       %{
+         id: connection_name,
+         start: {__MODULE__, :start_sqlite_connection, [connection_name, database_path]},
+         type: :worker,
+         restart: :permanent,
+         shutdown: 5000
+       }}
+    end
+  end
 
-    _pool_size =
-      case db_config["pool_size"] do
-        # Smaller default pool for SQLite
-        nil -> 3
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
+  defp reconcile_existing_pool(database, connection_name, expected_version) do
+    case Trifle.DatabasePools.VersionRegistry.get(:sqlite, database.id) do
+      {:ok, actual_version} ->
+        _ = Trifle.DatabasePools.VersionRegistry.put(:sqlite, database.id, actual_version)
 
-    # For SQLite, we'll create a simple GenServer wrapper that manages a single connection
-    # since SQLite doesn't benefit from connection pooling the same way as other databases
+        if actual_version == expected_version do
+          {:ok, connection_name}
+        else
+          _ = stop_sqlite_pool(database.id)
+          start_new_sqlite_pool(database, connection_name, expected_version)
+        end
 
-    # Build connection config for direct exqlite usage
-    _config = [
-      name: connection_name,
-      database: database_path
-    ]
-
-    # Create a simple wrapper process that holds the SQLite connection
-    %{
-      id: connection_name,
-      start: {__MODULE__, :start_sqlite_connection, [connection_name, database_path]},
-      type: :worker,
-      restart: :permanent,
-      shutdown: 5000
-    }
+      :error ->
+        _ = stop_sqlite_pool(database.id)
+        start_new_sqlite_pool(database, connection_name, expected_version)
+    end
   end
 
   defp resolve_database_path(database) do
-    case database.file_path do
-      ":memory:" ->
-        # In-memory database
-        ":memory:"
-
-      path when is_binary(path) ->
-        # File-based database
-        # Ensure directory exists
-        path
-        |> Path.dirname()
-        |> File.mkdir_p!()
-
-        path
-
-      _ ->
-        # Fallback to a default path based on database ID
-        db_dir = Application.get_env(:trifle, :sqlite_db_dir, "/tmp/trifle_sqlite")
-        File.mkdir_p!(db_dir)
-        Path.join(db_dir, "trifle_db_#{database.id}.sqlite")
-    end
+    Trifle.SqliteUploads.resolve_database_path(database)
   end
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do

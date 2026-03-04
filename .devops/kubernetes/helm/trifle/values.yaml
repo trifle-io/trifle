@@ -108,6 +108,21 @@ app:
     maxBytes: 104857600
     # Destination root for uploaded SQLite files
     rootPath: "/home/app/uploads/sqlite"
+
+  # SQLite storage backend settings.
+  # Local mode keeps files on node-attached storage.
+  # S3 mode stores uploads in object storage and uses local cache for reads.
+  sqliteStorage:
+    backend: "local" # local | s3
+    cacheRoot: "/home/app/cache/sqlite"
+    objectStore:
+      endpoint: ""
+      bucket: ""
+      region: "us-east-1"
+      accessKeyId: ""
+      secretAccessKey: ""
+      forcePathStyle: true
+      prefix: "sqlite-files"
   
   # Environment variables
   env:

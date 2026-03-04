@@ -54,5 +54,29 @@ defmodule Trifle.DatabasePools.PoolVersioningTest do
       assert Process.whereis(connection_name) == nil
       assert :error = VersionRegistry.get(:sqlite, database.id)
     end
+
+    test "handles invalid pool_size strings without crashing pool startup" do
+      database = database_fixture(%{config: %{"pool_size" => "abc"}})
+
+      on_exit(fn ->
+        _ = SqlitePoolSupervisor.stop_sqlite_pool(database.id)
+        _ = File.rm(database.file_path)
+      end)
+
+      assert {:ok, connection_name} = SqlitePoolSupervisor.start_sqlite_pool(database)
+      assert is_pid(Process.whereis(connection_name))
+    end
+
+    test "handles unexpected pool_size types without crashing pool startup" do
+      database = database_fixture(%{config: %{"pool_size" => %{"bad" => "value"}}})
+
+      on_exit(fn ->
+        _ = SqlitePoolSupervisor.stop_sqlite_pool(database.id)
+        _ = File.rm(database.file_path)
+      end)
+
+      assert {:ok, connection_name} = SqlitePoolSupervisor.start_sqlite_pool(database)
+      assert is_pid(Process.whereis(connection_name))
+    end
   end
 end

@@ -51,6 +51,17 @@ app:
   sqliteUpload:
     maxBytes: 104857600
     rootPath: "/home/app/uploads/sqlite"
+  sqliteStorage:
+    backend: "local" # local | s3
+    cacheRoot: "/home/app/cache/sqlite"
+    objectStore:
+      endpoint: ""
+      bucket: ""
+      region: "us-east-1"
+      accessKeyId: ""
+      secretAccessKey: ""
+      forcePathStyle: true
+      prefix: "sqlite-files"
 
 # Initial user creation
 initialUser:
@@ -176,6 +187,11 @@ postgresql:
 
 SQLite uploads use `app.sqliteUpload.rootPath`.  
 When `persistence.enabled: true`, keep this path under the mounted uploads directory (default `/home/app/uploads/sqlite`).
+
+SQLite object storage is configured with `app.sqliteStorage`:
+- `backend: local` keeps files on mounted storage.
+- `backend: s3` stores uploads in S3-compatible object storage and reads via local cache (`cacheRoot`).
+- `objectStore.accessKeyId` and `objectStore.secretAccessKey` are rendered into the app secret and injected as env vars.
 
 ### Autoscaling
 

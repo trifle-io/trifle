@@ -23,6 +23,8 @@ spec:
       {{- $mongoSidecar := and .Values.features.projects.enabled .Values.mongo.sidecar.enabled }}
       {{- $appEnv := .Values.app.env | default (dict) }}
       {{- $sqliteUpload := .Values.app.sqliteUpload | default (dict) }}
+      {{- $sqliteStorage := .Values.app.sqliteStorage | default (dict) }}
+      {{- $sqliteObjectStore := (index $sqliteStorage "objectStore") | default (dict) }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -129,6 +131,48 @@ spec:
             {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_UPLOAD_ROOT")) (hasKey $sqliteUpload "rootPath") }}
             - name: TRIFLE_SQLITE_UPLOAD_ROOT
               value: {{ index $sqliteUpload "rootPath" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_STORAGE_BACKEND")) (hasKey $sqliteStorage "backend") }}
+            - name: TRIFLE_SQLITE_STORAGE_BACKEND
+              value: {{ index $sqliteStorage "backend" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_CACHE_ROOT")) (hasKey $sqliteStorage "cacheRoot") }}
+            - name: TRIFLE_SQLITE_CACHE_ROOT
+              value: {{ index $sqliteStorage "cacheRoot" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_ENDPOINT")) (hasKey $sqliteObjectStore "endpoint") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_ENDPOINT
+              value: {{ index $sqliteObjectStore "endpoint" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_BUCKET")) (hasKey $sqliteObjectStore "bucket") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_BUCKET
+              value: {{ index $sqliteObjectStore "bucket" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_REGION")) (hasKey $sqliteObjectStore "region") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_REGION
+              value: {{ index $sqliteObjectStore "region" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_FORCE_PATH_STYLE")) (hasKey $sqliteObjectStore "forcePathStyle") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_FORCE_PATH_STYLE
+              value: {{ index $sqliteObjectStore "forcePathStyle" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_PREFIX")) (hasKey $sqliteObjectStore "prefix") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_PREFIX
+              value: {{ index $sqliteObjectStore "prefix" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_ACCESS_KEY_ID")) (index $sqliteObjectStore "accessKeyId") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" . }}-secret
+                  key: sqlite-object-store-access-key-id
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_SQLITE_OBJECT_STORE_SECRET_ACCESS_KEY")) (index $sqliteObjectStore "secretAccessKey") }}
+            - name: TRIFLE_SQLITE_OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trifle.fullname" . }}-secret
+                  key: sqlite-object-store-secret-access-key
             {{- end }}
             - name: LANG
               value: "en_US.UTF-8"
