@@ -29,6 +29,7 @@ defmodule TrifleApp.DatabasesLiveTest do
       |> render_change(%{"database" => %{"driver" => "sqlite"}})
 
     assert html =~ "SQLite File Upload"
+    assert html =~ "Beginning of Week"
   end
 
   test "mysql database is rendered as supported in databases list", %{
@@ -54,6 +55,8 @@ defmodule TrifleApp.DatabasesLiveTest do
     {:ok, _lv, html} = live(conn, ~p"/dbs/#{database.id}/settings")
 
     assert html =~ "MySQL database connection"
+    assert html =~ "Beginning of week"
+    assert html =~ "Monday"
   end
 
   test "database edit modal shows sqlite upload field", %{conn: conn, organization: organization} do

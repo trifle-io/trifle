@@ -337,6 +337,9 @@ defmodule TrifleApp.DatabaseSettingsLive do
               <.detail_row label="Time zone">
                 {@database.time_zone || "UTC"}
               </.detail_row>
+              <.detail_row label="Beginning of week">
+                {format_week_start(@database)}
+              </.detail_row>
               <.detail_row label="Default timeframe">
                 <%= if present?(@database.default_timeframe) do %>
                   <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/30">
@@ -531,6 +534,16 @@ defmodule TrifleApp.DatabaseSettingsLive do
   defp format_config_value(value) when is_map(value), do: inspect(value, pretty: true)
   defp format_config_value(value) when is_list(value), do: inspect(value, pretty: true)
   defp format_config_value(value), do: to_string(value)
+
+  defp format_week_start(%Database{} = database) do
+    database
+    |> Database.beginning_of_week_for()
+    |> case do
+      nil -> "Monday"
+      atom when is_atom(atom) -> atom |> Atom.to_string() |> String.capitalize()
+      value -> to_string(value)
+    end
+  end
 
   defp present?(value) when value in [nil, ""], do: false
   defp present?(_), do: true

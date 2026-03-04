@@ -12,6 +12,18 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert "mysql" in Database.drivers()
     end
 
+    test "provides week options" do
+      assert Database.week_options() == [
+               {"Monday", 1},
+               {"Tuesday", 2},
+               {"Wednesday", 3},
+               {"Thursday", 4},
+               {"Friday", 5},
+               {"Saturday", 6},
+               {"Sunday", 7}
+             ]
+    end
+
     test "provides mysql defaults" do
       assert Database.default_port("mysql") == 3306
 
@@ -78,6 +90,17 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert changeset.valid?
       assert get_change(changeset, :config)["joined_identifiers"] == nil
     end
+
+    test "defaults beginning_of_week to monday" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          mysql_attrs()
+        )
+
+      assert changeset.valid?
+      assert get_field(changeset, :beginning_of_week) == 1
+    end
   end
 
   describe "create_database_for_org/2" do
@@ -98,8 +121,16 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert database.username == "trifle"
       assert database.last_check_status == "pending"
       assert database.pool_version == 1
+      assert database.beginning_of_week == 1
       assert database.config["table_name"] == "trifle_stats"
       assert database.config["joined_identifiers"] == "full"
+    end
+  end
+
+  describe "beginning_of_week_for/1" do
+    test "maps stored integer to expected weekday atom" do
+      database = %Database{beginning_of_week: 1}
+      assert Database.beginning_of_week_for(database) == :monday
     end
   end
 

@@ -33,6 +33,7 @@ defmodule Trifle.Organizations.Database do
     field :config, :map, default: %{}
     field :granularities, {:array, :string}, default: []
     field :time_zone, :string, default: "UTC"
+    field :beginning_of_week, :integer, default: 1
     field :default_timeframe, :string
     field :default_granularity, :string
     field :pool_version, :integer, default: 1
@@ -128,6 +129,19 @@ defmodule Trifle.Organizations.Database do
 
   def default_granularities, do: ["1m", "1h", "1d", "1w", "1mo", "1q", "1y"]
 
+  def week_options do
+    Trifle.Stats.Nocturnal.days_into_week()
+    |> Enum.sort_by(fn {_key, value} -> value end)
+    |> Enum.map(fn {day, value} ->
+      {day |> Atom.to_string() |> String.capitalize(), value}
+    end)
+  end
+
+  def beginning_of_week_for(%__MODULE__{} = database) do
+    inverted = Map.new(Trifle.Stats.Nocturnal.days_into_week(), fn {key, val} -> {val, key} end)
+    inverted[database.beginning_of_week]
+  end
+
   @doc false
   def changeset(database, attrs) do
     database
@@ -143,6 +157,7 @@ defmodule Trifle.Organizations.Database do
       :auth_database,
       :config,
       :time_zone,
+      :beginning_of_week,
       :last_check_at,
       :last_check_status,
       :last_error,
@@ -150,7 +165,7 @@ defmodule Trifle.Organizations.Database do
       :default_granularity,
       :organization_id
     ])
-    |> validate_required([:display_name, :driver, :organization_id])
+    |> validate_required([:display_name, :driver, :beginning_of_week, :organization_id])
     |> validate_inclusion(:driver, @drivers)
     |> validate_conditional_fields()
     |> validate_length(:display_name, min: 1, max: 255)
@@ -359,7 +374,7 @@ defmodule Trifle.Organizations.Database do
       driver,
       time_zone: database.time_zone || "UTC",
       time_zone_database: Tzdata.TimeZoneDatabase,
-      beginning_of_week: :monday,
+      beginning_of_week: beginning_of_week_for(database) || :monday,
       track_granularities: granularities
     )
   end

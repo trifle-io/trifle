@@ -10,6 +10,8 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   alias Trifle.SqliteUploads
   alias TrifleApp.Granularity
 
+  @week_options Database.week_options()
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -138,6 +140,13 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
               options={@time_zones}
             />
 
+            <.form_field
+              field={@form[:beginning_of_week]}
+              type="select"
+              label="Beginning of Week"
+              options={@week_options}
+            />
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <.timeframe_input
                 field={@form[:default_timeframe]}
@@ -264,6 +273,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
      |> assign(assigns)
      |> assign(:selected_driver, selected_driver)
      |> assign(:config_options, config_options)
+     |> assign(:week_options, @week_options)
      |> assign(:time_zones, time_zones())
      |> assign_form(changeset)}
   end
