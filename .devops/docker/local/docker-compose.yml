@@ -44,7 +44,10 @@ services:
   app:
     command: /bin/sh -c "while sleep 1000; do :; done"
     env_file:
-      - .env
+      - path: .env
+        required: false
+      - path: .env.local
+        required: false
     build:
       context: .
       dockerfile: .devops/docker/local/Dockerfile
