@@ -528,6 +528,8 @@ defmodule TrifleApp.DatabaseSettingsLive do
   defp format_config_value(true), do: "Enabled"
   defp format_config_value(false), do: "Disabled"
   defp format_config_value(value) when is_binary(value), do: value
+  defp format_config_value(value) when is_map(value), do: inspect(value, pretty: true)
+  defp format_config_value(value) when is_list(value), do: inspect(value, pretty: true)
   defp format_config_value(value), do: to_string(value)
 
   defp present?(value) when value in [nil, ""], do: false

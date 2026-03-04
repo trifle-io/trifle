@@ -297,12 +297,27 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
         changeset =
           socket.assigns.database
           |> Organizations.change_database(database_params)
-          |> Ecto.Changeset.add_error(:file_path, reason)
+          |> Ecto.Changeset.add_error(:file_path, format_upload_error(reason))
           |> Map.put(:action, :validate)
 
         {:noreply, assign_form(socket, changeset)}
     end
   end
+
+  defp format_upload_error(reason) when is_binary(reason), do: reason
+
+  defp format_upload_error({:http_error, status, body}) do
+    "Object storage request failed (#{status}): #{preview_body(body)}"
+  end
+
+  defp format_upload_error({:request_failed, reason}) do
+    "Object storage request failed: #{inspect(reason)}"
+  end
+
+  defp format_upload_error(reason), do: "SQLite upload failed: #{inspect(reason)}"
+
+  defp preview_body(body) when is_binary(body), do: String.slice(body, 0, 300)
+  defp preview_body(body), do: inspect(body, limit: 50, printable_limit: 300)
 
   defp save_database(socket, :edit, database_params, uploaded_upload) do
     case Organizations.update_database(socket.assigns.database, database_params) do

@@ -194,13 +194,47 @@ defmodule Trifle.Organizations.Database do
         changeset
 
       driver ->
-        config = get_field(changeset, :config) || %{}
+        config =
+          changeset
+          |> get_field(:config)
+          |> normalize_config_map()
+          |> preserve_sqlite_storage_metadata(changeset, driver)
+
         default_config = default_config_options(driver)
         merged_config = Map.merge(default_config, config)
         normalized_config = normalize_config_values(merged_config)
         put_change(changeset, :config, normalized_config)
     end
   end
+
+  defp normalize_config_map(config) when is_map(config), do: config
+  defp normalize_config_map(_config), do: %{}
+
+  defp preserve_sqlite_storage_metadata(config, changeset, "sqlite") when is_map(config) do
+    case existing_sqlite_storage_metadata(changeset) do
+      storage when is_map(storage) ->
+        cond do
+          Map.has_key?(config, "sqlite_storage") -> config
+          Map.has_key?(config, :sqlite_storage) -> config
+          true -> Map.put(config, "sqlite_storage", storage)
+        end
+
+      _ ->
+        config
+    end
+  end
+
+  defp preserve_sqlite_storage_metadata(config, _changeset, _driver), do: config
+
+  defp existing_sqlite_storage_metadata(%Ecto.Changeset{data: %{config: config}})
+       when is_map(config) do
+    case Map.get(config, "sqlite_storage") || Map.get(config, :sqlite_storage) do
+      storage when is_map(storage) -> storage
+      _ -> nil
+    end
+  end
+
+  defp existing_sqlite_storage_metadata(_changeset), do: nil
 
   # Convert string values to appropriate types
   defp normalize_config_values(config) when is_map(config) do

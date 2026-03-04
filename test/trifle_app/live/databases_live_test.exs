@@ -77,6 +77,38 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "SQLite File Upload"
   end
 
+  test "database settings renders nested config values without crashing", %{
+    conn: conn,
+    organization: organization
+  } do
+    sqlite_path =
+      Path.join(System.tmp_dir!(), "settings-nested-sqlite-#{Ecto.UUID.generate()}.sqlite")
+
+    File.write!(sqlite_path, "sqlite")
+    on_exit(fn -> File.rm(sqlite_path) end)
+
+    assert {:ok, database} =
+             Organizations.create_database_for_org(organization, %{
+               display_name: "SQLite Nested Config",
+               driver: "sqlite",
+               file_path: sqlite_path,
+               config: %{
+                 "table_name" => "trifle_stats",
+                 "sqlite_storage" => %{
+                   "backend" => "s3",
+                   "bucket" => "trifle-sqlite-files"
+                 }
+               }
+             })
+
+    {:ok, _lv, html} = live(conn, ~p"/dbs/#{database.id}/settings")
+
+    assert html =~ "Configuration options"
+    assert html =~ "Sqlite Storage"
+    assert html =~ "backend"
+    assert html =~ "trifle-sqlite-files"
+  end
+
   defp mysql_attrs(overrides \\ %{}) do
     Map.merge(
       %{

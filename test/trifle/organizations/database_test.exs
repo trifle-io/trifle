@@ -127,6 +127,50 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert updated_database.display_name == "Renamed database"
     end
 
+    test "preserves sqlite storage metadata when updating sqlite config without re-upload" do
+      organization = organization_fixture()
+
+      storage_metadata = %{
+        "backend" => "s3",
+        "object_key" => "sqlite-files/organization_#{organization.id}/sqlite/uploaded.db",
+        "checksum_sha256" => String.duplicate("a", 64),
+        "size_bytes" => 1_036_288,
+        "bucket" => "trifle-sqlite-files",
+        "region" => "us-east-1",
+        "endpoint" => "http://minio:9000"
+      }
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(organization, %{
+                 display_name: "SQLite Uploaded",
+                 driver: "sqlite",
+                 file_path:
+                   "/tmp/trifle_sqlite_cache/sqlite-files/organization_#{organization.id}/sqlite/uploaded.db",
+                 config: %{
+                   "table_name" => "trifle_stats",
+                   "joined_identifiers" => "full",
+                   "pool_size" => 5,
+                   "timeout" => 5000,
+                   "sqlite_storage" => storage_metadata
+                 }
+               })
+
+      assert {:ok, updated_database} =
+               Organizations.update_database(database, %{
+                 config: %{
+                   "table_name" => "updated_table",
+                   "joined_identifiers" => "partial",
+                   "pool_size" => 10,
+                   "timeout" => 15_000
+                 }
+               })
+
+      assert updated_database.pool_version == database.pool_version + 1
+      assert updated_database.config["table_name"] == "updated_table"
+      assert updated_database.config["joined_identifiers"] == "partial"
+      assert updated_database.config["sqlite_storage"] == storage_metadata
+    end
+
     test "removes previous managed sqlite file when file_path changes" do
       organization = organization_fixture()
 

@@ -111,6 +111,7 @@ defmodule Trifle.SqliteUploads.S3Client do
         target.canonical_uri,
         "",
         canonical_headers,
+        "",
         signed_headers,
         payload_hash
       ]
