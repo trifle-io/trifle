@@ -67,7 +67,7 @@ defmodule Trifle.DatabasePools.PoolVersioningTest do
       assert is_pid(Process.whereis(connection_name))
     end
 
-    test "falls back to default pool size for unexpected pool_size types" do
+    test "handles unexpected pool_size types without crashing pool startup" do
       database = database_fixture(%{config: %{"pool_size" => %{"bad" => "value"}}})
 
       on_exit(fn ->

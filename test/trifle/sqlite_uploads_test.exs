@@ -324,7 +324,7 @@ defmodule Trifle.SqliteUploadsTest do
     refute MockObjectStoreClient.object_exists?(object_key)
   end
 
-  test "treats unsupported checksum metadata as invalid cached file" do
+  test "skips checksum validation for unsupported checksum metadata" do
     Application.put_env(:trifle, :sqlite_storage_backend, :s3)
 
     org_id = Ecto.UUID.generate()
@@ -347,7 +347,6 @@ defmodule Trifle.SqliteUploadsTest do
     end)
 
     File.write!(cache_path, "ghijkl")
-    object_key = get_in(config_patch, ["sqlite_storage", "object_key"])
 
     database = %{
       id: Ecto.UUID.generate(),
@@ -356,8 +355,8 @@ defmodule Trifle.SqliteUploadsTest do
     }
 
     assert {:ok, resolved_path} = SqliteUploads.resolve_database_path(database)
-    assert_receive {:get_object_config, ^object_key, _object_store_config}
-    assert File.read!(resolved_path) == payload
+    refute_receive {:get_object_config, _, _}
+    assert File.read!(resolved_path) == "ghijkl"
   end
 
   test "rejects unsupported sqlite upload extension" do

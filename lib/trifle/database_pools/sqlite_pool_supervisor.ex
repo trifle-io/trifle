@@ -161,36 +161,8 @@ defmodule Trifle.DatabasePools.SqlitePoolSupervisor do
   defp sqlite_pool_spec(database, connection_name) do
     # SQLite database path - can be file path or :memory:
     with {:ok, database_path} <- resolve_database_path(database) do
-      # Extract pool_size from config
-      db_config = database.config || %{}
-
-      _pool_size =
-        case db_config["pool_size"] do
-          # Smaller default pool for SQLite
-          nil ->
-            3
-
-          val when is_integer(val) ->
-            val
-
-          val when is_binary(val) ->
-            case Integer.parse(val) do
-              {parsed, ""} -> parsed
-              _ -> 3
-            end
-
-          _ ->
-            3
-        end
-
       # For SQLite, we'll create a simple GenServer wrapper that manages a single connection
       # since SQLite doesn't benefit from connection pooling the same way as other databases
-
-      # Build connection config for direct exqlite usage
-      _config = [
-        name: connection_name,
-        database: database_path
-      ]
 
       # Create a simple wrapper process that holds the SQLite connection
       {:ok,

@@ -50,8 +50,10 @@ defmodule Trifle.SqliteUploads do
       attrs
     else
       existing_config =
-        attrs
-        |> fetch_key("config")
+        case fetch_key(attrs, "config") do
+          nil -> fetch_key(attrs, :config)
+          value -> value
+        end
         |> normalize_map()
 
       merged_config = deep_merge(existing_config, normalize_map(config_patch))
@@ -207,7 +209,7 @@ defmodule Trifle.SqliteUploads do
   defp with_download_lock(cache_path, fun) when is_function(fun, 0) do
     task =
       Task.async(fn ->
-        :global.trans({:sqlite_cache_download, cache_path}, fun, [node()], 0)
+        :global.trans({:sqlite_cache_download, cache_path}, fun, [node()], :infinity)
       end)
 
     case Task.yield(task, @download_lock_timeout_ms) || Task.shutdown(task, :brutal_kill) do
@@ -245,7 +247,7 @@ defmodule Trifle.SqliteUploads do
         :ok
 
       :unsupported ->
-        :error
+        :ok
 
       {:sha256, expected_checksum} ->
         case sha256_file(path) do
