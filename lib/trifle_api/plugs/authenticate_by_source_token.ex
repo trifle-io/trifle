@@ -12,10 +12,28 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
   def call(conn, params \\ %{mode: :any}) do
     with {:ok, auth} <- find_source_from_header(conn, params.mode) do
       conn
+      |> assign(:current_api_token, auth.token)
+      |> assign(:current_api_user, auth.user)
       |> assign(:current_source, auth.source)
       |> assign(:current_project, auth.project)
       |> assign(:current_database, auth.database)
     else
+      {:error, :missing_source_id} ->
+        conn
+        |> assign(:current_project, nil)
+        |> put_resp_content_type("application/json")
+        |> put_status(:bad_request)
+        |> json(%{errors: %{detail: "Missing X-Trifle-Source-Id header"}})
+        |> halt()
+
+      {:error, :invalid_source_id} ->
+        conn
+        |> assign(:current_project, nil)
+        |> put_resp_content_type("application/json")
+        |> put_status(:bad_request)
+        |> json(%{errors: %{detail: "Invalid X-Trifle-Source-Id header"}})
+        |> halt()
+
       {:error, :invalid_permissions} ->
         conn
         |> assign(:current_project, nil)
@@ -37,18 +55,31 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
   end
 
   def find_source_from_header(conn, mode) do
-    with token when not is_nil(token) <- extract_bearer_token(conn),
-         {:ok, source_type, record, token_record} <- fetch_source_by_token(token),
-         {:ok, _permission} <- valid_mode?(token_record, mode) do
-      {:ok, build_auth(source_type, record, token_record)}
+    with token when is_binary(token) <- extract_bearer_token(conn),
+         {:ok, source_id} <- extract_source_id(conn),
+         {:ok, %{token: token_record, user: user}} <- Organizations.get_api_token_auth(token),
+         organization_id when is_binary(organization_id) <- token_record.organization_id,
+         {:ok, source_type, record} <- Organizations.get_source_for_org(organization_id, source_id),
+         :ok <- Organizations.ensure_token_permission(token_record, source_type, source_id, mode) do
+      _ = Organizations.touch_organization_api_token(token, %{last_used_from: request_source(conn)})
+      {:ok, build_auth(source_type, record, token_record, user)}
     else
+      nil ->
+        {:error, :not_found}
+
+      {:error, :missing_source_id} ->
+        {:error, :missing_source_id}
+
+      {:error, :bad_request} ->
+        {:error, :invalid_source_id}
+
+      {:error, :invalid_source} ->
+        {:error, :invalid_source_id}
+
       {:error, :invalid_permissions} ->
         {:error, :invalid_permissions}
 
       {:error, :not_found} ->
-        {:error, :not_found}
-
-      nil ->
         {:error, :not_found}
     end
   end
@@ -60,53 +91,44 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
     end
   end
 
-  def valid_mode?(token, mode) do
-    read = Map.get(token, :read, false)
-    write = Map.get(token, :write, false)
-
-    cond do
-      mode in [:any, :none, nil] ->
-        {:ok, :any}
-
-      read && mode == :read ->
-        {:ok, :read}
-
-      write && mode == :write ->
-        {:ok, :write}
-
-      true ->
-        # true is else
-        {:error, :invalid_permissions}
+  defp extract_source_id(conn) do
+    case List.first(Plug.Conn.get_req_header(conn, "x-trifle-source-id")) do
+      source_id when is_binary(source_id) and source_id != "" -> {:ok, source_id}
+      _ -> {:error, :missing_source_id}
     end
   end
 
-  defp fetch_source_by_token(token) do
-    case Organizations.get_project_by_token(token) do
-      {:ok, project, record} ->
-        {:ok, :project, project, record}
+  defp request_source(conn) do
+    conn
+    |> Plug.Conn.get_req_header("x-trifle-client-host")
+    |> List.first()
+    |> case do
+      value when is_binary(value) and value != "" ->
+        value
 
-      {:error, :not_found} ->
-        case Organizations.get_database_by_token(token) do
-          {:ok, database, record} -> {:ok, :database, database, record}
-          {:error, :not_found} -> {:error, :not_found}
-        end
+      _ ->
+        conn
+        |> Plug.Conn.get_req_header("user-agent")
+        |> List.first()
     end
   end
 
-  defp build_auth(:project, project, token_record) do
+  defp build_auth(:project, project, token_record, user) do
     %{
       source: Source.from_project(project),
       project: project,
       database: nil,
+      user: user,
       token: token_record
     }
   end
 
-  defp build_auth(:database, database, token_record) do
+  defp build_auth(:database, database, token_record, user) do
     %{
       source: Source.from_database(database),
       project: nil,
       database: database,
+      user: user,
       token: token_record
     }
   end

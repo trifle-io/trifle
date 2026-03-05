@@ -83,13 +83,12 @@ defmodule TrifleApp.Router do
       live "/organization/users", OrganizationUsersLive, :index
       live "/organization/sso", OrganizationSSOLive, :show
       live "/organization/delivery", OrganizationDeliveryLive, :show
+      live "/organization/tokens", OrganizationTokensLive, :index
       live "/organization/billing", OrganizationBillingLive, :show
       live "/dbs", DatabasesLive, :index
       live "/dbs/new", DatabasesLive, :new
       live "/dbs/:id", DatabaseRedirectLive, :index
       live "/dbs/:id/settings", DatabaseSettingsLive, :show
-      live "/dbs/:id/tokens", DatabaseTokensLive, :index
-      live "/dbs/:id/tokens/new", DatabaseTokensLive, :new
       live "/explore", ExploreLive, :show
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
@@ -132,8 +131,6 @@ defmodule TrifleApp.Router do
       live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
       live "/projects/:id/settings", ProjectSettingsLive
       live "/projects/:id/billing", ProjectBillingLive, :show
-      live "/projects/:id/tokens", ProjectTokensLive, :index
-      live "/projects/:id/tokens/new", ProjectTokensLive, :new
     end
   end
 
@@ -197,7 +194,10 @@ defmodule TrifleApp.Router do
       post("/databases", BootstrapController, :create_database)
       post("/databases/:id/setup", BootstrapController, :setup_database)
       post("/projects", BootstrapController, :create_project)
-      post("/source-tokens", BootstrapController, :create_source_token)
+      get("/tokens", BootstrapController, :list_tokens)
+      post("/tokens", BootstrapController, :create_token)
+      put("/tokens/:id", BootstrapController, :update_token)
+      delete("/tokens/:id", BootstrapController, :delete_token)
     end
 
     scope "/" do

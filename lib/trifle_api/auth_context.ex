@@ -3,7 +3,24 @@ defmodule TrifleApi.AuthContext do
 
   alias Trifle.Accounts.User
   alias Trifle.Organizations
+  alias Trifle.Organizations.OrganizationApiToken
+  alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Repo
+
+  def resolve_membership(%{
+        assigns: %{
+          current_api_user: %User{} = user,
+          current_api_token: %OrganizationApiToken{} = token
+        }
+      }) do
+    with organization_id when is_binary(organization_id) <- token.organization_id,
+         %OrganizationMembership{} = membership <- Organizations.get_membership_for_user(user),
+         true <- membership.organization_id == organization_id do
+      {:ok, %{user: user, membership: membership}}
+    else
+      _ -> {:error, :unauthorized}
+    end
+  end
 
   def resolve_membership(%{assigns: %{current_project: project}})
       when is_map(project) do
