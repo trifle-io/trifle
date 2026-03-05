@@ -135,29 +135,6 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert token_record.last_used_from == "bootstrap-host"
     end
 
-    test "POST /api/v1/bootstrap/organizations creates organization for users without membership",
-         %{
-           conn: conn
-         } do
-      user = user_fixture()
-      user_token = create_unscoped_token!(user)
-
-      conn =
-        conn
-        |> auth_user_conn(user_token)
-        |> post(~p"/api/v1/bootstrap/organizations", %{"name" => "New Org"})
-
-      assert %{
-               "data" => %{
-                 "organization" => %{"id" => organization_id, "name" => "New Org"},
-                 "membership" => %{"role" => "owner"}
-               }
-             } = json_response(conn, 201)
-
-      assert {:ok, %{token: token_record}} = Organizations.get_api_token_auth(user_token)
-      assert token_record.organization_id == organization_id
-    end
-
     test "can list/create/update/delete organization tokens", %{
       conn: conn,
       user_token: user_token
@@ -220,6 +197,16 @@ defmodule TrifleApi.BootstrapControllerTest do
         |> delete(~p"/api/v1/bootstrap/tokens/#{token_id}")
 
       assert %{"data" => %{"id" => ^token_id}} = json_response(delete_conn, 200)
+
+      list_after_delete_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> get(~p"/api/v1/bootstrap/tokens")
+
+      assert %{"data" => %{"tokens" => tokens_after_delete}} =
+               json_response(list_after_delete_conn, 200)
+
+      refute Enum.any?(tokens_after_delete, &(&1["id"] == token_id))
     end
 
     test "token create supports scoped source grants", %{
@@ -479,6 +466,31 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
       assert detail == "invalid sqlite_file upload"
+    end
+  end
+
+  describe "authenticated bootstrap endpoints without membership" do
+    test "POST /api/v1/bootstrap/organizations creates organization for users without membership",
+         %{
+           conn: conn
+         } do
+      user = user_fixture()
+      user_token = create_unscoped_token!(user)
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/organizations", %{"name" => "New Org"})
+
+      assert %{
+               "data" => %{
+                 "organization" => %{"id" => organization_id, "name" => "New Org"},
+                 "membership" => %{"role" => "owner"}
+               }
+             } = json_response(conn, 201)
+
+      assert {:ok, %{token: token_record}} = Organizations.get_api_token_auth(user_token)
+      assert token_record.organization_id == organization_id
     end
   end
 

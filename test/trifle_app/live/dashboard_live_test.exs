@@ -12,6 +12,7 @@ defmodule TrifleApp.DashboardLiveTest do
     organization = organization_fixture(%{user: user})
     membership = Organizations.get_membership_for_user(user)
     database = database_fixture(%{organization: organization})
+    {:ok, _} = Organizations.setup_database(database)
 
     dashboard_attrs = %{
       "name" => "Widget Workspace Test",

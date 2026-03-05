@@ -5,6 +5,11 @@ defmodule Trifle.Organizations.TokenCache do
 
   @table :organization_api_token_cache
   @topic "organization_api_tokens:invalidate"
+  @eviction_interval_ms Application.compile_env(
+                          :trifle,
+                          :organization_api_token_cache_eviction_interval_ms,
+                          60_000
+                        )
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -37,6 +42,9 @@ defmodule Trifle.Organizations.TokenCache do
       end
 
     Phoenix.PubSub.subscribe(Trifle.PubSub, @topic)
+
+    Process.send_after(self(), :evict, @eviction_interval_ms)
+
     {:ok, Map.put(state, :table, table)}
   end
 
@@ -73,6 +81,19 @@ defmodule Trifle.Organizations.TokenCache do
       when is_binary(token_hash) do
     :ets.delete(table, token_hash)
     Phoenix.PubSub.broadcast_from(Trifle.PubSub, self(), @topic, {:invalidate, token_hash})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:evict, %{table: table} = state) do
+    now = System.system_time(:millisecond)
+
+    _deleted =
+      :ets.select_delete(table, [
+        {{:"$1", :"$2", :"$3"}, [{:"=<", :"$3", now}], [true]}
+      ])
+
+    Process.send_after(self(), :evict, @eviction_interval_ms)
     {:noreply, state}
   end
 

@@ -23,7 +23,7 @@ defmodule Trifle.Repo.Migrations.CreateOrganizationApiTokens do
           references(:users, type: :binary_id, on_delete: :delete_all),
           null: false
 
-      timestamps()
+      timestamps(type: :utc_datetime)
     end
 
     create index(:organization_api_tokens, [:organization_id])

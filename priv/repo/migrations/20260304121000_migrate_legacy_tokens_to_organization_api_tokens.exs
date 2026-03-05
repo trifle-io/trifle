@@ -132,6 +132,8 @@ defmodule Trifle.Repo.Migrations.MigrateLegacyTokensToOrganizationApiTokens do
       ORDER BY organization_membership.inserted_at
       LIMIT 1
     ) AS membership ON TRUE
+    WHERE user_api_token.token_hash IS NOT NULL
+      AND octet_length(user_api_token.token_hash) > 0
     ON CONFLICT (token_hash) DO NOTHING
     """)
   end

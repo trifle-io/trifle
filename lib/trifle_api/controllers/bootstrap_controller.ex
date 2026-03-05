@@ -663,7 +663,13 @@ defmodule TrifleApi.BootstrapController do
   defp organization_token_payload(params, %OrganizationMembership{} = membership) do
     payload = Map.get(params, "token") || params
     name = payload |> Map.get("name") |> normalize_string()
-    permissions = build_permissions_payload(payload, membership)
+
+    permissions =
+      if permissions_payload_requested?(payload) do
+        build_permissions_payload(payload, membership)
+      else
+        nil
+      end
 
     with {:ok, expires_at} <- payload |> Map.get("expires_at") |> normalize_expires_at() do
       {:ok,
@@ -756,7 +762,17 @@ defmodule TrifleApi.BootstrapController do
         :error
 
       is_binary(source_type) ->
-        {:ok, source_type, source_id, read, write}
+        case Organizations.get_source_for_org(membership.organization_id, source_id) do
+          {:ok, resolved_type, _record} ->
+            if Atom.to_string(resolved_type) == source_type do
+              {:ok, source_type, source_id, read, write}
+            else
+              :error
+            end
+
+          _ ->
+            :error
+        end
 
       true ->
         case Organizations.get_source_for_org(membership.organization_id, source_id) do
@@ -767,6 +783,24 @@ defmodule TrifleApi.BootstrapController do
   end
 
   defp normalize_grant(_grant, _membership), do: :error
+
+  defp permissions_payload_requested?(payload) when is_map(payload) do
+    Enum.any?(
+      [
+        "permissions",
+        "wildcard_read",
+        "wildcard_write",
+        "source_type",
+        "source_id",
+        "read",
+        "write",
+        "grants"
+      ],
+      &Map.has_key?(payload, &1)
+    )
+  end
+
+  defp permissions_payload_requested?(_), do: false
 
   defp token_payload(token, value \\ nil) do
     payload = %{
