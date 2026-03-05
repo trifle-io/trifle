@@ -1757,8 +1757,6 @@ defmodule Trifle.Organizations do
     protected_keys = [
       :id,
       "id",
-      :name,
-      "name",
       :organization_id,
       "organization_id",
       :user_id,

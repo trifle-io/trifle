@@ -16,8 +16,7 @@ defmodule Trifle.Repo.Migrations.CreateOrganizationApiTokens do
       add :expires_at, :utc_datetime
 
       add :organization_id,
-          references(:organizations, type: :binary_id, on_delete: :delete_all),
-          null: false
+          references(:organizations, type: :binary_id, on_delete: :delete_all)
 
       add :user_id,
           references(:users, type: :binary_id, on_delete: :delete_all),
