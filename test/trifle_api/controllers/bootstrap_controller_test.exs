@@ -490,6 +490,8 @@ defmodule TrifleApi.BootstrapControllerTest do
     put_req_header(conn, "authorization", "Bearer #{token}")
   end
 
+  # Intentionally bypasses changeset validation to exercise legacy unscoped-token
+  # bootstrap paths where organization_id was not yet bound.
   defp create_unscoped_token!(user) do
     value = OrganizationApiToken.build_token()
 

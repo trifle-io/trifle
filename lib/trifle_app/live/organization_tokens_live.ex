@@ -114,7 +114,9 @@ defmodule TrifleApp.OrganizationTokensLive do
                         <% end %>
                       </div>
                       <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                        Last used: {format_datetime(token.last_used_at)} · Created: {format_datetime(token.inserted_at)}
+                        Last used: {format_datetime(token.last_used_at)} · Created: {format_datetime(
+                          token.inserted_at
+                        )}
                       </p>
                     </div>
 
@@ -250,13 +252,21 @@ defmodule TrifleApp.OrganizationTokensLive do
                           <tr>
                             <td class="px-3 py-2 text-sm text-gray-700 dark:text-slate-200">
                               <span class="inline-flex items-center gap-2">
-                                <.source_type_icon source={source} class="h-4 w-4 shrink-0 text-gray-500 dark:text-slate-300" />
+                                <.source_type_icon
+                                  source={source}
+                                  class="h-4 w-4 shrink-0 text-gray-500 dark:text-slate-300"
+                                />
                                 <span>{source_grant_name(source)}</span>
                               </span>
                             </td>
                             <td class="px-3 py-2 text-center">
                               <%= if @new_wildcard_read do %>
-                                <input type="checkbox" checked disabled class="cursor-not-allowed opacity-60" />
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  disabled
+                                  class="cursor-not-allowed opacity-60"
+                                />
                               <% else %>
                                 <input
                                   type="checkbox"
@@ -323,7 +333,11 @@ defmodule TrifleApp.OrganizationTokensLive do
           <:title>Edit token grants</:title>
           <:body>
             <%= if @edit_token do %>
-              <form phx-submit="update_token_grants" phx-change="change_edit_token_form" class="space-y-4">
+              <form
+                phx-submit="update_token_grants"
+                phx-change="change_edit_token_form"
+                class="space-y-4"
+              >
                 <%= if @edit_error do %>
                   <div class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-500/10 dark:text-red-200">
                     {@edit_error}
@@ -331,7 +345,9 @@ defmodule TrifleApp.OrganizationTokensLive do
                 <% end %>
 
                 <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/40">
-                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Token</p>
+                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                    Token
+                  </p>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">
                     {token_display_name(@edit_token)}
                   </p>
@@ -380,13 +396,21 @@ defmodule TrifleApp.OrganizationTokensLive do
                           <tr>
                             <td class="px-3 py-2 text-sm text-gray-700 dark:text-slate-200">
                               <span class="inline-flex items-center gap-2">
-                                <.source_type_icon source={source} class="h-4 w-4 shrink-0 text-gray-500 dark:text-slate-300" />
+                                <.source_type_icon
+                                  source={source}
+                                  class="h-4 w-4 shrink-0 text-gray-500 dark:text-slate-300"
+                                />
                                 <span>{source_grant_name(source)}</span>
                               </span>
                             </td>
                             <td class="px-3 py-2 text-center">
                               <%= if @edit_wildcard_read do %>
-                                <input type="checkbox" checked disabled class="cursor-not-allowed opacity-60" />
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  disabled
+                                  class="cursor-not-allowed opacity-60"
+                                />
                               <% else %>
                                 <input
                                   type="checkbox"
@@ -486,10 +510,12 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> refresh_tokens(membership.organization_id)}
     else
       nil ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       false ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Token could not be found.")}
@@ -531,19 +557,26 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> refresh_tokens(membership.organization_id)}
     else
       nil ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       false ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       :error ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       {:error, reason} ->
         {:noreply,
          socket
          |> assign_form_state(params)
          |> assign(:token_error, format_reason(reason))}
+
+      _ ->
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
     end
   end
 
@@ -557,7 +590,8 @@ defmodule TrifleApp.OrganizationTokensLive do
              permissions,
              socket.assigns.edit_unknown_source_permissions
            ),
-         {:ok, _updated} <- Organizations.update_organization_api_token(token, %{permissions: permissions}) do
+         {:ok, _updated} <-
+           Organizations.update_organization_api_token(token, %{permissions: permissions}) do
       {:noreply,
        socket
        |> reset_edit_form()
@@ -567,10 +601,12 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> put_flash(:info, "Token grants updated successfully.")}
     else
       nil ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       false ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       :not_found ->
         {:noreply, put_flash(socket, :error, "Token could not be found.")}
@@ -595,10 +631,12 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> put_flash(:info, "Token deleted successfully.")}
     else
       nil ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       false ->
-        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+        {:noreply,
+         put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Token could not be deleted.")}
@@ -606,12 +644,16 @@ defmodule TrifleApp.OrganizationTokensLive do
   end
 
   defp load_state(socket, %OrganizationMembership{} = membership) do
-    can_manage = Organizations.membership_owner?(membership) or Organizations.membership_admin?(membership)
+    can_manage =
+      Organizations.membership_owner?(membership) or Organizations.membership_admin?(membership)
 
     socket
     |> assign(:current_membership, membership)
     |> assign(:can_manage, can_manage)
-    |> assign(:tokens, Organizations.list_organization_api_tokens_for_org(membership.organization_id))
+    |> assign(
+      :tokens,
+      Organizations.list_organization_api_tokens_for_org(membership.organization_id)
+    )
     |> assign(:sources, Source.list_for_membership(membership))
   end
 
@@ -724,7 +766,10 @@ defmodule TrifleApp.OrganizationTokensLive do
     |> assign(:edit_wildcard_read, checkbox_enabled?(Map.get(wildcard, "read")))
     |> assign(:edit_wildcard_write, checkbox_enabled?(Map.get(wildcard, "write")))
     |> assign(:edit_grants, source_grants_for_form(source_permissions, sources))
-    |> assign(:edit_unknown_source_permissions, unknown_source_permissions(source_permissions, sources))
+    |> assign(
+      :edit_unknown_source_permissions,
+      unknown_source_permissions(source_permissions, sources)
+    )
   end
 
   defp assign_edit_state_from_token(socket, _), do: socket
@@ -827,7 +872,8 @@ defmodule TrifleApp.OrganizationTokensLive do
 
   defp merge_unknown_source_permissions(permissions, _), do: permissions
 
-  defp grant_checked?(grants, source_id, permission) when is_map(grants) and is_binary(source_id) do
+  defp grant_checked?(grants, source_id, permission)
+       when is_map(grants) and is_binary(source_id) do
     grants
     |> Map.get(source_id, %{})
     |> Map.get(Atom.to_string(permission), false)
@@ -893,7 +939,6 @@ defmodule TrifleApp.OrganizationTokensLive do
             d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
           />
         </svg>
-
       <% :project -> %>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -909,7 +954,6 @@ defmodule TrifleApp.OrganizationTokensLive do
             d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
           />
         </svg>
-
       <% _ -> %>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -984,7 +1028,8 @@ defmodule TrifleApp.OrganizationTokensLive do
         {:ok, key} ->
           Map.put(acc, key, %{name: source_grant_name(source), type: source_type(source)})
 
-        :error -> acc
+        :error ->
+          acc
       end
     end)
   end

@@ -1490,6 +1490,27 @@ defmodule Trifle.Organizations do
     end
   end
 
+  def bind_organization_api_token_to_organization(
+        %OrganizationApiToken{} = token,
+        organization_id
+      )
+      when is_binary(organization_id) do
+    token
+    |> OrganizationApiToken.changeset(%{organization_id: organization_id})
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        TokenCache.invalidate(updated.token_hash)
+        {:ok, updated}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  def bind_organization_api_token_to_organization(_token, _organization_id),
+    do: {:error, :invalid_organization_id}
+
   def delete_organization_api_token(%OrganizationApiToken{} = token) do
     case Repo.delete(token) do
       {:ok, deleted} ->
@@ -1546,7 +1567,10 @@ defmodule Trifle.Organizations do
 
     updates =
       [last_used_at: now]
-      |> maybe_put_token_metadata_update(:last_used_from, token_metadata_value(attrs, :last_used_from))
+      |> maybe_put_token_metadata_update(
+        :last_used_from,
+        token_metadata_value(attrs, :last_used_from)
+      )
 
     token
     |> OrganizationApiToken.valid_query()
@@ -1634,7 +1658,7 @@ defmodule Trifle.Organizations do
       :write -> write_allowed
       :any -> read_allowed || write_allowed
       :none -> true
-      nil -> true
+      nil -> false
       _ -> false
     end
   end
@@ -1651,9 +1675,12 @@ defmodule Trifle.Organizations do
       end
 
     %{
-      read: permission_boolean(Map.get(wildcard, "read")) || permission_boolean(Map.get(source_grant, "read")),
+      read:
+        permission_boolean(Map.get(wildcard, "read")) ||
+          permission_boolean(Map.get(source_grant, "read")),
       write:
-        permission_boolean(Map.get(wildcard, "write")) || permission_boolean(Map.get(source_grant, "write"))
+        permission_boolean(Map.get(wildcard, "write")) ||
+          permission_boolean(Map.get(source_grant, "write"))
     }
   end
 
@@ -1705,13 +1732,18 @@ defmodule Trifle.Organizations do
   defp prepare_organization_api_token_attrs(%User{} = user, attrs, token_value) do
     attrs = attrs || %{}
     attrs = Map.new(attrs)
-    organization_id = token_metadata_value(attrs, :organization_id) || organization_id_for_user(user)
+
+    organization_id =
+      token_metadata_value(attrs, :organization_id) || organization_id_for_user(user)
 
     attrs
     |> Map.put(:user_id, user.id)
     |> Map.put(:token_hash, OrganizationApiToken.hash_token(token_value))
     |> Map.put(:token_last5, OrganizationApiToken.token_last5(token_value))
-    |> Map.put(:permissions, normalize_token_permissions(token_metadata_value(attrs, :permissions)))
+    |> Map.put(
+      :permissions,
+      normalize_token_permissions(token_metadata_value(attrs, :permissions))
+    )
     |> Map.put_new(:name, "CLI token")
     |> maybe_put_token_metadata(:organization_id, organization_id)
     |> maybe_put_token_metadata(:created_by, token_metadata_value(attrs, :created_by))
@@ -1721,11 +1753,32 @@ defmodule Trifle.Organizations do
 
   defp normalize_organization_api_token_update_attrs(attrs) do
     attrs = attrs || %{}
+
+    protected_keys = [
+      :id,
+      "id",
+      :name,
+      "name",
+      :organization_id,
+      "organization_id",
+      :user_id,
+      "user_id",
+      :token_hash,
+      "token_hash",
+      :token,
+      "token",
+      :inserted_at,
+      "inserted_at",
+      :updated_at,
+      "updated_at",
+      :revoked_at,
+      "revoked_at"
+    ]
+
     attrs =
       attrs
       |> Map.new()
-      |> Map.delete(:name)
-      |> Map.delete("name")
+      |> Map.drop(protected_keys)
 
     permissions = token_metadata_value(attrs, :permissions)
 

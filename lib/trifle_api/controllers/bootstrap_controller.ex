@@ -65,7 +65,10 @@ defmodule TrifleApi.BootstrapController do
     with {:ok, email, password} <- login_params(params),
          %User{} = user <- Accounts.get_user_by_email_and_password(email, password),
          {:ok, _record, token} <-
-           Organizations.create_organization_api_token(user, organization_token_attrs(conn, params)) do
+           Organizations.create_organization_api_token(
+             user,
+             organization_token_attrs(conn, params)
+           ) do
       membership = Organizations.get_membership_for_user(user)
       organization = membership && membership.organization
 
@@ -176,7 +179,8 @@ defmodule TrifleApi.BootstrapController do
          {:ok, attrs, uploaded_upload} <- maybe_store_sqlite_upload(attrs, params, membership) do
       case Organizations.create_database(attrs) do
         {:ok, %Database{} = database} ->
-          grant_result = maybe_grant_source_to_current_token(conn, :database, database.id, true, false)
+          grant_result =
+            maybe_grant_source_to_current_token(conn, :database, database.id, true, false)
 
           conn
           |> put_status(:created)
@@ -589,7 +593,8 @@ defmodule TrifleApi.BootstrapController do
     end
   end
 
-  defp maybe_grant_source_to_current_token(_conn, _source_type, _source_id, _read, _write), do: :ok
+  defp maybe_grant_source_to_current_token(_conn, _source_type, _source_id, _read, _write),
+    do: :ok
 
   defp maybe_bind_current_token_to_organization(
          %{assigns: %{current_api_token: token}},
@@ -601,7 +606,7 @@ defmodule TrifleApi.BootstrapController do
         :ok
 
       nil ->
-        case Organizations.update_organization_api_token(token, %{organization_id: organization_id}) do
+        case Organizations.bind_organization_api_token_to_organization(token, organization_id) do
           {:ok, _updated} -> :ok
           {:error, reason} -> {:error, reason}
         end
@@ -702,7 +707,15 @@ defmodule TrifleApi.BootstrapController do
     write = parse_bool(Map.get(payload, "write"))
 
     if is_binary(source_id) do
-      grants = [%{"source_type" => source_type, "source_id" => source_id, "read" => read, "write" => write}]
+      grants = [
+        %{
+          "source_type" => source_type,
+          "source_id" => source_id,
+          "read" => read,
+          "write" => write
+        }
+      ]
+
       apply_grants(permissions, grants, membership)
     else
       permissions

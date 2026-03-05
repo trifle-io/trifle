@@ -117,8 +117,8 @@ defmodule Trifle.Repo.Migrations.MigrateLegacyTokensToOrganizationApiTokens do
         'wildcard', jsonb_build_object('read', true, 'write', true),
         'sources', jsonb_build_object()
       ),
-      COALESCE(user_api_token.created_by, 'legacy-migration'),
-      COALESCE(user_api_token.created_from, 'legacy-migration'),
+      'legacy-migration',
+      'legacy-migration',
       user_api_token.last_used_at,
       user_api_token.last_used_from,
       user_api_token.expires_at,

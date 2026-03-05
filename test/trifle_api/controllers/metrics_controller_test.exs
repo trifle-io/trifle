@@ -192,7 +192,7 @@ defmodule TrifleApi.MetricsControllerTest do
   defp auth_conn(conn, token, source_id) do
     conn
     |> put_req_header("authorization", "Bearer #{token}")
-    |> put_req_header("x-trifle-source-id", source_id)
+    |> put_req_header("x-trifle-source-id", to_string(source_id))
   end
 
   defp auth_conn_without_source(conn, token) do

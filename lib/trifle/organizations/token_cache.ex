@@ -14,7 +14,8 @@ defmodule Trifle.Organizations.TokenCache do
     GenServer.call(__MODULE__, {:get, token_hash})
   end
 
-  def put(token_hash, payload, ttl_ms) when is_binary(token_hash) and is_integer(ttl_ms) and ttl_ms > 0 do
+  def put(token_hash, payload, ttl_ms)
+      when is_binary(token_hash) and is_integer(ttl_ms) and ttl_ms > 0 do
     GenServer.call(__MODULE__, {:put, token_hash, payload, ttl_ms})
     :ok
   end
@@ -40,7 +41,8 @@ defmodule Trifle.Organizations.TokenCache do
   end
 
   @impl true
-  def handle_call({:get, token_hash}, _from, %{table: table} = state) when is_binary(token_hash) do
+  def handle_call({:get, token_hash}, _from, %{table: table} = state)
+      when is_binary(token_hash) do
     now = System.system_time(:millisecond)
 
     result =
@@ -67,14 +69,16 @@ defmodule Trifle.Organizations.TokenCache do
   end
 
   @impl true
-  def handle_cast({:invalidate, token_hash}, %{table: table} = state) when is_binary(token_hash) do
+  def handle_cast({:invalidate, token_hash}, %{table: table} = state)
+      when is_binary(token_hash) do
     :ets.delete(table, token_hash)
-    Phoenix.PubSub.broadcast(Trifle.PubSub, @topic, {:invalidate, token_hash})
+    Phoenix.PubSub.broadcast_from(Trifle.PubSub, self(), @topic, {:invalidate, token_hash})
     {:noreply, state}
   end
 
   @impl true
-  def handle_info({:invalidate, token_hash}, %{table: table} = state) when is_binary(token_hash) do
+  def handle_info({:invalidate, token_hash}, %{table: table} = state)
+      when is_binary(token_hash) do
     :ets.delete(table, token_hash)
     {:noreply, state}
   end

@@ -56,7 +56,11 @@ defmodule TrifleApi.TranspondersControllerTest do
       assert %{"errors" => %{"detail" => "Bad token"}} = json_response(conn, 401)
     end
 
-    test "allows write-only project tokens", %{conn: conn, write_project_token: token, project: project} do
+    test "allows write-only project tokens", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
       conn =
         conn
         |> api_conn()
@@ -265,7 +269,6 @@ defmodule TrifleApi.TranspondersControllerTest do
   defp auth_conn(conn, token, source_id) do
     conn
     |> put_req_header("authorization", "Bearer #{token}")
-    |> put_req_header("x-trifle-source-id", source_id)
+    |> put_req_header("x-trifle-source-id", to_string(source_id))
   end
-
 end

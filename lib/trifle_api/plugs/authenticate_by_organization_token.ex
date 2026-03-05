@@ -16,7 +16,8 @@ defmodule TrifleApi.Plugs.AuthenticateByOrganizationToken do
            Organizations.get_api_token_auth(token),
          {:ok, token_record, organization} <-
            maybe_bind_token_to_membership(token_record, user, organization) do
-      _ = Organizations.touch_organization_api_token(token, %{last_used_from: request_source(conn)})
+      _ =
+        Organizations.touch_organization_api_token(token, %{last_used_from: request_source(conn)})
 
       conn
       |> assign(:current_api_token, token_record)
@@ -63,9 +64,10 @@ defmodule TrifleApi.Plugs.AuthenticateByOrganizationToken do
   defp maybe_bind_token_to_membership(token_record, user, _organization) do
     case Organizations.get_membership_for_user(user) do
       %OrganizationMembership{} = membership ->
-        case Organizations.update_organization_api_token(token_record, %{
-               organization_id: membership.organization_id
-             }) do
+        case Organizations.bind_organization_api_token_to_organization(
+               token_record,
+               membership.organization_id
+             ) do
           {:ok, updated} -> {:ok, updated, membership.organization}
           {:error, _} -> {:error, :invalid_token_binding}
         end
