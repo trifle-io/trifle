@@ -5,14 +5,15 @@ Use it as input for agents that need to assemble dashboard JSON.
 
 ## Authentication
 
-All requests use a source token:
+All requests use an organization API token plus a source header:
 
 ```
-Authorization: Bearer <PROJECT_OR_DATABASE_TOKEN>
+Authorization: Bearer <ORGANIZATION_TOKEN>
+X-Trifle-Source-Id: <PROJECT_OR_DATABASE_ID>
 ```
 
 Permissions are enforced by the token only for metrics endpoints. For dashboards,
-any valid project or database token can read and write.
+any valid token grant for the selected source can read and write.
 
 Dashboards are scoped to the organization that owns the token. API responses only include dashboards that are visible to the organization (`visibility: true`).
 

@@ -72,9 +72,6 @@ defmodule TrifleApp.Layouts do
       {:projects, TrifleApp.ProjectSettingsLive} ->
         true
 
-      {:projects, TrifleApp.ProjectTokensLive} ->
-        true
-
       {:projects, TrifleApp.ProjectTranspondersLive} ->
         true
 

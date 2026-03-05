@@ -25,26 +25,16 @@ defmodule TrifleApi.TranspondersControllerTest do
         file_path: file_path
       })
 
-    {:ok, database_token} =
-      Organizations.create_database_token(%{database: database, name: "Read"})
-
     project = project_fixture(%{user: user})
 
-    {:ok, read_project_token} =
-      Organizations.create_project_token(%{
-        project: project,
-        name: "Read",
-        read: true,
-        write: false
-      })
+    database_token =
+      create_scoped_token!(user, organization.id, :database, database.id, true, false)
 
-    {:ok, write_project_token} =
-      Organizations.create_project_token(%{
-        project: project,
-        name: "Write",
-        read: false,
-        write: true
-      })
+    read_project_token =
+      create_scoped_token!(user, organization.id, :project, project.id, true, false)
+
+    write_project_token =
+      create_scoped_token!(user, organization.id, :project, project.id, false, true)
 
     on_exit(fn -> File.rm(file_path) end)
 
@@ -65,11 +55,11 @@ defmodule TrifleApi.TranspondersControllerTest do
       assert %{"errors" => %{"detail" => "Bad token"}} = json_response(conn, 401)
     end
 
-    test "allows write-only project tokens", %{conn: conn, write_project_token: token} do
+    test "allows write-only project tokens", %{conn: conn, write_project_token: token, project: project} do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, project.id)
         |> get(~p"/api/v1/transponders")
 
       assert %{"data" => _data} = json_response(conn, 200)
@@ -101,7 +91,7 @@ defmodule TrifleApi.TranspondersControllerTest do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, database.id)
         |> get(~p"/api/v1/transponders")
 
       assert %{"data" => data} = json_response(conn, 200)
@@ -113,12 +103,13 @@ defmodule TrifleApi.TranspondersControllerTest do
   describe "POST /api/v1/transponders" do
     test "creates expression transponder for database tokens", %{
       conn: conn,
-      database_token: token
+      database_token: token,
+      database: database
     } do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, database.id)
         |> post(~p"/api/v1/transponders", expression_payload("API Total", "metrics.total"))
 
       assert %{"data" => data} = json_response(conn, 201)
@@ -129,12 +120,13 @@ defmodule TrifleApi.TranspondersControllerTest do
 
     test "creates expression transponder for project tokens", %{
       conn: conn,
-      write_project_token: token
+      write_project_token: token,
+      project: project
     } do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, project.id)
         |> post(~p"/api/v1/transponders", expression_payload("API Total", "metrics.total"))
 
       assert %{"data" => data} = json_response(conn, 201)
@@ -143,7 +135,11 @@ defmodule TrifleApi.TranspondersControllerTest do
       assert data["source_type"] == "project"
     end
 
-    test "rejects unsupported transponder types", %{conn: conn, write_project_token: token} do
+    test "rejects unsupported transponder types", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
       payload =
         expression_payload("Bad Type", "metrics.total")
         |> Map.put("type", "Trifle.Stats.Transponder.Add")
@@ -151,7 +147,7 @@ defmodule TrifleApi.TranspondersControllerTest do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, project.id)
         |> post(~p"/api/v1/transponders", payload)
 
       assert %{"errors" => %{"detail" => "Unsupported transponder type"}} =
@@ -174,7 +170,7 @@ defmodule TrifleApi.TranspondersControllerTest do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, project.id)
         |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
       assert %{"data" => data} = json_response(conn, 200)
@@ -196,7 +192,7 @@ defmodule TrifleApi.TranspondersControllerTest do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, project.id)
         |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
       assert %{"data" => data} = json_response(conn, 200)
@@ -222,7 +218,7 @@ defmodule TrifleApi.TranspondersControllerTest do
       conn =
         conn
         |> api_conn()
-        |> auth_conn(token.token)
+        |> auth_conn(token, project.id)
         |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
       assert %{"errors" => %{"detail" => "Unsupported transponder type"}} =
@@ -265,7 +261,33 @@ defmodule TrifleApi.TranspondersControllerTest do
     put_req_header(conn, "accept", "application/json")
   end
 
-  defp auth_conn(conn, token) do
-    put_req_header(conn, "authorization", "Bearer #{token}")
+  defp auth_conn(conn, token, source_id) do
+    conn
+    |> put_req_header("authorization", "Bearer #{token}")
+    |> put_req_header("x-trifle-source-id", source_id)
+  end
+
+  defp create_scoped_token!(user, organization_id, source_type, source_id, read, write) do
+    permissions = scoped_permissions(source_type, source_id, read, write)
+
+    {:ok, _record, value} =
+      Organizations.create_organization_api_token(user, %{
+        organization_id: organization_id,
+        name: "API test token",
+        permissions: permissions
+      })
+
+    value
+  end
+
+  defp scoped_permissions(source_type, source_id, read, write) do
+    source_key = "#{source_type}:#{source_id}"
+
+    %{
+      "wildcard" => %{"read" => false, "write" => false},
+      "sources" => %{
+        source_key => %{"read" => read, "write" => write}
+      }
+    }
   end
 end

@@ -15,6 +15,7 @@ defmodule Trifle.Organizations do
     Project,
     ProjectCluster,
     ProjectClusterAccess,
+    OrganizationApiToken,
     ProjectToken,
     DatabaseToken,
     Organization,
@@ -30,6 +31,7 @@ defmodule Trifle.Organizations do
   }
 
   alias Trifle.Organizations.InvitationNotifier
+  alias Trifle.Organizations.TokenCache
 
   ## Organizations
 
@@ -1433,6 +1435,354 @@ defmodule Trifle.Organizations do
 
     changeset
   end
+
+  ## Organization API tokens
+
+  @organization_api_token_cache_ttl_ms 60_000
+
+  def list_organization_api_tokens_for_org(%Organization{} = organization) do
+    list_organization_api_tokens_for_org(organization.id)
+  end
+
+  def list_organization_api_tokens_for_org(organization_id) when is_binary(organization_id) do
+    from(t in OrganizationApiToken,
+      where: t.organization_id == ^organization_id,
+      order_by: [desc: t.inserted_at]
+    )
+    |> Repo.all()
+  end
+
+  def get_organization_api_token_for_org!(organization_id, token_id)
+      when is_binary(organization_id) and is_binary(token_id) do
+    Repo.get_by!(OrganizationApiToken, id: token_id, organization_id: organization_id)
+  end
+
+  def create_organization_api_token(%User{} = user, attrs \\ %{}) do
+    token_value = OrganizationApiToken.build_token()
+    attrs = prepare_organization_api_token_attrs(user, attrs, token_value)
+
+    case %OrganizationApiToken{}
+         |> OrganizationApiToken.changeset(attrs)
+         |> Repo.insert() do
+      {:ok, record} -> {:ok, record, token_value}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  def update_organization_api_token(%OrganizationApiToken{} = token, attrs) do
+    attrs = normalize_organization_api_token_update_attrs(attrs)
+
+    token
+    |> OrganizationApiToken.changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        TokenCache.invalidate(updated.token_hash)
+        {:ok, updated}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  def delete_organization_api_token(%OrganizationApiToken{} = token) do
+    case Repo.delete(token) do
+      {:ok, deleted} ->
+        TokenCache.invalidate(deleted.token_hash)
+        {:ok, deleted}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  def change_organization_api_token(%OrganizationApiToken{} = token, attrs \\ %{}) do
+    attrs = normalize_organization_api_token_update_attrs(attrs)
+    OrganizationApiToken.changeset(token, attrs)
+  end
+
+  def get_api_token_auth(token) when is_binary(token) do
+    token_hash = OrganizationApiToken.hash_token(token)
+
+    case TokenCache.get(token_hash) do
+      {:ok, payload} ->
+        {:ok, payload}
+
+      :error ->
+        token
+        |> OrganizationApiToken.valid_query()
+        |> Repo.one()
+        |> Repo.preload([:user, :organization])
+        |> case do
+          %OrganizationApiToken{user: %User{} = user} = record ->
+            payload = %{token: record, user: user, organization: record.organization}
+            TokenCache.put(token_hash, payload, @organization_api_token_cache_ttl_ms)
+            {:ok, payload}
+
+          _ ->
+            {:error, :not_found}
+        end
+    end
+  end
+
+  def get_api_token_auth(_), do: {:error, :not_found}
+
+  def touch_organization_api_token(token, attrs \\ %{})
+
+  def touch_organization_api_token(token, attrs) when is_binary(token) do
+    attrs = attrs || %{}
+    attrs = Map.new(attrs)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    updates =
+      [last_used_at: now]
+      |> maybe_put_token_metadata_update(:last_used_from, token_metadata_value(attrs, :last_used_from))
+
+    token
+    |> OrganizationApiToken.valid_query()
+    |> Repo.update_all(set: updates)
+
+    :ok
+  end
+
+  def touch_organization_api_token(_token, _attrs), do: :ok
+
+  def grant_organization_api_token_source_access(
+        %OrganizationApiToken{} = token,
+        source_type,
+        source_id,
+        read,
+        write
+      ) do
+    with {:ok, source_key} <- source_key(source_type, source_id) do
+      permissions =
+        token.permissions
+        |> normalize_token_permissions()
+        |> put_in(
+          ["sources", source_key],
+          %{"read" => permission_boolean(read), "write" => permission_boolean(write)}
+        )
+
+      update_organization_api_token(token, %{permissions: permissions})
+    end
+  end
+
+  def ensure_token_permission(
+        %OrganizationApiToken{} = token,
+        source_type,
+        source_id,
+        mode
+      ) do
+    if token_has_permission?(token.permissions, source_type, source_id, mode) do
+      :ok
+    else
+      {:error, :invalid_permissions}
+    end
+  end
+
+  def token_has_permission?(permissions, source_type, source_id, mode) do
+    permissions = normalize_token_permissions(permissions)
+    wildcard = Map.get(permissions, "wildcard", %{})
+
+    source_grant =
+      with {:ok, key} <- source_key(source_type, source_id) do
+        Map.get(Map.get(permissions, "sources", %{}), key, %{})
+      else
+        _ -> %{}
+      end
+
+    wildcard_read = permission_boolean(Map.get(wildcard, "read"))
+    wildcard_write = permission_boolean(Map.get(wildcard, "write"))
+    source_read = permission_boolean(Map.get(source_grant, "read"))
+    source_write = permission_boolean(Map.get(source_grant, "write"))
+    read_allowed = wildcard_read || source_read
+    write_allowed = wildcard_write || source_write
+
+    case mode do
+      :read -> read_allowed
+      :write -> write_allowed
+      :any -> read_allowed || write_allowed
+      :none -> true
+      nil -> true
+      _ -> false
+    end
+  end
+
+  def source_permission(%OrganizationApiToken{} = token, source_type, source_id) do
+    permissions = normalize_token_permissions(token.permissions)
+    wildcard = Map.get(permissions, "wildcard", %{})
+
+    source_grant =
+      with {:ok, key} <- source_key(source_type, source_id) do
+        Map.get(Map.get(permissions, "sources", %{}), key, %{})
+      else
+        _ -> %{}
+      end
+
+    %{
+      read: permission_boolean(Map.get(wildcard, "read")) || permission_boolean(Map.get(source_grant, "read")),
+      write:
+        permission_boolean(Map.get(wildcard, "write")) || permission_boolean(Map.get(source_grant, "write"))
+    }
+  end
+
+  def source_permission(_token, _source_type, _source_id), do: %{read: false, write: false}
+
+  def source_key(source_type, source_id) do
+    with {:ok, source_type} <- normalize_token_source_type(source_type),
+         {:ok, source_id} <- Ecto.UUID.cast(source_id) do
+      {:ok, "#{source_type}:#{source_id}"}
+    else
+      _ -> {:error, :invalid_source}
+    end
+  end
+
+  def get_source_for_org(organization_id, source_id)
+      when is_binary(organization_id) and is_binary(source_id) do
+    with {:ok, source_id} <- Ecto.UUID.cast(source_id) do
+      case Repo.get_by(Project, id: source_id, organization_id: organization_id) do
+        %Project{} = project ->
+          {:ok, :project, project}
+
+        nil ->
+          case Repo.get_by(Database, id: source_id, organization_id: organization_id) do
+            %Database{} = database -> {:ok, :database, database}
+            nil -> {:error, :not_found}
+          end
+      end
+    else
+      :error -> {:error, :bad_request}
+    end
+  end
+
+  def get_source_for_org(_organization_id, _source_id), do: {:error, :bad_request}
+
+  def normalize_token_permissions(permissions) do
+    wildcard =
+      permissions
+      |> token_permissions_value("wildcard")
+      |> normalize_permission_grant()
+
+    sources =
+      permissions
+      |> token_permissions_value("sources")
+      |> normalize_token_sources()
+
+    %{"wildcard" => wildcard, "sources" => sources}
+  end
+
+  defp prepare_organization_api_token_attrs(%User{} = user, attrs, token_value) do
+    attrs = attrs || %{}
+    attrs = Map.new(attrs)
+    organization_id = token_metadata_value(attrs, :organization_id) || organization_id_for_user(user)
+
+    attrs
+    |> Map.put(:user_id, user.id)
+    |> Map.put(:token_hash, OrganizationApiToken.hash_token(token_value))
+    |> Map.put(:token_last5, OrganizationApiToken.token_last5(token_value))
+    |> Map.put(:permissions, normalize_token_permissions(token_metadata_value(attrs, :permissions)))
+    |> Map.put_new(:name, "CLI token")
+    |> maybe_put_token_metadata(:organization_id, organization_id)
+    |> maybe_put_token_metadata(:created_by, token_metadata_value(attrs, :created_by))
+    |> maybe_put_token_metadata(:created_from, token_metadata_value(attrs, :created_from))
+    |> maybe_put_token_metadata(:expires_at, token_metadata_value(attrs, :expires_at))
+  end
+
+  defp normalize_organization_api_token_update_attrs(attrs) do
+    attrs = attrs || %{}
+    attrs =
+      attrs
+      |> Map.new()
+      |> Map.delete(:name)
+      |> Map.delete("name")
+
+    permissions = token_metadata_value(attrs, :permissions)
+
+    if is_nil(permissions) do
+      attrs
+    else
+      Map.put(attrs, :permissions, normalize_token_permissions(permissions))
+    end
+  end
+
+  defp organization_id_for_user(%User{} = user) do
+    case get_membership_for_user(user) do
+      %OrganizationMembership{} = membership -> membership.organization_id
+      _ -> nil
+    end
+  end
+
+  defp token_permissions_value(%{} = map, key) do
+    Map.get(map, key) || Map.get(map, String.to_atom(key))
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp token_permissions_value(_, _), do: nil
+
+  defp normalize_token_sources(%{} = sources) do
+    Enum.reduce(sources, %{}, fn {key, value}, acc ->
+      case normalize_token_source_key(key) do
+        {:ok, normalized_key} ->
+          Map.put(acc, normalized_key, normalize_permission_grant(value))
+
+        :error ->
+          acc
+      end
+    end)
+  end
+
+  defp normalize_token_sources(_), do: %{}
+
+  defp normalize_token_source_key(key) do
+    key = to_string(key)
+
+    case String.split(key, ":", parts: 2) do
+      [source_type, source_id] ->
+        source_key(source_type, source_id)
+
+      _ ->
+        :error
+    end
+  end
+
+  defp normalize_permission_grant(%{} = grant) do
+    %{
+      "read" => permission_boolean(token_permissions_value(grant, "read")),
+      "write" => permission_boolean(token_permissions_value(grant, "write"))
+    }
+  end
+
+  defp normalize_permission_grant(_), do: %{"read" => false, "write" => false}
+
+  defp normalize_token_source_type(source_type) when is_binary(source_type) do
+    case String.trim(source_type) do
+      "project" -> {:ok, "project"}
+      "database" -> {:ok, "database"}
+      _ -> {:error, :invalid_source}
+    end
+  end
+
+  defp normalize_token_source_type(:project), do: {:ok, "project"}
+  defp normalize_token_source_type(:database), do: {:ok, "database"}
+  defp normalize_token_source_type(_), do: {:error, :invalid_source}
+
+  defp permission_boolean(value) when is_boolean(value), do: value
+  defp permission_boolean("true"), do: true
+  defp permission_boolean("false"), do: false
+  defp permission_boolean(_), do: false
+
+  defp token_metadata_value(attrs, key) when is_map(attrs) do
+    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  end
+
+  defp token_metadata_value(_attrs, _key), do: nil
+
+  defp maybe_put_token_metadata(attrs, _key, nil), do: attrs
+  defp maybe_put_token_metadata(attrs, key, value), do: Map.put(attrs, key, value)
+
+  defp maybe_put_token_metadata_update(updates, _key, nil), do: updates
+  defp maybe_put_token_metadata_update(updates, key, value), do: Keyword.put(updates, key, value)
 
   @doc """
   Returns the list of project_tokens.

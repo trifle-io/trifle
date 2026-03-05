@@ -4,14 +4,15 @@ Monitors automate scheduled reports or alerting rules. This doc outlines the API
 
 ## Authentication
 
-All requests use a source token:
+All requests use an organization API token plus a source header:
 
 ```
-Authorization: Bearer <PROJECT_OR_DATABASE_TOKEN>
+Authorization: Bearer <ORGANIZATION_TOKEN>
+X-Trifle-Source-Id: <PROJECT_OR_DATABASE_ID>
 ```
 
 Read/write permissions are enforced only for metrics endpoints. For monitors,
-any valid project or database token can read and write.
+any valid token grant for the selected source can read and write.
 
 Monitors are scoped to the organization that owns the token.
 

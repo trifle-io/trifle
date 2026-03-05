@@ -9,13 +9,14 @@ defmodule TrifleApi.BootstrapControllerTest do
 
   setup %{conn: conn} do
     user = user_fixture()
-    {:ok, _token_record, user_token} = Accounts.create_user_api_token(user, %{name: "Bootstrap"})
+    {:ok, _token_record, user_token} =
+      Organizations.create_organization_api_token(user, %{name: "Bootstrap"})
 
     {:ok, conn: api_conn(conn), user: user, user_token: user_token}
   end
 
   describe "POST /api/v1/bootstrap/signup" do
-    test "creates user token and optional organization", %{conn: conn} do
+    test "creates organization token and optional organization", %{conn: conn} do
       email = unique_user_email()
 
       conn =
@@ -32,16 +33,18 @@ defmodule TrifleApi.BootstrapControllerTest do
                "data" => %{
                  "user" => %{"id" => _id},
                  "token" => %{"value" => token},
-                 "organization" => %{"name" => "Bootstrap Org"},
+                 "organization" => %{"id" => organization_id, "name" => "Bootstrap Org"},
                  "membership" => %{"role" => "owner"}
                }
              } = json_response(conn, 201)
 
       assert is_binary(token)
-      assert String.starts_with?(token, "trf_uat_")
+      assert String.starts_with?(token, "trf_oat_")
 
       created_user = Accounts.get_user_by_email(email)
-      assert [record] = Accounts.list_user_api_tokens(created_user)
+      assert {:ok, %{token: record}} = Organizations.get_api_token_auth(token)
+      assert created_user.id == record.user_id
+      assert organization_id == record.organization_id
       assert record.created_by == "trifle-cli-test"
       assert record.created_from == "agent-host"
     end
@@ -63,7 +66,7 @@ defmodule TrifleApi.BootstrapControllerTest do
   end
 
   describe "POST /api/v1/bootstrap/login" do
-    test "issues new user token for valid credentials", %{conn: conn, user: user} do
+    test "issues new organization token for valid credentials", %{conn: conn, user: user} do
       user_id = user.id
 
       conn =
@@ -80,6 +83,7 @@ defmodule TrifleApi.BootstrapControllerTest do
              } = json_response(conn, 201)
 
       assert is_binary(token)
+      assert String.starts_with?(token, "trf_oat_")
     end
   end
 
@@ -110,7 +114,7 @@ defmodule TrifleApi.BootstrapControllerTest do
                }
              } = json_response(conn, 200)
 
-      assert [token_record] = Accounts.list_user_api_tokens(user)
+      assert {:ok, %{token: token_record}} = Organizations.get_api_token_auth(user_token)
       assert token_record.last_used_from == "bootstrap-host"
     end
 
@@ -126,77 +130,112 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       assert %{
                "data" => %{
-                 "organization" => %{"name" => "New Org"},
+                 "organization" => %{"id" => organization_id, "name" => "New Org"},
                  "membership" => %{"role" => "owner"}
                }
              } = json_response(conn, 201)
+
+      assert {:ok, %{token: token_record}} = Organizations.get_api_token_auth(user_token)
+      assert token_record.organization_id == organization_id
     end
 
-    test "source-token validation errors", %{conn: conn, user: user, user_token: user_token} do
+    test "can list/create/update/delete organization tokens", %{
+      conn: conn,
+      user: user,
+      user_token: user_token
+    } do
       {:ok, _organization, _membership} =
         Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
 
-      missing_source_id_conn =
+      create_conn =
         conn
         |> auth_user_conn(user_token)
-        |> post(~p"/api/v1/bootstrap/source-tokens", %{
+        |> post(~p"/api/v1/bootstrap/tokens", %{
+          "name" => "Automation token",
+          "wildcard_read" => true,
+          "wildcard_write" => false
+        })
+
+      assert %{
+               "data" => %{
+                 "token" => %{
+                   "id" => token_id,
+                   "value" => created_value,
+                   "name" => "Automation token",
+                   "permissions" => %{
+                     "wildcard" => %{"read" => true, "write" => false}
+                   }
+                 }
+               }
+             } = json_response(create_conn, 201)
+
+      assert is_binary(created_value)
+      assert String.starts_with?(created_value, "trf_oat_")
+
+      list_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> get(~p"/api/v1/bootstrap/tokens")
+
+      assert %{"data" => %{"tokens" => tokens}} = json_response(list_conn, 200)
+      assert Enum.any?(tokens, &(&1["id"] == token_id))
+
+      update_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> put(~p"/api/v1/bootstrap/tokens/#{token_id}", %{
+          "wildcard_read" => true,
+          "wildcard_write" => true
+        })
+
+      assert %{
+               "data" => %{
+                 "token" => %{
+                   "id" => ^token_id,
+                   "permissions" => %{
+                     "wildcard" => %{"read" => true, "write" => true}
+                   }
+                 }
+               }
+             } = json_response(update_conn, 200)
+
+      delete_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> delete(~p"/api/v1/bootstrap/tokens/#{token_id}")
+
+      assert %{"data" => %{"id" => ^token_id}} = json_response(delete_conn, 200)
+    end
+
+    test "token create supports scoped source grants", %{conn: conn, user: user, user_token: user_token} do
+      {:ok, _organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      project = project_fixture(%{user: user})
+
+      create_conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/tokens", %{
           "source_type" => "project",
-          "name" => "Missing source id",
+          "source_id" => project.id,
+          "name" => "Scoped token",
           "read" => true,
           "write" => true
         })
 
-      assert %{"errors" => %{"source_id" => source_id_errors}} =
-               json_response(missing_source_id_conn, 422)
+      assert %{
+               "data" => %{
+                 "token" => %{
+                   "permissions" => %{
+                     "sources" => sources
+                   }
+                 }
+               }
+             } = json_response(create_conn, 201)
 
-      assert "can't be blank" in source_id_errors
-
-      missing_source_type_conn =
-        conn
-        |> auth_user_conn(user_token)
-        |> post(~p"/api/v1/bootstrap/source-tokens", %{
-          "source_id" => Ecto.UUID.generate(),
-          "name" => "Missing source type",
-          "read" => true,
-          "write" => true
-        })
-
-      assert %{"errors" => %{"source_type" => source_type_errors}} =
-               json_response(missing_source_type_conn, 422)
-
-      assert "can't be blank" in source_type_errors
-
-      unknown_source_type_conn =
-        conn
-        |> auth_user_conn(user_token)
-        |> post(~p"/api/v1/bootstrap/source-tokens", %{
-          "source_type" => "bogus",
-          "source_id" => Ecto.UUID.generate(),
-          "name" => "Unknown source type",
-          "read" => true,
-          "write" => true
-        })
-
-      assert %{"errors" => %{"source_type" => invalid_source_type_errors}} =
-               json_response(unknown_source_type_conn, 422)
-
-      assert "is invalid" in invalid_source_type_errors
-
-      malformed_source_id_conn =
-        conn
-        |> auth_user_conn(user_token)
-        |> post(~p"/api/v1/bootstrap/source-tokens", %{
-          "source_type" => "project",
-          "source_id" => "not-a-uuid",
-          "name" => "Malformed source id",
-          "read" => true,
-          "write" => true
-        })
-
-      assert %{"errors" => %{"source_id" => malformed_source_id_errors}} =
-               json_response(malformed_source_id_conn, 422)
-
-      assert "is invalid" in malformed_source_id_errors
+      assert map_size(sources) == 1
+      assert Map.has_key?(sources, "project:#{project.id}")
     end
 
     test "database setup returns validation error for invalid source id", %{
@@ -216,7 +255,7 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert "is invalid" in source_id_errors
     end
 
-    test "can create project/database sources and issue source token", %{
+    test "auto-grants created sources to current token and can issue scoped token", %{
       conn: conn,
       user: user,
       user_token: user_token
@@ -271,25 +310,38 @@ defmodule TrifleApi.BootstrapControllerTest do
                }
              } = json_response(create_project_conn, 201)
 
+      assert {:ok, %{token: bootstrap_token_record}} = Organizations.get_api_token_auth(user_token)
+      assert Organizations.token_has_permission?(bootstrap_token_record.permissions, :database, database_id, :read)
+      refute Organizations.token_has_permission?(bootstrap_token_record.permissions, :database, database_id, :write)
+      assert Organizations.token_has_permission?(bootstrap_token_record.permissions, :project, project_id, :read)
+      assert Organizations.token_has_permission?(bootstrap_token_record.permissions, :project, project_id, :write)
+
       token_conn =
         conn
         |> auth_user_conn(user_token)
-        |> post(~p"/api/v1/bootstrap/source-tokens", %{
+        |> post(~p"/api/v1/bootstrap/tokens", %{
           "source_type" => "project",
           "source_id" => project_id,
-          "name" => "Project Write",
+          "name" => "Project Write Token",
           "read" => true,
-          "write" => true
+          "write" => true,
+          "wildcard_read" => false,
+          "wildcard_write" => false
         })
 
       assert %{
                "data" => %{
-                 "token" => %{"value" => source_token, "read" => true, "write" => true},
-                 "source" => %{"id" => ^project_id, "type" => "project"}
+                 "token" => %{
+                   "value" => source_token,
+                   "permissions" => %{
+                     "sources" => sources
+                   }
+                 }
                }
              } = json_response(token_conn, 201)
 
       assert is_binary(source_token)
+      assert is_map(sources)
 
       list_conn =
         conn

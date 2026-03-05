@@ -26,6 +26,7 @@ defmodule Trifle.Application do
         Trifle.DatabasePools.MySQLPoolSupervisor,
         # Start the PubSub system
         {Phoenix.PubSub, name: Trifle.PubSub},
+        Trifle.Organizations.TokenCache,
         # Start Finch
         {Finch, name: Trifle.Finch},
         {Oban, Application.fetch_env!(:trifle, Oban)},
