@@ -45,7 +45,7 @@ defmodule TrifleApi.MetricsController do
          {:ok, at, _} <- DateTime.from_iso8601(at),
          stats_config <- Trifle.Organizations.Project.stats_config(current_project) do
       normalized_at = normalize_at(at, current_project)
-      Trifle.Stats.track(key, normalized_at, values, stats_config)
+      metrics_module().track(key, normalized_at, values, stats_config)
 
       conn
       |> put_status(:created)
@@ -144,7 +144,7 @@ defmodule TrifleApi.MetricsController do
     query_key = key || @system_key
     opts = if query_key == @system_key, do: [transponders: :none], else: []
 
-    Source.fetch_series(source, query_key, from, to, granularity, opts)
+    metrics_module().fetch_series(source, query_key, from, to, granularity, opts)
   end
 
   defp normalize_at(%DateTime{} = at, %{time_zone: nil}), do: at
@@ -152,5 +152,9 @@ defmodule TrifleApi.MetricsController do
 
   defp normalize_at(%DateTime{} = at, %{time_zone: time_zone}) do
     DateTime.shift_zone!(at, time_zone, Tzdata.TimeZoneDatabase)
+  end
+
+  defp metrics_module do
+    Application.get_env(:trifle, :metrics_module, Trifle.Metrics)
   end
 end

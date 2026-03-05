@@ -474,9 +474,8 @@ defmodule TrifleApp.OrganizationTokensLive do
   end
 
   def handle_event("open_edit_modal", %{"id" => id}, socket) do
-    membership = socket.assigns.current_membership
-
-    with true <- socket.assigns.can_manage,
+    with %OrganizationMembership{} = membership <- socket.assigns.current_membership,
+         true <- socket.assigns.can_manage,
          %OrganizationApiToken{} = token <- find_token(socket.assigns.tokens, id) do
       {:noreply,
        socket
@@ -486,6 +485,9 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> assign(:edit_error, nil)
        |> refresh_tokens(membership.organization_id)}
     else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+
       false ->
         {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
@@ -528,6 +530,9 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> assign(:token_error, nil)
        |> refresh_tokens(membership.organization_id)}
     else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+
       false ->
         {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
@@ -543,10 +548,9 @@ defmodule TrifleApp.OrganizationTokensLive do
   end
 
   def handle_event("update_token_grants", %{"token" => params}, socket) do
-    membership = socket.assigns.current_membership
-
-    with true <- socket.assigns.can_manage,
-         %OrganizationApiToken{} = token <- socket.assigns.edit_token,
+    with %OrganizationMembership{} = membership <- socket.assigns.current_membership,
+         true <- socket.assigns.can_manage,
+         {:ok, %OrganizationApiToken{} = token} <- ensure_edit_token(socket.assigns.edit_token),
          permissions <- token_permissions_from_form(socket.assigns.sources, params),
          permissions <-
            merge_unknown_source_permissions(
@@ -562,10 +566,13 @@ defmodule TrifleApp.OrganizationTokensLive do
        |> refresh_tokens(membership.organization_id)
        |> put_flash(:info, "Token grants updated successfully.")}
     else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+
       false ->
         {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
-      nil ->
+      :not_found ->
         {:noreply, put_flash(socket, :error, "Token could not be found.")}
 
       {:error, reason} ->
@@ -577,17 +584,19 @@ defmodule TrifleApp.OrganizationTokensLive do
   end
 
   def handle_event("delete_token", %{"id" => id}, socket) do
-    membership = socket.assigns.current_membership
-
-    with true <- socket.assigns.can_manage,
+    with %OrganizationMembership{} = membership <- socket.assigns.current_membership,
+         true <- socket.assigns.can_manage,
          %OrganizationApiToken{} = token <-
-           Organizations.get_organization_api_token_for_org!(membership.organization_id, id),
+           Organizations.get_organization_api_token_for_org(membership.organization_id, id),
          {:ok, _deleted} <- Organizations.delete_organization_api_token(token) do
       {:noreply,
        socket
        |> refresh_tokens(membership.organization_id)
        |> put_flash(:info, "Token deleted successfully.")}
     else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
+
       false ->
         {:noreply, put_flash(socket, :error, "Only organization owners and admins can manage tokens.")}
 
@@ -615,6 +624,9 @@ defmodule TrifleApp.OrganizationTokensLive do
   end
 
   defp find_token(_, _), do: nil
+
+  defp ensure_edit_token(%OrganizationApiToken{} = token), do: {:ok, token}
+  defp ensure_edit_token(_), do: :not_found
 
   defp token_create_attrs(socket, %OrganizationMembership{} = membership, params) do
     permissions = token_permissions_from_form(socket.assigns.sources, params)

@@ -6,13 +6,13 @@ defmodule TrifleApi.BootstrapControllerTest do
 
   alias Trifle.Accounts
   alias Trifle.Organizations
+  alias Trifle.Organizations.OrganizationApiToken
+  alias Trifle.Repo
 
   setup %{conn: conn} do
     user = user_fixture()
-    {:ok, _token_record, user_token} =
-      Organizations.create_organization_api_token(user, %{name: "Bootstrap"})
 
-    {:ok, conn: api_conn(conn), user: user, user_token: user_token}
+    {:ok, conn: api_conn(conn), user: user}
   end
 
   describe "POST /api/v1/bootstrap/signup" do
@@ -67,7 +67,11 @@ defmodule TrifleApi.BootstrapControllerTest do
 
   describe "POST /api/v1/bootstrap/login" do
     test "issues new organization token for valid credentials", %{conn: conn, user: user} do
+      {:ok, organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
       user_id = user.id
+      organization_id = organization.id
 
       conn =
         post(conn, ~p"/api/v1/bootstrap/login", %{
@@ -78,7 +82,9 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert %{
                "data" => %{
                  "user" => %{"id" => ^user_id},
-                 "token" => %{"value" => token}
+                 "token" => %{"value" => token},
+                 "organization" => %{"id" => ^organization_id},
+                 "membership" => %{"organization_id" => ^organization_id}
                }
              } = json_response(conn, 201)
 
@@ -88,16 +94,26 @@ defmodule TrifleApi.BootstrapControllerTest do
   end
 
   describe "authenticated bootstrap endpoints" do
-    test "GET /api/v1/bootstrap/me returns user and membership context", %{
-      conn: conn,
-      user: user,
-      user_token: user_token
-    } do
-      user_id = user.id
-
+    setup %{user: user} do
       {:ok, organization, _membership} =
         Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
 
+      {:ok, _token_record, user_token} =
+        Organizations.create_organization_api_token(user, %{
+          name: "Bootstrap",
+          organization_id: organization.id
+        })
+
+      {:ok, organization: organization, user_token: user_token}
+    end
+
+    test "GET /api/v1/bootstrap/me returns user and membership context", %{
+      conn: conn,
+      user: user,
+      organization: organization,
+      user_token: user_token
+    } do
+      user_id = user.id
       organization_id = organization.id
 
       conn =
@@ -114,15 +130,18 @@ defmodule TrifleApi.BootstrapControllerTest do
                }
              } = json_response(conn, 200)
 
-      assert {:ok, %{token: token_record}} = Organizations.get_api_token_auth(user_token)
+      token_hash = OrganizationApiToken.hash_token(user_token)
+      token_record = Repo.get_by!(OrganizationApiToken, token_hash: token_hash)
       assert token_record.last_used_from == "bootstrap-host"
     end
 
     test "POST /api/v1/bootstrap/organizations creates organization for users without membership",
          %{
-           conn: conn,
-           user_token: user_token
+           conn: conn
          } do
+      user = user_fixture()
+      user_token = create_unscoped_token!(user)
+
       conn =
         conn
         |> auth_user_conn(user_token)
@@ -141,12 +160,8 @@ defmodule TrifleApi.BootstrapControllerTest do
 
     test "can list/create/update/delete organization tokens", %{
       conn: conn,
-      user: user,
       user_token: user_token
     } do
-      {:ok, _organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
       create_conn =
         conn
         |> auth_user_conn(user_token)
@@ -207,10 +222,11 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert %{"data" => %{"id" => ^token_id}} = json_response(delete_conn, 200)
     end
 
-    test "token create supports scoped source grants", %{conn: conn, user: user, user_token: user_token} do
-      {:ok, _organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
+    test "token create supports scoped source grants", %{
+      conn: conn,
+      user: user,
+      user_token: user_token
+    } do
       project = project_fixture(%{user: user})
 
       create_conn =
@@ -240,12 +256,8 @@ defmodule TrifleApi.BootstrapControllerTest do
 
     test "database setup returns validation error for invalid source id", %{
       conn: conn,
-      user: user,
       user_token: user_token
     } do
-      {:ok, _organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
       conn =
         conn
         |> auth_user_conn(user_token)
@@ -257,12 +269,8 @@ defmodule TrifleApi.BootstrapControllerTest do
 
     test "auto-grants created sources to current token and can issue scoped token", %{
       conn: conn,
-      user: user,
       user_token: user_token
     } do
-      {:ok, _organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
       cluster = project_cluster_fixture(%{is_default: true})
       file_path = Path.join(System.tmp_dir!(), "bootstrap-api-#{Ecto.UUID.generate()}.sqlite")
       on_exit(fn -> File.rm(file_path) end)
@@ -310,11 +318,36 @@ defmodule TrifleApi.BootstrapControllerTest do
                }
              } = json_response(create_project_conn, 201)
 
-      assert {:ok, %{token: bootstrap_token_record}} = Organizations.get_api_token_auth(user_token)
-      assert Organizations.token_has_permission?(bootstrap_token_record.permissions, :database, database_id, :read)
-      refute Organizations.token_has_permission?(bootstrap_token_record.permissions, :database, database_id, :write)
-      assert Organizations.token_has_permission?(bootstrap_token_record.permissions, :project, project_id, :read)
-      assert Organizations.token_has_permission?(bootstrap_token_record.permissions, :project, project_id, :write)
+      assert {:ok, %{token: bootstrap_token_record}} =
+               Organizations.get_api_token_auth(user_token)
+
+      assert Organizations.token_has_permission?(
+               bootstrap_token_record.permissions,
+               :database,
+               database_id,
+               :read
+             )
+
+      refute Organizations.token_has_permission?(
+               bootstrap_token_record.permissions,
+               :database,
+               database_id,
+               :write
+             )
+
+      assert Organizations.token_has_permission?(
+               bootstrap_token_record.permissions,
+               :project,
+               project_id,
+               :read
+             )
+
+      assert Organizations.token_has_permission?(
+               bootstrap_token_record.permissions,
+               :project,
+               project_id,
+               :write
+             )
 
       token_conn =
         conn
@@ -362,12 +395,9 @@ defmodule TrifleApi.BootstrapControllerTest do
 
     test "can upload sqlite file when creating bootstrap database source", %{
       conn: conn,
-      user: user,
+      organization: organization,
       user_token: user_token
     } do
-      {:ok, organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
       temp_input_path =
         Path.join(System.tmp_dir!(), "bootstrap-upload-#{Ecto.UUID.generate()}.sqlite")
 
@@ -407,12 +437,8 @@ defmodule TrifleApi.BootstrapControllerTest do
 
     test "rejects invalid sqlite upload extension", %{
       conn: conn,
-      user: user,
       user_token: user_token
     } do
-      {:ok, _organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
       temp_input_path =
         Path.join(System.tmp_dir!(), "bootstrap-upload-#{Ecto.UUID.generate()}.txt")
 
@@ -440,12 +466,8 @@ defmodule TrifleApi.BootstrapControllerTest do
 
     test "rejects malformed sqlite upload payload", %{
       conn: conn,
-      user: user,
       user_token: user_token
     } do
-      {:ok, _organization, _membership} =
-        Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
-
       conn =
         conn
         |> auth_user_conn(user_token)
@@ -466,5 +488,20 @@ defmodule TrifleApi.BootstrapControllerTest do
 
   defp auth_user_conn(conn, token) do
     put_req_header(conn, "authorization", "Bearer #{token}")
+  end
+
+  defp create_unscoped_token!(user) do
+    value = OrganizationApiToken.build_token()
+
+    %OrganizationApiToken{
+      name: "Bootstrap legacy token",
+      token_hash: OrganizationApiToken.hash_token(value),
+      token_last5: OrganizationApiToken.token_last5(value),
+      permissions: Organizations.normalize_token_permissions(%{}),
+      user_id: user.id
+    }
+    |> Repo.insert!()
+
+    value
   end
 end

@@ -11,60 +11,73 @@ defmodule Trifle.Organizations.TokenCache do
   end
 
   def get(token_hash) when is_binary(token_hash) do
-    ensure_table()
-
-    now = System.system_time(:millisecond)
-
-    case :ets.lookup(@table, token_hash) do
-      [{^token_hash, payload, expires_at}] when expires_at > now ->
-        {:ok, payload}
-
-      [{^token_hash, _payload, _expires_at}] ->
-        :ets.delete(@table, token_hash)
-        :error
-
-      _ ->
-        :error
-    end
+    GenServer.call(__MODULE__, {:get, token_hash})
   end
 
   def put(token_hash, payload, ttl_ms) when is_binary(token_hash) and is_integer(ttl_ms) and ttl_ms > 0 do
-    ensure_table()
-    expires_at = System.system_time(:millisecond) + ttl_ms
-    :ets.insert(@table, {token_hash, payload, expires_at})
+    GenServer.call(__MODULE__, {:put, token_hash, payload, ttl_ms})
     :ok
   end
 
   def invalidate(token_hash) when is_binary(token_hash) do
-    ensure_table()
-    :ets.delete(@table, token_hash)
-    Phoenix.PubSub.broadcast(Trifle.PubSub, @topic, {:invalidate, token_hash})
+    GenServer.cast(__MODULE__, {:invalidate, token_hash})
     :ok
   end
 
   @impl true
   def init(state) do
-    ensure_table()
+    table =
+      case :ets.whereis(@table) do
+        :undefined ->
+          :ets.new(@table, [:set, :private, :named_table, read_concurrency: true])
+
+        existing ->
+          existing
+      end
+
     Phoenix.PubSub.subscribe(Trifle.PubSub, @topic)
-    {:ok, state}
+    {:ok, Map.put(state, :table, table)}
   end
 
   @impl true
-  def handle_info({:invalidate, token_hash}, state) when is_binary(token_hash) do
-    ensure_table()
-    :ets.delete(@table, token_hash)
+  def handle_call({:get, token_hash}, _from, %{table: table} = state) when is_binary(token_hash) do
+    now = System.system_time(:millisecond)
+
+    result =
+      case :ets.lookup(table, token_hash) do
+        [{^token_hash, payload, expires_at}] when expires_at > now ->
+          {:ok, payload}
+
+        [{^token_hash, _payload, _expires_at}] ->
+          :ets.delete(table, token_hash)
+          :error
+
+        _ ->
+          :error
+      end
+
+    {:reply, result, state}
+  end
+
+  def handle_call({:put, token_hash, payload, ttl_ms}, _from, %{table: table} = state)
+      when is_binary(token_hash) and is_integer(ttl_ms) and ttl_ms > 0 do
+    expires_at = System.system_time(:millisecond) + ttl_ms
+    :ets.insert(table, {token_hash, payload, expires_at})
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_cast({:invalidate, token_hash}, %{table: table} = state) when is_binary(token_hash) do
+    :ets.delete(table, token_hash)
+    Phoenix.PubSub.broadcast(Trifle.PubSub, @topic, {:invalidate, token_hash})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:invalidate, token_hash}, %{table: table} = state) when is_binary(token_hash) do
+    :ets.delete(table, token_hash)
     {:noreply, state}
   end
 
   def handle_info(_, state), do: {:noreply, state}
-
-  defp ensure_table do
-    case :ets.whereis(@table) do
-      :undefined ->
-        :ets.new(@table, [:set, :public, :named_table, read_concurrency: true])
-
-      _table ->
-        @table
-    end
-  end
 end

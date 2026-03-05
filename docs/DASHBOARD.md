@@ -7,7 +7,7 @@ Use it as input for agents that need to assemble dashboard JSON.
 
 All requests use an organization API token plus a source header:
 
-```
+```http
 Authorization: Bearer <ORGANIZATION_TOKEN>
 X-Trifle-Source-Id: <PROJECT_OR_DATABASE_ID>
 ```
@@ -293,9 +293,10 @@ Select groups example:
 
 ## Example create request
 
-```
+```http
 POST /api/v1/dashboards
-Authorization: Bearer <PROJECT_WRITE_TOKEN>
+Authorization: Bearer <ORGANIZATION_TOKEN>
+X-Trifle-Source-Id: <PROJECT_OR_DATABASE_ID>
 
 {
   "name": "Product Analytics",

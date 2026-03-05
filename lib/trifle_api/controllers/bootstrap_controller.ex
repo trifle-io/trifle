@@ -112,20 +112,24 @@ defmodule TrifleApi.BootstrapController do
 
     case Organizations.create_organization_with_owner(attrs, user) do
       {:ok, organization, membership} ->
-        case maybe_bind_current_token_to_organization(conn, organization.id) do
-          :ok ->
-            conn
-            |> put_status(:created)
-            |> json(%{
-              data: %{
-                organization: organization_payload(organization),
-                membership: membership_payload(membership)
-              }
-            })
+        bind_result = maybe_bind_current_token_to_organization(conn, organization.id)
 
-          {:error, reason} ->
-            render_error(conn, :unprocessable_entity, error_message(reason))
-        end
+        conn
+        |> put_status(:created)
+        |> json(%{
+          data:
+            %{
+              organization: organization_payload(organization),
+              membership: membership_payload(membership)
+            }
+            |> append_token_operation_status(
+              :token_bind_status,
+              :token_bind_error,
+              bind_result,
+              "Failed to bind current token to organization",
+              %{organization_id: organization.id}
+            )
+        })
 
       {:error, :already_member} ->
         render_error(conn, :conflict, "User already belongs to an organization")
@@ -172,20 +176,23 @@ defmodule TrifleApi.BootstrapController do
          {:ok, attrs, uploaded_upload} <- maybe_store_sqlite_upload(attrs, params, membership) do
       case Organizations.create_database(attrs) do
         {:ok, %Database{} = database} ->
-          case maybe_grant_source_to_current_token(conn, :database, database.id, true, false) do
-            :ok ->
-              conn
-              |> put_status(:created)
-              |> json(%{
-                data: %{
-                  source: source_payload(:database, database)
-                }
-              })
+          grant_result = maybe_grant_source_to_current_token(conn, :database, database.id, true, false)
 
-            {:error, reason} ->
-              cleanup_uploaded_sqlite_upload(uploaded_upload)
-              render_error(conn, :unprocessable_entity, error_message(reason))
-          end
+          conn
+          |> put_status(:created)
+          |> json(%{
+            data:
+              %{
+                source: source_payload(:database, database)
+              }
+              |> append_token_operation_status(
+                :token_grant_status,
+                :token_grant_error,
+                grant_result,
+                "Failed to grant current token access to database",
+                %{source_type: :database, source_id: database.id}
+              )
+          })
 
         {:error, %Ecto.Changeset{} = changeset} ->
           cleanup_uploaded_sqlite_upload(uploaded_upload)
@@ -253,19 +260,23 @@ defmodule TrifleApi.BootstrapController do
          attrs <- normalize_project_attrs(params, membership),
          {:ok, %Project{} = project} <-
            Organizations.create_project_for_membership(attrs, membership, user) do
-      case maybe_grant_source_to_current_token(conn, :project, project.id, true, true) do
-        :ok ->
-          conn
-          |> put_status(:created)
-          |> json(%{
-            data: %{
-              source: source_payload(:project, project)
-            }
-          })
+      grant_result = maybe_grant_source_to_current_token(conn, :project, project.id, true, true)
 
-        {:error, reason} ->
-          render_error(conn, :unprocessable_entity, error_message(reason))
-      end
+      conn
+      |> put_status(:created)
+      |> json(%{
+        data:
+          %{
+            source: source_payload(:project, project)
+          }
+          |> append_token_operation_status(
+            :token_grant_status,
+            :token_grant_error,
+            grant_result,
+            "Failed to grant current token access to project",
+            %{source_type: :project, source_id: project.id}
+          )
+      })
     else
       {:error, :projects_disabled} ->
         render_error(conn, :forbidden, "Projects are disabled for this deployment")
@@ -282,7 +293,8 @@ defmodule TrifleApi.BootstrapController do
   end
 
   def list_tokens(%{assigns: %{current_api_user: %User{} = user}} = conn, _params) do
-    with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user) do
+    with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
+         :ok <- ensure_token_manager(membership) do
       tokens =
         membership.organization_id
         |> Organizations.list_organization_api_tokens_for_org()
@@ -292,6 +304,9 @@ defmodule TrifleApi.BootstrapController do
     else
       {:error, :organization_required} ->
         render_error(conn, :conflict, "User does not belong to an organization")
+
+      {:error, :forbidden} ->
+        render_error(conn, :forbidden, "Only organization owners and admins can manage tokens")
     end
   end
 
@@ -598,6 +613,33 @@ defmodule TrifleApi.BootstrapController do
 
   defp maybe_bind_current_token_to_organization(_conn, _organization_id), do: :ok
 
+  defp append_token_operation_status(
+         data,
+         status_field,
+         error_field,
+         result,
+         log_message,
+         metadata
+       )
+       when is_map(data) do
+    case result do
+      :ok ->
+        Map.put(data, status_field, "ok")
+
+      {:error, reason} ->
+        log_metadata =
+          metadata
+          |> Map.put(:reason, inspect(reason))
+          |> Enum.into([])
+
+        Logger.warning(log_message, log_metadata)
+
+        data
+        |> Map.put(status_field, "error")
+        |> Map.put(error_field, error_message(reason))
+    end
+  end
+
   defp ensure_token_manager(%OrganizationMembership{} = membership) do
     if Organizations.membership_owner?(membership) or Organizations.membership_admin?(membership) do
       :ok
@@ -617,13 +659,14 @@ defmodule TrifleApi.BootstrapController do
     payload = Map.get(params, "token") || params
     name = payload |> Map.get("name") |> normalize_string()
     permissions = build_permissions_payload(payload, membership)
-    expires_at = payload |> Map.get("expires_at") |> normalize_expires_at()
 
-    {:ok,
-     %{}
-     |> maybe_put(:name, name)
-     |> maybe_put(:permissions, permissions)
-     |> maybe_put(:expires_at, expires_at)}
+    with {:ok, expires_at} <- payload |> Map.get("expires_at") |> normalize_expires_at() do
+      {:ok,
+       %{}
+       |> maybe_put(:name, name)
+       |> maybe_put(:permissions, permissions)
+       |> maybe_put(:expires_at, expires_at)}
+    end
   end
 
   defp build_permissions_payload(payload, %OrganizationMembership{} = membership) do
@@ -903,17 +946,23 @@ defmodule TrifleApi.BootstrapController do
 
   defp parse_bool(_), do: false
 
-  defp normalize_expires_at(nil), do: nil
+  defp normalize_expires_at(nil), do: {:ok, nil}
 
   defp normalize_expires_at(value) when is_binary(value) do
-    case DateTime.from_iso8601(String.trim(value)) do
-      {:ok, datetime, _} -> datetime
-      _ -> nil
+    case String.trim(value) do
+      "" ->
+        {:ok, nil}
+
+      trimmed ->
+        case DateTime.from_iso8601(trimmed) do
+          {:ok, datetime, _} -> {:ok, datetime}
+          _ -> {:error, :invalid_expires_at}
+        end
     end
   end
 
-  defp normalize_expires_at(%DateTime{} = value), do: value
-  defp normalize_expires_at(_), do: nil
+  defp normalize_expires_at(%DateTime{} = value), do: {:ok, value}
+  defp normalize_expires_at(_), do: {:error, :invalid_expires_at}
 
   defp invalid_source_id_changeset do
     {%{}, %{source_id: :string}}
@@ -943,6 +992,9 @@ defmodule TrifleApi.BootstrapController do
     |> put_status(status)
     |> json(%{errors: %{detail: detail}})
   end
+
+  defp error_message(:invalid_expires_at),
+    do: "expires_at must be a valid ISO8601 datetime (or omitted)"
 
   defp error_message(reason) when is_binary(reason), do: reason
   defp error_message(reason), do: inspect(reason)

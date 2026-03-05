@@ -125,7 +125,7 @@ defmodule Trifle.Repo.Migrations.MigrateLegacyTokensToOrganizationApiTokens do
       user_api_token.inserted_at,
       user_api_token.updated_at
     FROM user_api_tokens AS user_api_token
-    LEFT JOIN LATERAL (
+    JOIN LATERAL (
       SELECT organization_membership.organization_id
       FROM organization_memberships AS organization_membership
       WHERE organization_membership.user_id = user_api_token.user_id
@@ -137,6 +137,10 @@ defmodule Trifle.Repo.Migrations.MigrateLegacyTokensToOrganizationApiTokens do
   end
 
   def down do
-    execute("DELETE FROM organization_api_tokens WHERE created_from = 'legacy-migration'")
+    execute("""
+    DELETE FROM organization_api_tokens
+    WHERE created_from = 'legacy-migration'
+       OR created_by = 'legacy-migration'
+    """)
   end
 end

@@ -42,13 +42,15 @@ defmodule Trifle.Organizations.OrganizationApiToken do
       :organization_id,
       :user_id
     ])
-    |> validate_required([:name, :token_hash, :user_id])
+    |> validate_required([:name, :token_hash, :organization_id, :user_id])
     |> validate_length(:name, min: 1, max: 160)
     |> validate_length(:token_last5, is: 5)
     |> validate_length(:created_by, min: 1, max: 160)
     |> validate_length(:created_from, min: 1, max: 255)
     |> validate_length(:last_used_from, min: 1, max: 255)
     |> validate_permissions()
+    |> assoc_constraint(:organization)
+    |> assoc_constraint(:user)
     |> unique_constraint(:token_hash)
   end
 

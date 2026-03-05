@@ -67,7 +67,7 @@ defmodule TrifleApi.Plugs.AuthenticateByOrganizationToken do
                organization_id: membership.organization_id
              }) do
           {:ok, updated} -> {:ok, updated, membership.organization}
-          {:error, _} -> {:ok, token_record, membership.organization}
+          {:error, _} -> {:error, :invalid_token_binding}
         end
 
       _ ->

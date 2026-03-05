@@ -6,7 +6,7 @@ Monitors automate scheduled reports or alerting rules. This doc outlines the API
 
 All requests use an organization API token plus a source header:
 
-```
+```http
 Authorization: Bearer <ORGANIZATION_TOKEN>
 X-Trifle-Source-Id: <PROJECT_OR_DATABASE_ID>
 ```
@@ -131,9 +131,10 @@ Alert payload:
 
 ## Example create request
 
-```
+```http
 POST /api/v1/monitors
-Authorization: Bearer <PROJECT_WRITE_TOKEN>
+Authorization: Bearer <ORGANIZATION_TOKEN>
+X-Trifle-Source-Id: <PROJECT_OR_DATABASE_ID>
 
 {
   "name": "Latency Alerts",

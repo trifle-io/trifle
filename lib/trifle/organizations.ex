@@ -1457,6 +1457,11 @@ defmodule Trifle.Organizations do
     Repo.get_by!(OrganizationApiToken, id: token_id, organization_id: organization_id)
   end
 
+  def get_organization_api_token_for_org(organization_id, token_id)
+      when is_binary(organization_id) and is_binary(token_id) do
+    Repo.get_by(OrganizationApiToken, id: token_id, organization_id: organization_id)
+  end
+
   def create_organization_api_token(%User{} = user, attrs \\ %{}) do
     token_value = OrganizationApiToken.build_token()
     attrs = prepare_organization_api_token_attrs(user, attrs, token_value)
@@ -1516,7 +1521,12 @@ defmodule Trifle.Organizations do
         |> case do
           %OrganizationApiToken{user: %User{} = user} = record ->
             payload = %{token: record, user: user, organization: record.organization}
-            TokenCache.put(token_hash, payload, @organization_api_token_cache_ttl_ms)
+            cache_ttl_ms = token_cache_ttl_ms(record)
+
+            if cache_ttl_ms > 0 do
+              TokenCache.put(token_hash, payload, cache_ttl_ms)
+            end
+
             {:ok, payload}
 
           _ ->
@@ -1555,15 +1565,36 @@ defmodule Trifle.Organizations do
         write
       ) do
     with {:ok, source_key} <- source_key(source_type, source_id) do
-      permissions =
-        token.permissions
-        |> normalize_token_permissions()
-        |> put_in(
-          ["sources", source_key],
-          %{"read" => permission_boolean(read), "write" => permission_boolean(write)}
-        )
+      case Repo.transaction(fn ->
+             locked_token =
+               from(t in OrganizationApiToken,
+                 where: t.id == ^token.id,
+                 lock: "FOR UPDATE"
+               )
+               |> Repo.one()
 
-      update_organization_api_token(token, %{permissions: permissions})
+             case locked_token do
+               %OrganizationApiToken{} = locked_token ->
+                 permissions =
+                   locked_token.permissions
+                   |> normalize_token_permissions()
+                   |> put_in(
+                     ["sources", source_key],
+                     %{"read" => permission_boolean(read), "write" => permission_boolean(write)}
+                   )
+
+                 case update_organization_api_token(locked_token, %{permissions: permissions}) do
+                   {:ok, updated_token} -> updated_token
+                   {:error, reason} -> Repo.rollback(reason)
+                 end
+
+               _ ->
+                 Repo.rollback(:not_found)
+             end
+           end) do
+        {:ok, updated_token} -> {:ok, updated_token}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -1726,6 +1757,9 @@ defmodule Trifle.Organizations do
         {:ok, normalized_key} ->
           Map.put(acc, normalized_key, normalize_permission_grant(value))
 
+        {:error, :invalid_source} ->
+          acc
+
         :error ->
           acc
       end
@@ -1771,6 +1805,19 @@ defmodule Trifle.Organizations do
   defp permission_boolean("true"), do: true
   defp permission_boolean("false"), do: false
   defp permission_boolean(_), do: false
+
+  defp token_cache_ttl_ms(%OrganizationApiToken{expires_at: nil}),
+    do: @organization_api_token_cache_ttl_ms
+
+  defp token_cache_ttl_ms(%OrganizationApiToken{expires_at: %DateTime{} = expires_at}) do
+    expires_in_ms = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
+
+    expires_in_ms
+    |> max(0)
+    |> min(@organization_api_token_cache_ttl_ms)
+  end
+
+  defp token_cache_ttl_ms(_), do: @organization_api_token_cache_ttl_ms
 
   defp token_metadata_value(attrs, key) when is_map(attrs) do
     Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))

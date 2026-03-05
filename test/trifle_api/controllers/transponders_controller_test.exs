@@ -3,6 +3,7 @@ defmodule TrifleApi.TranspondersControllerTest do
 
   import Trifle.AccountsFixtures
   import Trifle.OrganizationsFixtures
+  import TrifleApi.TestHelpers
 
   alias Trifle.Organizations
   alias Trifle.Organizations.Transponder
@@ -267,27 +268,4 @@ defmodule TrifleApi.TranspondersControllerTest do
     |> put_req_header("x-trifle-source-id", source_id)
   end
 
-  defp create_scoped_token!(user, organization_id, source_type, source_id, read, write) do
-    permissions = scoped_permissions(source_type, source_id, read, write)
-
-    {:ok, _record, value} =
-      Organizations.create_organization_api_token(user, %{
-        organization_id: organization_id,
-        name: "API test token",
-        permissions: permissions
-      })
-
-    value
-  end
-
-  defp scoped_permissions(source_type, source_id, read, write) do
-    source_key = "#{source_type}:#{source_id}"
-
-    %{
-      "wildcard" => %{"read" => false, "write" => false},
-      "sources" => %{
-        source_key => %{"read" => read, "write" => write}
-      }
-    }
-  end
 end
