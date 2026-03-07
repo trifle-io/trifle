@@ -1,9 +1,10 @@
-<% page_title = TrifleApp.CoreComponents.format_breadcrumb(assigns[:page_title] || "Trifle") %> <!DOCTYPE html>
+<% page_title = assigns[:page_title] || "Trifle" %> <!DOCTYPE html>
 <html lang="en" style="scrollbar-gutter: stable;">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
+    <TrifleWeb.LayoutPreloads.preload_scripts />
     <.live_title suffix=" | Trifle">
       {page_title}
     </.live_title>
@@ -38,7 +39,10 @@
           document.getElementById('webmanifest').href = '/' + d + '/site.webmanifest';
         }
         var mq = window.matchMedia('(prefers-color-scheme: dark)');
-        setFavicons(mq.matches ? 'dark' : 'light');
+        var initialTheme = window.__TRIFLE_THEME_PRELOAD__ && window.__TRIFLE_THEME_PRELOAD__.resolved
+          ? window.__TRIFLE_THEME_PRELOAD__.resolved
+          : (mq.matches ? 'dark' : 'light');
+        setFavicons(initialTheme);
         mq.addEventListener('change', function(e) { setFavicons(e.matches ? 'dark' : 'light'); });
       })();
     </script>

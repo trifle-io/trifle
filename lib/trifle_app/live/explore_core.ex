@@ -1294,7 +1294,6 @@ defmodule TrifleApp.ExploreCore do
     |> assign(:transponder_info, transponder_info)
     |> assign(:transponder_response_paths, response_paths)
     |> assign(:page_title, "Explore · #{Source.display_name(source)}")
-    |> assign(:breadcrumb_links, [{"Explore", build_explore_path(socket, source_params(source))}])
   end
 
   defp assign_source_state(socket, nil), do: assign_no_source(socket)
@@ -1358,7 +1357,6 @@ defmodule TrifleApp.ExploreCore do
     |> assign(:load_start_time, nil)
     |> assign(:load_duration_microseconds, nil)
     |> assign(:show_export_dropdown, false)
-    |> assign(:breadcrumb_links, [])
     |> assign(:expanded_widget, nil)
   end
 
@@ -2253,7 +2251,7 @@ defmodule TrifleApp.ExploreCore do
             
     <!-- Sticky Summary Footer -->
             <%= if summary = get_summary_stats(assigns) do %>
-              <div class="sticky bottom-0 border-t border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 backdrop-blur-xl px-4 py-3 shadow-lg dark:shadow-none z-30">
+              <div class="sticky bottom-0 z-30 rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/70 dark:shadow-none">
                 <div class="flex flex-wrap items-center gap-4 text-xs">
                   <!-- Selected Key (only show if key is selected) -->
                   <%= if summary.key do %>

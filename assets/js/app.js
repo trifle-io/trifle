@@ -2777,14 +2777,29 @@ Hooks.FastTooltip = {
     // Remove existing tooltips
     document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
     
-    const tooltipElements = this.el.querySelectorAll('[data-tooltip]');
+    const tooltipElements = this.el.querySelectorAll('[data-tooltip], [data-fast-tooltip]');
     
     tooltipElements.forEach(el => {
+      if (el.dataset.fastTooltipBound === 'true') return;
+      el.dataset.fastTooltipBound = 'true';
+
       el.addEventListener('mouseenter', (e) => {
-        this.showTooltip(e.target, e.target.dataset.tooltip);
+        const text = e.currentTarget.dataset.tooltip;
+        if (!text) return;
+        this.showTooltip(e.currentTarget, text);
+      });
+
+      el.addEventListener('focus', (e) => {
+        const text = e.currentTarget.dataset.tooltip;
+        if (!text) return;
+        this.showTooltip(e.currentTarget, text);
       });
       
-      el.addEventListener('mouseleave', (e) => {
+      el.addEventListener('mouseleave', () => {
+        this.hideTooltip();
+      });
+
+      el.addEventListener('blur', () => {
         this.hideTooltip();
       });
     });
@@ -2839,6 +2854,422 @@ Hooks.FastTooltip = {
     document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
   }
 }
+
+Hooks.FlashAutoDismiss = {
+  mounted() {
+    this.flashKey = this.el.dataset.flashKey;
+    this.clearQueued = false;
+
+    this.handleClearFlash = () => {
+      this.queueClear();
+    };
+
+    this.el.addEventListener("trifle:clear-flash", this.handleClearFlash);
+
+    this.timeoutId = window.setTimeout(() => {
+      this.el.dispatchEvent(new CustomEvent("trifle:flash-hide"));
+      this.queueClear();
+    }, 5000);
+  },
+
+  queueClear() {
+    if (this.clearQueued || !this.flashKey) return;
+
+    this.clearQueued = true;
+    window.clearTimeout(this.timeoutId);
+
+    this.clearTimeoutId = window.setTimeout(() => {
+      this.pushEvent("lv:clear-flash", { key: this.flashKey });
+    }, 300);
+  },
+
+  destroyed() {
+    if (this.timeoutId) {
+      window.clearTimeout(this.timeoutId);
+    }
+
+    if (this.clearTimeoutId) {
+      window.clearTimeout(this.clearTimeoutId);
+    }
+
+    if (this.handleClearFlash) {
+      this.el.removeEventListener("trifle:clear-flash", this.handleClearFlash);
+    }
+  }
+}
+
+Hooks.SocketStatusDot = {
+  mounted() {
+    this.connectedClasses = this.parseClasses(this.el.dataset.connectedClasses);
+    this.offlineClasses = this.parseClasses(this.el.dataset.offlineClasses);
+    this.reconnectingClasses = this.parseClasses(this.el.dataset.reconnectingClasses);
+    this.allStatusClasses = [
+      ...this.connectedClasses,
+      ...this.offlineClasses,
+      ...this.reconnectingClasses
+    ];
+
+    this.handleOnline = () => this.syncStatus();
+    this.handleOffline = () => this.applyStatus("offline");
+
+    window.addEventListener("online", this.handleOnline);
+    window.addEventListener("offline", this.handleOffline);
+
+    this.socket = window.liveSocket && typeof window.liveSocket.getSocket === "function"
+      ? window.liveSocket.getSocket()
+      : null;
+    this.socketRefs = [];
+
+    if (this.socket) {
+      if (typeof this.socket.onOpen === "function") {
+        this.socketRefs.push(this.socket.onOpen(() => this.applyStatus("connected")));
+      }
+
+      if (typeof this.socket.onClose === "function") {
+        this.socketRefs.push(this.socket.onClose(() => this.syncStatus()));
+      }
+
+      if (typeof this.socket.onError === "function") {
+        this.socketRefs.push(this.socket.onError(() => this.syncStatus()));
+      }
+    }
+
+    this.syncStatus();
+  },
+
+  updated() {
+    this.syncStatus();
+  },
+
+  destroyed() {
+    if (this.handleOnline) {
+      window.removeEventListener("online", this.handleOnline);
+    }
+
+    if (this.handleOffline) {
+      window.removeEventListener("offline", this.handleOffline);
+    }
+
+    if (this.socket && this.socketRefs.length && typeof this.socket.off === "function") {
+      this.socket.off(this.socketRefs);
+    }
+  },
+
+  parseClasses(value) {
+    return String(value || "")
+      .split(/\s+/)
+      .map((name) => name.trim())
+      .filter(Boolean);
+  },
+
+  syncStatus() {
+    if (!navigator.onLine) {
+      this.applyStatus("offline");
+      return;
+    }
+
+    if (window.liveSocket && typeof window.liveSocket.isConnected === "function" && window.liveSocket.isConnected()) {
+      this.applyStatus("connected");
+      return;
+    }
+
+    this.applyStatus("reconnecting");
+  },
+
+  applyStatus(status) {
+    this.el.classList.remove(...this.allStatusClasses);
+
+    const nextClasses =
+      status === "connected"
+        ? this.connectedClasses
+        : status === "offline"
+          ? this.offlineClasses
+          : this.reconnectingClasses;
+
+    this.el.classList.add(...nextClasses);
+    this.el.dataset.socketStatus = status;
+  }
+}
+
+const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
+const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
+  "trifle:client-sidebar": "trifleClientSidebar",
+  "trifle:admin-sidebar": "trifleAdminSidebar"
+});
+const SIDEBAR_SHELL_IDS = Object.freeze({
+  "trifle:client-sidebar": "client-sidebar-shell",
+  "trifle:admin-sidebar": "admin-sidebar-shell"
+});
+const MOBILE_SIDEBAR_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(", ");
+
+const syncSidebarRootState = (storageKey, desktopCollapsed) => {
+  const datasetKey = SIDEBAR_ROOT_DATASET_KEYS[storageKey];
+  if (!datasetKey || !document.documentElement) return;
+  document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
+};
+
+window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = false } = {}) => ({
+  storageKey,
+  defaultCollapsed,
+  mobileOpen: false,
+  desktopCollapsed: defaultCollapsed,
+  desktopViewport: false,
+  _mediaQuery: null,
+  _handleViewportChange: null,
+  _mobileFocusOrigin: null,
+  _handleMobileKeydown: null,
+
+  init() {
+    this.loadState();
+    this.syncViewport();
+
+    this._mediaQuery = window.matchMedia("(min-width: 1024px)");
+    this._handleViewportChange = () => this.syncViewport(this._mediaQuery);
+
+    if (typeof this._mediaQuery.addEventListener === "function") {
+      this._mediaQuery.addEventListener("change", this._handleViewportChange);
+    } else if (typeof this._mediaQuery.addListener === "function") {
+      this._mediaQuery.addListener(this._handleViewportChange);
+    }
+
+    this.$watch("mobileOpen", (isOpen) => {
+      this.syncBodyScrollLock();
+      this.syncMobileFocus(isOpen);
+    });
+  },
+
+  get compact() {
+    return this.desktopViewport && this.desktopCollapsed;
+  },
+
+  loadState() {
+    const preload = window.__TRIFLE_SIDEBAR_PRELOAD__ || {};
+    const preloadedState =
+      this.storageKey === "trifle:client-sidebar"
+        ? preload.client
+        : this.storageKey === "trifle:admin-sidebar"
+          ? preload.admin
+          : null;
+
+    try {
+      const stored = window.localStorage ? window.localStorage.getItem(this.storageKey) : null;
+
+      if (stored === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (stored === "expanded") {
+        this.desktopCollapsed = false;
+      } else if (preloadedState === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (preloadedState === "expanded") {
+        this.desktopCollapsed = false;
+      } else {
+        this.desktopCollapsed = !!this.defaultCollapsed;
+      }
+    } catch (_) {
+      if (preloadedState === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (preloadedState === "expanded") {
+        this.desktopCollapsed = false;
+      } else {
+        this.desktopCollapsed = !!this.defaultCollapsed;
+      }
+    }
+
+    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  syncViewport(mediaQuery = null) {
+    const query = mediaQuery || window.matchMedia("(min-width: 1024px)");
+    this.desktopViewport = !!query.matches;
+
+    if (this.desktopViewport) {
+      this.mobileOpen = false;
+    }
+
+    this.syncBodyScrollLock();
+  },
+
+  syncBodyScrollLock() {
+    if (!document.body) return;
+    document.body.classList.toggle(SIDEBAR_SCROLL_LOCK_CLASS, this.mobileOpen && !this.desktopViewport);
+  },
+
+  getSidebarShell() {
+    const shellId = SIDEBAR_SHELL_IDS[this.storageKey];
+    return shellId ? document.getElementById(shellId) : null;
+  },
+
+  getMobileFocusableElements() {
+    const shell = this.getSidebarShell();
+    if (!shell) return [];
+
+    return Array.from(shell.querySelectorAll(MOBILE_SIDEBAR_FOCUSABLE_SELECTOR)).filter((element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      if (element.getAttribute("aria-hidden") === "true") return false;
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+  },
+
+  captureMobileFocusOrigin(focusOrigin = null) {
+    const shell = this.getSidebarShell();
+    const candidate =
+      focusOrigin instanceof HTMLElement
+        ? focusOrigin
+        : document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+
+    if (!candidate || candidate === document.body) return;
+    if (shell && shell.contains(candidate)) return;
+
+    this._mobileFocusOrigin = candidate;
+  },
+
+  syncMobileFocus(isOpen) {
+    if (isOpen && !this.desktopViewport) {
+      this.captureMobileFocusOrigin();
+      this.activateMobileFocusTrap();
+    } else {
+      this.deactivateMobileFocusTrap();
+    }
+  },
+
+  activateMobileFocusTrap() {
+    const shell = this.getSidebarShell();
+    if (!shell) return;
+
+    this.deactivateMobileFocusTrap({ restoreFocus: false });
+
+    this._handleMobileKeydown = (event) => {
+      if (!this.mobileOpen || this.desktopViewport) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeMobile();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusable = this.getMobileFocusableElements();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        if (!shell.hasAttribute("tabindex")) {
+          shell.setAttribute("tabindex", "-1");
+        }
+        shell.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!(active instanceof HTMLElement) || !shell.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", this._handleMobileKeydown);
+
+    window.requestAnimationFrame(() => {
+      if (!this.mobileOpen || this.desktopViewport) return;
+
+      const preferredTarget = shell.querySelector("[data-mobile-sidebar-close]");
+      const focusTarget =
+        preferredTarget instanceof HTMLElement
+          ? preferredTarget
+          : this.getMobileFocusableElements()[0] || shell;
+
+      if (focusTarget === shell && !shell.hasAttribute("tabindex")) {
+        shell.setAttribute("tabindex", "-1");
+      }
+
+      focusTarget.focus();
+    });
+  },
+
+  deactivateMobileFocusTrap({ restoreFocus = true } = {}) {
+    if (this._handleMobileKeydown) {
+      document.removeEventListener("keydown", this._handleMobileKeydown);
+      this._handleMobileKeydown = null;
+    }
+
+    if (!restoreFocus) return;
+
+    const focusOrigin = this._mobileFocusOrigin;
+    this._mobileFocusOrigin = null;
+
+    if (!(focusOrigin instanceof HTMLElement)) return;
+
+    window.requestAnimationFrame(() => {
+      if (focusOrigin.isConnected) {
+        focusOrigin.focus();
+      }
+    });
+  },
+
+  persistState() {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(
+          this.storageKey,
+          this.desktopCollapsed ? "collapsed" : "expanded"
+        );
+      }
+    } catch (_) {}
+
+    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  toggleDesktop() {
+    this.desktopCollapsed = !this.desktopCollapsed;
+    this.persistState();
+  },
+
+  toggleMobile(focusOrigin = null) {
+    if (!this.mobileOpen) {
+      this.captureMobileFocusOrigin(focusOrigin);
+    }
+
+    this.mobileOpen = !this.mobileOpen;
+  },
+
+  closeMobile() {
+    this.mobileOpen = false;
+    this.syncBodyScrollLock();
+  },
+
+  destroy() {
+    this.deactivateMobileFocusTrap({ restoreFocus: false });
+
+    if (!this._mediaQuery || !this._handleViewportChange) return;
+
+    if (typeof this._mediaQuery.removeEventListener === "function") {
+      this._mediaQuery.removeEventListener("change", this._handleViewportChange);
+    } else if (typeof this._mediaQuery.removeListener === "function") {
+      this._mediaQuery.removeListener(this._handleViewportChange);
+    }
+  }
+});
 
 
 let liveSocket = new LiveSocket("/live", Socket, {

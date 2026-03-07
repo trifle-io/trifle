@@ -3,38 +3,78 @@ defmodule TrifleAdmin.Layouts do
 
   embed_templates "layouts/*"
 
-  def nav_class(socket, menu, variant \\ :desktop) do
-    base_active =
-      case variant do
-        :mobile ->
-          "block px-3 py-2 text-base font-medium text-orange-700 dark:text-orange-300 border-b-2 border-orange-400"
+  alias TrifleWeb.SidebarHelpers
 
-        _ ->
-          "text-orange-700 dark:text-orange-300 px-3 py-2 text-sm font-medium border-b-2 border-orange-400 shadow-[0_10px_18px_-12px_rgba(249,115,22,0.7)]"
-      end
+  attr :socket, :any, required: true
+  attr :item, :map, required: true
 
-    base_inactive =
-      case variant do
-        :mobile ->
-          "text-slate-600 dark:text-slate-300 hover:text-orange-700 dark:hover:text-orange-300 block px-3 py-2 text-base font-medium border-b-2 border-transparent hover:border-orange-400"
-
-        _ ->
-          "text-slate-600 dark:text-slate-300 hover:text-orange-700 dark:hover:text-orange-300 px-3 py-2 text-sm font-medium border-b-2 border-transparent hover:border-orange-400"
-      end
-
-    if active_nav?(socket, menu), do: base_active, else: base_inactive
-  end
-
-  def live_active_link(socket, menu, label, opts) do
-    to = Keyword.fetch!(opts, :to)
-    variant = Keyword.get(opts, :variant, :desktop)
-    assigns = %{socket: socket, menu: menu, label: label, to: to, variant: variant}
+  def sidebar_link(assigns) do
+    assigns =
+      assigns
+      |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
+      |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
+      |> assign(:link_attrs, if(Map.get(assigns.item, :use_href, false), do: [href: assigns.item.to], else: [navigate: assigns.item.to]))
 
     ~H"""
-    <.link navigate={@to} class={TrifleAdmin.Layouts.nav_class(@socket, @menu, @variant)}>
-      {@label}
+    <.link
+      {@link_attrs}
+      aria-current={if @active?, do: "page"}
+      aria-label={@item.label}
+      class={[
+        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+        SidebarHelpers.sidebar_link_classes(@active?, :orange)
+      ]}
+    >
+      <span
+        :if={@active?}
+        class="pointer-events-none absolute left-2 top-1/2 hidden h-8 w-1 -translate-y-1/2 rounded-full bg-orange-500 shadow-[0_0_16px_rgba(249,115,22,0.35)] dark:bg-orange-300 dark:shadow-[0_0_18px_rgba(253,186,116,0.25)]"
+        x-bind:class="compact ? 'hidden' : 'block'"
+      />
+      <span
+        class="flex items-center gap-3"
+        x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
+        data-fast-tooltip
+        x-bind:data-tooltip={@tooltip_expr}
+      >
+        <span class={["flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition", SidebarHelpers.sidebar_icon_shell_classes(@active?, :orange)]}>
+          <TrifleApp.SidebarIcons.icon
+            name={@item.icon}
+            class={["h-[1.05rem] w-[1.05rem] shrink-0 transition", SidebarHelpers.sidebar_icon_classes(@active?, :orange)]}
+          />
+        </span>
+        <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
+          {@item.label}
+        </span>
+      </span>
     </.link>
     """
+  end
+
+  def nav_items do
+    [
+      %{menu: :dashboard, label: "Overview", to: ~p"/admin", icon: "sidebar-overview"},
+      %{menu: :organizations, label: "Organizations", to: ~p"/admin/organizations", icon: "sidebar-organization"},
+      %{menu: :users, label: "Users", to: ~p"/admin/users", icon: "sidebar-users"},
+      %{menu: :projects, label: "Projects", to: ~p"/admin/projects", icon: "sidebar-projects"},
+      %{menu: :project_clusters, label: "Project Clusters", to: ~p"/admin/project-clusters", icon: "sidebar-project-clusters"},
+      %{menu: :databases, label: "Databases", to: ~p"/admin/databases", icon: "sidebar-databases"},
+      %{menu: :dashboards, label: "Dashboards", to: ~p"/admin/dashboards", icon: "sidebar-dashboards"},
+      %{menu: :monitors, label: "Monitors", to: ~p"/admin/monitors", icon: "sidebar-monitors"},
+      %{menu: :billing, label: "Billing", to: ~p"/admin/billing", icon: "sidebar-billing"}
+    ]
+  end
+
+  def secondary_nav_items do
+    [
+      %{menu: :exit_admin, label: "Exit Admin", to: ~p"/", icon: "hero-arrow-uturn-left", use_href: true}
+    ]
+  end
+
+  def current_nav_label(socket) do
+    case Enum.find(nav_items(), &active_nav?(socket, &1.menu)) do
+      %{label: label} -> label
+      _ -> "Admin"
+    end
   end
 
   defp active_nav?(%Phoenix.LiveView.Socket{} = socket, menu) do
@@ -49,6 +89,8 @@ defmodule TrifleAdmin.Layouts do
       {:databases, TrifleAdmin.DatabasesLive} -> true
       {:dashboards, TrifleAdmin.DashboardsLive} -> true
       {:monitors, TrifleAdmin.MonitorsLive} -> true
+      {:billing, TrifleAdmin.BillingLive} -> true
+      {:billing, TrifleAdmin.BillingPlansLive} -> true
       _ -> false
     end
   end
@@ -63,8 +105,14 @@ defmodule TrifleAdmin.Layouts do
       |> :erlang.md5()
       |> Base.encode16(case: :lower)
 
-    img = "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
-    # img_tag(img, class: "h-8 w-8 rounded-full")
-    Phoenix.HTML.raw("<img src=#{img} class='h-8 w-8 rounded-full'></img>")
+    attrs =
+      Phoenix.HTML.attributes_escape(
+        src: "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon",
+        class: "h-8 w-8 rounded-full",
+        alt: ""
+      )
+      |> Phoenix.HTML.safe_to_string()
+
+    Phoenix.HTML.raw("<img#{attrs} />")
   end
 end

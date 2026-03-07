@@ -17,10 +17,6 @@ defmodule TrifleApp.Router do
     plug :accepts, ["json"]
   end
 
-  pipeline :projects_enabled do
-    plug TrifleApp.Plugs.RequireProjectsEnabled
-  end
-
   scope "/", TrifleApp do
     pipe_through :browser
 
@@ -103,6 +99,15 @@ defmodule TrifleApp.Router do
       live "/monitors/:id", MonitorLive, :show
       live "/monitors/:id/configure", MonitorLive, :configure
       live "/chat", ChatLive, :show
+      live "/projects", ProjectsLive, :index
+      live "/projects/new", ProjectsLive, :new
+      live "/projects/:id", ProjectRedirectLive, :index
+      live "/projects/:id/transponders", ProjectTranspondersLive, :index
+      live "/projects/:id/transponders/new", ProjectTranspondersLive, :new
+      live "/projects/:id/transponders/:transponder_id", ProjectTranspondersLive, :show
+      live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
+      live "/projects/:id/settings", ProjectSettingsLive
+      live "/projects/:id/billing", ProjectBillingLive, :show
     end
 
     get "/organization/billing/success", BillingController, :success
@@ -115,23 +120,6 @@ defmodule TrifleApp.Router do
 
     get "/integrations/slack/oauth/callback", Integrations.SlackController, :callback
     get "/integrations/discord/oauth/callback", Integrations.DiscordController, :callback
-  end
-
-  scope "/", TrifleApp do
-    pipe_through [:browser, :require_authenticated_user, :projects_enabled]
-
-    live_session :app_authenticated_projects,
-      on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
-      live "/projects", ProjectsLive, :index
-      live "/projects/new", ProjectsLive, :new
-      live "/projects/:id", ProjectRedirectLive, :index
-      live "/projects/:id/transponders", ProjectTranspondersLive, :index
-      live "/projects/:id/transponders/new", ProjectTranspondersLive, :new
-      live "/projects/:id/transponders/:transponder_id", ProjectTranspondersLive, :show
-      live "/projects/:id/transponders/:transponder_id/edit", ProjectTranspondersLive, :edit
-      live "/projects/:id/settings", ProjectSettingsLive
-      live "/projects/:id/billing", ProjectBillingLive, :show
-    end
   end
 
   scope "/webhooks", TrifleApp do

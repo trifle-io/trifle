@@ -16,7 +16,6 @@ defmodule TrifleApp.OrganizationDeliveryLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Delivery options")
-      |> assign(:breadcrumb_links, Navigation.breadcrumb(:delivery))
       |> assign(:active_tab, :delivery)
       |> assign(:current_user, current_user)
       |> assign(:can_manage, false)

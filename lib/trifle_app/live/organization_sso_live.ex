@@ -14,7 +14,6 @@ defmodule TrifleApp.OrganizationSSOLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Single Sign-On")
-      |> assign(:breadcrumb_links, Navigation.breadcrumb(:sso))
       |> assign(:active_tab, :sso)
       |> assign(:current_user, current_user)
       |> assign(:can_manage, false)

@@ -25,7 +25,7 @@ defmodule TrifleApp.Components.DashboardFooter do
     ~H"""
     <div
       class={[
-        "sticky bottom-0 w-full border-t border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 backdrop-blur-xl px-4 py-3 shadow-lg dark:shadow-none z-30",
+        "sticky bottom-0 z-30 w-full rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/70 dark:shadow-none",
         @class
       ]}
       {@rest}

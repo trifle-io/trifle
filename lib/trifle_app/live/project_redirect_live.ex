@@ -1,6 +1,8 @@
 defmodule TrifleApp.ProjectRedirectLive do
   use TrifleApp, :live_view
 
+  on_mount {TrifleApp.UserAuth, :ensure_projects_enabled}
+
   def mount(%{"id" => id}, _session, socket) do
     {:ok, assign(socket, project_id: id, page_title: "Redirecting")}
   end

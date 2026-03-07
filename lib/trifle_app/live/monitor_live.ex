@@ -107,7 +107,6 @@ defmodule TrifleApp.MonitorLive do
       socket
       |> assign_monitor(monitor)
       |> assign(:page_title, build_page_title(socket.assigns.live_action, monitor))
-      |> assign(:breadcrumb_links, [{"Monitors", ~p"/monitors"}, monitor.name])
       |> assign(:executions, Monitors.list_recent_executions(monitor))
       |> initialize_monitor_context()
 

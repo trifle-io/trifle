@@ -16,7 +16,6 @@ defmodule TrifleApp.DashboardsLive do
     {:ok,
      socket
      |> assign(:page_title, "Dashboards")
-     |> assign(:breadcrumb_links, ["Dashboards"])
      |> assign(:dashboards_count, Organizations.count_dashboards_for_membership(user, membership))
      |> assign(
        :dashboard_groups_count,
