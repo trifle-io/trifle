@@ -2888,6 +2888,99 @@ Hooks.FlashAutoDismiss = {
   }
 }
 
+Hooks.SocketStatusDot = {
+  mounted() {
+    this.connectedClasses = this.parseClasses(this.el.dataset.connectedClasses);
+    this.offlineClasses = this.parseClasses(this.el.dataset.offlineClasses);
+    this.reconnectingClasses = this.parseClasses(this.el.dataset.reconnectingClasses);
+    this.allStatusClasses = [
+      ...this.connectedClasses,
+      ...this.offlineClasses,
+      ...this.reconnectingClasses
+    ];
+
+    this.handleOnline = () => this.syncStatus();
+    this.handleOffline = () => this.applyStatus("offline");
+
+    window.addEventListener("online", this.handleOnline);
+    window.addEventListener("offline", this.handleOffline);
+
+    this.socket = window.liveSocket && typeof window.liveSocket.getSocket === "function"
+      ? window.liveSocket.getSocket()
+      : null;
+    this.socketRefs = [];
+
+    if (this.socket) {
+      if (typeof this.socket.onOpen === "function") {
+        this.socketRefs.push(this.socket.onOpen(() => this.applyStatus("connected")));
+      }
+
+      if (typeof this.socket.onClose === "function") {
+        this.socketRefs.push(this.socket.onClose(() => this.syncStatus()));
+      }
+
+      if (typeof this.socket.onError === "function") {
+        this.socketRefs.push(this.socket.onError(() => this.syncStatus()));
+      }
+    }
+
+    this.syncStatus();
+  },
+
+  updated() {
+    this.syncStatus();
+  },
+
+  destroyed() {
+    if (this.handleOnline) {
+      window.removeEventListener("online", this.handleOnline);
+    }
+
+    if (this.handleOffline) {
+      window.removeEventListener("offline", this.handleOffline);
+    }
+
+    if (this.socket && this.socketRefs.length && typeof this.socket.off === "function") {
+      this.socket.off(this.socketRefs);
+    }
+  },
+
+  parseClasses(value) {
+    return String(value || "")
+      .split(/\s+/)
+      .map((name) => name.trim())
+      .filter(Boolean);
+  },
+
+  syncStatus() {
+    if (!navigator.onLine) {
+      this.applyStatus("offline");
+      return;
+    }
+
+    if (window.liveSocket && typeof window.liveSocket.isConnected === "function" && window.liveSocket.isConnected()) {
+      this.applyStatus("connected");
+      return;
+    }
+
+    this.applyStatus("reconnecting");
+  },
+
+  applyStatus(status) {
+    this.el.classList.remove(...this.allStatusClasses);
+
+    const nextClasses =
+      status === "connected"
+        ? this.connectedClasses
+        : status === "offline"
+          ? this.offlineClasses
+          : this.reconnectingClasses;
+
+    this.el.classList.add(...nextClasses);
+    this.el.dataset.socketStatus = status;
+  }
+}
+
 const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
 const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
   "trifle:client-sidebar": "trifleClientSidebar",

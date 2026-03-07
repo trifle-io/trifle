@@ -145,11 +145,18 @@
                     aria-label="Open user menu"
                   >
                     <span
-                      class="relative flex shrink-0 items-center justify-center overflow-hidden ring-1 ring-inset ring-slate-200/80 shadow-inner dark:ring-white/10"
+                      class="relative flex shrink-0 items-center justify-center ring-1 ring-inset ring-slate-200/80 shadow-inner dark:ring-white/10"
                       x-bind:class="compact ? 'h-8 w-8 rounded-xl' : 'h-10 w-10 rounded-2xl'"
                     >
                       {gravatar(@current_user.email)}
-                      <span class="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-teal-400 ring-2 ring-white dark:ring-slate-900" />
+                      <span
+                        id="client-socket-status-dot"
+                        class="absolute bottom-0.5 right-0.5 z-10 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900"
+                        phx-hook="SocketStatusDot"
+                        data-connected-classes="bg-teal-400"
+                        data-offline-classes="bg-slate-400 dark:bg-slate-500"
+                        data-reconnecting-classes="bg-amber-400 animate-pulse"
+                      />
                     </span>
                     <span
                       class="min-w-0 pl-3"
