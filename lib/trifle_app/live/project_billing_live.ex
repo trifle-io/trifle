@@ -31,7 +31,6 @@ defmodule TrifleApp.ProjectBillingLive do
              socket
              |> assign(:page_title, "Projects · #{state.project.name} · Billing")
              |> assign(:nav_section, :projects)
-             |> assign(:breadcrumb_links, project_breadcrumb_links(state.project, "Billing"))
              |> assign(:state, state)
              |> assign(:show_plans_modal, false)}
 
@@ -437,13 +436,4 @@ defmodule TrifleApp.ProjectBillingLive do
 
   defp usage_percentage(_, _), do: 0
 
-  defp project_breadcrumb_links(%Project{} = project, last) do
-    project_name = project.name || "Project"
-
-    [
-      {"Projects", ~p"/projects"},
-      {project_name, ~p"/projects/#{project.id}/transponders"},
-      last
-    ]
-  end
 end

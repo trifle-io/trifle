@@ -14,7 +14,6 @@ defmodule TrifleApp.OrganizationTokensLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Tokens")
-      |> assign(:breadcrumb_links, Navigation.breadcrumb(:tokens))
       |> assign(:active_tab, :tokens)
       |> assign(:show_create_modal, false)
       |> assign(:show_edit_modal, false)

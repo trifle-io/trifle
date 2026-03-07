@@ -2777,14 +2777,19 @@ Hooks.FastTooltip = {
     // Remove existing tooltips
     document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
     
-    const tooltipElements = this.el.querySelectorAll('[data-tooltip]');
+    const tooltipElements = this.el.querySelectorAll('[data-tooltip], [data-fast-tooltip]');
     
     tooltipElements.forEach(el => {
+      if (el.dataset.fastTooltipBound === 'true') return;
+      el.dataset.fastTooltipBound = 'true';
+
       el.addEventListener('mouseenter', (e) => {
-        this.showTooltip(e.target, e.target.dataset.tooltip);
+        const text = e.currentTarget.dataset.tooltip;
+        if (!text) return;
+        this.showTooltip(e.currentTarget, text);
       });
       
-      el.addEventListener('mouseleave', (e) => {
+      el.addEventListener('mouseleave', () => {
         this.hideTooltip();
       });
     });
@@ -2839,6 +2844,127 @@ Hooks.FastTooltip = {
     document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
   }
 }
+
+const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
+const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
+  "trifle:client-sidebar": "trifleClientSidebar",
+  "trifle:admin-sidebar": "trifleAdminSidebar"
+});
+
+const syncSidebarRootState = (storageKey, desktopCollapsed) => {
+  const datasetKey = SIDEBAR_ROOT_DATASET_KEYS[storageKey];
+  if (!datasetKey || !document.documentElement) return;
+  document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
+};
+
+window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = false } = {}) => ({
+  storageKey,
+  defaultCollapsed,
+  mobileOpen: false,
+  desktopCollapsed: defaultCollapsed,
+  desktopViewport: false,
+
+  init() {
+    this.loadState();
+    this.syncViewport();
+
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const handleViewportChange = () => this.syncViewport(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleViewportChange);
+    } else if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(handleViewportChange);
+    }
+
+    this.$watch("mobileOpen", () => {
+      this.syncBodyScrollLock();
+    });
+  },
+
+  get compact() {
+    return this.desktopViewport && this.desktopCollapsed;
+  },
+
+  loadState() {
+    const preload = window.__TRIFLE_SIDEBAR_PRELOAD__ || {};
+    const preloadedState =
+      this.storageKey === "trifle:client-sidebar"
+        ? preload.client
+        : this.storageKey === "trifle:admin-sidebar"
+          ? preload.admin
+          : null;
+
+    try {
+      const stored = window.localStorage ? window.localStorage.getItem(this.storageKey) : null;
+
+      if (stored === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (stored === "expanded") {
+        this.desktopCollapsed = false;
+      } else if (preloadedState === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (preloadedState === "expanded") {
+        this.desktopCollapsed = false;
+      } else {
+        this.desktopCollapsed = !!this.defaultCollapsed;
+      }
+    } catch (_) {
+      if (preloadedState === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (preloadedState === "expanded") {
+        this.desktopCollapsed = false;
+      } else {
+        this.desktopCollapsed = !!this.defaultCollapsed;
+      }
+    }
+
+    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  syncViewport(mediaQuery = null) {
+    const query = mediaQuery || window.matchMedia("(min-width: 1024px)");
+    this.desktopViewport = !!query.matches;
+
+    if (this.desktopViewport) {
+      this.mobileOpen = false;
+    }
+
+    this.syncBodyScrollLock();
+  },
+
+  syncBodyScrollLock() {
+    if (!document.body) return;
+    document.body.classList.toggle(SIDEBAR_SCROLL_LOCK_CLASS, this.mobileOpen && !this.desktopViewport);
+  },
+
+  persistState() {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(
+          this.storageKey,
+          this.desktopCollapsed ? "collapsed" : "expanded"
+        );
+      }
+    } catch (_) {}
+
+    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  toggleDesktop() {
+    this.desktopCollapsed = !this.desktopCollapsed;
+    this.persistState();
+  },
+
+  toggleMobile() {
+    this.mobileOpen = !this.mobileOpen;
+  },
+
+  closeMobile() {
+    this.mobileOpen = false;
+    this.syncBodyScrollLock();
+  }
+});
 
 
 let liveSocket = new LiveSocket("/live", Socket, {

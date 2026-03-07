@@ -90,7 +90,6 @@ defmodule TrifleApp.OrganizationProfileLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Profile")
-      |> assign(:breadcrumb_links, Navigation.breadcrumb(:profile))
       |> assign(:active_tab, :profile)
       |> assign(:current_user, current_user)
       |> assign(:show_profile_modal, false)
@@ -229,7 +228,6 @@ defmodule TrifleApp.OrganizationProfileLive do
     |> assign(:organization, organization)
     |> assign(:can_manage, Organizations.membership_admin?(membership))
     |> assign(:organization_form, to_form(Organizations.change_organization(organization)))
-    |> assign(:breadcrumb_links, Navigation.breadcrumb(:profile))
     |> assign(:page_title, "Organization · Profile")
     |> assign(:show_profile_modal, false)
   end

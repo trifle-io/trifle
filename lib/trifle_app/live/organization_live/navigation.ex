@@ -154,47 +154,4 @@ defmodule TrifleApp.OrganizationLive.Navigation do
     "-ml-0.5 mr-2 h-5 w-5 text-gray-400 dark:text-slate-400 group-hover:text-gray-500 dark:group-hover:text-slate-300"
   end
 
-  def breadcrumb(:profile) do
-    [
-      {"Organization", ~p"/organization/profile"},
-      "Profile"
-    ]
-  end
-
-  def breadcrumb(:users) do
-    [
-      {"Organization", ~p"/organization/profile"},
-      "Users"
-    ]
-  end
-
-  def breadcrumb(:sso) do
-    [
-      {"Organization", ~p"/organization/profile"},
-      "Single Sign-On"
-    ]
-  end
-
-  def breadcrumb(:delivery) do
-    [
-      {"Organization", ~p"/organization/profile"},
-      "Delivery options"
-    ]
-  end
-
-  def breadcrumb(:tokens) do
-    [
-      {"Organization", ~p"/organization/profile"},
-      "Tokens"
-    ]
-  end
-
-  def breadcrumb(:billing) do
-    [
-      {"Organization", ~p"/organization/profile"},
-      "Billing"
-    ]
-  end
-
-  def breadcrumb(_), do: breadcrumb(:profile)
 end

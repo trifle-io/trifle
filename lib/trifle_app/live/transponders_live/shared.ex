@@ -182,11 +182,6 @@ defmodule TrifleApp.TranspondersLive.Shared do
        source: database,
        database: database,
        nav_section: :databases,
-       breadcrumb_links: [
-         {"Databases", ~p"/dbs"},
-         {database.display_name, ~p"/dashboards"},
-         "Transponders"
-       ],
        page_title: page_title_for_action(:index, :database, database)
      }}
   end
@@ -208,11 +203,6 @@ defmodule TrifleApp.TranspondersLive.Shared do
            source: project,
            project: project,
            nav_section: :projects,
-           breadcrumb_links: [
-             {"Projects", ~p"/projects"},
-             {project.name || "Project", ~p"/projects/#{project.id}/transponders"},
-             "Transponders"
-           ],
            page_title: page_title_for_action(:index, :project, project)
          }}
     end

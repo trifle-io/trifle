@@ -45,10 +45,6 @@ defmodule TrifleApp.DashboardLive do
 
     groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
 
-    breadcrumbs =
-      [{"Dashboards", "/dashboards"}] ++
-        Enum.map(groups, &{&1.name, "/dashboards"}) ++ [dashboard.name]
-
     # Build page title with groups
     title_parts = ["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [dashboard.name]
     page_title = Enum.join(title_parts, " · ")
@@ -56,7 +52,6 @@ defmodule TrifleApp.DashboardLive do
     {:ok,
      socket
      |> assign(:page_title, page_title)
-     |> assign(:breadcrumb_links, breadcrumbs)
      |> assign(:current_membership, membership)
      |> assign_dashboard_permissions()}
   end
@@ -95,7 +90,6 @@ defmodule TrifleApp.DashboardLive do
           |> initialize_dashboard_state(dashboard, nil, true, token)
           |> apply_url_params(params)
           |> assign(:page_title, nil)
-          |> assign(:breadcrumb_links, [])
           |> assign(:print_mode, params["print"] in ["1", "true", "yes"])
           |> then(fn s -> apply_action(s, socket.assigns.live_action, params) end)
 
@@ -163,20 +157,13 @@ defmodule TrifleApp.DashboardLive do
 
       case Organizations.update_dashboard_for_membership(dashboard, membership, %{name: name}) do
         {:ok, updated_dashboard} ->
-          # Update breadcrumbs and page title with new dashboard name
           groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
-
-          updated_breadcrumbs =
-            [{"Dashboards", "/dashboards"}] ++
-              Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
-
-          updated_page_title = "Dashboards · #{updated_dashboard.name}"
+          updated_page_title = Enum.join(["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [updated_dashboard.name], " · ")
 
           {:noreply,
            socket
            |> assign_dashboard(updated_dashboard)
            |> assign(:temp_name, updated_dashboard.name)
-           |> assign(:breadcrumb_links, updated_breadcrumbs)
            |> assign(:page_title, updated_page_title)
            |> put_flash(:info, "Dashboard name updated successfully")}
 
@@ -1591,14 +1578,8 @@ defmodule TrifleApp.DashboardLive do
               |> assign(:sources, new_sources)
               |> apply_dashboard_source_change(source)
 
-            # Update breadcrumbs and title to reflect new name
             groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
-
-            updated_breadcrumbs =
-              [{"Dashboards", "/dashboards"}] ++
-                Enum.map(groups, &{&1.name, "/dashboards"}) ++ [updated_dashboard.name]
-
-            updated_page_title = "Dashboards · #{updated_dashboard.name}"
+            updated_page_title = Enum.join(["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [updated_dashboard.name], " · ")
 
             {:noreply,
              socket
@@ -1609,7 +1590,6 @@ defmodule TrifleApp.DashboardLive do
                updated_dashboard.default_timeframe ||
                  socket.assigns.database.default_timeframe || "24h"
              )
-             |> assign(:breadcrumb_links, updated_breadcrumbs)
              |> assign(:page_title, updated_page_title)
              |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
              |> put_flash(:info, "Settings saved")

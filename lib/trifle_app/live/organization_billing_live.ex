@@ -10,7 +10,6 @@ defmodule TrifleApp.OrganizationBillingLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Billing")
-      |> assign(:breadcrumb_links, Navigation.breadcrumb(:billing))
       |> assign(:active_tab, :billing)
       |> assign(:deployment_mode, deployment_mode())
       |> assign(:show_plans_modal, false)

@@ -10,6 +10,44 @@
   display: none !important;
 }
 
+body.trifle-sidebar-open {
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  html[data-trifle-client-sidebar="expanded"] [data-sidebar-shell="client"] {
+    width: 18rem;
+  }
+
+  html[data-trifle-client-sidebar="collapsed"] [data-sidebar-shell="client"] {
+    width: 6rem;
+  }
+
+  html[data-trifle-client-sidebar="expanded"] [data-sidebar-content="client"] {
+    padding-left: 18rem;
+  }
+
+  html[data-trifle-client-sidebar="collapsed"] [data-sidebar-content="client"] {
+    padding-left: 6rem;
+  }
+
+  html[data-trifle-admin-sidebar="expanded"] [data-sidebar-shell="admin"] {
+    width: 18rem;
+  }
+
+  html[data-trifle-admin-sidebar="collapsed"] [data-sidebar-shell="admin"] {
+    width: 6rem;
+  }
+
+  html[data-trifle-admin-sidebar="expanded"] [data-sidebar-content="admin"] {
+    padding-left: 18rem;
+  }
+
+  html[data-trifle-admin-sidebar="collapsed"] [data-sidebar-content="admin"] {
+    padding-left: 6rem;
+  }
+}
+
 /* Lower GridStack drag/resize z-index so modals overlay correctly */
 .grid-stack .ui-draggable-dragging,
 .grid-stack .ui-resizable-resizing {

@@ -39,7 +39,6 @@ defmodule TrifleApp.ProjectSettingsLive do
          |> assign(:project_cluster, project_cluster)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
          |> assign(:nav_section, :projects)
-         |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
          |> assign(:show_edit_modal, false)
          |> assign(:time_zones, time_zones())
          |> assign(:week_options, @week_options)
@@ -87,7 +86,6 @@ defmodule TrifleApp.ProjectSettingsLive do
          |> assign(:project_cluster, project_cluster)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
          |> assign(:nav_section, :projects)
-         |> assign(:breadcrumb_links, project_breadcrumb_links(project, "Settings"))
          |> assign_project_form(changeset)
          |> assign(:show_edit_modal, false)}
 
@@ -355,16 +353,6 @@ defmodule TrifleApp.ProjectSettingsLive do
       true ->
         options ++ Granularity.options([value])
     end
-  end
-
-  defp project_breadcrumb_links(%Project{} = project, last) do
-    project_name = project.name || "Project"
-
-    [
-      {"Projects", ~p"/projects"},
-      {project_name, ~p"/projects/#{project.id}/transponders"},
-      last
-    ]
   end
 
   defp present?(value) when value in [nil, ""], do: false
