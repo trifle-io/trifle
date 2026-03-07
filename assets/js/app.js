@@ -2788,8 +2788,18 @@ Hooks.FastTooltip = {
         if (!text) return;
         this.showTooltip(e.currentTarget, text);
       });
+
+      el.addEventListener('focus', (e) => {
+        const text = e.currentTarget.dataset.tooltip;
+        if (!text) return;
+        this.showTooltip(e.currentTarget, text);
+      });
       
       el.addEventListener('mouseleave', () => {
+        this.hideTooltip();
+      });
+
+      el.addEventListener('blur', () => {
         this.hideTooltip();
       });
     });
@@ -2986,6 +2996,18 @@ const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
   "trifle:client-sidebar": "trifleClientSidebar",
   "trifle:admin-sidebar": "trifleAdminSidebar"
 });
+const SIDEBAR_SHELL_IDS = Object.freeze({
+  "trifle:client-sidebar": "client-sidebar-shell",
+  "trifle:admin-sidebar": "admin-sidebar-shell"
+});
+const MOBILE_SIDEBAR_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(", ");
 
 const syncSidebarRootState = (storageKey, desktopCollapsed) => {
   const datasetKey = SIDEBAR_ROOT_DATASET_KEYS[storageKey];
@@ -3001,6 +3023,8 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   desktopViewport: false,
   _mediaQuery: null,
   _handleViewportChange: null,
+  _mobileFocusOrigin: null,
+  _handleMobileKeydown: null,
 
   init() {
     this.loadState();
@@ -3015,8 +3039,9 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       this._mediaQuery.addListener(this._handleViewportChange);
     }
 
-    this.$watch("mobileOpen", () => {
+    this.$watch("mobileOpen", (isOpen) => {
       this.syncBodyScrollLock();
+      this.syncMobileFocus(isOpen);
     });
   },
 
@@ -3076,6 +3101,132 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     document.body.classList.toggle(SIDEBAR_SCROLL_LOCK_CLASS, this.mobileOpen && !this.desktopViewport);
   },
 
+  getSidebarShell() {
+    const shellId = SIDEBAR_SHELL_IDS[this.storageKey];
+    return shellId ? document.getElementById(shellId) : null;
+  },
+
+  getMobileFocusableElements() {
+    const shell = this.getSidebarShell();
+    if (!shell) return [];
+
+    return Array.from(shell.querySelectorAll(MOBILE_SIDEBAR_FOCUSABLE_SELECTOR)).filter((element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      if (element.getAttribute("aria-hidden") === "true") return false;
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+  },
+
+  captureMobileFocusOrigin(focusOrigin = null) {
+    const shell = this.getSidebarShell();
+    const candidate =
+      focusOrigin instanceof HTMLElement
+        ? focusOrigin
+        : document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+
+    if (!candidate || candidate === document.body) return;
+    if (shell && shell.contains(candidate)) return;
+
+    this._mobileFocusOrigin = candidate;
+  },
+
+  syncMobileFocus(isOpen) {
+    if (isOpen && !this.desktopViewport) {
+      this.captureMobileFocusOrigin();
+      this.activateMobileFocusTrap();
+    } else {
+      this.deactivateMobileFocusTrap();
+    }
+  },
+
+  activateMobileFocusTrap() {
+    const shell = this.getSidebarShell();
+    if (!shell) return;
+
+    this.deactivateMobileFocusTrap({ restoreFocus: false });
+
+    this._handleMobileKeydown = (event) => {
+      if (!this.mobileOpen || this.desktopViewport) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeMobile();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusable = this.getMobileFocusableElements();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        if (!shell.hasAttribute("tabindex")) {
+          shell.setAttribute("tabindex", "-1");
+        }
+        shell.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!(active instanceof HTMLElement) || !shell.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", this._handleMobileKeydown);
+
+    window.requestAnimationFrame(() => {
+      if (!this.mobileOpen || this.desktopViewport) return;
+
+      const preferredTarget = shell.querySelector("[data-mobile-sidebar-close]");
+      const focusTarget =
+        preferredTarget instanceof HTMLElement
+          ? preferredTarget
+          : this.getMobileFocusableElements()[0] || shell;
+
+      if (focusTarget === shell && !shell.hasAttribute("tabindex")) {
+        shell.setAttribute("tabindex", "-1");
+      }
+
+      focusTarget.focus();
+    });
+  },
+
+  deactivateMobileFocusTrap({ restoreFocus = true } = {}) {
+    if (this._handleMobileKeydown) {
+      document.removeEventListener("keydown", this._handleMobileKeydown);
+      this._handleMobileKeydown = null;
+    }
+
+    if (!restoreFocus) return;
+
+    const focusOrigin = this._mobileFocusOrigin;
+    this._mobileFocusOrigin = null;
+
+    if (!(focusOrigin instanceof HTMLElement)) return;
+
+    window.requestAnimationFrame(() => {
+      if (focusOrigin.isConnected) {
+        focusOrigin.focus();
+      }
+    });
+  },
+
   persistState() {
     try {
       if (window.localStorage) {
@@ -3094,7 +3245,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     this.persistState();
   },
 
-  toggleMobile() {
+  toggleMobile(focusOrigin = null) {
+    if (!this.mobileOpen) {
+      this.captureMobileFocusOrigin(focusOrigin);
+    }
+
     this.mobileOpen = !this.mobileOpen;
   },
 
@@ -3104,6 +3259,8 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   },
 
   destroy() {
+    this.deactivateMobileFocusTrap({ restoreFocus: false });
+
     if (!this._mediaQuery || !this._handleViewportChange) return;
 
     if (typeof this._mediaQuery.removeEventListener === "function") {

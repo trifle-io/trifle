@@ -17,13 +17,7 @@ defmodule TrifleWeb.LayoutPreloads do
           } else if (pref === 'light') {
             isDark = false;
           } else {
-            if (storedResolved === 'dark') {
-              isDark = true;
-            } else if (storedResolved === 'light') {
-              isDark = false;
-            } else {
-              isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-            }
+            isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           }
 
           if (isDark) {
@@ -54,8 +48,8 @@ defmodule TrifleWeb.LayoutPreloads do
     </script>
     <script>
       (function () {
-        var clientState = 'expanded';
-        var adminState = 'expanded';
+        var clientState = null;
+        var adminState = null;
 
         try {
           var storage = window.localStorage;
@@ -71,12 +65,19 @@ defmodule TrifleWeb.LayoutPreloads do
           }
         } catch (_) {}
 
-        document.documentElement.dataset.trifleClientSidebar = clientState;
-        document.documentElement.dataset.trifleAdminSidebar = adminState;
-        window.__TRIFLE_SIDEBAR_PRELOAD__ = {
-          client: clientState,
-          admin: adminState
-        };
+        var preload = {};
+
+        if (clientState === 'collapsed' || clientState === 'expanded') {
+          document.documentElement.dataset.trifleClientSidebar = clientState;
+          preload.client = clientState;
+        }
+
+        if (adminState === 'collapsed' || adminState === 'expanded') {
+          document.documentElement.dataset.trifleAdminSidebar = adminState;
+          preload.admin = adminState;
+        }
+
+        window.__TRIFLE_SIDEBAR_PRELOAD__ = preload;
       })();
     </script>
     """
