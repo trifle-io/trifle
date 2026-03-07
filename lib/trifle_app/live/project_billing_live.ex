@@ -1,6 +1,8 @@
 defmodule TrifleApp.ProjectBillingLive do
   use TrifleApp, :live_view
 
+  on_mount {TrifleApp.UserAuth, :ensure_projects_enabled}
+
   alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Project

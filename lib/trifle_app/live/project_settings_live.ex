@@ -1,6 +1,8 @@
 defmodule TrifleApp.ProjectSettingsLive do
   use TrifleApp, :live_view
 
+  on_mount {TrifleApp.UserAuth, :ensure_projects_enabled}
+
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
 
   alias Ecto.Changeset

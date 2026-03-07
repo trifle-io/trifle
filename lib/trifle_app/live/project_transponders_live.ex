@@ -1,6 +1,8 @@
 defmodule TrifleApp.ProjectTranspondersLive do
   use TrifleApp, :live_view
 
+  on_mount {TrifleApp.UserAuth, :ensure_projects_enabled}
+
   alias TrifleApp.TranspondersComponents
   alias TrifleApp.TranspondersLive.Shared
 
