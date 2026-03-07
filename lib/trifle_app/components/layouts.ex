@@ -18,7 +18,7 @@ defmodule TrifleApp.Layouts do
       aria-current={if @active?, do: "page"}
       aria-label={@item.label}
       class={[
-        "group relative overflow-hidden rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
         sidebar_link_classes(@active?)
       ]}
     >
@@ -28,8 +28,8 @@ defmodule TrifleApp.Layouts do
         x-bind:class="compact ? 'hidden' : 'block'"
       />
       <span
-        class="flex min-h-[3.1rem] items-center gap-3"
-        x-bind:class="compact ? 'justify-center px-2.5' : 'justify-start px-3.5'"
+        class="flex items-center gap-3"
+        x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
         data-fast-tooltip
         x-bind:data-tooltip={@tooltip_expr}
       >
