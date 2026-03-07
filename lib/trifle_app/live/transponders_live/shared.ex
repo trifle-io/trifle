@@ -216,7 +216,7 @@ defmodule TrifleApp.TranspondersLive.Shared do
   def page_title_for_action(action, source_type, source, transponder \\ nil)
 
   def page_title_for_action(:index, :database, %Database{} = database, _transponder) do
-    "Database · #{database.display_name} · Transponders"
+    "Databases · #{database.display_name} · Transponders"
   end
 
   def page_title_for_action(:index, :project, %Project{} = project, _transponder) do
@@ -224,7 +224,7 @@ defmodule TrifleApp.TranspondersLive.Shared do
   end
 
   def page_title_for_action(:new, :database, %Database{} = database, _transponder) do
-    "Database · #{database.display_name} · New Transponder"
+    "Databases · #{database.display_name} · New Transponder"
   end
 
   def page_title_for_action(:new, :project, %Project{} = project, _transponder) do

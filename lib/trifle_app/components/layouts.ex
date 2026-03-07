@@ -227,6 +227,6 @@ defmodule TrifleApp.Layouts do
       |> Base.encode16(case: :lower)
 
     img = "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
-    Phoenix.HTML.raw("<img src=\"#{img}\" alt='' class='h-8 w-8 rounded-full'></img>")
+    Phoenix.HTML.raw("<img src=\"#{img}\" alt=\"\" class=\"h-8 w-8 rounded-full\" />")
   end
 end
