@@ -104,7 +104,14 @@ defmodule TrifleAdmin.Layouts do
       |> :erlang.md5()
       |> Base.encode16(case: :lower)
 
-    attrs = Phoenix.HTML.attributes_escape(src: "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon", class: "h-8 w-8 rounded-full", alt: "")
-    Phoenix.HTML.raw(["<img", attrs, " />"])
+    attrs =
+      Phoenix.HTML.attributes_escape(
+        src: "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon",
+        class: "h-8 w-8 rounded-full",
+        alt: ""
+      )
+      |> Phoenix.HTML.safe_to_string()
+
+    Phoenix.HTML.raw("<img#{attrs} />")
   end
 end
