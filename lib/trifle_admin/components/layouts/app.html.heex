@@ -40,7 +40,7 @@
               <div
                 class="flex shrink-0 items-center justify-center bg-[linear-gradient(160deg,#0f172a,#9a3412)] text-orange-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_34px_-22px_rgba(249,115,22,0.55)] dark:bg-[linear-gradient(160deg,rgba(251,146,60,0.26),rgba(15,23,42,0.95))] dark:text-orange-100"
                 data-fast-tooltip
-                x-bind:data-tooltip={compact_tooltip_expr("Admin")}
+                x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr("Admin")}
                 x-bind:class="compact ? 'h-10 w-10 rounded-xl' : 'h-12 w-12 rounded-xl'"
               >
                 <span class="flex items-center justify-center" x-bind:class="compact ? 'h-6' : 'h-8'">
@@ -68,7 +68,7 @@
                   type="button"
                   class="hidden items-center justify-center bg-white/75 text-slate-500 ring-1 ring-slate-200/80 hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 lg:inline-flex dark:bg-slate-900/80 dark:text-slate-400 dark:ring-white/10 dark:hover:bg-slate-800 dark:hover:text-white"
                   data-fast-tooltip
-                  x-bind:data-tooltip={compact_tooltip_expr("Expand sidebar")}
+                  x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr("Expand sidebar")}
                   x-bind:class="compact ? 'h-8 w-8 rounded-xl' : 'h-10 w-10 rounded-2xl'"
                   x-on:click="toggleDesktop()"
                   x-bind:aria-label="compact ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -135,7 +135,7 @@
                     type="button"
                     class="flex items-center text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                     data-fast-tooltip
-                    x-bind:data-tooltip={compact_tooltip_expr(@current_user.email)}
+                    x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr(@current_user.email)}
                     x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center rounded-xl bg-white/92 shadow-[0_18px_34px_-28px_rgba(15,23,42,0.55)] ring-1 ring-slate-200/80 hover:bg-white dark:bg-slate-900/88 dark:ring-white/10 dark:hover:bg-slate-800' : 'w-full justify-start rounded-xl bg-slate-950/[0.03] px-3 py-2.5 hover:bg-white focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-white/[0.04] dark:hover:bg-white/[0.07] dark:focus-visible:ring-offset-slate-900'"
                     x-on:click="open = !open"
                     x-bind:aria-expanded="open.toString()"
@@ -271,12 +271,15 @@
 <!-- Global notification live region, render this permanently at the end of the document -->
   <%= if Phoenix.Flash.get(@flash, :info) do %>
     <div
+      id="admin-flash-info"
       aria-live="assertive"
       class="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6 z-50"
       role="alert"
       phx-value-key="info"
+      phx-hook="FlashAutoDismiss"
+      data-flash-key="info"
       x-data="{show: true}"
-      x-init="setTimeout(() => { show = false; setTimeout(() => $wire.call('lv:clear-flash', 'info'), 300); }, 5000)"
+      x-on:trifle:flash-hide="show = false"
       x-show="show"
       x-transition:enter="transition ease-out duration-100"
       x-transition:enter-start="transform opacity-0 scale-95"
@@ -322,7 +325,7 @@
                 <button
                   type="button"
                   class="inline-flex rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                  @click="show = false; setTimeout(() => $wire.call('lv:clear-flash', 'info'), 300)"
+                  x-on:click="show = false; $dispatch('trifle:clear-flash')"
                 >
                   <span class="sr-only">Close</span>
                   <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -339,12 +342,15 @@
 
   <%= if Phoenix.Flash.get(@flash, :error) do %>
     <div
+      id="admin-flash-error"
       aria-live="assertive"
       class="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6 z-50"
       role="alert"
       phx-value-key="error"
+      phx-hook="FlashAutoDismiss"
+      data-flash-key="error"
       x-data="{show: true}"
-      x-init="setTimeout(() => { show = false; setTimeout(() => $wire.call('lv:clear-flash', 'error'), 300); }, 5000)"
+      x-on:trifle:flash-hide="show = false"
       x-show="show"
       x-transition:enter="transition ease-out duration-100"
       x-transition:enter-start="transform opacity-0 scale-95"
@@ -390,7 +396,7 @@
                 <button
                   type="button"
                   class="inline-flex rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                  @click="show = false; setTimeout(() => $wire.call('lv:clear-flash', 'error'), 300)"
+                  x-on:click="show = false; $dispatch('trifle:clear-flash')"
                 >
                   <span class="sr-only">Close</span>
                   <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

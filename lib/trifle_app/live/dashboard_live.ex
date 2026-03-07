@@ -43,11 +43,7 @@ defmodule TrifleApp.DashboardLive do
 
     socket = initialize_dashboard_state(socket, dashboard, membership, false, nil)
 
-    groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
-
-    # Build page title with groups
-    title_parts = ["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [dashboard.name]
-    page_title = Enum.join(title_parts, " · ")
+    page_title = dashboard_page_title(dashboard)
 
     {:ok,
      socket
@@ -157,8 +153,7 @@ defmodule TrifleApp.DashboardLive do
 
       case Organizations.update_dashboard_for_membership(dashboard, membership, %{name: name}) do
         {:ok, updated_dashboard} ->
-          groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
-          updated_page_title = Enum.join(["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [updated_dashboard.name], " · ")
+          updated_page_title = dashboard_page_title(updated_dashboard)
 
           {:noreply,
            socket
@@ -1578,8 +1573,7 @@ defmodule TrifleApp.DashboardLive do
               |> assign(:sources, new_sources)
               |> apply_dashboard_source_change(source)
 
-            groups = Organizations.get_dashboard_group_chain(updated_dashboard.group_id)
-            updated_page_title = Enum.join(["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [updated_dashboard.name], " · ")
+            updated_page_title = dashboard_page_title(updated_dashboard)
 
             {:noreply,
              socket
@@ -2248,6 +2242,11 @@ defmodule TrifleApp.DashboardLive do
     |> assign_dashboard_permissions()
     |> assign_dashboard_owner_state()
     |> assign_segment_state()
+  end
+
+  defp dashboard_page_title(dashboard) do
+    groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
+    Enum.join(["Dashboards"] ++ Enum.map(groups, & &1.name) ++ [dashboard.name], " · ")
   end
 
   defp assign_dashboard_owner_state(%{assigns: assigns} = socket) do

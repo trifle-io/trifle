@@ -2845,6 +2845,49 @@ Hooks.FastTooltip = {
   }
 }
 
+Hooks.FlashAutoDismiss = {
+  mounted() {
+    this.flashKey = this.el.dataset.flashKey;
+    this.clearQueued = false;
+
+    this.handleClearFlash = () => {
+      this.queueClear();
+    };
+
+    this.el.addEventListener("trifle:clear-flash", this.handleClearFlash);
+
+    this.timeoutId = window.setTimeout(() => {
+      this.el.dispatchEvent(new CustomEvent("trifle:flash-hide"));
+      this.queueClear();
+    }, 5000);
+  },
+
+  queueClear() {
+    if (this.clearQueued || !this.flashKey) return;
+
+    this.clearQueued = true;
+    window.clearTimeout(this.timeoutId);
+
+    this.clearTimeoutId = window.setTimeout(() => {
+      this.pushEvent("lv:clear-flash", { key: this.flashKey });
+    }, 300);
+  },
+
+  destroyed() {
+    if (this.timeoutId) {
+      window.clearTimeout(this.timeoutId);
+    }
+
+    if (this.clearTimeoutId) {
+      window.clearTimeout(this.clearTimeoutId);
+    }
+
+    if (this.handleClearFlash) {
+      this.el.removeEventListener("trifle:clear-flash", this.handleClearFlash);
+    }
+  }
+}
+
 const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
 const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
   "trifle:client-sidebar": "trifleClientSidebar",
@@ -2863,18 +2906,20 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   mobileOpen: false,
   desktopCollapsed: defaultCollapsed,
   desktopViewport: false,
+  _mediaQuery: null,
+  _handleViewportChange: null,
 
   init() {
     this.loadState();
     this.syncViewport();
 
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
-    const handleViewportChange = () => this.syncViewport(mediaQuery);
+    this._mediaQuery = window.matchMedia("(min-width: 1024px)");
+    this._handleViewportChange = () => this.syncViewport(this._mediaQuery);
 
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", handleViewportChange);
-    } else if (typeof mediaQuery.addListener === "function") {
-      mediaQuery.addListener(handleViewportChange);
+    if (typeof this._mediaQuery.addEventListener === "function") {
+      this._mediaQuery.addEventListener("change", this._handleViewportChange);
+    } else if (typeof this._mediaQuery.addListener === "function") {
+      this._mediaQuery.addListener(this._handleViewportChange);
     }
 
     this.$watch("mobileOpen", () => {
@@ -2963,6 +3008,16 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   closeMobile() {
     this.mobileOpen = false;
     this.syncBodyScrollLock();
+  },
+
+  destroy() {
+    if (!this._mediaQuery || !this._handleViewportChange) return;
+
+    if (typeof this._mediaQuery.removeEventListener === "function") {
+      this._mediaQuery.removeEventListener("change", this._handleViewportChange);
+    } else if (typeof this._mediaQuery.removeListener === "function") {
+      this._mediaQuery.removeListener(this._handleViewportChange);
+    }
   }
 });
 

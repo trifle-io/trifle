@@ -3,6 +3,8 @@ defmodule TrifleApp.Layouts do
 
   embed_templates "layouts/*"
 
+  alias TrifleWeb.SidebarHelpers
+
   attr :socket, :any, required: true
   attr :item, :map, required: true
 
@@ -10,7 +12,7 @@ defmodule TrifleApp.Layouts do
     assigns =
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
-      |> assign(:tooltip_expr, compact_tooltip_expr(assigns.item.label))
+      |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
 
     ~H"""
     <.link
@@ -19,7 +21,7 @@ defmodule TrifleApp.Layouts do
       aria-label={@item.label}
       class={[
         "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
-        sidebar_link_classes(@active?)
+        SidebarHelpers.sidebar_link_classes(@active?, :teal)
       ]}
     >
       <span
@@ -33,10 +35,10 @@ defmodule TrifleApp.Layouts do
         data-fast-tooltip
         x-bind:data-tooltip={@tooltip_expr}
       >
-        <span class={["flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition", sidebar_icon_shell_classes(@active?)]}>
+        <span class={["flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition", SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)]}>
           <TrifleApp.SidebarIcons.icon
             name={@item.icon}
-            class={["h-[1.05rem] w-[1.05rem] shrink-0 transition", sidebar_icon_classes(@active?)]}
+            class={["h-[1.05rem] w-[1.05rem] shrink-0 transition", SidebarHelpers.sidebar_icon_classes(@active?, :teal)]}
           />
         </span>
         <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
@@ -61,10 +63,6 @@ defmodule TrifleApp.Layouts do
     |> Enum.filter(& &1)
   end
 
-  def compact_tooltip_expr(text) when is_binary(text) do
-    "compact ? #{Phoenix.json_library().encode!(text)} : null"
-  end
-
   def secondary_nav_items(current_user, current_membership) do
     [
       current_membership && organization_item(),
@@ -74,7 +72,10 @@ defmodule TrifleApp.Layouts do
   end
 
   def current_nav_label(socket) do
-    case Enum.find(all_nav_items(), &active_nav?(socket, &1.menu)) do
+    current_user = Map.get(socket.assigns, :current_user)
+    current_membership = Map.get(socket.assigns, :current_membership)
+
+    case Enum.find(sidebar_nav_items(current_user, current_membership), &active_nav?(socket, &1.menu)) do
       %{label: label} -> label
       _ -> "Workspace"
     end
@@ -88,30 +89,8 @@ defmodule TrifleApp.Layouts do
     %{menu: :admin_console, label: "Admin Console", to: "/admin", icon: "sidebar-admin"}
   end
 
-  defp all_nav_items do
-    nav_items() ++ [organization_item()]
-  end
-
-  defp sidebar_link_classes(true) do
-    "bg-teal-50/90 text-slate-950 ring-1 ring-inset ring-teal-200/90 shadow-[0_14px_28px_-24px_rgba(13,148,136,0.42)] dark:bg-teal-400/[0.08] dark:text-white dark:ring-teal-400/18 dark:shadow-[0_18px_30px_-28px_rgba(20,184,166,0.4)]"
-  end
-
-  defp sidebar_link_classes(false) do
-    "text-slate-600 hover:bg-white/95 hover:text-slate-950 hover:shadow-[0_14px_24px_-24px_rgba(15,23,42,0.45)] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white"
-  end
-
-  defp sidebar_icon_shell_classes(true) do
-    "bg-teal-500/12 text-teal-700 ring-teal-300/70 shadow-inner shadow-white/70 dark:bg-teal-400/12 dark:text-teal-200 dark:ring-teal-400/30 dark:shadow-transparent"
-  end
-
-  defp sidebar_icon_shell_classes(false) do
-    "bg-white/90 text-slate-500 ring-slate-200/80 group-hover:bg-white group-hover:text-slate-800 dark:bg-slate-900/80 dark:text-slate-400 dark:ring-white/10 dark:group-hover:bg-slate-800 dark:group-hover:text-slate-100"
-  end
-
-  defp sidebar_icon_classes(true), do: "text-teal-700 dark:text-teal-200"
-
-  defp sidebar_icon_classes(false) do
-    "text-inherit"
+  defp sidebar_nav_items(current_user, current_membership) do
+    nav_items() ++ secondary_nav_items(current_user, current_membership)
   end
 
   defp active_nav?(%Phoenix.LiveView.Socket{} = socket, menu) do
@@ -226,7 +205,7 @@ defmodule TrifleApp.Layouts do
       |> :erlang.md5()
       |> Base.encode16(case: :lower)
 
-    img = "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon"
-    Phoenix.HTML.raw("<img src=\"#{img}\" alt=\"\" class=\"h-8 w-8 rounded-full\" />")
+    attrs = Phoenix.HTML.attributes_escape(src: "https://www.gravatar.com/avatar/#{hash}?s=150&d=identicon", class: "h-8 w-8 rounded-full", alt: "")
+    Phoenix.HTML.raw(["<img", attrs, " />"])
   end
 end
