@@ -82,47 +82,49 @@
             </div>
           </div>
 
-          <div class="relative flex flex-1 flex-col px-3 py-4">
+          <div class="relative flex min-h-0 flex-1 flex-col px-3 py-4">
             <div
-              class="min-h-0 flex-1 overflow-y-auto"
+              class="min-h-0 flex-1 overflow-y-auto pr-1"
             >
-              <div
-                x-bind:class="compact ? 'space-y-2' : 'rounded-2xl border border-white/80 bg-white/72 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_35px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'"
-                x-on:click.capture="if ($event.target.closest('a')) closeMobile()"
-              >
-                <p
-                  class="px-3 pb-2 pt-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500"
-                  x-cloak
-                  x-show="!compact"
+              <div x-bind:class="compact ? 'space-y-5' : 'space-y-4'">
+                <div
+                  x-bind:class="compact ? 'space-y-2' : 'rounded-2xl border border-white/80 bg-white/72 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_35px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'"
+                  x-on:click.capture="if ($event.target.closest('a')) closeMobile()"
                 >
-                  Console
-                </p>
-                <%= for item <- nav_items() do %>
-                  <.sidebar_link socket={@socket} item={item} />
-                <% end %>
+                  <p
+                    class="px-3 pb-2 pt-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500"
+                    x-cloak
+                    x-show="!compact"
+                  >
+                    Console
+                  </p>
+                  <%= for item <- nav_items() do %>
+                    <.sidebar_link socket={@socket} item={item} />
+                  <% end %>
+                </div>
+
+                <div
+                  x-bind:class="compact ? 'space-y-2' : 'rounded-2xl border border-white/80 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-slate-800/80 dark:bg-white/[0.025] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.05)]'"
+                  x-on:click.capture="if ($event.target.closest('a')) closeMobile()"
+                >
+                  <p
+                    class="px-3 pb-2 pt-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500"
+                    x-cloak
+                    x-show="!compact"
+                  >
+                    Context
+                  </p>
+                  <%= for item <- secondary_items do %>
+                    <.sidebar_link socket={@socket} item={item} />
+                  <% end %>
+                </div>
               </div>
             </div>
 
             <div
-              class="mt-auto"
-              x-bind:class="compact ? 'space-y-5 pt-5' : 'space-y-4 pt-6'"
+              class="mt-auto shrink-0"
+              x-bind:class="compact ? 'pt-5' : 'pt-6'"
             >
-              <div
-                x-bind:class="compact ? 'space-y-2' : 'rounded-2xl border border-white/80 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-slate-800/80 dark:bg-white/[0.025] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.05)]'"
-                x-on:click.capture="if ($event.target.closest('a')) closeMobile()"
-              >
-                <p
-                  class="px-3 pb-2 pt-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500"
-                  x-cloak
-                  x-show="!compact"
-                >
-                  Context
-                </p>
-                <%= for item <- secondary_items do %>
-                  <.sidebar_link socket={@socket} item={item} />
-                <% end %>
-              </div>
-
               <div
                 x-bind:class="compact ? '' : 'rounded-2xl border border-white/80 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_40px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'"
               >

@@ -18,10 +18,15 @@ defmodule TrifleAdmin.Layouts do
       aria-current={if @active?, do: "page"}
       aria-label={@item.label}
       class={[
-        "group rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+        "group relative overflow-hidden rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
         sidebar_link_classes(@active?)
       ]}
     >
+      <span
+        :if={@active?}
+        class="pointer-events-none absolute left-2 top-1/2 hidden h-8 w-1 -translate-y-1/2 rounded-full bg-orange-500 shadow-[0_0_16px_rgba(249,115,22,0.35)] dark:bg-orange-300 dark:shadow-[0_0_18px_rgba(253,186,116,0.25)]"
+        x-bind:class="compact ? 'hidden' : 'block'"
+      />
       <span
         class="flex min-h-[3.1rem] items-center gap-3"
         x-bind:class="compact ? 'justify-center px-2.5' : 'justify-start px-3.5'"
@@ -74,7 +79,7 @@ defmodule TrifleAdmin.Layouts do
   end
 
   defp sidebar_link_classes(true) do
-    "bg-[linear-gradient(135deg,rgba(249,115,22,0.18),rgba(255,255,255,0.88))] text-slate-900 ring-1 ring-inset ring-orange-500/20 shadow-[0_16px_34px_-26px_rgba(249,115,22,0.8)] dark:bg-[linear-gradient(135deg,rgba(251,146,60,0.18),rgba(15,23,42,0.92))] dark:text-white dark:ring-orange-300/20"
+    "bg-orange-50/92 text-slate-950 ring-1 ring-inset ring-orange-200/90 shadow-[0_14px_28px_-24px_rgba(249,115,22,0.4)] dark:bg-orange-400/[0.08] dark:text-white dark:ring-orange-400/18 dark:shadow-[0_18px_30px_-28px_rgba(251,146,60,0.38)]"
   end
 
   defp sidebar_link_classes(false) do
@@ -82,7 +87,7 @@ defmodule TrifleAdmin.Layouts do
   end
 
   defp sidebar_icon_shell_classes(true) do
-    "bg-orange-500/15 text-orange-700 ring-orange-500/20 shadow-inner shadow-white/60 dark:bg-orange-400/14 dark:text-orange-200 dark:ring-orange-300/20 dark:shadow-transparent"
+    "bg-orange-500/12 text-orange-700 ring-orange-300/70 shadow-inner shadow-white/70 dark:bg-orange-400/12 dark:text-orange-200 dark:ring-orange-400/30 dark:shadow-transparent"
   end
 
   defp sidebar_icon_shell_classes(false) do
