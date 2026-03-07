@@ -13,10 +13,11 @@ defmodule TrifleAdmin.Layouts do
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
       |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
+      |> assign(:link_attrs, if(Map.get(assigns.item, :use_href, false), do: [href: assigns.item.to], else: [navigate: assigns.item.to]))
 
     ~H"""
     <.link
-      navigate={@item.to}
+      {@link_attrs}
       aria-current={if @active?, do: "page"}
       aria-label={@item.label}
       class={[
@@ -65,7 +66,7 @@ defmodule TrifleAdmin.Layouts do
 
   def secondary_nav_items do
     [
-      %{menu: :exit_admin, label: "Exit Admin", to: ~p"/", icon: "hero-arrow-uturn-left"}
+      %{menu: :exit_admin, label: "Exit Admin", to: ~p"/", icon: "hero-arrow-uturn-left", use_href: true}
     ]
   end
 

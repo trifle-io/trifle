@@ -13,10 +13,11 @@ defmodule TrifleApp.Layouts do
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
       |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
+      |> assign(:link_attrs, if(Map.get(assigns.item, :use_href, false), do: [href: assigns.item.to], else: [navigate: assigns.item.to]))
 
     ~H"""
     <.link
-      navigate={@item.to}
+      {@link_attrs}
       aria-current={if @active?, do: "page"}
       aria-label={@item.label}
       class={[
@@ -86,7 +87,7 @@ defmodule TrifleApp.Layouts do
   end
 
   defp admin_console_item do
-    %{menu: :admin_console, label: "Admin Console", to: "/admin", icon: "sidebar-admin"}
+    %{menu: :admin_console, label: "Admin Console", to: "/admin", icon: "sidebar-admin", use_href: true}
   end
 
   defp sidebar_nav_items(current_user, current_membership) do
