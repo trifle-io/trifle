@@ -66,14 +66,16 @@ defmodule Trifle.Chat.ToolsTest do
   end
 
   describe "system_prompt/1" do
-    test "forbids wildcard metric-tool paths while allowing dashboard widget wildcards" do
+    test "steers visual requests to dashboards and keeps wildcard guidance scoped" do
       prompt = Tools.system_prompt(%{})
 
-      assert prompt =~ "format_metric_timeline"
-      assert prompt =~ "format_metric_category"
+      refute prompt =~ "format_metric_timeline"
+      refute prompt =~ "format_metric_category"
+      assert prompt =~ "When the user asks for any visual output"
+      assert prompt =~ "single-widget dashboard"
       assert prompt =~ "`paths`"
       assert prompt =~ "must not contain wildcard"
-      assert prompt =~ "Only use wildcard-style paths inside dashboard widget"
+      assert prompt =~ "dashboard widget configs passed to `build_metric_dashboard`"
     end
   end
 

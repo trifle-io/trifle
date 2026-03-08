@@ -7,10 +7,8 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.Progress
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
-  alias Trifle.Chat.Visualizations
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DashboardWidgets.WidgetView
-  alias TrifleApp.DesignSystem.ChartColors
 
   @chat_cancel_reason :chat_cancelled
 
@@ -729,150 +727,6 @@ defmodule TrifleApp.ChatLive do
     end
   end
 
-  defp map_get(map, key) when is_map(map) do
-    Map.get(map, key) || Map.get(map, to_string(key))
-  end
-
-  defp map_get(_map, _key), do: nil
-
-  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank?(nil), do: true
-  defp blank?(_), do: false
-
-  defp value_path_label(value) when is_list(value) do
-    value
-    |> Enum.map(&to_string/1)
-    |> Enum.reject(&blank?/1)
-    |> Enum.join(", ")
-  end
-
-  defp value_path_label(value), do: value
-
-  defp visualization_title(viz) do
-    type =
-      viz
-      |> map_get(:type)
-      |> to_string()
-      |> String.downcase()
-
-    if type == "dashboard" do
-      dashboard = map_get(viz, :dashboard) || %{}
-      map_get(viz, :title) || map_get(dashboard, "name") || "Dashboard"
-    else
-      payload = map_get(viz, :payload) || %{}
-      metric = map_get(payload, "metric_key")
-      value_path = payload |> map_get("value_path") |> value_path_label()
-      aggregator = payload |> map_get("aggregator")
-      tool_name = map_get(viz, :tool_name)
-
-      base_parts =
-        [metric, value_path]
-        |> Enum.reject(&blank?/1)
-
-      base =
-        case base_parts do
-          [] -> nil
-          parts -> Enum.join(parts, " • ")
-        end
-
-      cond do
-        base && not blank?(aggregator) ->
-          base <> " • " <> String.upcase(to_string(aggregator))
-
-        base ->
-          base
-
-        not blank?(aggregator) ->
-          String.upcase(to_string(aggregator))
-
-        not blank?(tool_name) ->
-          to_string(tool_name)
-
-        true ->
-          "Visualization"
-      end
-    end
-  end
-
-  defp visualization_timeframe(viz) do
-    payload = map_get(viz, :payload) || %{}
-    timeframe = map_get(viz, :timeframe) || map_get(payload, "timeframe")
-
-    cond do
-      is_map(timeframe) ->
-        label = map_get(timeframe, "label")
-
-        cond do
-          not blank?(label) ->
-            label
-
-          true ->
-            from_iso = map_get(timeframe, "from")
-            to_iso = map_get(timeframe, "to")
-            format_timeframe_range(from_iso, to_iso)
-        end
-
-      is_binary(timeframe) and timeframe != "" ->
-        timeframe
-
-      true ->
-        nil
-    end
-  end
-
-  defp format_timeframe_range(nil, nil), do: nil
-
-  defp format_timeframe_range(from_iso, to_iso) do
-    with {:ok, from_dt, _} <- DateTime.from_iso8601(to_string(from_iso)),
-         {:ok, to_dt, _} <- DateTime.from_iso8601(to_string(to_iso)) do
-      "#{format_short_datetime(from_dt)} → #{format_short_datetime(to_dt)}"
-    else
-      _ -> nil
-    end
-  end
-
-  defp format_short_datetime(%DateTime{} = dt) do
-    Calendar.strftime(dt, "%b %-d %H:%M") <> " #{dt.time_zone}"
-  rescue
-    _ -> DateTime.to_iso8601(dt)
-  end
-
-  defp visualization_has_data?(viz) do
-    type =
-      viz
-      |> map_get(:type)
-      |> to_string()
-      |> String.downcase()
-
-    case type do
-      "dashboard" ->
-        InlineDashboard.has_data?(viz)
-
-      "category" ->
-        Visualizations.has_data?(viz)
-
-      _ ->
-        chart = map_get(viz, :chart) || %{}
-        dataset = map_get(chart, "dataset") || %{}
-
-        dataset
-        |> map_get("series")
-        |> List.wrap()
-        |> Enum.any?(fn series ->
-          map_get(series, "data")
-          |> List.wrap()
-          |> Enum.any?(fn point ->
-            cond do
-              is_list(point) and length(point) >= 2 -> true
-              is_tuple(point) and tuple_size(point) >= 2 -> true
-              is_map(point) -> true
-              true -> false
-            end
-          end)
-        end)
-    end
-  end
-
   defp dashboard_visualization_render(visualization, dom_id) do
     case InlineDashboard.render_state(visualization) do
       {:ok, %{dashboard: dashboard, stats: stats, dataset_maps: dataset_maps}} ->
@@ -1481,13 +1335,6 @@ defmodule TrifleApp.ChatLive do
           <p :if={message_has_text?(@message)} class={bubble_text_classes(@message)}>
             {@message.content}
           </p>
-
-          <div
-            :if={Enum.any?(inline_visualizations(@message))}
-            class="mt-3 flex flex-col gap-4"
-          >
-            <.chat_visualization :for={viz <- inline_visualizations(@message)} visualization={viz} />
-          </div>
         </div>
       </div>
 
@@ -1540,57 +1387,6 @@ defmodule TrifleApp.ChatLive do
     """
   end
 
-  attr :visualization, :map, required: true
-
-  defp chat_visualization(assigns) do
-    visualization = assigns.visualization
-    chart = map_get(visualization, :chart) || %{}
-
-    chart_type =
-      visualization
-      |> map_get(:type)
-      |> case do
-        nil -> map_get(chart, "type")
-        other -> other
-      end
-      |> to_string()
-      |> String.downcase()
-
-    assigns =
-      assigns
-      |> assign(:dom_id, Map.get(visualization, :dom_id))
-      |> assign(:chart_type, chart_type)
-      |> assign(:chart_json, Jason.encode!(chart))
-      |> assign(:colors_json, ChartColors.json_palette())
-      |> assign(:title, visualization_title(visualization))
-      |> assign(:timeframe, visualization_timeframe(visualization))
-      |> assign(:has_data, visualization_has_data?(visualization))
-
-    ~H"""
-    <div class="chat-visualization border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900/70 shadow-sm px-4 py-3">
-      <div class="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
-        <span class="font-semibold text-slate-600 dark:text-slate-200">{@title}</span>
-        <span :if={@timeframe}>{@timeframe}</span>
-      </div>
-      <%= if @has_data do %>
-        <div
-          id={@dom_id}
-          class="h-60 w-full"
-          data-chart-type={@chart_type}
-          data-chart={@chart_json}
-          data-colors={@colors_json}
-          phx-hook="ChatChart"
-        >
-        </div>
-      <% else %>
-        <div class="text-xs text-slate-500 dark:text-slate-400 italic">
-          Not enough data to plot this visualization.
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
   attr :events, :list, required: true
   attr :active, :boolean, default: false
   attr :tick_at, :integer, default: nil
@@ -1634,19 +1430,13 @@ defmodule TrifleApp.ChatLive do
   end
 
   defp bubble_visible?(message) do
-    message_has_text?(message) or Enum.any?(inline_visualizations(message))
+    message_has_text?(message)
   end
 
   defp dashboard_visualizations(message) do
     message
     |> Map.get(:visualizations, [])
     |> Enum.filter(&(visualization_type(&1) == "dashboard"))
-  end
-
-  defp inline_visualizations(message) do
-    message
-    |> Map.get(:visualizations, [])
-    |> Enum.reject(&(visualization_type(&1) == "dashboard"))
   end
 
   defp dashboard_block_classes(%{role: "user"}) do
@@ -1659,7 +1449,7 @@ defmodule TrifleApp.ChatLive do
 
   defp visualization_type(visualization) do
     visualization
-    |> map_get(:type)
+    |> Map.get(:type, Map.get(visualization, "type"))
     |> to_string()
     |> String.downcase()
   end

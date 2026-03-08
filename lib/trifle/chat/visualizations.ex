@@ -33,7 +33,6 @@ defmodule Trifle.Chat.Visualizations do
         id: id,
         type: type,
         title: map_get(visualization, :title),
-        chart: normalize_map(map_get(visualization, :chart)),
         dashboard: normalize_map(map_get(visualization, :dashboard)),
         source: normalize_map(map_get(visualization, :source)),
         timeframe: normalize_map(map_get(visualization, :timeframe)),
@@ -48,8 +47,8 @@ defmodule Trifle.Chat.Visualizations do
       |> Map.new()
 
     case Map.get(normalized, :type) do
-      "" -> nil
-      _ -> normalized
+      "dashboard" -> normalized
+      _ -> nil
     end
   end
 
@@ -71,19 +70,6 @@ defmodule Trifle.Chat.Visualizations do
             payload["visualization"]
             |> Map.put_new("tool_name", tool_name)
             |> Map.put_new("id", tool_call_id || payload["visualization"]["id"])
-            |> normalize()
-          ]
-          |> Enum.reject(&is_nil/1)
-
-        is_map(payload["chart"]) ->
-          [
-            %{
-              "id" => tool_call_id || "viz-" <> Integer.to_string(System.unique_integer([:positive])),
-              "type" => payload["chart"]["type"],
-              "chart" => payload["chart"],
-              "payload" => payload,
-              "tool_name" => tool_name
-            }
             |> normalize()
           ]
           |> Enum.reject(&is_nil/1)
@@ -128,25 +114,6 @@ defmodule Trifle.Chat.Visualizations do
     case normalize(visualization) do
       %{type: "dashboard"} = normalized ->
         InlineDashboard.has_data?(normalized)
-
-      %{type: "category", chart: chart} ->
-        chart
-        |> map_get(:dataset)
-        |> map_get(:data)
-        |> List.wrap()
-        |> Enum.any?()
-
-      %{chart: chart} ->
-        chart
-        |> map_get(:dataset)
-        |> map_get(:series)
-        |> List.wrap()
-        |> Enum.any?(fn series ->
-          series
-          |> map_get(:data)
-          |> List.wrap()
-          |> Enum.any?()
-        end)
 
       _ ->
         false

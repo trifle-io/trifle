@@ -44,7 +44,19 @@ defmodule Trifle.Chat.RenderableMessagesTest do
     assert hd(visualizations).type == "dashboard"
   end
 
-  test "falls back to tool-generated visualizations when assistant message does not embed them" do
+  test "falls back to tool-generated dashboards when assistant message does not embed them" do
+    visualization = %{
+      "id" => "dash-2",
+      "type" => "dashboard",
+      "title" => "API Calls Overview",
+      "dashboard" => %{
+        "id" => "dash-2",
+        "name" => "API Calls Overview",
+        "payload" => %{"grid" => [%{"id" => "widget-1", "type" => "timeseries"}]}
+      },
+      "series_snapshot" => %{"at" => ["2024-01-01T00:00:00Z"], "values" => [%{"total" => 5}]}
+    }
+
     session = %Session{
       id: "session-1",
       user_id: "user-1",
@@ -54,25 +66,14 @@ defmodule Trifle.Chat.RenderableMessagesTest do
         %{
           role: "assistant",
           tool_calls: [
-            %{id: "call-1", type: "function", function: %{name: "format_metric_timeline", arguments: "{}"}}
+            %{id: "call-1", type: "function", function: %{name: "build_metric_dashboard", arguments: "{}"}}
           ]
         },
         %{
           role: "tool",
           tool_call_id: "call-1",
-          name: "format_metric_timeline",
-          content:
-            Jason.encode!(%{
-              "chart" => %{
-                "type" => "timeseries",
-                "dataset" => %{
-                  "series" => [
-                    %{"name" => "metrics.count", "data" => [[1_704_067_200_000, 5.0]]}
-                  ]
-                }
-              },
-              "metric_key" => "event::signup"
-            })
+          name: "build_metric_dashboard",
+          content: Jason.encode!(%{"visualization" => visualization})
         },
         %{
           role: "assistant",
@@ -83,6 +84,6 @@ defmodule Trifle.Chat.RenderableMessagesTest do
 
     assert [%{role: "assistant", visualizations: visualizations}] = Chat.renderable_messages(session)
     assert length(visualizations) == 1
-    assert hd(visualizations).type == "timeseries"
+    assert hd(visualizations).type == "dashboard"
   end
 end

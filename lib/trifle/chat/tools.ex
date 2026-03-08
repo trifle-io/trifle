@@ -11,8 +11,6 @@ defmodule Trifle.Chat.Tools do
   alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Metrics.Query, as: MetricsQuery
   alias Trifle.Stats.Source
-  alias Trifle.Stats.Series
-  alias TrifleApp.Components.DashboardWidgets.{Timeseries, Category}
   alias TrifleApp.TimeframeParsing
 
   @default_timeframe "24h"
@@ -122,127 +120,6 @@ defmodule Trifle.Chat.Tools do
               }
             },
             "required" => ["metric_key", "value_path", "aggregator"]
-          }
-        }
-      },
-      %{
-        "type" => "function",
-        "function" => %{
-          "name" => "format_metric_timeline",
-          "description" =>
-            "Format timeseries data as a timeline for plotting or structured inspection. " <>
-              "Returns ISO timestamps with numeric values.",
-          "parameters" => %{
-            "type" => "object",
-            "properties" => %{
-              "metric_key" => %{
-                "type" => "string",
-                "description" => "Metrics Key (exact path string) to query."
-              },
-              "value_path" => %{
-                "type" => "string",
-                "description" =>
-                  "Exact numeric path to include. Wildcards are not allowed; call list_available_metrics first and choose a concrete path from its returned paths."
-              },
-              "timeframe" => %{
-                "type" => "string",
-                "description" =>
-                  "Shortcut timeframe like 24h, 7d, 1mo. Overrides from/to if present."
-              },
-              "from" => %{
-                "type" => "string",
-                "description" => "ISO8601 start timestamp (UTC)."
-              },
-              "to" => %{
-                "type" => "string",
-                "description" => "ISO8601 end timestamp (UTC)."
-              },
-              "granularity" => %{
-                "type" => "string",
-                "description" =>
-                  "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
-              },
-              "chart_type" => %{
-                "type" => "string",
-                "enum" => ["line", "area", "dots", "bar"],
-                "description" => "Optional chart presentation."
-              },
-              "stacked" => %{
-                "type" => "boolean",
-                "description" => "Stack multiple series together (line/area/bar only)."
-              },
-              "normalized" => %{
-                "type" => "boolean",
-                "description" => "Convert stacked values into percentages."
-              },
-              "legend" => %{
-                "type" => "boolean",
-                "description" => "Force legend visibility (defaults to automatic)."
-              },
-              "y_label" => %{
-                "type" => "string",
-                "description" => "Optional label for the Y-axis."
-              },
-              "slices" => %{
-                "type" => "integer",
-                "minimum" => 1,
-                "description" =>
-                  "Optional number of equal slices to partition the timeline (defaults to 1)."
-              }
-            },
-            "required" => ["metric_key", "value_path"]
-          }
-        }
-      },
-      %{
-        "type" => "function",
-        "function" => %{
-          "name" => "format_metric_category",
-          "description" =>
-            "Format metric data into categorical totals (e.g. status buckets or product mix) for charting.",
-          "parameters" => %{
-            "type" => "object",
-            "properties" => %{
-              "metric_key" => %{
-                "type" => "string",
-                "description" => "Metrics Key (exact path string) to query."
-              },
-              "value_path" => %{
-                "type" => "string",
-                "description" =>
-                  "Exact categorical path to aggregate. Wildcards are not allowed; call list_available_metrics first and choose a concrete path from its returned paths."
-              },
-              "timeframe" => %{
-                "type" => "string",
-                "description" =>
-                  "Shortcut timeframe like 24h, 7d, 1mo. Overrides from/to if present."
-              },
-              "from" => %{
-                "type" => "string",
-                "description" => "ISO8601 start timestamp (UTC)."
-              },
-              "to" => %{
-                "type" => "string",
-                "description" => "ISO8601 end timestamp (UTC)."
-              },
-              "granularity" => %{
-                "type" => "string",
-                "description" =>
-                  "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
-              },
-              "chart_type" => %{
-                "type" => "string",
-                "enum" => ["bar", "pie", "donut"],
-                "description" => "Optional visualization style."
-              },
-              "slices" => %{
-                "type" => "integer",
-                "minimum" => 1,
-                "description" =>
-                  "Optional number of equal slices to compare segments over time (defaults to 1)."
-              }
-            },
-            "required" => ["metric_key", "value_path"]
           }
         }
       },
@@ -502,167 +379,6 @@ defmodule Trifle.Chat.Tools do
     end
   end
 
-  def execute("format_metric_timeline", arguments_json, context) do
-    with {:ok, args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
-         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
-         {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
-         {:ok, granularity} <- resolve_granularity(args, source),
-         {:ok, slices} <- resolve_slices(args),
-         :ok <-
-           Notifier.notify(
-             context,
-             {:progress, :formatting_series,
-              %{
-                metric_key: metric_key,
-                value_path: value_path,
-                formatter: "timeline"
-              }}
-           ),
-         {:ok, result} <-
-           Source.fetch_series(
-             source,
-             metric_key,
-             from,
-             to,
-             granularity,
-             progressive: false
-           ),
-         paths = MetricsQuery.normalize_paths(value_path),
-         {:ok, resolved_path} <- MetricsQuery.ensure_single_path(paths),
-         {:ok, resolved_path} <- MetricsQuery.ensure_no_wildcards(resolved_path),
-         available <- MetricsQuery.available_paths(result.series),
-         :ok <- MetricsQuery.ensure_paths_exist([resolved_path], available),
-         table_all <- MetricsQuery.tabularize_series(result.series),
-         {:ok, formatted, matched_paths} <-
-           MetricsQuery.format_timeline_result(result.series, resolved_path, slices),
-         matched_paths <- Enum.filter(matched_paths, &Enum.member?(available, &1)),
-         true <- matched_paths != [] || {:missing_timeline, available, resolved_path} do
-      chart = build_timeseries_chart(result.series, resolved_path, slices, args)
-      table = MetricsQuery.subset_table(table_all, matched_paths)
-
-      payload =
-        %{
-          status: "ok",
-          formatter: "timeline",
-          metric_key: metric_key,
-          value_path: resolved_path,
-          slices: slices,
-          timeframe: %{
-            from: DateTime.to_iso8601(from),
-            to: DateTime.to_iso8601(to),
-            label: timeframe_label,
-            granularity: granularity
-          },
-          result: formatted,
-          available_paths: available,
-          matched_paths: matched_paths
-        }
-        |> maybe_put_chart(chart)
-        |> maybe_put_table(table)
-
-      {:ok, payload}
-    else
-      {:error, %{} = err} ->
-        notify_tool_error(context, "format_metric_timeline", err)
-        {:error, err}
-
-      {:missing_timeline, available, missing_path} ->
-        {:error,
-         %{
-           status: "error",
-           error: "No matching data found for path #{missing_path} in the selected timeframe.",
-           available_paths: available
-         }}
-
-      {:error, reason} ->
-        err = sanitized_tool_error(reason)
-        notify_tool_error(context, "format_metric_timeline", err)
-        {:error, err}
-    end
-  end
-
-  def execute("format_metric_category", arguments_json, context) do
-    with {:ok, args} <- decode_args(arguments_json),
-         {:ok, source} <- ensure_source(context),
-         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
-         {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
-         {:ok, granularity} <- resolve_granularity(args, source),
-         {:ok, slices} <- resolve_slices(args),
-         :ok <-
-           Notifier.notify(
-             context,
-             {:progress, :formatting_series,
-              %{
-                metric_key: metric_key,
-                value_path: value_path,
-                formatter: "category"
-              }}
-           ),
-         {:ok, result} <-
-           Source.fetch_series(
-             source,
-             metric_key,
-             from,
-             to,
-             granularity,
-             progressive: false
-           ),
-         paths = MetricsQuery.normalize_paths(value_path),
-         {:ok, resolved_path} <- MetricsQuery.ensure_single_path(paths),
-         {:ok, resolved_path} <- MetricsQuery.ensure_no_wildcards(resolved_path),
-         available <- MetricsQuery.available_paths(result.series),
-         {:ok, formatted, matched_paths} <-
-           MetricsQuery.format_category_result(result.series, resolved_path, slices),
-         matched_paths <- Enum.filter(matched_paths, &Enum.member?(available, &1)),
-         true <- matched_paths != [] || {:missing_categories, available, resolved_path},
-         table_all <- MetricsQuery.tabularize_series(result.series) do
-      chart = build_category_chart(result.series, resolved_path, args)
-      table = MetricsQuery.subset_table(table_all, matched_paths)
-
-      payload =
-        %{
-          status: "ok",
-          formatter: "category",
-          metric_key: metric_key,
-          value_path: resolved_path,
-          slices: slices,
-          timeframe: %{
-            from: DateTime.to_iso8601(from),
-            to: DateTime.to_iso8601(to),
-            label: timeframe_label,
-            granularity: granularity
-          },
-          result: formatted,
-          available_paths: available,
-          matched_paths: matched_paths
-        }
-        |> maybe_put_chart(chart)
-        |> maybe_put_table(table)
-
-      {:ok, payload}
-    else
-      {:error, %{} = err} ->
-        notify_tool_error(context, "format_metric_category", err)
-        {:error, err}
-
-      {:missing_categories, available, missing_path} ->
-        {:error,
-         %{
-           status: "error",
-           error: "No matching data found for path #{missing_path} in the selected timeframe.",
-           available_paths: available
-         }}
-
-      {:error, reason} ->
-        err = sanitized_tool_error(reason)
-        notify_tool_error(context, "format_metric_category", err)
-        {:error, err}
-    end
-  end
-
   def execute("list_available_metrics", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
          {:ok, source} <- ensure_source(context),
@@ -875,17 +591,18 @@ defmodule Trifle.Chat.Tools do
     #{active_source_text}
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
 
-    Before attempting to aggregate, format, or visualise a metric, first call `list_available_metrics`
+    Before attempting to aggregate or visualise a metric, first call `list_available_metrics`
     (or use prior responses) to inspect the precise paths available for the timeframe via its `paths`
     field. If a later metric tool narrows the usable paths, prefer that exact result instead of guessing.
-    If a requested path is absent, state that explicitly and present the actual paths. `format_metric_timeline`
-    and `format_metric_category` value_path inputs must be exact paths and must not contain wildcard
-    characters such as `*`; use `list_available_metrics` and its returned `paths` to choose the concrete
-    path. Only use wildcard-style paths inside dashboard widget configs passed to `build_metric_dashboard`.
+    If a requested path is absent, state that explicitly and present the actual paths. `aggregate_metric_series`
+    value_path inputs must be exact paths and must not contain wildcard characters such as `*`; use
+    `list_available_metrics` and its returned `paths` to choose the concrete path. Only use wildcard-style
+    paths inside dashboard widget configs passed to `build_metric_dashboard`.
 
-    When the user asks for a dashboard, use `describe_dashboard_widgets` if you need the exact widget
-    contract, then call `build_metric_dashboard` with a compact 12-column grid. Only use supported widget
-    types and only build dashboards for the active analytics source.
+    When the user asks for any visual output, use `build_metric_dashboard`. For a simple chart request,
+    build a compact single-widget dashboard instead of inventing a separate chart payload. Use
+    `describe_dashboard_widgets` if you need the exact widget contract. Only use supported widget types
+    and only build dashboards for the active analytics source.
 
     #{DashboardSpec.prompt_fragment()}
 
@@ -1046,12 +763,6 @@ defmodule Trifle.Chat.Tools do
      }}
   end
 
-  defp maybe_put_chart(payload, nil), do: payload
-
-  defp maybe_put_chart(payload, chart) when is_map(chart) do
-    Map.put(payload, :chart, chart)
-  end
-
   defp maybe_put_table(payload, nil), do: payload
 
   defp maybe_put_table(payload, table) when is_map(table) do
@@ -1097,86 +808,6 @@ defmodule Trifle.Chat.Tools do
        error: "slices must be a positive integer."
      }}
   end
-
-  defp build_timeseries_chart(%Series{} = series_struct, value_path, slices, args) do
-    paths = MetricsQuery.normalize_paths(value_path)
-
-    if paths == [] do
-      nil
-    else
-      chart_id = "chat-ts-" <> Integer.to_string(System.unique_integer([:positive]))
-
-      item = %{
-        "id" => chart_id,
-        "type" => "timeseries",
-        "paths" => paths,
-        "chart_type" => Map.get(args, "chart_type") || Map.get(args, :chart_type) || "line",
-        "stacked" => truthy?(Map.get(args, "stacked") || Map.get(args, :stacked)),
-        "normalized" => truthy?(Map.get(args, "normalized") || Map.get(args, :normalized)),
-        "legend" => truthy?(Map.get(args, "legend") || Map.get(args, :legend)),
-        "y_label" => Map.get(args, "y_label") || Map.get(args, :y_label) || ""
-      }
-
-      dataset = Timeseries.dataset(series_struct, item)
-
-      %{
-        "type" => "timeseries",
-        "dataset" => stringify_keys(dataset),
-        "slices" => slices,
-        "chart_type" => Map.get(item, "chart_type"),
-        "legend" => Map.get(item, "legend"),
-        "stacked" => Map.get(item, "stacked"),
-        "normalized" => Map.get(item, "normalized"),
-        "y_label" => Map.get(item, "y_label")
-      }
-    end
-  end
-
-  defp build_category_chart(%Series{} = series_struct, value_path, args) do
-    paths = MetricsQuery.normalize_paths(value_path)
-
-    if paths == [] do
-      nil
-    else
-      chart_id = "chat-cat-" <> Integer.to_string(System.unique_integer([:positive]))
-
-      item = %{
-        "id" => chart_id,
-        "type" => "category",
-        "paths" => paths,
-        "chart_type" => Map.get(args, "chart_type") || Map.get(args, :chart_type) || "bar"
-      }
-
-      dataset = Category.dataset(series_struct, item)
-
-      %{
-        "type" => "category",
-        "dataset" => stringify_keys(dataset),
-        "chart_type" => Map.get(item, "chart_type")
-      }
-    end
-  end
-
-  defp stringify_keys(value) when is_map(value) do
-    value
-    |> Enum.map(fn {k, v} -> {to_string(k), stringify_keys(v)} end)
-    |> Map.new()
-  end
-
-  defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
-  defp stringify_keys(value), do: value
-
-  defp truthy?(value) when value in [true, false], do: value
-  defp truthy?("true"), do: true
-  defp truthy?("false"), do: false
-
-  defp truthy?(value) when is_binary(value) do
-    normalized = String.trim(String.downcase(value))
-    normalized in ["yes", "y", "1", "true"]
-  end
-
-  defp truthy?(value) when is_integer(value), do: value != 0
-  defp truthy?(_), do: false
 
   defp encode_series_snapshot(export) do
     export
