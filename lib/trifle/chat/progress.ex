@@ -133,7 +133,15 @@ defmodule Trifle.Chat.Progress do
         other -> to_string(other)
       end
 
-    ensure_period("Issue encountered while running #{tool}")
+    reason =
+      payload
+      |> Map.get("reason", Map.get(payload, :reason))
+      |> format_tool_error_reason()
+
+    case reason do
+      nil -> ensure_period("Issue encountered while running #{tool}")
+      message -> ensure_period("Issue encountered while running #{tool}: #{message}")
+    end
   end
 
   def text(:error, payload) when is_map(payload) do
@@ -154,9 +162,44 @@ defmodule Trifle.Chat.Progress do
   def text(_, _), do: nil
 
   defp ensure_period(text) when is_binary(text) do
-    text
+    trimmed = String.trim(text)
+
+    cond do
+      trimmed == "" -> "."
+      String.ends_with?(trimmed, "...") -> trimmed
+      String.ends_with?(trimmed, ".") -> trimmed
+      true -> trimmed <> "."
+    end
+  end
+
+  defp format_tool_error_reason(nil), do: nil
+
+  defp format_tool_error_reason(reason) when is_binary(reason) do
+    reason
     |> String.trim()
-    |> String.trim_trailing(".")
-    |> Kernel.<>(".")
+    |> case do
+      "" -> nil
+      text -> truncate_reason(text, 160)
+    end
+  end
+
+  defp format_tool_error_reason(%{} = reason) do
+    reason
+    |> inspect()
+    |> format_tool_error_reason()
+  end
+
+  defp format_tool_error_reason(reason) do
+    reason
+    |> to_string()
+    |> format_tool_error_reason()
+  end
+
+  defp truncate_reason(text, limit) when is_binary(text) and is_integer(limit) and limit > 3 do
+    if String.length(text) <= limit do
+      text
+    else
+      String.slice(text, 0, limit - 3) <> "..."
+    end
   end
 end

@@ -126,7 +126,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
-    [{"div", kpi_attrs, _}] = Floki.find(document, "#widget-data-kpi-1")
+    [{"div", kpi_attrs, _}] = Floki.find(document, "#dashboard-grid-widget-data-kpi-1")
 
     kpi_payload_envelope =
       kpi_attrs
@@ -138,7 +138,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert kpi_payload_envelope["type"] == "kpi"
     assert is_number(kpi_payload_envelope["payload"]["value"]["value"])
 
-    [{"div", text_attrs, _}] = Floki.find(document, "#widget-data-text-1")
+    [{"div", text_attrs, _}] = Floki.find(document, "#dashboard-grid-widget-data-text-1")
 
     text_payload_envelope =
       text_attrs

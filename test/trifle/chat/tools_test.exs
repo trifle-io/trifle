@@ -50,6 +50,22 @@ defmodule Trifle.Chat.ToolsTest do
     end
   end
 
+  describe "describe_dashboard_widgets" do
+    test "returns the widget spec and prompt fragment" do
+      assert {:ok, %{status: "ok", widget_spec: spec, prompt_fragment: prompt}} =
+               Tools.execute("describe_dashboard_widgets", "{}", %{})
+
+      widget_types =
+        spec.widgets
+        |> Enum.map(& &1["type"])
+        |> Enum.sort()
+
+      assert "kpi" in widget_types
+      assert "heatmap" in widget_types
+      assert prompt =~ "build_metric_dashboard"
+    end
+  end
+
   defp series_fixture do
     timestamps = [
       ~U[2024-01-01 00:00:00Z],

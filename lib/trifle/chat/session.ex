@@ -10,6 +10,7 @@ defmodule Trifle.Chat.Session do
   alias Ecto.UUID
   alias Trifle.Chat.Progress
   alias Trifle.Chat.SessionRecord
+  alias Trifle.Chat.Visualizations
   alias Trifle.Chat.SessionRecord.Message, as: RecordMessage
   alias Trifle.Chat.SessionRecord.Message.ToolCall, as: RecordToolCall
   alias Trifle.Chat.SessionRecord.Message.ToolCall.Function, as: RecordToolFunction
@@ -44,7 +45,8 @@ defmodule Trifle.Chat.Session do
           optional(:created_at) => DateTime.t(),
           optional(:tool_calls) => [tool_call()],
           optional(:tool_call_id) => String.t(),
-          optional(:name) => String.t()
+          optional(:name) => String.t(),
+          optional(:visualizations) => [map()]
         }
 
   @type t :: %__MODULE__{
@@ -151,9 +153,11 @@ defmodule Trifle.Chat.Session do
       created_at: record.created_at,
       tool_calls: tool_calls,
       tool_call_id: record.tool_call_id,
-      name: record.name
+      name: record.name,
+      visualizations: Visualizations.normalize_list(record.visualizations || [])
     }
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Enum.reject(fn {k, v} -> k == :visualizations and v == [] end)
     |> Map.new()
   end
 
@@ -211,9 +215,14 @@ defmodule Trifle.Chat.Session do
         |> normalize_datetime(),
       tool_calls: normalize_tool_calls(message),
       tool_call_id: Map.get(message, :tool_call_id, Map.get(message, "tool_call_id")),
-      name: Map.get(message, :name, Map.get(message, "name"))
+      name: Map.get(message, :name, Map.get(message, "name")),
+      visualizations:
+        message
+        |> Map.get(:visualizations, Map.get(message, "visualizations"))
+        |> Visualizations.normalize_list()
     }
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Enum.reject(fn {k, v} -> k == :visualizations and v == [] end)
     |> Map.new()
   end
 
@@ -358,7 +367,15 @@ defmodule Trifle.Chat.Session do
       created_at: encode_datetime(Map.get(message, :created_at)),
       tool_calls: encode_tool_calls(Map.get(message, :tool_calls)),
       tool_call_id: Map.get(message, :tool_call_id),
-      name: Map.get(message, :name)
+      name: Map.get(message, :name),
+      visualizations:
+        message
+        |> Map.get(:visualizations)
+        |> Visualizations.normalize_list()
+        |> case do
+          [] -> nil
+          list -> list
+        end
     }
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     |> Map.new()

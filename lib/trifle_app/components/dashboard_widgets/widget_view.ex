@@ -31,6 +31,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :print_width, :integer, default: nil
   attr :print_cell_height, :integer, default: nil
   attr :transponder_info, :map, default: %{}
+  attr :grid_dom_id, :string, default: nil
 
   def grid(assigns) do
     assigns =
@@ -55,7 +56,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:distribution, fn -> %{} end)
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
-      |> assign(:grid_dom_id, "dashboard-grid")
+      |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
       |> assign_new(:print_width, fn -> nil end)
       |> assign(:dataset_maps, build_dataset_maps(assigns))
 
@@ -116,7 +117,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       <%= for widget <- @grid_items do %>
         <% payload = widget_payload(assigns, widget) %>
         <div
-          id={"widget-data-#{payload.widget_id}"}
+          id={"#{@grid_dom_id}-widget-data-#{payload.widget_id}"}
           data-widget-id={payload.widget_id}
           data-widget-type={payload.widget_type}
           data-title={payload.title}
