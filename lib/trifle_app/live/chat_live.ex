@@ -3,10 +3,13 @@ defmodule TrifleApp.ChatLive do
 
   alias Ecto.UUID
   alias Trifle.Chat
+  alias Trifle.Chat.InlineDashboard
   alias Trifle.Chat.Progress
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
+  alias Trifle.Chat.Visualizations
   alias Trifle.Stats.Source
+  alias TrifleApp.Components.DashboardWidgets.WidgetView
   alias TrifleApp.DesignSystem.ChartColors
 
   @chat_cancel_reason :chat_cancelled
@@ -677,7 +680,7 @@ defmodule TrifleApp.ChatLive do
         nil ->
           base_id =
             viz
-            |> Map.get(:id)
+            |> Map.get(:id, Map.get(viz, "id"))
             |> case do
               nil -> Integer.to_string(System.unique_integer([:positive]))
               other -> to_string(other)
@@ -746,43 +749,54 @@ defmodule TrifleApp.ChatLive do
   defp value_path_label(value), do: value
 
   defp visualization_title(viz) do
-    payload = map_get(viz, :payload) || %{}
-    metric = map_get(payload, "metric_key")
-    value_path = payload |> map_get("value_path") |> value_path_label()
-    aggregator = payload |> map_get("aggregator")
-    tool_name = map_get(viz, :tool_name)
+    type =
+      viz
+      |> map_get(:type)
+      |> to_string()
+      |> String.downcase()
 
-    base_parts =
-      [metric, value_path]
-      |> Enum.reject(&blank?/1)
+    if type == "dashboard" do
+      dashboard = map_get(viz, :dashboard) || %{}
+      map_get(viz, :title) || map_get(dashboard, "name") || "Dashboard"
+    else
+      payload = map_get(viz, :payload) || %{}
+      metric = map_get(payload, "metric_key")
+      value_path = payload |> map_get("value_path") |> value_path_label()
+      aggregator = payload |> map_get("aggregator")
+      tool_name = map_get(viz, :tool_name)
 
-    base =
-      case base_parts do
-        [] -> nil
-        parts -> Enum.join(parts, " • ")
+      base_parts =
+        [metric, value_path]
+        |> Enum.reject(&blank?/1)
+
+      base =
+        case base_parts do
+          [] -> nil
+          parts -> Enum.join(parts, " • ")
+        end
+
+      cond do
+        base && not blank?(aggregator) ->
+          base <> " • " <> String.upcase(to_string(aggregator))
+
+        base ->
+          base
+
+        not blank?(aggregator) ->
+          String.upcase(to_string(aggregator))
+
+        not blank?(tool_name) ->
+          to_string(tool_name)
+
+        true ->
+          "Visualization"
       end
-
-    cond do
-      base && not blank?(aggregator) ->
-        base <> " • " <> String.upcase(to_string(aggregator))
-
-      base ->
-        base
-
-      not blank?(aggregator) ->
-        String.upcase(to_string(aggregator))
-
-      not blank?(tool_name) ->
-        to_string(tool_name)
-
-      true ->
-        "Visualization"
     end
   end
 
   defp visualization_timeframe(viz) do
     payload = map_get(viz, :payload) || %{}
-    timeframe = map_get(payload, "timeframe")
+    timeframe = map_get(viz, :timeframe) || map_get(payload, "timeframe")
 
     cond do
       is_map(timeframe) ->
@@ -824,36 +838,23 @@ defmodule TrifleApp.ChatLive do
   end
 
   defp visualization_has_data?(viz) do
-    chart = map_get(viz, :chart) || %{}
-
     type =
       viz
       |> map_get(:type)
-      |> case do
-        nil -> map_get(chart, "type")
-        other -> other
-      end
       |> to_string()
       |> String.downcase()
 
-    dataset = map_get(chart, "dataset") || %{}
-
     case type do
-      "category" ->
-        dataset
-        |> map_get("data")
-        |> List.wrap()
-        |> Enum.any?(fn entry ->
-          value = map_get(entry, "value")
+      "dashboard" ->
+        InlineDashboard.has_data?(viz)
 
-          cond do
-            is_number(value) -> value != 0
-            is_binary(value) -> String.trim(value) != ""
-            true -> false
-          end
-        end)
+      "category" ->
+        Visualizations.has_data?(viz)
 
       _ ->
+        chart = map_get(viz, :chart) || %{}
+        dataset = map_get(chart, "dataset") || %{}
+
         dataset
         |> map_get("series")
         |> List.wrap()
@@ -869,6 +870,21 @@ defmodule TrifleApp.ChatLive do
             end
           end)
         end)
+    end
+  end
+
+  defp dashboard_visualization_render(visualization, dom_id) do
+    case InlineDashboard.render_state(visualization) do
+      {:ok, %{dashboard: dashboard, stats: stats, dataset_maps: dataset_maps}} ->
+        %{
+          dashboard: dashboard,
+          stats: stats,
+          grid_dom_id: "#{dom_id}-grid",
+          dataset_maps: dataset_maps
+        }
+
+      {:error, _reason} ->
+        nil
     end
   end
 
@@ -1442,34 +1458,85 @@ defmodule TrifleApp.ChatLive do
 
   defp chat_message(assigns) do
     ~H"""
-    <div id={"chat-message-#{@message.dom_id}"} class={message_container_classes(@message)}>
-      <div :if={@message.role == "user"} class="flex-shrink-0">
-        <img
-          src={avatar_url(@message, @current_user)}
-          alt={avatar_alt(@message)}
-          class="w-8 h-8 rounded-full border border-teal-200 dark:border-teal-500/60 object-cover"
-          width="32"
-          height="32"
+    <div id={"chat-message-#{@message.dom_id}"} class={message_stack_classes(@message)}>
+      <div :if={bubble_visible?(@message)} class={message_row_classes(@message)}>
+        <div :if={@message.role == "user"} class="flex-shrink-0">
+          <img
+            src={avatar_url(@message, @current_user)}
+            alt={avatar_alt(@message)}
+            class="w-8 h-8 rounded-full border border-teal-200 dark:border-teal-500/60 object-cover"
+            width="32"
+            height="32"
+          />
+        </div>
+
+        <div class={bubble_classes(@message)}>
+          <div class={bubble_header_classes(@message)}>
+            <span class={bubble_author_classes(@message)}>{display_role(@message.role)}</span>
+            <span :if={@message.created_at} class={bubble_timestamp_classes(@message)}>
+              {format_timestamp(@message.created_at)}
+            </span>
+          </div>
+
+          <p :if={message_has_text?(@message)} class={bubble_text_classes(@message)}>
+            {@message.content}
+          </p>
+
+          <div
+            :if={Enum.any?(inline_visualizations(@message))}
+            class="mt-3 flex flex-col gap-4"
+          >
+            <.chat_visualization :for={viz <- inline_visualizations(@message)} visualization={viz} />
+          </div>
+        </div>
+      </div>
+
+      <div :if={Enum.any?(dashboard_visualizations(@message))} class={dashboard_block_classes(@message)}>
+        <.chat_dashboard_visualization
+          :for={viz <- dashboard_visualizations(@message)}
+          visualization={viz}
         />
       </div>
-
-      <div class={bubble_classes(@message)}>
-        <div class={bubble_header_classes(@message)}>
-          <span class={bubble_author_classes(@message)}>{display_role(@message.role)}</span>
-          <span :if={@message.created_at} class={bubble_timestamp_classes(@message)}>
-            {format_timestamp(@message.created_at)}
-          </span>
-        </div>
-
-        <p :if={message_has_text?(@message)} class={bubble_text_classes(@message)}>
-          {@message.content}
-        </p>
-
-        <div :if={Enum.any?(Map.get(@message, :visualizations, []))} class="mt-3 flex flex-col gap-4">
-          <.chat_visualization :for={viz <- @message.visualizations} visualization={viz} />
-        </div>
-      </div>
     </div>
+    """
+  end
+
+  attr :visualization, :map, required: true
+
+  defp chat_dashboard_visualization(assigns) do
+    visualization = assigns.visualization
+
+    assigns =
+      assigns
+      |> assign(:dom_id, Map.get(visualization, :dom_id))
+      |> assign(:dashboard_render, dashboard_visualization_render(visualization, Map.get(visualization, :dom_id)))
+
+    ~H"""
+    <%= if @dashboard_render do %>
+      <WidgetView.grid
+        dashboard={@dashboard_render.dashboard}
+        stats={@dashboard_render.stats}
+        print_mode={false}
+        current_user={nil}
+        can_edit_dashboard={false}
+        is_public_access={true}
+        public_token={nil}
+        grid_dom_id={@dashboard_render.grid_dom_id}
+        widget_export={%{type: :disabled}}
+        kpi_values={@dashboard_render.dataset_maps.kpi_values}
+        kpi_visuals={@dashboard_render.dataset_maps.kpi_visuals}
+        timeseries={@dashboard_render.dataset_maps.timeseries}
+        category={@dashboard_render.dataset_maps.category}
+        table={@dashboard_render.dataset_maps.table}
+        text_widgets={@dashboard_render.dataset_maps.text}
+        list={@dashboard_render.dataset_maps.list}
+        distribution={@dashboard_render.dataset_maps.distribution}
+      />
+    <% else %>
+      <div class="text-xs text-slate-500 dark:text-slate-400 italic">
+        Could not render this dashboard snapshot.
+      </div>
+    <% end %>
     """
   end
 
@@ -1550,12 +1617,51 @@ defmodule TrifleApp.ChatLive do
   defp display_role("assistant"), do: "Trifle AI"
   defp display_role(role), do: role
 
-  defp message_container_classes(%{role: "user"}) do
+  defp message_stack_classes(%{role: "user"}) do
+    "flex w-full flex-col items-end gap-3"
+  end
+
+  defp message_stack_classes(_message) do
+    "flex w-full flex-col items-start gap-3"
+  end
+
+  defp message_row_classes(%{role: "user"}) do
     "flex w-full items-start gap-2.5 justify-end flex-row-reverse"
   end
 
-  defp message_container_classes(_message) do
+  defp message_row_classes(_message) do
     "flex w-full items-start gap-2.5 justify-start"
+  end
+
+  defp bubble_visible?(message) do
+    message_has_text?(message) or Enum.any?(inline_visualizations(message))
+  end
+
+  defp dashboard_visualizations(message) do
+    message
+    |> Map.get(:visualizations, [])
+    |> Enum.filter(&(visualization_type(&1) == "dashboard"))
+  end
+
+  defp inline_visualizations(message) do
+    message
+    |> Map.get(:visualizations, [])
+    |> Enum.reject(&(visualization_type(&1) == "dashboard"))
+  end
+
+  defp dashboard_block_classes(%{role: "user"}) do
+    "w-full max-w-[1100px] ml-auto"
+  end
+
+  defp dashboard_block_classes(_message) do
+    "w-full max-w-[1100px] mr-auto"
+  end
+
+  defp visualization_type(visualization) do
+    visualization
+    |> map_get(:type)
+    |> to_string()
+    |> String.downcase()
   end
 
   defp bubble_classes(%{role: "assistant"}) do

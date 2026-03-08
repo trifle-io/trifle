@@ -3,7 +3,12 @@ defmodule Trifle.Chat.Tools do
   Tool catalogue and execution layer exposed to OpenAI for ChatLive.
   """
 
+  require Logger
+
+  alias Trifle.Chat.DashboardSpec
+  alias Trifle.Chat.InlineDashboard
   alias Trifle.Chat.Notifier
+  alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Metrics.Query, as: MetricsQuery
   alias Trifle.Stats.Source
   alias Trifle.Stats.Series
@@ -137,7 +142,7 @@ defmodule Trifle.Chat.Tools do
               "value_path" => %{
                 "type" => "string",
                 "description" =>
-                  "Path (supports wildcards) pointing to values to include, e.g. timeline.orders or timeline.*.value."
+                  "Exact numeric path to include. Wildcards are not allowed; call list_available_metrics first and choose a concrete path from its returned paths."
               },
               "timeframe" => %{
                 "type" => "string",
@@ -205,7 +210,7 @@ defmodule Trifle.Chat.Tools do
               "value_path" => %{
                 "type" => "string",
                 "description" =>
-                  "Path (supports wildcards) pointing to categorical fields, e.g. categories.*.orders."
+                  "Exact categorical path to aggregate. Wildcards are not allowed; call list_available_metrics first and choose a concrete path from its returned paths."
               },
               "timeframe" => %{
                 "type" => "string",
@@ -261,6 +266,65 @@ defmodule Trifle.Chat.Tools do
               }
             },
             "required" => []
+          }
+        }
+      },
+      %{
+        "type" => "function",
+        "function" => %{
+          "name" => "describe_dashboard_widgets",
+          "description" =>
+            "Return the supported inline dashboard widget types, their best use cases, required fields, defaults, and layout guidance.",
+          "parameters" => %{
+            "type" => "object",
+            "properties" => %{},
+            "required" => []
+          }
+        }
+      },
+      %{
+        "type" => "function",
+        "function" => %{
+          "name" => "build_metric_dashboard",
+          "description" =>
+            "Validate a GridStack dashboard payload, fetch series data for a Metrics Key, and return a persisted inline dashboard visualization block for chat rendering.",
+          "parameters" => %{
+            "type" => "object",
+            "properties" => %{
+              "metric_key" => %{
+                "type" => "string",
+                "description" => "Metrics Key (exact path string) to query."
+              },
+              "title" => %{
+                "type" => "string",
+                "description" => "Optional dashboard title."
+              },
+              "grid" => %{
+                "type" => "array",
+                "description" =>
+                  "GridStack widgets array. Use `describe_dashboard_widgets` for supported widget fields.",
+                "items" => %{"type" => "object"}
+              },
+              "timeframe" => %{
+                "type" => "string",
+                "description" =>
+                  "Shortcut timeframe like 24h, 7d, 1mo. Overrides from/to if present."
+              },
+              "from" => %{
+                "type" => "string",
+                "description" => "ISO8601 start timestamp (UTC)."
+              },
+              "to" => %{
+                "type" => "string",
+                "description" => "ISO8601 end timestamp (UTC)."
+              },
+              "granularity" => %{
+                "type" => "string",
+                "description" =>
+                  "Sampling window such as 1m, 1h, 1d. Defaults to source preference."
+              }
+            },
+            "required" => ["metric_key", "grid"]
           }
         }
       }
@@ -346,12 +410,13 @@ defmodule Trifle.Chat.Tools do
       {:ok, payload}
     else
       {:error, %{} = err} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "fetch_metric_timeseries"}})
+        notify_tool_error(context, "fetch_metric_timeseries", err)
         {:error, err}
 
       {:error, reason} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "fetch_metric_timeseries"}})
-        {:error, %{status: "error", error: inspect(reason)}}
+        err = sanitized_tool_error(reason)
+        notify_tool_error(context, "fetch_metric_timeseries", err)
+        {:error, err}
     end
   end
 
@@ -427,12 +492,13 @@ defmodule Trifle.Chat.Tools do
       end
     else
       {:error, %{} = err} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "aggregate_metric_series"}})
+        notify_tool_error(context, "aggregate_metric_series", err)
         {:error, err}
 
       {:error, reason} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "aggregate_metric_series"}})
-        {:error, %{status: "error", error: inspect(reason)}}
+        err = sanitized_tool_error(reason)
+        notify_tool_error(context, "aggregate_metric_series", err)
+        {:error, err}
     end
   end
 
@@ -499,7 +565,7 @@ defmodule Trifle.Chat.Tools do
       {:ok, payload}
     else
       {:error, %{} = err} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_timeline"}})
+        notify_tool_error(context, "format_metric_timeline", err)
         {:error, err}
 
       {:missing_timeline, available, missing_path} ->
@@ -511,8 +577,9 @@ defmodule Trifle.Chat.Tools do
          }}
 
       {:error, reason} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_timeline"}})
-        {:error, %{status: "error", error: inspect(reason)}}
+        err = sanitized_tool_error(reason)
+        notify_tool_error(context, "format_metric_timeline", err)
+        {:error, err}
     end
   end
 
@@ -578,7 +645,7 @@ defmodule Trifle.Chat.Tools do
       {:ok, payload}
     else
       {:error, %{} = err} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_category"}})
+        notify_tool_error(context, "format_metric_category", err)
         {:error, err}
 
       {:missing_categories, available, missing_path} ->
@@ -590,8 +657,9 @@ defmodule Trifle.Chat.Tools do
          }}
 
       {:error, reason} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "format_metric_category"}})
-        {:error, %{status: "error", error: inspect(reason)}}
+        err = sanitized_tool_error(reason)
+        notify_tool_error(context, "format_metric_category", err)
+        {:error, err}
     end
   end
 
@@ -651,12 +719,91 @@ defmodule Trifle.Chat.Tools do
        }}
     else
       {:error, %{} = err} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "list_available_metrics"}})
+        notify_tool_error(context, "list_available_metrics", err)
         {:error, err}
 
       {:error, reason} ->
-        Notifier.notify(context, {:progress, :tool_error, %{tool: "list_available_metrics"}})
-        {:error, %{status: "error", error: inspect(reason)}}
+        err = sanitized_tool_error(reason)
+        notify_tool_error(context, "list_available_metrics", err)
+        {:error, err}
+    end
+  end
+
+  def execute("describe_dashboard_widgets", _arguments_json, _context) do
+    {:ok,
+     %{
+       status: "ok",
+       widget_spec: DashboardSpec.spec(),
+       prompt_fragment: DashboardSpec.prompt_fragment()
+     }}
+  end
+
+  def execute("build_metric_dashboard", arguments_json, context) do
+    with {:ok, args} <- decode_args(arguments_json),
+         {:ok, source} <- ensure_source(context),
+         {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
+         {:ok, grid} <- require_grid(args),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
+         {:ok, granularity} <- resolve_granularity(args, source),
+         :ok <-
+           Notifier.notify(
+             context,
+             {:progress, :formatting_series,
+              %{
+                metric_key: metric_key,
+                formatter: "dashboard"
+              }}
+           ),
+         {:ok, export} <-
+           SeriesExport.fetch(
+             source,
+             metric_key,
+             from,
+             to,
+             granularity,
+             progress_callback: nil
+           ),
+         {:ok, series_snapshot} <- encode_series_snapshot(export),
+         {:ok, visualization} <-
+           InlineDashboard.build_visualization(
+             source_meta(source),
+             metric_key,
+             grid,
+             series_snapshot,
+             title: Map.get(args, "title"),
+             timeframe: %{
+               from: DateTime.to_iso8601(from),
+               to: DateTime.to_iso8601(to),
+               label: timeframe_label,
+               granularity: granularity
+             },
+             default_timeframe: timeframe_label,
+             default_granularity: granularity
+           ) do
+      {:ok,
+       %{
+         status: "ok",
+         metric_key: metric_key,
+         visualization: visualization
+       }}
+    else
+      {:error, :no_data} ->
+        err = %{
+          status: "error",
+          error: "No data available in the selected timeframe."
+        }
+
+        notify_tool_error(context, "build_metric_dashboard", err)
+        {:error, err}
+
+      {:error, %{} = err} ->
+        notify_tool_error(context, "build_metric_dashboard", err)
+        {:error, err}
+
+      {:error, reason} ->
+        err = sanitized_tool_error(reason)
+        notify_tool_error(context, "build_metric_dashboard", err)
+        {:error, err}
     end
   end
 
@@ -729,10 +876,18 @@ defmodule Trifle.Chat.Tools do
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
 
     Before attempting to aggregate, format, or visualise a metric, first call `list_available_metrics`
-    (or use prior responses) to inspect the precise paths available for the timeframe. After fetching a
-    metric, prefer the provided `available_paths` and `matched_paths` without guessing. If a requested path
-    is absent, state that explicitly and present the actual paths. Never use wildcard characters (for
-    example `*`) in any path—they are not supported by the tools.
+    (or use prior responses) to inspect the precise paths available for the timeframe via its `paths`
+    field. If a later metric tool narrows the usable paths, prefer that exact result instead of guessing.
+    If a requested path is absent, state that explicitly and present the actual paths. `format_metric_timeline`
+    and `format_metric_category` value_path inputs must be exact paths and must not contain wildcard
+    characters such as `*`; use `list_available_metrics` and its returned `paths` to choose the concrete
+    path. Only use wildcard-style paths inside dashboard widget configs passed to `build_metric_dashboard`.
+
+    When the user asks for a dashboard, use `describe_dashboard_widgets` if you need the exact widget
+    contract, then call `build_metric_dashboard` with a compact 12-column grid. Only use supported widget
+    types and only build dashboards for the active analytics source.
+
+    #{DashboardSpec.prompt_fragment()}
 
     Output short, factual explanations. Always cite the Metrics Key and timeframe you used, and label any retrieved values as [path: ...].
     If a tool fails, report the error plainly and suggest a safe follow-up.
@@ -769,6 +924,19 @@ defmodule Trifle.Chat.Tools do
       {:ok, String.trim(value)}
     else
       {:error, %{status: "error", error: message}}
+    end
+  end
+
+  defp require_grid(args) do
+    case Map.get(args, "grid") do
+      grid when is_list(grid) and grid != [] ->
+        {:ok, grid}
+
+      [] ->
+        {:error, %{status: "error", error: "grid must contain at least one widget."}}
+
+      _ ->
+        {:error, %{status: "error", error: "grid must be an array of widget objects."}}
     end
   end
 
@@ -1009,6 +1177,66 @@ defmodule Trifle.Chat.Tools do
 
   defp truthy?(value) when is_integer(value), do: value != 0
   defp truthy?(_), do: false
+
+  defp encode_series_snapshot(export) do
+    export
+    |> SeriesExport.to_json()
+    |> Jason.decode()
+    |> case do
+      {:ok, %{} = snapshot} -> {:ok, snapshot}
+      {:error, reason} -> {:error, %{status: "error", error: "Unable to encode series snapshot", details: inspect(reason)}}
+    end
+  end
+
+  defp source_meta(source) do
+    %{
+      id: Source.id(source) |> to_string(),
+      type: Source.type(source) |> Atom.to_string(),
+      display_name: Source.display_name(source),
+      time_zone: Source.time_zone(source)
+    }
+  end
+
+  defp notify_tool_error(context, tool_name, reason) when is_binary(tool_name) do
+    error_message = tool_error_message(reason)
+    source_context = tool_error_source_context(context)
+
+    Logger.warning("Chat tool #{tool_name} failed#{source_context}: #{error_message}")
+    Logger.debug("Chat tool #{tool_name} failure details#{source_context}: #{inspect(reason)}")
+
+    Notifier.notify(
+      context,
+      {:progress, :tool_error, %{tool: tool_name, reason: error_message}}
+    )
+  end
+
+  defp tool_error_message(%{error: message}) when is_binary(message), do: message
+  defp tool_error_message(%{"error" => message}) when is_binary(message), do: message
+  defp tool_error_message(%{message: message}) when is_binary(message), do: message
+  defp tool_error_message(%{"message" => message}) when is_binary(message), do: message
+  defp tool_error_message(reason) when is_binary(reason) do
+    reason
+    |> String.trim()
+    |> case do
+      "" -> "unexpected tool failure"
+      message -> message
+    end
+  end
+
+  defp tool_error_message(_reason), do: "unexpected tool failure"
+
+  defp sanitized_tool_error(reason) do
+    %{
+      status: "error",
+      error: tool_error_message(reason)
+    }
+  end
+
+  defp tool_error_source_context(%{source: %Source{} = source}) do
+    " for #{Source.type(source)} #{Source.id(source)}"
+  end
+
+  defp tool_error_source_context(_context), do: ""
 
   if Mix.env() == :test do
     @doc false

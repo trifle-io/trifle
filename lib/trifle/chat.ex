@@ -6,6 +6,7 @@ defmodule Trifle.Chat do
   alias Trifle.Chat.Agent
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
+  alias Trifle.Chat.Visualizations
   alias Trifle.Stats.Source
 
   @type context :: Agent.context()
@@ -112,12 +113,17 @@ defmodule Trifle.Chat do
 
         cond do
           role == "tool" ->
-            visualizations = parse_tool_visualizations(message)
+            visualizations = Visualizations.from_tool_message(message)
             {acc, pending ++ visualizations}
 
           role == "assistant" ->
             entry = build_renderable_message(message)
-            entry = Map.update(entry, :visualizations, pending, &(&1 ++ pending))
+            entry =
+              case Map.get(entry, :visualizations, []) do
+                [] -> Map.put(entry, :visualizations, pending)
+                _ -> entry
+              end
+
             {acc ++ [entry], []}
 
           role == "user" ->
@@ -163,7 +169,10 @@ defmodule Trifle.Chat do
       role: role,
       content: content,
       created_at: created_at,
-      visualizations: []
+      visualizations:
+        message
+        |> Map.get(:visualizations, Map.get(message, "visualizations"))
+        |> Visualizations.normalize_list()
     }
   end
 
@@ -180,45 +189,6 @@ defmodule Trifle.Chat do
       visuals = (Map.get(last, :visualizations, []) || []) ++ pending
       Map.put(last, :visualizations, visuals)
     end)
-  end
-
-  defp parse_tool_visualizations(message) do
-    content =
-      Map.get(message, :content) ||
-        Map.get(message, "content") ||
-        ""
-
-    with true <- is_binary(content),
-         {:ok, payload} <- Jason.decode(content),
-         %{"chart" => chart} <- payload,
-         true <- is_map(chart),
-         chart_type when is_binary(chart_type) <- Map.get(chart, "type") do
-      id =
-        Map.get(message, :tool_call_id) ||
-          Map.get(message, "tool_call_id") ||
-          "viz-" <> Integer.to_string(System.unique_integer([:positive]))
-
-      inserted_at =
-        Map.get(message, :created_at) ||
-          Map.get(message, "created_at")
-
-      tool =
-        Map.get(message, :name) ||
-          Map.get(message, "name")
-
-      [
-        %{
-          id: to_string(id),
-          type: chart_type,
-          chart: chart,
-          payload: payload,
-          created_at: inserted_at,
-          tool_name: tool
-        }
-      ]
-    else
-      _ -> []
-    end
   end
 
   defp message_blank?(%{role: "assistant"} = message) do

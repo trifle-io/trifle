@@ -50,6 +50,33 @@ defmodule Trifle.Chat.ToolsTest do
     end
   end
 
+  describe "describe_dashboard_widgets" do
+    test "returns the widget spec and prompt fragment" do
+      assert {:ok, %{status: "ok", widget_spec: spec, prompt_fragment: prompt}} =
+               Tools.execute("describe_dashboard_widgets", "{}", %{})
+
+      widget_types =
+        spec.widgets
+        |> Enum.map(& &1["type"])
+
+      assert "kpi" in widget_types
+      assert "heatmap" in widget_types
+      assert prompt =~ "build_metric_dashboard"
+    end
+  end
+
+  describe "system_prompt/1" do
+    test "forbids wildcard metric-tool paths while allowing dashboard widget wildcards" do
+      prompt = Tools.system_prompt(%{})
+
+      assert prompt =~ "format_metric_timeline"
+      assert prompt =~ "format_metric_category"
+      assert prompt =~ "`paths`"
+      assert prompt =~ "must not contain wildcard"
+      assert prompt =~ "Only use wildcard-style paths inside dashboard widget"
+    end
+  end
+
   defp series_fixture do
     timestamps = [
       ~U[2024-01-01 00:00:00Z],

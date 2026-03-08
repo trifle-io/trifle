@@ -31,6 +31,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :print_width, :integer, default: nil
   attr :print_cell_height, :integer, default: nil
   attr :transponder_info, :map, default: %{}
+  attr :grid_dom_id, :string, default: nil
 
   def grid(assigns) do
     assigns =
@@ -55,7 +56,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:distribution, fn -> %{} end)
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
-      |> assign(:grid_dom_id, "dashboard-grid")
+      |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
       |> assign_new(:print_width, fn -> nil end)
       |> assign(:dataset_maps, build_dataset_maps(assigns))
 
@@ -92,6 +93,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         <%= for widget <- @grid_items do %>
           <.grid_item
             widget={widget}
+            grid_dom_id={@grid_dom_id}
             editable={!@is_public_access && @current_user && @can_edit_dashboard}
             kpi_values={@kpi_values}
             kpi_visuals={@kpi_visuals}
@@ -116,7 +118,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       <%= for widget <- @grid_items do %>
         <% payload = widget_payload(assigns, widget) %>
         <div
-          id={"widget-data-#{payload.widget_id}"}
+          id={widget_dom_id(@grid_dom_id, "widget-data", payload.widget_id)}
           data-widget-id={payload.widget_id}
           data-widget-type={payload.widget_type}
           data-title={payload.title}
@@ -428,7 +430,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           <div
             class="flex-1 min-h-0 ag-theme-alpine"
             data-role="aggrid-table-root"
-            id={"aggrid-table-#{@table_dataset[:id] || @widget_id}"}
+            id={widget_dom_id(@grid_dom_id, "aggrid-table", @table_dataset[:id] || @widget_id)}
           >
             <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
               Loading AG Grid table...
@@ -975,6 +977,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp widget_export_links(_, _, _, _), do: :error
 
+  defp widget_dom_id(grid_dom_id, prefix, widget_id) do
+    "#{grid_dom_id || "dashboard-grid"}-#{prefix}-#{widget_id}"
+  end
+
   attr :widget, :map, required: true
   attr :editable, :boolean, default: false
   attr :kpi_values, :map, default: %{}
@@ -991,6 +997,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :dashboard, :map, required: true
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :transponder_info, :map, default: %{}
+  attr :grid_dom_id, :string, default: nil
 
   def grid_item(assigns) do
     widget_type = widget_type(assigns.widget)
@@ -1007,6 +1014,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     assigns =
       assigns
       |> assign(:widget_id, widget_id)
+      |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
       |> assign(:grid, grid_position(assigns.widget))
       |> assign(:title, widget_title(assigns.widget))
       |> assign(:widget_type, widget_type)
@@ -1039,7 +1047,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     >
       <div
         class={@content_classnames}
-        id={"grid-widget-content-#{@widget_id}"}
+        id={widget_dom_id(@grid_dom_id, "grid-widget-content", @widget_id)}
         data-widget-id={@widget_id}
         data-widget-type={@widget_type}
         data-text-widget={if @widget_type == "text", do: "1", else: nil}
@@ -1066,7 +1074,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               <%= if match?({:ok, _}, export_links) do %>
                 <% {:ok, links} = export_links %>
                 <div
-                  id={"widget-download-menu-#{@widget_id}"}
+                  id={widget_dom_id(@grid_dom_id, "widget-download-menu", @widget_id)}
                   class="relative"
                   data-widget-download-menu
                   data-widget-id={@widget_id}

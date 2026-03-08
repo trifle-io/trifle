@@ -53,13 +53,14 @@ defmodule Trifle.Chat.SessionRecord do
       field :created_at, :utc_datetime
       field :tool_call_id, :string
       field :name, :string
+      field :visualizations, {:array, :map}, default: []
 
       embeds_many :tool_calls, ToolCall, on_replace: :delete
     end
 
     def changeset(message, attrs) do
       message
-      |> cast(attrs, [:role, :content, :created_at, :tool_call_id, :name])
+      |> cast(attrs, [:role, :content, :created_at, :tool_call_id, :name, :visualizations])
       |> validate_required([:role])
       |> cast_embed(:tool_calls, with: &ToolCall.changeset/2, required: false)
     end

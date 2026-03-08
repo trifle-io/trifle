@@ -9,6 +9,7 @@ defmodule Trifle.Chat.Agent do
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
   alias Trifle.Chat.Tools
+  alias Trifle.Chat.Visualizations
 
   @max_iterations 5
 
@@ -104,9 +105,12 @@ defmodule Trifle.Chat.Agent do
   end
 
   defp store_assistant_message(session, message, context) do
+    visualizations = Visualizations.pending_from_messages(session.messages)
+
     entry = %{
       role: "assistant",
-      content: coerce_content(message["content"])
+      content: coerce_content(message["content"]),
+      visualizations: visualizations
     }
 
     Notifier.notify(context, {:progress, :responding})
@@ -300,7 +304,6 @@ defmodule Trifle.Chat.Agent do
     chunks
     |> Enum.map(fn
       %{"text" => text} -> text
-      %{"type" => "text", "text" => text} -> text
       other when is_binary(other) -> other
       _ -> ""
     end)
