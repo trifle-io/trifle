@@ -26,7 +26,6 @@ defmodule TrifleApp.ChatLive do
     socket =
       socket
       |> assign(:page_title, "Trifle AI")
-      |> assign(:breadcrumb_links, ["Trifle AI"])
       |> assign(:sources, sources)
       |> assign(:grouped_sources, group_sources(sources))
       |> assign(:selected_source, selected_source)

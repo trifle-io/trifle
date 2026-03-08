@@ -620,11 +620,10 @@ defmodule TrifleApp.CoreComponents do
   def trifle_logo(assigns) do
     ~H"""
     <svg
-      width="100%"
-      height="100%"
       viewBox="0 0 72 84"
+      preserveAspectRatio="xMidYMid meet"
       version="1.1"
-      class={@class}
+      class={["block", @class]}
       xmlns="http://www.w3.org/2000/svg"
       xmlns:xlink="http://www.w3.org/1999/xlink"
       xml:space="preserve"
@@ -748,79 +747,6 @@ defmodule TrifleApp.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
-
-  @doc """
-  Renders clickable breadcrumbs with proper navigation links.
-
-  ## Examples
-
-      # Simple string breadcrumbs (legacy support)
-      breadcrumb_links(["Projects", "MyProject", "Settings"])
-      
-      # Clickable breadcrumbs with routes
-      breadcrumb_links([
-        {"Database", ~p"/dbs"},
-        {"MongoDB", ~p"/dbs/123"},
-        {"Dashboards", ~p"/dashboards"},
-        "Weekly Sales"
-      ])
-  """
-  def breadcrumb_links(assigns) do
-    ~H"""
-    <h1 class="text-lg font-semibold leading-6 text-gray-900 dark:text-white">
-      <%= for {item, index} <- Enum.with_index(@breadcrumbs) do %>
-        <%= if index > 0 do %>
-          •
-        <% end %>
-        <%= cond do %>
-          <% is_tuple(item) -> %>
-            <.link
-              navigate={elem(item, 1)}
-              class="text-lg font-semibold leading-6 text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400"
-            >
-              {elem(item, 0)}
-            </.link>
-          <% true -> %>
-            {item}
-        <% end %>
-      <% end %>
-    </h1>
-    """
-  end
-
-  @doc """
-  Formats a breadcrumb list into a string with proper spacing and dividers.
-  Uses non-breaking spaces to ensure proper spacing in HTML.
-
-  ## Examples
-
-      format_breadcrumb(["Projects", "MyProject", "Settings"])
-      # => "Projects &nbsp;&nbsp;&nbsp;▸&nbsp;&nbsp;&nbsp; MyProject &nbsp;&nbsp;&nbsp;▸&nbsp;&nbsp;&nbsp; Settings"
-      
-  """
-  def format_breadcrumb(breadcrumbs) when is_list(breadcrumbs) do
-    breadcrumbs
-    |> Enum.map(fn
-      # Extract text from tuples
-      {text, _path} -> text
-      # Keep strings as is
-      text -> text
-    end)
-    |> Enum.join(" • ")
-  end
-
-  def format_breadcrumb(breadcrumb) when is_binary(breadcrumb) do
-    breadcrumb
-  end
-
-  @doc """
-  Checks if the breadcrumbs contain any clickable links (tuples).
-  """
-  def has_clickable_breadcrumbs?(breadcrumbs) when is_list(breadcrumbs) do
-    Enum.any?(breadcrumbs, &is_tuple/1)
-  end
-
-  def has_clickable_breadcrumbs?(_), do: false
 
   @doc """
   Returns theme classes based on user preference.

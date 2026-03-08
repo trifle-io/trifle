@@ -24,7 +24,6 @@ defmodule TrifleApp.MonitorsLive do
     {:ok,
      socket
      |> assign(:page_title, "Monitors")
-     |> assign(:breadcrumb_links, ["Monitors"])
      |> assign(:nav_section, :monitors)
      |> assign(:current_membership, membership)
      |> assign(:current_user, user)

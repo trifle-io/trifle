@@ -1,6 +1,8 @@
 defmodule TrifleApp.ProjectsLive do
   use TrifleApp, :live_view
 
+  on_mount {TrifleApp.UserAuth, :ensure_projects_enabled}
+
   alias Phoenix.LiveView.JS
   alias Trifle.Organizations
   alias Trifle.Organizations.Project

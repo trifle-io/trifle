@@ -140,6 +140,9 @@ defmodule TrifleApp.UserAuth do
     * `:redirect_if_user_is_authenticated` - Authenticates the user from the session.
       Redirects to signed_in_path if there's a logged user.
 
+    * `:ensure_projects_enabled` - Halts with a redirect to the signed-in home
+      page when the projects feature is disabled.
+
   ## Examples
 
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
@@ -184,6 +187,14 @@ defmodule TrifleApp.UserAuth do
       {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket))}
     else
       {:cont, socket}
+    end
+  end
+
+  def on_mount(:ensure_projects_enabled, _params, _session, socket) do
+    if Trifle.Config.projects_enabled?() do
+      {:cont, socket}
+    else
+      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket))}
     end
   end
 

@@ -22,7 +22,6 @@ defmodule TrifleApp.HomeLive do
     {:ok,
      socket
      |> assign(:page_title, "Home")
-     |> assign(:breadcrumb_links, ["Home"])
      |> assign(:nav_section, :home)
      |> assign(:recent_limit, @recent_limit)
      |> assign(:current_user, user)

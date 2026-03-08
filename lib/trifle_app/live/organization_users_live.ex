@@ -13,7 +13,6 @@ defmodule TrifleApp.OrganizationUsersLive do
     socket =
       socket
       |> assign(:page_title, "Organization · Users")
-      |> assign(:breadcrumb_links, Navigation.breadcrumb(:users))
       |> assign(:active_tab, :users)
       |> assign(:current_user, current_user)
       |> assign(:show_invite_modal, false)
@@ -500,7 +499,6 @@ defmodule TrifleApp.OrganizationUsersLive do
     |> assign(:members, Organizations.list_members(organization))
     |> assign(:pending_invitations, pending_invitations_for(organization))
     |> assign(:invitation_form, empty_invitation_form(organization))
-    |> assign(:breadcrumb_links, Navigation.breadcrumb(:users))
     |> assign(:show_invite_modal, false)
   end
 
