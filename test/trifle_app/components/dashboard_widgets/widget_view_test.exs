@@ -69,6 +69,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
         "h" => 2,
         "x" => 6,
         "y" => 0
+      },
+      %{
+        "id" => "table-1",
+        "type" => "table",
+        "title" => "Orders Table",
+        "paths" => ["metrics.count"],
+        "w" => 12,
+        "h" => 4,
+        "x" => 0,
+        "y" => 7
       }
     ]
 
@@ -103,6 +113,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
 
     assigns = %{
       dashboard: %{id: "dash-123", payload: %{"grid" => grid_items}},
+      grid_dom_id: "chat-grid-1",
       stats: series,
       print_mode: false,
       current_user: %{id: "user-1"},
@@ -126,7 +137,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
-    [{"div", kpi_attrs, _}] = Floki.find(document, "#dashboard-grid-widget-data-kpi-1")
+    [{"div", kpi_attrs, _}] = Floki.find(document, "#chat-grid-1-widget-data-kpi-1")
 
     kpi_payload_envelope =
       kpi_attrs
@@ -138,7 +149,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert kpi_payload_envelope["type"] == "kpi"
     assert is_number(kpi_payload_envelope["payload"]["value"]["value"])
 
-    [{"div", text_attrs, _}] = Floki.find(document, "#dashboard-grid-widget-data-text-1")
+    [{"div", text_attrs, _}] = Floki.find(document, "#chat-grid-1-widget-data-text-1")
 
     text_payload_envelope =
       text_attrs
@@ -159,7 +170,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
-    [{"div", grid_attrs, _}] = Floki.find(document, "#dashboard-grid")
+    [{"div", grid_attrs, _}] = Floki.find(document, "#chat-grid-1")
     assert grid_attrs |> Map.new() |> Map.get("phx-update") == "ignore"
 
     initial_grid =
@@ -182,15 +193,15 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
-    assert [_] = Floki.find(document, "#grid-widget-content-kpi-1 .kpi-wrap")
+    assert [_] = Floki.find(document, "#chat-grid-1-grid-widget-content-kpi-1 .kpi-wrap")
 
     [{"div", title_attrs, _}] =
-      Floki.find(document, "#grid-widget-content-text-1 .grid-widget-title")
+      Floki.find(document, "#chat-grid-1-grid-widget-content-text-1 .grid-widget-title")
 
     assert title_attrs |> Map.new() |> Map.get("aria-hidden") == "true"
 
     [{"div", body_attrs, _}] =
-      Floki.find(document, "#grid-widget-content-text-1 .text-widget-body")
+      Floki.find(document, "#chat-grid-1-grid-widget-content-text-1 .text-widget-body")
 
     assert body_attrs |> Map.new() |> Map.get("data-text-subtype") == "header"
 
@@ -203,14 +214,23 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
-    badges = Floki.find(document, "#grid-widget-content-list-1 li span.inline-flex.items-center")
+    badges = Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 li span.inline-flex.items-center")
     assert length(badges) > 0
 
     labels =
       document
-      |> Floki.find("#grid-widget-content-list-1 .font-mono")
+      |> Floki.find("#chat-grid-1-grid-widget-content-list-1 .font-mono")
       |> Enum.map(fn {"span", _attrs, [text]} -> String.trim(text) end)
 
     assert "alpha" in labels
+  end
+
+  test "namespaces visible widget DOM ids by grid", %{assigns: assigns} do
+    html = render_component(&WidgetView.grid/1, assigns)
+    {:ok, document} = Floki.parse_document(html)
+
+    assert [_] = Floki.find(document, "#chat-grid-1-grid-widget-content-kpi-1")
+    assert [_] = Floki.find(document, "#chat-grid-1-widget-download-menu-kpi-1")
+    assert [_] = Floki.find(document, "#chat-grid-1-aggrid-table-table-1")
   end
 end

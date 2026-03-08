@@ -167,6 +167,8 @@ defmodule Trifle.Chat.Progress do
     cond do
       trimmed == "" -> "."
       String.ends_with?(trimmed, "...") -> trimmed
+      String.ends_with?(trimmed, "!") -> trimmed
+      String.ends_with?(trimmed, "?") -> trimmed
       String.ends_with?(trimmed, ".") -> trimmed
       true -> trimmed <> "."
     end
@@ -191,7 +193,7 @@ defmodule Trifle.Chat.Progress do
 
   defp format_tool_error_reason(reason) do
     reason
-    |> to_string()
+    |> inspect()
     |> format_tool_error_reason()
   end
 

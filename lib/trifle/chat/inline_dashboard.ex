@@ -58,7 +58,7 @@ defmodule Trifle.Chat.InlineDashboard do
 
   @spec normalize_grid(list()) :: {:ok, list()} | {:error, map()}
   def normalize_grid(grid) when is_list(grid) do
-    state = %{x: 0, y: 0, row_h: 0, max_y: 0}
+    state = %{x: 0, y: 0, row_h: 0, max_y: 0, occupied: MapSet.new()}
 
     grid
     |> Enum.with_index()
@@ -213,58 +213,139 @@ defmodule Trifle.Chat.InlineDashboard do
   end
 
   defp position_widget(widget, layout_state) do
-    has_explicit_position? =
-      is_integer(Map.get(widget, "x")) and Map.get(widget, "x") >= 0 and
-        is_integer(Map.get(widget, "y")) and Map.get(widget, "y") >= 0
-
-    if has_explicit_position? do
-      next_state = reserve_manual_widget(layout_state, widget)
-      {widget, next_state}
+    if has_explicit_position?(widget) do
+      widget
+      |> clamp_widget_frame()
+      |> reserve_manual_widget(layout_state)
     else
       auto_place_widget(widget, layout_state)
     end
   end
 
-  defp reserve_manual_widget(layout_state, widget) do
-    bottom = Map.get(widget, "y", 0) + Map.get(widget, "h", 1)
-    %{layout_state | max_y: max(layout_state.max_y, bottom)}
+  defp reserve_manual_widget(widget, layout_state) do
+    width = Map.get(widget, "w", 1)
+    height = Map.get(widget, "h", 1)
+    x = Map.get(widget, "x", 0)
+    start_y = Map.get(widget, "y", 0)
+
+    y =
+      Stream.iterate(start_y, &(&1 + 1))
+      |> Enum.find(fn candidate_y ->
+        widget_fits?(layout_state, x, candidate_y, width, height)
+      end)
+
+    positioned = Map.put(widget, "y", y)
+    {positioned, reserve_widget(layout_state, positioned)}
   end
 
   defp auto_place_widget(widget, layout_state) do
     width = clamp_widget_size(Map.get(widget, "w"), 3)
     height = clamp_widget_size(Map.get(widget, "h"), 2)
-    state = maybe_advance_after_manual(layout_state)
-
-    state =
-      if state.x + width > 12 do
-        %{state | x: 0, y: state.y + max(state.row_h, 1), row_h: 0}
-        |> maybe_advance_after_manual()
-      else
-        state
-      end
+    state = normalize_auto_cursor(layout_state, width)
+    {x, y} = find_next_position(state, width, height)
 
     positioned =
       widget
-      |> Map.put("x", state.x)
-      |> Map.put("y", state.y)
+      |> Map.put("x", x)
+      |> Map.put("y", y)
       |> Map.put("w", width)
       |> Map.put("h", height)
 
-    next_state = %{
+    next_state =
       state
-      | x: state.x + width,
-        row_h: max(state.row_h, height),
-        max_y: max(state.max_y, state.y + height)
-    }
+      |> reserve_widget(positioned)
+      |> Map.put(:x, x + width)
+      |> Map.put(:y, y)
+      |> Map.put(:row_h, if(y == state.y, do: max(state.row_h, height), else: height))
 
     {positioned, next_state}
   end
 
-  defp maybe_advance_after_manual(%{x: 0, y: y, max_y: max_y} = state) when max_y > y do
-    %{state | y: max_y}
+  defp normalize_auto_cursor(%{x: x, y: y, row_h: row_h} = state, width) do
+    if x + width > 12 do
+      %{state | x: 0, y: y + max(row_h, 1), row_h: 0}
+    else
+      state
+    end
   end
 
-  defp maybe_advance_after_manual(state), do: state
+  defp find_next_position(state, width, height) do
+    start_x = min(state.x, max(12 - width, 0))
+    start_y = state.y
+
+    Stream.iterate(start_y, &(&1 + 1))
+    |> Enum.reduce_while(nil, fn candidate_y, _acc ->
+      x_range =
+        if candidate_y == start_y do
+          start_x..max(12 - width, 0)
+        else
+          0..max(12 - width, 0)
+        end
+
+      case Enum.find(x_range, &widget_fits?(state, &1, candidate_y, width, height)) do
+        nil -> {:cont, nil}
+        candidate_x -> {:halt, {candidate_x, candidate_y}}
+      end
+    end)
+  end
+
+  defp reserve_widget(layout_state, widget) do
+    x = Map.get(widget, "x", 0)
+    y = Map.get(widget, "y", 0)
+    width = Map.get(widget, "w", 1)
+    height = Map.get(widget, "h", 1)
+    bottom = y + height
+
+    occupied =
+      x
+      |> occupied_cells(y, width, height)
+      |> Enum.reduce(layout_state.occupied || MapSet.new(), fn cell, acc -> MapSet.put(acc, cell) end)
+
+    %{layout_state | occupied: occupied, max_y: max(layout_state.max_y, bottom)}
+  end
+
+  defp widget_fits?(layout_state, x, y, width, height) do
+    x >= 0 and y >= 0 and x + width <= 12 and
+      Enum.all?(occupied_cells(x, y, width, height), fn cell ->
+        not MapSet.member?(layout_state.occupied || MapSet.new(), cell)
+      end)
+  end
+
+  defp occupied_cells(x, y, width, height) do
+    for current_y <- y..(y + height - 1),
+        current_x <- x..(x + width - 1) do
+      {current_x, current_y}
+    end
+  end
+
+  defp clamp_widget_frame(widget) do
+    width = clamp_widget_size(Map.get(widget, "w"), 3)
+    height = clamp_widget_size(Map.get(widget, "h"), 2)
+    x = clamp_coordinate(Map.get(widget, "x"), max(12 - width, 0))
+    y = clamp_coordinate(Map.get(widget, "y"))
+
+    widget
+    |> Map.put("w", width)
+    |> Map.put("h", height)
+    |> Map.put("x", x)
+    |> Map.put("y", y)
+  end
+
+  defp has_explicit_position?(widget) do
+    is_integer(Map.get(widget, "x")) and Map.get(widget, "x") >= 0 and
+      is_integer(Map.get(widget, "y")) and Map.get(widget, "y") >= 0
+  end
+
+  defp clamp_coordinate(value, max_value \\ nil)
+
+  defp clamp_coordinate(value, max_value) when is_integer(value) and value >= 0 and is_integer(max_value) do
+    min(value, max_value)
+  end
+
+  defp clamp_coordinate(value, _max_value) when is_integer(value) and value >= 0, do: value
+
+  defp clamp_coordinate(_value, max_value) when is_integer(max_value), do: min(0, max_value)
+  defp clamp_coordinate(_value, _max_value), do: 0
 
   defp clamp_widget_size(value, _fallback) when is_integer(value) and value >= 1,
     do: min(value, 12)

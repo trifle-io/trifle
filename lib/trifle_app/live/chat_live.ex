@@ -7,6 +7,7 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.Progress
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
+  alias Trifle.Chat.Visualizations
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DashboardWidgets.WidgetView
   alias TrifleApp.DesignSystem.ChartColors
@@ -848,21 +849,7 @@ defmodule TrifleApp.ChatLive do
         InlineDashboard.has_data?(viz)
 
       "category" ->
-        chart = map_get(viz, :chart) || %{}
-        dataset = map_get(chart, "dataset") || %{}
-
-        dataset
-        |> map_get("data")
-        |> List.wrap()
-        |> Enum.any?(fn entry ->
-          value = map_get(entry, "value")
-
-          cond do
-            is_number(value) -> value != 0
-            is_binary(value) -> String.trim(value) != ""
-            true -> false
-          end
-        end)
+        Visualizations.has_data?(viz)
 
       _ ->
         chart = map_get(viz, :chart) || %{}

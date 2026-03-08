@@ -66,6 +66,17 @@ defmodule Trifle.Chat.ToolsTest do
     end
   end
 
+  describe "system_prompt/1" do
+    test "forbids wildcard metric-tool paths while allowing dashboard widget wildcards" do
+      prompt = Tools.system_prompt(%{})
+
+      assert prompt =~ "format_metric_timeline"
+      assert prompt =~ "format_metric_category"
+      assert prompt =~ "must not contain wildcard characters"
+      assert prompt =~ "Only use wildcard-style paths inside dashboard widget configs"
+    end
+  end
+
   defp series_fixture do
     timestamps = [
       ~U[2024-01-01 00:00:00Z],

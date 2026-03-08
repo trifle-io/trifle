@@ -36,6 +36,38 @@ defmodule Trifle.Chat.InlineDashboardTest do
 
       assert error =~ "requires at least one of: path"
     end
+
+    test "clamps explicit positions and prevents overlaps by moving later widgets down" do
+      grid = [
+        %{
+          "id" => "manual-1",
+          "type" => "kpi",
+          "path" => "metrics.count",
+          "title" => "Orders",
+          "x" => 10,
+          "y" => 0,
+          "w" => 4,
+          "h" => 2
+        },
+        %{
+          "id" => "manual-2",
+          "type" => "kpi",
+          "path" => "metrics.revenue",
+          "title" => "Revenue",
+          "x" => 10,
+          "y" => 0,
+          "w" => 4,
+          "h" => 2
+        }
+      ]
+
+      assert {:ok, [first, second]} = InlineDashboard.normalize_grid(grid)
+
+      assert first["x"] == 8
+      assert first["y"] == 0
+      assert second["x"] == 8
+      assert second["y"] == 2
+    end
   end
 
   describe "build_visualization/5" do

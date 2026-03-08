@@ -59,7 +59,11 @@ export const createDashboardGridTableRendererMethods = ({
 
   _build_aggrid_table_html(payload) {
     const idAttr = payload && payload.id != null ? ` data-aggrid-id="${this.escapeHtml(String(payload.id))}"` : '';
-    const rootId = payload && payload.id != null ? ` id="aggrid-table-${this.escapeHtml(String(payload.id))}"` : '';
+    const gridId = this.el && this.el.id ? String(this.el.id) : 'dashboard-grid';
+    const rootId =
+      payload && payload.id != null
+        ? ` id="${this.escapeHtml(`${gridId}-aggrid-table-${String(payload.id)}`)}"`
+        : '';
     const theme = this._aggridThemeIsDark ? 'dark' : 'light';
     const themeClass = this._aggridThemeIsDark ? 'ag-theme-alpine-dark' : 'ag-theme-alpine';
     return `

@@ -17,4 +17,18 @@ defmodule Trifle.Chat.ProgressTest do
     assert String.ends_with?(text, ".")
     assert String.length(text) < 220
   end
+
+  test "tool_error preserves question and exclamation punctuation" do
+    assert Progress.text(:tool_error, %{tool: "build_metric_dashboard", reason: "bad input?"}) ==
+             "Issue encountered while running build_metric_dashboard: bad input?"
+
+    assert Progress.text(:tool_error, %{tool: "build_metric_dashboard", reason: "try again!"}) ==
+             "Issue encountered while running build_metric_dashboard: try again!"
+  end
+
+  test "tool_error safely formats non string-char terms" do
+    text = Progress.text(:tool_error, %{tool: "build_metric_dashboard", reason: {:bad_input, [path: "metrics"]}})
+
+    assert text =~ "{:bad_input, [path: \"metrics\"]}"
+  end
 end
