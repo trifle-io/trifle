@@ -31,4 +31,11 @@ defmodule Trifle.Chat.ProgressTest do
 
     assert text =~ "{:bad_input, [path: \"metrics\"]}"
   end
+
+  test "error safely formats nil and non string-char terms" do
+    assert Progress.text(:error, %{reason: nil}) == "Chat error."
+
+    text = Progress.text(:error, %{reason: {:bad_input, [path: "metrics"]}})
+    assert text =~ "Chat error: {:bad_input, [path: \"metrics\"]}"
+  end
 end

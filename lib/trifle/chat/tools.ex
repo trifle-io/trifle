@@ -142,7 +142,7 @@ defmodule Trifle.Chat.Tools do
               "value_path" => %{
                 "type" => "string",
                 "description" =>
-                  "Exact numeric path to include. Wildcards are not allowed; call list_available_metrics first and then use the returned available_paths or matched_paths."
+                  "Exact numeric path to include. Wildcards are not allowed; call list_available_metrics first and choose a concrete path from its returned paths."
               },
               "timeframe" => %{
                 "type" => "string",
@@ -210,7 +210,7 @@ defmodule Trifle.Chat.Tools do
               "value_path" => %{
                 "type" => "string",
                 "description" =>
-                  "Exact categorical path to aggregate. Wildcards are not allowed; call list_available_metrics first and then use the returned available_paths or matched_paths."
+                  "Exact categorical path to aggregate. Wildcards are not allowed; call list_available_metrics first and choose a concrete path from its returned paths."
               },
               "timeframe" => %{
                 "type" => "string",
@@ -414,7 +414,7 @@ defmodule Trifle.Chat.Tools do
         {:error, err}
 
       {:error, reason} ->
-        err = %{status: "error", error: inspect(reason)}
+        err = sanitized_tool_error(reason)
         notify_tool_error(context, "fetch_metric_timeseries", err)
         {:error, err}
     end
@@ -496,7 +496,7 @@ defmodule Trifle.Chat.Tools do
         {:error, err}
 
       {:error, reason} ->
-        err = %{status: "error", error: inspect(reason)}
+        err = sanitized_tool_error(reason)
         notify_tool_error(context, "aggregate_metric_series", err)
         {:error, err}
     end
@@ -577,7 +577,7 @@ defmodule Trifle.Chat.Tools do
          }}
 
       {:error, reason} ->
-        err = %{status: "error", error: inspect(reason)}
+        err = sanitized_tool_error(reason)
         notify_tool_error(context, "format_metric_timeline", err)
         {:error, err}
     end
@@ -657,7 +657,7 @@ defmodule Trifle.Chat.Tools do
          }}
 
       {:error, reason} ->
-        err = %{status: "error", error: inspect(reason)}
+        err = sanitized_tool_error(reason)
         notify_tool_error(context, "format_metric_category", err)
         {:error, err}
     end
@@ -723,7 +723,7 @@ defmodule Trifle.Chat.Tools do
         {:error, err}
 
       {:error, reason} ->
-        err = %{status: "error", error: inspect(reason)}
+        err = sanitized_tool_error(reason)
         notify_tool_error(context, "list_available_metrics", err)
         {:error, err}
     end
@@ -801,7 +801,7 @@ defmodule Trifle.Chat.Tools do
         {:error, err}
 
       {:error, reason} ->
-        err = %{status: "error", error: inspect(reason)}
+        err = sanitized_tool_error(reason)
         notify_tool_error(context, "build_metric_dashboard", err)
         {:error, err}
     end
@@ -876,13 +876,12 @@ defmodule Trifle.Chat.Tools do
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
 
     Before attempting to aggregate, format, or visualise a metric, first call `list_available_metrics`
-    (or use prior responses) to inspect the precise paths available for the timeframe. After fetching a
-    metric, prefer the provided `available_paths` and `matched_paths` without guessing. If a requested path
-    is absent, state that explicitly and present the actual paths. `format_metric_timeline` and
-    `format_metric_category` value_path inputs must be exact paths and must not contain wildcard characters
-    such as `*`; use `list_available_metrics` and the returned `available_paths` or `matched_paths` to
-    choose the concrete path. Only use wildcard-style paths inside dashboard widget configs passed to
-    `build_metric_dashboard`.
+    (or use prior responses) to inspect the precise paths available for the timeframe via its `paths`
+    field. If a later metric tool narrows the usable paths, prefer that exact result instead of guessing.
+    If a requested path is absent, state that explicitly and present the actual paths. `format_metric_timeline`
+    and `format_metric_category` value_path inputs must be exact paths and must not contain wildcard
+    characters such as `*`; use `list_available_metrics` and its returned `paths` to choose the concrete
+    path. Only use wildcard-style paths inside dashboard widget configs passed to `build_metric_dashboard`.
 
     When the user asks for a dashboard, use `describe_dashboard_widgets` if you need the exact widget
     contract, then call `build_metric_dashboard` with a compact 12-column grid. Only use supported widget
@@ -1225,6 +1224,13 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp tool_error_message(_reason), do: "unexpected tool failure"
+
+  defp sanitized_tool_error(reason) do
+    %{
+      status: "error",
+      error: tool_error_message(reason)
+    }
+  end
 
   defp tool_error_source_context(%{source: %Source{} = source}) do
     " for #{Source.type(source)} #{Source.id(source)}"

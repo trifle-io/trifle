@@ -148,13 +148,12 @@ defmodule Trifle.Chat.Progress do
     reason =
       payload
       |> Map.get("reason", Map.get(payload, :reason))
-      |> case do
-        nil -> ""
-        %{} = map -> inspect(map)
-        other -> to_string(other)
-      end
+      |> format_tool_error_reason()
 
-    ensure_period("Chat error: #{reason}")
+    case reason do
+      nil -> ensure_period("Chat error")
+      message -> ensure_period("Chat error: #{message}")
+    end
   end
 
   def text(:error, payload), do: ensure_period("Chat error: #{inspect(payload)}")

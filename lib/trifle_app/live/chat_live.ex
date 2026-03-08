@@ -680,7 +680,7 @@ defmodule TrifleApp.ChatLive do
         nil ->
           base_id =
             viz
-            |> Map.get(:id)
+            |> Map.get(:id, Map.get(viz, "id"))
             |> case do
               nil -> Integer.to_string(System.unique_integer([:positive]))
               other -> to_string(other)

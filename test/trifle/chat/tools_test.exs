@@ -58,7 +58,6 @@ defmodule Trifle.Chat.ToolsTest do
       widget_types =
         spec.widgets
         |> Enum.map(& &1["type"])
-        |> Enum.sort()
 
       assert "kpi" in widget_types
       assert "heatmap" in widget_types
@@ -72,8 +71,9 @@ defmodule Trifle.Chat.ToolsTest do
 
       assert prompt =~ "format_metric_timeline"
       assert prompt =~ "format_metric_category"
-      assert prompt =~ "must not contain wildcard characters"
-      assert prompt =~ "Only use wildcard-style paths inside dashboard widget configs"
+      assert prompt =~ "`paths`"
+      assert prompt =~ "must not contain wildcard"
+      assert prompt =~ "Only use wildcard-style paths inside dashboard widget"
     end
   end
 

@@ -373,13 +373,21 @@ defmodule Trifle.Chat.InlineDashboard do
   end
 
   defp blank_field?(widget, "paths") do
-    widget
-    |> Map.get("paths")
-    |> List.wrap()
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Kernel.==([])
+    paths = widget |> Map.get("paths") |> List.wrap()
+
+    cond do
+      paths == [] ->
+        true
+
+      Enum.any?(paths, &(not is_binary(&1))) ->
+        false
+
+      true ->
+        paths
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Kernel.==([])
+    end
   end
 
   defp blank_field?(widget, field) do
