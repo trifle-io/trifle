@@ -140,7 +140,11 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event("open_dashboard_payload_modal", _params, socket) do
-    {:noreply, assign(socket, :show_dashboard_payload_modal, true)}
+    if socket.assigns[:can_view_dashboard_payload] do
+      {:noreply, assign(socket, :show_dashboard_payload_modal, true)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("close_dashboard_payload_modal", _params, socket) do
@@ -1849,6 +1853,10 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_list, %{})
     |> assign(:widget_distribution, %{})
     |> assign(:show_dashboard_payload_modal, false)
+    |> assign(
+      :can_view_dashboard_payload,
+      !is_public_access and not is_nil(socket.assigns[:current_user])
+    )
     |> assign_dashboard_permissions()
   end
 

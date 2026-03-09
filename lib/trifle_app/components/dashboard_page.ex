@@ -17,6 +17,7 @@ defmodule TrifleApp.Components.DashboardPage do
 
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DataTable
+  alias TrifleApp.Components.DashboardPayload
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   alias TrifleApp.Components.DashboardWidgets.WidgetView
   alias TrifleApp.DesignSystem.ChartColors
@@ -26,7 +27,9 @@ defmodule TrifleApp.Components.DashboardPage do
     assigns =
       assigns
       |> assign_new(:show_dashboard_payload_modal, fn -> false end)
-      |> assign_new(:dashboard_payload_json, fn -> dashboard_payload_json(assigns[:dashboard]) end)
+      |> assign_new(:dashboard_payload_json, fn ->
+        DashboardPayload.dashboard_payload_json(assigns[:dashboard])
+      end)
 
     ~H"""
     <div
@@ -361,7 +364,10 @@ defmodule TrifleApp.Components.DashboardPage do
                 <% end %>
               <% end %>
 
-              <.dashboard_payload_button :if={!@print_mode && !@is_public_access} />
+              <DashboardPayload.payload_button
+                :if={!@print_mode && !@is_public_access}
+                phx-click="open_dashboard_payload_modal"
+              />
             </div>
           </div>
         </div>
@@ -1592,49 +1598,6 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp source_selected?(%{type: type, id: id}, source) do
     type == Source.type(source) && id == to_string(Source.id(source))
-  end
-
-  attr :rest, :global
-
-  defp dashboard_payload_button(assigns) do
-    ~H"""
-    <button
-      type="button"
-      phx-click="open_dashboard_payload_modal"
-      class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:text-slate-500 dark:hover:bg-slate-900/40 dark:hover:text-slate-300"
-      aria-label="Inspect dashboard payload"
-      title="Inspect dashboard payload"
-      {@rest}
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke-width="1.5"
-        stroke="currentColor"
-        class="size-3.5"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M3.75 4.5h16.5M3.75 9h16.5m-16.5 4.5h10.5m-10.5 4.5h10.5"
-        />
-      </svg>
-    </button>
-    """
-  end
-
-  defp dashboard_payload_json(nil), do: "{}"
-
-  defp dashboard_payload_json(dashboard) do
-    dashboard
-    |> Map.get(:payload, %{})
-    |> Jason.encode!(pretty: true)
-  rescue
-    _ ->
-      dashboard
-      |> Map.get(:payload, %{})
-      |> inspect(pretty: true, limit: :infinity)
   end
 
   defp widget_workspace_edit_form(assigns) do

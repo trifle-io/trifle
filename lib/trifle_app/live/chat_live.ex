@@ -8,6 +8,7 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
   alias Trifle.Stats.Source
+  alias TrifleApp.Components.DashboardPayload
   alias TrifleApp.Components.DashboardWidgets.WidgetView
 
   @chat_cancel_reason :chat_cancelled
@@ -129,7 +130,12 @@ defmodule TrifleApp.ChatLive do
          socket
          |> assign(:show_dashboard_payload_modal, true)
          |> assign(:selected_dashboard_payload_title, dashboard_payload_title(visualization))
-         |> assign(:selected_dashboard_payload, dashboard_payload_json(visualization))}
+         |> assign(
+           :selected_dashboard_payload,
+           DashboardPayload.dashboard_payload_json(
+             Map.get(visualization, :dashboard, Map.get(visualization, "dashboard", %{}))
+           )
+         )}
     end
   end
 
@@ -1455,29 +1461,10 @@ defmodule TrifleApp.ChatLive do
       <% end %>
 
       <div class="flex justify-end">
-        <button
-          type="button"
+        <DashboardPayload.payload_button
           phx-click="open_dashboard_payload"
           phx-value-dom_id={@dom_id}
-          class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:text-slate-500 dark:hover:bg-slate-900/40 dark:hover:text-slate-300"
-          aria-label="Inspect dashboard payload"
-          title="Inspect dashboard payload"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-            class="size-3.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3.75 4.5h16.5M3.75 9h16.5m-16.5 4.5h10.5m-10.5 4.5h10.5"
-            />
-          </svg>
-        </button>
+        />
       </div>
     </div>
     """
@@ -1622,17 +1609,6 @@ defmodule TrifleApp.ChatLive do
       title when is_binary(title) and title != "" -> "#{title} payload"
       _ -> "Dashboard payload"
     end
-  end
-
-  defp dashboard_payload_json(visualization) do
-    visualization
-    |> Map.get(:dashboard, Map.get(visualization, "dashboard", %{}))
-    |> Jason.encode!(pretty: true)
-  rescue
-    _ ->
-      visualization
-      |> Map.get(:dashboard, Map.get(visualization, "dashboard", %{}))
-      |> inspect(pretty: true, limit: :infinity)
   end
 
   defp gravatar_url(email, size) when is_binary(email) do
