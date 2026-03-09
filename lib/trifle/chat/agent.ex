@@ -49,7 +49,7 @@ defmodule Trifle.Chat.Agent do
 
   defp run_loop(session, _context, iteration) when iteration > @max_iterations do
     clear_pending_session(session)
-    {:error, :too_many_iterations}
+    {:error, too_many_iterations_error()}
   end
 
   defp run_loop(%Session{} = session, context, iteration) do
@@ -184,12 +184,22 @@ defmodule Trifle.Chat.Agent do
   end
 
   defp encode_message_for_openai(message) do
+    role = Map.get(message, :role, Map.get(message, "role"))
+    name = Map.get(message, :name, Map.get(message, "name"))
+    content = Map.get(message, :content, Map.get(message, "content"))
+
+    encoded_content =
+      case role do
+        "tool" -> Tools.compact_tool_content_for_model(name, content)
+        _ -> content
+      end
+
     %{}
-    |> maybe_put("role", Map.get(message, :role))
-    |> maybe_put("content", Map.get(message, :content))
-    |> maybe_put("tool_calls", Map.get(message, :tool_calls))
-    |> maybe_put("tool_call_id", Map.get(message, :tool_call_id))
-    |> maybe_put("name", Map.get(message, :name))
+    |> maybe_put("role", role)
+    |> maybe_put("content", encoded_content)
+    |> maybe_put("tool_calls", Map.get(message, :tool_calls, Map.get(message, "tool_calls")))
+    |> maybe_put("tool_call_id", Map.get(message, :tool_call_id, Map.get(message, "tool_call_id")))
+    |> maybe_put("name", name)
   end
 
   defp maybe_trim_history(messages) do
@@ -316,6 +326,26 @@ defmodule Trifle.Chat.Agent do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  if Mix.env() == :test do
+    @doc false
+    def __build_messages_for_test__(session, context) do
+      build_messages(session, context)
+    end
+
+    @doc false
+    def __too_many_iterations_error_for_test__ do
+      too_many_iterations_error()
+    end
+  end
+
+  defp too_many_iterations_error do
+    %{
+      status: :too_many_iterations,
+      message:
+        "The chat agent hit its retry limit before producing a final answer. Try asking a simpler follow-up or narrowing the request."
+    }
+  end
 
   defp normalize_openai_error(error, session)
 

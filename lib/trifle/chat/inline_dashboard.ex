@@ -8,6 +8,8 @@ defmodule Trifle.Chat.InlineDashboard do
   alias Trifle.Stats.Series
   alias TrifleApp.Components.DashboardWidgets.{Registry, WidgetData, WidgetView}
 
+  @chat_point_limit 1000
+
   @type source_meta :: map()
   @type timeframe_meta :: map()
   @type visualization :: map()
@@ -112,10 +114,20 @@ defmodule Trifle.Chat.InlineDashboard do
       |> value_for("values")
       |> List.wrap()
 
-    if timestamps == [] and values == [] do
-      {:error, error("Dashboard series snapshot is empty.")}
-    else
-      {:ok, Series.new(%{at: timestamps, values: values})}
+    point_count = max(length(timestamps), length(values))
+
+    cond do
+      timestamps == [] and values == [] ->
+        {:error, error("Dashboard series snapshot is empty.")}
+
+      point_count > @chat_point_limit ->
+        {:error,
+         error(
+           "Dashboard series snapshot exceeds the chat limit of #{@chat_point_limit} points."
+         )}
+
+      true ->
+        {:ok, Series.new(%{at: timestamps, values: values})}
     end
   end
 
@@ -153,7 +165,9 @@ defmodule Trifle.Chat.InlineDashboard do
         {:error, error("Unsupported dashboard widget type: #{inspect(widget_type)}.")}
 
       true ->
-        with :ok <- validate_required_fields(widget, widget_type) do
+        with :ok <- validate_chart_field_aliases(widget, widget_type),
+             :ok <- validate_chart_type_request(widget, widget_type),
+             :ok <- validate_required_fields(widget, widget_type) do
           {positioned_widget, next_layout_state} = position_widget(widget, layout_state)
           {:ok, positioned_widget, next_layout_state}
         end
@@ -209,6 +223,64 @@ defmodule Trifle.Chat.InlineDashboard do
          error(
            "Widget #{inspect(Map.get(widget, "id"))} of type #{widget_type} requires at least one of: #{Enum.join(fields, ", ")}."
          )}
+    end
+  end
+
+  defp validate_chart_field_aliases(widget, widget_type)
+       when widget_type in ["timeseries", "category", "distribution", "heatmap"] do
+    cond do
+      present_string?(Map.get(widget, "chart")) ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of chart."
+         )}
+
+      present_string?(Map.get(widget, "style")) ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of style."
+         )}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_chart_field_aliases(_widget, _widget_type), do: :ok
+
+  defp validate_chart_type_request(widget, "category") do
+    if title_requests_pie_or_donut?(widget) and
+         Map.get(widget, "chart_type") not in ["pie", "donut"] do
+      {:error,
+       error(
+         "Category widget #{inspect(Map.get(widget, "id"))} is labelled as pie/donut but chart_type is not pie or donut."
+       )}
+    else
+      :ok
+    end
+  end
+
+  defp validate_chart_type_request(widget, widget_type) when widget_type in ["distribution", "heatmap"] do
+    if title_requests_pie_or_donut?(widget) do
+      {:error,
+       error(
+         "Widget #{inspect(Map.get(widget, "id"))} uses #{widget_type}, which cannot render pie or donut charts. Use a category widget with chart_type pie or donut."
+       )}
+    else
+      :ok
+    end
+  end
+
+  defp validate_chart_type_request(_widget, _widget_type), do: :ok
+
+  defp title_requests_pie_or_donut?(widget) do
+    case Map.get(widget, "title") do
+      title when is_binary(title) ->
+        normalized = String.downcase(title)
+        String.contains?(normalized, "pie") or String.contains?(normalized, "donut")
+
+      _ ->
+        false
     end
   end
 
@@ -400,6 +472,9 @@ defmodule Trifle.Chat.InlineDashboard do
   defp blank_value?(nil), do: true
   defp blank_value?([]), do: true
   defp blank_value?(_), do: false
+
+  defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present_string?(_value), do: false
 
   defp resolve_title(opts, metric_key) do
     case Keyword.get(opts, :title) do

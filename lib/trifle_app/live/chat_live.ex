@@ -39,6 +39,9 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
       |> assign(:show_source_modal, false)
+      |> assign(:show_dashboard_payload_modal, false)
+      |> assign(:selected_dashboard_payload, nil)
+      |> assign(:selected_dashboard_payload_title, nil)
       |> assign(:form, to_form(%{"message" => ""}))
 
     {:ok, init_session(socket, selected_source)}
@@ -114,6 +117,28 @@ defmodule TrifleApp.ChatLive do
 
   def handle_event("close_source_modal", _params, socket) do
     {:noreply, assign(socket, :show_source_modal, false)}
+  end
+
+  def handle_event("open_dashboard_payload", %{"dom_id" => dom_id}, socket) do
+    case find_dashboard_visualization(socket.assigns.messages, dom_id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Dashboard payload unavailable.")}
+
+      visualization ->
+        {:noreply,
+         socket
+         |> assign(:show_dashboard_payload_modal, true)
+         |> assign(:selected_dashboard_payload_title, dashboard_payload_title(visualization))
+         |> assign(:selected_dashboard_payload, dashboard_payload_json(visualization))}
+    end
+  end
+
+  def handle_event("close_dashboard_payload_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_dashboard_payload_modal, false)
+     |> assign(:selected_dashboard_payload, nil)
+     |> assign(:selected_dashboard_payload_title, nil)}
   end
 
   def handle_event("select_source", %{"ref" => ref}, socket) do
@@ -423,6 +448,9 @@ defmodule TrifleApp.ChatLive do
     |> assign(:pending_user_message, nil)
     |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
     |> assign(:show_source_modal, false)
+    |> assign(:show_dashboard_payload_modal, false)
+    |> assign(:selected_dashboard_payload, nil)
+    |> assign(:selected_dashboard_payload_title, nil)
   end
 
   defp init_session(socket, %Source{} = source) do
@@ -446,6 +474,9 @@ defmodule TrifleApp.ChatLive do
       |> assign(:pending_user_message, nil)
       |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
       |> assign(:show_source_modal, false)
+      |> assign(:show_dashboard_payload_modal, false)
+      |> assign(:selected_dashboard_payload, nil)
+      |> assign(:selected_dashboard_payload_title, nil)
       |> maybe_resume_pending()
     else
       {:error, error} ->
@@ -464,6 +495,9 @@ defmodule TrifleApp.ChatLive do
         |> assign(:pending_user_message, nil)
         |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
         |> assign(:show_source_modal, false)
+        |> assign(:show_dashboard_payload_modal, false)
+        |> assign(:selected_dashboard_payload, nil)
+        |> assign(:selected_dashboard_payload_title, nil)
         |> put_flash(:error, "Unable to load chat session: #{format_error(error)}")
     end
   end
@@ -1294,6 +1328,34 @@ defmodule TrifleApp.ChatLive do
           <% end %>
         </:body>
       </.app_modal>
+
+      <.app_modal
+        id="chat-dashboard-payload-modal"
+        show={@show_dashboard_payload_modal}
+        on_cancel="close_dashboard_payload_modal"
+        size="xl"
+      >
+        <:title>{@selected_dashboard_payload_title || "Dashboard payload"}</:title>
+        <:body>
+          <div class="space-y-3">
+            <p class="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+              Persisted dashboard payload
+            </p>
+            <div class="rounded-2xl border border-slate-200/80 bg-slate-950 px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+              <pre class="max-h-[70vh] overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-slate-100">{@selected_dashboard_payload || "{}"}</pre>
+            </div>
+          </div>
+        </:body>
+        <:actions>
+          <button
+            type="button"
+            phx-click="close_dashboard_payload_modal"
+            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+          >
+            Close
+          </button>
+        </:actions>
+      </.app_modal>
     </div>
     """
   end
@@ -1338,7 +1400,10 @@ defmodule TrifleApp.ChatLive do
         </div>
       </div>
 
-      <div :if={Enum.any?(dashboard_visualizations(@message))} class={dashboard_block_classes(@message)}>
+      <div
+        :if={Enum.any?(dashboard_visualizations(@message))}
+        class={dashboard_block_classes(@message)}
+      >
         <.chat_dashboard_visualization
           :for={viz <- dashboard_visualizations(@message)}
           visualization={viz}
@@ -1356,34 +1421,65 @@ defmodule TrifleApp.ChatLive do
     assigns =
       assigns
       |> assign(:dom_id, Map.get(visualization, :dom_id))
-      |> assign(:dashboard_render, dashboard_visualization_render(visualization, Map.get(visualization, :dom_id)))
+      |> assign(
+        :dashboard_render,
+        dashboard_visualization_render(visualization, Map.get(visualization, :dom_id))
+      )
 
     ~H"""
-    <%= if @dashboard_render do %>
-      <WidgetView.grid
-        dashboard={@dashboard_render.dashboard}
-        stats={@dashboard_render.stats}
-        print_mode={false}
-        current_user={nil}
-        can_edit_dashboard={false}
-        is_public_access={true}
-        public_token={nil}
-        grid_dom_id={@dashboard_render.grid_dom_id}
-        widget_export={%{type: :disabled}}
-        kpi_values={@dashboard_render.dataset_maps.kpi_values}
-        kpi_visuals={@dashboard_render.dataset_maps.kpi_visuals}
-        timeseries={@dashboard_render.dataset_maps.timeseries}
-        category={@dashboard_render.dataset_maps.category}
-        table={@dashboard_render.dataset_maps.table}
-        text_widgets={@dashboard_render.dataset_maps.text}
-        list={@dashboard_render.dataset_maps.list}
-        distribution={@dashboard_render.dataset_maps.distribution}
-      />
-    <% else %>
-      <div class="text-xs text-slate-500 dark:text-slate-400 italic">
-        Could not render this dashboard snapshot.
+    <div class="space-y-3">
+      <%= if @dashboard_render do %>
+        <WidgetView.grid
+          dashboard={@dashboard_render.dashboard}
+          stats={@dashboard_render.stats}
+          print_mode={false}
+          current_user={nil}
+          can_edit_dashboard={false}
+          is_public_access={true}
+          public_token={nil}
+          grid_dom_id={@dashboard_render.grid_dom_id}
+          widget_export={%{type: :disabled}}
+          kpi_values={@dashboard_render.dataset_maps.kpi_values}
+          kpi_visuals={@dashboard_render.dataset_maps.kpi_visuals}
+          timeseries={@dashboard_render.dataset_maps.timeseries}
+          category={@dashboard_render.dataset_maps.category}
+          table={@dashboard_render.dataset_maps.table}
+          text_widgets={@dashboard_render.dataset_maps.text}
+          list={@dashboard_render.dataset_maps.list}
+          distribution={@dashboard_render.dataset_maps.distribution}
+        />
+      <% else %>
+        <div class="text-xs text-slate-500 dark:text-slate-400 italic">
+          Could not render this dashboard snapshot.
+        </div>
+      <% end %>
+
+      <div class="flex justify-end">
+        <button
+          type="button"
+          phx-click="open_dashboard_payload"
+          phx-value-dom_id={@dom_id}
+          class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:text-slate-500 dark:hover:bg-slate-900/40 dark:hover:text-slate-300"
+          aria-label="Inspect dashboard payload"
+          title="Inspect dashboard payload"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-3.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3.75 4.5h16.5M3.75 9h16.5m-16.5 4.5h10.5m-10.5 4.5h10.5"
+            />
+          </svg>
+        </button>
       </div>
-    <% end %>
+    </div>
     """
   end
 
@@ -1512,6 +1608,32 @@ defmodule TrifleApp.ChatLive do
   end
 
   defp format_timestamp(_), do: ""
+
+  defp find_dashboard_visualization(messages, dom_id) when is_binary(dom_id) do
+    messages
+    |> Enum.flat_map(&dashboard_visualizations/1)
+    |> Enum.find(fn visualization -> Map.get(visualization, :dom_id) == dom_id end)
+  end
+
+  defp find_dashboard_visualization(_messages, _dom_id), do: nil
+
+  defp dashboard_payload_title(visualization) do
+    case Map.get(visualization, :title, Map.get(visualization, "title")) do
+      title when is_binary(title) and title != "" -> "#{title} payload"
+      _ -> "Dashboard payload"
+    end
+  end
+
+  defp dashboard_payload_json(visualization) do
+    visualization
+    |> Map.get(:dashboard, Map.get(visualization, "dashboard", %{}))
+    |> Jason.encode!(pretty: true)
+  rescue
+    _ ->
+      visualization
+      |> Map.get(:dashboard, Map.get(visualization, "dashboard", %{}))
+      |> inspect(pretty: true, limit: :infinity)
+  end
 
   defp gravatar_url(email, size) when is_binary(email) do
     trimmed = String.trim(email)

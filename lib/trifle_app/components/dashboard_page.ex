@@ -23,6 +23,11 @@ defmodule TrifleApp.Components.DashboardPage do
   alias TrifleApp.Granularity
 
   def dashboard(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:show_dashboard_payload_modal, fn -> false end)
+      |> assign_new(:dashboard_payload_json, fn -> dashboard_payload_json(assigns[:dashboard]) end)
+
     ~H"""
     <div
       id="dashboard-page-root"
@@ -133,227 +138,231 @@ defmodule TrifleApp.Components.DashboardPage do
               </h1>
             </div>
 
-            <%= if !@print_mode && !@is_public_access && @current_user && @can_edit_dashboard do %>
-              <!-- Dashboard owner controls -->
-              <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
-                <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
-                <!-- Add Widget Button -->
-                <button
-                  id={add_btn_id}
-                  type="button"
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-                  title="Add widget"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    class="-ml-0.5 md:mr-1.5 h-4 w-4"
+            <div class="flex items-center justify-end gap-2 md:gap-3">
+              <%= if !@print_mode && !@is_public_access && @current_user && @can_edit_dashboard do %>
+                <!-- Dashboard owner controls -->
+                <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
+                  <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
+                  <!-- Add Widget Button -->
+                  <button
+                    id={add_btn_id}
+                    type="button"
+                    class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+                    title="Add widget"
                   >
-                    <path
-                      fill-rule="evenodd"
-                      d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
-                  <span class="hidden md:inline">Add Widget</span>
-                </button>
-                <.link
-                  patch={~p"/dashboards/#{@dashboard.id}/configure"}
-                  class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                >
-                  <svg
-                    class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                    <span class="hidden md:inline">Add Widget</span>
+                  </button>
+                  <.link
+                    patch={~p"/dashboards/#{@dashboard.id}/configure"}
+                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
-                    />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                  <span class="hidden md:inline">Configure</span>
-                </.link>
-                
-    <!-- Status Icon Badges -->
-                <div id="status-badges" class="flex items-center gap-2" phx-hook="FastTooltip">
-                  <!-- Public link -->
-                  <%= if @dashboard.access_token do %>
-                    <!-- Hidden element with the URL to copy -->
-                    <span id="dashboard-public-url" class="hidden">
-                      {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
-                    </span>
-                    
-    <!-- Has token: white/plain button with visual feedback - hidden on XS screens -->
-                    <button
-                      id={"dashboard-public-link-header-copy-" <> @dashboard.id}
-                      type="button"
-                      phx-hook="CopyFeedback"
-                      phx-click={JS.dispatch("phx:copy", to: "#dashboard-public-url")}
-                      data-copy-icon="header-link-icon"
-                      data-copied-icon="header-check-icon"
-                      data-copy-timeout="2000"
-                      class="cursor-pointer hidden sm:inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-xs font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                      data-tooltip="Copy public dashboard link"
+                    <svg
+                      class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
                     >
-                      <!-- Link Icon (default) -->
-                      <svg
-                        id="header-link-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
-                        />
-                      </svg>
-                      
-    <!-- Check Icon (shown temporarily when copied) -->
-                      <svg
-                        id="header-check-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5 text-green-600 hidden"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </button>
-                  <% else %>
-                    <!-- No token: icon-only (no wrapper), hidden on XS -->
-                    <div
-                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                      data-tooltip="No public link available"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5 text-gray-400 dark:text-slate-500"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
-                        />
-                      </svg>
-                    </div>
-                  <% end %>
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                    <span class="hidden md:inline">Configure</span>
+                  </.link>
                   
+    <!-- Status Icon Badges -->
+                  <div id="status-badges" class="flex items-center gap-2" phx-hook="FastTooltip">
+                    <!-- Public link -->
+                    <%= if @dashboard.access_token do %>
+                      <!-- Hidden element with the URL to copy -->
+                      <span id="dashboard-public-url" class="hidden">
+                        {url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}")}
+                      </span>
+                      
+    <!-- Has token: white/plain button with visual feedback - hidden on XS screens -->
+                      <button
+                        id={"dashboard-public-link-header-copy-" <> @dashboard.id}
+                        type="button"
+                        phx-hook="CopyFeedback"
+                        phx-click={JS.dispatch("phx:copy", to: "#dashboard-public-url")}
+                        data-copy-icon="header-link-icon"
+                        data-copied-icon="header-check-icon"
+                        data-copy-timeout="2000"
+                        class="cursor-pointer hidden sm:inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-xs font-medium text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                        data-tooltip="Copy public dashboard link"
+                      >
+                        <!-- Link Icon (default) -->
+                        <svg
+                          id="header-link-icon"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
+                          />
+                        </svg>
+                        
+    <!-- Check Icon (shown temporarily when copied) -->
+                        <svg
+                          id="header-check-icon"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5 text-green-600 hidden"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      </button>
+                    <% else %>
+                      <!-- No token: icon-only (no wrapper), hidden on XS -->
+                      <div
+                        class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                        data-tooltip="No public link available"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5 text-gray-400 dark:text-slate-500"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
+                          />
+                        </svg>
+                      </div>
+                    <% end %>
+                    
     <!-- Visibility badge -->
-                  <%= if @dashboard.visibility do %>
-                    <div
-                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                      data-tooltip="Visible to everyone in organization"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5 text-teal-600 dark:text-teal-400"
+                    <%= if @dashboard.visibility do %>
+                      <div
+                        class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                        data-tooltip="Visible to everyone in organization"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
-                        />
-                      </svg>
-                    </div>
-                  <% else %>
-                    <div
-                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                      data-tooltip="Private - only you can see this"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5 text-gray-400 dark:text-slate-500"
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5 text-teal-600 dark:text-teal-400"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
+                          />
+                        </svg>
+                      </div>
+                    <% else %>
+                      <div
+                        class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                        data-tooltip="Private - only you can see this"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
-                        />
-                      </svg>
-                    </div>
-                  <% end %>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5 text-gray-400 dark:text-slate-500"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+                          />
+                        </svg>
+                      </div>
+                    <% end %>
 
-                  <%= if @dashboard.locked do %>
-                    <div
-                      class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
-                      data-tooltip="Locked. Only the owner or organization admins can edit."
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5 text-amber-500 dark:text-amber-400"
+                    <%= if @dashboard.locked do %>
+                      <div
+                        class="hidden sm:inline-flex items-center justify-center rounded-md px-3 py-2"
+                        data-tooltip="Locked. Only the owner or organization admins can edit."
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M16.5 10.5V7.5a4.5 4.5 0 0 0-9 0v3M6 10.5h12a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18v-6A1.5 1.5 0 0 1 6 10.5Z"
-                        />
-                      </svg>
-                      <span class="sr-only">Dashboard locked</span>
-                    </div>
-                  <% end %>
-                </div>
-              </div>
-            <% else %>
-              <!-- Non-owner or public access view -->
-              <%= if !@is_public_access do %>
-                <div class="flex items-center gap-2 w-64 justify-end">
-                  <span class={[
-                    "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
-                    if(@dashboard.visibility,
-                      do:
-                        "bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-600/20 dark:ring-blue-500/30",
-                      else:
-                        "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-600/20 dark:ring-gray-500/30"
-                    )
-                  ]}>
-                    {Trifle.Organizations.Dashboard.visibility_display(@dashboard.visibility)}
-                  </span>
-                  <%= if @dashboard.locked do %>
-                    <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-amber-50 dark:bg-amber-900 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30">
-                      Locked
-                    </span>
-                  <% end %>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5 text-amber-500 dark:text-amber-400"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M16.5 10.5V7.5a4.5 4.5 0 0 0-9 0v3M6 10.5h12a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18v-6A1.5 1.5 0 0 1 6 10.5Z"
+                          />
+                        </svg>
+                        <span class="sr-only">Dashboard locked</span>
+                      </div>
+                    <% end %>
+                  </div>
                 </div>
               <% else %>
-                <div class="w-64"></div>
+                <!-- Non-owner or public access view -->
+                <%= if !@is_public_access do %>
+                  <div class="flex items-center gap-2 w-64 justify-end">
+                    <span class={[
+                      "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
+                      if(@dashboard.visibility,
+                        do:
+                          "bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-600/20 dark:ring-blue-500/30",
+                        else:
+                          "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-600/20 dark:ring-gray-500/30"
+                      )
+                    ]}>
+                      {Trifle.Organizations.Dashboard.visibility_display(@dashboard.visibility)}
+                    </span>
+                    <%= if @dashboard.locked do %>
+                      <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-amber-50 dark:bg-amber-900 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30">
+                        Locked
+                      </span>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <div class="w-64"></div>
+                <% end %>
               <% end %>
-            <% end %>
+
+              <.dashboard_payload_button :if={!@print_mode && !@is_public_access} />
+            </div>
           </div>
         </div>
         
@@ -499,6 +508,34 @@ defmodule TrifleApp.Components.DashboardPage do
           transponder_info={@transponder_info || %{}}
           export_params={export_params}
         />
+
+        <.app_modal
+          id="dashboard-payload-modal"
+          show={@show_dashboard_payload_modal}
+          on_cancel="close_dashboard_payload_modal"
+          size="xl"
+        >
+          <:title>Dashboard payload</:title>
+          <:body>
+            <div class="space-y-3">
+              <p class="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                Persisted dashboard payload
+              </p>
+              <div class="rounded-2xl border border-slate-200/80 bg-slate-950 px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+                <pre class="max-h-[70vh] overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-slate-100">{@dashboard_payload_json}</pre>
+              </div>
+            </div>
+          </:body>
+          <:actions>
+            <button
+              type="button"
+              phx-click="close_dashboard_payload_modal"
+              class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+            >
+              Close
+            </button>
+          </:actions>
+        </.app_modal>
         
     <!-- Configure Modal -->
         <%= if !@is_public_access && @live_action == :configure do %>
@@ -1555,6 +1592,49 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp source_selected?(%{type: type, id: id}, source) do
     type == Source.type(source) && id == to_string(Source.id(source))
+  end
+
+  attr :rest, :global
+
+  defp dashboard_payload_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="open_dashboard_payload_modal"
+      class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:text-slate-500 dark:hover:bg-slate-900/40 dark:hover:text-slate-300"
+      aria-label="Inspect dashboard payload"
+      title="Inspect dashboard payload"
+      {@rest}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+        class="size-3.5"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M3.75 4.5h16.5M3.75 9h16.5m-16.5 4.5h10.5m-10.5 4.5h10.5"
+        />
+      </svg>
+    </button>
+    """
+  end
+
+  defp dashboard_payload_json(nil), do: "{}"
+
+  defp dashboard_payload_json(dashboard) do
+    dashboard
+    |> Map.get(:payload, %{})
+    |> Jason.encode!(pretty: true)
+  rescue
+    _ ->
+      dashboard
+      |> Map.get(:payload, %{})
+      |> inspect(pretty: true, limit: :infinity)
   end
 
   defp widget_workspace_edit_form(assigns) do

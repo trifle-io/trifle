@@ -45,6 +45,10 @@ defmodule Trifle.Chat.DashboardSpec do
       best_for: "breakdowns by category, composition, and ranking slices",
       required_one_of: [["path", "paths"]],
       defaults: %{w: 6, h: 4, chart_type: "bar"},
+      examples: [
+        %{type: "category", title: "Products share", paths: ["products.*"], chart_type: "pie", w: 6, h: 4},
+        %{type: "category", title: "Products share", paths: ["products.*"], chart_type: "donut", w: 6, h: 4}
+      ],
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: false, description: "Single categorical path."},
@@ -204,7 +208,13 @@ defmodule Trifle.Chat.DashboardSpec do
     Practical rules:
     - Use `describe_dashboard_widgets` whenever you need the exact widget contract or examples.
     - Use `build_metric_dashboard` to validate and persist an inline dashboard visualization.
+    - Pass `grid` as an array of widget objects. Do not wrap it inside another `grid`, `widgets`, or `payload` object unless reusing an existing dashboard payload.
     - Most widgets need `path` or `paths`; only `text` can omit metric paths.
+    - Use only documented field names. `chart` and `style` are invalid widget fields; use `chart_type`.
+    - Category widgets default to `bar`. If you want a pie or donut, use `type: "category"` and set `chart_type` to `pie` or `donut` explicitly.
+    - Distribution and heatmap widgets are for histograms/buckets, not pie or donut charts.
+    - Example category pie widget: `{"type":"category","title":"Products share","paths":["products.*"],"chart_type":"pie","w":6,"h":4}`.
+    - Example timeseries bar widget: `{"type":"timeseries","title":"Revenue","paths":["revenue"],"chart_type":"bar","w":12,"h":4}`.
     - Prefer clear layouts: KPI cards in 3x2 blocks, charts in 6x4 or 12x4 blocks, text headers in 12x1.
     - Keep widget titles short and factual.
     """

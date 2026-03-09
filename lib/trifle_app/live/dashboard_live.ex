@@ -139,6 +139,14 @@ defmodule TrifleApp.DashboardLive do
     {:noreply, assign(socket, :temp_name, name)}
   end
 
+  def handle_event("open_dashboard_payload_modal", _params, socket) do
+    {:noreply, assign(socket, :show_dashboard_payload_modal, true)}
+  end
+
+  def handle_event("close_dashboard_payload_modal", _params, socket) do
+    {:noreply, assign(socket, :show_dashboard_payload_modal, false)}
+  end
+
   def handle_event("save_name", %{"name" => name}, socket) do
     if !socket.assigns.can_edit_dashboard do
       {:noreply,
@@ -1840,6 +1848,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_table, %{})
     |> assign(:widget_list, %{})
     |> assign(:widget_distribution, %{})
+    |> assign(:show_dashboard_payload_modal, false)
     |> assign_dashboard_permissions()
   end
 
