@@ -120,8 +120,8 @@ defmodule TrifleApp.ChatLive do
     {:noreply, assign(socket, :show_source_modal, false)}
   end
 
-  def handle_event("open_dashboard_payload", %{"dom_id" => dom_id}, socket) do
-    case find_dashboard_visualization(socket.assigns.messages, dom_id) do
+  def handle_event("open_dashboard_payload", %{"dom_id" => dom_id, "message_id" => message_id}, socket) do
+    case find_dashboard_visualization(socket.assigns.messages, dom_id, message_id) do
       nil ->
         {:noreply, put_flash(socket, :error, "Dashboard payload unavailable.")}
 
@@ -1412,6 +1412,7 @@ defmodule TrifleApp.ChatLive do
       >
         <.chat_dashboard_visualization
           :for={viz <- dashboard_visualizations(@message)}
+          message_dom_id={@message.dom_id}
           visualization={viz}
         />
       </div>
@@ -1420,6 +1421,7 @@ defmodule TrifleApp.ChatLive do
   end
 
   attr :visualization, :map, required: true
+  attr :message_dom_id, :string, required: true
 
   defp chat_dashboard_visualization(assigns) do
     visualization = assigns.visualization
@@ -1464,6 +1466,7 @@ defmodule TrifleApp.ChatLive do
         <DashboardPayload.payload_button
           phx-click="open_dashboard_payload"
           phx-value-dom_id={@dom_id}
+          phx-value-message_id={@message_dom_id}
         />
       </div>
     </div>
@@ -1596,13 +1599,22 @@ defmodule TrifleApp.ChatLive do
 
   defp format_timestamp(_), do: ""
 
-  defp find_dashboard_visualization(messages, dom_id) when is_binary(dom_id) do
+  defp find_dashboard_visualization(messages, dom_id, message_id)
+       when is_binary(dom_id) and is_binary(message_id) do
     messages
-    |> Enum.flat_map(&dashboard_visualizations/1)
-    |> Enum.find(fn visualization -> Map.get(visualization, :dom_id) == dom_id end)
+    |> Enum.find(fn message -> Map.get(message, :dom_id) == message_id end)
+    |> case do
+      nil ->
+        nil
+
+      message ->
+        message
+        |> dashboard_visualizations()
+        |> Enum.find(fn visualization -> Map.get(visualization, :dom_id) == dom_id end)
+    end
   end
 
-  defp find_dashboard_visualization(_messages, _dom_id), do: nil
+  defp find_dashboard_visualization(_messages, _dom_id, _message_id), do: nil
 
   defp dashboard_payload_title(visualization) do
     case Map.get(visualization, :title, Map.get(visualization, "title")) do
