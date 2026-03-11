@@ -116,9 +116,21 @@ defmodule Trifle.Chat.ToolsTest do
 
       assert "inspect_metric_schema" in tool_names
       assert get_in(list_available_metrics, ["function", "parameters", "properties"]) == %{}
-      assert get_in(inspect_metric_schema, ["function", "parameters", "required"]) == ["metric_key"]
-      assert get_in(list_available_metrics, ["function", "description"]) =~ "single coarse sample bucket"
-      assert get_in(Enum.find(definitions, &(get_in(&1, ["function", "name"]) == "build_metric_dashboard")), ["function", "description"]) =~
+
+      assert get_in(inspect_metric_schema, ["function", "parameters", "required"]) == [
+               "metric_key"
+             ]
+
+      assert get_in(list_available_metrics, ["function", "description"]) =~
+               "single coarse sample bucket"
+
+      assert get_in(
+               Enum.find(
+                 definitions,
+                 &(get_in(&1, ["function", "name"]) == "build_metric_dashboard")
+               ),
+               ["function", "description"]
+             ) =~
                "chat point limit"
     end
   end
@@ -155,11 +167,24 @@ defmodule Trifle.Chat.ToolsTest do
           "id" => "dash-1",
           "title" => "Sales Overview",
           "timeframe" => %{"label" => "90d", "granularity" => "1d"},
-          "series_snapshot" => %{"at" => ["2024-01-01T00:00:00Z"], "values" => [%{"revenue" => 12}]},
+          "series_snapshot" => %{
+            "at" => ["2024-01-01T00:00:00Z"],
+            "values" => [%{"revenue" => 12}]
+          },
           "dashboard" => %{
             "payload" => %{
               "grid" => [
-                %{"id" => "widget-1", "type" => "kpi", "title" => "Revenue", "path" => "revenue", "x" => 0, "y" => 0, "w" => 3, "h" => 2}
+                %{
+                  "id" => "widget-1",
+                  "type" => "category",
+                  "title" => "Revenue",
+                  "chart_type" => "pie",
+                  "path" => "revenue",
+                  "x" => 0,
+                  "y" => 0,
+                  "w" => 3,
+                  "h" => 2
+                }
               ]
             }
           }
@@ -171,7 +196,10 @@ defmodule Trifle.Chat.ToolsTest do
       assert compact.status == "ok"
       assert compact.metric_key == "sales"
       assert compact.visualization.widget_count == 1
-      assert [%{id: "widget-1", type: "kpi", path: "revenue"}] = compact.visualization.widgets
+
+      assert [%{id: "widget-1", type: "category", chart_type: "pie", path: "revenue"}] =
+               compact.visualization.widgets
+
       refute Map.has_key?(compact.visualization, :series_snapshot)
     end
 
@@ -182,7 +210,10 @@ defmodule Trifle.Chat.ToolsTest do
         "timeframe" => %{"label" => "90d", "granularity" => "1d"},
         "timeline" =>
           for day <- 1..35 do
-            %{"at" => "2024-01-#{String.pad_leading(Integer.to_string(day), 2, "0")}T00:00:00Z", "data" => %{"revenue" => day}}
+            %{
+              "at" => "2024-01-#{String.pad_leading(Integer.to_string(day), 2, "0")}T00:00:00Z",
+              "data" => %{"revenue" => day}
+            }
           end,
         "summary" => for(idx <- 1..30, do: %{"path" => "metric.#{idx}", "latest" => idx}),
         "available_paths" => for(idx <- 1..75, do: "metric.#{idx}"),

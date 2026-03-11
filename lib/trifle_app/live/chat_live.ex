@@ -40,6 +40,7 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
       |> assign(:show_source_modal, false)
+      |> assign(:can_view_dashboard_payload, admin_user?(socket.assigns[:current_user]))
       |> assign(:show_dashboard_payload_modal, false)
       |> assign(:selected_dashboard_payload, nil)
       |> assign(:selected_dashboard_payload_title, nil)
@@ -120,22 +121,30 @@ defmodule TrifleApp.ChatLive do
     {:noreply, assign(socket, :show_source_modal, false)}
   end
 
-  def handle_event("open_dashboard_payload", %{"dom_id" => dom_id, "message_id" => message_id}, socket) do
-    case find_dashboard_visualization(socket.assigns.messages, dom_id, message_id) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Dashboard payload unavailable.")}
+  def handle_event(
+        "open_dashboard_payload",
+        %{"dom_id" => dom_id, "message_id" => message_id},
+        socket
+      ) do
+    if socket.assigns[:can_view_dashboard_payload] do
+      case find_dashboard_visualization(socket.assigns.messages, dom_id, message_id) do
+        nil ->
+          {:noreply, put_flash(socket, :error, "Dashboard payload unavailable.")}
 
-      visualization ->
-        {:noreply,
-         socket
-         |> assign(:show_dashboard_payload_modal, true)
-         |> assign(:selected_dashboard_payload_title, dashboard_payload_title(visualization))
-         |> assign(
-           :selected_dashboard_payload,
-           DashboardPayload.dashboard_payload_json(
-             Map.get(visualization, :dashboard, Map.get(visualization, "dashboard", %{}))
-           )
-         )}
+        visualization ->
+          {:noreply,
+           socket
+           |> assign(:show_dashboard_payload_modal, true)
+           |> assign(:selected_dashboard_payload_title, dashboard_payload_title(visualization))
+           |> assign(
+             :selected_dashboard_payload,
+             DashboardPayload.dashboard_payload_json(
+               Map.get(visualization, :dashboard, Map.get(visualization, "dashboard", %{}))
+             )
+           )}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -1200,6 +1209,7 @@ defmodule TrifleApp.ChatLive do
           :for={message <- messages_without_last}
           message={message}
           current_user={@current_user}
+          can_view_dashboard_payload={@can_view_dashboard_payload}
         />
 
         <.progress_events
@@ -1209,7 +1219,12 @@ defmodule TrifleApp.ChatLive do
           tick_at={@progress_tick_at}
         />
 
-        <.chat_message :if={last_message} message={last_message} current_user={@current_user} />
+        <.chat_message
+          :if={last_message}
+          message={last_message}
+          current_user={@current_user}
+          can_view_dashboard_payload={@can_view_dashboard_payload}
+        />
 
         <.progress_events
           :if={progress_after_last?(@progress_events, @sending, last_message)}
@@ -1343,14 +1358,7 @@ defmodule TrifleApp.ChatLive do
       >
         <:title>{@selected_dashboard_payload_title || "Dashboard payload"}</:title>
         <:body>
-          <div class="space-y-3">
-            <p class="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-              Persisted dashboard payload
-            </p>
-            <div class="rounded-2xl border border-slate-200/80 bg-slate-950 px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-              <pre class="max-h-[70vh] overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-slate-100">{@selected_dashboard_payload || "{}"}</pre>
-            </div>
-          </div>
+          <DashboardPayload.payload_view payload={@selected_dashboard_payload || "{}"} />
         </:body>
         <:actions>
           <button
@@ -1377,6 +1385,7 @@ defmodule TrifleApp.ChatLive do
 
   attr :message, :map, required: true
   attr :current_user, :any
+  attr :can_view_dashboard_payload, :boolean, default: false
 
   defp chat_message(assigns) do
     ~H"""
@@ -1414,6 +1423,7 @@ defmodule TrifleApp.ChatLive do
           :for={viz <- dashboard_visualizations(@message)}
           message_dom_id={@message.dom_id}
           visualization={viz}
+          can_view_dashboard_payload={@can_view_dashboard_payload}
         />
       </div>
     </div>
@@ -1422,6 +1432,7 @@ defmodule TrifleApp.ChatLive do
 
   attr :visualization, :map, required: true
   attr :message_dom_id, :string, required: true
+  attr :can_view_dashboard_payload, :boolean, default: false
 
   defp chat_dashboard_visualization(assigns) do
     visualization = assigns.visualization
@@ -1462,7 +1473,7 @@ defmodule TrifleApp.ChatLive do
         </div>
       <% end %>
 
-      <div class="flex justify-end">
+      <div :if={@can_view_dashboard_payload} class="flex justify-end">
         <DashboardPayload.payload_button
           phx-click="open_dashboard_payload"
           phx-value-dom_id={@dom_id}
@@ -1586,6 +1597,9 @@ defmodule TrifleApp.ChatLive do
 
   defp avatar_alt(%{role: "assistant"}), do: "Trifle AI avatar"
   defp avatar_alt(_), do: "Your avatar"
+
+  defp admin_user?(%{is_admin: true}), do: true
+  defp admin_user?(_), do: false
 
   defp format_timestamp(nil), do: nil
 

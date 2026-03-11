@@ -14,14 +14,52 @@ defmodule Trifle.Chat.DashboardSpec do
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: true, description: "Metric path to aggregate."},
-        %{name: "function", type: "string", required: false, description: "Aggregator: mean, sum, min, or max.", default: "mean"},
-        %{name: "subtype", type: "string", required: false, description: "number, split, or goal.", default: "number"},
-        %{name: "size", type: "string", required: false, description: "s, m, or l.", default: "m"},
+        %{
+          name: "function",
+          type: "string",
+          required: false,
+          description: "Aggregator: mean, sum, min, or max.",
+          default: "mean"
+        },
+        %{
+          name: "subtype",
+          type: "string",
+          required: false,
+          description: "number, split, or goal.",
+          default: "number"
+        },
+        %{
+          name: "size",
+          type: "string",
+          required: false,
+          description: "s, m, or l.",
+          default: "m"
+        },
         %{name: "timeseries", type: "boolean", required: false, description: "Adds a sparkline."},
-        %{name: "diff", type: "boolean", required: false, description: "For split KPIs, show change vs previous slice."},
-        %{name: "goal_target", type: "number", required: false, description: "Goal target for goal KPIs."},
-        %{name: "goal_progress", type: "boolean", required: false, description: "Render progress bar for goal KPIs."},
-        %{name: "goal_invert", type: "boolean", required: false, description: "Invert goal semantics for lower-is-better metrics."}
+        %{
+          name: "diff",
+          type: "boolean",
+          required: false,
+          description: "For split KPIs, show change vs previous slice."
+        },
+        %{
+          name: "goal_target",
+          type: "number",
+          required: false,
+          description: "Goal target for goal KPIs."
+        },
+        %{
+          name: "goal_progress",
+          type: "boolean",
+          required: false,
+          description: "Render progress bar for goal KPIs."
+        },
+        %{
+          name: "goal_invert",
+          type: "boolean",
+          required: false,
+          description: "Invert goal semantics for lower-is-better metrics."
+        }
       ]
     },
     %{
@@ -32,11 +70,38 @@ defmodule Trifle.Chat.DashboardSpec do
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: false, description: "Single metric path."},
-        %{name: "paths", type: "array<string>", required: false, description: "One or more metric paths."},
-        %{name: "chart_type", type: "string", required: false, description: "line, area, dots, or bar.", default: "line"},
-        %{name: "stacked", type: "boolean", required: false, description: "Stack multiple series."},
-        %{name: "normalized", type: "boolean", required: false, description: "Convert stacked values into percentages."},
-        %{name: "legend", type: "boolean", required: false, description: "Show legend.", default: false},
+        %{
+          name: "paths",
+          type: "array<string>",
+          required: false,
+          description: "One or more metric paths."
+        },
+        %{
+          name: "chart_type",
+          type: "string",
+          required: false,
+          description: "line, area, dots, or bar.",
+          default: "line"
+        },
+        %{
+          name: "stacked",
+          type: "boolean",
+          required: false,
+          description: "Stack multiple series."
+        },
+        %{
+          name: "normalized",
+          type: "boolean",
+          required: false,
+          description: "Convert stacked values into percentages."
+        },
+        %{
+          name: "legend",
+          type: "boolean",
+          required: false,
+          description: "Show legend.",
+          default: false
+        },
         %{name: "y_label", type: "string", required: false, description: "Optional y-axis label."}
       ]
     },
@@ -46,14 +111,39 @@ defmodule Trifle.Chat.DashboardSpec do
       required_one_of: [["path", "paths"]],
       defaults: %{w: 6, h: 4, chart_type: "bar"},
       examples: [
-        %{type: "category", title: "Products share", paths: ["products.*"], chart_type: "pie", w: 6, h: 4},
-        %{type: "category", title: "Products share", paths: ["products.*"], chart_type: "donut", w: 6, h: 4}
+        %{
+          type: "category",
+          title: "Products share",
+          paths: ["products.*"],
+          chart_type: "pie",
+          w: 6,
+          h: 4
+        },
+        %{
+          type: "category",
+          title: "Products share",
+          paths: ["products.*"],
+          chart_type: "donut",
+          w: 6,
+          h: 4
+        }
       ],
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: false, description: "Single categorical path."},
-        %{name: "paths", type: "array<string>", required: false, description: "One or more categorical paths."},
-        %{name: "chart_type", type: "string", required: false, description: "bar, pie, or donut.", default: "bar"}
+        %{
+          name: "paths",
+          type: "array<string>",
+          required: false,
+          description: "One or more categorical paths."
+        },
+        %{
+          name: "chart_type",
+          type: "string",
+          required: false,
+          description: "bar, pie, or donut.",
+          default: "bar"
+        }
       ]
     },
     %{
@@ -64,7 +154,12 @@ defmodule Trifle.Chat.DashboardSpec do
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: false, description: "Single metric path."},
-        %{name: "paths", type: "array<string>", required: false, description: "One or more metric paths."}
+        %{
+          name: "paths",
+          type: "array<string>",
+          required: false,
+          description: "One or more metric paths."
+        }
       ]
     },
     %{
@@ -73,13 +168,51 @@ defmodule Trifle.Chat.DashboardSpec do
       required_one_of: [],
       defaults: %{w: 12, h: 1, subtype: "header", alignment: "center", title_size: "large"},
       supported_fields: [
-        %{name: "title", type: "string", required: false, description: "Main headline for header text widgets."},
-        %{name: "subtitle", type: "string", required: false, description: "Supporting copy for header text widgets."},
-        %{name: "payload", type: "string", required: false, description: "HTML payload for html subtype."},
-        %{name: "subtype", type: "string", required: false, description: "header or html.", default: "header"},
-        %{name: "alignment", type: "string", required: false, description: "left, center, or right.", default: "center"},
-        %{name: "title_size", type: "string", required: false, description: "small, medium, or large.", default: "large"},
-        %{name: "color", type: "string", required: false, description: "Named text-widget color preset."}
+        %{
+          name: "title",
+          type: "string",
+          required: false,
+          description: "Main headline for header text widgets."
+        },
+        %{
+          name: "subtitle",
+          type: "string",
+          required: false,
+          description: "Supporting copy for header text widgets."
+        },
+        %{
+          name: "payload",
+          type: "string",
+          required: false,
+          description: "HTML payload for html subtype."
+        },
+        %{
+          name: "subtype",
+          type: "string",
+          required: false,
+          description: "header or html.",
+          default: "header"
+        },
+        %{
+          name: "alignment",
+          type: "string",
+          required: false,
+          description: "left, center, or right.",
+          default: "center"
+        },
+        %{
+          name: "title_size",
+          type: "string",
+          required: false,
+          description: "small, medium, or large.",
+          default: "large"
+        },
+        %{
+          name: "color",
+          type: "string",
+          required: false,
+          description: "Named text-widget color preset."
+        }
       ]
     },
     %{
@@ -89,10 +222,32 @@ defmodule Trifle.Chat.DashboardSpec do
       defaults: %{w: 4, h: 4, limit: 8, sort: "desc"},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: true, description: "Wildcard-friendly path, for example channel.*."},
-        %{name: "limit", type: "integer", required: false, description: "Maximum rows to show.", default: 8},
-        %{name: "sort", type: "string", required: false, description: "asc or desc.", default: "desc"},
-        %{name: "empty_message", type: "string", required: false, description: "Fallback copy when no rows exist."}
+        %{
+          name: "path",
+          type: "string",
+          required: true,
+          description: "Wildcard-friendly path, for example channel.*."
+        },
+        %{
+          name: "limit",
+          type: "integer",
+          required: false,
+          description: "Maximum rows to show.",
+          default: 8
+        },
+        %{
+          name: "sort",
+          type: "string",
+          required: false,
+          description: "asc or desc.",
+          default: "desc"
+        },
+        %{
+          name: "empty_message",
+          type: "string",
+          required: false,
+          description: "Fallback copy when no rows exist."
+        }
       ]
     },
     %{
@@ -103,12 +258,39 @@ defmodule Trifle.Chat.DashboardSpec do
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: false, description: "Single value path."},
-        %{name: "paths", type: "array<string>", required: false, description: "One or more value paths."},
+        %{
+          name: "paths",
+          type: "array<string>",
+          required: false,
+          description: "One or more value paths."
+        },
         %{name: "mode", type: "string", required: false, description: "2d or 3d.", default: "2d"},
-        %{name: "chart_type", type: "string", required: false, description: "bar for distribution widgets.", default: "bar"},
-        %{name: "path_aggregation", type: "string", required: false, description: "sum, mean, min, or max."},
-        %{name: "legend", type: "boolean", required: false, description: "Show legend.", default: true},
-        %{name: "designators", type: "object", required: false, description: "Bucket definitions, usually horizontal linear buckets."}
+        %{
+          name: "chart_type",
+          type: "string",
+          required: false,
+          description: "bar for distribution widgets.",
+          default: "bar"
+        },
+        %{
+          name: "path_aggregation",
+          type: "string",
+          required: false,
+          description: "sum, mean, min, or max."
+        },
+        %{
+          name: "legend",
+          type: "boolean",
+          required: false,
+          description: "Show legend.",
+          default: true
+        },
+        %{
+          name: "designators",
+          type: "object",
+          required: false,
+          description: "Bucket definitions, usually horizontal linear buckets."
+        }
       ]
     },
     %{
@@ -119,14 +301,58 @@ defmodule Trifle.Chat.DashboardSpec do
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
         %{name: "path", type: "string", required: false, description: "Single value path."},
-        %{name: "paths", type: "array<string>", required: false, description: "One or more value paths."},
-        %{name: "mode", type: "string", required: false, description: "3d for heatmaps.", default: "3d"},
-        %{name: "chart_type", type: "string", required: false, description: "heatmap.", default: "heatmap"},
-        %{name: "path_aggregation", type: "string", required: false, description: "sum, mean, min, or max."},
-        %{name: "legend", type: "boolean", required: false, description: "Show legend.", default: true},
-        %{name: "designators", type: "object", required: false, description: "Bucket definitions."},
-        %{name: "color_mode", type: "string", required: false, description: "auto or custom.", default: "auto"},
-        %{name: "color_config", type: "object", required: false, description: "Heatmap color settings."}
+        %{
+          name: "paths",
+          type: "array<string>",
+          required: false,
+          description: "One or more value paths."
+        },
+        %{
+          name: "mode",
+          type: "string",
+          required: false,
+          description: "3d for heatmaps.",
+          default: "3d"
+        },
+        %{
+          name: "chart_type",
+          type: "string",
+          required: false,
+          description: "heatmap.",
+          default: "heatmap"
+        },
+        %{
+          name: "path_aggregation",
+          type: "string",
+          required: false,
+          description: "sum, mean, min, or max."
+        },
+        %{
+          name: "legend",
+          type: "boolean",
+          required: false,
+          description: "Show legend.",
+          default: true
+        },
+        %{
+          name: "designators",
+          type: "object",
+          required: false,
+          description: "Bucket definitions."
+        },
+        %{
+          name: "color_mode",
+          type: "string",
+          required: false,
+          description: "auto or custom.",
+          default: "auto"
+        },
+        %{
+          name: "color_config",
+          type: "object",
+          required: false,
+          description: "Heatmap color settings."
+        }
       ]
     }
   ]
@@ -214,6 +440,7 @@ defmodule Trifle.Chat.DashboardSpec do
     - Category widgets default to `bar`. If you want a pie or donut, use `type: "category"` and set `chart_type` to `pie` or `donut` explicitly.
     - Distribution and heatmap widgets are for histograms/buckets, not pie or donut charts.
     - Example category pie widget: `{"type":"category","title":"Products share","paths":["products.*"],"chart_type":"pie","w":6,"h":4}`.
+    - Invalid pie example: `{"type":"category","title":"Payment methods","paths":["payment_methods.*"],"style":"pie","chart_type":"bar"}`. Remove `style` and set `chart_type` to `pie`.
     - Example timeseries bar widget: `{"type":"timeseries","title":"Revenue","paths":["revenue"],"chart_type":"bar","w":12,"h":4}`.
     - Prefer clear layouts: KPI cards in 3x2 blocks, charts in 6x4 or 12x4 blocks, text headers in 12x1.
     - Keep widget titles short and factual.

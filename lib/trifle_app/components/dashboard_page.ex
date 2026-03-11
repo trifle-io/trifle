@@ -26,6 +26,7 @@ defmodule TrifleApp.Components.DashboardPage do
   def dashboard(assigns) do
     assigns =
       assigns
+      |> assign_new(:can_view_dashboard_payload, fn -> false end)
       |> assign_new(:show_dashboard_payload_modal, fn -> false end)
       |> assign_new(:dashboard_payload_json, fn ->
         DashboardPayload.dashboard_payload_json(assigns[:dashboard])
@@ -365,7 +366,7 @@ defmodule TrifleApp.Components.DashboardPage do
               <% end %>
 
               <DashboardPayload.payload_button
-                :if={!@print_mode && !@is_public_access}
+                :if={!@print_mode && !@is_public_access && @can_view_dashboard_payload}
                 phx-click="open_dashboard_payload_modal"
               />
             </div>
@@ -523,14 +524,7 @@ defmodule TrifleApp.Components.DashboardPage do
         >
           <:title>Dashboard payload</:title>
           <:body>
-            <div class="space-y-3">
-              <p class="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-                Persisted dashboard payload
-              </p>
-              <div class="rounded-2xl border border-slate-200/80 bg-slate-950 px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-                <pre class="max-h-[70vh] overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-slate-100">{@dashboard_payload_json}</pre>
-              </div>
-            </div>
+            <DashboardPayload.payload_view payload={@dashboard_payload_json} />
           </:body>
           <:actions>
             <button

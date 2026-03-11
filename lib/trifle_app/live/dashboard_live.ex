@@ -1855,7 +1855,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:show_dashboard_payload_modal, false)
     |> assign(
       :can_view_dashboard_payload,
-      !is_public_access and not is_nil(socket.assigns[:current_user])
+      !is_public_access and match?(%{is_admin: true}, socket.assigns[:current_user])
     )
     |> assign_dashboard_permissions()
   end

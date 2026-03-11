@@ -19,7 +19,8 @@ defmodule Trifle.Chat.InlineDashboard do
   def build_visualization(source_meta, metric_key, grid, series_snapshot, opts \\ [])
 
   def build_visualization(source_meta, metric_key, grid, series_snapshot, opts)
-      when is_map(source_meta) and is_binary(metric_key) and is_list(grid) and is_map(series_snapshot) do
+      when is_map(source_meta) and is_binary(metric_key) and is_list(grid) and
+             is_map(series_snapshot) do
     with {:ok, normalized_grid} <- normalize_grid(grid) do
       dashboard_id = "inline-dashboard-" <> UUID.generate()
       title = resolve_title(opts, metric_key)
@@ -27,16 +28,17 @@ defmodule Trifle.Chat.InlineDashboard do
       default_timeframe = Keyword.get(opts, :default_timeframe)
       default_granularity = Keyword.get(opts, :default_granularity)
 
-      dashboard = %{
-        "id" => dashboard_id,
-        "name" => title,
-        "key" => metric_key,
-        "default_timeframe" => default_timeframe,
-        "default_granularity" => default_granularity,
-        "payload" => %{"grid" => normalized_grid}
-      }
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
+      dashboard =
+        %{
+          "id" => dashboard_id,
+          "name" => title,
+          "key" => metric_key,
+          "default_timeframe" => default_timeframe,
+          "default_granularity" => default_granularity,
+          "payload" => %{"grid" => normalized_grid}
+        }
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Map.new()
 
       visualization = %{
         "id" => dashboard_id,
@@ -55,7 +57,10 @@ defmodule Trifle.Chat.InlineDashboard do
   end
 
   def build_visualization(_source_meta, _metric_key, _grid, _series_snapshot, _opts) do
-    {:error, error("Dashboard visualization requires source metadata, metric key, grid, and series snapshot.")}
+    {:error,
+     error(
+       "Dashboard visualization requires source metadata, metric key, grid, and series snapshot."
+     )}
   end
 
   @spec normalize_grid(list()) :: {:ok, list()} | {:error, map()}
@@ -81,7 +86,10 @@ defmodule Trifle.Chat.InlineDashboard do
   @spec render_state(map()) :: {:ok, map()} | {:error, map()}
   def render_state(visualization) when is_map(visualization) do
     with {:ok, dashboard} <- dashboard_from_visualization(visualization),
-         {:ok, series} <- series_from_snapshot(visualization["series_snapshot"] || visualization[:series_snapshot]) do
+         {:ok, series} <-
+           series_from_snapshot(
+             visualization["series_snapshot"] || visualization[:series_snapshot]
+           ) do
       grid_items = WidgetView.grid_items(dashboard)
 
       dataset_maps =
@@ -122,9 +130,7 @@ defmodule Trifle.Chat.InlineDashboard do
 
       point_count > @chat_point_limit ->
         {:error,
-         error(
-           "Dashboard series snapshot exceeds the chat limit of #{@chat_point_limit} points."
-         )}
+         error("Dashboard series snapshot exceeds the chat limit of #{@chat_point_limit} points.")}
 
       true ->
         {:ok, Series.new(%{at: timestamps, values: values})}
@@ -230,15 +236,21 @@ defmodule Trifle.Chat.InlineDashboard do
        when widget_type in ["timeseries", "category", "distribution", "heatmap"] do
     cond do
       present_string?(Map.get(widget, "chart")) ->
+        value = widget |> Map.get("chart") |> to_string() |> String.trim()
+
         {:error,
          error(
-           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of chart."
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of chart. " <>
+             "Remove chart and set chart_type to #{inspect(value)}."
          )}
 
       present_string?(Map.get(widget, "style")) ->
+        value = widget |> Map.get("style") |> to_string() |> String.trim()
+
         {:error,
          error(
-           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of style."
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of style. " <>
+             "Remove style and set chart_type to #{inspect(value)}."
          )}
 
       true ->
@@ -251,16 +263,20 @@ defmodule Trifle.Chat.InlineDashboard do
   defp validate_chart_type_request(widget, "category") do
     if title_requests_pie_or_donut?(widget) and
          Map.get(widget, "chart_type") not in ["pie", "donut"] do
+      current = Map.get(widget, "chart_type")
+
       {:error,
        error(
-         "Category widget #{inspect(Map.get(widget, "id"))} is labelled as pie/donut but chart_type is not pie or donut."
+         "Category widget #{inspect(Map.get(widget, "id"))} is labelled as pie/donut but chart_type is #{inspect(current)}. " <>
+           "Set chart_type to \"pie\" or \"donut\"."
        )}
     else
       :ok
     end
   end
 
-  defp validate_chart_type_request(widget, widget_type) when widget_type in ["distribution", "heatmap"] do
+  defp validate_chart_type_request(widget, widget_type)
+       when widget_type in ["distribution", "heatmap"] do
     if title_requests_pie_or_donut?(widget) do
       {:error,
        error(
@@ -371,7 +387,9 @@ defmodule Trifle.Chat.InlineDashboard do
     occupied =
       x
       |> occupied_cells(y, width, height)
-      |> Enum.reduce(layout_state.occupied || MapSet.new(), fn cell, acc -> MapSet.put(acc, cell) end)
+      |> Enum.reduce(layout_state.occupied || MapSet.new(), fn cell, acc ->
+        MapSet.put(acc, cell)
+      end)
 
     %{layout_state | occupied: occupied, max_y: max(layout_state.max_y, bottom)}
   end
@@ -410,7 +428,8 @@ defmodule Trifle.Chat.InlineDashboard do
 
   defp clamp_coordinate(value, max_value \\ nil)
 
-  defp clamp_coordinate(value, max_value) when is_integer(value) and value >= 0 and is_integer(max_value) do
+  defp clamp_coordinate(value, max_value)
+       when is_integer(value) and value >= 0 and is_integer(max_value) do
     min(value, max_value)
   end
 

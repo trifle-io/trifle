@@ -817,7 +817,10 @@ defmodule Trifle.Chat.Tools do
   defp normalize_grid_argument(grid), do: grid
 
   defp likely_widget_map?(grid) when is_map(grid) do
-    Enum.any?(["type", :type, "path", :path, "paths", :paths, "title", :title], &Map.has_key?(grid, &1))
+    Enum.any?(
+      ["type", :type, "path", :path, "paths", :paths, "title", :title],
+      &Map.has_key?(grid, &1)
+    )
   end
 
   defp resolve_timeframe(args, source, default_shorthand \\ @default_timeframe) do
@@ -1188,8 +1191,12 @@ defmodule Trifle.Chat.Tools do
     |> SeriesExport.to_json()
     |> Jason.decode()
     |> case do
-      {:ok, %{} = snapshot} -> {:ok, snapshot}
-      {:error, reason} -> {:error, %{status: "error", error: "Unable to encode series snapshot", details: inspect(reason)}}
+      {:ok, %{} = snapshot} ->
+        {:ok, snapshot}
+
+      {:error, reason} ->
+        {:error,
+         %{status: "error", error: "Unable to encode series snapshot", details: inspect(reason)}}
     end
   end
 
@@ -1219,6 +1226,7 @@ defmodule Trifle.Chat.Tools do
   defp tool_error_message(%{"error" => message}) when is_binary(message), do: message
   defp tool_error_message(%{message: message}) when is_binary(message), do: message
   defp tool_error_message(%{"message" => message}) when is_binary(message), do: message
+
   defp tool_error_message(reason) when is_binary(reason) do
     reason
     |> String.trim()
@@ -1248,6 +1256,7 @@ defmodule Trifle.Chat.Tools do
       id: map_get(widget, "id"),
       type: map_get(widget, "type"),
       title: map_get(widget, "title"),
+      chart_type: map_get(widget, "chart_type"),
       path: map_get(widget, "path"),
       paths: map_get(widget, "paths"),
       x: map_get(widget, "x"),
@@ -1289,7 +1298,9 @@ defmodule Trifle.Chat.Tools do
 
       adjusted =
         available
-        |> Enum.filter(&(granularity_duration_seconds(&1) >= granularity_duration_seconds(requested)))
+        |> Enum.filter(
+          &(granularity_duration_seconds(&1) >= granularity_duration_seconds(requested))
+        )
         |> Enum.sort_by(&granularity_duration_seconds/1)
         |> Enum.find(&(estimated_point_count(from, to, &1) <= @chat_point_limit))
         |> Kernel.||(

@@ -32,6 +32,21 @@ defmodule TrifleApp.Components.DashboardPayload do
     """
   end
 
+  attr :payload, :string, default: "{}"
+
+  def payload_view(assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <p class="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+        Persisted dashboard payload
+      </p>
+      <div class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+        <pre class="max-h-[70vh] overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-slate-800 dark:text-slate-100">{@payload}</pre>
+      </div>
+    </div>
+    """
+  end
+
   def dashboard_payload_json(nil), do: "{}"
 
   def dashboard_payload_json(dashboard) do

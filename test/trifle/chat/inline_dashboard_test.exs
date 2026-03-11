@@ -72,21 +72,32 @@ defmodule Trifle.Chat.InlineDashboardTest do
     test "rejects alias chart fields from model payloads" do
       grid = [
         %{"type" => "timeseries", "paths" => ["revenue"], "title" => "Revenue", "style" => "bar"},
-        %{"type" => "category", "paths" => ["products.*"], "title" => "Products", "chart" => "pie"}
+        %{
+          "type" => "category",
+          "paths" => ["products.*"],
+          "title" => "Products",
+          "chart" => "pie"
+        }
       ]
 
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
       assert error =~ "must use chart_type instead of style"
+      assert error =~ "set chart_type to \"bar\""
     end
 
     test "rejects pie-labelled category widgets without pie chart_type" do
       grid = [
-        %{"type" => "category", "paths" => ["products.*"], "title" => "Products (pie)", "chart_type" => "bar"}
+        %{
+          "type" => "category",
+          "paths" => ["products.*"],
+          "title" => "Products (pie)",
+          "chart_type" => "bar"
+        }
       ]
 
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
       assert error =~ "Category widget"
-      assert error =~ "chart_type is not pie or donut"
+      assert error =~ "chart_type is \"bar\""
     end
 
     test "rejects distribution widgets labelled as pie charts" do
@@ -97,7 +108,6 @@ defmodule Trifle.Chat.InlineDashboardTest do
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
       assert error =~ "cannot render pie or donut charts"
     end
-
   end
 
   describe "build_visualization/5" do
