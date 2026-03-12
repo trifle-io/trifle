@@ -570,9 +570,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   <span
                     class="text-sm font-mono truncate"
                     style={"color: #{item.color}"}
-                    title={item.label}
+                    title={list_item_display_label(item)}
                   >
-                    {item.label}
+                    {list_item_display_label(item)}
                   </span>
                 </div>
                 <span
@@ -596,9 +596,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   <span
                     class="text-sm font-mono truncate"
                     style={"color: #{item.color}"}
-                    title={item.label}
+                    title={list_item_display_label(item)}
                   >
-                    {item.label}
+                    {list_item_display_label(item)}
                   </span>
                 </div>
                 <span
@@ -672,16 +672,26 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp list_item_event(_selected, select_event, _deselect_event), do: select_event
 
   defp list_item_event_key(item) do
-    case list_item_value(item, :label) do
-      value when is_binary(value) and value != "" -> value
-      _ -> list_item_value(item, :path)
-    end
+    list_item_display_label(item)
   end
 
   defp list_item_event_path(item) do
     case list_item_value(item, :path) do
       value when is_binary(value) and value != "" -> value
       _ -> nil
+    end
+  end
+
+  defp list_item_display_label(item) do
+    case list_item_value(item, :label) do
+      value when is_binary(value) and value != "" ->
+        value
+
+      _ ->
+        case list_item_value(item, :path) do
+          value when is_binary(value) and value != "" -> value
+          _ -> ""
+        end
     end
   end
 

@@ -310,6 +310,39 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert attrs["aria-pressed"] == "true"
   end
 
+  test "renders path fallback labels for path-only list rows", %{assigns: assigns} do
+    path_only_list = %{
+      "list-1" => %{
+        id: "list-1",
+        items: [
+          %{
+            label: "",
+            path: "keys.alpha",
+            value: 4,
+            formatted_value: "4",
+            color: "#14b8a6"
+          }
+        ]
+      }
+    }
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :list, path_only_list)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"span", attrs, [text]}] =
+      Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 .font-mono")
+
+    attrs = Map.new(attrs)
+
+    assert String.trim(text) == "keys.alpha"
+    assert attrs["title"] == "keys.alpha"
+  end
+
   test "namespaces visible widget DOM ids by grid", %{assigns: assigns} do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)

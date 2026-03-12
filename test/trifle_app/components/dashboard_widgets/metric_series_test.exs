@@ -116,4 +116,18 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     assert html =~ ~s(aria-label="Path series")
     assert html =~ ~s(aria-label="Expression series")
   end
+
+  test "table editor scopes ids for atom-keyed widgets" do
+    html =
+      render_component(&TableEditor.editor/1,
+        widget: %{id: "table-atom", type: "table", series: []},
+        path_options: []
+      )
+
+    assert html =~ ~s(id="widget-table-atom-series")
+    assert html =~ ~s(data-widget-id="table-atom")
+    assert html =~ ~s(id="widget-series-row-table-atom-0")
+    assert html =~ ~s(id="widget-series-path-table-atom-0")
+    assert html =~ "widget-series-color-table-atom"
+  end
 end

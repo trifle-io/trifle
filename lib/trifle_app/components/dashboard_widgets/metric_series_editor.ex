@@ -16,17 +16,19 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
     rows = MetricSeries.rows_for_form(widget, Map.get(assigns, :path_options, []))
+    widget_id = widget_id(widget)
 
     assigns =
       assigns
       |> assign(:widget, widget)
       |> assign(:rows, rows)
+      |> assign(:widget_id, widget_id)
 
     ~H"""
     <div
-      id={"widget-#{Map.get(@widget, "id")}-series"}
+      id={"widget-#{@widget_id}-series"}
       phx-hook="WidgetSeriesRows"
-      data-widget-id={Map.get(@widget, "id")}
+      data-widget-id={@widget_id}
       class="space-y-3"
     >
       <div class="space-y-1">
@@ -38,10 +40,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
         </p>
       </div>
 
-      <div id={"widget-#{Map.get(@widget, "id")}-series-rows"} class="space-y-2">
+      <div id={"widget-#{@widget_id}-series-rows"} class="space-y-2">
         <%= for row <- @rows do %>
           <div
-            id={"widget-series-row-#{Map.get(@widget, "id")}-#{row["index"]}"}
+            id={"widget-series-row-#{@widget_id}-#{row["index"]}"}
             data-series-row
             data-index={row["index"]}
             class={row_shell_classes()}
@@ -100,7 +102,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                   <div class="min-w-0 flex-1">
                     <%= if MetricSeries.path_row?(row) do %>
                       <.path_autocomplete_input
-                        id={"widget-series-path-#{Map.get(@widget, "id")}-#{row["index"]}"}
+                        id={"widget-series-path-#{@widget_id}-#{row["index"]}"}
                         name={input_name("widget_series_path", row["index"])}
                         value={row["path"]}
                         placeholder={@path_placeholder}
@@ -143,7 +145,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
               />
 
               <SeriesColorSelector.input
-                id_prefix={"widget-series-color-#{Map.get(@widget, "id")}"}
+                id_prefix={"widget-series-color-#{@widget_id}"}
                 name="widget_series_color_selector"
                 index={row["index"]}
                 selector={row["selector"]}
@@ -182,6 +184,14 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   end
 
   defp input_name(field, index), do: "#{field}[#{index}]"
+
+  defp widget_id(widget) when is_map(widget) do
+    widget
+    |> Map.get(:id, Map.get(widget, "id", ""))
+    |> to_string()
+  end
+
+  defp widget_id(_), do: ""
 
   defp row_shell_classes do
     "rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800"
