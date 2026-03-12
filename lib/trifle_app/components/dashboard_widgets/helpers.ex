@@ -822,14 +822,20 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def heatmap_palette_options, do: ChartColors.palette_options()
 
   def heatmap_single_color_fallback(widget) when is_map(widget) do
-    path_inputs = path_inputs_for_form(widget, "distribution")
+    case series_selector_fallback(widget) do
+      nil ->
+        path_inputs = path_inputs_for_form(widget, "distribution")
 
-    selectors =
-      widget
-      |> Map.get("series_color_selectors", Map.get(widget, :series_color_selectors, %{}))
-      |> normalize_series_color_selectors_map()
+        selectors =
+          widget
+          |> Map.get("series_color_selectors", Map.get(widget, :series_color_selectors, %{}))
+          |> normalize_series_color_selectors_map()
 
-    heatmap_single_color_from_paths(path_inputs, selectors)
+        heatmap_single_color_from_paths(path_inputs, selectors)
+
+      selector ->
+        resolve_series_color(selector, 0)
+    end
   end
 
   def heatmap_single_color_fallback(_widget), do: ChartColors.primary()
@@ -907,6 +913,50 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
 
   def heatmap_color_config_for_form(_widget),
     do: normalize_heatmap_color_config(%{}, ChartColors.primary())
+
+  defp series_selector_fallback(widget) do
+    widget
+    |> Map.get("series", Map.get(widget, :series, []))
+    |> case do
+      rows when is_list(rows) ->
+        visible_rows =
+          Enum.filter(rows, fn row ->
+            normalize_boolean(Map.get(row, "visible", Map.get(row, :visible, true)), true)
+          end)
+
+        Enum.find_value(visible_rows, fn row ->
+          path =
+            row
+            |> Map.get("path", Map.get(row, :path, ""))
+            |> to_string()
+            |> String.trim()
+
+          if path == "" do
+            nil
+          else
+            row
+            |> Map.get(
+              "color_selector",
+              Map.get(row, :color_selector, @default_series_color_selector)
+            )
+            |> normalize_series_color_selector()
+          end
+        end) ||
+          Enum.find_value(visible_rows, fn row ->
+            case Map.get(row, "color_selector", Map.get(row, :color_selector)) do
+              value when is_binary(value) ->
+                trimmed = String.trim(value)
+                if trimmed == "", do: nil, else: normalize_series_color_selector(trimmed)
+
+              _ ->
+                nil
+            end
+          end)
+
+      _ ->
+        nil
+    end
+  end
 
   def distribution_designators_for_form(widget) do
     designators = existing_distribution_designators(widget)

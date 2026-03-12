@@ -19,7 +19,22 @@ defmodule Trifle.Chat.AgentTest do
         "dashboard" => %{
           "payload" => %{
             "grid" => [
-              %{"id" => "widget-1", "type" => "kpi", "title" => "Revenue", "path" => "revenue", "x" => 0, "y" => 0, "w" => 3, "h" => 2}
+              %{
+                "id" => "widget-1",
+                "type" => "kpi",
+                "title" => "Revenue",
+                "series" => [
+                  %{
+                    "kind" => "path",
+                    "path" => "revenue",
+                    "visible" => true
+                  }
+                ],
+                "x" => 0,
+                "y" => 0,
+                "w" => 3,
+                "h" => 2
+              }
             ]
           }
         }
@@ -35,7 +50,11 @@ defmodule Trifle.Chat.AgentTest do
         %{
           role: "assistant",
           tool_calls: [
-            %{id: "call-1", type: "function", function: %{name: "build_metric_dashboard", arguments: "{}"}}
+            %{
+              id: "call-1",
+              type: "function",
+              function: %{name: "build_metric_dashboard", arguments: "{}"}
+            }
           ]
         },
         %{
@@ -47,7 +66,8 @@ defmodule Trifle.Chat.AgentTest do
       ]
     }
 
-    [system_message, assistant_message, tool_message] = Agent.__build_messages_for_test__(session, %{})
+    [system_message, assistant_message, tool_message] =
+      Agent.__build_messages_for_test__(session, %{})
 
     assert system_message["role"] == "system"
     assert assistant_message["role"] == "assistant"

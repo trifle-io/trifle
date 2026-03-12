@@ -6,8 +6,16 @@ defmodule Trifle.Chat.InlineDashboardTest do
   describe "normalize_grid/1" do
     test "auto-places widgets and applies widget defaults" do
       grid = [
-        %{"type" => "kpi", "path" => "metrics.count", "title" => "Orders"},
-        %{"type" => "timeseries", "paths" => ["metrics.count"], "title" => "Trend"},
+        %{
+          "type" => "kpi",
+          "series" => [%{"kind" => "path", "path" => "metrics.count", "visible" => true}],
+          "title" => "Orders"
+        },
+        %{
+          "type" => "timeseries",
+          "series" => [%{"kind" => "path", "path" => "metrics.count", "visible" => true}],
+          "title" => "Trend"
+        },
         %{"type" => "text", "title" => "Notes"}
       ]
 
@@ -34,7 +42,7 @@ defmodule Trifle.Chat.InlineDashboardTest do
     test "rejects widgets missing required metric fields" do
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid([%{"type" => "kpi"}])
 
-      assert error =~ "requires at least one of: path"
+      assert error =~ "requires at least one of: series"
     end
 
     test "clamps explicit positions and prevents overlaps by moving later widgets down" do
@@ -42,7 +50,7 @@ defmodule Trifle.Chat.InlineDashboardTest do
         %{
           "id" => "manual-1",
           "type" => "kpi",
-          "path" => "metrics.count",
+          "series" => [%{"kind" => "path", "path" => "metrics.count", "visible" => true}],
           "title" => "Orders",
           "x" => 10,
           "y" => 0,
@@ -52,7 +60,7 @@ defmodule Trifle.Chat.InlineDashboardTest do
         %{
           "id" => "manual-2",
           "type" => "kpi",
-          "path" => "metrics.revenue",
+          "series" => [%{"kind" => "path", "path" => "metrics.revenue", "visible" => true}],
           "title" => "Revenue",
           "x" => 10,
           "y" => 0,
@@ -71,10 +79,15 @@ defmodule Trifle.Chat.InlineDashboardTest do
 
     test "rejects alias chart fields from model payloads" do
       grid = [
-        %{"type" => "timeseries", "paths" => ["revenue"], "title" => "Revenue", "style" => :bar},
+        %{
+          "type" => "timeseries",
+          "series" => [%{"kind" => "path", "path" => "revenue", "visible" => true}],
+          "title" => "Revenue",
+          "style" => :bar
+        },
         %{
           "type" => "category",
-          "paths" => ["products.*"],
+          "series" => [%{"kind" => "path", "path" => "products.*", "visible" => true}],
           "title" => "Products",
           "chart" => :pie
         }
@@ -87,7 +100,12 @@ defmodule Trifle.Chat.InlineDashboardTest do
 
     test "rejects atom-valued chart aliases from model payloads" do
       grid = [
-        %{"type" => "category", "paths" => ["products.*"], "title" => "Products", "chart" => :pie}
+        %{
+          "type" => "category",
+          "series" => [%{"kind" => "path", "path" => "products.*", "visible" => true}],
+          "title" => "Products",
+          "chart" => :pie
+        }
       ]
 
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
@@ -99,7 +117,7 @@ defmodule Trifle.Chat.InlineDashboardTest do
       grid = [
         %{
           "type" => "category",
-          "paths" => ["products.*"],
+          "series" => [%{"kind" => "path", "path" => "products.*", "visible" => true}],
           "title" => "Products (pie)",
           "chart_type" => "bar"
         }
@@ -114,7 +132,7 @@ defmodule Trifle.Chat.InlineDashboardTest do
       grid = [
         %{
           "type" => "distribution",
-          "paths" => ["products.*"],
+          "series" => [%{"kind" => "path", "path" => "products.*", "visible" => true}],
           "title" => "Products",
           "chart_type" => "pie"
         }
@@ -129,7 +147,7 @@ defmodule Trifle.Chat.InlineDashboardTest do
       grid = [
         %{
           "type" => "heatmap",
-          "paths" => ["products.*"],
+          "series" => [%{"kind" => "path", "path" => "products.*", "visible" => true}],
           "title" => "Products",
           "chart_type" => "donut"
         }
@@ -142,7 +160,11 @@ defmodule Trifle.Chat.InlineDashboardTest do
 
     test "rejects distribution widgets labelled as pie charts" do
       grid = [
-        %{"type" => "distribution", "paths" => ["products.*"], "title" => "Products (pie)"}
+        %{
+          "type" => "distribution",
+          "series" => [%{"kind" => "path", "path" => "products.*", "visible" => true}],
+          "title" => "Products (pie)"
+        }
       ]
 
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
@@ -153,8 +175,16 @@ defmodule Trifle.Chat.InlineDashboardTest do
   describe "build_visualization/5" do
     test "builds a dashboard block and rehydrates render state from stored series snapshot" do
       grid = [
-        %{"type" => "kpi", "path" => "metrics.count", "title" => "Orders"},
-        %{"type" => "timeseries", "paths" => ["metrics.count"], "title" => "Trend"}
+        %{
+          "type" => "kpi",
+          "series" => [%{"kind" => "path", "path" => "metrics.count", "visible" => true}],
+          "title" => "Orders"
+        },
+        %{
+          "type" => "timeseries",
+          "series" => [%{"kind" => "path", "path" => "metrics.count", "visible" => true}],
+          "title" => "Trend"
+        }
       ]
 
       snapshot = %{
@@ -203,7 +233,11 @@ defmodule Trifle.Chat.InlineDashboardTest do
 
     test "rejects oversized stored series snapshots during render rehydration" do
       grid = [
-        %{"type" => "timeseries", "paths" => ["metrics.count"], "title" => "Trend"}
+        %{
+          "type" => "timeseries",
+          "series" => [%{"kind" => "path", "path" => "metrics.count", "visible" => true}],
+          "title" => "Trend"
+        }
       ]
 
       snapshot = %{

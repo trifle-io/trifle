@@ -3,7 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Kpi do
 
   @behaviour TrifleApp.Components.DashboardWidgets.WidgetType
 
-  alias TrifleApp.Components.DashboardWidgets.{Kpi, KpiEditor}
+  alias TrifleApp.Components.DashboardWidgets.{Kpi, KpiEditor, MetricSeries}
   alias TrifleApp.Components.DashboardWidgets.Registry
 
   @impl true
@@ -33,5 +33,5 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Kpi do
   end
 
   @impl true
-  def normalize_widget(widget), do: widget
+  def normalize_widget(widget), do: MetricSeries.normalize_widget(widget)
 end

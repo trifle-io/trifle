@@ -4,16 +4,35 @@ defmodule Trifle.Chat.DashboardSpec do
   """
 
   @version 1
+  series_field = fn description ->
+    %{
+      name: "series",
+      type: "array<object>",
+      required: true,
+      description: description,
+      item_schema: %{
+        kind: "path | expression",
+        path: "Required when kind=path. Wildcards such as breakdown.* are allowed in path rows.",
+        expression:
+          "Required when kind=expression. Uses the transponder expression syntax and can reference previous rows as a, b, c.",
+        label: "Optional display label.",
+        visible: "Optional boolean. Hidden rows still evaluate and can feed later expressions.",
+        color_selector: "Optional row color selector such as default.* or default.2."
+      }
+    }
+  end
 
   @widget_specs [
     %{
       type: "kpi",
       best_for: "single headline numbers, goals, and compact status cards",
-      required_one_of: [["path"]],
+      required_one_of: [["series"]],
       defaults: %{w: 3, h: 2, function: "mean", size: "m", subtype: "number"},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: true, description: "Metric path to aggregate."},
+        series_field.(
+          "Ordered rows. KPI widgets display the first visible resolved series, so hidden source rows can feed one visible expression row."
+        ),
         %{
           name: "function",
           type: "string",
@@ -65,17 +84,13 @@ defmodule Trifle.Chat.DashboardSpec do
     %{
       type: "timeseries",
       best_for: "trends over time, multi-series comparisons, and stacked timelines",
-      required_one_of: [["path", "paths"]],
+      required_one_of: [["series"]],
       defaults: %{w: 12, h: 4, chart_type: "line", legend: false},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: false, description: "Single metric path."},
-        %{
-          name: "paths",
-          type: "array<string>",
-          required: false,
-          description: "One or more metric paths."
-        },
+        series_field.(
+          "Ordered rows. Path rows can use wildcards such as breakdown.*. Expression rows combine prior rows and can stay hidden or visible."
+        ),
         %{
           name: "chart_type",
           type: "string",
@@ -108,13 +123,13 @@ defmodule Trifle.Chat.DashboardSpec do
     %{
       type: "category",
       best_for: "breakdowns by category, composition, and ranking slices",
-      required_one_of: [["path", "paths"]],
+      required_one_of: [["series"]],
       defaults: %{w: 6, h: 4, chart_type: "bar"},
       examples: [
         %{
           type: "category",
           title: "Products share",
-          paths: ["products.*"],
+          series: [%{kind: "path", path: "products.*", visible: true}],
           chart_type: "pie",
           w: 6,
           h: 4
@@ -122,7 +137,7 @@ defmodule Trifle.Chat.DashboardSpec do
         %{
           type: "category",
           title: "Products share",
-          paths: ["products.*"],
+          series: [%{kind: "path", path: "products.*", visible: true}],
           chart_type: "donut",
           w: 6,
           h: 4
@@ -130,13 +145,9 @@ defmodule Trifle.Chat.DashboardSpec do
       ],
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: false, description: "Single categorical path."},
-        %{
-          name: "paths",
-          type: "array<string>",
-          required: false,
-          description: "One or more categorical paths."
-        },
+        series_field.(
+          "Ordered rows. Use wildcards to group dynamic keys. Expression rows combine matching categories or wildcard bindings."
+        ),
         %{
           name: "chart_type",
           type: "string",
@@ -149,17 +160,13 @@ defmodule Trifle.Chat.DashboardSpec do
     %{
       type: "table",
       best_for: "raw values, compact inspection, and multi-path comparison tables",
-      required_one_of: [["path", "paths"]],
+      required_one_of: [["series"]],
       defaults: %{w: 6, h: 4},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: false, description: "Single metric path."},
-        %{
-          name: "paths",
-          type: "array<string>",
-          required: false,
-          description: "One or more metric paths."
-        }
+        series_field.(
+          "Ordered rows. Path and expression rows become table rows; timestamps remain the columns."
+        )
       ]
     },
     %{
@@ -218,16 +225,13 @@ defmodule Trifle.Chat.DashboardSpec do
     %{
       type: "list",
       best_for: "top items, ranked keys, and compact wildcard breakdowns",
-      required_one_of: [["path"]],
+      required_one_of: [["series"]],
       defaults: %{w: 4, h: 4, limit: 8, sort: "desc"},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{
-          name: "path",
-          type: "string",
-          required: true,
-          description: "Wildcard-friendly path, for example channel.*."
-        },
+        series_field.(
+          "Ordered rows. List widgets behave like category widgets; use hidden source rows plus one visible expression row for computed rankings."
+        ),
         %{
           name: "limit",
           type: "integer",
@@ -239,8 +243,15 @@ defmodule Trifle.Chat.DashboardSpec do
           name: "sort",
           type: "string",
           required: false,
-          description: "asc or desc.",
+          description: "desc, asc, alpha, or alpha_desc.",
           default: "desc"
+        },
+        %{
+          name: "label_strategy",
+          type: "string",
+          required: false,
+          description: "short or full_path.",
+          default: "short"
         },
         %{
           name: "empty_message",
@@ -253,17 +264,13 @@ defmodule Trifle.Chat.DashboardSpec do
     %{
       type: "distribution",
       best_for: "bucketed distributions and histograms across one or more paths",
-      required_one_of: [["path", "paths"]],
+      required_one_of: [["series"]],
       defaults: %{w: 6, h: 4, chart_type: "bar", mode: "2d", legend: true},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: false, description: "Single value path."},
-        %{
-          name: "paths",
-          type: "array<string>",
-          required: false,
-          description: "One or more value paths."
-        },
+        series_field.(
+          "Ordered rows. Path rows can target wildcard bucket groups. Expression rows apply bucket-by-bucket after matching bindings and compatible bucket layouts."
+        ),
         %{name: "mode", type: "string", required: false, description: "2d or 3d.", default: "2d"},
         %{
           name: "chart_type",
@@ -276,7 +283,7 @@ defmodule Trifle.Chat.DashboardSpec do
           name: "path_aggregation",
           type: "string",
           required: false,
-          description: "sum, mean, min, or max."
+          description: "none, sum, mean, min, or max."
         },
         %{
           name: "legend",
@@ -296,17 +303,13 @@ defmodule Trifle.Chat.DashboardSpec do
     %{
       type: "heatmap",
       best_for: "density heatmaps and multi-axis bucket visualisations",
-      required_one_of: [["path", "paths"]],
+      required_one_of: [["series"]],
       defaults: %{w: 6, h: 4, chart_type: "heatmap", mode: "3d", legend: true},
       supported_fields: [
         %{name: "title", type: "string", required: false, description: "Widget title."},
-        %{name: "path", type: "string", required: false, description: "Single value path."},
-        %{
-          name: "paths",
-          type: "array<string>",
-          required: false,
-          description: "One or more value paths."
-        },
+        series_field.(
+          "Ordered rows. Path rows can target wildcard bucket groups. Expression rows apply bucket-by-bucket after matching bindings and compatible bucket layouts."
+        ),
         %{
           name: "mode",
           type: "string",
@@ -435,13 +438,16 @@ defmodule Trifle.Chat.DashboardSpec do
     - Use `describe_dashboard_widgets` whenever you need the exact widget contract or examples.
     - Use `build_metric_dashboard` to validate and persist an inline dashboard visualization.
     - Pass `grid` as an array of widget objects. Do not wrap it inside another `grid`, `widgets`, or `payload` object unless reusing an existing dashboard payload.
-    - Most widgets need `path` or `paths`; only `text` can omit metric paths.
+    - Every metric widget uses `series`, an ordered array of row objects. Only `text` can omit `series`.
+    - A path row looks like `{"kind":"path","path":"revenue","visible":true}`.
+    - An expression row looks like `{"kind":"expression","expression":"a / b","visible":true}`.
+    - Expression rows can reference previous rows as `a`, `b`, `c`, and hidden rows still evaluate and can feed visible rows.
     - Use only documented field names. `chart` and `style` are invalid widget fields; use `chart_type`.
     - Category widgets default to `bar`. If you want a pie or donut, use `type: "category"` and set `chart_type` to `pie` or `donut` explicitly.
     - Distribution and heatmap widgets are for histograms/buckets, not pie or donut charts.
-    - Example category pie widget: `{"type":"category","title":"Products share","paths":["products.*"],"chart_type":"pie","w":6,"h":4}`.
-    - Invalid pie example: `{"type":"category","title":"Payment methods","paths":["payment_methods.*"],"style":"pie","chart_type":"bar"}`. Remove `style` and set `chart_type` to `pie`.
-    - Example timeseries bar widget: `{"type":"timeseries","title":"Revenue","paths":["revenue"],"chart_type":"bar","w":12,"h":4}`.
+    - Example category pie widget: `{"type":"category","title":"Products share","series":[{"kind":"path","path":"products.*","visible":true}],"chart_type":"pie","w":6,"h":4}`.
+    - Invalid pie example: `{"type":"category","title":"Payment methods","series":[{"kind":"path","path":"payment_methods.*","visible":true}],"style":"pie","chart_type":"bar"}`. Remove `style` and set `chart_type` to `pie`.
+    - Example timeseries bar widget: `{"type":"timeseries","title":"Revenue","series":[{"kind":"path","path":"revenue","visible":true}],"chart_type":"bar","w":12,"h":4}`.
     - Prefer clear layouts: KPI cards in 3x2 blocks, charts in 6x4 or 12x4 blocks, text headers in 12x1.
     - Keep widget titles short and factual.
     """

@@ -21,14 +21,22 @@ defmodule Trifle.Chat.DashboardSpecTest do
 
   test "returns prompt fragment with dashboard tool guidance" do
     prompt = DashboardSpec.prompt_fragment()
+    timeseries_spec = DashboardSpec.widget_spec("timeseries")
+    list_spec = DashboardSpec.widget_spec("list")
 
     assert prompt =~ "describe_dashboard_widgets"
     assert prompt =~ "build_metric_dashboard"
     assert prompt =~ "12-column GridStack"
-    assert prompt =~ "Category widgets default to `bar`"
-    assert prompt =~ "\"chart_type\":\"pie\""
+    assert prompt =~ "Every metric widget uses `series`"
+    assert prompt =~ "\"kind\":\"path\""
+    assert prompt =~ "\"kind\":\"expression\""
     assert prompt =~ "`chart` and `style` are invalid"
-    assert prompt =~ "\"style\":\"pie\",\"chart_type\":\"bar\""
     assert prompt =~ "Distribution and heatmap widgets are for histograms/buckets"
+
+    assert DashboardSpec.required_one_of("kpi") == [["series"]]
+    assert DashboardSpec.required_one_of("timeseries") == [["series"]]
+
+    assert Enum.any?(timeseries_spec.supported_fields, &(&1.name == "series"))
+    assert Enum.any?(list_spec.supported_fields, &(&1.name == "label_strategy"))
   end
 end

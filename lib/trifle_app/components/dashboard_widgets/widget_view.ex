@@ -85,8 +85,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
         data-colors={ChartColors.json_palette()}
         data-initial-grid={Jason.encode!(@grid_items)}
-        data-initial-text={Jason.encode!(@text_items)}
-        data-initial-list={Jason.encode!(Map.values(@list || %{}))}
         data-dashboard-id={@dashboard.id}
         data-public-token={@public_token}
       >
@@ -512,6 +510,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:list_selected_key, list_selected_key(assigns.list_dataset))
       |> assign(:list_selected_path, list_selected_path(assigns.list_dataset))
       |> assign(:list_select_event, select_event)
+      |> assign(:list_deselect_event, list_deselect_event(assigns.list_dataset))
       |> assign(:list_selectable, not is_nil(select_event))
 
     ~H"""
@@ -520,18 +519,22 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
           <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
           <li class="first:pt-0 last:pb-0">
-            <div class={[
-              "flex items-center justify-between gap-2.5 border px-2.5 py-1.5 transition-colors list-widget-row",
-              if(selected && @list_selectable,
-                do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
-                else: "border-transparent"
-              )
-            ]}>
-              <div class={[
-                "flex items-center min-w-0",
-                if(@list_selectable, do: "gap-2.5", else: "gap-2")
-              ]}>
-                <%= if @list_selectable do %>
+            <%= if @list_selectable do %>
+              <button
+                type="button"
+                class={[
+                  "flex w-full items-center justify-between gap-2.5 border px-2.5 py-1.5 transition-colors list-widget-row focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60",
+                  if(selected,
+                    do: "bg-teal-50 dark:bg-teal-900/30 border-teal-100 dark:border-teal-800",
+                    else: "border-transparent"
+                  )
+                ]}
+                phx-click={list_item_event(selected, @list_select_event, @list_deselect_event)}
+                phx-value-key={list_item_event_key(item)}
+                phx-value-path={list_item_event_path(item)}
+                aria-pressed={to_string(selected)}
+              >
+                <div class="flex items-center min-w-0 gap-2.5">
                   <span class="flex-shrink-0 text-gray-400 dark:text-slate-400">
                     <%= if selected do %>
                       <svg
@@ -564,31 +567,50 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                       </svg>
                     <% end %>
                   </span>
-                <% else %>
+                  <span
+                    class="text-sm font-mono truncate"
+                    style={"color: #{item.color}"}
+                    title={list_item_display_label(item)}
+                  >
+                    {list_item_display_label(item)}
+                  </span>
+                </div>
+                <span
+                  class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold"
+                  style={
+                    "color: #{item.color}; border-color: #{color_with_alpha(item.color, "40")}; background-color: #{color_with_alpha(item.color, "15")}"
+                  }
+                >
+                  {item.formatted_value || item.value}
+                </span>
+              </button>
+            <% else %>
+              <div class="flex items-center justify-between gap-2.5 border border-transparent px-2.5 py-1.5 transition-colors list-widget-row">
+                <div class="flex items-center min-w-0 gap-2">
                   <span
                     class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
                     style={"background-color: #{item.color}"}
                     aria-hidden="true"
                   >
                   </span>
-                <% end %>
+                  <span
+                    class="text-sm font-mono truncate"
+                    style={"color: #{item.color}"}
+                    title={list_item_display_label(item)}
+                  >
+                    {list_item_display_label(item)}
+                  </span>
+                </div>
                 <span
-                  class="text-sm font-mono truncate"
-                  style={"color: #{item.color}"}
-                  title={item.label}
+                  class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold"
+                  style={
+                    "color: #{item.color}; border-color: #{color_with_alpha(item.color, "40")}; background-color: #{color_with_alpha(item.color, "15")}"
+                  }
                 >
-                  {item.label}
+                  {item.formatted_value || item.value}
                 </span>
               </div>
-              <span
-                class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold"
-                style={
-                  "color: #{item.color}; border-color: #{color_with_alpha(item.color, "40")}; background-color: #{color_with_alpha(item.color, "15")}"
-                }
-              >
-                {item.formatted_value || item.value}
-              </span>
-            </div>
+            <% end %>
           </li>
         <% end %>
       </ul>
@@ -617,13 +639,21 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp list_select_event(_), do: nil
 
+  defp list_deselect_event(%{deselect_event: event}) when is_binary(event) and event != "",
+    do: event
+
+  defp list_deselect_event(%{"deselect_event" => event}) when is_binary(event) and event != "",
+    do: event
+
+  defp list_deselect_event(_), do: nil
+
   defp list_item_selected?(item, selected_key, selected_path) do
     cond do
       is_binary(selected_path) and selected_path != "" ->
         list_item_value(item, :path) == selected_path
 
       is_binary(selected_key) and selected_key != "" ->
-        list_item_value(item, :label) == selected_key
+        list_item_event_key(item) == selected_key
 
       true ->
         false
@@ -635,6 +665,35 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   end
 
   defp list_item_value(_, _), do: nil
+
+  defp list_item_event(true, _select_event, deselect_event) when is_binary(deselect_event),
+    do: deselect_event
+
+  defp list_item_event(_selected, select_event, _deselect_event), do: select_event
+
+  defp list_item_event_key(item) do
+    list_item_display_label(item)
+  end
+
+  defp list_item_event_path(item) do
+    case list_item_value(item, :path) do
+      value when is_binary(value) and value != "" -> value
+      _ -> nil
+    end
+  end
+
+  defp list_item_display_label(item) do
+    case list_item_value(item, :label) do
+      value when is_binary(value) and value != "" ->
+        value
+
+      _ ->
+        case list_item_value(item, :path) do
+          value when is_binary(value) and value != "" -> value
+          _ -> ""
+        end
+    end
+  end
 
   defp color_with_alpha(color, alpha_suffix) do
     color = color || ChartColors.primary()

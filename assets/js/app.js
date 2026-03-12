@@ -2215,9 +2215,16 @@ Hooks.PathAutocomplete = {
   }
 }
 
-Hooks.TimeseriesPaths = {
+Hooks.WidgetSeriesRows = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId;
+
+    this.pushRows = (rows) => {
+      this.pushEvent('widget_series_rows_update', {
+        widget_id: this.widgetId,
+        rows
+      });
+    };
 
     this.handleClick = (event) => {
       const button = event.target.closest('[data-action]');
@@ -2228,29 +2235,62 @@ Hooks.TimeseriesPaths = {
 
       event.preventDefault();
 
-      const paths = this.readPaths();
+      const rows = this.readRows();
+      const index = Number.parseInt(button.dataset.index || '-1', 10);
 
-      if (action === 'add') {
-        paths.push('');
+      if (action === 'add' || action === 'add_query') {
+        rows.push(this.defaultRow('path'));
+      } else if (action === 'add_formula') {
+        rows.push(this.defaultRow('expression'));
       } else if (action === 'remove') {
-        const index = parseInt(button.dataset.index || '-1', 10);
-        if (!Number.isNaN(index)) {
-          paths.splice(index, 1);
-        }
-        if (paths.length === 0) {
-          paths.push('');
-        }
+        if (!Number.isNaN(index)) rows.splice(index, 1);
+        if (rows.length === 0) rows.push(this.defaultRow('path'));
       } else {
         return;
       }
 
-      this.pushEvent('timeseries_paths_update', {
-        widget_id: this.widgetId,
-        paths
-      });
+      this.pushRows(rows);
+    };
+
+    this.handleChange = (event) => {
+      const input = event.target;
+      if (!input) return;
+
+      if (input.matches('input[data-role="series-kind"]')) {
+        event.stopPropagation();
+        this.pushRows(this.readRows());
+        return;
+      }
+
+      if (input.matches('input[data-role="series-visible"]')) {
+        event.stopPropagation();
+        this.pushRows(this.readRows());
+        return;
+      }
+
+      if (input.matches('input[type="radio"][name^="widget_series_color_selector["]')) {
+        event.stopPropagation();
+        this.pushRows(this.readRows());
+      }
+    };
+
+    this.handleInput = (event) => {
+      const input = event.target;
+      if (!input) return;
+
+      if (
+        input.matches(
+          'input[name^="widget_series_path["], input[data-role="series-expression"], input[data-role="series-label"]'
+        )
+      ) {
+        event.stopPropagation();
+        this.pushRows(this.readRows());
+      }
     };
 
     this.el.addEventListener('click', this.handleClick);
+    this.el.addEventListener('change', this.handleChange);
+    this.el.addEventListener('input', this.handleInput);
   },
 
   updated() {
@@ -2261,69 +2301,51 @@ Hooks.TimeseriesPaths = {
     if (this.handleClick) {
       this.el.removeEventListener('click', this.handleClick);
     }
-  },
 
-  readPaths() {
-    return Array.from(this.el.querySelectorAll('input[name="ts_paths[]"]')).map((input) =>
-      input.value || ''
-    );
-  }
-}
+    if (this.handleChange) {
+      this.el.removeEventListener('change', this.handleChange);
+    }
 
-Hooks.CategoryPaths = {
-  mounted() {
-    this.widgetId = this.el.dataset.widgetId;
-    this.inputName = this.el.dataset.pathInputName || 'cat_paths[]';
-    this.eventName = this.el.dataset.eventName || 'category_paths_update';
-
-    this.handleClick = (event) => {
-      const button = event.target.closest('[data-action]');
-      if (!button) return;
-
-      const action = button.dataset.action;
-      if (!action) return;
-
-      event.preventDefault();
-
-      const paths = this.readPaths();
-
-      if (action === 'add') {
-        paths.push('');
-      } else if (action === 'remove') {
-        const index = parseInt(button.dataset.index || '-1', 10);
-        if (!Number.isNaN(index)) {
-          paths.splice(index, 1);
-        }
-        if (paths.length === 0) paths.push('');
-      } else {
-        return;
-      }
-
-      this.pushEvent(this.eventName, {
-        widget_id: this.widgetId,
-        paths
-      });
-    };
-
-    this.el.addEventListener('click', this.handleClick);
-  },
-
-  updated() {
-    this.widgetId = this.el.dataset.widgetId;
-    this.inputName = this.el.dataset.pathInputName || 'cat_paths[]';
-    this.eventName = this.el.dataset.eventName || 'category_paths_update';
-  },
-
-  destroyed() {
-    if (this.handleClick) {
-      this.el.removeEventListener('click', this.handleClick);
+    if (this.handleInput) {
+      this.el.removeEventListener('input', this.handleInput);
     }
   },
 
-  readPaths() {
-    return Array.from(this.el.querySelectorAll(`input[name="${this.inputName}"]`)).map((input) =>
-      input.value || ''
-    );
+  defaultRow(kind = 'path') {
+    return {
+      kind,
+      path: '',
+      expression: '',
+      label: '',
+      visible: true,
+      color_selector: 'default.*'
+    };
+  },
+
+  readRows() {
+    return Array.from(this.el.querySelectorAll('[data-series-row]')).map((rowEl) => {
+      const valueFor = (selector) => {
+        const input = rowEl.querySelector(selector);
+        return input ? input.value || '' : '';
+      };
+
+      const checkedColor = rowEl.querySelector(
+        'input[type="radio"][name^="widget_series_color_selector["]:checked'
+      );
+      const kindInput = rowEl.querySelector(
+        'input[type="radio"][name^="widget_series_kind["]:checked'
+      );
+      const visibleInput = rowEl.querySelector('input[data-role="series-visible"]');
+
+      return {
+        kind: kindInput ? kindInput.value || 'path' : 'path',
+        path: valueFor('input[name^="widget_series_path["]'),
+        expression: valueFor('input[name^="widget_series_expression["]'),
+        label: valueFor('input[name^="widget_series_label["]'),
+        visible: !!(visibleInput && visibleInput.checked),
+        color_selector: checkedColor ? checkedColor.value || 'default.*' : 'default.*'
+      };
+    });
   }
 }
 

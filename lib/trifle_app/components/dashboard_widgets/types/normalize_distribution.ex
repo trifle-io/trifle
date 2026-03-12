@@ -2,6 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.NormalizeDistribution do
   @moduledoc false
 
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.MetricSeries
 
   @spec normalize(map(), String.t()) :: map()
   def normalize(item, widget_type) when is_map(item) do
@@ -28,15 +29,44 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.NormalizeDistribution do
       |> Map.get("path_aggregation")
       |> WidgetHelpers.normalize_distribution_path_aggregation()
 
-    fallback_heatmap_color =
-      WidgetHelpers.heatmap_single_color_from_paths(path_inputs, selectors)
-
     color_mode =
       case normalized_type do
         "heatmap" ->
           item
           |> Map.get("color_mode")
           |> WidgetHelpers.normalize_heatmap_color_mode()
+
+        _ ->
+          nil
+      end
+
+    mode_default = if(normalized_type == "heatmap", do: "3d", else: nil)
+
+    designators = WidgetHelpers.normalize_distribution_designators(%{}, item)
+
+    designator =
+      Map.get(designators, "horizontal") ||
+        WidgetHelpers.default_distribution_designator()
+
+    base_item =
+      item
+      |> Map.put("type", normalized_type)
+      |> Map.put("path_inputs", path_inputs)
+      |> maybe_put_mode(mode_default, normalized_type)
+      |> Map.put("paths", normalized_paths)
+      |> Map.put("series_color_selectors", selectors)
+      |> Map.put("chart_type", if(normalized_type == "heatmap", do: "heatmap", else: "bar"))
+      |> Map.put("path_aggregation", path_aggregation)
+      |> Map.put("designators", designators)
+      |> Map.put("designator", designator)
+      |> Map.put_new("legend", true)
+
+    fallback_heatmap_color =
+      case normalized_type do
+        "heatmap" ->
+          base_item
+          |> MetricSeries.normalize_widget()
+          |> WidgetHelpers.heatmap_single_color_fallback()
 
         _ ->
           nil
@@ -53,26 +83,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.NormalizeDistribution do
           nil
       end
 
-    mode_default = if(normalized_type == "heatmap", do: "3d", else: nil)
-
-    designators = WidgetHelpers.normalize_distribution_designators(%{}, item)
-
-    designator =
-      Map.get(designators, "horizontal") ||
-        WidgetHelpers.default_distribution_designator()
-
-    item
-    |> Map.put("type", normalized_type)
-    |> Map.put("path_inputs", path_inputs)
-    |> maybe_put_mode(mode_default, normalized_type)
-    |> Map.put("paths", normalized_paths)
-    |> Map.put("series_color_selectors", selectors)
-    |> Map.put("chart_type", if(normalized_type == "heatmap", do: "heatmap", else: "bar"))
-    |> Map.put("path_aggregation", path_aggregation)
-    |> Map.put("designators", designators)
-    |> Map.put("designator", designator)
-    |> Map.put_new("legend", true)
+    base_item
     |> put_heatmap_color_fields(normalized_type, color_mode, color_config)
+    |> MetricSeries.normalize_widget()
   end
 
   def normalize(other, _widget_type), do: other

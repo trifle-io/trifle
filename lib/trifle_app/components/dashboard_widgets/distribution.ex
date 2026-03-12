@@ -4,6 +4,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Designator.{Custom, Geometric, Linear}
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.MetricSeries
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
   alias TrifleApp.Components.DashboardWidgets.SharedParse
   require Logger
 
@@ -66,6 +68,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   def dataset(nil, _item), do: nil
 
   def dataset(series_struct, item) do
+    item = MetricSeries.normalize_widget(item)
     id = to_string(item["id"])
 
     widget_type =
@@ -73,7 +76,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       |> Map.get("widget_type", Map.get(item, "type", "distribution"))
       |> normalize_widget_type()
 
-    paths = normalized_paths(item)
+    rows = Map.get(item, "series", [])
     default_mode = if widget_type == "heatmap", do: "3d", else: "2d"
 
     mode =
@@ -98,41 +101,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
     legend = !!item["legend"]
 
-    path_inputs =
-      item
-      |> WidgetHelpers.path_inputs_for_form("distribution")
-      |> Enum.map(&to_string/1)
-      |> Enum.map(&String.trim/1)
-
-    selectors =
-      item
-      |> Map.get("series_color_selectors", %{})
-      |> WidgetHelpers.normalize_series_color_selectors_map()
-
-    path_color_map =
-      paths
-      |> Enum.with_index()
-      |> Enum.reduce(%{}, fn {path, index}, acc ->
-        path_input =
-          path_inputs
-          |> Enum.at(index)
-          |> case do
-            nil -> path
-            "" -> path
-            value -> value
-          end
-
-        selector = WidgetHelpers.selector_for_path(selectors, path_input)
-        color = WidgetHelpers.resolve_series_color(selector, index)
-        Map.put(acc, path, color)
-      end)
-
     path_aggregation =
       item
       |> Map.get("path_aggregation")
       |> WidgetHelpers.normalize_distribution_path_aggregation()
 
-    fallback_heatmap_color = fallback_heatmap_color(paths, path_color_map)
+    fallback_heatmap_color = WidgetHelpers.heatmap_single_color_fallback(item)
 
     color_mode =
       case widget_type do
@@ -156,7 +130,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
           nil
       end
 
-    if paths == [] do
+    if rows == [] do
       %{
         id: id,
         widget_type: widget_type,
@@ -172,7 +146,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         designator: %{},
         designators: %{},
         points?: mode == "3d",
-        errors: ["No metric paths configured"]
+        errors: ["No metric series configured"]
       }
     else
       designators_config = WidgetHelpers.normalize_distribution_designators(%{}, item)
@@ -212,27 +186,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
           }
 
         true ->
-          series =
-            case {mode, Map.get(descriptors, "vertical")} do
-              {"3d", %{} = vertical_descriptor} ->
-                series_for_paths_3d(
-                  series_struct,
-                  paths,
-                  horizontal_descriptor,
-                  vertical_descriptor,
-                  item,
-                  path_color_map
-                )
+          resolved_rows =
+            MetricSeriesEvaluator.resolve_distribution_rows(
+              series_struct,
+              item,
+              mode,
+              horizontal_descriptor.bucket_labels,
+              descriptor_bucket_labels(Map.get(descriptors, "vertical")),
+              slice_count(series_struct)
+            )
 
-              _ ->
-                series_for_paths(
-                  series_struct,
-                  paths,
-                  horizontal_descriptor,
-                  item,
-                  path_color_map
-                )
-            end
+          series = MetricSeriesEvaluator.distribution_series(resolved_rows, mode)
 
           series =
             case mode do
@@ -279,27 +243,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     end
   end
 
-  defp series_for_paths(series_struct, paths, descriptor, item, color_map) do
-    slice_count = slice_count(series_struct)
-
-    Enum.map(paths, fn path ->
-      bucket_map = bucket_totals(series_struct, path, slice_count)
-
-      values =
-        Enum.map(descriptor.bucket_labels, fn label ->
-          value = Map.get(bucket_map, label, 0.0)
-          %{bucket: label, value: value}
-        end)
-
-      %{
-        name: path_label(path, item),
-        path: path,
-        color: Map.get(color_map, path),
-        values: values
-      }
-    end)
-  end
-
   defp derive_vertical_labels(series) do
     labels =
       series
@@ -316,38 +259,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       [] -> nil
       _ -> labels
     end
-  end
-
-  defp series_for_paths_3d(
-         series_struct,
-         paths,
-         horizontal_descriptor,
-         vertical_descriptor,
-         item,
-         color_map
-       ) do
-    Enum.map(paths, fn path ->
-      matrix = bucket_matrix(series_struct, path, horizontal_descriptor, vertical_descriptor)
-
-      points =
-        matrix
-        |> Enum.flat_map(fn {x_bucket, y_map} ->
-          Enum.map(y_map, fn {y_bucket, value} ->
-            %{
-              bucket_x: x_bucket,
-              bucket_y: y_bucket,
-              value: value
-            }
-          end)
-        end)
-
-      %{
-        name: path_label(path, item),
-        path: path,
-        color: Map.get(color_map, path),
-        points: points
-      }
-    end)
   end
 
   defp maybe_aggregate_path_series(series, _mode, "none", _horizontal_labels, _vertical_labels),
@@ -548,108 +459,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   defp descriptor_bucket_labels(%{bucket_labels: labels}) when is_list(labels), do: labels
   defp descriptor_bucket_labels(_), do: []
 
-  defp fallback_heatmap_color(paths, path_color_map) do
-    paths
-    |> Enum.find_value(fn path ->
-      path_color_map
-      |> Map.get(path)
-      |> case do
-        value when is_binary(value) ->
-          trimmed = String.trim(value)
-          if trimmed == "", do: nil, else: trimmed
-
-        _ ->
-          nil
-      end
-    end)
-  end
-
-  defp bucket_totals(series_struct, path, slice_count) do
-    normalized_path = to_string(path || "") |> String.trim()
-    stripped = strip_wildcard(normalized_path)
-
-    transform_fn = fn key, value ->
-      bucket =
-        key
-        |> to_string()
-        |> bucket_label_for_path(stripped)
-
-      {bucket, value}
-    end
-
-    series_struct
-    |> Series.format_category(normalized_path, slice_count, transform_fn)
-    |> reduce_bucket_maps()
-  end
-
-  defp bucket_matrix(series_struct, path, horizontal_descriptor, vertical_descriptor) do
-    normalized_path = to_string(path || "") |> String.trim()
-
-    clean_segments =
-      normalized_path |> strip_wildcard() |> String.split(".") |> Enum.reject(&(&1 == ""))
-
-    series_struct
-    |> Map.get(:series, %{})
-    |> Map.get(:values, [])
-    |> Enum.reduce(%{}, fn data, acc ->
-      case get_in(data, clean_segments) do
-        %{} = map -> accumulate_matrix(map, acc, horizontal_descriptor, vertical_descriptor)
-        _ -> acc
-      end
-    end)
-  end
-
-  defp accumulate_matrix(map, acc, horizontal_descriptor, vertical_descriptor) when is_map(map) do
-    Enum.reduce(map, acc, fn {raw_x, raw_y_map}, matrix_acc ->
-      x_bucket = normalize_bucket_key(raw_x, horizontal_descriptor.bucket_labels)
-
-      cond do
-        is_nil(x_bucket) ->
-          matrix_acc
-
-        is_map(raw_y_map) ->
-          Enum.reduce(raw_y_map, matrix_acc, fn {raw_y, value}, inner ->
-            y_bucket = normalize_bucket_key(raw_y, vertical_descriptor.bucket_labels)
-
-            if is_nil(y_bucket) do
-              inner
-            else
-              number = normalize_number(value)
-
-              Map.update(inner, x_bucket, %{y_bucket => number}, fn ymap ->
-                Map.update(ymap, y_bucket, number, &(&1 + number))
-              end)
-            end
-          end)
-
-        is_number(raw_y_map) ->
-          number = normalize_number(raw_y_map)
-
-          Map.update(matrix_acc, x_bucket, %{"total" => number}, fn ymap ->
-            Map.update(ymap, "total", number, &(&1 + number))
-          end)
-
-        true ->
-          matrix_acc
-      end
-    end)
-  end
-
-  defp accumulate_matrix(_other, acc, _horizontal_descriptor, _vertical_descriptor), do: acc
-
-  defp normalize_bucket_key(value, valid_labels) do
-    label =
-      value
-      |> format_bucket_label()
-      |> String.trim()
-
-    cond do
-      label == "" -> nil
-      label in valid_labels -> label
-      true -> label
-    end
-  end
-
   defp ensure_points_for_3d(series, bucket_labels) do
     Enum.map(series, fn
       %{points: points} = s when is_list(points) and points != [] ->
@@ -673,49 +482,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       other ->
         other
     end)
-  end
-
-  defp reduce_bucket_maps(formatted) when is_map(formatted),
-    do: accumulate_bucket_map(formatted, %{})
-
-  defp reduce_bucket_maps(formatted) when is_list(formatted) do
-    formatted
-    |> Enum.reduce(%{}, fn map, acc -> accumulate_bucket_map(map, acc) end)
-  end
-
-  defp reduce_bucket_maps(_), do: %{}
-
-  defp accumulate_bucket_map(map, acc) when is_map(map) do
-    Enum.reduce(map, acc, fn {bucket, value}, inner_acc ->
-      label = bucket |> to_string() |> String.trim()
-      number = normalize_number(value)
-      Map.update(inner_acc, label, number, &(&1 + number))
-    end)
-  end
-
-  defp accumulate_bucket_map(_, acc), do: acc
-
-  defp normalized_paths(item) do
-    raw_paths =
-      case item["paths"] do
-        list when is_list(list) -> list
-        _ -> []
-      end
-
-    fallback_paths =
-      case Map.get(item, "path") do
-        nil -> []
-        "" -> []
-        value -> [value]
-      end
-
-    path_sources = if raw_paths == [], do: fallback_paths, else: raw_paths
-
-    path_sources
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.uniq()
   end
 
   defp normalize_mode(value) do
@@ -1015,37 +781,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     {number, overflow}
   end
 
-  defp strip_wildcard(path) do
-    cond do
-      path == nil -> ""
-      String.ends_with?(path, ".*") -> String.trim_trailing(path, ".*")
-      true -> path
-    end
-  end
-
-  defp bucket_label_for_path(full_key, base_path) do
-    cond do
-      base_path == "" ->
-        last_segment(full_key)
-
-      String.starts_with?(full_key, base_path <> ".") ->
-        String.replace_prefix(full_key, base_path <> ".", "")
-
-      true ->
-        last_segment(full_key)
-    end
-  end
-
-  defp last_segment(key) do
-    key
-    |> String.split(".")
-    |> List.last()
-    |> case do
-      nil -> key
-      value -> value
-    end
-  end
-
   defp slice_count(series_struct) do
     series_struct
     |> Map.get(:series, %{})
@@ -1123,15 +858,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
     |> String.replace(~r/\.0+$/, "")
     |> String.replace(~r/(\.\d*?)0+$/, "\\1")
     |> String.trim_trailing(".")
-  end
-
-  defp path_label(path, item) do
-    labels =
-      item
-      |> Map.get("path_labels", %{})
-      |> Enum.into(%{}, fn {k, v} -> {to_string(k), to_string(v)} end)
-
-    Map.get(labels, path, path)
   end
 
   defp is_nil_or_empty(value) do

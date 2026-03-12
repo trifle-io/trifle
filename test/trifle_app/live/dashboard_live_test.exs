@@ -42,7 +42,7 @@ defmodule TrifleApp.DashboardLiveTest do
     {:ok, dashboard} =
       Organizations.create_dashboard_for_membership(user, membership, dashboard_attrs)
 
-    {:ok, conn: log_in_user(conn, user), dashboard: dashboard}
+    {:ok, conn: log_in_user(conn, user), dashboard: dashboard, membership: membership}
   end
 
   test "opens workspace in edit mode and supports tab toggling", %{
@@ -109,5 +109,371 @@ defmodule TrifleApp.DashboardLiveTest do
     })
 
     assert has_element?(view, "#widget-workspace-modal", "Live Preview Title")
+  end
+
+  test "saves metric widgets with series rows and drops legacy path fields", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "kpi",
+      "widget_title" => "Derived KPI",
+      "kpi_subtype" => "number",
+      "kpi_function" => "mean",
+      "kpi_size" => "m",
+      "widget_series_kind" => %{"0" => "path", "1" => "path", "2" => "expression"},
+      "widget_series_path" => %{
+        "0" => "metrics.sum",
+        "1" => "metrics.count",
+        "2" => ""
+      },
+      "widget_series_expression" => %{
+        "0" => "",
+        "1" => "",
+        "2" => "a / b"
+      },
+      "widget_series_label" => %{
+        "0" => "",
+        "1" => "",
+        "2" => "Average"
+      },
+      "widget_series_visible" => %{
+        "0" => "false",
+        "1" => "false",
+        "2" => "true"
+      },
+      "widget_series_color_selector" => %{
+        "0" => "default.*",
+        "1" => "default.*",
+        "2" => "warm.4"
+      }
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["type"] == "kpi"
+    assert widget["title"] == "Derived KPI"
+    refute Map.has_key?(widget, "path")
+    refute Map.has_key?(widget, "paths")
+    refute Map.has_key?(widget, "path_inputs")
+    refute Map.has_key?(widget, "series_color_selectors")
+
+    assert widget["series"] == [
+             %{
+               "kind" => "path",
+               "path" => "metrics.sum",
+               "expression" => "",
+               "label" => "",
+               "visible" => false,
+               "color_selector" => "default.*"
+             },
+             %{
+               "kind" => "path",
+               "path" => "metrics.count",
+               "expression" => "",
+               "label" => "",
+               "visible" => false,
+               "color_selector" => "default.*"
+             },
+             %{
+               "kind" => "expression",
+               "path" => "",
+               "expression" => "a / b",
+               "label" => "Average",
+               "visible" => true,
+               "color_selector" => "warm.4"
+             }
+           ]
+  end
+
+  test "legacy metric widgets open through series rows and resave in the new shape", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "widget-1",
+              "type" => "timeseries",
+              "title" => "Legacy Series",
+              "paths" => ["metrics.count"],
+              "series_color_selectors" => %{"metrics.count" => "default.3"},
+              "chart_type" => "line",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    assert has_element?(
+             view,
+             ~s/input[name="widget_series_path[0]"][value="metrics.count"]/
+           )
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Legacy Series",
+      "ts_chart_type" => "line",
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "metrics.count"},
+      "widget_series_expression" => %{"0" => ""},
+      "widget_series_label" => %{"0" => ""},
+      "widget_series_visible" => %{"0" => "true"},
+      "widget_series_color_selector" => %{"0" => "default.3"}
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["type"] == "timeseries"
+    refute Map.has_key?(widget, "path")
+    refute Map.has_key?(widget, "paths")
+    refute Map.has_key?(widget, "path_inputs")
+    refute Map.has_key?(widget, "series_color_selectors")
+
+    assert widget["series"] == [
+             %{
+               "kind" => "path",
+               "path" => "metrics.count",
+               "expression" => "",
+               "label" => "",
+               "visible" => true,
+               "color_selector" => "default.3"
+             }
+           ]
+  end
+
+  test "widget series row updates rerender the edit form immediately", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "widget-1",
+              "type" => "timeseries",
+              "title" => "Live Series",
+              "series" => [
+                %{
+                  "kind" => "path",
+                  "path" => "latency.*.2000+",
+                  "expression" => "",
+                  "label" => "",
+                  "visible" => true,
+                  "color_selector" => "purple.*"
+                }
+              ],
+              "chart_type" => "line",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    refute has_element?(view, ~s(input[name="widget_series_path[1]"]))
+
+    render_hook(view, "widget_series_rows_update", %{
+      "widget_id" => "widget-1",
+      "rows" => [
+        %{
+          "kind" => "path",
+          "path" => "latency.*.2000+",
+          "expression" => "",
+          "label" => "",
+          "visible" => true,
+          "color_selector" => "purple.*"
+        },
+        %{
+          "kind" => "expression",
+          "path" => "",
+          "expression" => "a / 1000",
+          "label" => "Seconds",
+          "visible" => true,
+          "color_selector" => "default.*"
+        }
+      ]
+    })
+
+    assert has_element?(view, ~s(input[name="widget_series_expression[1]"][value="a / 1000"]))
+    assert has_element?(view, ~s(input[name="widget_series_label[1]"][value="Seconds"]))
+    assert has_element?(view, ~s(input[name="widget_series_path[1]"][value=""]))
+
+    assert has_element?(
+             view,
+             ~s(input[name="widget_series_kind[1]"][value="expression"][checked])
+           )
+  end
+
+  test "widget series row updates preserve blank draft rows in the editor", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "widget-1",
+              "type" => "timeseries",
+              "title" => "Blank Draft Row",
+              "series" => [
+                %{
+                  "kind" => "path",
+                  "path" => "latency.*.2000+",
+                  "expression" => "",
+                  "label" => "",
+                  "visible" => true,
+                  "color_selector" => "purple.*"
+                }
+              ],
+              "chart_type" => "line",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_hook(view, "widget_series_rows_update", %{
+      "widget_id" => "widget-1",
+      "rows" => [
+        %{
+          "kind" => "path",
+          "path" => "latency.*.2000+",
+          "expression" => "",
+          "label" => "",
+          "visible" => true,
+          "color_selector" => "purple.*"
+        },
+        %{
+          "kind" => "expression",
+          "path" => "",
+          "expression" => "",
+          "label" => "",
+          "visible" => true,
+          "color_selector" => "default.*"
+        }
+      ]
+    })
+
+    assert has_element?(view, ~s([data-series-row][data-index="1"]))
+    assert has_element?(view, ~s(input[name="widget_series_expression[1]"][value=""]))
+
+    assert has_element?(
+             view,
+             ~s(input[name="widget_series_kind[1]"][value="expression"][checked])
+           )
+  end
+
+  test "widget editor change does not duplicate series rows", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "widget-1",
+              "type" => "timeseries",
+              "title" => "No Dupes",
+              "series" => [
+                %{
+                  "kind" => "path",
+                  "path" => "latency.*.2000+",
+                  "expression" => "",
+                  "label" => "",
+                  "visible" => true,
+                  "color_selector" => "purple.*"
+                }
+              ],
+              "chart_type" => "line",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_hook(view, "widget_series_rows_update", %{
+      "widget_id" => "widget-1",
+      "rows" => [
+        %{
+          "kind" => "path",
+          "path" => "latency.*.2000+",
+          "expression" => "",
+          "label" => "",
+          "visible" => true,
+          "color_selector" => "purple.*"
+        },
+        %{
+          "kind" => "expression",
+          "path" => "",
+          "expression" => "a / 1000",
+          "label" => "Seconds",
+          "visible" => true,
+          "color_selector" => "default.*"
+        }
+      ]
+    })
+
+    render_change(view, "widget_editor_change", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "No Dupes",
+      "ts_chart_type" => "line",
+      "widget_series_kind" => %{"0" => "path", "1" => "expression"},
+      "widget_series_path" => %{"0" => "latency.*.2000+", "1" => ""},
+      "widget_series_expression" => %{"0" => "", "1" => "a / 1000"},
+      "widget_series_label" => %{"0" => "", "1" => "Second"},
+      "widget_series_visible" => %{"0" => "true", "1" => "true"},
+      "widget_series_color_selector" => %{"0" => "purple.*", "1" => "default.*"}
+    })
+
+    assert has_element?(view, ~s([data-series-row][data-index="0"]))
+    assert has_element?(view, ~s([data-series-row][data-index="1"]))
+    refute has_element?(view, ~s([data-series-row][data-index="2"]))
   end
 end

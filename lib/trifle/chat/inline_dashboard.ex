@@ -552,11 +552,46 @@ defmodule Trifle.Chat.InlineDashboard do
     end
   end
 
+  defp blank_field?(widget, "series") do
+    series = widget |> Map.get("series") |> List.wrap()
+
+    cond do
+      series == [] ->
+        true
+
+      true ->
+        Enum.all?(series, &blank_series_row?/1)
+    end
+  end
+
   defp blank_field?(widget, field) do
     widget
     |> Map.get(field)
     |> blank_value?()
   end
+
+  defp blank_series_row?(row) when is_map(row) do
+    kind =
+      row
+      |> Map.get("kind", Map.get(row, :kind, "path"))
+      |> to_string()
+      |> String.trim()
+      |> String.downcase()
+
+    case kind do
+      "expression" ->
+        row
+        |> Map.get("expression", Map.get(row, :expression, ""))
+        |> blank_value?()
+
+      _ ->
+        row
+        |> Map.get("path", Map.get(row, :path, ""))
+        |> blank_value?()
+    end
+  end
+
+  defp blank_series_row?(_), do: true
 
   defp blank_value?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank_value?(nil), do: true

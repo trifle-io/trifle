@@ -2,7 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
   @moduledoc false
 
   alias Trifle.Stats.Series
-  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -37,119 +37,21 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
 
   def dataset(series_struct, item) do
     id = to_string(item["id"])
-
-    raw_paths =
-      case item["paths"] do
-        list when is_list(list) -> list
-        _ -> []
-      end
-
-    fallback_paths =
-      case Map.get(item, "path") do
-        nil -> []
-        "" -> []
-        value -> [value]
-      end
-
-    path_sources =
-      case raw_paths do
-        [] -> fallback_paths
-        list -> list
-      end
-
-    paths =
-      path_sources
-      |> Enum.map(&to_string/1)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.uniq()
-
     chart_type = String.downcase(to_string(item["chart_type"] || "line"))
     stacked = !!item["stacked"]
     normalized = !!item["normalized"]
     legend = !!item["legend"]
     y_label = to_string(item["y_label"] || "")
 
-    timeline_callback = fn at, value ->
-      utc_dt =
-        cond do
-          match?(%DateTime{}, at) ->
-            DateTime.shift_zone!(at, "Etc/UTC")
-
-          match?(%NaiveDateTime{}, at) ->
-            DateTime.from_naive!(at, "Etc/UTC")
-
-          true ->
-            nil
-        end
-
-      ts =
-        case utc_dt do
-          %DateTime{} = dt -> DateTime.to_unix(dt, :millisecond)
-          _ -> nil
-        end
-
-      val =
-        case value do
-          %Decimal{} = d -> Decimal.to_float(d)
-          v when is_number(v) -> v * 1.0
-          _ -> 0.0
-        end
-
-      [ts || 0, val]
-    end
-
-    path_inputs =
-      item
-      |> WidgetHelpers.path_inputs_for_form("timeseries")
-      |> Enum.map(&to_string/1)
-      |> Enum.map(&String.trim/1)
-
-    selectors =
-      item
-      |> Map.get("series_color_selectors", %{})
-      |> WidgetHelpers.normalize_series_color_selectors_map()
-
-    path_specs =
-      paths
-      |> Enum.with_index()
-      |> Enum.map(fn {path, index} ->
-        path_input =
-          path_inputs
-          |> Enum.at(index)
-          |> case do
-            nil -> path
-            "" -> path
-            value -> value
-          end
-
-        %{path: path, path_input: path_input}
-      end)
-
     per_path =
-      Enum.reduce(path_specs, [], fn %{path: path, path_input: path_input}, acc ->
-        timeline_map = format_timeline_map(series_struct, path, 1, timeline_callback)
-
-        selector = WidgetHelpers.selector_for_path(selectors, path_input)
-
-        timeline_map
-        |> Enum.sort_by(fn {series_path, _data} -> to_string(series_path) end)
-        |> Enum.with_index()
-        |> Enum.reduce(acc, fn {{series_path, data}, emitted_index}, inner_acc ->
-          name = to_string(series_path)
-          normalized_data = normalize_timeline_points(data)
-          color = WidgetHelpers.resolve_series_color(selector, emitted_index)
-
-          series_entry = %{name: name, data: normalized_data, color: color}
-
-          case Enum.find_index(inner_acc, &(&1.name == name)) do
-            nil ->
-              inner_acc ++ [series_entry]
-
-            idx ->
-              List.update_at(inner_acc, idx, fn _ -> series_entry end)
-          end
-        end)
+      series_struct
+      |> MetricSeriesEvaluator.resolve_timeline_rows(item)
+      |> MetricSeriesEvaluator.timeline_series()
+      |> Enum.reduce([], fn series_entry, acc ->
+        case Enum.find_index(acc, &(&1.name == series_entry.name)) do
+          nil -> acc ++ [series_entry]
+          idx -> List.update_at(acc, idx, fn _ -> series_entry end)
+        end
       end)
 
     series =

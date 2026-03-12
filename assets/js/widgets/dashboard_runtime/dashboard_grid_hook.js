@@ -85,8 +85,6 @@ Hooks.DashboardGrid = {
     this._lastCategory = [];
     this._lastDistribution = [];
     this._lastTable = [];
-    this._lastText = [];
-    this._lastList = [];
 
     // Global window resize handler to resize all charts
     this._onWindowResize = () => {
@@ -195,6 +193,8 @@ Hooks.DashboardGrid = {
     this._aggridResizeTimers = {};
     this._aggridThemeIsDark = document.documentElement.classList.contains('dark');
     this.el.__dashboardGrid = this;
+    this._preferServerRenderedWidgets = false;
+    this._preferServerRenderedWidgetsTimer = null;
 
     // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
     const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
@@ -206,8 +206,10 @@ Hooks.DashboardGrid = {
       return withChartOpts(Object.assign({}, base, extra));
     };
 
+    this._enableServerRenderedWidgetPreference();
     this.initGrid();
     this.syncServerRenderedItems();
+    this._scheduleServerRenderedWidgetPreferenceClear();
 
     const revealGrid = () => {
       if (!this.el) return;
@@ -274,17 +276,13 @@ Hooks.DashboardGrid = {
     } catch (_) { this.initialKpiVisual = []; }
     try { this.initialTimeseries = this.el.dataset.initialTimeseries ? JSON.parse(this.el.dataset.initialTimeseries) : []; } catch (_) { this.initialTimeseries = []; }
     try { this.initialCategory = this.el.dataset.initialCategory ? JSON.parse(this.el.dataset.initialCategory) : []; } catch (_) { this.initialCategory = []; }
-    try { this.initialText = this.el.dataset.initialText ? JSON.parse(this.el.dataset.initialText) : []; } catch (_) { this.initialText = []; }
-    try { this.initialList = this.el.dataset.initialList ? JSON.parse(this.el.dataset.initialList) : []; } catch (_) { this.initialList = []; }
-    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiVisual && this.initialKpiVisual.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length) || (this.initialText && this.initialText.length) || (this.initialList && this.initialList.length)) {
+    if ((this.initialKpiValues && this.initialKpiValues.length) || (this.initialKpiVisual && this.initialKpiVisual.length) || (this.initialTimeseries && this.initialTimeseries.length) || (this.initialCategory && this.initialCategory.length)) {
       setTimeout(() => {
         try {
           if (this.initialKpiValues && this.initialKpiValues.length) this._render_kpi_values(this.initialKpiValues);
           if (this.initialKpiVisual && this.initialKpiVisual.length) this._render_kpi_visuals(this.initialKpiVisual);
           if (this.initialTimeseries && this.initialTimeseries.length) this._render_timeseries(this.initialTimeseries);
           if (this.initialCategory && this.initialCategory.length) this._render_category(this.initialCategory);
-          if (this.initialText && this.initialText.length) this._render_text(this.initialText);
-          if (this.initialList && this.initialList.length) this._render_list(this.initialList);
         } catch (e) { console.error('initial print render failed', e); }
       }, 0);
     }
@@ -292,6 +290,7 @@ Hooks.DashboardGrid = {
     // Ready signaling for export capture
     this._seen = { kpi_values: false, kpi_visual: false, timeseries: false, category: false, text: false, table: false, list: false, distribution: false };
     this._markedReady = false;
+    this._markServerRenderedWidgetsReady();
 
     this._onThemeChange = (event) => {
       const theme = event && event.detail && event.detail.theme;
@@ -423,7 +422,10 @@ Hooks.DashboardGrid = {
   },
 
   updated() {
+    this._enableServerRenderedWidgetPreference();
     this.syncServerRenderedItems();
+    this._markServerRenderedWidgetsReady();
+    this._scheduleServerRenderedWidgetPreferenceClear();
   },
 
   destroyed() {
@@ -434,6 +436,10 @@ Hooks.DashboardGrid = {
 
     if (this.el && this.el.__dashboardGrid === this) {
       delete this.el.__dashboardGrid;
+    }
+    if (this._preferServerRenderedWidgetsTimer) {
+      clearTimeout(this._preferServerRenderedWidgetsTimer);
+      this._preferServerRenderedWidgetsTimer = null;
     }
     this._widgetRegistry = null;
     if (this.grid && this.grid.destroy) {
@@ -728,6 +734,33 @@ Hooks.DashboardGrid = {
     }
   },
 
+  _enableServerRenderedWidgetPreference() {
+    this._preferServerRenderedWidgets = true;
+    if (this._preferServerRenderedWidgetsTimer) {
+      clearTimeout(this._preferServerRenderedWidgetsTimer);
+      this._preferServerRenderedWidgetsTimer = null;
+    }
+  },
+
+  _scheduleServerRenderedWidgetPreferenceClear() {
+    if (this._preferServerRenderedWidgetsTimer) {
+      clearTimeout(this._preferServerRenderedWidgetsTimer);
+    }
+    this._preferServerRenderedWidgetsTimer = setTimeout(() => {
+      this._preferServerRenderedWidgets = false;
+      this._preferServerRenderedWidgetsTimer = null;
+    }, 60);
+  },
+
+  _markServerRenderedWidgetsReady() {
+    if (!this._seen || !this.el) return;
+    this._seen.text = !!this.el.querySelector('.grid-stack-item-content[data-text-widget="1"]');
+    this._seen.list = !!this.el.querySelector('.grid-stack-item-content[data-list-widget="1"]');
+    if (typeof this._scheduleReadyMark === 'function') {
+      this._scheduleReadyMark();
+    }
+  },
+
   _disposeChartEntry(map, id) {
     if (!map || !id) return;
     const chart = map[id];
@@ -902,9 +935,6 @@ Hooks.DashboardGrid = {
     const categories = Array.isArray(this._lastCategory) ? this._deepClone(this._lastCategory) : null;
     const distributions = Array.isArray(this._lastDistribution) ? this._deepClone(this._lastDistribution) : null;
     const tables = Array.isArray(this._lastTable) ? this._deepClone(this._lastTable) : null;
-    const textWidgets = Array.isArray(this._lastText) ? this._deepClone(this._lastText) : null;
-    const lists = Array.isArray(this._lastList) ? this._deepClone(this._lastList) : null;
-
     const updateTheme = (map) => {
       if (!map) return;
       Object.values(map).forEach((chart) => {
@@ -936,8 +966,6 @@ Hooks.DashboardGrid = {
       this._seen.timeseries = false;
       this._seen.category = false;
       this._seen.table = false;
-      this._seen.text = false;
-      this._seen.list = false;
       this._seen.distribution = false;
     }
 
@@ -958,8 +986,7 @@ Hooks.DashboardGrid = {
       if (timeseries && timeseries.length) this._render_timeseries(timeseries);
       if (categories && categories.length) this._render_category(categories);
       if (distributions && distributions.length) this._render_distribution(distributions);
-      if (Array.isArray(textWidgets)) this._render_text(textWidgets);
-      if (Array.isArray(lists)) this._render_list(lists);
+      this._markServerRenderedWidgetsReady();
     };
 
     // Ensure DOM settles before re-rendering charts to avoid zero-size init

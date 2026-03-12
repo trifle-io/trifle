@@ -3,10 +3,8 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
 
   use Phoenix.Component
 
-  import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
-
   alias TrifleApp.Components.DashboardWidgets.Helpers
-  alias TrifleApp.Components.DashboardWidgets.SeriesColorSelector
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
@@ -15,7 +13,6 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
     widget = Map.get(assigns, :widget, %{})
     widget_type = widget |> Map.get("type", "distribution") |> to_string() |> String.downcase()
     is_heatmap = widget_type == "heatmap"
-    rows = Helpers.chart_path_rows(widget, "distribution")
 
     mode =
       if is_heatmap do
@@ -33,7 +30,6 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
     assigns =
       assigns
       |> assign(:widget, widget)
-      |> assign(:rows, rows)
       |> assign(:mode, mode)
       |> assign(:is_heatmap, is_heatmap)
       |> assign(:designator_forms, designator_forms)
@@ -45,69 +41,12 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
 
     ~H"""
     <div class="space-y-6">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
-          Metric Paths
-        </label>
-        <div
-          id={"widget-#{Map.get(@widget, "id")}-distribution-paths"}
-          phx-hook="CategoryPaths"
-          data-widget-id={Map.get(@widget, "id")}
-          data-event-name="distribution_paths_update"
-          data-path-input-name="dist_paths[]"
-          class="space-y-3"
-        >
-          <div class="space-y-2">
-            <%= for row <- @rows do %>
-              <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_12rem_auto] gap-2 lg:items-start">
-                <div class="min-w-0">
-                  <.path_autocomplete_input
-                    id={"widget-dist-path-#{Map.get(@widget, "id")}-#{row.index}"}
-                    name="dist_paths[]"
-                    value={row.path_input}
-                    placeholder="metrics.distribution.*"
-                    path_options={@path_options}
-                    input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <SeriesColorSelector.input
-                    id_prefix={"widget-dist-color-#{Map.get(@widget, "id")}"}
-                    name="dist_color_selector"
-                    index={row.index}
-                    selector={row.selector}
-                  />
-                  <p class="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
-                    {wildcard_hint(row.wildcard, row.expanded_path)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  data-action="remove"
-                  data-index={row.index}
-                  class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
-                  aria-label="Remove path"
-                  disabled={length(@rows) == 1}
-                >
-                  &minus;
-                </button>
-              </div>
-            <% end %>
-          </div>
-          <button
-            type="button"
-            data-action="add"
-            class="inline-flex items-center gap-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
-          >
-            <span aria-hidden="true">+</span>
-            <span class="sr-only">Add path</span>
-          </button>
-          <p class="text-xs text-gray-500 dark:text-slate-400">
-            Use <code>*</code>
-            to include nested buckets (for example <code>metrics.distribution.*</code>).
-          </p>
-        </div>
-      </div>
+      <MetricSeriesEditor.editor
+        widget={@widget}
+        path_options={@path_options}
+        path_placeholder="metrics.distribution.*"
+        path_help="Path rows can target wildcard bucket groups. Expression rows apply bucket-by-bucket after matching bindings and compatible bucket layouts."
+      />
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
@@ -466,9 +405,4 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
   defp designator_field_class(false) do
     "space-y-2 hidden"
   end
-
-  defp wildcard_hint(:explicit, _expanded_path), do: "Wildcard path"
-  defp wildcard_hint(:auto, expanded_path), do: "Auto-expanded to #{expanded_path}"
-  defp wildcard_hint(:single, _expanded_path), do: "Single series path"
-  defp wildcard_hint(_, _expanded_path), do: "Path pending"
 end

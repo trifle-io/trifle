@@ -187,6 +187,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
       |> Enum.sort()
 
     assert initial_grid == expected_ids
+    refute Map.has_key?(Map.new(grid_attrs), "data-initial-text")
+    refute Map.has_key?(Map.new(grid_attrs), "data-initial-list")
   end
 
   test "renders KPI and text widget chrome server-side", %{assigns: assigns} do
@@ -214,7 +216,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
 
-    badges = Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 li span.inline-flex.items-center")
+    badges =
+      Floki.find(
+        document,
+        "#chat-grid-1-grid-widget-content-list-1 li span.inline-flex.items-center"
+      )
+
     assert length(badges) > 0
 
     labels =
@@ -223,6 +230,117 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
       |> Enum.map(fn {"span", _attrs, [text]} -> String.trim(text) end)
 
     assert "alpha" in labels
+  end
+
+  test "renders selectable list rows server-side", %{assigns: assigns} do
+    selectable_list = %{
+      "list-1" => %{
+        id: "list-1",
+        items: [
+          %{
+            label: "alpha",
+            path: "keys.alpha",
+            value: 4,
+            formatted_value: "4",
+            color: "#14b8a6"
+          }
+        ],
+        selected_key: "alpha",
+        select_event: "select_key",
+        deselect_event: "deselect_key"
+      }
+    }
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :list, selectable_list)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"button", attrs, _}] =
+      Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 .list-widget-row")
+
+    attrs = Map.new(attrs)
+
+    assert attrs["phx-click"] == "deselect_key"
+    assert attrs["phx-value-key"] == "alpha"
+    assert attrs["phx-value-path"] == "keys.alpha"
+    assert attrs["aria-pressed"] == "true"
+  end
+
+  test "renders path-only selectable rows as selected when selected_key matches the emitted key",
+       %{
+         assigns: assigns
+       } do
+    selectable_list = %{
+      "list-1" => %{
+        id: "list-1",
+        items: [
+          %{
+            label: "",
+            path: "keys.alpha",
+            value: 4,
+            formatted_value: "4",
+            color: "#14b8a6"
+          }
+        ],
+        selected_key: "keys.alpha",
+        select_event: "select_key",
+        deselect_event: "deselect_key"
+      }
+    }
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :list, selectable_list)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"button", attrs, _}] =
+      Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 .list-widget-row")
+
+    attrs = Map.new(attrs)
+
+    assert attrs["phx-click"] == "deselect_key"
+    assert attrs["phx-value-key"] == "keys.alpha"
+    assert attrs["aria-pressed"] == "true"
+  end
+
+  test "renders path fallback labels for path-only list rows", %{assigns: assigns} do
+    path_only_list = %{
+      "list-1" => %{
+        id: "list-1",
+        items: [
+          %{
+            label: "",
+            path: "keys.alpha",
+            value: 4,
+            formatted_value: "4",
+            color: "#14b8a6"
+          }
+        ]
+      }
+    }
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :list, path_only_list)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"span", attrs, [text]}] =
+      Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 .font-mono")
+
+    attrs = Map.new(attrs)
+
+    assert String.trim(text) == "keys.alpha"
+    assert attrs["title"] == "keys.alpha"
   end
 
   test "namespaces visible widget DOM ids by grid", %{assigns: assigns} do
