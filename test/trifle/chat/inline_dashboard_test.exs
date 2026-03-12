@@ -71,18 +71,28 @@ defmodule Trifle.Chat.InlineDashboardTest do
 
     test "rejects alias chart fields from model payloads" do
       grid = [
-        %{"type" => "timeseries", "paths" => ["revenue"], "title" => "Revenue", "style" => "bar"},
+        %{"type" => "timeseries", "paths" => ["revenue"], "title" => "Revenue", "style" => :bar},
         %{
           "type" => "category",
           "paths" => ["products.*"],
           "title" => "Products",
-          "chart" => "pie"
+          "chart" => :pie
         }
       ]
 
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
       assert error =~ "must use chart_type instead of style"
       assert error =~ "set chart_type to \"bar\""
+    end
+
+    test "rejects atom-valued chart aliases from model payloads" do
+      grid = [
+        %{"type" => "category", "paths" => ["products.*"], "title" => "Products", "chart" => :pie}
+      ]
+
+      assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
+      assert error =~ "must use chart_type instead of chart"
+      assert error =~ "set chart_type to \"pie\""
     end
 
     test "rejects pie-labelled category widgets without pie chart_type" do
@@ -98,6 +108,36 @@ defmodule Trifle.Chat.InlineDashboardTest do
       assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
       assert error =~ "Category widget"
       assert error =~ "chart_type is \"bar\""
+    end
+
+    test "rejects unsupported chart_type for distribution widgets" do
+      grid = [
+        %{
+          "type" => "distribution",
+          "paths" => ["products.*"],
+          "title" => "Products",
+          "chart_type" => "pie"
+        }
+      ]
+
+      assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
+      assert error =~ "distribution"
+      assert error =~ "only supports chart_type \"bar\""
+    end
+
+    test "rejects unsupported chart_type for heatmap widgets" do
+      grid = [
+        %{
+          "type" => "heatmap",
+          "paths" => ["products.*"],
+          "title" => "Products",
+          "chart_type" => "donut"
+        }
+      ]
+
+      assert {:error, %{error: error}} = InlineDashboard.normalize_grid(grid)
+      assert error =~ "heatmap"
+      assert error =~ "only supports chart_type \"heatmap\""
     end
 
     test "rejects distribution widgets labelled as pie charts" do

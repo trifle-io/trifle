@@ -162,7 +162,7 @@ defmodule Trifle.Chat.InlineDashboard do
       |> Map.put("type", Registry.widget_type(item))
       |> ensure_widget_id(index)
       |> ensure_layout_defaults()
-      |> Registry.normalize_widget()
+      |> normalize_chart_fields()
 
     widget_type = Map.get(widget, "type")
 
@@ -173,8 +173,11 @@ defmodule Trifle.Chat.InlineDashboard do
       true ->
         with :ok <- validate_chart_field_aliases(widget, widget_type),
              :ok <- validate_chart_type_request(widget, widget_type),
-             :ok <- validate_required_fields(widget, widget_type) do
-          {positioned_widget, next_layout_state} = position_widget(widget, layout_state)
+             normalized_widget = Registry.normalize_widget(widget),
+             :ok <- validate_required_fields(normalized_widget, widget_type) do
+          {positioned_widget, next_layout_state} =
+            position_widget(normalized_widget, layout_state)
+
           {:ok, positioned_widget, next_layout_state}
         end
     end
@@ -212,6 +215,33 @@ defmodule Trifle.Chat.InlineDashboard do
     |> put_int_default("h", DashboardSpec.default_layout(Map.get(widget, "type")).h)
   end
 
+  defp normalize_chart_fields(widget) when is_map(widget) do
+    Enum.reduce(["chart", "style", "chart_type"], widget, fn field, acc ->
+      case Map.get(acc, field) do
+        nil ->
+          acc
+
+        value when is_binary(value) ->
+          Map.put(acc, field, normalize_chart_field_value(value))
+
+        value when is_atom(value) and value not in [true, false] ->
+          value
+          |> Atom.to_string()
+          |> normalize_chart_field_value()
+          |> then(&Map.put(acc, field, &1))
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  defp normalize_chart_field_value(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+  end
+
   defp validate_required_fields(widget, widget_type) do
     missing? =
       widget_type
@@ -234,60 +264,101 @@ defmodule Trifle.Chat.InlineDashboard do
 
   defp validate_chart_field_aliases(widget, widget_type)
        when widget_type in ["timeseries", "category", "distribution", "heatmap"] do
-    cond do
-      present_string?(Map.get(widget, "chart")) ->
-        value = widget |> Map.get("chart") |> to_string() |> String.trim()
-
-        {:error,
-         error(
-           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of chart. " <>
-             "Remove chart and set chart_type to #{inspect(value)}."
-         )}
-
-      present_string?(Map.get(widget, "style")) ->
-        value = widget |> Map.get("style") |> to_string() |> String.trim()
-
-        {:error,
-         error(
-           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of style. " <>
-             "Remove style and set chart_type to #{inspect(value)}."
-         )}
-
-      true ->
-        :ok
+    with :ok <- validate_chart_field_alias(widget, "chart"),
+         :ok <- validate_chart_field_alias(widget, "style") do
+      :ok
     end
   end
 
   defp validate_chart_field_aliases(_widget, _widget_type), do: :ok
 
-  defp validate_chart_type_request(widget, "category") do
-    if title_requests_pie_or_donut?(widget) and
-         Map.get(widget, "chart_type") not in ["pie", "donut"] do
-      current = Map.get(widget, "chart_type")
+  defp validate_chart_field_alias(widget, field) do
+    case Map.get(widget, field) do
+      nil ->
+        :ok
 
-      {:error,
-       error(
-         "Category widget #{inspect(Map.get(widget, "id"))} is labelled as pie/donut but chart_type is #{inspect(current)}. " <>
-           "Set chart_type to \"pie\" or \"donut\"."
-       )}
-    else
-      :ok
+      "" ->
+        :ok
+
+      value when is_binary(value) ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of #{field}. " <>
+             "Remove #{field} and set chart_type to #{inspect(value)}."
+         )}
+
+      value ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of #{field}. " <>
+             "#{field} must be a string or atom if provided, got #{inspect(value)}."
+         )}
+    end
+  end
+
+  defp validate_chart_type_request(widget, "category") do
+    with {:ok, chart_type} <- fetch_normalized_chart_type(widget) do
+      cond do
+        chart_type not in ["bar", "pie", "donut"] ->
+          {:error,
+           error(
+             "Category widget #{inspect(Map.get(widget, "id"))} uses unsupported chart_type #{inspect(chart_type)}. " <>
+               "Use \"bar\", \"pie\", or \"donut\"."
+           )}
+
+        title_requests_pie_or_donut?(widget) and chart_type not in ["pie", "donut"] ->
+          {:error,
+           error(
+             "Category widget #{inspect(Map.get(widget, "id"))} is labelled as pie/donut but chart_type is #{inspect(chart_type)}. " <>
+               "Set chart_type to \"pie\" or \"donut\"."
+           )}
+
+        true ->
+          :ok
+      end
     end
   end
 
   defp validate_chart_type_request(widget, widget_type)
        when widget_type in ["distribution", "heatmap"] do
-    if title_requests_pie_or_donut?(widget) do
-      {:error,
-       error(
-         "Widget #{inspect(Map.get(widget, "id"))} uses #{widget_type}, which cannot render pie or donut charts. Use a category widget with chart_type pie or donut."
-       )}
-    else
-      :ok
+    with {:ok, chart_type} <- fetch_normalized_chart_type(widget) do
+      allowed_chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
+
+      cond do
+        chart_type != allowed_chart_type ->
+          {:error,
+           error(
+             "Widget #{inspect(Map.get(widget, "id"))} uses #{widget_type}, which only supports chart_type #{inspect(allowed_chart_type)}. " <>
+               "Received #{inspect(chart_type)}."
+           )}
+
+        title_requests_pie_or_donut?(widget) ->
+          {:error,
+           error(
+             "Widget #{inspect(Map.get(widget, "id"))} uses #{widget_type}, which cannot render pie or donut charts. Use a category widget with chart_type pie or donut."
+           )}
+
+        true ->
+          :ok
+      end
     end
   end
 
   defp validate_chart_type_request(_widget, _widget_type), do: :ok
+
+  defp fetch_normalized_chart_type(widget) do
+    case Map.get(widget, "chart_type") do
+      value when is_binary(value) and value != "" ->
+        {:ok, value}
+
+      value ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} has invalid chart_type #{inspect(value)}. " <>
+             "chart_type must be a non-empty string or atom."
+         )}
+    end
+  end
 
   defp title_requests_pie_or_donut?(widget) do
     case Map.get(widget, "title") do
@@ -491,9 +562,6 @@ defmodule Trifle.Chat.InlineDashboard do
   defp blank_value?(nil), do: true
   defp blank_value?([]), do: true
   defp blank_value?(_), do: false
-
-  defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
-  defp present_string?(_value), do: false
 
   defp resolve_title(opts, metric_key) do
     case Keyword.get(opts, :title) do

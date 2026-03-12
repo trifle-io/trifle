@@ -28,9 +28,6 @@ defmodule TrifleApp.Components.DashboardPage do
       assigns
       |> assign_new(:can_view_dashboard_payload, fn -> false end)
       |> assign_new(:show_dashboard_payload_modal, fn -> false end)
-      |> assign_new(:dashboard_payload_json, fn ->
-        DashboardPayload.dashboard_payload_json(assigns[:dashboard])
-      end)
 
     ~H"""
     <div
@@ -524,7 +521,11 @@ defmodule TrifleApp.Components.DashboardPage do
         >
           <:title>Dashboard payload</:title>
           <:body>
-            <DashboardPayload.payload_view payload={@dashboard_payload_json} />
+            <%= if @show_dashboard_payload_modal && @can_view_dashboard_payload do %>
+              <DashboardPayload.payload_view payload={
+                DashboardPayload.dashboard_payload_json(@dashboard)
+              } />
+            <% end %>
           </:body>
           <:actions>
             <button
