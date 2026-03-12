@@ -20,7 +20,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TableEditor do
       widget={@widget}
       path_options={@path_options}
       path_placeholder="metrics.table.*"
-      path_help="Path rows become table columns. Expression rows let you derive additional columns from prior rows."
+      path_help="Path rows become table rows; timestamps are the columns. Expression rows let you derive additional rows from prior rows."
     />
     """
   end

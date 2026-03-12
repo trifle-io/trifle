@@ -7,36 +7,42 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   alias TrifleApp.Components.DashboardWidgets.MetricSeries
   alias TrifleApp.Components.DashboardWidgets.Timeseries
 
-  @single_binding :"__single_binding__"
+  @single_binding :__single_binding__
 
   def resolve_timeline_rows(%Series{} = series_struct, widget) do
     rows = widget |> MetricSeries.normalize_widget() |> Map.get("series", [])
     available_paths = MetricSeries.available_paths(series_struct)
 
-    Enum.reduce(Enum.with_index(rows), [], fn {row, index}, acc ->
+    rows
+    |> Enum.with_index()
+    |> Enum.reduce([], fn {row, index}, acc ->
       resolved =
         case MetricSeries.row_kind(row) do
-          "expression" -> resolve_expression_row(acc, row, index)
+          "expression" -> resolve_expression_row(Enum.reverse(acc), row, index)
           _ -> resolve_timeline_path_row(series_struct, row, index, available_paths)
         end
 
-      acc ++ [resolved]
+      [resolved | acc]
     end)
+    |> Enum.reverse()
   end
 
   def resolve_category_rows(%Series{} = series_struct, widget, slices \\ 1) do
     rows = widget |> MetricSeries.normalize_widget() |> Map.get("series", [])
     available_paths = MetricSeries.available_paths(series_struct)
 
-    Enum.reduce(Enum.with_index(rows), [], fn {row, index}, acc ->
+    rows
+    |> Enum.with_index()
+    |> Enum.reduce([], fn {row, index}, acc ->
       resolved =
         case MetricSeries.row_kind(row) do
-          "expression" -> resolve_expression_row(acc, row, index)
+          "expression" -> resolve_expression_row(Enum.reverse(acc), row, index)
           _ -> resolve_category_path_row(series_struct, row, index, slices, available_paths)
         end
 
-      acc ++ [resolved]
+      [resolved | acc]
     end)
+    |> Enum.reverse()
   end
 
   def resolve_distribution_rows(
@@ -50,11 +56,13 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     rows = widget |> MetricSeries.normalize_widget() |> Map.get("series", [])
     available_paths = MetricSeries.available_paths(series_struct)
 
-    Enum.reduce(Enum.with_index(rows), [], fn {row, index}, acc ->
+    rows
+    |> Enum.with_index()
+    |> Enum.reduce([], fn {row, index}, acc ->
       resolved =
         case MetricSeries.row_kind(row) do
           "expression" ->
-            resolve_expression_row(acc, row, index)
+            resolve_expression_row(Enum.reverse(acc), row, index)
 
           _ ->
             resolve_distribution_path_row(
@@ -69,8 +77,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
             )
         end
 
-      acc ++ [resolved]
+      [resolved | acc]
     end)
+    |> Enum.reverse()
   end
 
   def resolve_kpi_scalar_rows(%Series{} = series_struct, widget, slices, function) do
@@ -202,7 +211,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
          horizontal_labels,
          vertical_labels,
          slices,
-         available_paths
+         _available_paths
        ) do
     expanded_path = MetricSeries.row_path(row)
 
@@ -325,9 +334,14 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
           |> Enum.map(fn {at, value} ->
             timestamp =
               case at do
-                %DateTime{} = dt -> DateTime.to_unix(dt, :millisecond)
-                %NaiveDateTime{} = dt -> dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:millisecond)
-                _ -> at
+                %DateTime{} = dt ->
+                  DateTime.to_unix(dt, :millisecond)
+
+                %NaiveDateTime{} = dt ->
+                  dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:millisecond)
+
+                _ ->
+                  at
               end
 
             [timestamp || 0, value]
@@ -755,7 +769,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   defp normalize_number(value) when is_number(value), do: value * 1.0
   defp normalize_number(_), do: nil
 
-  defp value_key, do: :"__value__"
+  defp value_key, do: :__value__
 
   defp sorted_entries(entries) do
     Enum.sort_by(entries, fn {_binding_key, entry} -> entry.name end)

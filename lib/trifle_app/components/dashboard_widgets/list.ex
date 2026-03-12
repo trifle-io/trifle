@@ -9,7 +9,6 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
   require Logger
 
-  alias Decimal
   alias Trifle.Stats.Series
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
 
@@ -159,10 +158,6 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
   defp primary_entry_path([%{source_path: source_path} | _]), do: source_path
   defp primary_entry_path(_), do: nil
-
-  defp to_float(%Decimal{} = value), do: Decimal.to_float(value)
-  defp to_float(value) when is_number(value), do: value * 1.0
-  defp to_float(_), do: 0.0
 
   defp normalize_limit(value) do
     cond do

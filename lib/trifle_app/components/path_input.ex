@@ -8,7 +8,7 @@ defmodule TrifleApp.Components.PathInput do
   attr :value, :string, default: ""
   attr :placeholder, :string, default: ""
   attr :path_options, :list, default: []
-  attr :wrapper_class, :string, default: "relative"
+  attr :wrapper_class, :string, default: nil
 
   attr :input_class, :string,
     default:
@@ -20,7 +20,7 @@ defmodule TrifleApp.Components.PathInput do
     ~H"""
     <div
       id={"#{@id}-wrapper"}
-      class={@wrapper_class}
+      class={["relative", @wrapper_class]}
       phx-hook="PathAutocomplete"
       data-paths={@options_json}
     >

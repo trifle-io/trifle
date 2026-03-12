@@ -15,11 +15,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
 
   def normalize_widget(widget) when is_map(widget) do
     if metric_widget?(widget) do
-      Map.put(
-        widget,
-        "series",
-        normalize_series_rows(Map.get(widget, "series") || legacy_rows(widget))
-      )
+      widget
+      |> Map.put("series", normalize_series_rows(current_series_rows(widget)))
+      |> prune_legacy_metric_fields()
     else
       widget
     end
@@ -32,7 +30,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
       Map.put(
         widget,
         "series",
-        normalize_series_rows(Map.get(widget, "series") || legacy_rows(widget),
+        normalize_series_rows(current_series_rows(widget),
           preserve_empty: true
         )
       )
@@ -210,9 +208,13 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
   def prune_legacy_metric_fields(widget) when is_map(widget) do
     widget
     |> Map.delete("path")
+    |> Map.delete(:path)
     |> Map.delete("paths")
+    |> Map.delete(:paths)
     |> Map.delete("path_inputs")
+    |> Map.delete(:path_inputs)
     |> Map.delete("series_color_selectors")
+    |> Map.delete(:series_color_selectors)
   end
 
   def prune_legacy_metric_fields(other), do: other
@@ -228,6 +230,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
   defp widget_type(type) when is_atom(type), do: type |> Atom.to_string() |> widget_type()
   defp widget_type(type) when is_binary(type), do: type |> String.trim() |> String.downcase()
   defp widget_type(_), do: ""
+
+  defp current_series_rows(widget) do
+    Map.get(widget, :series) || Map.get(widget, "series") || legacy_rows(widget)
+  end
 
   defp legacy_rows(widget) do
     case widget_type(widget) do

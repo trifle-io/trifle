@@ -919,7 +919,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
     |> Map.get("series", Map.get(widget, :series, []))
     |> case do
       rows when is_list(rows) ->
-        Enum.find_value(rows, fn row ->
+        visible_rows =
+          Enum.filter(rows, fn row ->
+            normalize_boolean(Map.get(row, "visible", Map.get(row, :visible, true)), true)
+          end)
+
+        Enum.find_value(visible_rows, fn row ->
           path =
             row
             |> Map.get("path", Map.get(row, :path, ""))
@@ -936,7 +941,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
             )
             |> normalize_series_color_selector()
           end
-        end)
+        end) ||
+          Enum.find_value(visible_rows, fn row ->
+            case Map.get(row, "color_selector", Map.get(row, :color_selector)) do
+              value when is_binary(value) ->
+                trimmed = String.trim(value)
+                if trimmed == "", do: nil, else: normalize_series_color_selector(trimmed)
+
+              _ ->
+                nil
+            end
+          end)
 
       _ ->
         nil
