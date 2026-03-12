@@ -25,5 +25,10 @@ defmodule Trifle.Chat.DashboardSpecTest do
     assert prompt =~ "describe_dashboard_widgets"
     assert prompt =~ "build_metric_dashboard"
     assert prompt =~ "12-column GridStack"
+    assert prompt =~ "Category widgets default to `bar`"
+    assert prompt =~ "\"chart_type\":\"pie\""
+    assert prompt =~ "`chart` and `style` are invalid"
+    assert prompt =~ "\"style\":\"pie\",\"chart_type\":\"bar\""
+    assert prompt =~ "Distribution and heatmap widgets are for histograms/buckets"
   end
 end

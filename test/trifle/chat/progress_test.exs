@@ -38,4 +38,19 @@ defmodule Trifle.Chat.ProgressTest do
     text = Progress.text(:error, %{reason: {:bad_input, [path: "metrics"]}})
     assert text =~ "Chat error: {:bad_input, [path: \"metrics\"]}"
   end
+
+  test "inspecting_metric_schema reports the schema sample descriptor" do
+    assert Progress.text(:inspecting_metric_schema, %{metric_key: "sales", timeframe: "schema sample", granularity: "1d"}) ==
+             "Inspecting metric schema (Metrics Key sales • schema sample • granularity 1d)."
+  end
+
+  test "fetching_timeseries reports safe granularity adjustments" do
+    assert Progress.text(:fetching_timeseries, %{metric_key: "sales", timeframe: "60d", granularity: "1d", adjusted_from: "1m"}) ==
+             "Fetching data for Metrics Key sales • 60d • granularity 1d • adjusted from 1m."
+  end
+
+  test "formatting_series reports dashboard granularity adjustments" do
+    assert Progress.text(:formatting_series, %{metric_key: "sales", formatter: "dashboard", timeframe: "60d", granularity: "1d", adjusted_from: "1m"}) ==
+             "Formatting series output (Dashboard formatter • Metrics Key sales • 60d • granularity 1d • adjusted from 1m)."
+  end
 end

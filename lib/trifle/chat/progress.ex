@@ -15,6 +15,7 @@ defmodule Trifle.Chat.Progress do
       "thinking" -> text(:thinking, payload)
       "fetching_timeseries" -> text(:fetching_timeseries, payload)
       "listing_metrics" -> text(:listing_metrics, payload)
+      "inspecting_metric_schema" -> text(:inspecting_metric_schema, payload)
       "aggregating_series" -> text(:aggregating_series, payload)
       "formatting_series" -> text(:formatting_series, payload)
       "processing_results" -> text(:processing_results, payload)
@@ -37,12 +38,14 @@ defmodule Trifle.Chat.Progress do
     metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)
     timeframe = Map.get(payload, "timeframe") || Map.get(payload, :timeframe)
     granularity = Map.get(payload, "granularity") || Map.get(payload, :granularity)
+    adjusted_from = Map.get(payload, "adjusted_from") || Map.get(payload, :adjusted_from)
 
     parts =
       [
         metric && "Metrics Key #{metric}",
         timeframe && timeframe,
-        granularity && "granularity #{granularity}"
+        granularity && "granularity #{granularity}",
+        adjusted_from && "adjusted from #{adjusted_from}"
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -70,9 +73,28 @@ defmodule Trifle.Chat.Progress do
     end
   end
 
+  def text(:inspecting_metric_schema, payload) when is_map(payload) do
+    metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)
+    timeframe = Map.get(payload, "timeframe") || Map.get(payload, :timeframe)
+    granularity = Map.get(payload, "granularity") || Map.get(payload, :granularity)
+
+    descriptor =
+      [metric && "Metrics Key #{metric}", timeframe, granularity && "granularity #{granularity}"]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" • ")
+
+    case descriptor do
+      "" -> ensure_period("Inspecting metric schema")
+      other -> ensure_period("Inspecting metric schema (#{other})")
+    end
+  end
+
   def text(:aggregating_series, payload) when is_map(payload) do
     metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)
     value_path = Map.get(payload, "value_path") || Map.get(payload, :value_path)
+    timeframe = Map.get(payload, "timeframe") || Map.get(payload, :timeframe)
+    granularity = Map.get(payload, "granularity") || Map.get(payload, :granularity)
+    adjusted_from = Map.get(payload, "adjusted_from") || Map.get(payload, :adjusted_from)
 
     aggregator =
       payload
@@ -83,7 +105,14 @@ defmodule Trifle.Chat.Progress do
       end
 
     descriptor =
-      [metric && "Metrics Key #{metric}", value_path && "path #{value_path}", aggregator]
+      [
+        metric && "Metrics Key #{metric}",
+        value_path && "path #{value_path}",
+        aggregator,
+        timeframe,
+        granularity && "granularity #{granularity}",
+        adjusted_from && "adjusted from #{adjusted_from}"
+      ]
       |> Enum.reject(&is_nil/1)
       |> Enum.join(" • ")
 
@@ -98,6 +127,9 @@ defmodule Trifle.Chat.Progress do
   def text(:formatting_series, payload) when is_map(payload) do
     metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)
     value_path = Map.get(payload, "value_path") || Map.get(payload, :value_path)
+    timeframe = Map.get(payload, "timeframe") || Map.get(payload, :timeframe)
+    granularity = Map.get(payload, "granularity") || Map.get(payload, :granularity)
+    adjusted_from = Map.get(payload, "adjusted_from") || Map.get(payload, :adjusted_from)
 
     formatter =
       payload
@@ -108,7 +140,14 @@ defmodule Trifle.Chat.Progress do
       end
 
     descriptor =
-      [formatter, metric && "Metrics Key #{metric}", value_path && "path #{value_path}"]
+      [
+        formatter,
+        metric && "Metrics Key #{metric}",
+        value_path && "path #{value_path}",
+        timeframe,
+        granularity && "granularity #{granularity}",
+        adjusted_from && "adjusted from #{adjusted_from}"
+      ]
       |> Enum.reject(&is_nil/1)
       |> Enum.join(" • ")
 

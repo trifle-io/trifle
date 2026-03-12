@@ -8,6 +8,7 @@ defmodule TrifleApp.ChatLive do
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
   alias Trifle.Stats.Source
+  alias TrifleApp.Components.DashboardPayload
   alias TrifleApp.Components.DashboardWidgets.WidgetView
 
   @chat_cancel_reason :chat_cancelled
@@ -39,6 +40,10 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
       |> assign(:show_source_modal, false)
+      |> assign(:can_view_dashboard_payload, admin_user?(socket.assigns[:current_user]))
+      |> assign(:show_dashboard_payload_modal, false)
+      |> assign(:selected_dashboard_payload, nil)
+      |> assign(:selected_dashboard_payload_title, nil)
       |> assign(:form, to_form(%{"message" => ""}))
 
     {:ok, init_session(socket, selected_source)}
@@ -114,6 +119,41 @@ defmodule TrifleApp.ChatLive do
 
   def handle_event("close_source_modal", _params, socket) do
     {:noreply, assign(socket, :show_source_modal, false)}
+  end
+
+  def handle_event(
+        "open_dashboard_payload",
+        %{"dom_id" => dom_id, "message_id" => message_id},
+        socket
+      ) do
+    if socket.assigns[:can_view_dashboard_payload] do
+      case find_dashboard_visualization(socket.assigns.messages, dom_id, message_id) do
+        nil ->
+          {:noreply, put_flash(socket, :error, "Dashboard payload unavailable.")}
+
+        visualization ->
+          {:noreply,
+           socket
+           |> assign(:show_dashboard_payload_modal, true)
+           |> assign(:selected_dashboard_payload_title, dashboard_payload_title(visualization))
+           |> assign(
+             :selected_dashboard_payload,
+             DashboardPayload.dashboard_payload_json(
+               Map.get(visualization, :dashboard, Map.get(visualization, "dashboard", %{}))
+             )
+           )}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_dashboard_payload_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_dashboard_payload_modal, false)
+     |> assign(:selected_dashboard_payload, nil)
+     |> assign(:selected_dashboard_payload_title, nil)}
   end
 
   def handle_event("select_source", %{"ref" => ref}, socket) do
@@ -423,6 +463,9 @@ defmodule TrifleApp.ChatLive do
     |> assign(:pending_user_message, nil)
     |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
     |> assign(:show_source_modal, false)
+    |> assign(:show_dashboard_payload_modal, false)
+    |> assign(:selected_dashboard_payload, nil)
+    |> assign(:selected_dashboard_payload_title, nil)
   end
 
   defp init_session(socket, %Source{} = source) do
@@ -446,6 +489,9 @@ defmodule TrifleApp.ChatLive do
       |> assign(:pending_user_message, nil)
       |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
       |> assign(:show_source_modal, false)
+      |> assign(:show_dashboard_payload_modal, false)
+      |> assign(:selected_dashboard_payload, nil)
+      |> assign(:selected_dashboard_payload_title, nil)
       |> maybe_resume_pending()
     else
       {:error, error} ->
@@ -464,6 +510,9 @@ defmodule TrifleApp.ChatLive do
         |> assign(:pending_user_message, nil)
         |> assign(:grouped_sources, group_sources(socket.assigns[:sources] || []))
         |> assign(:show_source_modal, false)
+        |> assign(:show_dashboard_payload_modal, false)
+        |> assign(:selected_dashboard_payload, nil)
+        |> assign(:selected_dashboard_payload_title, nil)
         |> put_flash(:error, "Unable to load chat session: #{format_error(error)}")
     end
   end
@@ -1160,6 +1209,7 @@ defmodule TrifleApp.ChatLive do
           :for={message <- messages_without_last}
           message={message}
           current_user={@current_user}
+          can_view_dashboard_payload={@can_view_dashboard_payload}
         />
 
         <.progress_events
@@ -1169,7 +1219,12 @@ defmodule TrifleApp.ChatLive do
           tick_at={@progress_tick_at}
         />
 
-        <.chat_message :if={last_message} message={last_message} current_user={@current_user} />
+        <.chat_message
+          :if={last_message}
+          message={last_message}
+          current_user={@current_user}
+          can_view_dashboard_payload={@can_view_dashboard_payload}
+        />
 
         <.progress_events
           :if={progress_after_last?(@progress_events, @sending, last_message)}
@@ -1294,6 +1349,27 @@ defmodule TrifleApp.ChatLive do
           <% end %>
         </:body>
       </.app_modal>
+
+      <.app_modal
+        id="chat-dashboard-payload-modal"
+        show={@show_dashboard_payload_modal}
+        on_cancel="close_dashboard_payload_modal"
+        size="xl"
+      >
+        <:title>{@selected_dashboard_payload_title || "Dashboard payload"}</:title>
+        <:body>
+          <DashboardPayload.payload_view payload={@selected_dashboard_payload || "{}"} />
+        </:body>
+        <:actions>
+          <button
+            type="button"
+            phx-click="close_dashboard_payload_modal"
+            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+          >
+            Close
+          </button>
+        </:actions>
+      </.app_modal>
     </div>
     """
   end
@@ -1309,6 +1385,7 @@ defmodule TrifleApp.ChatLive do
 
   attr :message, :map, required: true
   attr :current_user, :any
+  attr :can_view_dashboard_payload, :boolean, default: false
 
   defp chat_message(assigns) do
     ~H"""
@@ -1338,10 +1415,15 @@ defmodule TrifleApp.ChatLive do
         </div>
       </div>
 
-      <div :if={Enum.any?(dashboard_visualizations(@message))} class={dashboard_block_classes(@message)}>
+      <div
+        :if={Enum.any?(dashboard_visualizations(@message))}
+        class={dashboard_block_classes(@message)}
+      >
         <.chat_dashboard_visualization
           :for={viz <- dashboard_visualizations(@message)}
+          message_dom_id={@message.dom_id}
           visualization={viz}
+          can_view_dashboard_payload={@can_view_dashboard_payload}
         />
       </div>
     </div>
@@ -1349,6 +1431,8 @@ defmodule TrifleApp.ChatLive do
   end
 
   attr :visualization, :map, required: true
+  attr :message_dom_id, :string, required: true
+  attr :can_view_dashboard_payload, :boolean, default: false
 
   defp chat_dashboard_visualization(assigns) do
     visualization = assigns.visualization
@@ -1356,34 +1440,47 @@ defmodule TrifleApp.ChatLive do
     assigns =
       assigns
       |> assign(:dom_id, Map.get(visualization, :dom_id))
-      |> assign(:dashboard_render, dashboard_visualization_render(visualization, Map.get(visualization, :dom_id)))
+      |> assign(
+        :dashboard_render,
+        dashboard_visualization_render(visualization, Map.get(visualization, :dom_id))
+      )
 
     ~H"""
-    <%= if @dashboard_render do %>
-      <WidgetView.grid
-        dashboard={@dashboard_render.dashboard}
-        stats={@dashboard_render.stats}
-        print_mode={false}
-        current_user={nil}
-        can_edit_dashboard={false}
-        is_public_access={true}
-        public_token={nil}
-        grid_dom_id={@dashboard_render.grid_dom_id}
-        widget_export={%{type: :disabled}}
-        kpi_values={@dashboard_render.dataset_maps.kpi_values}
-        kpi_visuals={@dashboard_render.dataset_maps.kpi_visuals}
-        timeseries={@dashboard_render.dataset_maps.timeseries}
-        category={@dashboard_render.dataset_maps.category}
-        table={@dashboard_render.dataset_maps.table}
-        text_widgets={@dashboard_render.dataset_maps.text}
-        list={@dashboard_render.dataset_maps.list}
-        distribution={@dashboard_render.dataset_maps.distribution}
-      />
-    <% else %>
-      <div class="text-xs text-slate-500 dark:text-slate-400 italic">
-        Could not render this dashboard snapshot.
+    <div class="space-y-3">
+      <%= if @dashboard_render do %>
+        <WidgetView.grid
+          dashboard={@dashboard_render.dashboard}
+          stats={@dashboard_render.stats}
+          print_mode={false}
+          current_user={nil}
+          can_edit_dashboard={false}
+          is_public_access={true}
+          public_token={nil}
+          grid_dom_id={@dashboard_render.grid_dom_id}
+          widget_export={%{type: :disabled}}
+          kpi_values={@dashboard_render.dataset_maps.kpi_values}
+          kpi_visuals={@dashboard_render.dataset_maps.kpi_visuals}
+          timeseries={@dashboard_render.dataset_maps.timeseries}
+          category={@dashboard_render.dataset_maps.category}
+          table={@dashboard_render.dataset_maps.table}
+          text_widgets={@dashboard_render.dataset_maps.text}
+          list={@dashboard_render.dataset_maps.list}
+          distribution={@dashboard_render.dataset_maps.distribution}
+        />
+      <% else %>
+        <div class="text-xs text-slate-500 dark:text-slate-400 italic">
+          Could not render this dashboard snapshot.
+        </div>
+      <% end %>
+
+      <div :if={@can_view_dashboard_payload} class="flex justify-end">
+        <DashboardPayload.payload_button
+          phx-click="open_dashboard_payload"
+          phx-value-dom_id={@dom_id}
+          phx-value-message_id={@message_dom_id}
+        />
       </div>
-    <% end %>
+    </div>
     """
   end
 
@@ -1501,6 +1598,9 @@ defmodule TrifleApp.ChatLive do
   defp avatar_alt(%{role: "assistant"}), do: "Trifle AI avatar"
   defp avatar_alt(_), do: "Your avatar"
 
+  defp admin_user?(%{is_admin: true}), do: true
+  defp admin_user?(_), do: false
+
   defp format_timestamp(nil), do: nil
 
   defp format_timestamp(%DateTime{} = dt) do
@@ -1512,6 +1612,30 @@ defmodule TrifleApp.ChatLive do
   end
 
   defp format_timestamp(_), do: ""
+
+  defp find_dashboard_visualization(messages, dom_id, message_id)
+       when is_binary(dom_id) and is_binary(message_id) do
+    messages
+    |> Enum.find(fn message -> Map.get(message, :dom_id) == message_id end)
+    |> case do
+      nil ->
+        nil
+
+      message ->
+        message
+        |> dashboard_visualizations()
+        |> Enum.find(fn visualization -> Map.get(visualization, :dom_id) == dom_id end)
+    end
+  end
+
+  defp find_dashboard_visualization(_messages, _dom_id, _message_id), do: nil
+
+  defp dashboard_payload_title(visualization) do
+    case Map.get(visualization, :title, Map.get(visualization, "title")) do
+      title when is_binary(title) and title != "" -> "#{title} payload"
+      _ -> "Dashboard payload"
+    end
+  end
 
   defp gravatar_url(email, size) when is_binary(email) do
     trimmed = String.trim(email)

@@ -8,6 +8,8 @@ defmodule Trifle.Chat.InlineDashboard do
   alias Trifle.Stats.Series
   alias TrifleApp.Components.DashboardWidgets.{Registry, WidgetData, WidgetView}
 
+  @chat_point_limit 1000
+
   @type source_meta :: map()
   @type timeframe_meta :: map()
   @type visualization :: map()
@@ -17,7 +19,8 @@ defmodule Trifle.Chat.InlineDashboard do
   def build_visualization(source_meta, metric_key, grid, series_snapshot, opts \\ [])
 
   def build_visualization(source_meta, metric_key, grid, series_snapshot, opts)
-      when is_map(source_meta) and is_binary(metric_key) and is_list(grid) and is_map(series_snapshot) do
+      when is_map(source_meta) and is_binary(metric_key) and is_list(grid) and
+             is_map(series_snapshot) do
     with {:ok, normalized_grid} <- normalize_grid(grid) do
       dashboard_id = "inline-dashboard-" <> UUID.generate()
       title = resolve_title(opts, metric_key)
@@ -25,16 +28,17 @@ defmodule Trifle.Chat.InlineDashboard do
       default_timeframe = Keyword.get(opts, :default_timeframe)
       default_granularity = Keyword.get(opts, :default_granularity)
 
-      dashboard = %{
-        "id" => dashboard_id,
-        "name" => title,
-        "key" => metric_key,
-        "default_timeframe" => default_timeframe,
-        "default_granularity" => default_granularity,
-        "payload" => %{"grid" => normalized_grid}
-      }
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
+      dashboard =
+        %{
+          "id" => dashboard_id,
+          "name" => title,
+          "key" => metric_key,
+          "default_timeframe" => default_timeframe,
+          "default_granularity" => default_granularity,
+          "payload" => %{"grid" => normalized_grid}
+        }
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Map.new()
 
       visualization = %{
         "id" => dashboard_id,
@@ -53,7 +57,10 @@ defmodule Trifle.Chat.InlineDashboard do
   end
 
   def build_visualization(_source_meta, _metric_key, _grid, _series_snapshot, _opts) do
-    {:error, error("Dashboard visualization requires source metadata, metric key, grid, and series snapshot.")}
+    {:error,
+     error(
+       "Dashboard visualization requires source metadata, metric key, grid, and series snapshot."
+     )}
   end
 
   @spec normalize_grid(list()) :: {:ok, list()} | {:error, map()}
@@ -79,7 +86,10 @@ defmodule Trifle.Chat.InlineDashboard do
   @spec render_state(map()) :: {:ok, map()} | {:error, map()}
   def render_state(visualization) when is_map(visualization) do
     with {:ok, dashboard} <- dashboard_from_visualization(visualization),
-         {:ok, series} <- series_from_snapshot(visualization["series_snapshot"] || visualization[:series_snapshot]) do
+         {:ok, series} <-
+           series_from_snapshot(
+             visualization["series_snapshot"] || visualization[:series_snapshot]
+           ) do
       grid_items = WidgetView.grid_items(dashboard)
 
       dataset_maps =
@@ -112,10 +122,18 @@ defmodule Trifle.Chat.InlineDashboard do
       |> value_for("values")
       |> List.wrap()
 
-    if timestamps == [] and values == [] do
-      {:error, error("Dashboard series snapshot is empty.")}
-    else
-      {:ok, Series.new(%{at: timestamps, values: values})}
+    point_count = max(length(timestamps), length(values))
+
+    cond do
+      timestamps == [] and values == [] ->
+        {:error, error("Dashboard series snapshot is empty.")}
+
+      point_count > @chat_point_limit ->
+        {:error,
+         error("Dashboard series snapshot exceeds the chat limit of #{@chat_point_limit} points.")}
+
+      true ->
+        {:ok, Series.new(%{at: timestamps, values: values})}
     end
   end
 
@@ -144,7 +162,7 @@ defmodule Trifle.Chat.InlineDashboard do
       |> Map.put("type", Registry.widget_type(item))
       |> ensure_widget_id(index)
       |> ensure_layout_defaults()
-      |> Registry.normalize_widget()
+      |> normalize_chart_fields()
 
     widget_type = Map.get(widget, "type")
 
@@ -153,8 +171,13 @@ defmodule Trifle.Chat.InlineDashboard do
         {:error, error("Unsupported dashboard widget type: #{inspect(widget_type)}.")}
 
       true ->
-        with :ok <- validate_required_fields(widget, widget_type) do
-          {positioned_widget, next_layout_state} = position_widget(widget, layout_state)
+        with :ok <- validate_chart_field_aliases(widget, widget_type),
+             :ok <- validate_chart_type_request(widget, widget_type),
+             normalized_widget = Registry.normalize_widget(widget),
+             :ok <- validate_required_fields(normalized_widget, widget_type) do
+          {positioned_widget, next_layout_state} =
+            position_widget(normalized_widget, layout_state)
+
           {:ok, positioned_widget, next_layout_state}
         end
     end
@@ -192,6 +215,33 @@ defmodule Trifle.Chat.InlineDashboard do
     |> put_int_default("h", DashboardSpec.default_layout(Map.get(widget, "type")).h)
   end
 
+  defp normalize_chart_fields(widget) when is_map(widget) do
+    Enum.reduce(["chart", "style", "chart_type"], widget, fn field, acc ->
+      case Map.get(acc, field) do
+        nil ->
+          acc
+
+        value when is_binary(value) ->
+          Map.put(acc, field, normalize_chart_field_value(value))
+
+        value when is_atom(value) and value not in [true, false] ->
+          value
+          |> Atom.to_string()
+          |> normalize_chart_field_value()
+          |> then(&Map.put(acc, field, &1))
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  defp normalize_chart_field_value(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+  end
+
   defp validate_required_fields(widget, widget_type) do
     missing? =
       widget_type
@@ -209,6 +259,115 @@ defmodule Trifle.Chat.InlineDashboard do
          error(
            "Widget #{inspect(Map.get(widget, "id"))} of type #{widget_type} requires at least one of: #{Enum.join(fields, ", ")}."
          )}
+    end
+  end
+
+  defp validate_chart_field_aliases(widget, widget_type)
+       when widget_type in ["timeseries", "category", "distribution", "heatmap"] do
+    with :ok <- validate_chart_field_alias(widget, "chart"),
+         :ok <- validate_chart_field_alias(widget, "style") do
+      :ok
+    end
+  end
+
+  defp validate_chart_field_aliases(_widget, _widget_type), do: :ok
+
+  defp validate_chart_field_alias(widget, field) do
+    case Map.get(widget, field) do
+      nil ->
+        :ok
+
+      "" ->
+        :ok
+
+      value when is_binary(value) ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of #{field}. " <>
+             "Remove #{field} and set chart_type to #{inspect(value)}."
+         )}
+
+      value ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} must use chart_type instead of #{field}. " <>
+             "#{field} must be a string or atom if provided, got #{inspect(value)}."
+         )}
+    end
+  end
+
+  defp validate_chart_type_request(widget, "category") do
+    with {:ok, chart_type} <- fetch_normalized_chart_type(widget) do
+      cond do
+        chart_type not in ["bar", "pie", "donut"] ->
+          {:error,
+           error(
+             "Category widget #{inspect(Map.get(widget, "id"))} uses unsupported chart_type #{inspect(chart_type)}. " <>
+               "Use \"bar\", \"pie\", or \"donut\"."
+           )}
+
+        title_requests_pie_or_donut?(widget) and chart_type not in ["pie", "donut"] ->
+          {:error,
+           error(
+             "Category widget #{inspect(Map.get(widget, "id"))} is labelled as pie/donut but chart_type is #{inspect(chart_type)}. " <>
+               "Set chart_type to \"pie\" or \"donut\"."
+           )}
+
+        true ->
+          :ok
+      end
+    end
+  end
+
+  defp validate_chart_type_request(widget, widget_type)
+       when widget_type in ["distribution", "heatmap"] do
+    with {:ok, chart_type} <- fetch_normalized_chart_type(widget) do
+      allowed_chart_type = if widget_type == "heatmap", do: "heatmap", else: "bar"
+
+      cond do
+        chart_type != allowed_chart_type ->
+          {:error,
+           error(
+             "Widget #{inspect(Map.get(widget, "id"))} uses #{widget_type}, which only supports chart_type #{inspect(allowed_chart_type)}. " <>
+               "Received #{inspect(chart_type)}."
+           )}
+
+        title_requests_pie_or_donut?(widget) ->
+          {:error,
+           error(
+             "Widget #{inspect(Map.get(widget, "id"))} uses #{widget_type}, which cannot render pie or donut charts. Use a category widget with chart_type pie or donut."
+           )}
+
+        true ->
+          :ok
+      end
+    end
+  end
+
+  defp validate_chart_type_request(_widget, _widget_type), do: :ok
+
+  defp fetch_normalized_chart_type(widget) do
+    case Map.get(widget, "chart_type") do
+      value when is_binary(value) and value != "" ->
+        {:ok, value}
+
+      value ->
+        {:error,
+         error(
+           "Widget #{inspect(Map.get(widget, "id"))} has invalid chart_type #{inspect(value)}. " <>
+             "chart_type must be a non-empty string or atom."
+         )}
+    end
+  end
+
+  defp title_requests_pie_or_donut?(widget) do
+    case Map.get(widget, "title") do
+      title when is_binary(title) ->
+        normalized = String.downcase(title)
+        String.contains?(normalized, "pie") or String.contains?(normalized, "donut")
+
+      _ ->
+        false
     end
   end
 
@@ -299,7 +458,9 @@ defmodule Trifle.Chat.InlineDashboard do
     occupied =
       x
       |> occupied_cells(y, width, height)
-      |> Enum.reduce(layout_state.occupied || MapSet.new(), fn cell, acc -> MapSet.put(acc, cell) end)
+      |> Enum.reduce(layout_state.occupied || MapSet.new(), fn cell, acc ->
+        MapSet.put(acc, cell)
+      end)
 
     %{layout_state | occupied: occupied, max_y: max(layout_state.max_y, bottom)}
   end
@@ -338,7 +499,8 @@ defmodule Trifle.Chat.InlineDashboard do
 
   defp clamp_coordinate(value, max_value \\ nil)
 
-  defp clamp_coordinate(value, max_value) when is_integer(value) and value >= 0 and is_integer(max_value) do
+  defp clamp_coordinate(value, max_value)
+       when is_integer(value) and value >= 0 and is_integer(max_value) do
     min(value, max_value)
   end
 
