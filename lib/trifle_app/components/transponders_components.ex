@@ -99,7 +99,7 @@ defmodule TrifleApp.TranspondersComponents do
                         <span class="mx-3">•</span>
                         Response Path:
                         <code class="bg-gray-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">
-                          {Map.get(transponder.config, "response_path", "N/A")}
+                          {Map.get(transponder.config, "response", "N/A")}
                         </code>
                       </p>
                     </div>

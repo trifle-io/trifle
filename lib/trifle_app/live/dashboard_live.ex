@@ -2918,7 +2918,7 @@ defmodule TrifleApp.DashboardLive do
     info =
       transponders
       |> Enum.map(fn transponder ->
-        response_path = Map.get(transponder.config, "response_path", "")
+        response_path = Map.get(transponder.config, "response", "")
         transponder_name = transponder.name || transponder.key
         if response_path != "", do: {response_path, transponder_name}, else: nil
       end)

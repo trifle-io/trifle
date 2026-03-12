@@ -6,21 +6,14 @@ defmodule TrifleApi.TranspondersController do
   alias Trifle.Organizations.Transponder
   alias Trifle.Stats.Source
 
-  @expression_type "Trifle.Stats.Transponder.Expression"
-
   plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
 
   def index(%{assigns: %{current_source: %Source{} = source}} = conn, _params) do
-    transponders =
-      source
-      |> list_transponders()
-      |> Enum.filter(fn transponder -> expression_type?(transponder.type) end)
-
-    render(conn, "index.json", transponders: transponders)
+    render(conn, "index.json", transponders: list_transponders(source))
   end
 
   def create(%{assigns: %{current_source: %Source{} = source}} = conn, params) do
-    with {:ok, attrs} <- transponder_attrs(params, :create) do
+    with {:ok, attrs} <- transponder_attrs(params) do
       attrs = put_next_order(attrs, source)
 
       case create_transponder(source, attrs) do
@@ -33,9 +26,6 @@ defmodule TrifleApi.TranspondersController do
           render_changeset(conn, changeset)
       end
     else
-      {:error, :unsupported_type} ->
-        render_error(conn, :unprocessable_entity, "Unsupported transponder type")
-
       {:error, :invalid_params} ->
         render_error(conn, :unprocessable_entity, "Invalid request parameters")
     end
@@ -43,8 +33,7 @@ defmodule TrifleApi.TranspondersController do
 
   def update(%{assigns: %{current_source: %Source{} = source}} = conn, %{"id" => id} = params) do
     with {:ok, %Transponder{} = transponder} <- fetch_transponder(source, id),
-         :ok <- ensure_expression_transponder(transponder),
-         {:ok, attrs} <- transponder_attrs(params, :update),
+         {:ok, attrs} <- transponder_attrs(params),
          {:ok, %Transponder{} = updated} <- Organizations.update_transponder(transponder, attrs) do
       render(conn, "show.json", transponder: updated)
     else
@@ -53,9 +42,6 @@ defmodule TrifleApi.TranspondersController do
         |> put_status(:not_found)
         |> put_view(TrifleApi.ErrorJSON)
         |> render("404.json")
-
-      {:error, :unsupported_type} ->
-        render_error(conn, :unprocessable_entity, "Unsupported transponder type")
 
       {:error, :invalid_params} ->
         render_error(conn, :unprocessable_entity, "Invalid request parameters")
@@ -67,7 +53,6 @@ defmodule TrifleApi.TranspondersController do
 
   def delete(%{assigns: %{current_source: %Source{} = source}} = conn, %{"id" => id}) do
     with {:ok, %Transponder{} = transponder} <- fetch_transponder(source, id),
-         :ok <- ensure_expression_transponder(transponder),
          {:ok, %Transponder{} = deleted} <- Organizations.delete_transponder(transponder) do
       render(conn, "show.json", transponder: deleted)
     else
@@ -76,9 +61,6 @@ defmodule TrifleApi.TranspondersController do
         |> put_status(:not_found)
         |> put_view(TrifleApi.ErrorJSON)
         |> render("404.json")
-
-      {:error, :unsupported_type} ->
-        render_error(conn, :unprocessable_entity, "Unsupported transponder type")
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render_changeset(conn, changeset)
@@ -122,22 +104,16 @@ defmodule TrifleApi.TranspondersController do
     end
   end
 
-  defp ensure_expression_transponder(%Transponder{type: type}) do
-    if expression_type?(type), do: :ok, else: {:error, :unsupported_type}
-  end
-
-  defp transponder_attrs(params, action) do
+  defp transponder_attrs(params) do
     payload = Map.get(params, "transponder") || params
 
-    with {:ok, type} <- normalize_type(Map.get(payload, "type"), action),
-         {:ok, config} <- normalize_config(payload),
+    with {:ok, config} <- normalize_config(payload),
          {:ok, enabled} <- normalize_enabled(Map.get(payload, "enabled")),
          {:ok, order} <- normalize_order(Map.get(payload, "order")) do
       attrs =
         %{}
         |> maybe_put("name", Map.get(payload, "name"))
         |> maybe_put("key", Map.get(payload, "key"))
-        |> maybe_put("type", type)
         |> maybe_put("config", config)
         |> maybe_put("enabled", enabled)
         |> maybe_put("order", order)
@@ -145,32 +121,6 @@ defmodule TrifleApi.TranspondersController do
       {:ok, attrs}
     end
   end
-
-  defp normalize_type(nil, :create), do: {:ok, @expression_type}
-  defp normalize_type(nil, :update), do: {:ok, nil}
-
-  defp normalize_type(type, action) when is_binary(type) do
-    trimmed = String.trim(type)
-
-    cond do
-      trimmed == "" and action == :create ->
-        {:ok, @expression_type}
-
-      trimmed == "" and action == :update ->
-        {:ok, nil}
-
-      expression_type?(trimmed) ->
-        {:ok, @expression_type}
-
-      String.downcase(trimmed) == "expression" ->
-        {:ok, @expression_type}
-
-      true ->
-        {:error, :unsupported_type}
-    end
-  end
-
-  defp normalize_type(_type, _action), do: {:error, :invalid_params}
 
   defp normalize_config(payload) do
     case Map.get(payload, "config") do
@@ -180,7 +130,7 @@ defmodule TrifleApi.TranspondersController do
       nil ->
         derived =
           payload
-          |> Map.take(["paths", "expression", "response_path"])
+          |> Map.take(["paths", "expression", "response"])
           |> Enum.reject(fn {_key, value} -> is_nil(value) end)
           |> Enum.into(%{})
 
@@ -218,12 +168,6 @@ defmodule TrifleApi.TranspondersController do
 
   defp maybe_put(attrs, _key, nil), do: attrs
   defp maybe_put(attrs, key, value), do: Map.put(attrs, key, value)
-
-  defp expression_type?(type) when is_binary(type) do
-    String.downcase(type) == String.downcase(@expression_type)
-  end
-
-  defp expression_type?(_), do: false
 
   defp render_changeset(conn, changeset) do
     conn

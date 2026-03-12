@@ -2531,9 +2531,7 @@ defmodule Trifle.Organizations do
 
     base_query =
       from t in Transponder,
-        where:
-          t.source_type == ^type_string and t.source_id == ^source_id and
-            t.type == ^Transponder.expression_type(),
+        where: t.source_type == ^type_string and t.source_id == ^source_id,
         order_by: [asc: t.order, asc: t.key]
 
     query =
@@ -2567,9 +2565,7 @@ defmodule Trifle.Organizations do
 
     query =
       from(t in Transponder,
-        where:
-          t.source_type == ^type_string and t.source_id == ^source_id and
-            t.type == ^Transponder.expression_type(),
+        where: t.source_type == ^type_string and t.source_id == ^source_id,
         select: max(t.order)
       )
 

@@ -7,7 +7,6 @@ defmodule Trifle.Organizations.Transponder do
   schema "transponders" do
     field :name, :string
     field :key, :string
-    field :type, :string
     field :config, :map, default: %{}
     field :enabled, :boolean, default: true
     field :order, :integer, default: 0
@@ -28,7 +27,6 @@ defmodule Trifle.Organizations.Transponder do
       :database_id,
       :name,
       :key,
-      :type,
       :config,
       :enabled,
       :order,
@@ -36,33 +34,11 @@ defmodule Trifle.Organizations.Transponder do
       :source_type,
       :source_id
     ])
-    |> maybe_put_expression_type()
-    |> validate_required([:name, :key, :type, :source_type, :source_id])
+    |> validate_required([:name, :key, :source_type, :source_id])
     |> validate_source_type()
-    |> validate_transponder_type()
     |> validate_transponder_config()
     |> ensure_database_source_consistency()
     |> maybe_validate_organization_present()
-  end
-
-  @expression_type "Trifle.Stats.Transponder.Expression"
-
-  def expression_type, do: @expression_type
-
-  def available_types do
-    [@expression_type]
-  end
-
-  defp maybe_put_expression_type(changeset) do
-    case get_field(changeset, :type) do
-      nil -> put_change(changeset, :type, @expression_type)
-      "" -> put_change(changeset, :type, @expression_type)
-      _ -> changeset
-    end
-  end
-
-  defp validate_transponder_type(changeset) do
-    validate_inclusion(changeset, :type, available_types())
   end
 
   defp validate_source_type(changeset) do
@@ -76,21 +52,15 @@ defmodule Trifle.Organizations.Transponder do
   end
 
   defp validate_transponder_config(changeset) do
-    type = get_field(changeset, :type)
     config = get_field(changeset, :config) || %{}
+    paths = Map.get(config, "paths") || Map.get(config, :paths)
+    expression = Map.get(config, "expression") || Map.get(config, :expression)
+    response = Map.get(config, "response") || Map.get(config, :response)
 
-    if type == @expression_type do
-      paths = Map.get(config, "paths") || Map.get(config, :paths)
-      expression = Map.get(config, "expression") || Map.get(config, :expression)
-      response_path = Map.get(config, "response_path") || Map.get(config, :response_path)
-
-      case Trifle.Stats.Transponder.Expression.validate(paths, expression, response_path) do
-        :ok -> changeset
-        {:error, %{message: message}} -> add_error(changeset, :config, message)
-        {:error, other} -> add_error(changeset, :config, inspect(other))
-      end
-    else
-      changeset
+    case Trifle.Stats.Transponder.Expression.validate(paths, expression, response) do
+      :ok -> changeset
+      {:error, %{message: message}} -> add_error(changeset, :config, message)
+      {:error, other} -> add_error(changeset, :config, inspect(other))
     end
   end
 

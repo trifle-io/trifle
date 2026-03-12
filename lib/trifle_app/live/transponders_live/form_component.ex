@@ -9,7 +9,6 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
   alias TrifleApp.PathSuggestions
 
   @path_refresh_ttl_ms 60_000
-  @expression_type "Trifle.Stats.Transponder.Expression"
 
   def render(assigns) do
     ~H"""
@@ -43,8 +42,6 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
             {elem(hint, 0)}
           </p>
         <% end %>
-
-        <input type="hidden" name="transponder[type]" value={expression_type()} />
 
         <div class="space-y-4">
           <div>
@@ -113,11 +110,11 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
           </div>
 
           <div>
-            <.label>Response Path</.label>
+            <.label>Response</.label>
             <.path_autocomplete_input
               id="transponder-response-path"
-              name="transponder[config][response_path]"
-              value={@config_values["response_path"] || @config_values[:response_path] || ""}
+              name="transponder[config][response]"
+              value={@config_values["response"] || @config_values[:response] || ""}
               placeholder="metrics.duration.per_minute"
               path_options={@path_options}
               input_class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-3 text-gray-900 dark:text-white bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 dark:focus:ring-teal-500 sm:text-sm sm:leading-6"
@@ -155,21 +152,15 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
      |> assign_new(:path_fetch_fingerprint, fn -> nil end)
      |> assign_new(:path_fetch_last_checked, fn -> nil end)
      |> assign(assigns)
-     |> assign(:selected_type, @expression_type)
      |> assign(:expression_error, nil)
-     |> assign(
-       :config_values,
-       normalize_config_values(@expression_type, transponder.config || %{})
-     )
+     |> assign(:config_values, normalize_config_values(transponder.config || %{}))
      |> assign_form(Organizations.change_transponder(transponder))
      |> maybe_refresh_path_options()}
   end
 
   def handle_event("validate", %{"transponder" => transponder_params}, socket) do
-    transponder_params = Map.put(transponder_params, "type", @expression_type)
     config_values = Map.get(transponder_params, "config", %{})
     merged_config = Map.merge(socket.assigns.config_values, config_values)
-    selected_type = @expression_type
 
     changeset =
       socket.assigns.transponder
@@ -178,9 +169,8 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
 
     {:noreply,
      socket
-     |> assign(:selected_type, selected_type)
-     |> assign(:config_values, normalize_config_values(selected_type, merged_config))
-     |> assign(:expression_error, expression_error(selected_type, merged_config))
+     |> assign(:config_values, normalize_config_values(merged_config))
+     |> assign(:expression_error, expression_error(merged_config))
      |> assign_form(changeset)
      |> maybe_refresh_path_options()}
   end
@@ -193,7 +183,7 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     {:noreply,
      socket
      |> assign(:config_values, new_config)
-     |> assign(:expression_error, expression_error(@expression_type, new_config))}
+     |> assign(:expression_error, expression_error(new_config))}
   end
 
   def handle_event("remove_expression_path", %{"index" => index}, socket) do
@@ -212,18 +202,15 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     {:noreply,
      socket
      |> assign(:config_values, new_config)
-     |> assign(:expression_error, expression_error(@expression_type, new_config))}
+     |> assign(:expression_error, expression_error(new_config))}
   end
 
   def handle_event("save", %{"transponder" => transponder_params}, socket) do
-    transponder_params = Map.put(transponder_params, "type", @expression_type)
     # Get config from the form submission and merge with component state
     form_config = Map.get(transponder_params, "config", %{})
     merged_config = Map.merge(socket.assigns.config_values, form_config)
 
-    merged_config =
-      merged_config
-      |> maybe_clean_expression_paths(@expression_type)
+    merged_config = maybe_clean_expression_paths(merged_config)
 
     # Filter out empty values from config
     clean_config = Enum.reject(merged_config, fn {_k, v} -> v == "" or is_nil(v) end) |> Map.new()
@@ -487,14 +474,12 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     letter_for_index(capped_index)
   end
 
-  defp normalize_config_values(@expression_type, config) do
+  defp normalize_config_values(config) do
     config
     |> Map.put("paths", expression_paths(config))
   end
 
-  defp normalize_config_values(_type, config), do: config
-
-  defp expression_error(@expression_type, config) do
+  defp expression_error(config) do
     paths = Map.get(config, "paths") || Map.get(config, :paths)
     expression = Map.get(config, "expression") || Map.get(config, :expression) || ""
     trimmed_expression = String.trim(to_string(expression))
@@ -507,7 +492,13 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
         nil
 
       true ->
-        case Trifle.Stats.Transponder.ExpressionEngine.validate(paths || [], trimmed_expression) do
+        response = Map.get(config, "response") || Map.get(config, :response)
+
+        case Trifle.Stats.Transponder.Expression.validate(
+               paths || [],
+               trimmed_expression,
+               response
+             ) do
           :ok -> nil
           {:error, %{message: message}} -> message
           {:error, other} -> inspect(other)
@@ -515,9 +506,7 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     end
   end
 
-  defp expression_error(_type, _config), do: nil
-
-  defp maybe_clean_expression_paths(config, @expression_type) do
+  defp maybe_clean_expression_paths(config) do
     paths =
       config
       |> then(fn cfg -> Map.get(cfg, "paths") || Map.get(cfg, :paths) || [] end)
@@ -529,8 +518,4 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
 
     Map.put(config, "paths", paths)
   end
-
-  defp maybe_clean_expression_paths(config, _type), do: config
-
-  defp expression_type, do: @expression_type
 end

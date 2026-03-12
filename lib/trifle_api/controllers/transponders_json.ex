@@ -14,7 +14,6 @@ defmodule TrifleApi.TranspondersJSON do
       id: transponder.id,
       name: transponder.name,
       key: transponder.key,
-      type: transponder.type,
       config: transponder.config || %{},
       enabled: transponder.enabled,
       order: transponder.order,

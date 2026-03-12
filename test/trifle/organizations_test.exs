@@ -127,11 +127,10 @@ defmodule Trifle.OrganizationsTest do
       attrs = %{
         "name" => "Project Total",
         "key" => "metrics::total",
-        "type" => "Trifle.Stats.Transponder.Expression",
         "config" => %{
           "paths" => ["foo"],
           "expression" => "a",
-          "response_path" => "total"
+          "response" => "total"
         }
       }
 
@@ -149,11 +148,10 @@ defmodule Trifle.OrganizationsTest do
         Organizations.create_transponder_for_project(project, %{
           "name" => "Project Ratio",
           "key" => "proj::ratio",
-          "type" => "Trifle.Stats.Transponder.Expression",
           "config" => %{
             "paths" => ["foo"],
             "expression" => "a",
-            "response_path" => "ratio"
+            "response" => "ratio"
           }
         })
 
@@ -167,11 +165,10 @@ defmodule Trifle.OrganizationsTest do
         Organizations.create_transponder_for_project(project, %{
           "name" => "Project Mean",
           "key" => "proj::mean",
-          "type" => "Trifle.Stats.Transponder.Expression",
           "config" => %{
             "paths" => ["foo"],
             "expression" => "a",
-            "response_path" => "mean"
+            "response" => "mean"
           }
         })
 

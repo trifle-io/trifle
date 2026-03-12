@@ -1398,7 +1398,7 @@ defmodule TrifleApp.ExploreCore do
     info =
       transponders
       |> Enum.map(fn transponder ->
-        response_path = Map.get(transponder.config, "response_path", "")
+        response_path = Map.get(transponder.config, "response", "")
         transponder_name = transponder.name || transponder.key
         if response_path != "", do: {response_path, transponder_name}, else: nil
       end)
@@ -2563,9 +2563,6 @@ defmodule TrifleApp.ExploreCore do
                                 <h4 class="font-medium text-red-800 dark:text-red-300">
                                   {error.transponder.name || error.transponder.key}
                                 </h4>
-                                <span class="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 px-2 py-1 rounded">
-                                  {error.transponder.type}
-                                </span>
                               </div>
                               <p class="text-sm text-red-700 dark:text-red-300 font-mono">
                                 {error.error.message}

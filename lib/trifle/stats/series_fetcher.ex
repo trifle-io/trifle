@@ -337,163 +337,18 @@ defmodule Trifle.Stats.SeriesFetcher do
     config = transponder.config || %{}
 
     try do
-      case transponder.type do
-        "Trifle.Stats.Transponder.Expression" ->
-          paths = config["paths"] || config[:paths] || []
-          expression = config["expression"] || config[:expression] || ""
-          response_path = config["response_path"] || config[:response_path] || ""
+      paths = config["paths"] || config[:paths] || []
+      expression = config["expression"] || config[:expression] || ""
+      response = config["response"] || config[:response] || ""
 
-          case Trifle.Stats.Transponder.Expression.transform(
-                 series.series,
-                 paths,
-                 expression,
-                 response_path
-               ) do
-            {:ok, updated} -> {:ok, %Trifle.Stats.Series{series: updated}}
-            {:error, reason} -> {:error, reason}
-          end
-
-        "Trifle.Stats.Transponder.Add" ->
-          {:ok,
-           Trifle.Stats.Series.transform_add(
-             series,
-             config["path1"] || "",
-             config["path2"] || "",
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Subtract" ->
-          {:ok,
-           Trifle.Stats.Series.transform_subtract(
-             series,
-             config["path1"] || "",
-             config["path2"] || "",
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Multiply" ->
-          {:ok,
-           Trifle.Stats.Series.transform_multiply(
-             series,
-             config["path1"] || "",
-             config["path2"] || "",
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Divide" ->
-          {:ok,
-           Trifle.Stats.Series.transform_divide(
-             series,
-             config["path1"] || "",
-             config["path2"] || "",
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Ratio" ->
-          {:ok,
-           Trifle.Stats.Series.transform_ratio(
-             series,
-             config["path1"] || "",
-             config["path2"] || "",
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Sum" ->
-          # Parse comma-separated paths for sum operation
-          paths =
-            case config["path"] do
-              path when is_binary(path) ->
-                path |> String.split(",") |> Enum.map(&String.trim/1)
-
-              paths when is_list(paths) ->
-                paths
-
-              _ ->
-                []
-            end
-
-          {:ok,
-           Trifle.Stats.Series.transform_sum(
-             series,
+      case Trifle.Stats.Transponder.Expression.transform(
+             series.series,
              paths,
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Mean" ->
-          # Parse comma-separated paths for mean operation
-          paths =
-            case config["path"] do
-              path when is_binary(path) ->
-                path |> String.split(",") |> Enum.map(&String.trim/1)
-
-              paths when is_list(paths) ->
-                paths
-
-              _ ->
-                []
-            end
-
-          {:ok,
-           Trifle.Stats.Series.transform_mean(
-             series,
-             paths,
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Min" ->
-          # Parse comma-separated paths for min operation
-          paths =
-            case config["path"] do
-              path when is_binary(path) ->
-                path |> String.split(",") |> Enum.map(&String.trim/1)
-
-              paths when is_list(paths) ->
-                paths
-
-              _ ->
-                []
-            end
-
-          {:ok,
-           Trifle.Stats.Series.transform_min(
-             series,
-             paths,
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.Max" ->
-          # Parse comma-separated paths for max operation
-          paths =
-            case config["path"] do
-              path when is_binary(path) ->
-                path |> String.split(",") |> Enum.map(&String.trim/1)
-
-              paths when is_list(paths) ->
-                paths
-
-              _ ->
-                []
-            end
-
-          {:ok,
-           Trifle.Stats.Series.transform_max(
-             series,
-             paths,
-             config["response_path"] || ""
-           )}
-
-        "Trifle.Stats.Transponder.StandardDeviation" ->
-          {:ok,
-           Trifle.Stats.Series.transform_stddev(
-             series,
-             config["left"] || "",
-             config["right"] || "",
-             config["square"] || "",
-             config["response_path"] || ""
-           )}
-
-        _ ->
-          {:error, {:unknown_transponder_type, transponder.type}}
+             expression,
+             response
+           ) do
+        {:ok, updated} -> {:ok, %Trifle.Stats.Series{series: updated}}
+        {:error, reason} -> {:error, reason}
       end
     rescue
       e -> {:error, {:transponder_execution_error, e}}
