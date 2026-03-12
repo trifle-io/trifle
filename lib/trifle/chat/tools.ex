@@ -1257,8 +1257,7 @@ defmodule Trifle.Chat.Tools do
       type: map_get(widget, "type"),
       title: map_get(widget, "title"),
       chart_type: map_get(widget, "chart_type"),
-      path: map_get(widget, "path"),
-      paths: map_get(widget, "paths"),
+      series: compact_widget_series(map_get(widget, "series")),
       x: map_get(widget, "x"),
       y: map_get(widget, "y"),
       w: map_get(widget, "w"),
@@ -1269,6 +1268,23 @@ defmodule Trifle.Chat.Tools do
   end
 
   defp compact_widget_outline(_widget), do: %{}
+
+  defp compact_widget_series(series) do
+    series
+    |> List.wrap()
+    |> Enum.map(fn row ->
+      %{
+        kind: map_get(row, "kind"),
+        path: map_get(row, "path"),
+        expression: map_get(row, "expression"),
+        label: map_get(row, "label"),
+        visible: map_get(row, "visible")
+      }
+      |> Enum.reject(fn {_key, value} -> value in [nil, "", %{}] end)
+      |> Map.new()
+    end)
+    |> Enum.reject(&(&1 == %{}))
+  end
 
   defp compact_timeframe(nil), do: nil
 

@@ -179,7 +179,13 @@ defmodule Trifle.Chat.ToolsTest do
                   "type" => "category",
                   "title" => "Revenue",
                   "chart_type" => "pie",
-                  "path" => "revenue",
+                  "series" => [
+                    %{
+                      "kind" => "path",
+                      "path" => "revenue",
+                      "visible" => true
+                    }
+                  ],
                   "x" => 0,
                   "y" => 0,
                   "w" => 3,
@@ -197,7 +203,14 @@ defmodule Trifle.Chat.ToolsTest do
       assert compact.metric_key == "sales"
       assert compact.visualization.widget_count == 1
 
-      assert [%{id: "widget-1", type: "category", chart_type: "pie", path: "revenue"}] =
+      assert [
+               %{
+                 id: "widget-1",
+                 type: "category",
+                 chart_type: "pie",
+                 series: [%{kind: "path", path: "revenue", visible: true}]
+               }
+             ] =
                compact.visualization.widgets
 
       refute Map.has_key?(compact.visualization, :series_snapshot)
