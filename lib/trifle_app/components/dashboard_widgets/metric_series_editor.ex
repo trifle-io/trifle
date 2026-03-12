@@ -170,7 +170,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       </button>
 
       <p class="text-xs text-gray-500 dark:text-slate-400">
-        Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c and use the same syntax as transponders. Hidden source rows can feed visible expression rows.
+        {@path_help ||
+          "Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c and use the same syntax as transponders. Hidden source rows can feed visible expression rows."}
       </p>
     </div>
     """
@@ -215,7 +216,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   end
 
   defp kind_icon_classes(active?) do
-    base = "inline-flex shrink-0 items-center justify-center cursor-pointer transition-colors first:pl-3 pl-1.5"
+    base =
+      "inline-flex shrink-0 items-center justify-center cursor-pointer transition-colors first:pl-3 pl-1.5"
 
     color =
       if active?,

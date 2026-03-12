@@ -275,6 +275,7 @@ defmodule TrifleApp.Components.DataTable do
         %{
           path: path,
           display_path: display_path,
+          path_color: get_field(row, :color),
           path_html: formatted_path,
           values: values
         }

@@ -168,18 +168,10 @@ export const createDashboardGridTableRendererMethods = ({
             return empty;
           }
           const value = (params && params.value != null) ? params.value : '';
-          const pathHtml = params && params.data ? params.data[TABLE_PATH_HTML_FIELD] : '';
+          const pathColor = params && params.data ? params.data.__tablePathColor : '';
           const wrapper = document.createElement('div');
           wrapper.className = 'aggrid-path-cell';
-          if (pathHtml && typeof pathHtml === 'string') {
-            if (pathHtml.trim() !== '') {
-              wrapper.innerHTML = pathHtml;
-            } else {
-              wrapper.textContent = value == null ? '' : String(value);
-            }
-          } else {
-            wrapper.textContent = value == null ? '' : String(value);
-          }
+          this._populate_table_path_cell(wrapper, value, pathColor);
           return wrapper;
         };
         baseDef.cellClass += ' aggrid-path-cell-wrapper';
@@ -372,6 +364,7 @@ export const createDashboardGridTableRendererMethods = ({
             if (idx === 0) {
               obj[header] = row.display_path || row.path || '';
               obj[TABLE_PATH_HTML_FIELD] = row.path_html || (row.display_path || row.path || '');
+              obj.__tablePathColor = row.path_color || '';
             } else {
               const values = Array.isArray(row.values) ? row.values : [];
               const value = values[idx - 1];
@@ -402,6 +395,33 @@ export const createDashboardGridTableRendererMethods = ({
       meta,
       pathKey: normalizedHeaders[0] || 'Path'
     };
+  },
+
+  _populate_table_path_cell(wrapper, value, color) {
+    if (!wrapper) return;
+    const label = value == null ? '' : String(value);
+    const safeColor = this._normalize_table_path_color(color);
+
+    if (!safeColor || label.trim() === '') {
+      wrapper.textContent = label;
+      return;
+    }
+
+    label.split('.').forEach((segment, index) => {
+      if (index > 0) {
+        wrapper.appendChild(document.createTextNode('.'));
+      }
+      const span = document.createElement('span');
+      span.textContent = segment;
+      span.style.color = safeColor;
+      wrapper.appendChild(span);
+    });
+  },
+
+  _normalize_table_path_color(color) {
+    if (typeof color !== 'string') return null;
+    const trimmed = color.trim();
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : null;
   },
 
   _build_path_segments(row, payload) {

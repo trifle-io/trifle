@@ -16,7 +16,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
   def normalize_widget(widget) when is_map(widget) do
     if metric_widget?(widget) do
       widget
-      |> Map.put("series", normalize_series_rows(current_series_rows(widget)))
+      |> Map.put(
+        "series",
+        normalize_series_rows(current_series_rows(widget), ensure_default: false)
+      )
       |> prune_legacy_metric_fields()
     else
       widget
@@ -45,11 +48,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
 
   def normalize_series_rows(rows, opts) when is_list(rows) do
     preserve_empty? = Keyword.get(opts, :preserve_empty, false)
+    ensure_default? = Keyword.get(opts, :ensure_default, true)
 
     rows
     |> Enum.map(&normalize_row/1)
     |> maybe_drop_empty_rows(preserve_empty?)
-    |> ensure_default_row()
+    |> maybe_ensure_default_row(ensure_default?)
   end
 
   def normalize_series_rows(rows, opts) when is_map(rows) do
@@ -67,7 +71,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
     |> normalize_series_rows(opts)
   end
 
-  def normalize_series_rows(_rows, _opts), do: ensure_default_row([])
+  def normalize_series_rows(_rows, opts),
+    do: maybe_ensure_default_row([], Keyword.get(opts, :ensure_default, true))
 
   def normalize_event_rows(rows) when is_list(rows),
     do: normalize_series_rows(rows, preserve_empty: true)
@@ -114,7 +119,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
     normalize_series_rows(rows, opts)
   end
 
-  def normalize_series_rows_params(_params, _opts), do: ensure_default_row([])
+  def normalize_series_rows_params(_params, opts),
+    do: maybe_ensure_default_row([], Keyword.get(opts, :ensure_default, true))
 
   def rows_for_form(widget, path_options \\ [])
 
@@ -283,9 +289,17 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
           widget
           |> Map.get("paths", Map.get(widget, :paths))
           |> case do
-            list when is_list(list) -> list
-            nil -> []
-            other -> [other]
+            list when is_list(list) ->
+              list
+
+            nil ->
+              case Map.get(widget, "path", Map.get(widget, :path)) do
+                nil -> []
+                other -> [other]
+              end
+
+            other ->
+              [other]
           end
 
         value ->
@@ -380,6 +394,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
 
   defp ensure_default_row([]), do: [default_row()]
   defp ensure_default_row(rows), do: rows
+  defp maybe_ensure_default_row(rows, true), do: ensure_default_row(rows)
+  defp maybe_ensure_default_row(rows, false), do: rows
 
   defp maybe_drop_empty_rows(rows, true), do: rows
   defp maybe_drop_empty_rows(rows, false), do: Enum.reject(rows, &drop_empty_row?/1)

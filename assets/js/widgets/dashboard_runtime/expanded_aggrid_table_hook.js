@@ -201,13 +201,10 @@ Hooks.ExpandedAgGridTable = {
         cellRenderer: (params) => {
           const wrapper = document.createElement('div');
           wrapper.className = 'aggrid-path-cell';
-          const html = params && params.data ? params.data.__pathHtml : '';
-          if (html && typeof html === 'string') {
-            wrapper.innerHTML = html;
-          } else {
-            wrapper.textContent =
-              params && params.value != null ? String(params.value) : (params && params.data && params.data.path) || '';
-          }
+          const value =
+            params && params.value != null ? String(params.value) : (params && params.data && params.data.path) || '';
+          const color = params && params.data ? params.data.__pathColor : '';
+          this.populatePathCell(wrapper, value, color);
           return wrapper;
         },
         cellClass: 'aggrid-path-cell-wrapper aggrid-body-cell ag-left-aligned-cell',
@@ -246,7 +243,7 @@ Hooks.ExpandedAgGridTable = {
     return rows.map((row) => {
       const data = {
         path: row && (row.display_path || row.path || ''),
-        __pathHtml: row && row.path_html ? row.path_html : ''
+        __pathColor: row && row.path_color ? row.path_color : ''
       };
       const values = Array.isArray(row && row.values) ? row.values : [];
       columns.forEach((_, idx) => {
@@ -259,6 +256,33 @@ Hooks.ExpandedAgGridTable = {
   stripHtml(input) {
     if (!input || typeof input !== 'string') return '';
     return input.replace(/<[^>]*>/g, '').trim();
+  },
+
+  populatePathCell(wrapper, value, color) {
+    if (!wrapper) return;
+    const label = value == null ? '' : String(value);
+    const safeColor = this.normalizePathColor(color);
+
+    if (!safeColor || label.trim() === '') {
+      wrapper.textContent = label;
+      return;
+    }
+
+    label.split('.').forEach((segment, index) => {
+      if (index > 0) {
+        wrapper.appendChild(document.createTextNode('.'));
+      }
+      const span = document.createElement('span');
+      span.textContent = segment;
+      span.style.color = safeColor;
+      wrapper.appendChild(span);
+    });
+  },
+
+  normalizePathColor(color) {
+    if (typeof color !== 'string') return null;
+    const trimmed = color.trim();
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : null;
   },
 
   escapeHtml(text) {

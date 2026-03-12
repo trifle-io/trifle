@@ -193,7 +193,8 @@ Hooks.DashboardGrid = {
     this._aggridResizeTimers = {};
     this._aggridThemeIsDark = document.documentElement.classList.contains('dark');
     this.el.__dashboardGrid = this;
-    this._preferServerRenderedWidgets = true;
+    this._preferServerRenderedWidgets = false;
+    this._preferServerRenderedWidgetsTimer = null;
 
     // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
     const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
@@ -205,12 +206,10 @@ Hooks.DashboardGrid = {
       return withChartOpts(Object.assign({}, base, extra));
     };
 
+    this._enableServerRenderedWidgetPreference();
     this.initGrid();
     this.syncServerRenderedItems();
-
-    setTimeout(() => {
-      this._preferServerRenderedWidgets = false;
-    }, 0);
+    this._scheduleServerRenderedWidgetPreferenceClear();
 
     const revealGrid = () => {
       if (!this.el) return;
@@ -423,8 +422,10 @@ Hooks.DashboardGrid = {
   },
 
   updated() {
+    this._enableServerRenderedWidgetPreference();
     this.syncServerRenderedItems();
     this._markServerRenderedWidgetsReady();
+    this._scheduleServerRenderedWidgetPreferenceClear();
   },
 
   destroyed() {
@@ -435,6 +436,10 @@ Hooks.DashboardGrid = {
 
     if (this.el && this.el.__dashboardGrid === this) {
       delete this.el.__dashboardGrid;
+    }
+    if (this._preferServerRenderedWidgetsTimer) {
+      clearTimeout(this._preferServerRenderedWidgetsTimer);
+      this._preferServerRenderedWidgetsTimer = null;
     }
     this._widgetRegistry = null;
     if (this.grid && this.grid.destroy) {
@@ -727,6 +732,24 @@ Hooks.DashboardGrid = {
     if (typeof this.grid.commit === 'function') {
       try { this.grid.commit(); } catch (_) {}
     }
+  },
+
+  _enableServerRenderedWidgetPreference() {
+    this._preferServerRenderedWidgets = true;
+    if (this._preferServerRenderedWidgetsTimer) {
+      clearTimeout(this._preferServerRenderedWidgetsTimer);
+      this._preferServerRenderedWidgetsTimer = null;
+    }
+  },
+
+  _scheduleServerRenderedWidgetPreferenceClear() {
+    if (this._preferServerRenderedWidgetsTimer) {
+      clearTimeout(this._preferServerRenderedWidgetsTimer);
+    }
+    this._preferServerRenderedWidgetsTimer = setTimeout(() => {
+      this._preferServerRenderedWidgets = false;
+      this._preferServerRenderedWidgetsTimer = null;
+    }, 60);
   },
 
   _markServerRenderedWidgetsReady() {

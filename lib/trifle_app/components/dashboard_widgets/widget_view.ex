@@ -531,6 +531,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                 ]}
                 phx-click={list_item_event(selected, @list_select_event, @list_deselect_event)}
                 phx-value-key={list_item_event_key(item)}
+                phx-value-path={list_item_event_path(item)}
                 aria-pressed={to_string(selected)}
               >
                 <div class="flex items-center min-w-0 gap-2.5">
@@ -674,6 +675,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     case list_item_value(item, :label) do
       value when is_binary(value) and value != "" -> value
       _ -> list_item_value(item, :path)
+    end
+  end
+
+  defp list_item_event_path(item) do
+    case list_item_value(item, :path) do
+      value when is_binary(value) and value != "" -> value
+      _ -> nil
     end
   end
 

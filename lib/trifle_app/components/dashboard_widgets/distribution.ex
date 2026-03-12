@@ -106,14 +106,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       |> Map.get("path_aggregation")
       |> WidgetHelpers.normalize_distribution_path_aggregation()
 
-    fallback_heatmap_color =
-      rows
-      |> List.wrap()
-      |> Enum.find_value(fn row ->
-        row
-        |> MetricSeries.row_color_selector()
-        |> WidgetHelpers.resolve_series_color(0)
-      end)
+    fallback_heatmap_color = WidgetHelpers.heatmap_single_color_fallback(item)
 
     color_mode =
       case widget_type do

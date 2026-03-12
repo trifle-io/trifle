@@ -266,6 +266,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
 
     assert attrs["phx-click"] == "deselect_key"
     assert attrs["phx-value-key"] == "alpha"
+    assert attrs["phx-value-path"] == "keys.alpha"
     assert attrs["aria-pressed"] == "true"
   end
 

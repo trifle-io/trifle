@@ -325,7 +325,11 @@ defmodule TrifleApp.DashboardLiveTest do
     assert has_element?(view, ~s(input[name="widget_series_expression[1]"][value="a / 1000"]))
     assert has_element?(view, ~s(input[name="widget_series_label[1]"][value="Seconds"]))
     assert has_element?(view, ~s(input[name="widget_series_path[1]"][value=""]))
-    assert has_element?(view, "#widget-widget-1-series", "Formula")
+
+    assert has_element?(
+             view,
+             ~s(input[name="widget_series_kind[1]"][value="expression"][checked])
+           )
   end
 
   test "widget series row updates preserve blank draft rows in the editor", %{
@@ -389,7 +393,11 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert has_element?(view, ~s([data-series-row][data-index="1"]))
     assert has_element?(view, ~s(input[name="widget_series_expression[1]"][value=""]))
-    assert has_element?(view, "#widget-widget-1-series", "Formula")
+
+    assert has_element?(
+             view,
+             ~s(input[name="widget_series_kind[1]"][value="expression"][checked])
+           )
   end
 
   test "widget editor change does not duplicate series rows", %{

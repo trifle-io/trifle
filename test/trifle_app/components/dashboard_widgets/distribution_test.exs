@@ -1,7 +1,7 @@
 defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
   use ExUnit.Case, async: true
 
-  alias TrifleApp.Components.DashboardWidgets.Distribution
+  alias TrifleApp.Components.DashboardWidgets.{Distribution, Helpers}
 
   setup do
     timestamps =
@@ -335,5 +335,32 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionTest do
              points,
              &(&1.bucket_x == "kg_1_0" and &1.bucket_y == "aed_100" and &1.value == 3.0)
            )
+  end
+
+  test "heatmap fallback color prefers visible configured series" do
+    widget = %{
+      "id" => "heatmap-color",
+      "type" => "heatmap",
+      "series" => [
+        %{
+          "kind" => "path",
+          "path" => "metrics.distribution.*",
+          "visible" => false,
+          "color_selector" => "warm.4"
+        },
+        %{
+          "kind" => "path",
+          "path" => "metrics.other.*",
+          "visible" => true,
+          "color_selector" => "default.2"
+        }
+      ],
+      "designator" => %{"type" => "custom", "buckets" => [10, 20]}
+    }
+
+    dataset = Distribution.dataset(%Trifle.Stats.Series{series: %{at: [], values: []}}, widget)
+
+    assert String.downcase(dataset.color_config["single_color"]) ==
+             String.downcase(Helpers.resolve_series_color("default.2", 0))
   end
 end
