@@ -90,6 +90,16 @@ Hooks.DashboardWidgetData = {
       this.widgetId = id;
       this.widgetType = type;
 
+      if (this.shouldPreferServerRenderedWidget(gridHook, type, id)) {
+        this._registeredType = type || null;
+        this._registeredWidgetId = id || null;
+        this.updateWidgetTitle(titleData, type);
+        if (typeof gridHook._markServerRenderedWidgetsReady === 'function') {
+          gridHook._markServerRenderedWidgetsReady();
+        }
+        return;
+      }
+
       if (
         this._registeredType &&
         this._registeredWidgetId &&
@@ -143,6 +153,14 @@ Hooks.DashboardWidgetData = {
     };
 
     attempt();
+  },
+
+  shouldPreferServerRenderedWidget(gridHook, type, id) {
+    if (!gridHook || !gridHook.el || !gridHook._preferServerRenderedWidgets || !id) return false;
+    if (type !== 'text' && type !== 'list') return false;
+    const content = gridHook.el.querySelector(`.grid-stack-item[gs-id="${id}"] .grid-stack-item-content`);
+    if (!content || !content.dataset) return false;
+    return type === 'text' ? content.dataset.textWidget === '1' : content.dataset.listWidget === '1';
   },
 
   updateWidgetTitle(title, type) {
