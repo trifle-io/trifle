@@ -3,18 +3,14 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
 
   use Phoenix.Component
 
-  import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
-
   alias TrifleApp.Components.DashboardWidgets.Helpers
-  alias TrifleApp.Components.DashboardWidgets.SeriesColorSelector
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
-    path = widget |> Map.get("path", "") |> to_string() |> String.trim()
-
     subtype = Helpers.normalize_kpi_subtype(Map.get(widget, "subtype"), widget)
 
     function =
@@ -24,20 +20,6 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
       |> case do
         "avg" -> "mean"
         other -> other
-      end
-
-    selectors =
-      widget
-      |> Map.get("series_color_selectors", %{})
-      |> Helpers.normalize_series_color_selectors_map()
-
-    color_selector = Helpers.selector_for_path(selectors, path)
-
-    path_wildcard =
-      cond do
-        path == "" -> :unknown
-        String.contains?(path, "*") -> :wildcard
-        true -> :single
       end
 
     assigns =
@@ -51,87 +33,19 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
       |> assign(:timeseries_checked, !!Map.get(widget, "timeseries"))
       |> assign(:goal_progress_checked, !!Map.get(widget, "goal_progress"))
       |> assign(:goal_invert_checked, !!Map.get(widget, "goal_invert"))
-      |> assign(:path, path)
-      |> assign(:color_selector, color_selector)
-      |> assign(:path_wildcard, path_wildcard)
 
     ~H"""
     <input type="hidden" name="kpi_subtype" value={@subtype} />
 
     <div class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
-          Display Mode
-        </label>
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden">
-          <button
-            type="button"
-            class={subtype_button_classes(@subtype == "number", "rounded-l-md")}
-            phx-click="change_kpi_subtype"
-            phx-value-widget-id={@widget_id}
-            phx-value-kpi-subtype="number"
-          >
-            Number
-          </button>
-          <button
-            type="button"
-            class={
-              subtype_button_classes(
-                @subtype == "split",
-                "border-x border-gray-200 dark:border-slate-600"
-              )
-            }
-            phx-click="change_kpi_subtype"
-            phx-value-widget-id={@widget_id}
-            phx-value-kpi-subtype="split"
-          >
-            Split
-          </button>
-          <button
-            type="button"
-            class={subtype_button_classes(@subtype == "goal", "rounded-r-md")}
-            phx-click="change_kpi_subtype"
-            phx-value-widget-id={@widget_id}
-            phx-value-kpi-subtype="goal"
-          >
-            Goal
-          </button>
-        </div>
-        <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
-          Number shows a single aggregate. Split compares the current timeframe to the previous half. Goal lets you track progress toward a target.
-        </p>
-      </div>
+      <MetricSeriesEditor.editor
+        widget={@widget}
+        path_options={@path_options}
+        path_placeholder="metrics.total"
+        path_help="KPI widgets display the first visible resolved series. Keep source rows hidden when you want a derived expression row to drive the KPI."
+      />
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="sm:col-span-2 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_12rem] gap-2 lg:items-start">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-              Path
-            </label>
-            <.path_autocomplete_input
-              id="widget-kpi-path"
-              name="kpi_path"
-              value={@path}
-              placeholder="e.g. sales.total"
-              path_options={@path_options}
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-              Color
-            </label>
-            <SeriesColorSelector.input
-              id_prefix={"widget-kpi-color-#{Map.get(@widget, "id")}"}
-              name="kpi_color_selector"
-              index={0}
-              selector={@color_selector}
-            />
-            <p class="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
-              {wildcard_hint(@path_wildcard)}
-            </p>
-          </div>
-        </div>
-
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
             Function
@@ -150,6 +64,49 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
               </button>
             <% end %>
           </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Display Mode
+          </label>
+          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden">
+            <button
+              type="button"
+              class={subtype_button_classes(@subtype == "number", "rounded-l-md")}
+              phx-click="change_kpi_subtype"
+              phx-value-widget-id={@widget_id}
+              phx-value-kpi-subtype="number"
+            >
+              Number
+            </button>
+            <button
+              type="button"
+              class={
+                subtype_button_classes(
+                  @subtype == "split",
+                  "border-x border-gray-200 dark:border-slate-600"
+                )
+              }
+              phx-click="change_kpi_subtype"
+              phx-value-widget-id={@widget_id}
+              phx-value-kpi-subtype="split"
+            >
+              Split
+            </button>
+            <button
+              type="button"
+              class={subtype_button_classes(@subtype == "goal", "rounded-r-md")}
+              phx-click="change_kpi_subtype"
+              phx-value-widget-id={@widget_id}
+              phx-value-kpi-subtype="goal"
+            >
+              Goal
+            </button>
+          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
+            Number shows a single aggregate. Split compares the current timeframe to the previous half. Goal lets you track progress toward a target.
+          </p>
         </div>
 
         <div>
@@ -290,8 +247,4 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
 
     Enum.join([base, corners, state], " ")
   end
-
-  defp wildcard_hint(:wildcard), do: "Wildcard path"
-  defp wildcard_hint(:single), do: "Single series path"
-  defp wildcard_hint(_), do: "Path pending"
 end

@@ -431,4 +431,54 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert credit_row.path_html =~ Helpers.resolve_series_color("default.1", 0)
     assert digital_row.path_html =~ Helpers.resolve_series_color("default.6", 0)
   end
+
+  test "timeseries expression datasets preserve missing timeline buckets" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-01-01 00:00:00], "Etc/UTC"),
+      DateTime.from_naive!(~N[2024-01-02 00:00:00], "Etc/UTC"),
+      DateTime.from_naive!(~N[2024-01-03 00:00:00], "Etc/UTC")
+    ]
+
+    series = %Trifle.Stats.Series{
+      series: %{
+        at: timestamps,
+        values: [
+          %{"metrics" => %{"count" => 5}},
+          %{"metrics" => %{}},
+          %{"metrics" => %{"count" => 7}}
+        ]
+      }
+    }
+
+    items = [
+      %{
+        "id" => "ts-expression",
+        "type" => "timeseries",
+        "chart_type" => "bar",
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "metrics.count",
+            "expression" => "",
+            "label" => "",
+            "visible" => false,
+            "color_selector" => "default.*"
+          },
+          %{
+            "kind" => "expression",
+            "path" => "",
+            "expression" => "a * 2",
+            "label" => "Double",
+            "visible" => true,
+            "color_selector" => "warm.*"
+          }
+        ]
+      }
+    ]
+
+    %{timeseries: [%{series: [%{name: "Double", data: data}]}]} = WidgetData.datasets(series, items)
+
+    assert length(data) == 3
+    assert Enum.map(data, &Enum.at(&1, 1)) == [10.0, nil, 14.0]
+  end
 end

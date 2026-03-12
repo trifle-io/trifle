@@ -4,6 +4,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Designator.{Custom, Geometric, Linear}
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.MetricSeries
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
   alias TrifleApp.Components.DashboardWidgets.SharedParse
   require Logger
 
@@ -66,6 +68,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
   def dataset(nil, _item), do: nil
 
   def dataset(series_struct, item) do
+    item = MetricSeries.normalize_widget(item)
     id = to_string(item["id"])
 
     widget_type =
@@ -73,7 +76,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
       |> Map.get("widget_type", Map.get(item, "type", "distribution"))
       |> normalize_widget_type()
 
-    paths = normalized_paths(item)
+    rows = Map.get(item, "series", [])
     default_mode = if widget_type == "heatmap", do: "3d", else: "2d"
 
     mode =
@@ -98,41 +101,19 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
 
     legend = !!item["legend"]
 
-    path_inputs =
-      item
-      |> WidgetHelpers.path_inputs_for_form("distribution")
-      |> Enum.map(&to_string/1)
-      |> Enum.map(&String.trim/1)
-
-    selectors =
-      item
-      |> Map.get("series_color_selectors", %{})
-      |> WidgetHelpers.normalize_series_color_selectors_map()
-
-    path_color_map =
-      paths
-      |> Enum.with_index()
-      |> Enum.reduce(%{}, fn {path, index}, acc ->
-        path_input =
-          path_inputs
-          |> Enum.at(index)
-          |> case do
-            nil -> path
-            "" -> path
-            value -> value
-          end
-
-        selector = WidgetHelpers.selector_for_path(selectors, path_input)
-        color = WidgetHelpers.resolve_series_color(selector, index)
-        Map.put(acc, path, color)
-      end)
-
     path_aggregation =
       item
       |> Map.get("path_aggregation")
       |> WidgetHelpers.normalize_distribution_path_aggregation()
 
-    fallback_heatmap_color = fallback_heatmap_color(paths, path_color_map)
+    fallback_heatmap_color =
+      rows
+      |> List.wrap()
+      |> Enum.find_value(fn row ->
+        row
+        |> MetricSeries.row_color_selector()
+        |> WidgetHelpers.resolve_series_color(0)
+      end)
 
     color_mode =
       case widget_type do
@@ -156,7 +137,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
           nil
       end
 
-    if paths == [] do
+    if rows == [] do
       %{
         id: id,
         widget_type: widget_type,
@@ -172,7 +153,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
         designator: %{},
         designators: %{},
         points?: mode == "3d",
-        errors: ["No metric paths configured"]
+        errors: ["No metric series configured"]
       }
     else
       designators_config = WidgetHelpers.normalize_distribution_designators(%{}, item)
@@ -212,27 +193,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
           }
 
         true ->
-          series =
-            case {mode, Map.get(descriptors, "vertical")} do
-              {"3d", %{} = vertical_descriptor} ->
-                series_for_paths_3d(
-                  series_struct,
-                  paths,
-                  horizontal_descriptor,
-                  vertical_descriptor,
-                  item,
-                  path_color_map
-                )
+          resolved_rows =
+            MetricSeriesEvaluator.resolve_distribution_rows(
+              series_struct,
+              item,
+              mode,
+              horizontal_descriptor.bucket_labels,
+              descriptor_bucket_labels(Map.get(descriptors, "vertical")),
+              slice_count(series_struct)
+            )
 
-              _ ->
-                series_for_paths(
-                  series_struct,
-                  paths,
-                  horizontal_descriptor,
-                  item,
-                  path_color_map
-                )
-            end
+          series = MetricSeriesEvaluator.distribution_series(resolved_rows, mode)
 
           series =
             case mode do

@@ -16,6 +16,8 @@ defmodule TrifleApp.DashboardLive do
     Category,
     Distribution,
     Kpi,
+    MetricSeries,
+    Registry,
     Table,
     Text,
     Timeseries,
@@ -639,30 +641,12 @@ defmodule TrifleApp.DashboardLive do
                       i
                     )
 
-                  kpi_path =
-                    params
-                    |> Map.get("kpi_path", "")
-                    |> to_string()
-                    |> String.trim()
-
-                  selectors =
-                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-                      [kpi_path],
-                      Map.get(
-                        params,
-                        "kpi_color_selector",
-                        Map.get(params, "kpi_color_selector[]", [])
-                      ),
-                      Map.get(i, "series_color_selectors", %{})
-                    )
-
                   base =
                     base
-                    |> Map.put("path", kpi_path)
+                    |> put_metric_series(params, i)
                     |> Map.put("function", Map.get(params, "kpi_function", "mean"))
                     |> Map.put("size", Map.get(params, "kpi_size", "m"))
                     |> Map.put("subtype", subtype)
-                    |> Map.put("series_color_selectors", selectors)
 
                   case subtype do
                     "split" ->
@@ -696,28 +680,8 @@ defmodule TrifleApp.DashboardLive do
                   end
 
                 "timeseries" ->
-                  typed_paths =
-                    params
-                    |> Map.get("ts_paths", Map.get(params, "ts_paths[]", []))
-                    |> DashboardWidgetHelpers.normalize_chart_path_inputs_param()
-
-                  expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
-
-                  selectors =
-                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-                      typed_paths,
-                      Map.get(
-                        params,
-                        "ts_color_selector",
-                        Map.get(params, "ts_color_selector[]", [])
-                      ),
-                      Map.get(i, "series_color_selectors", %{})
-                    )
-
                   base
-                  |> Map.put("path_inputs", typed_paths)
-                  |> Map.put("paths", expanded_paths)
-                  |> Map.put("series_color_selectors", selectors)
+                  |> put_metric_series(params, i)
                   |> Map.put(
                     "chart_type",
                     Map.get(params, "ts_chart_type", Map.get(i, "chart_type") || "line")
@@ -728,98 +692,16 @@ defmodule TrifleApp.DashboardLive do
                   |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
 
                 "category" ->
-                  cat_paths_param =
-                    params
-                    |> Map.get("cat_paths", Map.get(params, "cat_paths[]", []))
-
-                  cat_paths =
-                    DashboardWidgetHelpers.normalize_category_paths_param(cat_paths_param)
-
-                  fallback_path =
-                    params
-                    |> Map.get("cat_path", "")
-                    |> to_string()
-                    |> String.trim()
-
-                  paths =
-                    case cat_paths do
-                      [] -> if(fallback_path == "", do: [], else: [fallback_path])
-                      list -> list
-                    end
-
-                  expanded_paths = auto_expand_path_wildcards(paths, path_options)
-
-                  selectors =
-                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-                      paths,
-                      Map.get(
-                        params,
-                        "cat_color_selector",
-                        Map.get(params, "cat_color_selector[]", [])
-                      ),
-                      Map.get(i, "series_color_selectors", %{})
-                    )
-
-                  primary_path =
-                    expanded_paths
-                    |> Enum.reject(&(&1 == ""))
-                    |> List.first()
-                    |> Kernel.||(fallback_path)
-
                   base
-                  |> Map.put("path_inputs", paths)
-                  |> Map.put("paths", expanded_paths)
-                  |> Map.put("series_color_selectors", selectors)
-                  |> Map.put("path", primary_path)
+                  |> put_metric_series(params, i)
                   |> Map.put(
                     "chart_type",
                     Map.get(params, "cat_chart_type", Map.get(i, "chart_type") || "bar")
                   )
 
                 "table" ->
-                  table_paths_param =
-                    params
-                    |> Map.get("table_paths", Map.get(params, "table_paths[]", []))
-
-                  table_paths =
-                    DashboardWidgetHelpers.normalize_table_paths_param(table_paths_param)
-
-                  fallback_path =
-                    params
-                    |> Map.get("table_path", "")
-                    |> to_string()
-                    |> String.trim()
-
-                  paths =
-                    case table_paths do
-                      [] -> if(fallback_path == "", do: [], else: [fallback_path])
-                      list -> list
-                    end
-
-                  expanded_paths = auto_expand_path_wildcards(paths, path_options)
-
-                  selectors =
-                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-                      paths,
-                      Map.get(
-                        params,
-                        "table_color_selector",
-                        Map.get(params, "table_color_selector[]", [])
-                      ),
-                      Map.get(i, "series_color_selectors", %{})
-                    )
-
-                  primary_path =
-                    expanded_paths
-                    |> Enum.reject(&(&1 == ""))
-                    |> List.first()
-                    |> Kernel.||(fallback_path)
-
                   base
-                  |> Map.put("path_inputs", paths)
-                  |> Map.put("paths", expanded_paths)
-                  |> Map.put("series_color_selectors", selectors)
-                  |> Map.put("path", primary_path)
+                  |> put_metric_series(params, i)
 
                 widget_type when widget_type in ["distribution", "heatmap"] ->
                   source_widget = distribution_widget_source_for_save(socket, id, i)
@@ -833,23 +715,6 @@ defmodule TrifleApp.DashboardLive do
                   )
 
                 "list" ->
-                  list_path =
-                    params
-                    |> Map.get("list_path", Map.get(i, "path"))
-                    |> case do
-                      nil ->
-                        nil
-
-                      value ->
-                        value
-                        |> to_string()
-                        |> String.trim()
-                        |> case do
-                          "" -> nil
-                          trimmed -> trimmed
-                        end
-                    end
-
                   limit =
                     params
                     |> Map.get("list_limit", Map.get(i, "limit"))
@@ -865,23 +730,11 @@ defmodule TrifleApp.DashboardLive do
                     |> Map.get("list_label_strategy", Map.get(i, "label_strategy") || "short")
                     |> normalize_list_label_strategy()
 
-                  selectors =
-                    DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-                      if(is_nil(list_path), do: [], else: [list_path]),
-                      Map.get(
-                        params,
-                        "list_color_selector",
-                        Map.get(params, "list_color_selector[]", [])
-                      ),
-                      Map.get(i, "series_color_selectors", %{})
-                    )
-
                   base
-                  |> Map.put("path", list_path)
+                  |> put_metric_series(params, i)
                   |> Map.put("limit", limit)
                   |> Map.put("sort", sort)
                   |> Map.put("label_strategy", label_strategy)
-                  |> Map.put("series_color_selectors", selectors)
                   |> Map.delete("empty_message")
 
                 "text" ->
@@ -914,6 +767,7 @@ defmodule TrifleApp.DashboardLive do
                     |> Map.delete("normalized")
                     |> Map.delete("legend")
                     |> Map.delete("y_label")
+                    |> Map.delete("series")
                     |> Map.delete("series_color_selectors")
 
                   case subtype do
@@ -998,7 +852,11 @@ defmodule TrifleApp.DashboardLive do
              {:ok, widget} <- fetch_editing_widget(socket, id) do
           socket = ensure_widget_path_options(socket)
           path_options = socket.assigns[:widget_path_options] || []
-          updated = apply_widget_params_for_edit(widget, params, path_options)
+          updated =
+            params
+            |> strip_metric_series_change_params()
+            |> then(&apply_widget_params_for_edit(widget, &1, path_options))
+
           {:noreply, assign_editing_widget(socket, updated)}
         else
           _ -> {:noreply, socket}
@@ -1116,8 +974,8 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_event(
-        "timeseries_paths_update",
-        %{"widget_id" => widget_id, "paths" => raw_paths},
+        "widget_series_rows_update",
+        %{"widget_id" => widget_id, "rows" => raw_rows},
         socket
       ) do
     cond do
@@ -1131,121 +989,12 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       true ->
-        path_options = socket.assigns[:widget_path_options] || []
-        path_inputs = DashboardWidgetHelpers.normalize_chart_path_inputs_for_edit(raw_paths)
-        expanded_paths = auto_expand_path_wildcards(path_inputs, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(socket.assigns.editing_widget, "series_color_selectors", %{})
-          )
+        rows = MetricSeries.normalize_event_rows(raw_rows)
 
         widget =
           socket.assigns.editing_widget
-          |> Map.put("path_inputs", path_inputs)
-          |> Map.put("paths", expanded_paths)
-          |> Map.put("series_color_selectors", selectors)
-
-        {:noreply, assign_editing_widget(socket, widget)}
-    end
-  end
-
-  def handle_event(
-        "category_paths_update",
-        %{"widget_id" => widget_id, "paths" => raw_paths},
-        socket
-      ) do
-    cond do
-      socket.assigns.is_public_access ->
-        {:noreply, socket}
-
-      is_nil(socket.assigns[:editing_widget]) ->
-        {:noreply, socket}
-
-      to_string(socket.assigns.editing_widget["id"]) != to_string(widget_id) ->
-        {:noreply, socket}
-
-      true ->
-        path_options = socket.assigns[:widget_path_options] || []
-        path_inputs = DashboardWidgetHelpers.normalize_chart_path_inputs_for_edit(raw_paths)
-        expanded_paths = auto_expand_path_wildcards(path_inputs, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(socket.assigns.editing_widget, "series_color_selectors", %{})
-          )
-
-        primary_path =
-          expanded_paths
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-          |> List.first()
-          |> case do
-            nil -> ""
-            value -> value
-          end
-
-        widget =
-          socket.assigns.editing_widget
-          |> Map.put("path_inputs", path_inputs)
-          |> Map.put("paths", expanded_paths)
-          |> Map.put("series_color_selectors", selectors)
-          |> Map.put("path", primary_path)
-
-        {:noreply, assign_editing_widget(socket, widget)}
-    end
-  end
-
-  def handle_event(
-        "distribution_paths_update",
-        %{"widget_id" => widget_id, "paths" => raw_paths},
-        socket
-      ) do
-    cond do
-      socket.assigns.is_public_access ->
-        {:noreply, socket}
-
-      is_nil(socket.assigns[:editing_widget]) ->
-        {:noreply, socket}
-
-      to_string(socket.assigns.editing_widget["id"]) != to_string(widget_id) ->
-        {:noreply, socket}
-
-      true ->
-        path_options = socket.assigns[:widget_path_options] || []
-
-        path_inputs =
-          DashboardWidgetHelpers.normalize_chart_path_inputs_for_edit(raw_paths)
-
-        expanded_paths = auto_expand_path_wildcards(path_inputs, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(socket.assigns.editing_widget, "series_color_selectors", %{})
-          )
-
-        primary_path =
-          expanded_paths
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-          |> List.first()
-          |> case do
-            nil -> ""
-            value -> value
-          end
-
-        widget =
-          socket.assigns.editing_widget
-          |> Map.put("path_inputs", path_inputs)
-          |> Map.put("paths", expanded_paths)
-          |> Map.put("series_color_selectors", selectors)
-          |> Map.put("path", primary_path)
+          |> Map.put("series", rows)
+          |> MetricSeries.prune_legacy_metric_fields()
 
         {:noreply, assign_editing_widget(socket, widget)}
     end
@@ -2024,193 +1773,17 @@ defmodule TrifleApp.DashboardLive do
 
   defp build_widget_path_options(_assigns), do: []
 
-  defp maybe_auto_expand_widget_paths(widget, options) when is_map(widget) do
-    type = widget["type"] |> to_string() |> String.downcase()
+  defp maybe_auto_expand_widget_paths(widget, _options) when is_map(widget) do
+    normalized = Registry.normalize_widget(widget)
 
-    case type do
-      "kpi" ->
-        path =
-          widget
-          |> Map.get("path", "")
-          |> to_string()
-          |> String.trim()
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            [path],
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        widget
-        |> Map.put("path", path)
-        |> Map.put("series_color_selectors", selectors)
-
-      "timeseries" ->
-        path_inputs =
-          widget
-          |> DashboardWidgetHelpers.path_inputs_for_form("timeseries")
-
-        expanded = auto_expand_path_wildcards(path_inputs, options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        widget
-        |> Map.put("path_inputs", path_inputs)
-        |> Map.put("paths", expanded)
-        |> Map.put("series_color_selectors", selectors)
-
-      "category" ->
-        path_inputs =
-          widget
-          |> DashboardWidgetHelpers.path_inputs_for_form("category")
-
-        paths = auto_expand_path_wildcards(path_inputs, options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        primary =
-          paths
-          |> Enum.reject(&(&1 == ""))
-          |> List.first()
-          |> Kernel.||(widget["path"] || "")
-
-        widget
-        |> Map.put("path_inputs", path_inputs)
-        |> Map.put("paths", paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary)
-
-      type when type in ["distribution", "heatmap"] ->
-        path_inputs = DashboardWidgetHelpers.path_inputs_for_form(widget, "distribution")
-
-        fallback_path =
-          widget
-          |> Map.get("path", "")
-          |> to_string()
-          |> String.trim()
-
-        widget
-        |> build_distribution_widget(type, %{}, widget, options,
-          paths_param: path_inputs,
-          path_normalizer: &DashboardWidgetHelpers.normalize_distribution_paths_for_edit/1,
-          fallback_path: fallback_path
-        )
-        |> preserve_widget_field(widget, "legend")
-        |> preserve_widget_field(widget, "designator")
-        |> preserve_widget_field(widget, "designators")
-
-      "table" ->
-        path_inputs =
-          widget
-          |> Map.get("path_inputs", Map.get(widget, "paths", widget["path"]))
-          |> DashboardWidgetHelpers.normalize_table_paths_for_edit()
-
-        paths = auto_expand_path_wildcards(path_inputs, options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            path_inputs,
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        primary =
-          paths
-          |> Enum.reject(&(&1 == ""))
-          |> List.first()
-          |> Kernel.||(widget["path"] || "")
-
-        widget
-        |> Map.put("path_inputs", path_inputs)
-        |> Map.put("paths", paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary)
-
-      "list" ->
-        path =
-          widget
-          |> Map.get("path")
-          |> to_string()
-          |> String.trim()
-
-        normalized_path =
-          case path do
-            "" -> nil
-            value -> value
-          end
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            if(is_nil(normalized_path), do: [], else: [normalized_path]),
-            [],
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        widget
-        |> Map.put("path", normalized_path)
-        |> Map.put("series_color_selectors", selectors)
-
-      _ ->
-        widget
+    if MetricSeries.metric_widget?(normalized) do
+      MetricSeries.prune_legacy_metric_fields(normalized)
+    else
+      normalized
     end
   end
 
   defp maybe_auto_expand_widget_paths(widget, _options), do: widget
-
-  defp auto_expand_path_wildcards(paths, options) when is_list(paths) do
-    option_values = normalize_option_values(options)
-    do_auto_expand_path_wildcards(paths, option_values)
-  end
-
-  defp auto_expand_path_wildcards(paths, _options) when is_list(paths),
-    do: do_auto_expand_path_wildcards(paths, [])
-
-  defp do_auto_expand_path_wildcards(paths, option_values) do
-    Enum.reduce(paths, [], fn original, acc ->
-      trimmed = original |> to_string() |> String.trim()
-
-      expanded =
-        cond do
-          trimmed == "" -> ""
-          String.contains?(trimmed, "*") -> trimmed
-          Enum.any?(option_values, &String.starts_with?(&1, trimmed <> ".")) -> trimmed <> ".*"
-          true -> trimmed
-        end
-
-      if expanded == "" do
-        if Enum.any?(acc, &(&1 == "")), do: acc, else: acc ++ [expanded]
-      else
-        if Enum.any?(acc, &(&1 == expanded)), do: acc, else: acc ++ [expanded]
-      end
-    end)
-  end
-
-  defp normalize_option_values(options) do
-    options
-    |> Enum.map(&extract_option_value/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.filter(&(&1 != ""))
-  end
-
-  defp extract_option_value(%{"value" => value}), do: to_option_string(value)
-  defp extract_option_value(%{value: value}), do: to_option_string(value)
-  defp extract_option_value(value), do: to_option_string(value)
-
-  defp to_option_string(nil), do: ""
-  defp to_option_string(value) when is_binary(value), do: value
-  defp to_option_string(value) when is_atom(value), do: Atom.to_string(value)
-  defp to_option_string(value), do: to_string(value)
 
   defp assign_dashboard_permissions(socket) do
     membership = socket.assigns[:current_membership]
@@ -2254,12 +1827,51 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp assign_dashboard(socket, dashboard) do
+    dashboard = normalize_dashboard_metric_widgets(dashboard)
+
     socket
     |> assign(:dashboard, dashboard)
     |> assign_dashboard_permissions()
     |> assign_dashboard_owner_state()
     |> assign_segment_state()
   end
+
+  defp normalize_dashboard_metric_widgets(%_{} = dashboard) do
+    payload = Map.get(dashboard, :payload, %{}) || %{}
+    normalized_payload = normalize_dashboard_payload(payload)
+    %{dashboard | payload: normalized_payload}
+  end
+
+  defp normalize_dashboard_metric_widgets(dashboard) when is_map(dashboard) do
+    Map.update(dashboard, :payload, %{}, &normalize_dashboard_payload/1)
+  end
+
+  defp normalize_dashboard_metric_widgets(other), do: other
+
+  defp normalize_dashboard_payload(payload) when is_map(payload) do
+    grid =
+      payload
+      |> Map.get("grid", Map.get(payload, :grid, []))
+      |> Enum.map(&normalize_dashboard_widget_item/1)
+
+    payload
+    |> Map.put("grid", grid)
+    |> Map.delete(:grid)
+  end
+
+  defp normalize_dashboard_payload(other), do: other
+
+  defp normalize_dashboard_widget_item(item) when is_map(item) do
+    item = Registry.normalize_widget(item)
+
+    if MetricSeries.metric_widget?(item) do
+      MetricSeries.prune_legacy_metric_fields(item)
+    else
+      item
+    end
+  end
+
+  defp normalize_dashboard_widget_item(other), do: other
 
   defp dashboard_page_title(dashboard) do
     groups = Organizations.get_dashboard_group_chain(dashboard.group_id)
@@ -3196,33 +2808,15 @@ defmodule TrifleApp.DashboardLive do
           |> Map.get("kpi_subtype", Map.get(widget, "subtype"))
           |> DashboardWidgetHelpers.normalize_kpi_subtype(widget)
 
-        kpi_path =
-          params
-          |> Map.get("kpi_path", Map.get(widget, "path", ""))
-          |> to_string()
-          |> String.trim()
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            [kpi_path],
-            Map.get(
-              params,
-              "kpi_color_selector",
-              Map.get(params, "kpi_color_selector[]", [])
-            ),
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
         widget =
           widget
-          |> Map.put("path", kpi_path)
+          |> put_metric_series(params, widget, preserve_empty: true)
           |> Map.put(
             "function",
             Map.get(params, "kpi_function", Map.get(widget, "function", "mean"))
           )
           |> Map.put("size", Map.get(params, "kpi_size", Map.get(widget, "size", "m")))
           |> Map.put("subtype", subtype)
-          |> Map.put("series_color_selectors", selectors)
 
         case subtype do
           "split" ->
@@ -3251,31 +2845,8 @@ defmodule TrifleApp.DashboardLive do
         end
 
       "timeseries" ->
-        typed_paths =
-          params
-          |> Map.get(
-            "ts_paths",
-            Map.get(
-              params,
-              "ts_paths[]",
-              Map.get(widget, "path_inputs", Map.get(widget, "paths", []))
-            )
-          )
-          |> DashboardWidgetHelpers.normalize_chart_path_inputs_for_edit()
-
-        expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            typed_paths,
-            Map.get(params, "ts_color_selector", Map.get(params, "ts_color_selector[]", [])),
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
         widget
-        |> Map.put("path_inputs", typed_paths)
-        |> Map.put("paths", expanded_paths)
-        |> Map.put("series_color_selectors", selectors)
+        |> put_metric_series(params, widget, preserve_empty: true)
         |> Map.put(
           "chart_type",
           Map.get(params, "ts_chart_type", Map.get(widget, "chart_type") || "line")
@@ -3286,123 +2857,23 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
 
       "category" ->
-        cat_paths_param =
-          params
-          |> Map.get(
-            "cat_paths",
-            Map.get(
-              params,
-              "cat_paths[]",
-              Map.get(widget, "path_inputs", Map.get(widget, "paths", []))
-            )
-          )
-
-        typed_paths = DashboardWidgetHelpers.normalize_category_paths_for_edit(cat_paths_param)
-        expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            typed_paths,
-            Map.get(params, "cat_color_selector", Map.get(params, "cat_color_selector[]", [])),
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        fallback_path =
-          widget
-          |> Map.get("path", "")
-          |> to_string()
-          |> String.trim()
-
-        primary_path = primary_path_from_paths(expanded_paths, fallback_path)
-
         widget
-        |> Map.put("path_inputs", typed_paths)
-        |> Map.put("paths", expanded_paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary_path)
+        |> put_metric_series(params, widget, preserve_empty: true)
         |> Map.put(
           "chart_type",
           Map.get(params, "cat_chart_type", Map.get(widget, "chart_type") || "bar")
         )
 
       "table" ->
-        table_paths_param =
-          params
-          |> Map.get(
-            "table_paths",
-            Map.get(params, "table_paths[]", Map.get(widget, "paths", []))
-          )
-
-        table_paths = DashboardWidgetHelpers.normalize_table_paths_for_edit(table_paths_param)
-        expanded_paths = auto_expand_path_wildcards(table_paths, path_options)
-
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            table_paths,
-            Map.get(
-              params,
-              "table_color_selector",
-              Map.get(params, "table_color_selector[]", [])
-            ),
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
-        fallback_path =
-          widget
-          |> Map.get("path", "")
-          |> to_string()
-          |> String.trim()
-
-        primary_path = primary_path_from_paths(expanded_paths, fallback_path)
-
         widget
-        |> Map.put("path_inputs", table_paths)
-        |> Map.put("paths", expanded_paths)
-        |> Map.put("series_color_selectors", selectors)
-        |> Map.put("path", primary_path)
+        |> put_metric_series(params, widget, preserve_empty: true)
 
       widget_type when widget_type in ["distribution", "heatmap"] ->
-        dist_paths_param =
-          params
-          |> Map.get(
-            "dist_paths",
-            Map.get(
-              params,
-              "dist_paths[]",
-              Map.get(widget, "path_inputs", Map.get(widget, "paths", []))
-            )
-          )
-
-        fallback_path =
-          widget
-          |> Map.get("path", "")
-          |> to_string()
-          |> String.trim()
-
         build_distribution_widget(widget, widget_type, params, widget, path_options,
-          paths_param: dist_paths_param,
-          path_normalizer: &DashboardWidgetHelpers.normalize_distribution_paths_for_edit/1,
-          fallback_path: fallback_path
+          series_rows: metric_series_rows_from_params(params, widget, preserve_empty: true)
         )
 
       "list" ->
-        list_path =
-          params
-          |> Map.get("list_path", Map.get(widget, "path"))
-          |> case do
-            nil ->
-              nil
-
-            value ->
-              value
-              |> to_string()
-              |> String.trim()
-              |> case do
-                "" -> nil
-                trimmed -> trimmed
-              end
-          end
-
         limit =
           params
           |> Map.get("list_limit", Map.get(widget, "limit"))
@@ -3418,19 +2889,11 @@ defmodule TrifleApp.DashboardLive do
           |> Map.get("list_label_strategy", Map.get(widget, "label_strategy") || "short")
           |> normalize_list_label_strategy()
 
-        selectors =
-          DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-            if(is_nil(list_path), do: [], else: [list_path]),
-            Map.get(params, "list_color_selector", Map.get(params, "list_color_selector[]", [])),
-            Map.get(widget, "series_color_selectors", %{})
-          )
-
         widget
-        |> Map.put("path", list_path)
+        |> put_metric_series(params, widget, preserve_empty: true)
         |> Map.put("limit", limit)
         |> Map.put("sort", sort)
         |> Map.put("label_strategy", label_strategy)
-        |> Map.put("series_color_selectors", selectors)
 
       "text" ->
         subtype =
@@ -3449,6 +2912,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.put("subtype", subtype)
           |> Map.put("color", color_id)
           |> Map.delete("path_inputs")
+          |> Map.delete("series")
           |> Map.delete("series_color_selectors")
 
         widget =
@@ -3494,33 +2958,13 @@ defmodule TrifleApp.DashboardLive do
          widget_type,
          params,
          source_widget,
-         path_options,
+         _path_options,
          opts \\ []
        ) do
-    paths_param =
-      Keyword.get_lazy(opts, :paths_param, fn ->
-        Map.get(params, "dist_paths", Map.get(params, "dist_paths[]", []))
+    series_rows =
+      Keyword.get_lazy(opts, :series_rows, fn ->
+        metric_series_rows_from_params(params, source_widget)
       end)
-
-    path_normalizer =
-      Keyword.get(
-        opts,
-        :path_normalizer,
-        &DashboardWidgetHelpers.normalize_chart_path_inputs_param/1
-      )
-
-    typed_paths = path_normalizer.(paths_param)
-    expanded_paths = auto_expand_path_wildcards(typed_paths, path_options)
-
-    selectors =
-      DashboardWidgetHelpers.normalize_series_color_selectors_for_paths(
-        typed_paths,
-        Map.get(params, "dist_color_selector", Map.get(params, "dist_color_selector[]", [])),
-        Map.get(source_widget, "series_color_selectors", %{})
-      )
-
-    fallback_path = Keyword.get(opts, :fallback_path, "")
-    primary_path = primary_path_from_paths(expanded_paths, fallback_path)
 
     designators =
       DashboardWidgetHelpers.normalize_distribution_designators(
@@ -3551,8 +2995,7 @@ defmodule TrifleApp.DashboardLive do
       |> Map.get("dist_path_aggregation", Map.get(source_widget, "path_aggregation"))
       |> DashboardWidgetHelpers.normalize_distribution_path_aggregation()
 
-    fallback_heatmap_color =
-      DashboardWidgetHelpers.heatmap_single_color_from_paths(typed_paths, selectors)
+    fallback_heatmap_color = heatmap_single_color_from_series(series_rows)
 
     color_mode =
       case widget_type do
@@ -3579,10 +3022,8 @@ defmodule TrifleApp.DashboardLive do
       end
 
     base
-    |> Map.put("path_inputs", typed_paths)
-    |> Map.put("paths", expanded_paths)
-    |> Map.put("series_color_selectors", selectors)
-    |> Map.put("path", primary_path)
+    |> Map.put("series", series_rows)
+    |> MetricSeries.prune_legacy_metric_fields()
     |> Map.put("designators", designators)
     |> Map.put("designator", Map.get(designators, "horizontal"))
     |> Map.put("mode", mode)
@@ -3605,22 +3046,88 @@ defmodule TrifleApp.DashboardLive do
     |> Map.delete("color_config")
   end
 
-  defp primary_path_from_paths(paths, fallback) when is_list(paths) do
-    paths
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> List.first()
-    |> Kernel.||(fallback)
+  defp put_metric_series(base, params, source_widget, opts \\ [])
+       when is_map(base) and is_map(source_widget) do
+    base
+    |> Map.put("series", metric_series_rows_from_params(params, source_widget, opts))
+    |> MetricSeries.prune_legacy_metric_fields()
   end
 
-  defp preserve_widget_field(updated, original, key) do
-    if Map.has_key?(original, key) do
-      Map.put(updated, key, Map.get(original, key))
+  defp metric_series_rows_from_params(params, source_widget, opts \\ []) do
+    if metric_series_row_params_present?(params) do
+      MetricSeries.normalize_series_rows_params(params, opts)
     else
-      Map.delete(updated, key)
+      source_widget
+      |> normalize_metric_series_source_widget(opts)
+      |> Map.get("series", [])
+      |> MetricSeries.normalize_series_rows(opts)
     end
   end
+
+  defp normalize_metric_series_source_widget(source_widget, opts) do
+    if Keyword.get(opts, :preserve_empty, false) do
+      MetricSeries.normalize_widget_for_form(source_widget)
+    else
+      MetricSeries.normalize_widget(source_widget)
+    end
+  end
+
+  defp metric_series_row_params_present?(params) when is_map(params) do
+    Enum.any?(
+      [
+        "widget_series_kind",
+        "widget_series_path",
+        "widget_series_expression",
+        "widget_series_label",
+        "widget_series_visible",
+        "widget_series_color_selector"
+      ],
+      fn key -> Map.has_key?(params, key) || Map.has_key?(params, "#{key}[]") end
+    )
+  end
+
+  defp metric_series_row_params_present?(_), do: false
+
+  defp strip_metric_series_change_params(params) when is_map(params) do
+    Enum.reduce(
+      [
+        "widget_series_kind",
+        "widget_series_path",
+        "widget_series_expression",
+        "widget_series_label",
+        "widget_series_visible",
+        "widget_series_color_selector"
+      ],
+      params,
+      fn key, acc ->
+        acc
+        |> Map.delete(key)
+        |> Map.delete("#{key}[]")
+      end
+    )
+  end
+
+  defp strip_metric_series_change_params(params), do: params
+
+  defp heatmap_single_color_from_series(rows) when is_list(rows) do
+    selector =
+      rows
+      |> Enum.find_value(fn row ->
+        path = row |> Map.get("path", "") |> to_string() |> String.trim()
+
+        if path == "" do
+          nil
+        else
+          MetricSeries.row_color_selector(row)
+        end
+      end)
+      |> Kernel.||(DashboardWidgetHelpers.default_series_color_selector())
+
+    DashboardWidgetHelpers.resolve_series_color(selector, 0)
+  end
+
+  defp heatmap_single_color_from_series(_),
+    do: DashboardWidgetHelpers.resolve_series_color("default.*", 0)
 
   defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do
     case fetch_editing_widget(socket, id) do

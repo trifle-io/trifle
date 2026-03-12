@@ -341,6 +341,7 @@ defmodule TrifleApp.Components.DataTable do
     end)
   end
 
+  defp format_aggrid_value(nil), do: nil
   defp format_aggrid_value(%Decimal{} = d), do: Decimal.to_float(d)
   defp format_aggrid_value(value) when is_number(value), do: value
 
@@ -359,7 +360,7 @@ defmodule TrifleApp.Components.DataTable do
     end
   end
 
-  defp format_aggrid_value(_), do: 0
+  defp format_aggrid_value(_), do: nil
 
   defp dataset_dom_id(dataset) do
     base =

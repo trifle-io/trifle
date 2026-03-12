@@ -5,7 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Table do
 
   alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardWidgets.Registry
-  alias TrifleApp.Components.DashboardWidgets.{Table, TableEditor}
+  alias TrifleApp.Components.DashboardWidgets.{MetricSeries, Table, TableEditor}
   alias TrifleApp.DesignSystem.ChartColors
 
   @impl true
@@ -41,5 +41,5 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.Table do
   end
 
   @impl true
-  def normalize_widget(widget), do: widget
+  def normalize_widget(widget), do: MetricSeries.normalize_widget(widget)
 end

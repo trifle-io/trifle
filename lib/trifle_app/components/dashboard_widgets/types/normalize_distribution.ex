@@ -2,6 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.NormalizeDistribution do
   @moduledoc false
 
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.MetricSeries
 
   @spec normalize(map(), String.t()) :: map()
   def normalize(item, widget_type) when is_map(item) do
@@ -73,6 +74,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.NormalizeDistribution do
     |> Map.put("designator", designator)
     |> Map.put_new("legend", true)
     |> put_heatmap_color_fields(normalized_type, color_mode, color_config)
+    |> MetricSeries.normalize_widget()
   end
 
   def normalize(other, _widget_type), do: other

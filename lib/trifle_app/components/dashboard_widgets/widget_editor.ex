@@ -28,7 +28,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
     editor_module.editor(%{
       widget: widget,
       path_options: path_options,
-      __changed__: %{}
+      __changed__: %{widget: true, path_options: true}
     })
   end
 

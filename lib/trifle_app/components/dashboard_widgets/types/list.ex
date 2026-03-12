@@ -3,7 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.List do
 
   @behaviour TrifleApp.Components.DashboardWidgets.WidgetType
 
-  alias TrifleApp.Components.DashboardWidgets.{List, ListEditor}
+  alias TrifleApp.Components.DashboardWidgets.{List, ListEditor, MetricSeries}
   alias TrifleApp.Components.DashboardWidgets.Registry
 
   @impl true
@@ -20,5 +20,5 @@ defmodule TrifleApp.Components.DashboardWidgets.Types.List do
     do: Registry.fetch_dataset(dataset_maps, :list, widget_id)
 
   @impl true
-  def normalize_widget(widget), do: widget
+  def normalize_widget(widget), do: MetricSeries.normalize_widget(widget)
 end

@@ -11,7 +11,7 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
   alias Decimal
   alias Trifle.Stats.Series
-  alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
 
   @spec datasets(Series.t() | nil, list()) :: list()
   def datasets(nil, _grid_items), do: []
@@ -27,41 +27,26 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
   def dataset(nil, _widget), do: nil
 
   def dataset(%Series{} = series, widget) do
-    path = widget_path(widget)
+    resolved_entries =
+      series
+      |> MetricSeriesEvaluator.resolve_category_rows(widget, 1)
+      |> MetricSeriesEvaluator.category_entries()
 
-    if is_nil(path) do
+    if resolved_entries == [] do
       nil
     else
       limit = widget_limit(widget)
       sort = widget_sort(widget)
       empty_message = widget_empty_message(widget)
-      raw_category = Series.format_category(series, path, 1)
-
-      normalized_entries = normalize_category_entries(raw_category)
-
-      selectors =
-        widget
-        |> Map.get("series_color_selectors", %{})
-        |> WidgetHelpers.normalize_series_color_selectors_map()
-
-      selector = WidgetHelpers.selector_for_path(selectors, path)
-      parsed_selector = WidgetHelpers.parse_series_color_selector(selector)
 
       items =
-        normalized_entries
+        resolved_entries
         |> Enum.reject(&zero_entry?/1)
         |> sort_items(sort)
         |> maybe_limit(limit)
-        |> Enum.with_index()
-        |> Enum.map(fn {{full_path, value}, index} ->
-          color =
-            case parsed_selector do
-              %{type: :palette_rotate} -> WidgetHelpers.resolve_series_color(selector, index)
-              _ -> WidgetHelpers.resolve_series_color(selector, 0)
-            end
-
+        |> Enum.map(fn %{name: full_path, value: value, color: color, source_path: source_path} ->
           %{
-            path: full_path,
+            path: source_path || full_path,
             label: display_label(full_path, widget),
             value: value,
             formatted_value: format_value(value),
@@ -71,8 +56,8 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
       dataset = %{
         id: widget_id(widget),
-        path: path,
-        total_nodes: length(normalized_entries),
+        path: primary_entry_path(resolved_entries),
+        total_nodes: length(resolved_entries),
         limit: limit,
         items: items,
         empty_message: empty_message
@@ -80,7 +65,7 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
 
       if items == [] do
         Logger.debug(fn ->
-          "[ListWidget #{widget_id(widget)}] no values for path=#{path}. raw=#{inspect(raw_category, limit: 10)} normalized=#{inspect(normalized_entries, limit: 10)}"
+          "[ListWidget #{widget_id(widget)}] no values for resolved entries=#{inspect(resolved_entries, limit: 10)}"
         end)
       end
 
@@ -89,7 +74,7 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
   rescue
     error ->
       Logger.debug(fn ->
-        "[ListWidget #{widget_id(widget)}] failed to build dataset for path=#{widget_path(widget)} reason=#{inspect(error)}"
+        "[ListWidget #{widget_id(widget)}] failed to build dataset reason=#{inspect(error)}"
       end)
 
       nil
@@ -98,18 +83,6 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
   defp list_widget?(%{"type" => type}), do: String.downcase(to_string(type)) == "list"
   defp list_widget?(%{type: type}), do: String.downcase(to_string(type)) == "list"
   defp list_widget?(_), do: false
-
-  defp widget_path(widget) do
-    widget["path"] || widget[:path] || first_path(widget)
-  end
-
-  defp first_path(widget) do
-    cond do
-      is_list(widget["paths"]) -> List.first(widget["paths"])
-      is_list(widget[:paths]) -> List.first(widget[:paths])
-      true -> nil
-    end
-  end
 
   defp widget_limit(widget) do
     widget
@@ -132,70 +105,13 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
       "No data available yet."
   end
 
-  defp normalize_category_entries(map) when is_map(map) do
-    map
-    |> flatten_category_entries()
-  end
+  defp sort_items(items, "asc"), do: Enum.sort_by(items, & &1.value, :asc)
+  defp sort_items(items, "alpha"), do: Enum.sort_by(items, & &1.name, :asc)
+  defp sort_items(items, "alpha_desc"), do: Enum.sort_by(items, & &1.name, :desc)
+  defp sort_items(items, _), do: Enum.sort_by(items, & &1.value, :desc)
 
-  defp normalize_category_entries(list) when is_list(list) do
-    list
-    |> Enum.flat_map(&normalize_category_entry/1)
-  end
-
-  defp normalize_category_entries(_), do: []
-
-  defp normalize_category_entry({path, value}),
-    do: [{to_string(path), to_float(value)}]
-
-  defp normalize_category_entry(%{path: path, value: value}) do
-    [{to_string(path), to_float(value)}]
-  rescue
-    _ -> []
-  end
-
-  defp normalize_category_entry(%{} = map) do
-    map
-    |> flatten_category_entries()
-    |> Enum.map(fn {path, value} -> {to_string(path), to_float(value)} end)
-  rescue
-    _ -> []
-  end
-
-  defp normalize_category_entry(_), do: []
-
-  defp flatten_category_entries(map, prefix \\ nil)
-
-  defp flatten_category_entries(map, prefix) when is_map(map) do
-    map
-    |> Enum.flat_map(fn {key, value} ->
-      key_str = key |> to_string() |> String.trim()
-      full_key = if prefix && prefix != "", do: prefix <> "." <> key_str, else: key_str
-
-      cond do
-        is_map(value) ->
-          flatten_category_entries(value, full_key)
-
-        is_number(value) ->
-          [{to_string(full_key), to_float(value)}]
-
-        match?(%Decimal{}, value) ->
-          [{to_string(full_key), to_float(value)}]
-
-        true ->
-          []
-      end
-    end)
-  end
-
-  defp flatten_category_entries(_other, _prefix), do: []
-
-  defp sort_items(items, "asc"), do: Enum.sort_by(items, fn {_k, v} -> v end, :asc)
-  defp sort_items(items, "alpha"), do: Enum.sort_by(items, fn {k, _v} -> k end, :asc)
-  defp sort_items(items, "alpha_desc"), do: Enum.sort_by(items, fn {k, _v} -> k end, :desc)
-  defp sort_items(items, _), do: Enum.sort_by(items, fn {_k, v} -> v end, :desc)
-
-  defp zero_entry?({_, value}) when is_number(value), do: value == 0
-  defp zero_entry?({_, value}) when is_nil(value), do: true
+  defp zero_entry?(%{value: value}) when is_number(value), do: value == 0
+  defp zero_entry?(%{value: value}) when is_nil(value), do: true
   defp zero_entry?(_), do: true
 
   defp display_label(path, widget) do
@@ -240,6 +156,9 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
   defp widget_id(%{"id" => id}), do: to_string(id)
   defp widget_id(%{id: id}), do: to_string(id)
   defp widget_id(_), do: nil
+
+  defp primary_entry_path([%{source_path: source_path} | _]), do: source_path
+  defp primary_entry_path(_), do: nil
 
   defp to_float(%Decimal{} = value), do: Decimal.to_float(value)
   defp to_float(value) when is_number(value), do: value * 1.0
