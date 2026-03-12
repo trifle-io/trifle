@@ -29,32 +29,13 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       data-widget-id={Map.get(@widget, "id")}
       class="space-y-3"
     >
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="space-y-1">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-slate-100">
-            {@title}
-          </h3>
-          <p class="text-xs text-gray-500 dark:text-slate-400">
-            Compose path queries and formulas in evaluation order.
-          </p>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            data-action="add_query"
-            class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-          >
-            <span class="text-base leading-none">+</span> Add Path
-          </button>
-          <button
-            type="button"
-            data-action="add_formula"
-            class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-          >
-            <span class="text-xs font-semibold uppercase tracking-wide">fx</span> Add Formula
-          </button>
-        </div>
+      <div class="space-y-1">
+        <h3 class="text-sm font-medium text-gray-900 dark:text-slate-100">
+          {@title}
+        </h3>
+        <p class="text-xs text-gray-500 dark:text-slate-400">
+          Compose path queries and formulas in evaluation order.
+        </p>
       </div>
 
       <div id={"widget-#{Map.get(@widget, "id")}-series-rows"} class="space-y-2">
@@ -65,7 +46,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
             data-index={row["index"]}
             class={row_shell_classes()}
           >
-            <div class="grid gap-3 xl:grid-cols-[auto_auto_minmax(0,1.5fr)_14rem_12rem_auto] xl:items-center">
+            <div class="grid gap-3 xl:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] xl:items-center">
               <label class="inline-flex">
                 <input
                   type="hidden"
@@ -80,78 +61,72 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                   checked={MetricSeries.visible?(row)}
                   class="peer sr-only"
                 />
-                <span class={visibility_toggle_classes(:hidden)}>
-                  <span class="sr-only">
-                    Toggle series visibility
-                  </span>
-                  <.eye_slash_icon />
-                </span>
-                <span class={visibility_toggle_classes(:visible)}>
-                  <span class="sr-only">
-                    Toggle series visibility
-                  </span>
-                  <.eye_icon />
+                <span class={visibility_toggle_classes()}>
+                  <span class="sr-only">Toggle series visibility</span>
+                  {row["row_letter"]}
                 </span>
               </label>
 
-              <div class="flex min-w-0 items-center gap-2">
-                <div class={row_badge_classes()}>
-                  {String.upcase(row["row_letter"])}
-                </div>
-
-                <div class="inline-flex rounded-md border border-gray-300 bg-white p-0.5 shadow-sm dark:border-slate-600 dark:bg-slate-800">
-                  <label class="cursor-pointer">
+              <div class="min-w-0">
+                <div class={series_input_shell_classes()}>
+                  <label class={kind_icon_classes(MetricSeries.path_row?(row))}>
                     <input
                       type="radio"
                       name={input_name("widget_series_kind", row["index"])}
                       value="path"
                       data-role="series-kind"
                       checked={MetricSeries.path_row?(row)}
-                      class="peer sr-only"
+                      class="sr-only"
                     />
-                    <span class={kind_segment_classes(:first)}>Path</span>
+                    <.path_icon />
                   </label>
-                  <label class="cursor-pointer">
+                  <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
                     <input
                       type="radio"
                       name={input_name("widget_series_kind", row["index"])}
                       value="expression"
                       data-role="series-kind"
                       checked={MetricSeries.expression_row?(row)}
-                      class="peer sr-only"
+                      class="sr-only"
                     />
-                    <span class={kind_segment_classes(:last)}>Formula</span>
+                    <.formula_icon />
                   </label>
-                </div>
-              </div>
+                  <div class={shell_divider_classes()}></div>
 
-              <div class="min-w-0">
-                <%= if MetricSeries.path_row?(row) do %>
-                  <.path_autocomplete_input
-                    id={"widget-series-path-#{Map.get(@widget, "id")}-#{row["index"]}"}
-                    name={input_name("widget_series_path", row["index"])}
-                    value={row["path"]}
-                    placeholder={@path_placeholder}
-                    path_options={@path_options}
-                    input_class={input_classes()}
-                  />
-                  <input
-                    type="hidden"
-                    name={input_name("widget_series_expression", row["index"])}
-                    value=""
-                  />
-                <% else %>
-                  <input
-                    type="text"
-                    name={input_name("widget_series_expression", row["index"])}
-                    value={row["expression"]}
-                    data-role="series-expression"
-                    class={input_classes()}
-                    placeholder="a / b"
-                    spellcheck="false"
-                  />
-                  <input type="hidden" name={input_name("widget_series_path", row["index"])} value="" />
-                <% end %>
+                  <div class="min-w-0 flex-1">
+                    <%= if MetricSeries.path_row?(row) do %>
+                      <.path_autocomplete_input
+                        id={"widget-series-path-#{Map.get(@widget, "id")}-#{row["index"]}"}
+                        name={input_name("widget_series_path", row["index"])}
+                        value={row["path"]}
+                        placeholder={@path_placeholder}
+                        path_options={@path_options}
+                        wrapper_class="relative"
+                        input_class={joined_input_classes()}
+                      />
+                      <input
+                        type="hidden"
+                        name={input_name("widget_series_expression", row["index"])}
+                        value=""
+                      />
+                    <% else %>
+                      <input
+                        type="text"
+                        name={input_name("widget_series_expression", row["index"])}
+                        value={row["expression"]}
+                        data-role="series-expression"
+                        class={joined_input_classes()}
+                        placeholder="a / b"
+                        spellcheck="false"
+                      />
+                      <input
+                        type="hidden"
+                        name={input_name("widget_series_path", row["index"])}
+                        value=""
+                      />
+                    <% end %>
+                  </div>
+                </div>
               </div>
 
               <input
@@ -186,16 +161,17 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
         <% end %>
       </div>
 
-      <p class="text-xs text-gray-500 dark:text-slate-400">
-        Formula rows use the same syntax as transponders and can reference previous rows as a, b,
-        c, and so on.
-      </p>
+      <button
+        type="button"
+        data-action="add_query"
+        class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      >
+        <span class="text-base leading-none">+</span> Add Series
+      </button>
 
-      <%= if @path_help do %>
-        <p class="text-xs text-gray-500 dark:text-slate-400">
-          {@path_help}
-        </p>
-      <% end %>
+      <p class="text-xs text-gray-500 dark:text-slate-400">
+        Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c and use the same syntax as transponders. Hidden source rows can feed visible expression rows.
+      </p>
     </div>
     """
   end
@@ -206,24 +182,13 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
     "rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800"
   end
 
-  defp row_badge_classes do
-    "inline-flex h-8 min-w-[2rem] items-center justify-center rounded-md bg-gray-100 px-2 text-sm font-semibold text-gray-700 dark:bg-slate-700 dark:text-slate-100"
-  end
-
-  defp visibility_toggle_classes(state) do
-    visibility =
-      case state do
-        :visible -> "hidden peer-checked:inline-flex"
-        _ -> "inline-flex peer-checked:hidden"
-      end
-
+  defp visibility_toggle_classes do
     Enum.join(
       [
-        "h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-400 shadow-sm hover:bg-gray-50",
-        "peer-checked:border-teal-500 peer-checked:bg-teal-50 peer-checked:text-teal-600",
+        "inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white text-sm font-semibold lowercase text-gray-500 shadow-sm hover:bg-gray-50",
+        "peer-checked:border-teal-500 peer-checked:bg-teal-50 peer-checked:text-teal-700",
         "dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
-        "dark:peer-checked:border-teal-400 dark:peer-checked:bg-slate-700 dark:peer-checked:text-teal-300",
-        visibility
+        "dark:peer-checked:border-teal-400 dark:peer-checked:bg-slate-700 dark:peer-checked:text-teal-300"
       ],
       " "
     )
@@ -234,29 +199,33 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   end
 
   defp input_classes do
-    "block h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+    "block h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
   end
 
-  defp kind_segment_classes(position) do
-    base =
-      "inline-flex items-center rounded-md px-3 py-2 text-xs font-medium transition"
-
-    corners =
-      case position do
-        :first -> "rounded-r-none"
-        :last -> "rounded-l-none"
-        _ -> ""
-      end
-
-    state =
-      "text-gray-600 hover:bg-gray-50 peer-checked:bg-gray-900 peer-checked:text-white dark:text-slate-300 dark:hover:bg-slate-700 dark:peer-checked:bg-slate-100 dark:peer-checked:text-slate-900"
-
-    Enum.join([base, corners, state], " ")
+  defp series_input_shell_classes do
+    "flex h-10 min-w-0 items-center overflow-hidden rounded-md border border-gray-300 bg-white transition-colors focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500 dark:border-slate-600 dark:bg-slate-700"
   end
 
-  attr :class, :string, default: "h-5 w-5"
+  defp shell_divider_classes do
+    "ml-2.5 h-5 w-px bg-gray-200 dark:bg-slate-600"
+  end
 
-  defp eye_icon(assigns) do
+  defp joined_input_classes do
+    "block h-full w-full !rounded-none !border-0 !bg-transparent px-3 py-2 text-sm text-gray-900 !shadow-none placeholder:text-gray-400 focus:!border-0 focus:!outline-none focus:!ring-0 focus:!shadow-none dark:text-white dark:placeholder:text-slate-400"
+  end
+
+  defp kind_icon_classes(active?) do
+    base = "inline-flex shrink-0 items-center justify-center cursor-pointer transition-colors first:pl-3 pl-1.5"
+
+    color =
+      if active?,
+        do: "text-teal-600 dark:text-teal-400",
+        else: "text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+
+    "#{base} #{color}"
+  end
+
+  defp path_icon(assigns) do
     ~H"""
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -264,21 +233,18 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       viewBox="0 0 24 24"
       stroke-width="1.5"
       stroke="currentColor"
-      class={@class}
+      class="h-5 w-5"
     >
       <path
         stroke-linecap="round"
         stroke-linejoin="round"
-        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+        d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941"
       />
-      <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     </svg>
     """
   end
 
-  attr :class, :string, default: "h-5 w-5"
-
-  defp eye_slash_icon(assigns) do
+  defp formula_icon(assigns) do
     ~H"""
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -286,12 +252,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       viewBox="0 0 24 24"
       stroke-width="1.5"
       stroke="currentColor"
-      class={@class}
+      class="h-5 w-5"
     >
       <path
         stroke-linecap="round"
         stroke-linejoin="round"
-        d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"
+        d="M4.745 3A23.933 23.933 0 0 0 3 12c0 3.183.62 6.22 1.745 9M19.5 3c.967 2.78 1.5 5.817 1.5 9s-.533 6.22-1.5 9M8.25 8.885l1.444-.89a.75.75 0 0 1 1.105.402l2.402 7.206a.75.75 0 0 0 1.104.401l1.445-.889m-8.25.75.213.09a1.687 1.687 0 0 0 2.062-.617l4.45-6.676a1.688 1.688 0 0 1 2.062-.618l.213.09"
       />
     </svg>
     """

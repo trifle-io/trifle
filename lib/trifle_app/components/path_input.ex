@@ -8,6 +8,7 @@ defmodule TrifleApp.Components.PathInput do
   attr :value, :string, default: ""
   attr :placeholder, :string, default: ""
   attr :path_options, :list, default: []
+  attr :wrapper_class, :string, default: "relative"
 
   attr :input_class, :string,
     default:
@@ -17,7 +18,12 @@ defmodule TrifleApp.Components.PathInput do
     assigns = assign(assigns, :options_json, Jason.encode!(assigns.path_options))
 
     ~H"""
-    <div id={"#{@id}-wrapper"} class="relative" phx-hook="PathAutocomplete" data-paths={@options_json}>
+    <div
+      id={"#{@id}-wrapper"}
+      class={@wrapper_class}
+      phx-hook="PathAutocomplete"
+      data-paths={@options_json}
+    >
       <input
         id={@id}
         type="text"
