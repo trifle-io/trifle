@@ -111,4 +111,26 @@ defmodule TrifleApp.Components.DashboardWidgets.TableTest do
 
     assert path_html =~ "avg"
   end
+
+  test "aggrid payload preserves existing path_color over generic color" do
+    payload =
+      DataTable.to_aggrid_payload(%{
+        id: "table-color",
+        rows: [
+          %{
+            path: "avg",
+            display_path: "avg",
+            path_color: "#123456",
+            color: "#abcdef",
+            index: 1
+          }
+        ],
+        columns: [%{at: ~U[2024-01-01 00:00:00Z], index: 1}],
+        values: %{},
+        granularity: "1d",
+        empty_message: "No data available yet."
+      })
+
+    assert [%{path_color: "#123456"}] = payload.rows
+  end
 end

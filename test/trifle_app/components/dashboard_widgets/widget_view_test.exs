@@ -270,6 +270,46 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert attrs["aria-pressed"] == "true"
   end
 
+  test "renders path-only selectable rows as selected when selected_key matches the emitted key",
+       %{
+         assigns: assigns
+       } do
+    selectable_list = %{
+      "list-1" => %{
+        id: "list-1",
+        items: [
+          %{
+            label: "",
+            path: "keys.alpha",
+            value: 4,
+            formatted_value: "4",
+            color: "#14b8a6"
+          }
+        ],
+        selected_key: "keys.alpha",
+        select_event: "select_key",
+        deselect_event: "deselect_key"
+      }
+    }
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :list, selectable_list)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"button", attrs, _}] =
+      Floki.find(document, "#chat-grid-1-grid-widget-content-list-1 .list-widget-row")
+
+    attrs = Map.new(attrs)
+
+    assert attrs["phx-click"] == "deselect_key"
+    assert attrs["phx-value-key"] == "keys.alpha"
+    assert attrs["aria-pressed"] == "true"
+  end
+
   test "namespaces visible widget DOM ids by grid", %{assigns: assigns} do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)

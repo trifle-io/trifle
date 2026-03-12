@@ -226,8 +226,11 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
   def prune_legacy_metric_fields(other), do: other
 
   defp widget_type(widget) when is_map(widget) do
-    widget
-    |> Map.get("type", Map.get(widget, :type, ""))
+    (Map.get(widget, "type") ||
+       Map.get(widget, :type) ||
+       Map.get(widget, "widget_type") ||
+       Map.get(widget, :widget_type) ||
+       "")
     |> to_string()
     |> String.trim()
     |> String.downcase()
@@ -402,8 +405,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
 
   defp drop_empty_row?(row) do
     case row_kind(row) do
-      "expression" -> row_expression(row) == "" and row_label(row) == "" and visible?(row)
-      _ -> row_path(row) == "" and row_label(row) == "" and visible?(row)
+      "expression" -> row_expression(row) == "" and row_label(row) == ""
+      _ -> row_path(row) == "" and row_label(row) == ""
     end
   end
 

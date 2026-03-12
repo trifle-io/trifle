@@ -74,10 +74,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                       type="radio"
                       name={input_name("widget_series_kind", row["index"])}
                       value="path"
+                      aria-label="Path series"
                       data-role="series-kind"
                       checked={MetricSeries.path_row?(row)}
                       class="sr-only"
                     />
+                    <span class="sr-only">Path series</span>
                     <.path_icon />
                   </label>
                   <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
@@ -85,10 +87,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                       type="radio"
                       name={input_name("widget_series_kind", row["index"])}
                       value="expression"
+                      aria-label="Expression series"
                       data-role="series-kind"
                       checked={MetricSeries.expression_row?(row)}
                       class="sr-only"
                     />
+                    <span class="sr-only">Expression series</span>
                     <.formula_icon />
                   </label>
                   <div class={shell_divider_classes()}></div>

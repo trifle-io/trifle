@@ -653,7 +653,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         list_item_value(item, :path) == selected_path
 
       is_binary(selected_key) and selected_key != "" ->
-        list_item_value(item, :label) == selected_key
+        list_item_event_key(item) == selected_key
 
       true ->
         false
