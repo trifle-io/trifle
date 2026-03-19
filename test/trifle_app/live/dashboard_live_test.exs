@@ -582,6 +582,46 @@ defmodule TrifleApp.DashboardLiveTest do
     assert group["type"] == "group"
     assert group["title"] == "Latency Group"
     assert [%{"id" => "widget-1"}] = group["children"]
+
+    html =
+      render_component(&WidgetView.group_item/1,
+        group: group,
+        dashboard: updated,
+        grid_dom_id: "dashboard-grid",
+        editable: true
+      )
+
+    assert html =~ "grid-widget-title"
+    assert html =~ ~s(data-original-title="Latency Group")
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [
+        %{
+          "id" => "group-1",
+          "type" => "group",
+          "title" => "Latency Group",
+          "x" => 0,
+          "y" => 0,
+          "w" => 6,
+          "h" => 5,
+          "children" => [
+            %{
+              "id" => "widget-1",
+              "title" => "Grouped Widget",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      ]
+    })
+
+    updated_after_layout = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [group_after_layout] = updated_after_layout.payload["grid"]
+
+    assert group_after_layout["title"] == "Latency Group"
   end
 
   test "moving a widget into a group preserves its original type and payload", %{

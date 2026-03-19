@@ -1434,7 +1434,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         <div class="grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80">
           <div class="grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0">
             <div
-              class="font-semibold truncate text-slate-800 dark:text-slate-100"
+              class="grid-widget-title font-semibold truncate text-slate-800 dark:text-slate-100"
               data-original-title={@title}
             >
               {@title}
