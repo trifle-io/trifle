@@ -654,6 +654,30 @@ defmodule TrifleApp.DashboardLiveTest do
     assert child["payload"] == "<h2>Hello</h2>"
   end
 
+  test "duplicating a widget preserves config, assigns a new id, and appends it to the bottom", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "duplicate_widget", %{"id" => "widget-1"})
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [original, duplicate] = updated.payload["grid"]
+
+    assert original["id"] == "widget-1"
+    assert duplicate["id"] != "widget-1"
+    assert duplicate["type"] == "text"
+    assert duplicate["title"] == "Original Title"
+    assert duplicate["subtype"] == "header"
+    assert duplicate["payload"] == "<h2>Hello</h2>"
+    assert duplicate["x"] == 0
+    assert duplicate["y"] == 2
+    assert duplicate["w"] == 4
+    assert duplicate["h"] == 2
+  end
+
   test "deleting a group moves its widgets back to the root grid", %{
     conn: conn,
     dashboard: dashboard,

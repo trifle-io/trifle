@@ -327,6 +327,13 @@ Hooks.DashboardGrid = {
         if (id) this.pushEvent('expand_widget', { id });
         return;
       }
+      const duplicateBtn = e.target && (e.target.closest && e.target.closest('.grid-widget-duplicate'));
+      if (duplicateBtn) {
+        e.preventDefault();
+        const id = duplicateBtn.getAttribute('data-widget-id');
+        if (id) this.pushEvent('duplicate_widget', { id });
+        return;
+      }
       const editBtn = e.target && (e.target.closest && e.target.closest('.grid-widget-edit'));
       if (editBtn) {
         e.preventDefault();
@@ -427,6 +434,9 @@ Hooks.DashboardGrid = {
       } else {
         this.unregisterWidget(null, id);
       }
+    });
+    this.handleEvent('dashboard_grid_widget_duplicated', ({ item }) => {
+      this._insertDuplicatedWidget(item);
     });
 
   },
@@ -1029,6 +1039,44 @@ Hooks.DashboardGrid = {
     hint.classList.toggle('hidden', hasChildren);
   },
 
+  _insertDuplicatedWidget(item) {
+    if (!item || !item.id || item.type === 'group' || !this.grid) return;
+    const existing = this.el.querySelector(`.grid-stack-item[gs-id="${item.id}"]`);
+    if (existing) return;
+
+    this._suppressSave = true;
+    try {
+      const el = this.grid.addWidget({
+        x: item.x || 0,
+        y: item.y || this._rootBottom(),
+        w: item.w || 3,
+        h: item.h || 2,
+        id: item.id,
+        content: ''
+      });
+
+      if (el) {
+        el.setAttribute('data-item-kind', 'widget');
+        const contentEl = el.querySelector('.grid-stack-item-content');
+        if (contentEl) {
+          contentEl.outerHTML = this._newWidgetContent(item, false);
+        }
+      }
+
+      this._syncGridWidgets(this.grid);
+      this._observeLayoutResizeTargets();
+
+      const payload = this._widgetPayloadFromRegistry(item.type, item.id);
+      if (payload !== undefined) {
+        this.registerWidget(item.type || null, item.id, payload);
+      }
+    } finally {
+      this._suppressSave = false;
+    }
+
+    this._scheduleDeferredResize();
+  },
+
   _syncGridWidgets(grid) {
     if (!grid) return;
     this._syncGridHandleClasses(grid);
@@ -1115,6 +1163,12 @@ Hooks.DashboardGrid = {
     const widgetType = (item && item.type ? String(item.type).toLowerCase() : 'kpi') || 'kpi';
     const handleClass = nested ? 'nested-grid-widget-handle' : 'root-grid-widget-handle';
     const safeWidgetId = this.escapeHtml(widgetId);
+    const duplicateBtn = this.editable ? `
+      <button type=\"button\" class=\"grid-widget-duplicate inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Duplicate widget\">
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75\" />
+        </svg>
+      </button>` : '';
     const editBtn = this.editable ? `
       <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Edit widget\">
         <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
@@ -1132,6 +1186,7 @@ Hooks.DashboardGrid = {
                 <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
               </svg>
             </button>
+            ${duplicateBtn}
             ${editBtn}
           </div>
         </div>
@@ -1468,6 +1523,49 @@ Hooks.DashboardGrid = {
       return;
     }
     this.registerWidget(type, id, null);
+  },
+
+  _widgetPayloadFromRegistry(type, id) {
+    const registry = this._widgetRegistry || {};
+    const normalizedType = String(type || '').toLowerCase();
+    const normalizedId = id == null ? null : String(id);
+    if (!normalizedId) return undefined;
+
+    switch (normalizedType) {
+      case 'kpi': {
+        const value = registry.kpiValues && registry.kpiValues[normalizedId];
+        const visual = registry.kpiVisuals && registry.kpiVisuals[normalizedId];
+        if (!value && !visual) return undefined;
+        return this._deepClone({ value: value || null, visual: visual || null });
+      }
+      case 'timeseries':
+        return registry.timeseries && registry.timeseries[normalizedId]
+          ? this._deepClone(registry.timeseries[normalizedId])
+          : undefined;
+      case 'category':
+        return registry.category && registry.category[normalizedId]
+          ? this._deepClone(registry.category[normalizedId])
+          : undefined;
+      case 'table':
+        return registry.table && registry.table[normalizedId]
+          ? this._deepClone(registry.table[normalizedId])
+          : undefined;
+      case 'text':
+        return registry.text && registry.text[normalizedId]
+          ? this._deepClone(registry.text[normalizedId])
+          : undefined;
+      case 'list':
+        return registry.list && registry.list[normalizedId]
+          ? this._deepClone(registry.list[normalizedId])
+          : undefined;
+      case 'distribution':
+      case 'heatmap':
+        return registry.distribution && registry.distribution[normalizedId]
+          ? this._deepClone(registry.distribution[normalizedId])
+          : undefined;
+      default:
+        return undefined;
+    }
   },
 
   _sortedWidgetValues(map) {

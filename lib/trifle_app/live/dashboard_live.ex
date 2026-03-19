@@ -871,6 +871,51 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event("duplicate_widget", %{"id" => id}, socket) do
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:current_user]) ->
+        {:noreply, socket}
+
+      !socket.assigns.can_edit_dashboard ->
+        {:noreply, socket}
+
+      true ->
+        items = dashboard_grid_root_items(socket.assigns.dashboard)
+        duplicate_id = UUID.generate()
+        {updated, duplicated_item} = duplicate_dashboard_grid_widget(items, id, duplicate_id)
+
+        if is_nil(duplicated_item) do
+          {:noreply, socket}
+        else
+          payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
+          membership = socket.assigns.current_membership
+
+          case Organizations.update_dashboard_for_membership(
+                 socket.assigns.dashboard,
+                 membership,
+                 %{payload: payload}
+               ) do
+            {:ok, dashboard} ->
+              socket =
+                socket
+                |> assign_dashboard(dashboard)
+                |> refresh_widget_datasets()
+                |> push_event("dashboard_grid_widget_duplicated", %{
+                  item: dashboard_grid_client_item(duplicated_item)
+                })
+
+              {:noreply, socket}
+
+            {:error, _} ->
+              {:noreply, socket}
+          end
+        end
+    end
+  end
+
   def handle_event("toggle_export_dropdown", _params, socket) do
     current = socket.assigns[:show_export_dropdown] || false
 
@@ -3284,6 +3329,32 @@ defmodule TrifleApp.DashboardLive do
 
   defp delete_dashboard_grid_node(items, _id), do: {items, nil}
 
+  defp duplicate_dashboard_grid_widget(items, id, duplicate_id)
+       when is_list(items) and is_binary(duplicate_id) do
+    case LayoutTree.find_node(items, id) do
+      %{} = source_item ->
+        if LayoutTree.group?(source_item) do
+          {items, nil}
+        else
+          duplicated_item =
+            source_item
+            |> Map.put("id", duplicate_id)
+            |> Map.put("x", 0)
+            |> Map.put("y", dashboard_grid_bottom(items))
+            |> Map.put("w", layout_int(Map.get(source_item, "w"), 3))
+            |> Map.put("h", layout_int(Map.get(source_item, "h"), 2))
+            |> normalize_dashboard_widget_item()
+
+          {items ++ [duplicated_item], duplicated_item}
+        end
+
+      _ ->
+        {items, nil}
+    end
+  end
+
+  defp duplicate_dashboard_grid_widget(items, _id, _duplicate_id), do: {items, nil}
+
   defp delete_dashboard_grid_node_recursive(items, target_id) when is_list(items) do
     items
     |> Enum.reduce({[], nil}, fn item, {acc, deleted} ->
@@ -3339,6 +3410,30 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp dashboard_grid_node_id(_item), do: nil
+
+  defp dashboard_grid_client_item(item) when is_map(item) do
+    %{
+      id: dashboard_grid_node_id(item),
+      type: widget_type(item),
+      title: Map.get(item, "title", ""),
+      x: layout_int(Map.get(item, "x"), 0),
+      y: layout_int(Map.get(item, "y"), 0),
+      w: layout_int(Map.get(item, "w"), 3),
+      h: layout_int(Map.get(item, "h"), 2)
+    }
+  end
+
+  defp dashboard_grid_client_item(_item), do: nil
+
+  defp dashboard_grid_bottom(items) when is_list(items) do
+    Enum.reduce(items, 0, fn item, acc ->
+      y = layout_int(Map.get(item, "y"), 0)
+      h = layout_int(Map.get(item, "h"), 1)
+      max(acc, y + h)
+    end)
+  end
+
+  defp dashboard_grid_bottom(_items), do: 0
 
   defp layout_int(value, _fallback) when is_integer(value), do: value
 
