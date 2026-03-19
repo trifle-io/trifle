@@ -5,6 +5,7 @@
 
 /* GridStack styles (imported from node_modules) */
 @import url("../node_modules/gridstack/dist/gridstack.min.css");
+@import url("../node_modules/gridstack/dist/gridstack-extra.min.css");
 
 [x-cloak] {
   display: none !important;
@@ -63,6 +64,51 @@ body.trifle-sidebar-open {
 /* Also reduce the resize handle itself, which may have inline z-index */
 .grid-stack .ui-resizable-handle {
   z-index: 30 !important;
+}
+
+.grid-stack-item-content[data-widget-type="group"] {
+  border-color: rgba(203, 213, 225, 0.9);
+  background-color: rgba(248, 250, 252, 0.7);
+  color: #334155;
+}
+
+.grid-stack-item-content[data-widget-type="group"] .grid-widget-header {
+  border-bottom-color: rgba(203, 213, 225, 0.8);
+}
+
+.grid-stack-item-content[data-widget-type="group"] .grid-widget-title {
+  color: #1e293b;
+}
+
+.grid-stack-item-content[data-widget-type="group"] .grid-stack-group {
+  border-color: rgba(203, 213, 225, 0.9);
+  background-color: transparent;
+}
+
+.grid-stack-item-content[data-widget-type="group"] [data-group-empty-hint="1"] {
+  color: #94a3b8;
+}
+
+.dark .grid-stack-item-content[data-widget-type="group"] {
+  border-color: rgb(71 85 105);
+  background-color: rgba(15, 23, 42, 0.38);
+  color: #cbd5e1;
+}
+
+.dark .grid-stack-item-content[data-widget-type="group"] .grid-widget-header {
+  border-bottom-color: rgba(51, 65, 85, 0.9);
+}
+
+.dark .grid-stack-item-content[data-widget-type="group"] .grid-widget-title {
+  color: #f1f5f9;
+}
+
+.dark .grid-stack-item-content[data-widget-type="group"] .grid-stack-group {
+  border-color: rgb(71 85 105);
+}
+
+.dark .grid-stack-item-content[data-widget-type="group"] [data-group-empty-hint="1"] {
+  color: #64748b;
 }
 
 /* Form element base styles - equivalent to @tailwindcss/forms plugin */

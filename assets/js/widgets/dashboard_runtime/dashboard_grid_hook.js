@@ -86,6 +86,14 @@ Hooks.DashboardGrid = {
     this._lastDistribution = [];
     this._lastTable = [];
 
+    this._observedLayoutTargets = new WeakSet();
+    this._observedLayoutResizeRaf = null;
+    this._layoutResizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(() => {
+        this._scheduleObservedLayoutResize();
+      })
+      : null;
+
     // Global window resize handler to resize all charts
     this._onWindowResize = () => {
       try {
@@ -93,35 +101,7 @@ Hooks.DashboardGrid = {
         if (typeof this._applyResponsiveGrid === 'function') {
           this._applyResponsiveGrid();
         }
-        if (this._sparklines) {
-          Object.values(this._sparklines).forEach((c) => {
-            if (c && !c.isDisposed()) {
-              c.resize();
-            }
-          });
-        }
-        if (this._tsCharts) {
-          Object.values(this._tsCharts).forEach((c) => {
-            if (c && !c.isDisposed()) {
-              c.resize();
-            }
-          });
-        }
-        if (this._catCharts) {
-          Object.values(this._catCharts).forEach((c) => {
-            if (c && !c.isDisposed()) {
-              c.resize();
-            }
-          });
-        }
-        if (this._distCharts) {
-          Object.values(this._distCharts).forEach((c) => {
-            if (c && !c.isDisposed()) {
-              c.resize();
-            }
-          });
-        }
-        this._resizeAgGridTables();
+        this._scheduleDeferredResize();
       } catch (_) {}
     };
     window.addEventListener('resize', this._onWindowResize);
@@ -155,6 +135,7 @@ Hooks.DashboardGrid = {
           if (typeof this._applyResponsiveGrid === 'function') {
             this._applyResponsiveGrid();
           }
+          this._scheduleDeferredResize();
         } catch (_) {}
       });
     };
@@ -170,16 +151,21 @@ Hooks.DashboardGrid = {
     this._tsSyncLoop = null;
     this._tsHideTimer = null;
     this._tsPointerMove = null;
+    this._deferredResizeRaf = null;
+    this._deferredResizeRaf2 = null;
+    this._deferredResizeTimers = [];
     const editableAttr = this.el.dataset.editable;
     this.editable = (editableAttr === 'true' || editableAttr === '' || editableAttr === '1');
     this.cols = parseInt(this.el.dataset.cols || '12', 10);
     this.minRows = parseInt(this.el.dataset.minRows || '8', 10);
     this.addBtnId = this.el.dataset.addBtnId;
+    this.addGroupBtnId = this.el.dataset.addGroupBtnId;
     try {
       this.initialItems = this.el.dataset.initialGrid ? JSON.parse(this.el.dataset.initialGrid) : [];
     } catch (_) {
       this.initialItems = [];
     }
+    this._childGrids = {};
     this._widgetRegistry = {
       kpiValues: {},
       kpiVisuals: {},
@@ -243,6 +229,7 @@ Hooks.DashboardGrid = {
           if (typeof this.grid.column === 'function') {
             this.grid.column(oneCol ? 1 : this.cols);
           }
+          this._ensureGroupGrids();
           // Disable reordering/resizing when only 1 column to avoid breaking 12-col layout
           if (this.editable) {
             if (typeof this.grid.enableMove === 'function') {
@@ -254,10 +241,23 @@ Hooks.DashboardGrid = {
               // Fallback: set static when oneCol, re-enable when multi-col
               this.grid.setStatic(oneCol);
             }
+            Object.values(this._childGrids || {}).forEach((grid) => {
+              if (!grid) return;
+              if (typeof grid.enableMove === 'function') {
+                grid.enableMove(!oneCol);
+                if (typeof grid.enableResize === 'function') {
+                  grid.enableResize(!oneCol);
+                }
+              } else if (typeof grid.setStatic === 'function') {
+                grid.setStatic(oneCol);
+              }
+            });
           }
         } catch (_) {
           // noop
         } finally {
+          this._observeLayoutResizeTargets();
+          this._scheduleDeferredResize();
           this._suppressSave = false;
         }
       }
@@ -307,6 +307,12 @@ Hooks.DashboardGrid = {
         if (btn) {
           e.preventDefault();
           this.addNewWidget();
+          return;
+        }
+        const groupBtn = this.addGroupBtnId && e.target && (e.target.id === this.addGroupBtnId ? e.target : e.target.closest && e.target.closest(`#${this.addGroupBtnId}`));
+        if (groupBtn) {
+          e.preventDefault();
+          this.addNewGroup();
         }
       };
       document.addEventListener('click', this._docClick, true);
@@ -408,10 +414,14 @@ Hooks.DashboardGrid = {
     });
     this.handleEvent('dashboard_grid_widget_deleted', ({ id }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+      const isGroup = item && this._isGroupItem(item);
+      if (item && isGroup) {
+        this._moveGroupChildrenToRoot(item);
+      }
       if (item) {
         const content = item.querySelector('.grid-stack-item-content');
         const type = content && content.dataset && content.dataset.widgetType;
-        this.grid.removeWidget(item);
+        this._removeGridItem(item);
         this.unregisterWidget(type || null, id);
         this.saveLayout();
       } else {
@@ -423,9 +433,12 @@ Hooks.DashboardGrid = {
 
   updated() {
     this._enableServerRenderedWidgetPreference();
+    this._ensureGroupGrids();
     this.syncServerRenderedItems();
     this._markServerRenderedWidgetsReady();
     this._scheduleServerRenderedWidgetPreferenceClear();
+    this._observeLayoutResizeTargets();
+    this._scheduleDeferredResize();
   },
 
   destroyed() {
@@ -442,6 +455,12 @@ Hooks.DashboardGrid = {
       this._preferServerRenderedWidgetsTimer = null;
     }
     this._widgetRegistry = null;
+    Object.values(this._childGrids || {}).forEach((grid) => {
+      if (grid && typeof grid.destroy === 'function') {
+        try { grid.destroy(false); } catch (_) {}
+      }
+    });
+    this._childGrids = {};
     if (this.grid && this.grid.destroy) {
       this.grid.destroy(false);
     }
@@ -524,6 +543,15 @@ Hooks.DashboardGrid = {
       window.removeEventListener('pointermove', this._tsPointerMove, true);
       this._tsPointerMove = null;
     }
+    if (this._observedLayoutResizeRaf) {
+      cancelAnimationFrame(this._observedLayoutResizeRaf);
+      this._observedLayoutResizeRaf = null;
+    }
+    if (this._layoutResizeObserver) {
+      try { this._layoutResizeObserver.disconnect(); } catch (_) {}
+      this._layoutResizeObserver = null;
+    }
+    this._cancelDeferredResize();
     this._tsSyncConnected = false;
     this._tsHoveringId = null;
     this._tsLastValue = null;
@@ -541,181 +569,481 @@ Hooks.DashboardGrid = {
       ? customCellHeight
       : 80;
 
-    this.grid = GridStack.init({
-      column: this.cols,
-      minRow: this.minRows,
-      float: true,
-      margin: 5,
-      disableOneColumnMode: true,
-      styleInHead: true,
-      cellHeight: resolvedCellHeight,
-      // drag only by the title bar (between title and cog button)
-      draggable: { handle: '.grid-widget-handle' },
-    }, this.el);
+    this._cellHeight = resolvedCellHeight;
+    this._nestedCellHeight = Math.max(60, resolvedCellHeight);
+
+    this.grid = GridStack.init(this._gridOptions(false), this.el);
     this._cellHeight = resolvedCellHeight;
 
     if (!this.editable) {
       this.grid.setStatic(true);
     }
 
-    const save = () => this.saveLayout();
-    const resizeCharts = () => {
-      if (this._sparklines) {
-        Object.values(this._sparklines).forEach((c) => {
-          if (c && !c.isDisposed()) {
-            c.resize();
-          }
-        });
-      }
-      if (this._tsCharts) {
-        Object.values(this._tsCharts).forEach((c) => {
-          if (c && !c.isDisposed()) {
-            c.resize();
-          }
-        });
-      }
-      if (this._catCharts) {
-        Object.values(this._catCharts).forEach((c) => {
-          if (c && !c.isDisposed()) {
-            c.resize();
-          }
-        });
-      }
-      if (this._distCharts) {
-        Object.values(this._distCharts).forEach((c) => {
-          if (c && !c.isDisposed()) {
-            c.resize();
-          }
-        });
-      }
-      this._resizeAgGridTables();
-    };
-    this.grid.on('change', () => { if (!this._suppressSave && !this._isOneCol && document.visibilityState !== 'hidden') save(); resizeCharts(); });
-    this.grid.on('added', () => { if (!this._isOneCol) save(); resizeCharts(); });
-    this.grid.on('removed', () => { if (!this._isOneCol) save(); resizeCharts(); });
+    this._bindGridEvents(this.grid);
+    this._ensureGroupGrids();
+    this._observeLayoutResizeTargets();
 
     // No direct button binding needed; delegated handler set in mounted
   },
-  ...kpiRendererMethods,
-  ...timeseriesRendererMethods,
-  ...categoryRendererMethods,
-  ...distributionRendererMethods,
-  ...tableRendererMethods,
-  ...textRendererMethods,
-  ...listRendererMethods,
-  addGridItemEl(item) {
-    const el = document.createElement('div');
-    el.className = 'grid-stack-item';
-    el.setAttribute('gs-w', item.w || 3);
-    el.setAttribute('gs-h', item.h || 2);
-    el.setAttribute('gs-x', item.x || 0);
-    el.setAttribute('gs-y', item.y || 0);
-    el.setAttribute('gs-id', item.id || (item.id = this.genId()));
-    const content = document.createElement('div');
-    const titleText = item.title || `Widget ${String(item.id || '').slice(0,6)}`;
-    const widgetId = el.getAttribute('gs-id');
-    const safeWidgetId = this.escapeHtml(widgetId || '');
-    const expandBtn = `
-      <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Expand widget\">
-        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
-          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
-        </svg>
-      </button>`;
-    const editBtn = this.editable ? `
-      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Edit widget\"> 
-        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
-          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
-          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
-        </svg>
-      </button>` : '';
-    const actionButtons = `
-      <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
-        ${expandBtn}
-        ${editBtn}
-      </div>`;
-    content.innerHTML = `
-      <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">\n        <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">${this.escapeHtml(titleText)}</div></div>\n        ${actionButtons}\n      </div>\n      <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">\n        Chart is coming soon\n      </div>`;
-    el.appendChild(content);
-    this.el.appendChild(el);
-  },
-
-  genId() { return Math.random().toString(36).slice(2); },
-
-  addNewWidget() {
-    // compute bottom-most occupied row so we don't reflow existing items
-    let bottom = 0;
-    this.el.querySelectorAll('.grid-stack-item').forEach((it) => {
-      const y = parseInt(it.getAttribute('gs-y') || '0', 10);
-      const h = parseInt(it.getAttribute('gs-h') || '1', 10);
-      bottom = Math.max(bottom, y + h);
-    });
-
-    const id = this.genId();
-    const w = 3, h = 2, x = 0, y = bottom;
-
-    const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
-    const contentEl = el && el.querySelector('.grid-stack-item-content');
-    if (contentEl) {
-      contentEl.className = 'grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group';
-      contentEl.innerHTML = `
-        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\"> 
-          <div class=\"grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\">New Widget</div></div> 
-          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
-            <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Expand widget\">
-              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
-                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
-              </svg>
-            </button>
-            <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${id}\" title=\"Edit widget\"> 
-              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\"> 
-                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" /> 
-                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" /> 
-              </svg> 
-            </button> 
-          </div>
-        </div>
-        <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\"> 
-          Chart is coming soon 
-        </div>`;
+  _gridOptions(nested = false, groupItem = null) {
+    const metrics = nested ? this._groupGridMetrics(groupItem) : null;
+    const base = {
+      column: nested ? metrics.cols : 12,
+      minRow: nested ? metrics.rows : this.minRows,
+      float: true,
+      margin: 5,
+      disableOneColumnMode: true,
+      styleInHead: true,
+      cellHeight: nested ? metrics.cellHeight : this._cellHeight,
+      draggable: { appendTo: 'body', scroll: true },
+      handleClass: nested ? 'nested-grid-widget-handle' : 'root-grid-widget-handle',
+    };
+    if (!nested) {
+      base.column = this.cols;
+      base.acceptWidgets = !!this.editable;
+      return base;
     }
-    this.saveLayout();
+    base.maxRow = metrics.rows;
+    base.dragOut = !!this.editable;
+    if (!this.editable) {
+      base.acceptWidgets = false;
+      return base;
+    }
+    base.acceptWidgets = (el) => this._dragItemKind(el) !== 'group';
+    return base;
   },
 
-  saveLayout() {
-    if (!this.editable) return;
-    const items = Array.from(this.el.querySelectorAll('.grid-stack-item')).map((el) => {
-      const content = el.querySelector('.grid-stack-item-content');
-      const titleEl = el.querySelector('.grid-widget-title');
-      const storedTitle = (content && content.dataset.widgetTitle) || (titleEl && titleEl.dataset.originalTitle);
-      const textTitle = (titleEl && titleEl.textContent ? titleEl.textContent.trim() : '') || '';
-      const title = (storedTitle !== undefined && storedTitle !== null ? storedTitle : textTitle).trim();
+  _bindGridEvents(grid) {
+    if (!grid || grid.__dashboardGridBound) return;
+    const save = () => this.saveLayout();
+    const resize = () => {
+      if (this._activeGroupResizeId) return;
+      this._resizeAllCharts();
+    };
+    const syncGroupState = () => {
+      this._syncGridHandleClasses(grid);
+      const owner = grid.el && grid.el.closest ? grid.el.closest('.grid-stack-item[data-item-kind="group"]') : null;
+      if (grid === this.grid) {
+        this._ensureGroupGrids();
+        return;
+      }
+      if (owner) {
+        this._syncGroupGridGeometry(owner, grid);
+        this._updateGroupEmptyHint(owner);
+      }
+      requestAnimationFrame(() => this._refreshAllGroupHints());
+    };
+    grid.on('resizestart', (_event, el) => {
+      if (grid !== this.grid || !el || !this._isGroupItem(el)) return;
+      this._cancelDeferredResize();
+      this._activeGroupResizeId = el.getAttribute('gs-id') || null;
+      this._freezeGroupGeometry(el);
+    });
+    grid.on('resizestop', (_event, el) => {
+      if (grid !== this.grid || !el || !this._isGroupItem(el)) return;
+      const id = el.getAttribute('gs-id') || null;
+      this._unfreezeGroupGeometry(el);
+      if (this._activeGroupResizeId === id) {
+        this._activeGroupResizeId = null;
+      }
+      this._syncGroupGridGeometry(el);
+      this._updateGroupEmptyHint(el);
+      requestAnimationFrame(() => this._refreshAllGroupHints());
+      this._scheduleDeferredResize();
+    });
+    grid.on('change', () => {
+      syncGroupState();
+      if (!this._suppressSave && !this._isOneCol && document.visibilityState !== 'hidden') save();
+      resize();
+    });
+    grid.on('added', () => {
+      syncGroupState();
+      if (!this._isOneCol) save();
+      resize();
+    });
+    grid.on('removed', () => {
+      this._pruneStaleGroupGrids();
+      syncGroupState();
+      if (!this._isOneCol) save();
+      resize();
+    });
+    grid.__dashboardGridBound = true;
+  },
+
+  _resizeAllCharts() {
+    if (this._sparklines) {
+      Object.values(this._sparklines).forEach((c) => {
+        this._resizeChartInstance(c);
+      });
+    }
+    if (this._tsCharts) {
+      Object.values(this._tsCharts).forEach((c) => {
+        this._resizeChartInstance(c);
+      });
+    }
+    if (this._catCharts) {
+      Object.values(this._catCharts).forEach((c) => {
+        this._resizeChartInstance(c);
+      });
+    }
+    if (this._distCharts) {
+      Object.values(this._distCharts).forEach((c) => {
+        this._resizeChartInstance(c);
+      });
+    }
+    this._resizeAgGridTables();
+  },
+
+  _resizeChartInstance(chart) {
+    if (!chart || (typeof chart.isDisposed === 'function' && chart.isDisposed())) return;
+    try {
+      const dom = typeof chart.getDom === 'function' ? chart.getDom() : null;
+      if (!dom) {
+        chart.resize();
+        return;
+      }
+      const rect = typeof dom.getBoundingClientRect === 'function' ? dom.getBoundingClientRect() : null;
+      const width = Math.max(0, Math.round((rect && rect.width) || dom.clientWidth || 0));
+      const height = Math.max(0, Math.round((rect && rect.height) || dom.clientHeight || 0));
+      if (width > 0 && height > 0) {
+        chart.resize({ width, height });
+      } else {
+        chart.resize();
+      }
+    } catch (_) {}
+  },
+
+  _scheduleObservedLayoutResize() {
+    if (this._observedLayoutResizeRaf) return;
+    this._observedLayoutResizeRaf = requestAnimationFrame(() => {
+      this._observedLayoutResizeRaf = null;
+      this._scheduleDeferredResize();
+    });
+  },
+
+  _observeLayoutResizeTarget(target) {
+    if (!target || !this._layoutResizeObserver || !this._observedLayoutTargets) return;
+    if (this._observedLayoutTargets.has(target)) return;
+    try {
+      this._layoutResizeObserver.observe(target);
+      this._observedLayoutTargets.add(target);
+    } catch (_) {}
+  },
+
+  _observeLayoutResizeTargets() {
+    if (!this.el || !this._layoutResizeObserver) return;
+    const selectors = [
+      '.grid-stack-item-content[data-item-kind="widget"]',
+      '.grid-stack-item-content[data-item-kind="group"]',
+      '[data-role="aggrid-table-root"]'
+    ];
+    selectors.forEach((selector) => {
+      this.el.querySelectorAll(selector).forEach((target) => this._observeLayoutResizeTarget(target));
+    });
+  },
+
+  _cancelDeferredResize() {
+    if (this._deferredResizeRaf) {
+      cancelAnimationFrame(this._deferredResizeRaf);
+      this._deferredResizeRaf = null;
+    }
+    if (this._deferredResizeRaf2) {
+      cancelAnimationFrame(this._deferredResizeRaf2);
+      this._deferredResizeRaf2 = null;
+    }
+    if (Array.isArray(this._deferredResizeTimers)) {
+      this._deferredResizeTimers.forEach((timer) => {
+        try { clearTimeout(timer); } catch (_) {}
+      });
+      this._deferredResizeTimers = [];
+    }
+  },
+
+  _scheduleDeferredResize() {
+    this._cancelDeferredResize();
+    this._deferredResizeRaf = requestAnimationFrame(() => {
+      this._deferredResizeRaf = null;
+      this._deferredResizeRaf2 = requestAnimationFrame(() => {
+        this._deferredResizeRaf2 = null;
+        this._resizeAllCharts();
+      });
+    });
+    [120, 260, 420].forEach((delay) => {
+      const timer = setTimeout(() => {
+        this._resizeAllCharts();
+      }, delay);
+      this._deferredResizeTimers.push(timer);
+    });
+  },
+
+  _gridItems(grid) {
+    if (!grid || typeof grid.getGridItems !== 'function') return [];
+    try {
+      return grid.getGridItems() || [];
+    } catch (_) {
+      return [];
+    }
+  },
+
+  _isGroupItem(el) {
+    if (!el || !el.getAttribute) return false;
+    return this._dragItemKind(el) === 'group';
+  },
+
+  _dragItemKind(el) {
+    if (!el || !el.getAttribute) return 'widget';
+    return el.getAttribute('data-item-kind') || 'widget';
+  },
+
+  _groupGridElement(groupItem) {
+    if (!groupItem || !groupItem.querySelector) return null;
+    return groupItem.querySelector('.grid-stack[data-group-grid="1"]');
+  },
+
+  _syncItemHandleClass(item, nested = false) {
+    if (!item || !item.querySelector) return;
+    if ((item.getAttribute && item.getAttribute('data-item-kind')) === 'group') return;
+    const handle = item.querySelector('.grid-widget-handle');
+    if (!handle) return;
+    handle.classList.remove('root-grid-widget-handle', 'nested-grid-widget-handle');
+    handle.classList.add(nested ? 'nested-grid-widget-handle' : 'root-grid-widget-handle');
+  },
+
+  _syncGridHandleClasses(grid) {
+    if (!grid) return;
+    const nested = !!(grid.el && grid.el.dataset && grid.el.dataset.groupGrid === '1');
+    this._gridItems(grid).forEach((item) => this._syncItemHandleClass(item, nested));
+  },
+
+  _groupGridShell(groupItem) {
+    if (!groupItem || !groupItem.querySelector) return null;
+    return groupItem.querySelector('[data-group-grid-shell="1"]');
+  },
+
+  _groupColumnCount(groupItem) {
+    if (this._isOneCol) return 1;
+    const value = parseInt(
+      (groupItem && groupItem.getAttribute && groupItem.getAttribute('gs-w')) ||
+      (groupItem && groupItem.gridstackNode && groupItem.gridstackNode.w) ||
+      '1',
+      10
+    );
+    return Math.max(1, value || 1);
+  },
+
+  _groupRowCount(groupItem) {
+    const value = parseInt(
+      (groupItem && groupItem.getAttribute && groupItem.getAttribute('gs-h')) ||
+      (groupItem && groupItem.gridstackNode && groupItem.gridstackNode.h) ||
+      '1',
+      10
+    );
+    return Math.max(1, value || 1);
+  },
+
+  _groupGridMetrics(groupItem) {
+    const rows = this._groupRowCount(groupItem);
+    const cols = this._groupColumnCount(groupItem);
+    const shell = this._groupGridShell(groupItem);
+    const margin = 5;
+    const availableHeight = Math.max(
+      48,
+      shell && shell.clientHeight ? shell.clientHeight : rows * this._nestedCellHeight
+    );
+    const cellHeight = Math.max(24, Math.floor((availableHeight - Math.max(0, rows - 1) * margin) / rows));
+    const height = rows * cellHeight + Math.max(0, rows - 1) * margin;
+
+    return { cols, rows, cellHeight, height };
+  },
+
+  _freezeGroupGeometry(groupItem) {
+    const nestedEl = this._groupGridElement(groupItem);
+    const shell = this._groupGridShell(groupItem);
+    if (!nestedEl) return;
+
+    const width = nestedEl.getBoundingClientRect ? nestedEl.getBoundingClientRect().width : nestedEl.clientWidth;
+    const height = nestedEl.getBoundingClientRect ? nestedEl.getBoundingClientRect().height : nestedEl.clientHeight;
+
+    nestedEl.style.width = `${Math.max(0, Math.round(width))}px`;
+    nestedEl.style.minWidth = `${Math.max(0, Math.round(width))}px`;
+    nestedEl.style.maxWidth = `${Math.max(0, Math.round(width))}px`;
+    nestedEl.style.height = `${Math.max(0, Math.round(height))}px`;
+    nestedEl.style.minHeight = `${Math.max(0, Math.round(height))}px`;
+
+    if (shell) {
+      shell.style.overflow = 'hidden';
+    }
+  },
+
+  _unfreezeGroupGeometry(groupItem) {
+    const nestedEl = this._groupGridElement(groupItem);
+    const shell = this._groupGridShell(groupItem);
+    if (!nestedEl) return;
+
+    nestedEl.style.removeProperty('width');
+    nestedEl.style.removeProperty('min-width');
+    nestedEl.style.removeProperty('max-width');
+    nestedEl.style.removeProperty('height');
+    nestedEl.style.removeProperty('min-height');
+
+    if (shell) {
+      shell.style.removeProperty('overflow');
+    }
+  },
+
+  _groupContentBounds(groupItem, grid = null) {
+    const groupId = groupItem && groupItem.getAttribute ? groupItem.getAttribute('gs-id') : null;
+    const nestedGrid = grid || (groupId && this._childGrids[groupId]) || null;
+    const items = this._gridItems(nestedGrid);
+
+    return items.reduce((acc, item) => {
+      const x = parseInt(item.getAttribute('gs-x') || '0', 10);
+      const y = parseInt(item.getAttribute('gs-y') || '0', 10);
+      const w = parseInt(item.getAttribute('gs-w') || '1', 10);
+      const h = parseInt(item.getAttribute('gs-h') || '1', 10);
 
       return {
-        x: parseInt(el.getAttribute('gs-x') || '0', 10),
-        y: parseInt(el.getAttribute('gs-y') || '0', 10),
-        w: parseInt(el.getAttribute('gs-w') || '1', 10),
-        h: parseInt(el.getAttribute('gs-h') || '1', 10),
-        id: el.getAttribute('gs-id') || this.genId(),
-        title,
+        minW: Math.max(acc.minW, x + w),
+        minH: Math.max(acc.minH, y + h)
       };
-    });
-    this.pushEvent('dashboard_grid_changed', { items });
+    }, { minW: 1, minH: 1 });
   },
 
-  syncServerRenderedItems() {
+  _syncGroupConstraints(groupItem, grid = null) {
+    if (!groupItem) return;
+    const rootGrid = (groupItem.parentElement && groupItem.parentElement.gridstack) || this.grid;
+    const node = groupItem.gridstackNode;
+    if (!rootGrid || !node) return;
+
+    const bounds = this._groupContentBounds(groupItem, grid);
+    node.minW = bounds.minW;
+    node.minH = bounds.minH;
+    groupItem.setAttribute('gs-min-w', String(bounds.minW));
+    groupItem.setAttribute('gs-min-h', String(bounds.minH));
+
+    if (typeof rootGrid._prepareDragDropByNode === 'function') {
+      try { rootGrid._prepareDragDropByNode(node); } catch (_) {}
+    }
+  },
+
+  _syncGroupGridGeometry(groupItem, grid = null) {
+    const groupId = groupItem && groupItem.getAttribute ? groupItem.getAttribute('gs-id') : null;
+    const nestedGrid = grid || (groupId && this._childGrids[groupId]) || null;
+    const nestedEl = this._groupGridElement(groupItem);
+    if (!nestedGrid || !nestedEl) return;
+    if (groupId && this._activeGroupResizeId === groupId) return;
+
+    const metrics = this._groupGridMetrics(groupItem);
+
+    if (typeof nestedGrid.column === 'function' && nestedGrid.getColumn && nestedGrid.getColumn() !== metrics.cols) {
+      try { nestedGrid.column(metrics.cols, 'none'); } catch (_) {}
+    }
+
+    nestedGrid.opts.minRow = metrics.rows;
+    nestedGrid.opts.maxRow = metrics.rows;
+    if (nestedGrid.engine) {
+      nestedGrid.engine.maxRow = metrics.rows;
+    }
+
+    if (typeof nestedGrid.cellHeight === 'function') {
+      try { nestedGrid.cellHeight(metrics.cellHeight); } catch (_) {}
+    }
+
+    nestedEl.style.height = `${metrics.height}px`;
+    nestedEl.style.minHeight = `${metrics.height}px`;
+    nestedEl.setAttribute('gs-min-row', String(metrics.rows));
+    nestedEl.setAttribute('gs-max-row', String(metrics.rows));
+
+    if (typeof nestedGrid._updateContainerHeight === 'function') {
+      try { nestedGrid._updateContainerHeight(); } catch (_) {}
+    }
+
+    this._syncGroupConstraints(groupItem, nestedGrid);
+  },
+
+  _ensureGroupGrids() {
     if (!this.grid) return;
-    const nodes = Array.from(this.el.querySelectorAll('.grid-stack-item'));
-    nodes.forEach((node) => {
-      if (!node.gridstackNode) {
-        try { this.grid.makeWidget(node); } catch (_) {}
+    const seen = {};
+    this._gridItems(this.grid).forEach((item) => {
+      if (!this._isGroupItem(item)) return;
+      const id = item.getAttribute('gs-id');
+      if (!id) return;
+      seen[id] = true;
+      this._initGroupGrid(item);
+    });
+    this._pruneStaleGroupGrids(seen);
+    this._refreshAllGroupHints();
+    this._observeLayoutResizeTargets();
+  },
+
+  _refreshAllGroupHints() {
+    if (!this.grid) return;
+    this._gridItems(this.grid).forEach((item) => {
+      if (this._isGroupItem(item)) {
+        this._updateGroupEmptyHint(item);
       }
     });
-    if (typeof this.grid.batchUpdate === 'function') {
-      this.grid.batchUpdate();
+  },
+
+  _pruneStaleGroupGrids(seen = null) {
+    Object.keys(this._childGrids || {}).forEach((id) => {
+      if (seen && seen[id]) return;
+      const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"][data-item-kind="group"]`);
+      if (item) return;
+      const grid = this._childGrids[id];
+      if (grid && typeof grid.destroy === 'function') {
+        try { grid.destroy(false); } catch (_) {}
+      }
+      delete this._childGrids[id];
+    });
+  },
+
+  _initGroupGrid(groupItem) {
+    const groupId = groupItem && groupItem.getAttribute ? groupItem.getAttribute('gs-id') : null;
+    if (!groupId) return null;
+    const nestedEl = this._groupGridElement(groupItem);
+    if (!nestedEl) return null;
+    let grid = nestedEl.gridstack || this._childGrids[groupId] || null;
+    if (!grid) {
+      grid = GridStack.init(this._gridOptions(true, groupItem), nestedEl);
+      if (!this.editable && grid && typeof grid.setStatic === 'function') {
+        grid.setStatic(true);
+      }
+      this._bindGridEvents(grid);
+    }
+    this._childGrids[groupId] = grid;
+    this._syncGroupGridGeometry(groupItem, grid);
+    this._syncGridWidgets(grid);
+    this._syncGroupGridGeometry(groupItem, grid);
+    this._updateGroupEmptyHint(groupItem);
+    return grid;
+  },
+
+  _updateGroupEmptyHint(groupItem) {
+    if (!groupItem || !groupItem.querySelector) return;
+    const hint = groupItem.querySelector('[data-group-empty-hint="1"]');
+    if (!hint) return;
+    const nested = this._groupGridElement(groupItem);
+    const grid = (nested && nested.gridstack) || null;
+    const hasChildren = grid ? this._gridItems(grid).length > 0 : !!(nested && nested.querySelector('.grid-stack-item'));
+    hint.classList.toggle('hidden', hasChildren);
+  },
+
+  _syncGridWidgets(grid) {
+    if (!grid) return;
+    this._syncGridHandleClasses(grid);
+    const nodes = this._gridItems(grid);
+    nodes.forEach((node) => {
+      if (!node.gridstackNode) {
+        try { grid.makeWidget(node); } catch (_) {}
+      }
+    });
+    if (typeof grid.batchUpdate === 'function') {
+      grid.batchUpdate();
     }
     nodes.forEach((node) => {
       if (!node.gridstackNode) {
-        try { this.grid.makeWidget(node); } catch (_) {}
+        try { grid.makeWidget(node); } catch (_) {}
       }
       const gsNode = node.gridstackNode;
       if (!gsNode) return;
@@ -726,12 +1054,241 @@ Hooks.DashboardGrid = {
         h: parseInt(node.getAttribute('gs-h') || gsNode.h || 1, 10)
       };
       try {
-        this.grid.update(gsNode, target);
+        grid.update(gsNode, target);
       } catch (_) {}
     });
-    if (typeof this.grid.commit === 'function') {
-      try { this.grid.commit(); } catch (_) {}
+    if (typeof grid.commit === 'function') {
+      try { grid.commit(); } catch (_) {}
     }
+    this._observeLayoutResizeTargets();
+  },
+  ...kpiRendererMethods,
+  ...timeseriesRendererMethods,
+  ...categoryRendererMethods,
+  ...distributionRendererMethods,
+  ...tableRendererMethods,
+  ...textRendererMethods,
+  ...listRendererMethods,
+  addGridItemEl(item) {
+    if (item && item.type === 'group') {
+      this._appendGroupElement(this.el, item);
+      return;
+    }
+    this._appendWidgetElement(this.el, item);
+  },
+
+  _appendWidgetElement(container, item) {
+    const nested = !!(container && container.dataset && container.dataset.groupGrid === '1');
+    const el = document.createElement('div');
+    el.className = 'grid-stack-item';
+    el.setAttribute('gs-w', item.w || 3);
+    el.setAttribute('gs-h', item.h || 2);
+    el.setAttribute('gs-x', item.x || 0);
+    el.setAttribute('gs-y', item.y || 0);
+    el.setAttribute('gs-id', item.id || (item.id = this.genId()));
+    el.setAttribute('data-item-kind', 'widget');
+    el.innerHTML = this._newWidgetContent(item, nested);
+    container.appendChild(el);
+  },
+
+  _appendGroupElement(container, item) {
+    const el = document.createElement('div');
+    el.className = 'grid-stack-item';
+    el.setAttribute('gs-w', item.w || 6);
+    el.setAttribute('gs-h', item.h || 4);
+    el.setAttribute('gs-x', item.x || 0);
+    el.setAttribute('gs-y', item.y || 0);
+    el.setAttribute('gs-id', item.id || (item.id = this.genId()));
+    el.setAttribute('data-item-kind', 'group');
+    el.innerHTML = this._newGroupContent(item);
+    container.appendChild(el);
+    const nested = this._groupGridElement(el);
+    const children = Array.isArray(item && item.children) ? item.children : [];
+    if (nested) {
+      children.forEach((child) => this._appendWidgetElement(nested, child));
+    }
+  },
+
+  _newWidgetContent(item, nested = false) {
+    const titleText = item.title || `Widget ${String(item.id || '').slice(0, 6)}`;
+    const widgetId = item.id || '';
+    const widgetType = (item && item.type ? String(item.type).toLowerCase() : 'kpi') || 'kpi';
+    const handleClass = nested ? 'nested-grid-widget-handle' : 'root-grid-widget-handle';
+    const safeWidgetId = this.escapeHtml(widgetId);
+    const editBtn = this.editable ? `
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Edit widget\">
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
+        </svg>
+      </button>` : '';
+    return `
+      <div class=\"grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group\" data-widget-id=\"${safeWidgetId}\" data-widget-type=\"${this.escapeHtml(widgetType)}\" data-item-kind=\"widget\" data-widget-title=\"${this.escapeHtml(titleText)}\">
+        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">
+          <div class=\"grid-widget-handle ${handleClass} cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\" data-original-title=\"${this.escapeHtml(titleText)}\">${this.escapeHtml(titleText)}</div></div>
+          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
+            <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Expand widget\">
+              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
+              </svg>
+            </button>
+            ${editBtn}
+          </div>
+        </div>
+        <div class=\"grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400\">
+          Chart is coming soon
+        </div>
+      </div>`;
+  },
+
+  _newGroupContent(item) {
+    const titleText = item.title || 'Widget Group';
+    const groupId = item.id || '';
+    const safeGroupId = this.escapeHtml(groupId);
+    const editBtn = this.editable ? `
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeGroupId}\" title=\"Edit group\">
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-100\">
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
+        </svg>
+      </button>` : '';
+    return `
+      <div class=\"grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group\" data-widget-id=\"${safeGroupId}\" data-widget-type=\"group\" data-item-kind=\"group\" data-widget-title=\"${this.escapeHtml(titleText)}\">
+        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80\">
+          <div class=\"grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-slate-800 dark:text-slate-100\" data-original-title=\"${this.escapeHtml(titleText)}\">${this.escapeHtml(titleText)}</div></div>
+          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
+            ${editBtn}
+          </div>
+        </div>
+        <div class=\"flex-1 min-h-0 px-2 pb-2\">
+          <div class=\"relative h-full min-h-0\" data-group-grid-shell=\"1\">
+            <div class=\"grid-stack grid-stack-group h-full min-h-0 rounded-md border border-dashed border-slate-300/90 dark:border-slate-600 bg-transparent\" data-group-grid=\"1\" data-group-id=\"${safeGroupId}\" data-cols=\"12\"></div>
+            <div data-group-empty-hint=\"1\" class=\"pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500\">Drag widgets here</div>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  genId() { return Math.random().toString(36).slice(2); },
+
+  _rootBottom() {
+    let bottom = 0;
+    this._gridItems(this.grid).forEach((it) => {
+      const y = parseInt(it.getAttribute('gs-y') || '0', 10);
+      const h = parseInt(it.getAttribute('gs-h') || '1', 10);
+      bottom = Math.max(bottom, y + h);
+    });
+    return bottom;
+  },
+
+  addNewWidget() {
+    const id = this.genId();
+    const w = 3, h = 2, x = 0, y = this._rootBottom();
+
+    const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
+    if (el) {
+      el.setAttribute('data-item-kind', 'widget');
+      const contentEl = el.querySelector('.grid-stack-item-content');
+      if (contentEl) {
+        contentEl.outerHTML = this._newWidgetContent({ id, title: 'New Widget' });
+      }
+    }
+    this.saveLayout();
+  },
+
+  addNewGroup() {
+    const id = this.genId();
+    const w = 6, h = 4, x = 0, y = this._rootBottom();
+    const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
+    if (el) {
+      el.setAttribute('data-item-kind', 'group');
+      const contentEl = el.querySelector('.grid-stack-item-content');
+      if (contentEl) {
+        contentEl.outerHTML = this._newGroupContent({ id, title: 'Widget Group' });
+      }
+      this._initGroupGrid(el);
+    }
+    this.saveLayout();
+  },
+
+  _readItemTitle(el) {
+    if (!el) return '';
+    const content = el.querySelector('.grid-stack-item-content');
+    const titleEl = el.querySelector('.grid-widget-title');
+    const storedTitle = (content && content.dataset.widgetTitle) || (titleEl && titleEl.dataset.originalTitle);
+    const textTitle = (titleEl && titleEl.textContent ? titleEl.textContent.trim() : '') || '';
+    return (storedTitle !== undefined && storedTitle !== null ? storedTitle : textTitle).trim();
+  },
+
+  _serializeGrid(grid) {
+    return this._gridItems(grid).map((el) => this._serializeGridItem(el));
+  },
+
+  _serializeGridItem(el) {
+    const content = el.querySelector('.grid-stack-item-content');
+    const item = {
+      x: parseInt(el.getAttribute('gs-x') || '0', 10),
+      y: parseInt(el.getAttribute('gs-y') || '0', 10),
+      w: parseInt(el.getAttribute('gs-w') || '1', 10),
+      h: parseInt(el.getAttribute('gs-h') || '1', 10),
+      id: el.getAttribute('gs-id') || this.genId(),
+      title: this._readItemTitle(el),
+    };
+    const widgetType = content && content.dataset ? content.dataset.widgetType : null;
+    if (widgetType) {
+      item.type = widgetType;
+    }
+    if (this._isGroupItem(el)) {
+      const nested = this._initGroupGrid(el);
+      item.type = 'group';
+      item.children = nested ? this._serializeGrid(nested) : [];
+    }
+    return item;
+  },
+
+  saveLayout() {
+    if (!this.editable) return;
+    this._ensureGroupGrids();
+    this._refreshAllGroupHints();
+    const items = this._serializeGrid(this.grid);
+    this.pushEvent('dashboard_grid_changed', { items });
+  },
+
+  syncServerRenderedItems() {
+    if (!this.grid) return;
+    this._syncGridWidgets(this.grid);
+    this._ensureGroupGrids();
+    Object.values(this._childGrids || {}).forEach((grid) => this._syncGridWidgets(grid));
+    this._refreshAllGroupHints();
+  },
+
+  _removeGridItem(item) {
+    if (!item) return;
+    const gridEl = item.closest && item.closest('.grid-stack');
+    const grid = (gridEl && gridEl.gridstack) || this.grid;
+    if (grid && typeof grid.removeWidget === 'function') {
+      try { grid.removeWidget(item); } catch (_) {}
+    }
+  },
+
+  _moveGroupChildrenToRoot(groupItem) {
+    const groupId = groupItem && groupItem.getAttribute ? groupItem.getAttribute('gs-id') : null;
+    const childGrid = (groupId && this._childGrids[groupId]) || null;
+    if (!childGrid || !this.grid) return;
+    const groupX = parseInt(groupItem.getAttribute('gs-x') || '0', 10);
+    const groupY = parseInt(groupItem.getAttribute('gs-y') || '0', 10);
+    const children = this._gridItems(childGrid);
+    children.forEach((child) => {
+      const rawX = groupX + parseInt(child.getAttribute('gs-x') || '0', 10);
+      const y = groupY + parseInt(child.getAttribute('gs-y') || '0', 10);
+      const w = parseInt(child.getAttribute('gs-w') || '1', 10);
+      const h = parseInt(child.getAttribute('gs-h') || '1', 10);
+      const x = Math.min(Math.max(0, rawX), Math.max(0, this.cols - w));
+      const id = child.getAttribute('gs-id') || this.genId();
+      try { childGrid.removeWidget(child, false, false); } catch (_) {}
+      child.setAttribute('data-item-kind', 'widget');
+      try { this.grid.addWidget(child, { x, y, w, h, id }); } catch (_) {}
+    });
   },
 
   _enableServerRenderedWidgetPreference() {

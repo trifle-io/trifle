@@ -6,6 +6,7 @@ defmodule TrifleApp.DashboardLiveTest do
 
   alias Trifle.AccountsFixtures
   alias Trifle.Organizations
+  alias TrifleApp.Components.DashboardWidgets.WidgetView
 
   setup %{conn: conn} do
     user = AccountsFixtures.user_fixture()
@@ -475,5 +476,237 @@ defmodule TrifleApp.DashboardLiveTest do
     assert has_element?(view, ~s([data-series-row][data-index="0"]))
     assert has_element?(view, ~s([data-series-row][data-index="1"]))
     refute has_element?(view, ~s([data-series-row][data-index="2"]))
+  end
+
+  test "widget view preserves root groups while flattening widgets for datasets", %{
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "group-1",
+              "type" => "group",
+              "title" => "Column A",
+              "x" => 0,
+              "y" => 0,
+              "w" => 6,
+              "h" => 5,
+              "children" => [
+                %{
+                  "id" => "widget-1",
+                  "type" => "text",
+                  "title" => "Grouped Widget",
+                  "subtype" => "header",
+                  "payload" => "<h2>Hello</h2>",
+                  "x" => 0,
+                  "y" => 0,
+                  "w" => 4,
+                  "h" => 2
+                }
+              ]
+            },
+            %{
+              "id" => "widget-2",
+              "type" => "text",
+              "title" => "Root Widget",
+              "subtype" => "header",
+              "payload" => "<h2>World</h2>",
+              "x" => 6,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      })
+
+    assert Enum.map(WidgetView.root_grid_items(dashboard), & &1["id"]) == ["group-1", "widget-2"]
+    assert Enum.map(WidgetView.grid_items(dashboard), & &1["id"]) == ["widget-1", "widget-2"]
+  end
+
+  test "group widgets open in edit mode only and save title changes", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "group-1",
+              "type" => "group",
+              "title" => "Original Group",
+              "x" => 0,
+              "y" => 0,
+              "w" => 6,
+              "h" => 5,
+              "children" => [
+                %{
+                  "id" => "widget-1",
+                  "type" => "text",
+                  "title" => "Grouped Widget",
+                  "subtype" => "header",
+                  "payload" => "<h2>Hello</h2>",
+                  "x" => 0,
+                  "y" => 0,
+                  "w" => 4,
+                  "h" => 2
+                }
+              ]
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "group-1"})
+
+    assert has_element?(view, "#widget-workspace-modal", "Widget Group")
+    assert has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"edit\"]")
+    refute has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"summary\"]")
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "group-1",
+      "widget_type" => "group",
+      "widget_title" => "Latency Group"
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [group] = updated.payload["grid"]
+
+    assert group["type"] == "group"
+    assert group["title"] == "Latency Group"
+    assert [%{"id" => "widget-1"}] = group["children"]
+  end
+
+  test "moving a widget into a group preserves its original type and payload", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "widget-1",
+              "type" => "text",
+              "title" => "Original Title",
+              "subtype" => "header",
+              "payload" => "<h2>Hello</h2>",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            },
+            %{
+              "id" => "group-1",
+              "type" => "group",
+              "title" => "Column A",
+              "x" => 4,
+              "y" => 0,
+              "w" => 4,
+              "h" => 3,
+              "children" => []
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [
+        %{
+          "id" => "group-1",
+          "type" => "group",
+          "title" => "Column A",
+          "x" => 4,
+          "y" => 0,
+          "w" => 4,
+          "h" => 3,
+          "children" => [
+            %{
+              "id" => "widget-1",
+              "title" => "Original Title",
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      ]
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [%{"id" => "group-1", "children" => [child]}] = updated.payload["grid"]
+
+    assert child["id"] == "widget-1"
+    assert child["type"] == "text"
+    assert child["title"] == "Original Title"
+    assert child["subtype"] == "header"
+    assert child["payload"] == "<h2>Hello</h2>"
+  end
+
+  test "deleting a group moves its widgets back to the root grid", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "group-1",
+              "type" => "group",
+              "title" => "Column A",
+              "x" => 3,
+              "y" => 4,
+              "w" => 6,
+              "h" => 5,
+              "children" => [
+                %{
+                  "id" => "widget-1",
+                  "type" => "text",
+                  "title" => "Grouped Widget",
+                  "subtype" => "header",
+                  "payload" => "<h2>Hello</h2>",
+                  "x" => 2,
+                  "y" => 1,
+                  "w" => 4,
+                  "h" => 2
+                }
+              ]
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "delete_widget", %{"id" => "group-1"})
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+
+    refute Enum.any?(updated.payload["grid"], &(&1["type"] == "group"))
+
+    assert [
+             %{
+               "id" => "widget-1",
+               "type" => "text",
+               "x" => 5,
+               "y" => 5
+             } = widget
+           ] = updated.payload["grid"]
+
+    assert widget["w"] == 4
+    assert widget["h"] == 2
   end
 end

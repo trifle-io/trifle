@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
   alias TrifleApp.Components.DashboardWidgets.Types
 
   @widget_types [
+    Types.Group,
     Types.Kpi,
     Types.Timeseries,
     Types.Category,

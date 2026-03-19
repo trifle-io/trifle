@@ -16,6 +16,7 @@ defmodule TrifleApp.DashboardLive do
     Category,
     Distribution,
     Kpi,
+    LayoutTree,
     MetricSeries,
     Registry,
     Table,
@@ -505,15 +506,8 @@ defmodule TrifleApp.DashboardLive do
 
       true ->
         dashboard = socket.assigns.dashboard
-        existing = (dashboard.payload || %{})["grid"] || []
-        by_id = Map.new(existing, fn i -> {to_string(i["id"]), i} end)
-
-        merged =
-          Enum.map(items, fn item ->
-            id = to_string(item["id"])
-            prev = Map.get(by_id, id, %{})
-            Map.merge(prev, item)
-          end)
+        existing = dashboard_grid_root_items(dashboard)
+        merged = merge_dashboard_layout_tree(items, existing)
 
         payload = Map.put(dashboard.payload || %{}, "grid", merged)
 
@@ -626,190 +620,21 @@ defmodule TrifleApp.DashboardLive do
       true ->
         socket = ensure_widget_path_options(socket)
         path_options = socket.assigns[:widget_path_options] || []
-        items = socket.assigns.dashboard.payload["grid"] || []
+        items = dashboard_grid_root_items(socket.assigns.dashboard)
+        existing_item = LayoutTree.find_node(items, id) || %{"id" => id}
+        resolved_type = resolve_saved_widget_type(existing_item, type)
 
         updated =
-          Enum.map(items, fn i ->
-            if to_string(i["id"]) == to_string(id) do
-              base = i |> Map.put("title", title) |> Map.put("type", type)
-
-              case type do
-                "kpi" ->
-                  subtype =
-                    DashboardWidgetHelpers.normalize_kpi_subtype(
-                      Map.get(params, "kpi_subtype"),
-                      i
-                    )
-
-                  base =
-                    base
-                    |> put_metric_series(params, i)
-                    |> Map.put("function", Map.get(params, "kpi_function", "mean"))
-                    |> Map.put("size", Map.get(params, "kpi_size", "m"))
-                    |> Map.put("subtype", subtype)
-
-                  case subtype do
-                    "split" ->
-                      base
-                      |> Map.put("split", true)
-                      |> Map.put("diff", Map.has_key?(params, "kpi_diff"))
-                      |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
-                      |> Map.delete("goal_target")
-                      |> Map.delete("goal_progress")
-
-                    "goal" ->
-                      base
-                      |> Map.put("split", false)
-                      |> Map.put("diff", false)
-                      |> Map.put("timeseries", false)
-                      |> Map.put(
-                        "goal_target",
-                        Map.get(params, "kpi_goal_target", "") |> String.trim()
-                      )
-                      |> Map.put("goal_progress", Map.has_key?(params, "kpi_goal_progress"))
-                      |> Map.put("goal_invert", Map.has_key?(params, "kpi_goal_invert"))
-
-                    _ ->
-                      base
-                      |> Map.put("split", false)
-                      |> Map.put("diff", false)
-                      |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
-                      |> Map.delete("goal_target")
-                      |> Map.delete("goal_progress")
-                      |> Map.delete("goal_invert")
-                  end
-
-                "timeseries" ->
-                  base
-                  |> put_metric_series(params, i)
-                  |> Map.put(
-                    "chart_type",
-                    Map.get(params, "ts_chart_type", Map.get(i, "chart_type") || "line")
-                  )
-                  |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
-                  |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
-                  |> Map.put("legend", Map.has_key?(params, "ts_legend"))
-                  |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
-
-                "category" ->
-                  base
-                  |> put_metric_series(params, i)
-                  |> Map.put(
-                    "chart_type",
-                    Map.get(params, "cat_chart_type", Map.get(i, "chart_type") || "bar")
-                  )
-
-                "table" ->
-                  base
-                  |> put_metric_series(params, i)
-
-                widget_type when widget_type in ["distribution", "heatmap"] ->
-                  source_widget = distribution_widget_source_for_save(socket, id, i)
-
-                  build_distribution_widget(
-                    base,
-                    widget_type,
-                    params,
-                    source_widget,
-                    path_options
-                  )
-
-                "list" ->
-                  limit =
-                    params
-                    |> Map.get("list_limit", Map.get(i, "limit"))
-                    |> normalize_optional_positive_integer()
-
-                  sort =
-                    params
-                    |> Map.get("list_sort", Map.get(i, "sort") || "desc")
-                    |> normalize_list_sort()
-
-                  label_strategy =
-                    params
-                    |> Map.get("list_label_strategy", Map.get(i, "label_strategy") || "short")
-                    |> normalize_list_label_strategy()
-
-                  base
-                  |> put_metric_series(params, i)
-                  |> Map.put("limit", limit)
-                  |> Map.put("sort", sort)
-                  |> Map.put("label_strategy", label_strategy)
-                  |> Map.delete("empty_message")
-
-                "text" ->
-                  subtype =
-                    Map.get(params, "text_subtype", i["subtype"] || "header")
-                    |> DashboardWidgetHelpers.normalize_text_subtype()
-
-                  color_id =
-                    Map.get(params, "text_color", i["color"])
-                    |> DashboardWidgetHelpers.normalize_text_color_id()
-
-                  base =
-                    base
-                    |> Map.put("type", "text")
-                    |> Map.put("subtype", subtype)
-                    |> Map.put("color", color_id)
-                    |> Map.delete("path")
-                    |> Map.delete("function")
-                    |> Map.delete("size")
-                    |> Map.delete("split")
-                    |> Map.delete("diff")
-                    |> Map.delete("timeseries")
-                    |> Map.delete("goal_target")
-                    |> Map.delete("goal_progress")
-                    |> Map.delete("goal_invert")
-                    |> Map.delete("paths")
-                    |> Map.delete("path_inputs")
-                    |> Map.delete("chart_type")
-                    |> Map.delete("stacked")
-                    |> Map.delete("normalized")
-                    |> Map.delete("legend")
-                    |> Map.delete("y_label")
-                    |> Map.delete("series")
-                    |> Map.delete("series_color_selectors")
-
-                  case subtype do
-                    "html" ->
-                      base
-                      |> Map.put(
-                        "payload",
-                        params
-                        |> Map.get("text_payload", "")
-                        |> DashboardWidgetHelpers.sanitize_text_widget_html()
-                      )
-                      |> Map.delete("subtitle")
-                      |> Map.delete("alignment")
-                      |> Map.delete("title_size")
-
-                    _ ->
-                      base
-                      |> Map.put(
-                        "title_size",
-                        Map.get(params, "text_title_size", i["title_size"] || "large")
-                        |> DashboardWidgetHelpers.normalize_text_title_size()
-                      )
-                      |> Map.put(
-                        "alignment",
-                        Map.get(params, "text_alignment", i["alignment"] || "center")
-                        |> DashboardWidgetHelpers.normalize_text_alignment()
-                      )
-                      |> Map.put(
-                        "subtitle",
-                        Map.get(params, "text_subtitle", i["subtitle"] || "")
-                        |> to_string()
-                        |> String.trim()
-                      )
-                      |> Map.delete("payload")
-                  end
-
-                _ ->
-                  base
-              end
-            else
-              i
-            end
+          update_dashboard_grid_node(items, id, fn item ->
+            build_saved_dashboard_widget(
+              socket,
+              item,
+              id,
+              resolved_type,
+              title,
+              params,
+              path_options
+            )
           end)
 
         payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
@@ -852,6 +677,7 @@ defmodule TrifleApp.DashboardLive do
              {:ok, widget} <- fetch_editing_widget(socket, id) do
           socket = ensure_widget_path_options(socket)
           path_options = socket.assigns[:widget_path_options] || []
+
           updated =
             params
             |> strip_metric_series_change_params()
@@ -1012,8 +838,8 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       true ->
-        items = socket.assigns.dashboard.payload["grid"] || []
-        updated = Enum.reject(items, fn i -> to_string(i["id"]) == to_string(id) end)
+        items = dashboard_grid_root_items(socket.assigns.dashboard)
+        {updated, deleted_item} = delete_dashboard_grid_node(items, id)
         payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
 
         membership = socket.assigns.current_membership
@@ -1025,13 +851,17 @@ defmodule TrifleApp.DashboardLive do
              ) do
           {:ok, dashboard} ->
             widget_id = to_string(id)
+            deleted_type = deleted_item && widget_type(deleted_item)
 
             socket =
               socket
               |> assign_dashboard(dashboard)
               |> refresh_widget_datasets()
               |> clear_widget_workspace()
-              |> push_event("dashboard_grid_widget_deleted", %{id: widget_id})
+              |> push_event("dashboard_grid_widget_deleted", %{
+                id: widget_id,
+                kind: deleted_type
+              })
 
             {:noreply, socket}
 
@@ -1381,6 +1211,9 @@ defmodule TrifleApp.DashboardLive do
     }
 
     cond do
+      type == "group" ->
+        Map.put(base, :group_children_count, length(LayoutTree.group_children(widget)))
+
       type == "text" ->
         widget
         |> Text.widget()
@@ -1852,7 +1685,7 @@ defmodule TrifleApp.DashboardLive do
     grid =
       payload
       |> Map.get("grid", Map.get(payload, :grid, []))
-      |> Enum.map(&normalize_dashboard_widget_item/1)
+      |> LayoutTree.normalize_root_items()
 
     payload
     |> Map.put("grid", grid)
@@ -2802,6 +2635,9 @@ defmodule TrifleApp.DashboardLive do
       |> Map.put("title", title)
 
     case type do
+      "group" ->
+        LayoutTree.normalize_group_item(widget)
+
       "kpi" ->
         subtype =
           params
@@ -3129,6 +2965,392 @@ defmodule TrifleApp.DashboardLive do
   defp heatmap_single_color_from_series(_),
     do: DashboardWidgetHelpers.resolve_series_color("default.*", 0)
 
+  defp dashboard_grid_root_items(dashboard), do: LayoutTree.root_items_from_dashboard(dashboard)
+
+  defp resolve_saved_widget_type(existing_item, requested_type) do
+    case widget_type(existing_item) do
+      "group" ->
+        "group"
+
+      current_type
+      when current_type in [
+             "kpi",
+             "timeseries",
+             "category",
+             "distribution",
+             "heatmap",
+             "table",
+             "list",
+             "text"
+           ] ->
+        requested_type
+        |> to_string()
+        |> String.downcase()
+        |> case do
+          "" -> current_type
+          type -> type
+        end
+
+      _ ->
+        requested_type
+        |> to_string()
+        |> String.downcase()
+        |> case do
+          "" -> "kpi"
+          type -> type
+        end
+    end
+  end
+
+  defp build_saved_dashboard_widget(socket, item, id, type, title, params, path_options)
+       when is_map(item) do
+    base =
+      item
+      |> Map.put("title", title)
+      |> Map.put("type", type)
+
+    case type do
+      "group" ->
+        LayoutTree.normalize_group_item(base)
+
+      "kpi" ->
+        subtype =
+          DashboardWidgetHelpers.normalize_kpi_subtype(
+            Map.get(params, "kpi_subtype"),
+            item
+          )
+
+        base =
+          base
+          |> put_metric_series(params, item)
+          |> Map.put("function", Map.get(params, "kpi_function", "mean"))
+          |> Map.put("size", Map.get(params, "kpi_size", "m"))
+          |> Map.put("subtype", subtype)
+
+        case subtype do
+          "split" ->
+            base
+            |> Map.put("split", true)
+            |> Map.put("diff", Map.has_key?(params, "kpi_diff"))
+            |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+            |> Map.delete("goal_target")
+            |> Map.delete("goal_progress")
+
+          "goal" ->
+            base
+            |> Map.put("split", false)
+            |> Map.put("diff", false)
+            |> Map.put("timeseries", false)
+            |> Map.put(
+              "goal_target",
+              Map.get(params, "kpi_goal_target", "") |> String.trim()
+            )
+            |> Map.put("goal_progress", Map.has_key?(params, "kpi_goal_progress"))
+            |> Map.put("goal_invert", Map.has_key?(params, "kpi_goal_invert"))
+
+          _ ->
+            base
+            |> Map.put("split", false)
+            |> Map.put("diff", false)
+            |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+            |> Map.delete("goal_target")
+            |> Map.delete("goal_progress")
+            |> Map.delete("goal_invert")
+        end
+
+      "timeseries" ->
+        base
+        |> put_metric_series(params, item)
+        |> Map.put(
+          "chart_type",
+          Map.get(params, "ts_chart_type", Map.get(item, "chart_type") || "line")
+        )
+        |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
+        |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
+        |> Map.put("legend", Map.has_key?(params, "ts_legend"))
+        |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
+
+      "category" ->
+        base
+        |> put_metric_series(params, item)
+        |> Map.put(
+          "chart_type",
+          Map.get(params, "cat_chart_type", Map.get(item, "chart_type") || "bar")
+        )
+
+      "table" ->
+        base
+        |> put_metric_series(params, item)
+
+      widget_type when widget_type in ["distribution", "heatmap"] ->
+        source_widget = distribution_widget_source_for_save(socket, id, item)
+
+        build_distribution_widget(
+          base,
+          widget_type,
+          params,
+          source_widget,
+          path_options
+        )
+
+      "list" ->
+        limit =
+          params
+          |> Map.get("list_limit", Map.get(item, "limit"))
+          |> normalize_optional_positive_integer()
+
+        sort =
+          params
+          |> Map.get("list_sort", Map.get(item, "sort") || "desc")
+          |> normalize_list_sort()
+
+        label_strategy =
+          params
+          |> Map.get("list_label_strategy", Map.get(item, "label_strategy") || "short")
+          |> normalize_list_label_strategy()
+
+        base
+        |> put_metric_series(params, item)
+        |> Map.put("limit", limit)
+        |> Map.put("sort", sort)
+        |> Map.put("label_strategy", label_strategy)
+        |> Map.delete("empty_message")
+
+      "text" ->
+        subtype =
+          Map.get(params, "text_subtype", item["subtype"] || "header")
+          |> DashboardWidgetHelpers.normalize_text_subtype()
+
+        color_id =
+          Map.get(params, "text_color", item["color"])
+          |> DashboardWidgetHelpers.normalize_text_color_id()
+
+        base =
+          base
+          |> Map.put("type", "text")
+          |> Map.put("subtype", subtype)
+          |> Map.put("color", color_id)
+          |> Map.delete("path")
+          |> Map.delete("function")
+          |> Map.delete("size")
+          |> Map.delete("split")
+          |> Map.delete("diff")
+          |> Map.delete("timeseries")
+          |> Map.delete("goal_target")
+          |> Map.delete("goal_progress")
+          |> Map.delete("goal_invert")
+          |> Map.delete("paths")
+          |> Map.delete("path_inputs")
+          |> Map.delete("chart_type")
+          |> Map.delete("stacked")
+          |> Map.delete("normalized")
+          |> Map.delete("legend")
+          |> Map.delete("y_label")
+          |> Map.delete("series")
+          |> Map.delete("series_color_selectors")
+
+        case subtype do
+          "html" ->
+            base
+            |> Map.put(
+              "payload",
+              params
+              |> Map.get("text_payload", "")
+              |> DashboardWidgetHelpers.sanitize_text_widget_html()
+            )
+            |> Map.delete("subtitle")
+            |> Map.delete("alignment")
+            |> Map.delete("title_size")
+
+          _ ->
+            base
+            |> Map.put(
+              "title_size",
+              Map.get(params, "text_title_size", item["title_size"] || "large")
+              |> DashboardWidgetHelpers.normalize_text_title_size()
+            )
+            |> Map.put(
+              "alignment",
+              Map.get(params, "text_alignment", item["alignment"] || "center")
+              |> DashboardWidgetHelpers.normalize_text_alignment()
+            )
+            |> Map.put(
+              "subtitle",
+              Map.get(params, "text_subtitle", item["subtitle"] || "")
+              |> to_string()
+              |> String.trim()
+            )
+            |> Map.delete("payload")
+        end
+
+      _ ->
+        base
+    end
+  end
+
+  defp build_saved_dashboard_widget(_socket, item, _id, _type, _title, _params, _path_options),
+    do: item
+
+  defp update_dashboard_grid_node(items, id, fun) when is_list(items) do
+    LayoutTree.update_node(items, id, fun)
+  end
+
+  defp update_dashboard_grid_node(items, _id, _fun), do: items
+
+  defp merge_dashboard_layout_tree(layout_items, existing_items, index \\ nil)
+
+  defp merge_dashboard_layout_tree(layout_items, existing_items, nil)
+       when is_list(layout_items) do
+    merge_dashboard_layout_tree(
+      layout_items,
+      existing_items,
+      dashboard_grid_index(existing_items)
+    )
+  end
+
+  defp merge_dashboard_layout_tree(layout_items, _existing_items, index)
+       when is_list(layout_items) do
+    resolved_index = if is_map(index), do: index, else: %{}
+
+    Enum.map(layout_items, fn item ->
+      merge_dashboard_layout_node(item, resolved_index)
+    end)
+  end
+
+  defp merge_dashboard_layout_tree(_layout_items, existing_items, _index), do: existing_items
+
+  defp merge_dashboard_layout_node(item, index) when is_map(item) do
+    id = dashboard_grid_node_id(item)
+    existing = Map.get(index, id, %{})
+    type = resolve_saved_widget_type(existing, Map.get(item, "type", widget_type(existing)))
+
+    base =
+      existing
+      |> Map.merge(Map.take(item, ["id", "title", "type", "x", "y", "w", "h"]))
+      |> Map.put("id", id)
+      |> Map.put("type", type)
+
+    case type do
+      "group" ->
+        base
+        |> Map.put(
+          "children",
+          merge_dashboard_layout_tree(
+            Map.get(item, "children", []),
+            LayoutTree.group_children(existing),
+            index
+          )
+        )
+        |> LayoutTree.normalize_group_item()
+
+      _ ->
+        normalize_dashboard_widget_item(base)
+    end
+  end
+
+  defp merge_dashboard_layout_node(item, _index), do: item
+
+  defp dashboard_grid_index(items) when is_list(items) do
+    Enum.reduce(items, %{}, fn item, acc ->
+      acc =
+        case dashboard_grid_node_id(item) do
+          nil -> acc
+          id -> Map.put(acc, id, item)
+        end
+
+      if LayoutTree.group?(item) do
+        Map.merge(acc, dashboard_grid_index(LayoutTree.group_children(item)))
+      else
+        acc
+      end
+    end)
+  end
+
+  defp dashboard_grid_index(_items), do: %{}
+
+  defp delete_dashboard_grid_node(items, id) when is_list(items) do
+    {remaining, deleted} =
+      delete_dashboard_grid_node_recursive(items, dashboard_grid_node_id(%{"id" => id}))
+
+    updated_items =
+      if LayoutTree.group?(deleted) do
+        remaining ++ move_group_children_to_root(deleted)
+      else
+        remaining
+      end
+
+    {updated_items, deleted}
+  end
+
+  defp delete_dashboard_grid_node(items, _id), do: {items, nil}
+
+  defp delete_dashboard_grid_node_recursive(items, target_id) when is_list(items) do
+    items
+    |> Enum.reduce({[], nil}, fn item, {acc, deleted} ->
+      item_id = dashboard_grid_node_id(item)
+
+      cond do
+        deleted ->
+          {[item | acc], deleted}
+
+        item_id == target_id ->
+          {acc, item}
+
+        LayoutTree.group?(item) ->
+          {children, child_deleted} =
+            delete_dashboard_grid_node_recursive(LayoutTree.group_children(item), target_id)
+
+          updated_item = Map.put(item, "children", children)
+          {[updated_item | acc], child_deleted}
+
+        true ->
+          {[item | acc], nil}
+      end
+    end)
+    |> then(fn {acc, deleted} -> {Enum.reverse(acc), deleted} end)
+  end
+
+  defp delete_dashboard_grid_node_recursive(items, _target_id), do: {items, nil}
+
+  defp move_group_children_to_root(group) when is_map(group) do
+    x_offset = layout_int(Map.get(group, "x"), 0)
+    y_offset = layout_int(Map.get(group, "y"), 0)
+
+    Enum.map(LayoutTree.group_children(group), fn child ->
+      w = layout_int(Map.get(child, "w"), 3)
+      x = min(max(0, x_offset + layout_int(Map.get(child, "x"), 0)), max(0, 12 - w))
+      y = max(0, y_offset + layout_int(Map.get(child, "y"), 0))
+
+      child
+      |> Map.put("x", x)
+      |> Map.put("y", y)
+    end)
+  end
+
+  defp move_group_children_to_root(_group), do: []
+
+  defp dashboard_grid_node_id(item) when is_map(item) do
+    item
+    |> Map.get("id", Map.get(item, :id))
+    |> case do
+      nil -> nil
+      value -> to_string(value)
+    end
+  end
+
+  defp dashboard_grid_node_id(_item), do: nil
+
+  defp layout_int(value, _fallback) when is_integer(value), do: value
+
+  defp layout_int(value, fallback) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} -> parsed
+      _ -> fallback
+    end
+  end
+
+  defp layout_int(_value, fallback), do: fallback
+
   defp update_editing_widget(socket, id, updater) when is_function(updater, 1) do
     case fetch_editing_widget(socket, id) do
       {:ok, widget} ->
@@ -3174,18 +3396,18 @@ defmodule TrifleApp.DashboardLive do
         socket
       end
 
-    items = socket.assigns.dashboard.payload["grid"] || []
+    items = dashboard_grid_root_items(socket.assigns.dashboard)
     path_options = socket.assigns[:widget_path_options] || []
 
     widget =
-      Enum.find(items, fn i -> to_string(i["id"]) == to_string(id) end)
+      LayoutTree.find_node(items, id)
       |> case do
         nil -> %{"id" => id, "title" => "", "type" => "kpi"}
         found -> Map.put_new(found, "type", "kpi")
       end
       |> maybe_auto_expand_widget_paths(path_options)
 
-    active_tab = normalize_widget_workspace_tab(requested_tab, editable?)
+    active_tab = normalize_widget_workspace_tab(requested_tab, editable?, widget_type(widget))
     preview = build_expanded_widget(socket, widget)
 
     workspace = %{
@@ -3204,22 +3426,28 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_workspace, workspace)
   end
 
-  defp normalize_widget_workspace_tab(tab, editable?) do
+  defp normalize_widget_workspace_tab(tab, editable?, widget_type) do
     normalized =
       tab
       |> to_string()
       |> String.downcase()
 
-    case normalized do
-      "edit" when editable? -> "edit"
-      _ -> "summary"
+    cond do
+      widget_type == "group" and editable? ->
+        "edit"
+
+      normalized == "edit" and editable? ->
+        "edit"
+
+      true ->
+        "summary"
     end
   end
 
   defp set_widget_workspace_tab(socket, tab) do
     case socket.assigns[:widget_workspace] do
-      %{editable?: editable?} = workspace ->
-        active_tab = normalize_widget_workspace_tab(tab, editable?)
+      %{editable?: editable?, draft_widget: draft_widget} = workspace ->
+        active_tab = normalize_widget_workspace_tab(tab, editable?, widget_type(draft_widget))
         assign(socket, :widget_workspace, Map.put(workspace, :active_tab, active_tab))
 
       _ ->

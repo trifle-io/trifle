@@ -144,6 +144,7 @@ defmodule TrifleApp.Components.DashboardPage do
                 <!-- Dashboard owner controls -->
                 <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
                   <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
+                  <% add_group_btn_id = "dashboard-" <> @dashboard.id <> "-add-group" %>
                   <!-- Add Widget Button -->
                   <button
                     id={add_btn_id}
@@ -164,6 +165,28 @@ defmodule TrifleApp.Components.DashboardPage do
                       />
                     </svg>
                     <span class="hidden md:inline">Add Widget</span>
+                  </button>
+                  <button
+                    id={add_group_btn_id}
+                    type="button"
+                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600"
+                    title="Add widget group"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                      class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z"
+                      />
+                    </svg>
+                    <span class="hidden md:inline">Add Group</span>
                   </button>
                   <.link
                     patch={~p"/dashboards/#{@dashboard.id}/configure"}
@@ -487,8 +510,9 @@ defmodule TrifleApp.Components.DashboardPage do
             end
           end) %>
 
+        <% root_grid_items = WidgetView.root_grid_items(@dashboard) %>
         <% grid_items = WidgetView.grid_items(@dashboard) %>
-        <% has_grid_items = grid_items != [] %>
+        <% has_grid_items = root_grid_items != [] %>
         <% text_items = WidgetView.text_items(grid_items) %>
 
         <WidgetView.grid
@@ -499,7 +523,7 @@ defmodule TrifleApp.Components.DashboardPage do
           can_edit_dashboard={@can_edit_dashboard}
           is_public_access={@is_public_access}
           public_token={@public_token}
-          grid_items={grid_items}
+          grid_items={root_grid_items}
           text_items={text_items}
           kpi_values={@widget_kpi_values || %{}}
           kpi_visuals={@widget_kpi_visuals || %{}}
@@ -1227,6 +1251,7 @@ defmodule TrifleApp.Components.DashboardPage do
           <% editable = workspace.editable? %>
           <% active_tab = workspace.active_tab || "summary" %>
           <% preview_type = preview.type || draft_widget["type"] || "kpi" %>
+          <% group_widget = preview_type == "group" %>
           <% preview_title = preview.title || draft_widget["title"] || "Untitled Widget" %>
           <% chart_data = preview[:chart_data] %>
           <% visual_data = preview[:visual_data] %>
@@ -1251,6 +1276,7 @@ defmodule TrifleApp.Components.DashboardPage do
                 <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                   <div class="inline-flex rounded-md border border-gray-300 dark:border-slate-600 overflow-hidden">
                     <button
+                      :if={!group_widget}
                       type="button"
                       phx-click="set_widget_workspace_tab"
                       phx-value-tab="summary"
@@ -1263,7 +1289,12 @@ defmodule TrifleApp.Components.DashboardPage do
                       type="button"
                       phx-click="set_widget_workspace_tab"
                       phx-value-tab="edit"
-                      class={workspace_tab_button_classes(active_tab == "edit", :last)}
+                      class={
+                        workspace_tab_button_classes(
+                          active_tab == "edit",
+                          if(group_widget, do: :first, else: :last)
+                        )
+                      }
                     >
                       Edit
                     </button>
@@ -1273,163 +1304,182 @@ defmodule TrifleApp.Components.DashboardPage do
             </:title>
             <:body>
               <div class="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
-                <%= if preview_type == "table" do %>
-                  <% render_table = preview[:table_data] %>
-                  <% aggrid_payload =
-                    DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
-                  <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col">
-                    <%= cond do %>
-                      <% is_nil(render_table) -> %>
-                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                          Configure this widget with a path to display table data.
-                        </div>
-                      <% aggrid_payload -> %>
-                        <div
-                          id={"workspace-aggrid-shell-#{workspace.widget_id}"}
-                          class="aggrid-table-shell flex-1 flex flex-col min-h-0"
-                          data-role="aggrid-table"
-                          data-theme="light"
-                          phx-hook="ExpandedAgGridTable"
-                          data-table={Jason.encode!(aggrid_payload)}
-                        >
-                          <div
-                            id={"workspace-aggrid-root-#{workspace.widget_id || "new"}"}
-                            class="flex-1 min-h-0 ag-theme-alpine"
-                            data-role="aggrid-table-root"
-                            phx-update="ignore"
-                            style="width: 100%; height: 100%;"
-                          >
-                            <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
-                              Loading AG Grid table...
-                            </div>
-                          </div>
-                        </div>
-                      <% true -> %>
-                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                          {Map.get(render_table || %{}, :empty_message, "No data available yet.")}
-                        </div>
+                <%= if group_widget do %>
+                  <div class="flex-1 min-h-0 rounded-lg border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-6 flex flex-col gap-4 overflow-auto">
+                    <div class="space-y-2">
+                      <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        Widget Group
+                      </h4>
+                      <p class="text-sm text-slate-600 dark:text-slate-300">
+                        Groups hold related widgets in a nested grid. Drag widgets into this group on the dashboard to organize layout.
+                      </p>
+                    </div>
+                    <%= if editable do %>
+                      <.widget_workspace_edit_form
+                        draft_widget={draft_widget}
+                        widget_path_options={@widget_path_options}
+                      />
                     <% end %>
                   </div>
                 <% else %>
-                  <%= if preview_type == "list" do %>
-                    <% list_data = preview[:list_data] %>
-                    <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                      <%= if list_data do %>
-                        <% items = expanded_list_items(list_data) %>
-                        <% empty_message = expanded_list_empty_message(list_data) %>
-                        <%= if items == [] do %>
+                  <%= if preview_type == "table" do %>
+                    <% render_table = preview[:table_data] %>
+                    <% aggrid_payload =
+                      DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
+                    <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col">
+                      <%= cond do %>
+                        <% is_nil(render_table) -> %>
                           <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                            {empty_message}
+                            Configure this widget with a path to display table data.
                           </div>
-                        <% else %>
-                          <div class="h-full w-full overflow-auto">
-                            <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
-                              <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
-                                <%= for item <- items do %>
-                                  <% color = expanded_list_color(item) %>
-                                  <% label = expanded_list_label(item) %>
-                                  <% value = expanded_list_value(item) %>
-                                  <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
-                                  <% badge_border = expanded_list_color_with_alpha(color, "40") %>
-                                  <tr>
-                                    <td class="px-4 py-3 align-middle">
-                                      <div class="flex items-center gap-3 min-w-0">
-                                        <span
-                                          class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
-                                          style={"background-color: #{color}"}
-                                          aria-hidden="true"
-                                        >
-                                        </span>
-                                        <div class="min-w-0">
-                                          <p
-                                            class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
-                                            title={label}
-                                          >
-                                            {label}
-                                          </p>
-                                          <p
-                                            class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
-                                            title={expanded_list_path(item)}
-                                          >
-                                            {expanded_list_path(item)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td class="px-4 py-3 text-right align-middle">
-                                      <span
-                                        class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
-                                        style={
-                                          "color: #{color}; border-color: #{badge_border}; background-color: #{badge_bg}"
-                                        }
-                                      >
-                                        {value}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                <% end %>
-                              </tbody>
-                            </table>
+                        <% aggrid_payload -> %>
+                          <div
+                            id={"workspace-aggrid-shell-#{workspace.widget_id}"}
+                            class="aggrid-table-shell flex-1 flex flex-col min-h-0"
+                            data-role="aggrid-table"
+                            data-theme="light"
+                            phx-hook="ExpandedAgGridTable"
+                            data-table={Jason.encode!(aggrid_payload)}
+                          >
+                            <div
+                              id={"workspace-aggrid-root-#{workspace.widget_id || "new"}"}
+                              class="flex-1 min-h-0 ag-theme-alpine"
+                              data-role="aggrid-table-root"
+                              phx-update="ignore"
+                              style="width: 100%; height: 100%;"
+                            >
+                              <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 px-6 text-center">
+                                Loading AG Grid table...
+                              </div>
+                            </div>
                           </div>
-                        <% end %>
-                      <% else %>
-                        <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
-                          Configure this widget with a path to display list data.
-                        </div>
+                        <% true -> %>
+                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                            {Map.get(render_table || %{}, :empty_message, "No data available yet.")}
+                          </div>
                       <% end %>
                     </div>
                   <% else %>
-                    <div
-                      id={"workspace-widget-#{workspace.widget_id}"}
-                      class="w-full flex-1 min-h-0 flex flex-col gap-4"
-                      phx-hook="ExpandedWidgetView"
-                      data-tab={active_tab}
-                      data-type={preview_type}
-                      data-title={preview_title}
-                      data-colors={ChartColors.json_palette()}
-                      data-chart={if chart_data, do: Jason.encode!(chart_data)}
-                      data-visual={if visual_data, do: Jason.encode!(visual_data)}
-                      data-text={if text_data, do: Jason.encode!(text_data)}
-                    >
-                      <div class="flex-1 min-h-0">
-                        <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                          <div data-role="chart" class="h-full w-full overflow-hidden"></div>
-                        </div>
-                      </div>
-                      <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                        <%= if active_tab == "summary" do %>
-                          <div data-role="table-root" class="h-full w-full overflow-auto"></div>
-                        <% else %>
-                          <%= if editable do %>
-                            <div class="h-full overflow-auto p-4">
-                              <.widget_workspace_edit_form
-                                draft_widget={draft_widget}
-                                widget_path_options={@widget_path_options}
-                              />
+                    <%= if preview_type == "list" do %>
+                      <% list_data = preview[:list_data] %>
+                      <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                        <%= if list_data do %>
+                          <% items = expanded_list_items(list_data) %>
+                          <% empty_message = expanded_list_empty_message(list_data) %>
+                          <%= if items == [] do %>
+                            <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                              {empty_message}
+                            </div>
+                          <% else %>
+                            <div class="h-full w-full overflow-auto">
+                              <table class="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                                <tbody class="divide-y divide-gray-100 dark:divide-slate-800 text-gray-900 dark:text-slate-100">
+                                  <%= for item <- items do %>
+                                    <% color = expanded_list_color(item) %>
+                                    <% label = expanded_list_label(item) %>
+                                    <% value = expanded_list_value(item) %>
+                                    <% badge_bg = expanded_list_color_with_alpha(color, "15") %>
+                                    <% badge_border = expanded_list_color_with_alpha(color, "40") %>
+                                    <tr>
+                                      <td class="px-4 py-3 align-middle">
+                                        <div class="flex items-center gap-3 min-w-0">
+                                          <span
+                                            class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                            style={"background-color: #{color}"}
+                                            aria-hidden="true"
+                                          >
+                                          </span>
+                                          <div class="min-w-0">
+                                            <p
+                                              class="font-mono text-xs truncate text-slate-700 dark:text-slate-200"
+                                              title={label}
+                                            >
+                                              {label}
+                                            </p>
+                                            <p
+                                              class="text-[11px] text-slate-500 dark:text-slate-400 truncate"
+                                              title={expanded_list_path(item)}
+                                            >
+                                              {expanded_list_path(item)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td class="px-4 py-3 text-right align-middle">
+                                        <span
+                                          class="inline-flex items-center rounded-md border px-3 py-1 text-xs font-semibold"
+                                          style={
+                                            "color: #{color}; border-color: #{badge_border}; background-color: #{badge_bg}"
+                                          }
+                                        >
+                                          {value}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  <% end %>
+                                </tbody>
+                              </table>
                             </div>
                           <% end %>
+                        <% else %>
+                          <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
+                            Configure this widget with a path to display list data.
+                          </div>
                         <% end %>
                       </div>
+                    <% else %>
+                      <div
+                        id={"workspace-widget-#{workspace.widget_id}"}
+                        class="w-full flex-1 min-h-0 flex flex-col gap-4"
+                        phx-hook="ExpandedWidgetView"
+                        data-tab={active_tab}
+                        data-type={preview_type}
+                        data-title={preview_title}
+                        data-colors={ChartColors.json_palette()}
+                        data-chart={if chart_data, do: Jason.encode!(chart_data)}
+                        data-visual={if visual_data, do: Jason.encode!(visual_data)}
+                        data-text={if text_data, do: Jason.encode!(text_data)}
+                      >
+                        <div class="flex-1 min-h-0">
+                          <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                            <div data-role="chart" class="h-full w-full overflow-hidden"></div>
+                          </div>
+                        </div>
+                        <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                          <%= if active_tab == "summary" do %>
+                            <div data-role="table-root" class="h-full w-full overflow-auto"></div>
+                          <% else %>
+                            <%= if editable do %>
+                              <div class="h-full overflow-auto p-4">
+                                <.widget_workspace_edit_form
+                                  draft_widget={draft_widget}
+                                  widget_path_options={@widget_path_options}
+                                />
+                              </div>
+                            <% end %>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% end %>
+                  <% end %>
+
+                  <%= if active_tab == "summary" and preview_type in ["table", "list"] do %>
+                    <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Summary</h4>
+                      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                        Summary metrics are currently available for chart-oriented widgets. Use the preview above to validate this widget output.
+                      </p>
                     </div>
                   <% end %>
-                <% end %>
 
-                <%= if active_tab == "summary" and preview_type in ["table", "list"] do %>
-                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 px-6 py-5">
-                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Summary</h4>
-                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                      Summary metrics are currently available for chart-oriented widgets. Use the preview above to validate this widget output.
-                    </p>
-                  </div>
-                <% end %>
-
-                <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
-                  <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
-                    <.widget_workspace_edit_form
-                      draft_widget={draft_widget}
-                      widget_path_options={@widget_path_options}
-                    />
-                  </div>
+                  <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
+                    <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
+                      <.widget_workspace_edit_form
+                        draft_widget={draft_widget}
+                        widget_path_options={@widget_path_options}
+                      />
+                    </div>
+                  <% end %>
                 <% end %>
               </div>
             </:body>
@@ -1447,10 +1497,15 @@ defmodule TrifleApp.Components.DashboardPage do
                     phx-click="delete_widget"
                     phx-value-id={draft_widget["id"]}
                     disabled={active_tab != "edit"}
-                    data-confirm="Are you sure you want to delete this widget? This action cannot be undone."
+                    data-confirm={
+                      if group_widget,
+                        do:
+                          "Are you sure you want to delete this group? Widgets inside it will be moved back to the main dashboard.",
+                        else: "Are you sure you want to delete this widget? This action cannot be undone."
+                    }
                     class={"px-3 py-2 " <> if(active_tab == "edit", do: "visible", else: "invisible")}
                   >
-                    Delete Widget
+                    {if(group_widget, do: "Delete Group", else: "Delete Widget")}
                   </.danger_button>
                 </div>
                 <.form_actions class="ml-auto">
@@ -1527,7 +1582,8 @@ defmodule TrifleApp.Components.DashboardPage do
                   </p>
                   <%= if !@is_public_access do %>
                     <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
-                    <div class="mt-6">
+                    <% add_group_btn_id = "dashboard-" <> @dashboard.id <> "-add-group" %>
+                    <div class="mt-6 flex items-center justify-center gap-3">
                       <button
                         type="button"
                         phx-click={JS.dispatch("click", to: "##{add_btn_id}")}
@@ -1544,6 +1600,27 @@ defmodule TrifleApp.Components.DashboardPage do
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6" />
                         </svg>
                         Add Widget
+                      </button>
+                      <button
+                        type="button"
+                        phx-click={JS.dispatch("click", to: "##{add_group_btn_id}")}
+                        class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600"
+                      >
+                        <svg
+                          class="-ml-0.5 mr-1.5 h-5 w-5"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z"
+                          />
+                        </svg>
+                        Add Group
                       </button>
                     </div>
                   <% end %>
@@ -1596,6 +1673,9 @@ defmodule TrifleApp.Components.DashboardPage do
   end
 
   defp widget_workspace_edit_form(assigns) do
+    group_widget? = (assigns.draft_widget["type"] || "") == "group"
+    assigns = assign(assigns, :group_widget?, group_widget?)
+
     ~H"""
     <.form
       for={%{}}
@@ -1606,48 +1686,58 @@ defmodule TrifleApp.Components.DashboardPage do
     >
       <input type="hidden" name="widget_id" value={@draft_widget["id"]} />
       <div>
-        <label
-          for="widget_type"
-          class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
-        >
-          Widget Type
-        </label>
-        <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-          <select
-            id="widget_type"
-            name="widget_type"
-            class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+        <%= if @group_widget? do %>
+          <input type="hidden" name="widget_type" value="group" />
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Item Type
+          </label>
+          <div class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            Widget Group
+          </div>
+        <% else %>
+          <label
+            for="widget_type"
+            class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
           >
-            <% sel = @draft_widget["type"] || "kpi" %>
-            <option value="kpi" selected={sel == "kpi"}>KPI</option>
-            <option value="timeseries" selected={sel == "timeseries"}>
-              Timeseries
-            </option>
-            <option value="category" selected={sel == "category"}>Category</option>
-            <option value="distribution" selected={sel == "distribution"}>
-              Distribution
-            </option>
-            <option value="heatmap" selected={sel == "heatmap"}>
-              Heatmap
-            </option>
-            <option value="table" selected={sel == "table"}>Table</option>
-            <option value="list" selected={sel == "list"}>List</option>
-            <option value="text" selected={sel == "text"}>Text</option>
-          </select>
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            data-slot="icon"
-            aria-hidden="true"
-            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-          >
-            <path
-              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-              clip-rule="evenodd"
-              fill-rule="evenodd"
-            />
-          </svg>
-        </div>
+            Widget Type
+          </label>
+          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
+            <select
+              id="widget_type"
+              name="widget_type"
+              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+            >
+              <% sel = @draft_widget["type"] || "kpi" %>
+              <option value="kpi" selected={sel == "kpi"}>KPI</option>
+              <option value="timeseries" selected={sel == "timeseries"}>
+                Timeseries
+              </option>
+              <option value="category" selected={sel == "category"}>Category</option>
+              <option value="distribution" selected={sel == "distribution"}>
+                Distribution
+              </option>
+              <option value="heatmap" selected={sel == "heatmap"}>
+                Heatmap
+              </option>
+              <option value="table" selected={sel == "table"}>Table</option>
+              <option value="list" selected={sel == "list"}>List</option>
+              <option value="text" selected={sel == "text"}>Text</option>
+            </select>
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              data-slot="icon"
+              aria-hidden="true"
+              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+            >
+              <path
+                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                clip-rule="evenodd"
+                fill-rule="evenodd"
+              />
+            </svg>
+          </div>
+        <% end %>
       </div>
       <div>
         <label

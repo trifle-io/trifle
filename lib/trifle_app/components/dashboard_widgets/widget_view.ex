@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   use TrifleApp, :html
 
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.LayoutTree
   alias TrifleApp.Components.DashboardWidgets.Registry
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
   alias TrifleApp.DesignSystem.ChartColors
@@ -38,20 +39,23 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       assigns
       |> assign_new(:transponder_info, fn -> %{} end)
 
-    grid_items =
+    root_items =
       case assigns.grid_items do
-        items when is_list(items) -> items
-        _ -> grid_items(assigns.dashboard)
+        items when is_list(items) -> LayoutTree.normalize_root_items(items)
+        _ -> root_grid_items(assigns.dashboard)
       end
 
-    assigns =
-      assigns
-      |> assign(:grid_items, grid_items)
-      |> assign(:has_grid_items, grid_items != [])
+    widget_items = LayoutTree.flatten_widgets(root_items)
 
     assigns =
       assigns
-      |> assign_new(:text_items, fn -> text_items(assigns.grid_items) end)
+      |> assign(:grid_items, root_items)
+      |> assign(:widget_items, widget_items)
+      |> assign(:has_grid_items, root_items != [])
+
+    assigns =
+      assigns
+      |> assign_new(:text_items, fn -> text_items(widget_items) end)
       |> assign_new(:list, fn -> %{} end)
       |> assign_new(:distribution, fn -> %{} end)
       |> assign_new(:export_params, fn -> %{} end)
@@ -83,37 +87,60 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-cols="12"
         data-min-rows="8"
         data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
+        data-add-group-btn-id={"dashboard-" <> @dashboard.id <> "-add-group"}
         data-colors={ChartColors.json_palette()}
         data-initial-grid={Jason.encode!(@grid_items)}
         data-dashboard-id={@dashboard.id}
         data-public-token={@public_token}
       >
-        <%= for widget <- @grid_items do %>
-          <.grid_item
-            widget={widget}
-            grid_dom_id={@grid_dom_id}
-            editable={!@is_public_access && @current_user && @can_edit_dashboard}
-            kpi_values={@kpi_values}
-            kpi_visuals={@kpi_visuals}
-            timeseries={@timeseries}
-            category={@category}
-            table={@table}
-            text_widgets={@text_widgets}
-            list={@list}
-            distribution={@distribution}
-            export_params={@export_params}
-            print_mode={@print_mode}
-            dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
-            dashboard={@dashboard}
-            widget_export={@widget_export}
-            transponder_info={@transponder_info}
-          />
+        <%= for item <- @grid_items do %>
+          <%= if group_item?(item) do %>
+            <.group_item
+              group={item}
+              grid_dom_id={@grid_dom_id}
+              editable={!@is_public_access && @current_user && @can_edit_dashboard}
+              kpi_values={@kpi_values}
+              kpi_visuals={@kpi_visuals}
+              timeseries={@timeseries}
+              category={@category}
+              table={@table}
+              text_widgets={@text_widgets}
+              list={@list}
+              distribution={@distribution}
+              export_params={@export_params}
+              print_mode={@print_mode}
+              dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
+              dashboard={@dashboard}
+              widget_export={@widget_export}
+              transponder_info={@transponder_info}
+            />
+          <% else %>
+            <.grid_item
+              widget={item}
+              grid_dom_id={@grid_dom_id}
+              editable={!@is_public_access && @current_user && @can_edit_dashboard}
+              kpi_values={@kpi_values}
+              kpi_visuals={@kpi_visuals}
+              timeseries={@timeseries}
+              category={@category}
+              table={@table}
+              text_widgets={@text_widgets}
+              list={@list}
+              distribution={@distribution}
+              export_params={@export_params}
+              print_mode={@print_mode}
+              dashboard_id={Map.get(@dashboard, :id) || Map.get(@dashboard, "id")}
+              dashboard={@dashboard}
+              widget_export={@widget_export}
+              transponder_info={@transponder_info}
+            />
+          <% end %>
         <% end %>
       </div>
     </div>
 
     <div class="hidden" aria-hidden="true">
-      <%= for widget <- @grid_items do %>
+      <%= for widget <- @widget_items do %>
         <% payload = widget_payload(assigns, widget) %>
         <div
           id={widget_dom_id(@grid_dom_id, "widget-data", payload.widget_id)}
@@ -1057,6 +1084,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :transponder_info, :map, default: %{}
   attr :grid_dom_id, :string, default: nil
+  attr :nested, :boolean, default: false
 
   def grid_item(assigns) do
     widget_type = widget_type(assigns.widget)
@@ -1094,6 +1122,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:print_mode, Map.get(assigns, :print_mode, false))
       |> assign(:widget_export, normalize_widget_export(Map.get(assigns, :widget_export)))
       |> assign(:transponder_info, Map.get(assigns, :transponder_info, %{}))
+      |> assign(
+        :handle_class,
+        if(Map.get(assigns, :nested, false),
+          do: "nested-grid-widget-handle",
+          else: "root-grid-widget-handle"
+        )
+      )
 
     ~H"""
     <div
@@ -1103,6 +1138,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       gs-x={@grid.x}
       gs-y={@grid.y}
       gs-id={@widget_id}
+      data-item-kind="widget"
     >
       <div
         class={@content_classnames}
@@ -1115,7 +1151,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         style={content_style(@widget_type, @text_dataset)}
       >
         <div class={@header_classnames} style={header_style(@widget_type)}>
-          <div class="grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0">
+          <div class={[
+            "grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0",
+            @handle_class
+          ]}>
             <div
               class={@title_classnames}
               aria-hidden={title_aria_hidden(@widget_type)}
@@ -1320,6 +1359,143 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     """
   end
 
+  attr :group, :map, required: true
+  attr :editable, :boolean, default: false
+  attr :kpi_values, :map, default: %{}
+  attr :kpi_visuals, :map, default: %{}
+  attr :timeseries, :map, default: %{}
+  attr :category, :map, default: %{}
+  attr :table, :map, default: %{}
+  attr :text_widgets, :map, default: %{}
+  attr :list, :map, default: %{}
+  attr :distribution, :map, default: %{}
+  attr :export_params, :map, default: %{}
+  attr :print_mode, :boolean, default: false
+  attr :dashboard_id, :string, default: nil
+  attr :dashboard, :map, required: true
+  attr :widget_export, :map, default: %{type: :dashboard}
+  attr :transponder_info, :map, default: %{}
+  attr :grid_dom_id, :string, default: nil
+
+  def group_item(assigns) do
+    group_id = widget_id(assigns.group)
+    children = LayoutTree.group_children(assigns.group)
+
+    assigns =
+      assigns
+      |> assign(:group_id, group_id)
+      |> assign(:grid, grid_position(assigns.group))
+      |> assign(:min_grid, group_min_grid_position(assigns.group))
+      |> assign(:title, widget_title(assigns.group))
+      |> assign(:children, children)
+      |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
+
+    ~H"""
+    <div
+      class="grid-stack-item"
+      gs-w={@grid.w}
+      gs-h={@grid.h}
+      gs-x={@grid.x}
+      gs-y={@grid.y}
+      gs-id={@group_id}
+      gs-min-w={@min_grid.w}
+      gs-min-h={@min_grid.h}
+      data-item-kind="group"
+    >
+      <div
+        id={widget_dom_id(@grid_dom_id, "grid-widget-content", @group_id)}
+        class="grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group"
+        data-widget-id={@group_id}
+        data-widget-type="group"
+        data-item-kind="group"
+        data-widget-title={@title}
+      >
+        <div class="grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80">
+          <div class="grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0">
+            <div
+              class="font-semibold truncate text-slate-800 dark:text-slate-100"
+              data-original-title={@title}
+            >
+              {@title}
+            </div>
+          </div>
+          <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+            <%= if @editable do %>
+              <button
+                type="button"
+                class="grid-widget-edit inline-flex items-center p-1 rounded group"
+                data-widget-id={@group_id}
+                title="Edit group"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-100"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </button>
+            <% end %>
+          </div>
+        </div>
+
+        <div class="flex-1 min-h-0 px-2 pb-2">
+          <div class="relative h-full min-h-0" data-group-grid-shell="1">
+            <div
+              class="grid-stack grid-stack-group h-full min-h-0 rounded-md border border-dashed border-slate-300/90 dark:border-slate-600 bg-transparent"
+              data-group-grid="1"
+              data-group-id={@group_id}
+              data-cols="12"
+            >
+              <%= for child <- @children do %>
+                <.grid_item
+                  widget={child}
+                  nested={true}
+                  grid_dom_id={@grid_dom_id}
+                  editable={@editable}
+                  kpi_values={@kpi_values}
+                  kpi_visuals={@kpi_visuals}
+                  timeseries={@timeseries}
+                  category={@category}
+                  table={@table}
+                  text_widgets={@text_widgets}
+                  list={@list}
+                  distribution={@distribution}
+                  export_params={@export_params}
+                  print_mode={@print_mode}
+                  dashboard_id={@dashboard_id}
+                  dashboard={@dashboard}
+                  widget_export={@widget_export}
+                  transponder_info={@transponder_info}
+                />
+              <% end %>
+            </div>
+
+            <div
+              :if={@children == []}
+              class="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500"
+            >
+              Drag widgets here
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   defp widget_payload(assigns, widget) do
     widget_id = widget_id(widget)
     widget_type = widget_type(widget)
@@ -1372,6 +1548,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     Registry.widget_type(widget)
   end
 
+  defp group_item?(widget), do: LayoutTree.group?(widget)
+
   defp widget_id(widget) do
     widget
     |> Map.get("id") || widget |> Map.get(:id) || widget |> Map.get("uuid") ||
@@ -1405,43 +1583,52 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     |> Enum.into(%{}, fn {k, value} -> {k, to_string(value)} end)
   end
 
+  defp group_min_grid_position(widget) do
+    LayoutTree.group_children(widget)
+    |> Enum.reduce(%{w: 1, h: 1}, fn child, acc ->
+      child_x = child |> Map.get("x") || child |> Map.get(:x) || 0
+      child_y = child |> Map.get("y") || child |> Map.get(:y) || 0
+      child_w = child |> Map.get("w") || child |> Map.get(:w) || 1
+      child_h = child |> Map.get("h") || child |> Map.get(:h) || 1
+
+      %{
+        w: max(acc.w, child_x + child_w),
+        h: max(acc.h, child_y + child_h)
+      }
+    end)
+    |> Enum.into(%{}, fn {k, value} -> {k, to_string(value)} end)
+  end
+
   defp widget_title(widget) do
     widget["title"] || widget[:title] || default_title(widget)
   end
 
   defp default_title(widget) do
-    widget_id = widget_id(widget)
-    prefix = "Widget "
+    if group_item?(widget) do
+      LayoutTree.default_group_title()
+    else
+      widget_id = widget_id(widget)
+      prefix = "Widget "
 
-    suffix =
-      case widget_id do
-        nil -> "—"
-        value -> String.slice(value, 0, 6)
-      end
+      suffix =
+        case widget_id do
+          nil -> "—"
+          value -> String.slice(value, 0, 6)
+        end
 
-    prefix <> suffix
+      prefix <> suffix
+    end
   end
 
-  def grid_items(dashboard) when is_map(dashboard) do
-    payload =
-      Map.get(dashboard, :payload) ||
-        Map.get(dashboard, "payload") ||
-        %{}
+  def root_grid_items(dashboard) when is_map(dashboard),
+    do: LayoutTree.root_items_from_dashboard(dashboard)
 
-    payload
-    |> Map.get("grid") ||
-      Map.get(payload, :grid) ||
-      []
-      |> normalize_items()
-  end
+  def root_grid_items(_dashboard), do: []
+
+  def grid_items(dashboard) when is_map(dashboard),
+    do: dashboard |> root_grid_items() |> LayoutTree.flatten_widgets()
 
   def grid_items(_dashboard), do: []
 
   def text_items(grid_items), do: TextWidgets.widgets(grid_items)
-
-  defp normalize_items(items) when is_list(items) do
-    Enum.map(items, &Registry.normalize_widget/1)
-  end
-
-  defp normalize_items(_other), do: []
 end
