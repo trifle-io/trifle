@@ -26,16 +26,22 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       let chart = this._tsCharts[it.id];
       const initTheme = isDarkMode ? 'dark' : undefined;
       const ensureInit = () => {
+        const syncGroup = this._tsSyncGroupForWidget(it.id);
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
           chart = echarts.init(container, initTheme, withChartOpts());
-          chart.group = this._tsSyncGroup;
-          if (this._tsSyncGroup && !this._tsSyncConnected) {
-            try { echarts.connect(this._tsSyncGroup); this._tsSyncConnected = true; } catch (_) {}
-          }
+          chart.group = syncGroup;
+          chart.__tsWidgetId = String(it.id || '');
+          chart.__tsSyncGroup = syncGroup;
+          this._registerTsSyncGroup(syncGroup);
           this._tsCharts[it.id] = chart;
-        } else if (chart && chart.group !== this._tsSyncGroup) {
-          chart.group = this._tsSyncGroup;
+        } else {
+          chart.__tsWidgetId = String(it.id || '');
+          chart.__tsSyncGroup = syncGroup;
+          if (chart.group !== syncGroup) {
+            chart.group = syncGroup;
+          }
+          this._registerTsSyncGroup(syncGroup);
         }
         const type = (it.chart_type || 'line');
         const isBar = type === 'bar';
@@ -474,6 +480,16 @@ export const createDashboardGridTimeseriesRendererMethods = ({
   _bind_ts_sync(chart, widgetId) {
     if (!chart || typeof chart.on !== 'function') return;
     const id = String(widgetId || '');
+    const resolveSyncGroup = () => {
+      const syncGroup = this._tsSyncGroupForWidget(id);
+      chart.__tsWidgetId = id;
+      chart.__tsSyncGroup = syncGroup;
+      if (chart.group !== syncGroup) {
+        chart.group = syncGroup;
+      }
+      this._registerTsSyncGroup(syncGroup);
+      return syncGroup;
+    };
     if (chart.__tsSyncHandlers) {
       const { pointer, leave, dom, out } = chart.__tsSyncHandlers;
       try { chart.off('updateAxisPointer', pointer); } catch (_) {}
@@ -486,19 +502,26 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     }
     const pointer = (event) => {
       if (this._tsSyncApplying) return;
-      if (!this._tsCharts || Object.keys(this._tsCharts).length <= 1) return;
+      const syncGroup = resolveSyncGroup();
+      if (this._tsHoveringGroup && this._tsHoveringGroup !== syncGroup) {
+        this._cancel_ts_hide();
+        this._apply_ts_sync({ type: 'hide', sourceId: this._tsHoveringId, syncGroup: this._tsHoveringGroup });
+      } else {
+        this._cancel_ts_hide();
+      }
+      if (this._tsChartsForGroup(syncGroup).length <= 1) return;
       const axisInfo = event && Array.isArray(event.axesInfo) ? event.axesInfo[0] : null;
       const value = axisInfo ? axisInfo.value : null;
       if (!Number.isFinite(value) && typeof value !== 'string') return;
-      this._cancel_ts_hide();
       this._tsHoveringId = id;
+      this._tsHoveringGroup = syncGroup;
       this._tsLastValue = value;
-      this._queue_ts_sync({ type: 'show', value, sourceId: id });
+      this._queue_ts_sync({ type: 'show', value, sourceId: id, syncGroup });
       this._kick_ts_sync_loop();
       this._ensure_ts_pointer_listener();
     };
-    const leave = () => this._schedule_ts_hide(id);
-    const out = () => this._schedule_ts_hide(id);
+    const leave = () => this._schedule_ts_hide(id, resolveSyncGroup());
+    const out = () => this._schedule_ts_hide(id, resolveSyncGroup());
     chart.on('updateAxisPointer', pointer);
     const dom = chart.getDom ? chart.getDom() : null;
     if (dom && dom.addEventListener) {
@@ -522,8 +545,13 @@ export const createDashboardGridTimeseriesRendererMethods = ({
 
   _apply_ts_sync(payload) {
     if (!payload || !this._tsCharts) return;
+    const syncGroup = payload.syncGroup || null;
     const entries = Object.entries(this._tsCharts)
-      .filter(([, chart]) => chart && !(chart.isDisposed && chart.isDisposed()));
+      .filter(([, chart]) => {
+        if (!chart || (chart.isDisposed && chart.isDisposed())) return false;
+        if (!syncGroup) return true;
+        return chart.__tsSyncGroup === syncGroup;
+      });
     if (entries.length === 0) return;
     if (entries.length === 1 && payload.type === 'show') return;
     const { type, value } = payload;
@@ -556,16 +584,22 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     if (this._tsSyncLoop) return;
     const tick = () => {
       this._tsSyncLoop = null;
-      if (!this._tsHoveringId || this._tsLastValue == null) {
+      if (!this._tsHoveringId || this._tsLastValue == null || !this._tsHoveringGroup) {
         return;
       }
-      this._apply_ts_sync({ type: 'show', value: this._tsLastValue, sourceId: this._tsHoveringId });
+      this._apply_ts_sync({
+        type: 'show',
+        value: this._tsLastValue,
+        sourceId: this._tsHoveringId,
+        syncGroup: this._tsHoveringGroup
+      });
       this._tsSyncLoop = requestAnimationFrame(tick);
     };
     this._tsSyncLoop = requestAnimationFrame(tick);
   },
 
-  _schedule_ts_hide(sourceId) {
+  _schedule_ts_hide(sourceId, syncGroup = this._tsHoveringGroup) {
+    if (!syncGroup) return;
     if (this._tsHideTimer) return;
     if (this._tsSyncLoop) {
       cancelAnimationFrame(this._tsSyncLoop);
@@ -573,9 +607,12 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     }
     this._tsHideTimer = setTimeout(() => {
       this._tsHideTimer = null;
-      this._tsHoveringId = null;
-      this._tsLastValue = null;
-      this._queue_ts_sync({ type: 'hide', sourceId });
+      if (this._tsHoveringGroup === syncGroup) {
+        this._tsHoveringId = null;
+        this._tsHoveringGroup = null;
+        this._tsLastValue = null;
+      }
+      this._queue_ts_sync({ type: 'hide', sourceId, syncGroup });
     }, 120);
   },
 
@@ -589,23 +626,24 @@ export const createDashboardGridTimeseriesRendererMethods = ({
   _ensure_ts_pointer_listener() {
     if (this._tsPointerMove) return;
     this._tsPointerMove = (e) => {
-      if (!this._tsHoveringId) return;
-      const inside = this._point_inside_ts(e.clientX, e.clientY);
+      if (!this._tsHoveringId || !this._tsHoveringGroup) return;
+      const inside = this._point_inside_ts(e.clientX, e.clientY, this._tsHoveringGroup);
       if (inside) {
         this._cancel_ts_hide();
       } else {
-        this._schedule_ts_hide(this._tsHoveringId);
+        this._schedule_ts_hide(this._tsHoveringId, this._tsHoveringGroup);
       }
     };
     window.addEventListener('pointermove', this._tsPointerMove, true);
   },
 
-  _point_inside_ts(x, y) {
+  _point_inside_ts(x, y, syncGroup = null) {
     if (!this._tsCharts) return false;
     const charts = Object.values(this._tsCharts);
     for (let i = 0; i < charts.length; i += 1) {
       const chart = charts[i];
       if (!chart || (chart.isDisposed && chart.isDisposed())) continue;
+      if (syncGroup && chart.__tsSyncGroup !== syncGroup) continue;
       const dom = chart.getDom ? chart.getDom() : null;
       if (!dom || dom.offsetParent === null) continue;
       const rect = dom.getBoundingClientRect();

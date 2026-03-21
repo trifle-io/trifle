@@ -141,12 +141,13 @@ Hooks.DashboardGrid = {
     };
     window.addEventListener('phx:page-loading-stop', this._onPageLoadingStop);
     this._sparkTimers = {};
-    this._tsSyncGroup = ['ts-sync', this.el.dataset.dashboardId || this.el.id || 'grid', this.el.dataset.publicToken || 'priv'].join(':');
+    this._tsSyncGroupBase = ['ts-sync', this.el.dataset.dashboardId || this.el.id || 'grid', this.el.dataset.publicToken || 'priv'].join(':');
+    this._tsConnectedGroups = new Set();
     this._tsSyncPending = null;
     this._tsSyncRaf = null;
     this._tsSyncApplying = false;
-    this._tsSyncConnected = false;
     this._tsHoveringId = null;
+    this._tsHoveringGroup = null;
     this._tsLastValue = null;
     this._tsSyncLoop = null;
     this._tsHideTimer = null;
@@ -562,9 +563,15 @@ Hooks.DashboardGrid = {
       this._layoutResizeObserver = null;
     }
     this._cancelDeferredResize();
-    this._tsSyncConnected = false;
     this._tsHoveringId = null;
+    this._tsHoveringGroup = null;
     this._tsLastValue = null;
+    if (this._tsConnectedGroups && typeof echarts.disconnect === 'function') {
+      this._tsConnectedGroups.forEach((groupKey) => {
+        try { echarts.disconnect(groupKey); } catch (_) {}
+      });
+      this._tsConnectedGroups.clear();
+    }
   },
 
   initGrid() {
@@ -635,12 +642,14 @@ Hooks.DashboardGrid = {
       const owner = grid.el && grid.el.closest ? grid.el.closest('.grid-stack-item[data-item-kind="group"]') : null;
       if (grid === this.grid) {
         this._ensureGroupGrids();
+        this._syncTimeseriesHoverGroups();
         return;
       }
       if (owner) {
         this._syncGroupGridGeometry(owner, grid);
         this._updateGroupEmptyHint(owner);
       }
+      this._syncTimeseriesHoverGroups();
       requestAnimationFrame(() => this._refreshAllGroupHints());
     };
     grid.on('resizestart', (_event, el) => {
@@ -808,6 +817,52 @@ Hooks.DashboardGrid = {
   _groupGridElement(groupItem) {
     if (!groupItem || !groupItem.querySelector) return null;
     return groupItem.querySelector('.grid-stack[data-group-grid="1"]');
+  },
+
+  _tsSyncScopeForItem(item) {
+    const groupGrid = item && item.closest ? item.closest('.grid-stack[data-group-grid="1"]') : null;
+    const groupId = groupGrid && groupGrid.dataset ? groupGrid.dataset.groupId : null;
+    return groupId ? `group:${groupId}` : 'root';
+  },
+
+  _tsSyncGroupForWidget(widgetId) {
+    const safeId = widgetId == null ? '' : String(widgetId);
+    const item = safeId && this.el
+      ? this.el.querySelector(`.grid-stack-item[gs-id="${safeId}"]`)
+      : null;
+    return `${this._tsSyncGroupBase}:${this._tsSyncScopeForItem(item)}`;
+  },
+
+  _registerTsSyncGroup(syncGroup) {
+    if (!syncGroup || !echarts || typeof echarts.connect !== 'function') return;
+    if (!this._tsConnectedGroups) {
+      this._tsConnectedGroups = new Set();
+    }
+    if (this._tsConnectedGroups.has(syncGroup)) return;
+    try {
+      echarts.connect(syncGroup);
+      this._tsConnectedGroups.add(syncGroup);
+    } catch (_) {}
+  },
+
+  _tsChartsForGroup(syncGroup) {
+    if (!syncGroup || !this._tsCharts) return [];
+    return Object.entries(this._tsCharts)
+      .filter(([, chart]) => chart && !(chart.isDisposed && chart.isDisposed()) && chart.__tsSyncGroup === syncGroup);
+  },
+
+  _syncTimeseriesHoverGroups() {
+    if (!this._tsCharts) return;
+    Object.entries(this._tsCharts).forEach(([widgetId, chart]) => {
+      if (!chart || (chart.isDisposed && chart.isDisposed())) return;
+      const syncGroup = this._tsSyncGroupForWidget(widgetId);
+      chart.__tsWidgetId = String(widgetId);
+      chart.__tsSyncGroup = syncGroup;
+      if (chart.group !== syncGroup) {
+        chart.group = syncGroup;
+      }
+      this._registerTsSyncGroup(syncGroup);
+    });
   },
 
   _syncItemHandleClass(item, nested = false) {
@@ -984,6 +1039,7 @@ Hooks.DashboardGrid = {
     this._pruneStaleGroupGrids(seen);
     this._refreshAllGroupHints();
     this._observeLayoutResizeTargets();
+    this._syncTimeseriesHoverGroups();
   },
 
   _refreshAllGroupHints() {
