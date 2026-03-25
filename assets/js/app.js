@@ -1992,16 +1992,12 @@ window.TrifleDownloads = window.TrifleDownloads || {};
 
 Hooks.PathAutocomplete = {
   mounted() {
-    this.input = this.el.querySelector('[data-role="path-input"]');
-    this.suggestionBox = this.el.querySelector('[data-role="suggestions"]');
+    this.input = null;
+    this.suggestionBox = null;
     this.matches = [];
     this.activeIndex = -1;
     this.visible = false;
     this.suppressNextFilter = false;
-
-    this.loadOptions();
-
-    if (!this.input || !this.suggestionBox) return;
 
     this.handleInput = () => this.filterSuggestions();
     this.handleFocus = () => this.openSuggestions();
@@ -2010,10 +2006,8 @@ Hooks.PathAutocomplete = {
     };
     this.handleKeydown = (event) => this.onKeydown(event);
 
-    this.input.addEventListener('input', this.handleInput);
-    this.input.addEventListener('focus', this.handleFocus);
-    this.input.addEventListener('blur', this.handleBlur);
-    this.input.addEventListener('keydown', this.handleKeydown);
+    this.loadOptions();
+    this.refreshElements();
 
     // Show initial matches if input already has a value
     if (document.activeElement === this.input) {
@@ -2024,18 +2018,57 @@ Hooks.PathAutocomplete = {
   updated() {
     const previous = JSON.stringify(this.options || []);
     this.loadOptions();
-    if (JSON.stringify(this.options) !== previous) {
+
+    const elementsChanged = this.refreshElements();
+    if (elementsChanged) {
+      if (document.activeElement === this.input) {
+        this.filterSuggestions();
+      } else {
+        this.hideSuggestions();
+      }
+      return;
+    }
+
+    if (document.activeElement === this.input || JSON.stringify(this.options) !== previous) {
       this.filterSuggestions();
     }
   },
 
   destroyed() {
+    this.detachInputListeners();
+    if (this._blurTimer) clearTimeout(this._blurTimer);
+  },
+
+  refreshElements() {
+    const nextInput = this.el.querySelector('[data-role="path-input"]');
+    const nextSuggestionBox = this.el.querySelector('[data-role="suggestions"]');
+
+    if (nextInput === this.input && nextSuggestionBox === this.suggestionBox) {
+      return false;
+    }
+
+    this.detachInputListeners();
+    this.input = nextInput;
+    this.suggestionBox = nextSuggestionBox;
+    this.attachInputListeners();
+
+    return true;
+  },
+
+  attachInputListeners() {
+    if (!this.input || !this.suggestionBox) return;
+    this.input.addEventListener('input', this.handleInput);
+    this.input.addEventListener('focus', this.handleFocus);
+    this.input.addEventListener('blur', this.handleBlur);
+    this.input.addEventListener('keydown', this.handleKeydown);
+  },
+
+  detachInputListeners() {
     if (!this.input) return;
     this.input.removeEventListener('input', this.handleInput);
     this.input.removeEventListener('focus', this.handleFocus);
     this.input.removeEventListener('blur', this.handleBlur);
     this.input.removeEventListener('keydown', this.handleKeydown);
-    if (this._blurTimer) clearTimeout(this._blurTimer);
   },
 
   loadOptions() {
@@ -2218,12 +2251,40 @@ Hooks.PathAutocomplete = {
 Hooks.WidgetSeriesRows = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId;
+    this.seriesTextInputSelector =
+      'input[name^="widget_series_path["], input[data-role="series-expression"], input[data-role="series-label"]';
+    this.inputDebounceMs = 250;
+    this._rowsInputTimer = null;
+    this._lastRowsPayload = null;
 
     this.pushRows = (rows) => {
+      const payload = JSON.stringify(rows || []);
+      if (payload === this._lastRowsPayload) return;
+      this._lastRowsPayload = payload;
+
       this.pushEvent('widget_series_rows_update', {
         widget_id: this.widgetId,
         rows
       });
+    };
+
+    this.queueRowsPush = () => {
+      if (this._rowsInputTimer) clearTimeout(this._rowsInputTimer);
+
+      // Keep the editor responsive and avoid rebuilding the preview on every keypress.
+      this._rowsInputTimer = setTimeout(() => {
+        this._rowsInputTimer = null;
+        this.pushRows(this.readRows());
+      }, this.inputDebounceMs);
+    };
+
+    this.flushRowsPush = () => {
+      if (this._rowsInputTimer) {
+        clearTimeout(this._rowsInputTimer);
+        this._rowsInputTimer = null;
+      }
+
+      this.pushRows(this.readRows());
     };
 
     this.handleClick = (event) => {
@@ -2249,6 +2310,11 @@ Hooks.WidgetSeriesRows = {
         return;
       }
 
+      if (this._rowsInputTimer) {
+        clearTimeout(this._rowsInputTimer);
+        this._rowsInputTimer = null;
+      }
+
       this.pushRows(rows);
     };
 
@@ -2271,6 +2337,12 @@ Hooks.WidgetSeriesRows = {
       if (input.matches('input[type="radio"][name^="widget_series_color_selector["]')) {
         event.stopPropagation();
         this.pushRows(this.readRows());
+        return;
+      }
+
+      if (input.matches(this.seriesTextInputSelector)) {
+        event.stopPropagation();
+        this.flushRowsPush();
       }
     };
 
@@ -2278,26 +2350,30 @@ Hooks.WidgetSeriesRows = {
       const input = event.target;
       if (!input) return;
 
-      if (
-        input.matches(
-          'input[name^="widget_series_path["], input[data-role="series-expression"], input[data-role="series-label"]'
-        )
-      ) {
+      if (input.matches(this.seriesTextInputSelector)) {
         event.stopPropagation();
-        this.pushRows(this.readRows());
+        this.queueRowsPush();
       }
     };
 
     this.el.addEventListener('click', this.handleClick);
     this.el.addEventListener('change', this.handleChange);
     this.el.addEventListener('input', this.handleInput);
+
+    this._lastRowsPayload = JSON.stringify(this.readRows());
   },
 
   updated() {
     this.widgetId = this.el.dataset.widgetId;
+    this._lastRowsPayload = JSON.stringify(this.readRows());
   },
 
   destroyed() {
+    if (this._rowsInputTimer) {
+      clearTimeout(this._rowsInputTimer);
+      this._rowsInputTimer = null;
+    }
+
     if (this.handleClick) {
       this.el.removeEventListener('click', this.handleClick);
     }
