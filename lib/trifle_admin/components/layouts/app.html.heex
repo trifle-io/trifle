@@ -7,7 +7,7 @@
     <% secondary_items = secondary_nav_items() %>
     <div class="relative min-h-screen">
       <div
-        class="fixed inset-0 z-30 bg-slate-950/35 backdrop-blur-sm lg:hidden"
+        class="fixed inset-0 z-[100] bg-slate-950/35 backdrop-blur-sm lg:hidden"
         x-cloak
         x-show="mobileOpen"
         x-transition.opacity
@@ -17,7 +17,7 @@
 
       <aside
         id="admin-sidebar-shell"
-        class="fixed inset-y-0 left-0 z-40 flex max-w-[calc(100vw-1rem)] -translate-x-full flex-col p-3 transition-all duration-300 ease-out lg:translate-x-0 lg:p-4 lg:w-[18rem]"
+        class="fixed inset-y-0 left-0 z-[110] flex max-w-[calc(100vw-1rem)] -translate-x-full flex-col p-3 transition-all duration-300 ease-out lg:translate-x-0 lg:p-4 lg:w-[18rem]"
         data-sidebar-shell="admin"
         phx-hook="FastTooltip"
         x-bind:class="(mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0') + ' ' + (compact ? 'lg:w-[6.25rem]' : 'lg:w-[18rem]')"
@@ -43,11 +43,19 @@
                 x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr("Admin")}
                 x-bind:class="compact ? 'h-10 w-10 rounded-xl' : 'h-12 w-12 rounded-xl'"
               >
-                <span class="flex items-center justify-center" x-bind:class="compact ? 'h-6' : 'h-8'">
+                <span
+                  class="flex items-center justify-center"
+                  x-bind:class="compact ? 'h-6' : 'h-8'"
+                >
                   <.trifle_logo class="h-full w-auto shrink-0" />
                 </span>
               </div>
-              <div class="min-w-0 flex-1" x-cloak x-show="!compact" x-transition.opacity.duration.150ms>
+              <div
+                class="min-w-0 flex-1"
+                x-cloak
+                x-show="!compact"
+                x-transition.opacity.duration.150ms
+              >
                 <p class="truncate text-base font-semibold text-slate-950 dark:text-white">
                   Admin
                 </p>
@@ -69,7 +77,9 @@
                   type="button"
                   class="hidden items-center justify-center bg-white/75 text-slate-500 ring-1 ring-slate-200/80 hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 lg:inline-flex dark:bg-slate-900/80 dark:text-slate-400 dark:ring-white/10 dark:hover:bg-slate-800 dark:hover:text-white"
                   data-fast-tooltip
-                  x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr("Expand sidebar")}
+                  x-bind:data-tooltip={
+                    TrifleWeb.SidebarHelpers.compact_tooltip_expr("Expand sidebar")
+                  }
                   x-bind:class="compact ? 'h-8 w-8 rounded-xl' : 'h-10 w-10 rounded-2xl'"
                   x-on:click="toggleDesktop()"
                   x-bind:aria-label="compact ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -86,9 +96,7 @@
           </div>
 
           <div class="relative flex min-h-0 flex-1 flex-col px-3 py-4">
-            <div
-              class="min-h-0 flex-1 overflow-y-auto pr-1"
-            >
+            <div class="min-h-0 flex-1 overflow-y-auto pr-1">
               <div x-bind:class="compact ? 'space-y-5' : 'space-y-4'">
                 <div
                   x-bind:class="compact ? 'space-y-2' : 'rounded-2xl border border-white/80 bg-white/72 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_35px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'"
@@ -124,19 +132,16 @@
               </div>
             </div>
 
-            <div
-              class="mt-auto shrink-0"
-              x-bind:class="compact ? 'pt-5' : 'pt-6'"
-            >
-              <div
-                x-bind:class="compact ? '' : 'rounded-2xl border border-white/80 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_40px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'"
-              >
+            <div class="mt-auto shrink-0" x-bind:class="compact ? 'pt-5' : 'pt-6'">
+              <div x-bind:class="compact ? '' : 'rounded-2xl border border-white/80 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_40px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'">
                 <div class="relative" x-data="{open: false}" x-on:click.away="open = false">
                   <button
                     type="button"
                     class="flex items-center text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                     data-fast-tooltip
-                    x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr(@current_user.email)}
+                    x-bind:data-tooltip={
+                      TrifleWeb.SidebarHelpers.compact_tooltip_expr(@current_user.email)
+                    }
                     x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center rounded-xl bg-white/92 shadow-[0_18px_34px_-28px_rgba(15,23,42,0.55)] ring-1 ring-slate-200/80 hover:bg-white dark:bg-slate-900/88 dark:ring-white/10 dark:hover:bg-slate-800' : 'w-full justify-start rounded-xl bg-slate-950/[0.03] px-3 py-2.5 hover:bg-white focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-white/[0.04] dark:hover:bg-white/[0.07] dark:focus-visible:ring-offset-slate-900'"
                     x-on:click="open = !open"
                     x-bind:aria-expanded="open.toString()"
@@ -202,7 +207,11 @@
                           stroke-linejoin="round"
                           d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z"
                         />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                        />
                       </svg>
                       <span>Account Settings</span>
                     </.link>
@@ -275,7 +284,7 @@
       {@inner_content}
     </main>
   <% end %>
-
+  
 <!-- Global notification live region, render this permanently at the end of the document -->
   <%= if Phoenix.Flash.get(@flash, :info) do %>
     <div
