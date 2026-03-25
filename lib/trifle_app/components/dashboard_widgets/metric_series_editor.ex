@@ -107,7 +107,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                         value={row["path"]}
                         placeholder={@path_placeholder}
                         path_options={@path_options}
-                        wrapper_class="relative"
+                        annotated={true}
+                        preview_class={path_preview_classes()}
+                        wrapper_class="relative z-20"
                         input_class={joined_input_classes()}
                       />
                       <input
@@ -218,7 +220,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   end
 
   defp series_input_shell_classes do
-    "flex h-10 min-w-0 items-center overflow-hidden rounded-md border border-gray-300 bg-white transition-colors focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500 dark:border-slate-600 dark:bg-slate-700"
+    "flex h-10 min-w-0 items-center rounded-md border border-gray-300 bg-white transition-colors focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500 dark:border-slate-600 dark:bg-slate-700"
   end
 
   defp shell_divider_classes do
@@ -227,6 +229,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
   defp joined_input_classes do
     "block h-full w-full !rounded-none !border-0 !bg-transparent px-3 py-2 text-sm text-gray-900 !shadow-none placeholder:text-gray-400 focus:!border-0 focus:!outline-none focus:!ring-0 focus:!shadow-none dark:text-white dark:placeholder:text-slate-400"
+  end
+
+  defp path_preview_classes do
+    "flex items-center overflow-hidden whitespace-nowrap px-3 py-2 text-sm text-gray-900 dark:text-white"
   end
 
   defp kind_icon_classes(active?) do

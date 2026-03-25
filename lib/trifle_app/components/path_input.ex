@@ -9,6 +9,8 @@ defmodule TrifleApp.Components.PathInput do
   attr :placeholder, :string, default: ""
   attr :path_options, :list, default: []
   attr :wrapper_class, :string, default: nil
+  attr :annotated, :boolean, default: false
+  attr :preview_class, :string, default: nil
 
   attr :input_class, :string,
     default:
@@ -24,6 +26,16 @@ defmodule TrifleApp.Components.PathInput do
       phx-hook="PathAutocomplete"
       data-paths={@options_json}
     >
+      <%= if @annotated do %>
+        <div
+          id={"#{@id}-preview"}
+          data-role="path-preview"
+          phx-update="ignore"
+          aria-hidden="true"
+          class={["pointer-events-none absolute inset-0 hidden", @preview_class]}
+        >
+        </div>
+      <% end %>
       <input
         id={@id}
         type="text"
@@ -39,7 +51,7 @@ defmodule TrifleApp.Components.PathInput do
         id={"#{@id}-suggestions"}
         data-role="suggestions"
         phx-update="ignore"
-        class="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
+        class="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
       >
       </div>
     </div>

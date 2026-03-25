@@ -1990,17 +1990,91 @@ window.TrifleDownloads = window.TrifleDownloads || {};
   });
 })(window.TrifleDownloads);
 
+const PATH_PREVIEW_COLORS = [
+  '#14b8a6',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#06b6d4',
+  '#10b981',
+  '#f97316',
+  '#ec4899',
+  '#3b82f6',
+  '#84cc16',
+  '#f43f5e',
+  '#6366f1'
+];
+
+const escapePathPreviewHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const pathPreviewColorForIndex = (index) => {
+  const safeIndex = Number.isFinite(index) && index >= 0 ? index : 0;
+  return PATH_PREVIEW_COLORS[safeIndex % PATH_PREVIEW_COLORS.length] || PATH_PREVIEW_COLORS[0];
+};
+
+const pathPreviewSiblingComponents = (paths, pathSoFar) => {
+  const prefix = pathSoFar.length > 0 ? `${pathSoFar.join('.')}.` : '';
+
+  return Array.from(
+    new Set(
+      (Array.isArray(paths) ? paths : [])
+        .filter((path) => {
+          if (typeof path !== 'string') return false;
+
+          return (
+            path.startsWith(prefix) &&
+            path.split('.').length > pathSoFar.length
+          );
+        })
+        .map((path) => path.split('.').slice(pathSoFar.length)[0] || '')
+    )
+  ).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+};
+
+const formatAnnotatedPathPreview = (value, allPaths) => {
+  const displayPath = String(value ?? '');
+  if (!displayPath) return '';
+
+  const components = displayPath.split('.');
+  const pathSoFar = [];
+
+  return components
+    .map((component) => {
+      const siblings = pathPreviewSiblingComponents(allPaths, pathSoFar);
+      const index = Math.max(siblings.indexOf(component), 0);
+      const color = pathPreviewColorForIndex(index);
+
+      pathSoFar.push(component);
+
+      return `<span style="color: ${color} !important">${escapePathPreviewHtml(component)}</span>`;
+    })
+    .join('<span class="text-slate-400 dark:text-slate-500">.</span>');
+};
+
 Hooks.PathAutocomplete = {
   mounted() {
     this.input = null;
+    this.pathPreview = null;
     this.suggestionBox = null;
     this.matches = [];
     this.activeIndex = -1;
     this.visible = false;
     this.suppressNextFilter = false;
 
-    this.handleInput = () => this.filterSuggestions();
-    this.handleFocus = () => this.openSuggestions();
+    this.handleInput = () => {
+      this.syncPathPreview();
+      this.filterSuggestions();
+    };
+    this.handleFocus = () => {
+      this.syncPathPreview();
+      this.openSuggestions();
+    };
     this.handleBlur = () => {
       this._blurTimer = setTimeout(() => this.hideSuggestions(), 100);
     };
@@ -2008,6 +2082,7 @@ Hooks.PathAutocomplete = {
 
     this.loadOptions();
     this.refreshElements();
+    this.syncPathPreview();
 
     // Show initial matches if input already has a value
     if (document.activeElement === this.input) {
@@ -2020,6 +2095,7 @@ Hooks.PathAutocomplete = {
     this.loadOptions();
 
     const elementsChanged = this.refreshElements();
+    this.syncPathPreview();
     if (elementsChanged) {
       if (document.activeElement === this.input) {
         this.filterSuggestions();
@@ -2036,19 +2112,29 @@ Hooks.PathAutocomplete = {
 
   destroyed() {
     this.detachInputListeners();
+    if (this.input) {
+      this.input.style.removeProperty('color');
+      this.input.style.removeProperty('caret-color');
+    }
     if (this._blurTimer) clearTimeout(this._blurTimer);
   },
 
   refreshElements() {
     const nextInput = this.el.querySelector('[data-role="path-input"]');
+    const nextPathPreview = this.el.querySelector('[data-role="path-preview"]');
     const nextSuggestionBox = this.el.querySelector('[data-role="suggestions"]');
 
-    if (nextInput === this.input && nextSuggestionBox === this.suggestionBox) {
+    if (
+      nextInput === this.input &&
+      nextPathPreview === this.pathPreview &&
+      nextSuggestionBox === this.suggestionBox
+    ) {
       return false;
     }
 
     this.detachInputListeners();
     this.input = nextInput;
+    this.pathPreview = nextPathPreview;
     this.suggestionBox = nextSuggestionBox;
     this.attachInputListeners();
 
@@ -2098,6 +2184,8 @@ Hooks.PathAutocomplete = {
         return null;
       })
       .filter(Boolean);
+
+    this.optionValues = this.options.map((item) => item.value);
   },
 
   filterSuggestions() {
@@ -2235,6 +2323,7 @@ Hooks.PathAutocomplete = {
     if (!item || !this.input) return;
 
     this.input.value = item.value;
+    this.syncPathPreview();
     this.suppressNextFilter = true;
     this.hideSuggestions();
 
@@ -2245,6 +2334,33 @@ Hooks.PathAutocomplete = {
 
     this.input.dispatchEvent(new Event('input', { bubbles: true }));
     this.input.dispatchEvent(new Event('change', { bubbles: true }));
+  },
+
+  syncPathPreview() {
+    if (!this.input) return;
+
+    const value = this.input.value || '';
+
+    if (!this.pathPreview) {
+      this.input.style.removeProperty('color');
+      this.input.style.removeProperty('caret-color');
+      return;
+    }
+
+    this.input.style.setProperty('color', 'transparent');
+    this.input.style.setProperty(
+      'caret-color',
+      document.documentElement.classList.contains('dark') ? '#ffffff' : '#111827'
+    );
+
+    if (!value) {
+      this.pathPreview.innerHTML = '';
+      this.pathPreview.classList.add('hidden');
+      return;
+    }
+
+    this.pathPreview.innerHTML = formatAnnotatedPathPreview(value, this.optionValues || []);
+    this.pathPreview.classList.remove('hidden');
   }
 }
 

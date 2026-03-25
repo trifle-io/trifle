@@ -130,4 +130,17 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     assert html =~ ~s(id="widget-series-path-table-atom-0")
     assert html =~ "widget-series-color-table-atom"
   end
+
+  test "table editor renders annotated widget path inputs" do
+    html =
+      render_component(&TableEditor.editor/1,
+        widget: %{"id" => "table-annotated", "type" => "table", "series" => []},
+        path_options: [%{"value" => "state.success", "label" => "state.success"}]
+      )
+
+    assert html =~ ~s(data-role="path-preview")
+    assert html =~ ~s(data-paths=)
+    assert html =~ "state.success"
+    refute html =~ "overflow-hidden rounded-md border border-gray-300"
+  end
 end
