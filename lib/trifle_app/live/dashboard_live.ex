@@ -656,7 +656,11 @@ defmodule TrifleApp.DashboardLive do
 
             {:noreply,
              socket
-             |> push_event("dashboard_grid_widget_updated", %{id: id, title: title})}
+             |> push_event("dashboard_grid_widget_updated", %{
+               id: id,
+               title: title,
+               type: resolved_type
+             })}
 
           {:error, _} ->
             {:noreply, socket}
@@ -3267,12 +3271,18 @@ defmodule TrifleApp.DashboardLive do
   defp merge_dashboard_layout_node(item, index) when is_map(item) do
     id = dashboard_grid_node_id(item)
     existing = Map.get(index, id, %{})
-    type = resolve_saved_widget_type(existing, Map.get(item, "type", widget_type(existing)))
+
+    type =
+      preserved_dashboard_layout_type(existing) ||
+        resolve_saved_widget_type(existing, Map.get(item, "type", widget_type(existing)))
+
+    title = preserved_dashboard_layout_title(existing, item)
 
     base =
       existing
-      |> Map.merge(Map.take(item, ["id", "title", "type", "x", "y", "w", "h"]))
+      |> Map.merge(Map.take(item, ["id", "x", "y", "w", "h"]))
       |> Map.put("id", id)
+      |> Map.put("title", title)
       |> Map.put("type", type)
 
     case type do
@@ -3294,6 +3304,37 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp merge_dashboard_layout_node(item, _index), do: item
+
+  defp preserved_dashboard_layout_type(existing) when is_map(existing) do
+    case widget_type(existing) do
+      type
+      when type in [
+             "group",
+             "kpi",
+             "timeseries",
+             "category",
+             "distribution",
+             "heatmap",
+             "table",
+             "list",
+             "text"
+           ] ->
+        type
+
+      _ ->
+        nil
+    end
+  end
+
+  defp preserved_dashboard_layout_type(_), do: nil
+
+  defp preserved_dashboard_layout_title(existing, item) when is_map(existing) and is_map(item) do
+    Map.get(existing, "title") || Map.get(item, "title") || ""
+  end
+
+  defp preserved_dashboard_layout_title(_existing, item) when is_map(item) do
+    Map.get(item, "title") || ""
+  end
 
   defp dashboard_grid_index(items) when is_list(items) do
     Enum.reduce(items, %{}, fn item, acc ->

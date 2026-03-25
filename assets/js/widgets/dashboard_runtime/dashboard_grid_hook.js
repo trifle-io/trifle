@@ -390,25 +390,52 @@ Hooks.DashboardGrid = {
     } catch (_) {}
 
     // LiveView -> Hook updates for widget edits/deletes
-    this.handleEvent('dashboard_grid_widget_updated', ({ id, title }) => {
+    this.handleEvent('dashboard_grid_widget_updated', ({ id, title, type }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
       const content = item && item.querySelector('.grid-stack-item-content');
       const titleEl = item && item.querySelector('.grid-widget-title');
-      const isTextWidget = content && content.dataset.textWidget === '1';
+      const widgetType = type ? String(type).toLowerCase() : ((content && content.dataset && content.dataset.widgetType) || '');
+      const isTextWidget = widgetType === 'text';
+      const isListWidget = widgetType === 'list';
+
+      // The dashboard grid root uses phx-update="ignore", so widget shell metadata
+      // must be updated manually after saves or the next layout sync can serialize
+      // stale widget types/titles back to the server.
+      if (content && content.dataset) {
+        if (widgetType) {
+          content.dataset.widgetType = widgetType;
+        }
+
+        if (isTextWidget) {
+          content.dataset.textWidget = '1';
+        } else {
+          delete content.dataset.textWidget;
+        }
+
+        if (isListWidget) {
+          content.dataset.listWidget = '1';
+        } else {
+          delete content.dataset.listWidget;
+        }
+      }
 
       if (titleEl) {
         if (isTextWidget) {
           const rawTitle = title || '';
-          content.dataset.widgetTitle = rawTitle;
+          if (content && content.dataset) {
+            content.dataset.widgetTitle = rawTitle;
+          }
           titleEl.dataset.originalTitle = rawTitle;
           titleEl.textContent = '';
           titleEl.setAttribute('aria-hidden', 'true');
+          titleEl.setAttribute('role', 'presentation');
           titleEl.style.opacity = '0';
           titleEl.style.pointerEvents = 'none';
         } else {
-          if (content) delete content.dataset.widgetTitle;
+          if (content && content.dataset) delete content.dataset.widgetTitle;
           titleEl.dataset.originalTitle = title || '';
           titleEl.removeAttribute('aria-hidden');
+          titleEl.removeAttribute('role');
           titleEl.style.opacity = '';
           titleEl.style.pointerEvents = '';
           titleEl.textContent = title;

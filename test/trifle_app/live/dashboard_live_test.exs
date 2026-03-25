@@ -262,6 +262,92 @@ defmodule TrifleApp.DashboardLiveTest do
            ]
   end
 
+  test "stale layout updates do not revert a saved widget type", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "widget-1",
+              "type" => "kpi",
+              "title" => "Original KPI",
+              "function" => "mean",
+              "size" => "m",
+              "subtype" => "number",
+              "series" => [
+                %{
+                  "kind" => "path",
+                  "path" => "metrics.count",
+                  "expression" => "",
+                  "label" => "",
+                  "visible" => true,
+                  "color_selector" => "default.*"
+                }
+              ],
+              "x" => 0,
+              "y" => 0,
+              "w" => 4,
+              "h" => 2
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Request Rate",
+      "ts_chart_type" => "bar",
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "metrics.count"},
+      "widget_series_expression" => %{"0" => ""},
+      "widget_series_label" => %{"0" => ""},
+      "widget_series_visible" => %{"0" => "true"},
+      "widget_series_color_selector" => %{"0" => "default.3"}
+    })
+
+    assert_push_event(view, "dashboard_grid_widget_updated", %{
+      id: "widget-1",
+      title: "Request Rate",
+      type: "timeseries"
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["type"] == "timeseries"
+    assert widget["title"] == "Request Rate"
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [
+        %{
+          "id" => "widget-1",
+          "title" => "Original KPI",
+          "type" => "kpi",
+          "x" => 0,
+          "y" => 0,
+          "w" => 4,
+          "h" => 2
+        }
+      ]
+    })
+
+    updated_after_layout = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget_after_layout] = updated_after_layout.payload["grid"]
+
+    assert widget_after_layout["type"] == "timeseries"
+    assert widget_after_layout["title"] == "Request Rate"
+    assert widget_after_layout["chart_type"] == "bar"
+  end
+
   test "widget series row updates rerender the edit form immediately", %{
     conn: conn,
     dashboard: dashboard,
