@@ -19,6 +19,7 @@ defmodule TrifleApp.DashboardLive do
     LayoutTree,
     MetricSeries,
     Registry,
+    SeriesOrder,
     Table,
     Text,
     Timeseries,
@@ -732,6 +733,17 @@ defmodule TrifleApp.DashboardLive do
          type when not is_nil(type) <- param(params, "chart_type") do
       update_editing_widget(socket, id, fn widget ->
         Map.put(widget, "chart_type", normalize_cat_chart_type(type))
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("set_series_sort", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         sort when not is_nil(sort) <- param(params, "option") do
+      update_editing_widget(socket, id, fn widget ->
+        Map.put(widget, "series_sort", normalize_series_sort_param(sort))
       end)
     else
       _ -> {:noreply, socket}
@@ -2696,6 +2708,7 @@ defmodule TrifleApp.DashboardLive do
         widget =
           widget
           |> put_metric_series(params, widget, preserve_empty: true)
+          |> drop_series_display_options()
           |> Map.put(
             "function",
             Map.get(params, "kpi_function", Map.get(widget, "function", "mean"))
@@ -2740,6 +2753,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
         |> Map.put("legend", Map.has_key?(params, "ts_legend"))
         |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
+        |> put_series_display_options(params, widget, tooltip_key: "ts_tooltip_split")
 
       "category" ->
         widget
@@ -2748,10 +2762,12 @@ defmodule TrifleApp.DashboardLive do
           "chart_type",
           Map.get(params, "cat_chart_type", Map.get(widget, "chart_type") || "bar")
         )
+        |> put_series_display_options(params, widget)
 
       "table" ->
         widget
         |> put_metric_series(params, widget, preserve_empty: true)
+        |> drop_series_display_options()
 
       widget_type when widget_type in ["distribution", "heatmap"] ->
         build_distribution_widget(widget, widget_type, params, widget, path_options,
@@ -2779,6 +2795,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("limit", limit)
         |> Map.put("sort", sort)
         |> Map.put("label_strategy", label_strategy)
+        |> drop_series_display_options()
 
       "text" ->
         subtype =
@@ -2796,6 +2813,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.put("type", "text")
           |> Map.put("subtype", subtype)
           |> Map.put("color", color_id)
+          |> drop_series_display_options()
           |> Map.delete("path_inputs")
           |> Map.delete("series")
           |> Map.delete("series_color_selectors")
@@ -2917,6 +2935,7 @@ defmodule TrifleApp.DashboardLive do
     |> Map.put("path_aggregation", path_aggregation)
     |> Map.put("widget_type", widget_type)
     |> put_heatmap_color_fields(widget_type, color_mode, color_config)
+    |> put_series_display_options(params, source_widget)
   end
 
   defp put_heatmap_color_fields(widget, "heatmap", color_mode, color_config) do
@@ -2937,6 +2956,53 @@ defmodule TrifleApp.DashboardLive do
     |> Map.put("series", metric_series_rows_from_params(params, source_widget, opts))
     |> MetricSeries.prune_legacy_metric_fields()
   end
+
+  defp put_series_display_options(widget, params, source_widget, opts \\ [])
+
+  defp put_series_display_options(widget, params, source_widget, opts)
+       when is_map(widget) and is_map(params) and is_map(source_widget) do
+    tooltip_key = Keyword.get(opts, :tooltip_key)
+
+    widget
+    |> Map.put(
+      "series_sort",
+      params
+      |> Map.get("series_sort", Map.get(source_widget, "series_sort"))
+      |> normalize_series_sort_param()
+    )
+    |> Map.put(
+      "series_priority",
+      params
+      |> Map.get("series_priority", Map.get(source_widget, "series_priority", []))
+      |> normalize_series_priority_param()
+    )
+    |> maybe_put_tooltip_split(params, source_widget, tooltip_key)
+  end
+
+  defp put_series_display_options(widget, _params, _source_widget, _opts), do: widget
+
+  defp maybe_put_tooltip_split(widget, _params, _source_widget, nil) do
+    Map.delete(widget, "tooltip_split")
+  end
+
+  defp maybe_put_tooltip_split(widget, params, source_widget, tooltip_key) do
+    widget
+    |> Map.put(
+      "tooltip_split",
+      params
+      |> Map.get(tooltip_key, Map.get(source_widget, "tooltip_split"))
+      |> normalize_widget_checkbox(false)
+    )
+  end
+
+  defp drop_series_display_options(widget) when is_map(widget) do
+    widget
+    |> Map.delete("series_sort")
+    |> Map.delete("series_priority")
+    |> Map.delete("tooltip_split")
+  end
+
+  defp drop_series_display_options(widget), do: widget
 
   defp metric_series_rows_from_params(params, source_widget, opts \\ []) do
     if metric_series_row_params_present?(params) do
@@ -3072,6 +3138,7 @@ defmodule TrifleApp.DashboardLive do
         base =
           base
           |> put_metric_series(params, item)
+          |> drop_series_display_options()
           |> Map.put("function", Map.get(params, "kpi_function", "mean"))
           |> Map.put("size", Map.get(params, "kpi_size", "m"))
           |> Map.put("subtype", subtype)
@@ -3118,6 +3185,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
         |> Map.put("legend", Map.has_key?(params, "ts_legend"))
         |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
+        |> put_series_display_options(params, item, tooltip_key: "ts_tooltip_split")
 
       "category" ->
         base
@@ -3126,10 +3194,12 @@ defmodule TrifleApp.DashboardLive do
           "chart_type",
           Map.get(params, "cat_chart_type", Map.get(item, "chart_type") || "bar")
         )
+        |> put_series_display_options(params, item)
 
       "table" ->
         base
         |> put_metric_series(params, item)
+        |> drop_series_display_options()
 
       widget_type when widget_type in ["distribution", "heatmap"] ->
         source_widget = distribution_widget_source_for_save(socket, id, item)
@@ -3163,6 +3233,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("limit", limit)
         |> Map.put("sort", sort)
         |> Map.put("label_strategy", label_strategy)
+        |> drop_series_display_options()
         |> Map.delete("empty_message")
 
       "text" ->
@@ -3179,6 +3250,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.put("type", "text")
           |> Map.put("subtype", subtype)
           |> Map.put("color", color_id)
+          |> drop_series_display_options()
           |> Map.delete("path")
           |> Map.delete("function")
           |> Map.delete("size")
@@ -3675,6 +3747,44 @@ defmodule TrifleApp.DashboardLive do
       "bar" -> "bar"
       "dots" -> "dots"
       _ -> "line"
+    end
+  end
+
+  defp normalize_series_sort_param(value), do: SeriesOrder.normalize_mode(value, "natural")
+  defp normalize_series_priority_param(value), do: SeriesOrder.normalize_priority(value)
+
+  defp normalize_widget_checkbox(value, default) do
+    case value do
+      values when is_list(values) ->
+        values
+        |> List.last()
+        |> normalize_widget_checkbox(default)
+
+      true ->
+        true
+
+      false ->
+        false
+
+      nil ->
+        default
+
+      _ ->
+        value
+        |> to_string()
+        |> String.trim()
+        |> String.downcase()
+        |> case do
+          "true" -> true
+          "1" -> true
+          "yes" -> true
+          "on" -> true
+          "false" -> false
+          "0" -> false
+          "no" -> false
+          "off" -> false
+          _ -> default
+        end
     end
   end
 

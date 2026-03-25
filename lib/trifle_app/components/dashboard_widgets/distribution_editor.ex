@@ -5,6 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
 
   alias TrifleApp.Components.DashboardWidgets.Helpers
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
+  alias TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
@@ -47,6 +48,8 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
         path_placeholder="metrics.distribution.*"
         path_help="Path rows can target wildcard bucket groups. Expression rows apply bucket-by-bucket after matching bindings and compatible bucket layouts."
       />
+
+      <SeriesDisplayEditor.controls widget={@widget} />
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>

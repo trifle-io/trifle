@@ -859,4 +859,39 @@ defmodule TrifleApp.DashboardLiveTest do
     assert widget["w"] == 4
     assert widget["h"] == 2
   end
+
+  test "timeseries save persists tooltip split and series ordering options", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Ordered Series",
+      "ts_chart_type" => "line",
+      "ts_tooltip_split" => "true",
+      "series_sort" => "alpha",
+      "series_priority" => "2\n10",
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "metrics.distribution.*"},
+      "widget_series_expression" => %{"0" => ""},
+      "widget_series_label" => %{"0" => ""},
+      "widget_series_visible" => %{"0" => "true"},
+      "widget_series_color_selector" => %{"0" => "default.*"}
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["type"] == "timeseries"
+    assert widget["title"] == "Ordered Series"
+    assert widget["tooltip_split"] == true
+    assert widget["series_sort"] == "alpha"
+    assert widget["series_priority"] == ["2", "10"]
+  end
 end

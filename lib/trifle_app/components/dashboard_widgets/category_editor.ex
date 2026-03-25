@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.CategoryEditor do
   use Phoenix.Component
 
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
+  alias TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
@@ -25,6 +26,10 @@ defmodule TrifleApp.Components.DashboardWidgets.CategoryEditor do
           path_placeholder="metrics.category.*"
           path_help="Use * to group dynamic category keys. Expression rows combine matching categories or wildcard bindings."
         />
+      </div>
+
+      <div class="sm:col-span-2">
+        <SeriesDisplayEditor.controls widget={@widget} />
       </div>
 
       <div>

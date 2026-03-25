@@ -196,7 +196,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Distribution do
               slice_count(series_struct)
             )
 
-          series = MetricSeriesEvaluator.distribution_series(resolved_rows, mode)
+          series = MetricSeriesEvaluator.distribution_series(resolved_rows, mode, item)
 
           series =
             case mode do

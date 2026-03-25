@@ -42,11 +42,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
     normalized = !!item["normalized"]
     legend = !!item["legend"]
     y_label = to_string(item["y_label"] || "")
+    tooltip_split = !!item["tooltip_split"]
 
     per_path =
       series_struct
       |> MetricSeriesEvaluator.resolve_timeline_rows(item)
-      |> MetricSeriesEvaluator.timeline_series()
+      |> MetricSeriesEvaluator.timeline_series(item)
       |> Enum.reduce([], fn series_entry, acc ->
         case Enum.find_index(acc, &(&1.name == series_entry.name)) do
           nil -> acc ++ [series_entry]
@@ -98,6 +99,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
       normalized: normalized,
       legend: legend,
       y_label: y_label,
+      tooltip_split: tooltip_split,
       series: series
     }
   end

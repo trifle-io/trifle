@@ -3,6 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
 
   alias Trifle.Stats.Series
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
+  alias TrifleApp.Components.DashboardWidgets.SeriesOrder
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -48,25 +49,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
     base_entries =
       series_struct
       |> MetricSeriesEvaluator.resolve_category_rows(item, slice_count)
-      |> MetricSeriesEvaluator.category_entries()
-      |> Enum.reduce({%{}, []}, fn entry, {acc_map, encounter_order} ->
+      |> MetricSeriesEvaluator.category_entries(item)
+      |> Enum.reduce(%{}, fn entry, acc_map ->
         updated_map =
           Map.update(acc_map, entry.name, entry, fn existing ->
             %{existing | value: normalize_number(existing.value) + normalize_number(entry.value)}
           end)
 
-        updated_order =
-          if entry.name in encounter_order, do: encounter_order, else: encounter_order ++ [entry.name]
-
-        {updated_map, updated_order}
+        updated_map
       end)
-      |> then(fn {acc_map, encounter_order} ->
-        acc_map
-        |> Map.values()
-        |> Enum.sort_by(fn entry ->
-          {Enum.find_index(encounter_order, &(&1 == entry.name)) || 1_000_000, natural_sort_key(entry.name)}
-        end)
-      end)
+      |> Map.values()
+      |> SeriesOrder.sort_named_items(item)
 
     data =
       Enum.map(base_entries, fn entry ->
@@ -78,41 +71,6 @@ defmodule TrifleApp.Components.DashboardWidgets.Category do
       chart_type: chart_type,
       data: data
     }
-  end
-
-  defp natural_sort_key(nil), do: [{:str, ""}]
-
-  defp natural_sort_key(name) when is_binary(name) do
-    case Regex.scan(~r/\d+|\D+/, name) do
-      [] ->
-        [{:str, String.downcase(name)}]
-
-      segments ->
-        segments
-        |> Enum.map(&List.first/1)
-        |> Enum.map(&natural_token/1)
-    end
-  end
-
-  defp natural_sort_key(other), do: other |> to_string() |> natural_sort_key()
-
-  defp natural_token(segment) do
-    cond do
-      segment == "" ->
-        {:str, ""}
-
-      true ->
-        case Integer.parse(segment) do
-          {int, ""} ->
-            {:num, int}
-
-          _ ->
-            case Float.parse(segment) do
-              {float, ""} -> {:num, float}
-              _ -> {:str, String.downcase(segment)}
-            end
-        end
-    end
   end
 
   defp normalize_number(%Decimal{} = d), do: Decimal.to_float(d)

@@ -5,6 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Transponder.ExpressionEngine
   alias TrifleApp.Components.DashboardWidgets.MetricSeries
+  alias TrifleApp.Components.DashboardWidgets.SeriesOrder
   alias TrifleApp.Components.DashboardWidgets.Timeseries
 
   @single_binding :__single_binding__
@@ -100,22 +101,28 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   def visible_rows(rows) when is_list(rows), do: Enum.filter(rows, &MetricSeries.visible?(&1.row))
   def visible_rows(_), do: []
 
-  def timeline_series(rows) when is_list(rows) do
+  def timeline_series(rows, widget \\ nil)
+
+  def timeline_series(rows, widget) when is_list(rows) do
     rows
     |> visible_rows()
-    |> Enum.flat_map(&timeline_entries_to_series/1)
+    |> Enum.flat_map(&timeline_entries_to_series(&1, widget))
   end
 
-  def category_entries(rows) when is_list(rows) do
+  def category_entries(rows, widget \\ nil)
+
+  def category_entries(rows, widget) when is_list(rows) do
     rows
     |> visible_rows()
-    |> Enum.flat_map(&category_entries_for_row/1)
+    |> Enum.flat_map(&category_entries_for_row(&1, widget))
   end
 
-  def distribution_series(rows, mode) when is_list(rows) do
+  def distribution_series(rows, mode, widget \\ nil)
+
+  def distribution_series(rows, mode, widget) when is_list(rows) do
     rows
     |> visible_rows()
-    |> Enum.flat_map(&distribution_entries_for_row(&1, mode))
+    |> Enum.flat_map(&distribution_entries_for_row(&1, mode, widget))
   end
 
   def primary_kpi_entry(rows) when is_list(rows) do
@@ -123,7 +130,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     |> visible_rows()
     |> Enum.find_value(fn resolved ->
       resolved.entries
-      |> sorted_entries()
+      |> sorted_entries(nil, default_mode: "alpha")
       |> List.first()
       |> case do
         nil -> nil
@@ -321,9 +328,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     resolved_row(row, index, shape, entries)
   end
 
-  defp timeline_entries_to_series(resolved) do
+  defp timeline_entries_to_series(resolved, widget) do
     resolved.entries
-    |> sorted_entries()
+    |> sorted_entries(widget)
     |> Enum.with_index()
     |> Enum.map(fn {{_binding_key, entry}, emitted_index} ->
       %{
@@ -352,9 +359,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     end)
   end
 
-  defp category_entries_for_row(resolved) do
+  defp category_entries_for_row(resolved, widget) do
     resolved.entries
-    |> sorted_entries()
+    |> sorted_entries(widget)
     |> Enum.with_index()
     |> Enum.map(fn {{_binding_key, entry}, emitted_index} ->
       %{
@@ -366,9 +373,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     end)
   end
 
-  defp distribution_entries_for_row(resolved, mode) do
+  defp distribution_entries_for_row(resolved, mode, widget) do
     resolved.entries
-    |> sorted_entries()
+    |> sorted_entries(widget)
     |> Enum.with_index()
     |> Enum.map(fn {{_binding_key, entry}, emitted_index} ->
       base = %{
@@ -771,9 +778,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
 
   defp value_key, do: :__value__
 
-  defp sorted_entries(entries) do
-    Enum.sort_by(entries, fn {_binding_key, entry} -> entry.name end)
-  end
+  defp sorted_entries(entries, widget, opts \\ []),
+    do: SeriesOrder.sort_entry_pairs(entries, widget, opts)
 
   defp sample_sort_key(%DateTime{} = dt), do: {:datetime, DateTime.to_unix(dt, :microsecond)}
   defp sample_sort_key(%NaiveDateTime{} = dt), do: {:naive_datetime, NaiveDateTime.to_iso8601(dt)}

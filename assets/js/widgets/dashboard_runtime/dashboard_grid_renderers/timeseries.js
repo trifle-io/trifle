@@ -1,3 +1,24 @@
+const escapeTimeseriesTooltipHtml = (value) =>
+  String(value == null ? '' : value).replace(/[&<>"']/g, (s) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[s]));
+
+const renderTimeseriesTooltipLines = (lines, split) => {
+  if (!split || lines.length <= 1) {
+    return `<div>${lines.join('<br/>')}</div>`;
+  }
+
+  return `
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;align-items:start;max-width:min(720px,calc(100vw - 48px));">
+      ${lines.map((line) => `<div style="min-width:0;white-space:normal;word-break:break-word;">${line}</div>`).join('')}
+    </div>
+  `;
+};
+
 export const createDashboardGridTimeseriesRendererMethods = ({
   echarts,
   withChartOpts,
@@ -55,6 +76,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         const gridLineColor = isDarkMode ? '#1F2937' : '#E5E7EB';
         const legendText = isDarkMode ? '#D1D5DB' : '#374151';
         const showLegend = !!it.legend;
+        const tooltipSplit = !!it.tooltip_split;
         const bottomPadding = showLegend ? 56 : 28;
         const chartFontFamily = 'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
         const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
@@ -411,15 +433,6 @@ export const createDashboardGridTimeseriesRendererMethods = ({
             yAxis.max = axisMax + pad;
           }
         }
-        const escapeHtml = (value) =>
-          String(value == null ? '' : value).replace(/[&<>"']/g, (s) => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-          }[s]));
-
         chart.setOption({
           backgroundColor: 'transparent',
           textStyle: { fontFamily: chartFontFamily },
@@ -441,7 +454,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
             formatter: (params) => {
               const list = Array.isArray(params) ? params : [];
               if (!list.length) return '';
-              const header = escapeHtml(list[0].axisValueLabel || '');
+              const header = escapeTimeseriesTooltipHtml(list[0].axisValueLabel || '');
               const formatValue = (val) => {
                 if (val == null) return '-';
                 if (normalized) {
@@ -452,11 +465,11 @@ export const createDashboardGridTimeseriesRendererMethods = ({
               };
               const lines = list.map((p) => {
                 const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
-                const seriesName = escapeHtml(p.seriesName || '');
+                const seriesName = escapeTimeseriesTooltipHtml(p.seriesName || '');
                 return `${p.marker || ''}${seriesName}: <strong>${formatValue(raw)}</strong>`;
               });
               const note = ongoingInfo ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>' : '';
-              return `<div>${header}</div><div>${lines.join('<br/>')}</div>${note}`;
+              return `<div>${header}</div>${renderTimeseriesTooltipLines(lines, tooltipSplit)}${note}`;
             }
           },
           series: finalSeries

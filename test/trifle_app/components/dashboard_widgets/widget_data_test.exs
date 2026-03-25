@@ -476,9 +476,61 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
       }
     ]
 
-    %{timeseries: [%{series: [%{name: "Double", data: data}]}]} = WidgetData.datasets(series, items)
+    %{timeseries: [%{series: [%{name: "Double", data: data}]}]} =
+      WidgetData.datasets(series, items)
 
     assert length(data) == 3
     assert Enum.map(data, &Enum.at(&1, 1)) == [10.0, nil, 14.0]
+  end
+
+  test "timeseries wildcard series support natural order and priority overrides" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC"),
+      DateTime.from_naive!(~N[2024-02-02 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{"metrics" => %{"distribution" => %{"1" => 1, "10" => 10, "2" => 2}}},
+      %{"metrics" => %{"distribution" => %{"1" => 3, "10" => 30, "2" => 6}}}
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    base_item = %{
+      "type" => "timeseries",
+      "chart_type" => "line",
+      "series" => [
+        %{
+          "kind" => "path",
+          "path" => "metrics.distribution.*",
+          "expression" => "",
+          "label" => "",
+          "visible" => true,
+          "color_selector" => "default.*"
+        }
+      ]
+    }
+
+    items = [
+      Map.put(base_item, "id", "ts-natural"),
+      base_item
+      |> Map.put("id", "ts-priority")
+      |> Map.put("series_sort", "alpha")
+      |> Map.put("series_priority", ["2", "10"])
+    ]
+
+    %{timeseries: [natural, priority]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(natural.series, & &1.name) == [
+             "metrics.distribution.1",
+             "metrics.distribution.2",
+             "metrics.distribution.10"
+           ]
+
+    assert Enum.map(priority.series, & &1.name) == [
+             "metrics.distribution.2",
+             "metrics.distribution.10",
+             "metrics.distribution.1"
+           ]
   end
 end

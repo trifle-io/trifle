@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
   use Phoenix.Component
 
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
+  alias TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
@@ -18,6 +19,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
       |> assign(:stacked, !!Map.get(widget, "stacked"))
       |> assign(:normalized, !!Map.get(widget, "normalized"))
       |> assign(:legend, !!Map.get(widget, "legend"))
+      |> assign(:tooltip_split, !!Map.get(widget, "tooltip_split"))
 
     ~H"""
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -28,6 +30,10 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
           path_placeholder="metrics.sales"
           path_help="Use * to expand dynamic keys such as breakdown.*. Hidden source rows can feed visible expression rows."
         />
+      </div>
+
+      <div class="sm:col-span-2">
+        <SeriesDisplayEditor.controls widget={@widget} />
       </div>
 
       <div>
@@ -72,6 +78,11 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
         </label>
         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
           <input type="checkbox" name="ts_legend" checked={@legend} /> Show legend
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+          <input type="hidden" name="ts_tooltip_split" value="false" />
+          <input type="checkbox" name="ts_tooltip_split" value="true" checked={@tooltip_split} />
+          Split tooltip
         </label>
       </div>
     </div>

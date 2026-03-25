@@ -12,6 +12,28 @@ export const registerExpandedWidgetViewHook = (Hooks, deps) => {
     buildDistributionScatterSeries,
     parseJsonSafe
   } = deps;
+
+  const escapeTimeseriesTooltipHtml = (value) =>
+    String(value == null ? '' : value).replace(/[&<>"']/g, (s) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    }[s]));
+
+  const renderTimeseriesTooltipLines = (lines, split) => {
+    if (!split || lines.length <= 1) {
+      return `<div>${lines.join('<br/>')}</div>`;
+    }
+
+    return `
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;align-items:start;max-width:min(720px,calc(100vw - 48px));">
+        ${lines.map((line) => `<div style="min-width:0;white-space:normal;word-break:break-word;">${line}</div>`).join('')}
+      </div>
+    `;
+  };
+
 Hooks.ExpandedWidgetView = {
   mounted() {
     this.chartTarget = this.el.querySelector('[data-role="chart"]');
@@ -323,6 +345,7 @@ Hooks.ExpandedWidgetView = {
     const stacked = !!data.stacked;
     const normalized = !!data.normalized;
     const showLegend = !!data.legend;
+    const tooltipSplit = !!data.tooltip_split;
     const bottomPadding = showLegend ? 56 : 28;
     const palette = Array.isArray(this.colors) ? this.colors : [];
     const chartFontFamily =
@@ -460,7 +483,7 @@ Hooks.ExpandedWidgetView = {
         formatter: (params) => {
           const list = Array.isArray(params) ? params : [];
           if (!list.length) return '';
-          const header = list[0].axisValueLabel || '';
+          const header = escapeTimeseriesTooltipHtml(list[0].axisValueLabel || '');
           const formatValue = (val) => {
             if (val == null) return '-';
             if (normalized) {
@@ -471,12 +494,12 @@ Hooks.ExpandedWidgetView = {
           };
           const lines = list.map((p) => {
             const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
-            return `${p.marker || ''}${p.seriesName || ''}: <strong>${formatValue(raw)}</strong>`;
+            return `${p.marker || ''}${escapeTimeseriesTooltipHtml(p.seriesName || '')}: <strong>${formatValue(raw)}</strong>`;
           });
           const note = ongoingInfo
             ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>'
             : '';
-          return `<div>${header}</div><div>${lines.join('<br/>')}</div>${note}`;
+          return `<div>${header}</div>${renderTimeseriesTooltipLines(lines, tooltipSplit)}${note}`;
         }
       },
       series: finalSeries
