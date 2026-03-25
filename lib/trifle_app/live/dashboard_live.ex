@@ -2753,7 +2753,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
         |> Map.put("legend", Map.has_key?(params, "ts_legend"))
         |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
-        |> put_series_display_options(params, widget, tooltip_key: "ts_tooltip_split")
+        |> put_series_display_options(params, widget, hovered_key: "ts_hovered_only")
 
       "category" ->
         widget
@@ -2961,9 +2961,10 @@ defmodule TrifleApp.DashboardLive do
 
   defp put_series_display_options(widget, params, source_widget, opts)
        when is_map(widget) and is_map(params) and is_map(source_widget) do
-    tooltip_key = Keyword.get(opts, :tooltip_key)
+    hovered_key = Keyword.get(opts, :hovered_key)
 
     widget
+    |> Map.delete("tooltip_split")
     |> Map.put(
       "series_sort",
       params
@@ -2976,21 +2977,21 @@ defmodule TrifleApp.DashboardLive do
       |> Map.get("series_priority", Map.get(source_widget, "series_priority", []))
       |> normalize_series_priority_param()
     )
-    |> maybe_put_tooltip_split(params, source_widget, tooltip_key)
+    |> maybe_put_hovered_only(params, source_widget, hovered_key)
   end
 
   defp put_series_display_options(widget, _params, _source_widget, _opts), do: widget
 
-  defp maybe_put_tooltip_split(widget, _params, _source_widget, nil) do
-    Map.delete(widget, "tooltip_split")
+  defp maybe_put_hovered_only(widget, _params, _source_widget, nil) do
+    Map.delete(widget, "hovered_only")
   end
 
-  defp maybe_put_tooltip_split(widget, params, source_widget, tooltip_key) do
+  defp maybe_put_hovered_only(widget, params, source_widget, hovered_key) do
     widget
     |> Map.put(
-      "tooltip_split",
+      "hovered_only",
       params
-      |> Map.get(tooltip_key, Map.get(source_widget, "tooltip_split"))
+      |> Map.get(hovered_key, Map.get(source_widget, "hovered_only"))
       |> normalize_widget_checkbox(false)
     )
   end
@@ -2999,6 +3000,7 @@ defmodule TrifleApp.DashboardLive do
     widget
     |> Map.delete("series_sort")
     |> Map.delete("series_priority")
+    |> Map.delete("hovered_only")
     |> Map.delete("tooltip_split")
   end
 
@@ -3185,7 +3187,7 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
         |> Map.put("legend", Map.has_key?(params, "ts_legend"))
         |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
-        |> put_series_display_options(params, item, tooltip_key: "ts_tooltip_split")
+        |> put_series_display_options(params, item, hovered_key: "ts_hovered_only")
 
       "category" ->
         base

@@ -22,16 +22,41 @@ export const registerExpandedWidgetViewHook = (Hooks, deps) => {
       "'": '&#039;'
     }[s]));
 
-  const renderTimeseriesTooltipLines = (lines, split) => {
-    if (!split || lines.length <= 1) {
-      return `<div>${lines.join('<br/>')}</div>`;
-    }
+  const renderTimeseriesTooltipLines = (lines) => `<div>${lines.join('<br/>')}</div>`;
 
-    return `
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;align-items:start;max-width:min(720px,calc(100vw - 48px));">
-        ${lines.map((line) => `<div style="min-width:0;white-space:normal;word-break:break-word;">${line}</div>`).join('')}
-      </div>
-    `;
+  const resolveHoveredTimeseriesParam = (chart, params) => {
+    if (!chart || !Array.isArray(params) || params.length <= 1) return null;
+
+    const pointer = chart.__tsPointerPosition;
+    if (!pointer || !Number.isFinite(pointer.y)) return null;
+
+    let bestParam = null;
+    let bestDiff = Infinity;
+
+    params.forEach((param) => {
+      const point =
+        Array.isArray(param?.value) ? param.value :
+        (param?.data && Array.isArray(param.data) ? param.data : null);
+
+      if (!Array.isArray(point) || point.length < 2) return;
+
+      const x = point[0];
+      const y = Number(point[1]);
+      if (!Number.isFinite(y)) return;
+
+      try {
+        const pixel = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+        if (!Array.isArray(pixel) || pixel.length < 2 || !Number.isFinite(pixel[1])) return;
+
+        const diff = Math.abs(pixel[1] - pointer.y);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestParam = param;
+        }
+      } catch (_) {}
+    });
+
+    return bestParam;
   };
 
 Hooks.ExpandedWidgetView = {
@@ -345,7 +370,7 @@ Hooks.ExpandedWidgetView = {
     const stacked = !!data.stacked;
     const normalized = !!data.normalized;
     const showLegend = !!data.legend;
-    const tooltipSplit = !!data.tooltip_split;
+    const tooltipHoveredOnly = !!data.hovered_only;
     const bottomPadding = showLegend ? 56 : 28;
     const palette = Array.isArray(this.colors) ? this.colors : [];
     const chartFontFamily =
@@ -481,9 +506,12 @@ Hooks.ExpandedWidgetView = {
         appendToBody: true,
         textStyle: { fontFamily: chartFontFamily },
         formatter: (params) => {
-          const list = Array.isArray(params) ? params : [];
+          const list = Array.isArray(params) ? params : [params];
           if (!list.length) return '';
-          const header = escapeTimeseriesTooltipHtml(list[0].axisValueLabel || '');
+          const hovered = tooltipHoveredOnly ? resolveHoveredTimeseriesParam(chart, list) : null;
+          const effectiveList = hovered ? [hovered] : list;
+          if (!effectiveList.length) return '';
+          const header = escapeTimeseriesTooltipHtml(effectiveList[0].axisValueLabel || '');
           const formatValue = (val) => {
             if (val == null) return '-';
             if (normalized) {
@@ -492,18 +520,45 @@ Hooks.ExpandedWidgetView = {
             }
             return formatCompactNumber(val);
           };
-          const lines = list.map((p) => {
+          const lines = effectiveList.map((p) => {
             const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
             return `${p.marker || ''}${escapeTimeseriesTooltipHtml(p.seriesName || '')}: <strong>${formatValue(raw)}</strong>`;
           });
           const note = ongoingInfo
             ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>'
             : '';
-          return `<div>${header}</div>${renderTimeseriesTooltipLines(lines, tooltipSplit)}${note}`;
+          return `<div>${header}</div>${renderTimeseriesTooltipLines(lines)}${note}`;
         }
       },
       series: finalSeries
     }, true);
+
+    if (chart.__tsHoveredOnlyHandlers) {
+      const { hover, globalout, zr } = chart.__tsHoveredOnlyHandlers;
+      if (zr && zr.off && hover) {
+        try { zr.off('mousemove', hover); } catch (_) {}
+      }
+      if (zr && zr.off && globalout) {
+        try { zr.off('globalout', globalout); } catch (_) {}
+      }
+    }
+
+    const hover = (event) => {
+      if (!tooltipHoveredOnly) return;
+      if (!event || !Number.isFinite(event.offsetX) || !Number.isFinite(event.offsetY)) return;
+      chart.__tsPointerPosition = { x: event.offsetX, y: event.offsetY };
+    };
+    const globalout = () => {
+      if (!tooltipHoveredOnly) return;
+      chart.__tsPointerPosition = null;
+    };
+
+    const zr = chart.getZr ? chart.getZr() : null;
+    if (zr && zr.on) {
+      zr.on('mousemove', hover);
+      zr.on('globalout', globalout);
+    }
+    chart.__tsHoveredOnlyHandlers = { hover, globalout, zr };
 
     try { chart.resize(); } catch (_) {}
     this.renderTimeseriesTable(data);

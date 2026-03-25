@@ -42,7 +42,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
     normalized = !!item["normalized"]
     legend = !!item["legend"]
     y_label = to_string(item["y_label"] || "")
-    tooltip_split = !!item["tooltip_split"]
+    hovered_only = !!item["hovered_only"]
 
     per_path =
       series_struct
@@ -99,7 +99,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
       normalized: normalized,
       legend: legend,
       y_label: y_label,
-      tooltip_split: tooltip_split,
+      hovered_only: hovered_only,
       series: series
     }
   end

@@ -143,4 +143,16 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     assert html =~ "state.success"
     refute html =~ "overflow-hidden rounded-md border border-gray-300"
   end
+
+  test "table editor keeps series rows in a two-line mobile layout before desktop grid" do
+    html =
+      render_component(&TableEditor.editor/1,
+        widget: %{"id" => "table-layout", "type" => "table", "series" => []},
+        path_options: []
+      )
+
+    assert html =~ "lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto]"
+    assert html =~ "grid-cols-[minmax(0,1fr)_9rem_auto]"
+    assert html =~ "sm:grid-cols-[minmax(0,1fr)_12rem_auto]"
+  end
 end

@@ -19,7 +19,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
       |> assign(:stacked, !!Map.get(widget, "stacked"))
       |> assign(:normalized, !!Map.get(widget, "normalized"))
       |> assign(:legend, !!Map.get(widget, "legend"))
-      |> assign(:tooltip_split, !!Map.get(widget, "tooltip_split"))
+      |> assign(:hovered_only, !!Map.get(widget, "hovered_only"))
 
     ~H"""
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -80,9 +80,9 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
           <input type="checkbox" name="ts_legend" checked={@legend} /> Show legend
         </label>
         <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-          <input type="hidden" name="ts_tooltip_split" value="false" />
-          <input type="checkbox" name="ts_tooltip_split" value="true" checked={@tooltip_split} />
-          Split tooltip
+          <input type="hidden" name="ts_hovered_only" value="false" />
+          <input type="checkbox" name="ts_hovered_only" value="true" checked={@hovered_only} />
+          Show only hovered series
         </label>
       </div>
     </div>

@@ -48,122 +48,126 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
             data-index={row["index"]}
             class={row_shell_classes()}
           >
-            <div class="grid gap-3 xl:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] xl:items-center">
-              <label class="inline-flex">
-                <input
-                  type="hidden"
-                  name={input_name("widget_series_visible", row["index"])}
-                  value="false"
-                />
-                <input
-                  type="checkbox"
-                  name={input_name("widget_series_visible", row["index"])}
-                  value="true"
-                  data-role="series-visible"
-                  checked={MetricSeries.visible?(row)}
-                  class="peer sr-only"
-                />
-                <span class={visibility_toggle_classes()}>
-                  <span class="sr-only">Toggle series visibility</span>
-                  {row["row_letter"]}
-                </span>
-              </label>
+            <div class="space-y-3 lg:grid lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] lg:items-center lg:gap-3 lg:space-y-0">
+              <div class="flex items-start gap-3 lg:contents">
+                <label class="inline-flex shrink-0">
+                  <input
+                    type="hidden"
+                    name={input_name("widget_series_visible", row["index"])}
+                    value="false"
+                  />
+                  <input
+                    type="checkbox"
+                    name={input_name("widget_series_visible", row["index"])}
+                    value="true"
+                    data-role="series-visible"
+                    checked={MetricSeries.visible?(row)}
+                    class="peer sr-only"
+                  />
+                  <span class={visibility_toggle_classes()}>
+                    <span class="sr-only">Toggle series visibility</span>
+                    {row["row_letter"]}
+                  </span>
+                </label>
 
-              <div class="min-w-0">
-                <div class={series_input_shell_classes()}>
-                  <label class={kind_icon_classes(MetricSeries.path_row?(row))}>
-                    <input
-                      type="radio"
-                      name={input_name("widget_series_kind", row["index"])}
-                      value="path"
-                      aria-label="Path series"
-                      data-role="series-kind"
-                      checked={MetricSeries.path_row?(row)}
-                      class="sr-only"
-                    />
-                    <span class="sr-only">Path series</span>
-                    <.path_icon />
-                  </label>
-                  <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
-                    <input
-                      type="radio"
-                      name={input_name("widget_series_kind", row["index"])}
-                      value="expression"
-                      aria-label="Expression series"
-                      data-role="series-kind"
-                      checked={MetricSeries.expression_row?(row)}
-                      class="sr-only"
-                    />
-                    <span class="sr-only">Expression series</span>
-                    <.formula_icon />
-                  </label>
-                  <div class={shell_divider_classes()}></div>
+                <div class="min-w-0 flex-1">
+                  <div class={series_input_shell_classes()}>
+                    <label class={kind_icon_classes(MetricSeries.path_row?(row))}>
+                      <input
+                        type="radio"
+                        name={input_name("widget_series_kind", row["index"])}
+                        value="path"
+                        aria-label="Path series"
+                        data-role="series-kind"
+                        checked={MetricSeries.path_row?(row)}
+                        class="sr-only"
+                      />
+                      <span class="sr-only">Path series</span>
+                      <.path_icon />
+                    </label>
+                    <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
+                      <input
+                        type="radio"
+                        name={input_name("widget_series_kind", row["index"])}
+                        value="expression"
+                        aria-label="Expression series"
+                        data-role="series-kind"
+                        checked={MetricSeries.expression_row?(row)}
+                        class="sr-only"
+                      />
+                      <span class="sr-only">Expression series</span>
+                      <.formula_icon />
+                    </label>
+                    <div class={shell_divider_classes()}></div>
 
-                  <div class="min-w-0 flex-1">
-                    <%= if MetricSeries.path_row?(row) do %>
-                      <.path_autocomplete_input
-                        id={"widget-series-path-#{@widget_id}-#{row["index"]}"}
-                        name={input_name("widget_series_path", row["index"])}
-                        value={row["path"]}
-                        placeholder={@path_placeholder}
-                        path_options={@path_options}
-                        annotated={true}
-                        preview_class={path_preview_classes()}
-                        wrapper_class="relative z-20"
-                        input_class={joined_input_classes()}
-                      />
-                      <input
-                        type="hidden"
-                        name={input_name("widget_series_expression", row["index"])}
-                        value=""
-                      />
-                    <% else %>
-                      <input
-                        type="text"
-                        name={input_name("widget_series_expression", row["index"])}
-                        value={row["expression"]}
-                        data-role="series-expression"
-                        class={joined_input_classes()}
-                        placeholder="a / b"
-                        spellcheck="false"
-                      />
-                      <input
-                        type="hidden"
-                        name={input_name("widget_series_path", row["index"])}
-                        value=""
-                      />
-                    <% end %>
+                    <div class="min-w-0 flex-1">
+                      <%= if MetricSeries.path_row?(row) do %>
+                        <.path_autocomplete_input
+                          id={"widget-series-path-#{@widget_id}-#{row["index"]}"}
+                          name={input_name("widget_series_path", row["index"])}
+                          value={row["path"]}
+                          placeholder={@path_placeholder}
+                          path_options={@path_options}
+                          annotated={true}
+                          preview_class={path_preview_classes()}
+                          wrapper_class="relative z-20"
+                          input_class={joined_input_classes()}
+                        />
+                        <input
+                          type="hidden"
+                          name={input_name("widget_series_expression", row["index"])}
+                          value=""
+                        />
+                      <% else %>
+                        <input
+                          type="text"
+                          name={input_name("widget_series_expression", row["index"])}
+                          value={row["expression"]}
+                          data-role="series-expression"
+                          class={joined_input_classes()}
+                          placeholder="a / b"
+                          spellcheck="false"
+                        />
+                        <input
+                          type="hidden"
+                          name={input_name("widget_series_path", row["index"])}
+                          value=""
+                        />
+                      <% end %>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <input
-                type="text"
-                name={input_name("widget_series_label", row["index"])}
-                value={row["label"]}
-                data-role="series-label"
-                class={input_classes()}
-                placeholder="Alias"
-              />
+              <div class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] lg:contents">
+                <input
+                  type="text"
+                  name={input_name("widget_series_label", row["index"])}
+                  value={row["label"]}
+                  data-role="series-label"
+                  class={input_classes()}
+                  placeholder="Alias"
+                />
 
-              <SeriesColorSelector.input
-                id_prefix={"widget-series-color-#{@widget_id}"}
-                name="widget_series_color_selector"
-                index={row["index"]}
-                selector={row["selector"]}
-                class="w-full"
-              />
+                <SeriesColorSelector.input
+                  id_prefix={"widget-series-color-#{@widget_id}"}
+                  name="widget_series_color_selector"
+                  index={row["index"]}
+                  selector={row["selector"]}
+                  class="w-full"
+                />
 
-              <button
-                type="button"
-                data-action="remove"
-                data-index={row["index"]}
-                class={remove_button_classes()}
-                aria-label="Remove series"
-                disabled={length(@rows) == 1}
-              >
-                <.remove_icon />
-              </button>
+                <button
+                  type="button"
+                  data-action="remove"
+                  data-index={row["index"]}
+                  class={remove_button_classes()}
+                  aria-label="Remove series"
+                  disabled={length(@rows) == 1}
+                >
+                  <.remove_icon />
+                </button>
+              </div>
             </div>
           </div>
         <% end %>

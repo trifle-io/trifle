@@ -860,7 +860,7 @@ defmodule TrifleApp.DashboardLiveTest do
     assert widget["h"] == 2
   end
 
-  test "timeseries save persists tooltip split and series ordering options", %{
+  test "timeseries save persists hovered-only tooltip and series ordering options", %{
     conn: conn,
     dashboard: dashboard,
     membership: membership
@@ -874,7 +874,7 @@ defmodule TrifleApp.DashboardLiveTest do
       "widget_type" => "timeseries",
       "widget_title" => "Ordered Series",
       "ts_chart_type" => "line",
-      "ts_tooltip_split" => "true",
+      "ts_hovered_only" => "true",
       "series_sort" => "alpha",
       "series_priority" => "2\n10",
       "widget_series_kind" => %{"0" => "path"},
@@ -890,7 +890,8 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert widget["type"] == "timeseries"
     assert widget["title"] == "Ordered Series"
-    assert widget["tooltip_split"] == true
+    assert widget["hovered_only"] == true
+    refute Map.has_key?(widget, "tooltip_split")
     assert widget["series_sort"] == "alpha"
     assert widget["series_priority"] == ["2", "10"]
   end
