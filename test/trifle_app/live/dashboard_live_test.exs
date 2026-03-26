@@ -791,6 +791,53 @@ defmodule TrifleApp.DashboardLiveTest do
     assert child["payload"] == "<h2>Hello</h2>"
   end
 
+  test "group layout updates can recover from a stale default widget type", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "group-1",
+              "type" => "kpi",
+              "title" => "",
+              "series" => [],
+              "x" => 0,
+              "y" => 0,
+              "w" => 6,
+              "h" => 4
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [
+        %{
+          "id" => "group-1",
+          "type" => "group",
+          "title" => "Recovered Group",
+          "x" => 0,
+          "y" => 0,
+          "w" => 6,
+          "h" => 4,
+          "children" => []
+        }
+      ]
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [group] = updated.payload["grid"]
+
+    assert group["type"] == "group"
+    assert group["children"] == []
+  end
+
   test "duplicating a widget preserves config, assigns a new id, and appends it to the bottom", %{
     conn: conn,
     dashboard: dashboard,

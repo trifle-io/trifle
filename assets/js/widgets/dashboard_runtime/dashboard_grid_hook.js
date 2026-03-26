@@ -1335,34 +1335,43 @@ Hooks.DashboardGrid = {
   addNewWidget() {
     const id = this.genId();
     const w = 3, h = 2, x = 0, y = this._rootBottom();
-
-    const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
-    if (el) {
-      el.setAttribute('data-item-kind', 'widget');
-      const contentEl = el.querySelector('.grid-stack-item-content');
-      if (contentEl) {
-        contentEl.outerHTML = this._newWidgetContent({ id, title: 'New Widget' });
+    this._suppressSave = true;
+    try {
+      const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
+      if (el) {
+        el.setAttribute('data-item-kind', 'widget');
+        const contentEl = el.querySelector('.grid-stack-item-content');
+        if (contentEl) {
+          contentEl.outerHTML = this._newWidgetContent({ id, title: 'New Widget' });
+        }
       }
+      this._syncGridWidgets(this.grid);
+      this._observeLayoutResizeTargets();
+    } finally {
+      this._suppressSave = false;
     }
-    this._syncGridWidgets(this.grid);
-    this._observeLayoutResizeTargets();
     this.saveLayout();
   },
 
   addNewGroup() {
     const id = this.genId();
     const w = 6, h = 4, x = 0, y = this._rootBottom();
-    const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
-    if (el) {
-      el.setAttribute('data-item-kind', 'group');
-      const contentEl = el.querySelector('.grid-stack-item-content');
-      if (contentEl) {
-        contentEl.outerHTML = this._newGroupContent({ id, title: 'Widget Group' });
+    this._suppressSave = true;
+    try {
+      const el = this.grid.addWidget({ x, y, w, h, id, content: '' });
+      if (el) {
+        el.setAttribute('data-item-kind', 'group');
+        const contentEl = el.querySelector('.grid-stack-item-content');
+        if (contentEl) {
+          contentEl.outerHTML = this._newGroupContent({ id, title: 'Widget Group' });
+        }
+        this._initGroupGrid(el);
       }
-      this._initGroupGrid(el);
+      this._syncGridWidgets(this.grid);
+      this._observeLayoutResizeTargets();
+    } finally {
+      this._suppressSave = false;
     }
-    this._syncGridWidgets(this.grid);
-    this._observeLayoutResizeTargets();
     this.saveLayout();
   },
 

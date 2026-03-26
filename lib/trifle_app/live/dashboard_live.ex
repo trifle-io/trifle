@@ -3345,10 +3345,17 @@ defmodule TrifleApp.DashboardLive do
   defp merge_dashboard_layout_node(item, index) when is_map(item) do
     id = dashboard_grid_node_id(item)
     existing = Map.get(index, id, %{})
+    requested_type = Map.get(item, "type", widget_type(existing))
 
     type =
-      preserved_dashboard_layout_type(existing) ||
-        resolve_saved_widget_type(existing, Map.get(item, "type", widget_type(existing)))
+      case requested_type |> to_string() |> String.downcase() do
+        "group" ->
+          "group"
+
+        _ ->
+          preserved_dashboard_layout_type(existing) ||
+            resolve_saved_widget_type(existing, requested_type)
+      end
 
     title = preserved_dashboard_layout_title(existing, item)
 
