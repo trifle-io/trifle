@@ -42,7 +42,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
       <div
         id={"widget-#{@widget_id}-series-rows"}
-        class="overflow-hidden rounded-xl border border-gray-200 bg-white/40 dark:border-slate-700 dark:bg-slate-900/20 divide-y divide-gray-200 dark:divide-slate-700"
+        class="rounded-xl border border-gray-200 bg-white/40 dark:border-slate-700 dark:bg-slate-900/20 divide-y divide-gray-200 dark:divide-slate-700"
       >
         <%= for row <- @rows do %>
           <div

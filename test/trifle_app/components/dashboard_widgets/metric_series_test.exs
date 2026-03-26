@@ -163,8 +163,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
         path_options: []
       )
 
-    assert html =~ "overflow-hidden rounded-xl border border-gray-200"
+    assert html =~ "rounded-xl border border-gray-200"
     assert html =~ "divide-y divide-gray-200"
+    refute html =~ "overflow-hidden rounded-xl border border-gray-200"
     refute html =~ "rounded-lg border border-gray-200 bg-white px-3 py-3"
   end
 
