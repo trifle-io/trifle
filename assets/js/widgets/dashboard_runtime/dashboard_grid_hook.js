@@ -943,13 +943,15 @@ Hooks.DashboardGrid = {
     const rows = this._groupRowCount(groupItem);
     const cols = this._groupColumnCount(groupItem);
     const shell = this._groupGridShell(groupItem);
-    const margin = 5;
     const availableHeight = Math.max(
       48,
       shell && shell.clientHeight ? shell.clientHeight : rows * this._nestedCellHeight
     );
-    const cellHeight = Math.max(24, Math.floor((availableHeight - Math.max(0, rows - 1) * margin) / rows));
-    const height = rows * cellHeight + Math.max(0, rows - 1) * margin;
+    // GridStack's cellHeight defines the full row track height. Margins are applied
+    // inside item content, not added between tracks, so subtracting row margins here
+    // creates increasing dead space at the bottom of taller groups.
+    const cellHeight = Math.max(24, availableHeight / rows);
+    const height = rows * cellHeight;
 
     return { cols, rows, cellHeight, height };
   },
