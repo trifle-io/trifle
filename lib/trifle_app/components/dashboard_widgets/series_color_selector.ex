@@ -40,7 +40,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
         phx-click-away={JS.remove_attribute("open", to: "##{@details_id}")}
         class="group relative w-full [&_summary::-webkit-details-marker]:hidden"
       >
-        <summary class="flex h-10 cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-gray-300 bg-white px-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600">
+        <summary class="flex h-10 cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-gray-300 bg-white px-2.5 text-sm text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700">
           <div class="min-w-0">
             <p class="truncate text-sm font-medium text-gray-800 dark:text-slate-100">
               {@selected_label}

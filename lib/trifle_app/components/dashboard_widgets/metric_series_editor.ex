@@ -40,7 +40,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
         </p>
       </div>
 
-      <div id={"widget-#{@widget_id}-series-rows"} class="space-y-2">
+      <div
+        id={"widget-#{@widget_id}-series-rows"}
+        class="overflow-hidden rounded-xl border border-gray-200 bg-white/40 dark:border-slate-700 dark:bg-slate-900/20 divide-y divide-gray-200 dark:divide-slate-700"
+      >
         <%= for row <- @rows do %>
           <div
             id={"widget-series-row-#{@widget_id}-#{row["index"]}"}
@@ -200,7 +203,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   defp widget_id(_), do: ""
 
   defp row_shell_classes do
-    "rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800"
+    "px-3 py-3"
   end
 
   defp visibility_toggle_classes do
@@ -220,11 +223,11 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   end
 
   defp input_classes do
-    "block h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+    "block h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
   end
 
   defp series_input_shell_classes do
-    "flex h-10 min-w-0 items-center rounded-md border border-gray-300 bg-white transition-colors focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500 dark:border-slate-600 dark:bg-slate-700"
+    "flex h-10 min-w-0 items-center rounded-md border border-gray-300 bg-white shadow-sm transition-colors focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500 dark:border-slate-600 dark:bg-slate-800"
   end
 
   defp shell_divider_classes do

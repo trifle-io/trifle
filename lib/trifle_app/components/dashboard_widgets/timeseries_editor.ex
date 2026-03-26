@@ -44,7 +44,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
           type="text"
           name="ts_y_label"
           value={Map.get(@widget, "y_label", "")}
-          class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+          class="block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white sm:text-sm"
           placeholder="e.g., Revenue ($), Orders, Errors (%)"
         />
       </div>

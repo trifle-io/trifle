@@ -112,6 +112,17 @@ defmodule TrifleApp.DashboardLiveTest do
     assert has_element?(view, "#widget-workspace-modal", "Live Preview Title")
   end
 
+  test "workspace title input uses the same dark surface as the rest of the editor", %{
+    conn: conn,
+    dashboard: dashboard
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    assert Regex.match?(~r/id="widget_title".*dark:bg-slate-800/s, render(view))
+  end
+
   test "saves metric widgets with series rows and drops legacy path fields", %{
     conn: conn,
     dashboard: dashboard,

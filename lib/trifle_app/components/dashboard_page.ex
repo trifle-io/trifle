@@ -1501,7 +1501,8 @@ defmodule TrifleApp.Components.DashboardPage do
                       if group_widget,
                         do:
                           "Are you sure you want to delete this group? Widgets inside it will be moved back to the main dashboard.",
-                        else: "Are you sure you want to delete this widget? This action cannot be undone."
+                        else:
+                          "Are you sure you want to delete this widget? This action cannot be undone."
                     }
                     class={"px-3 py-2 " <> if(active_tab == "edit", do: "visible", else: "invisible")}
                   >
@@ -1752,7 +1753,7 @@ defmodule TrifleApp.Components.DashboardPage do
           name="widget_title"
           value={@draft_widget["title"] || ""}
           phx-debounce="400"
-          class="flex-1 block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
+          class="flex-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white sm:text-sm"
           placeholder="Widget title"
         />
       </div>
