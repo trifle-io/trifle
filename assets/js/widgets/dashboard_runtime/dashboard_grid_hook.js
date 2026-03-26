@@ -446,6 +446,12 @@ Hooks.DashboardGrid = {
       if (!this._isOneCol) {
         this.saveLayout();
       }
+
+      requestAnimationFrame(() => {
+        try {
+          this.syncServerRenderedItems();
+        } catch (_) {}
+      });
     });
     this.handleEvent('dashboard_grid_widget_deleted', ({ id }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
@@ -1184,6 +1190,11 @@ Hooks.DashboardGrid = {
         w: parseInt(node.getAttribute('gs-w') || gsNode.w || 1, 10),
         h: parseInt(node.getAttribute('gs-h') || gsNode.h || 1, 10)
       };
+      // LiveView patches can leave GridStack DD state stale on existing nodes.
+      // Re-preparing drag/resize here restores missing resize handles without a full reload.
+      if (typeof grid._prepareDragDropByNode === 'function') {
+        try { grid._prepareDragDropByNode(gsNode); } catch (_) {}
+      }
       try {
         grid.update(gsNode, target);
       } catch (_) {}
@@ -1331,6 +1342,8 @@ Hooks.DashboardGrid = {
         contentEl.outerHTML = this._newWidgetContent({ id, title: 'New Widget' });
       }
     }
+    this._syncGridWidgets(this.grid);
+    this._observeLayoutResizeTargets();
     this.saveLayout();
   },
 
@@ -1346,6 +1359,8 @@ Hooks.DashboardGrid = {
       }
       this._initGroupGrid(el);
     }
+    this._syncGridWidgets(this.grid);
+    this._observeLayoutResizeTargets();
     this.saveLayout();
   },
 
