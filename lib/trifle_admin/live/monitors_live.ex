@@ -4,7 +4,7 @@ defmodule TrifleAdmin.MonitorsLive do
   import Ecto.Query, warn: false
 
   alias Trifle.Monitors
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{AlertSeries, Monitor}
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Organizations.Project
@@ -312,9 +312,15 @@ defmodule TrifleAdmin.MonitorsLive do
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-              <dt class="text-sm font-medium text-gray-900 dark:text-white">Alert Metric Path</dt>
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Final Alert Series</dt>
               <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
-                {@monitor.alert_metric_path || "N/A"}
+                {AlertSeries.final_row_display(@monitor) || "N/A"}
+              </dd>
+            </div>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Alert Series Rows</dt>
+              <dd class="mt-1 text-sm text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+                {AlertSeries.series_count(@monitor)}
               </dd>
             </div>
             <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">

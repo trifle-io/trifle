@@ -10,7 +10,7 @@ defmodule Trifle.Monitors.AlertAdvisor do
   require Logger
   alias Decimal
   alias Trifle.Chat.OpenAIClient
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{AlertSeries, Monitor}
   alias Trifle.Stats.Series
 
   @type variant :: :conservative | :balanced | :sensitive
@@ -92,15 +92,13 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
     client = Keyword.get(opts, :client, &OpenAIClient.chat_completion/2)
     max_points = Keyword.get(opts, :max_points, @max_points)
-    path = String.trim(to_string(monitor.alert_metric_path || ""))
 
     with runtime_api_key <- runtime_api_key(),
          model <- advisor_model(),
          max_tokens <- advisor_max_completion_tokens(),
          {:ok, strategy} <- ensure_supported_strategy(strategy),
          {:ok, variant} <- ensure_supported_variant(variant),
-         :ok <- ensure_metric_path(path),
-         {:ok, points} <- extract_series_points(series, path, max_points),
+         {:ok, {path, points}} <- extract_monitor_series_points(monitor, series, max_points),
          {:ok, summary} <- summarise_points(points),
          {:ok, payload_map} <-
            build_prompt_payload(monitor, path, strategy, variant, summary, points),
@@ -132,6 +130,19 @@ defmodule Trifle.Monitors.AlertAdvisor do
   end
 
   def recommend(_, _, _), do: {:error, :unsupported_context}
+
+  defp extract_monitor_series_points(%Monitor{} = monitor, %Series{} = series, max_points) do
+    case AlertSeries.resolved_final_targets(series, monitor) do
+      [%{source_path: path, points: points} | _rest] ->
+        {:ok, {path || AlertSeries.final_row_display(monitor), Enum.take(points, -max_points)}}
+
+      [] ->
+        case String.trim(to_string(monitor.alert_metric_path || "")) do
+          "" -> {:error, :missing_metric_path}
+          path -> {:ok, {path, extract_series_points(series, path, max_points)}}
+        end
+    end
+  end
 
   defp normalize_strategy(nil, %Monitor{alerts: [first | _]}) do
     first.analysis_strategy || :threshold
@@ -181,9 +192,6 @@ defmodule Trifle.Monitors.AlertAdvisor do
        do: {:ok, variant}
 
   defp ensure_supported_variant(_), do: {:error, :unsupported_variant}
-
-  defp ensure_metric_path(""), do: {:error, :missing_metric_path}
-  defp ensure_metric_path(_), do: :ok
 
   defp runtime_api_key do
     env_key =

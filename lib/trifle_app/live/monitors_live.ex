@@ -3,7 +3,7 @@ defmodule TrifleApp.MonitorsLive do
 
   alias Ecto.Changeset
   alias Trifle.Monitors
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{AlertSeries, Monitor}
   alias Trifle.Organizations
   alias Trifle.Stats.Source, as: StatsSource
   alias TrifleApp.MonitorsLive.FormComponent
@@ -58,6 +58,7 @@ defmodule TrifleApp.MonitorsLive do
         report_settings: Monitors.default_report_settings(),
         alert_metric_key: alert_defaults.alert_metric_key,
         alert_metric_path: alert_defaults.alert_metric_path,
+        alert_series: alert_defaults.alert_series,
         alert_timeframe: alert_defaults.alert_timeframe,
         alert_granularity: alert_defaults.alert_granularity
       })
@@ -201,7 +202,7 @@ defmodule TrifleApp.MonitorsLive do
   defp format_metric_path(%Monitor{} = monitor) do
     format_metric_path(%{
       metric_key: monitor.alert_metric_key,
-      metric_path: monitor.alert_metric_path
+      metric_path: AlertSeries.final_row_display(monitor)
     })
   end
 

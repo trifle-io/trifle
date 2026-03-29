@@ -15,7 +15,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   import Ecto.Changeset, only: [change: 2]
 
   alias Trifle.Monitors
-  alias Trifle.Monitors.{Alert, Monitor}
+  alias Trifle.Monitors.{Alert, AlertSeries, Monitor}
   alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Monitors.TestDelivery
   alias Trifle.Repo
@@ -105,16 +105,16 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     cond do
       not has_alert_metric?(monitor) ->
         Logger.debug(fn ->
-          "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=missing_metric_path"
+          "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=missing_series"
         end)
 
         log_execution(monitor, %{
           status: "skipped",
-          summary: "Skipped alert evaluation – metric path not configured.",
+          summary: "Skipped alert evaluation – final alert series not configured.",
           details: %{
             kind: "alert",
             scheduled_for: scheduled_for,
-            reason: "missing_metric_path"
+            reason: "missing_alert_series"
           }
         })
 
@@ -154,17 +154,16 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp monitor_kind(_monitor), do: "monitor"
 
   defp has_alert_metric?(%Monitor{} = monitor) do
-    monitor.alert_metric_path
-    |> to_string()
-    |> String.trim()
-    |> Kernel.!=("")
+    AlertSeries.has_final_row?(monitor)
   end
 
   defp evaluate_alerts(%Monitor{} = monitor, scheduled_for) do
     with {:ok, %{export: export, timeframe: timeframe}} <- MonitorLayout.series_export(monitor),
          true <- SeriesExport.has_data?(export),
          stats when not is_nil(stats) <- fetch_stats_struct(export),
-         evaluations <- evaluate_each_alert(monitor, stats),
+         {:ok, targets} <-
+           ensure_alert_targets(AlertSeries.resolved_final_targets(stats, monitor)),
+         evaluations <- evaluate_each_alert(monitor, targets),
          {triggered, _non_triggered} <- Enum.split_with(evaluations, & &1.result.triggered?) do
       recoveries = recovered_alerts(evaluations)
 
@@ -207,6 +206,25 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         mark_all_alerts_failed(
           monitor,
           "Alert evaluation skipped – no series data available.",
+          scheduled_for
+        )
+
+        maybe_update_trigger_status(monitor, [])
+
+      {:error, :no_final_series} ->
+        log_execution(monitor, %{
+          status: "failed",
+          summary: "Alert evaluation skipped – final alert series did not resolve to any data.",
+          details: %{
+            kind: "alert",
+            scheduled_for: scheduled_for,
+            reason: "no_final_series"
+          }
+        })
+
+        mark_all_alerts_failed(
+          monitor,
+          "Alert evaluation skipped – final alert series did not resolve to any data.",
           scheduled_for
         )
 
@@ -255,6 +273,10 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:error, :unexpected_response}
     end
   end
+
+  defp ensure_alert_targets([]), do: {:error, :no_final_series}
+  defp ensure_alert_targets(targets) when is_list(targets), do: {:ok, targets}
+  defp ensure_alert_targets(_), do: {:error, :no_final_series}
 
   defp log_monitor_start(%Monitor{} = monitor, scheduled_for) do
     Logger.debug(fn ->
@@ -320,25 +342,109 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp fetch_stats_struct(_), do: nil
 
   defp evaluate_each_alert(%Monitor{} = monitor, stats) do
-    metric_path =
-      monitor.alert_metric_path
-      |> to_string()
-      |> String.trim()
-
     monitor.alerts
     |> Enum.map(fn %Alert{} = alert ->
-      case AlertEvaluator.evaluate(alert, stats, metric_path) do
-        {:ok, result} ->
-          %{alert: alert, result: result, status: :ok}
+      target_results =
+        Enum.map(stats, fn target ->
+          case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
+            {:ok, result} ->
+              %{target: target, result: result, status: :ok}
 
-        {:error, reason} ->
-          Logger.warning(
-            "Alert evaluation failed for monitor #{monitor.id} alert #{alert.id}: #{inspect(reason)}"
-          )
+            {:error, reason} ->
+              Logger.warning(
+                "Alert evaluation failed for monitor #{monitor.id} alert #{alert.id} target #{target.source_path}: #{inspect(reason)}"
+              )
 
-          %{alert: alert, result: %{triggered?: false, error: reason}, status: :error}
-      end
+              %{target: target, result: %{triggered?: false, error: reason}, status: :error}
+          end
+        end)
+
+      {status, result} = aggregate_target_results(alert, target_results)
+      %{alert: alert, result: result, status: status, target_results: target_results}
     end)
+  end
+
+  defp aggregate_target_results(%Alert{} = alert, target_results) do
+    successes = Enum.filter(target_results, &(&1.status == :ok))
+    failures = Enum.filter(target_results, &(&1.status != :ok))
+    triggered = Enum.filter(successes, &Map.get(&1.result, :triggered?, false))
+
+    status =
+      cond do
+        successes == [] -> :error
+        true -> :ok
+      end
+
+    base_result =
+      case List.first(triggered) || List.first(successes) do
+        %{result: %AlertEvaluator.Result{} = result} -> result
+        _ -> %AlertEvaluator.Result{}
+      end
+
+    summary =
+      cond do
+        successes == [] ->
+          "Alert evaluation failed for all resolved series."
+
+        triggered == [] and length(successes) == 1 and failures == [] ->
+          base_result.summary || "No recent breaches detected."
+
+        triggered == [] ->
+          "No recent breaches detected across #{length(successes)} series."
+
+        length(triggered) == 1 ->
+          trigger = List.first(triggered)
+
+          "#{trigger.target.name}: #{trigger.result.summary || "Triggered in the latest evaluation window."}"
+
+        true ->
+          names =
+            triggered
+            |> Enum.map(& &1.target.name)
+            |> Enum.join(", ")
+
+          "#{length(triggered)} series triggered: #{names}."
+      end
+
+    meta =
+      base_result.meta ||
+        %{}
+        |> Map.put(:series_count, length(target_results))
+        |> Map.put(
+          :series_results,
+          Enum.map(successes, fn %{target: target, result: result} ->
+            %{
+              name: target.name,
+              source_path: target.source_path,
+              triggered: result.triggered?,
+              summary: result.summary,
+              meta: result.meta || %{}
+            }
+          end)
+        )
+        |> Map.put(
+          :series_errors,
+          Enum.map(failures, fn %{target: target, result: result} ->
+            %{
+              name: target.name,
+              source_path: target.source_path,
+              error: Map.get(result, :error)
+            }
+          end)
+        )
+
+    result =
+      %AlertEvaluator.Result{
+        base_result
+        | alert_id: alert.id,
+          strategy: alert.analysis_strategy || :threshold,
+          path: Map.get(base_result, :path),
+          triggered?: triggered != [],
+          summary: summary,
+          meta: meta
+      }
+
+    {status, result}
   end
 
   defp recovered_alerts(evaluations) do
@@ -589,17 +695,39 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp alert_label(_), do: "unknown alert"
 
   defp map_evaluations(evaluations) do
-    Enum.map(evaluations, fn %{alert: %Alert{id: id}, result: result, status: status} ->
+    Enum.map(evaluations, fn evaluation ->
+      %{alert: %Alert{id: id}, result: result, status: status} = evaluation
+
       %{
         alert_id: id,
         status: status |> to_string(),
         triggered: Map.get(result, :triggered?, false),
         summary: Map.get(result, :summary),
         meta: Map.get(result, :meta),
-        window: Map.get(result, :window)
+        window: Map.get(result, :window),
+        targets: map_evaluation_targets(Map.get(evaluation, :target_results, []))
       }
     end)
   end
+
+  defp map_evaluation_targets(target_results) when is_list(target_results) do
+    Enum.map(target_results, fn
+      %{target: target, result: result, status: status} ->
+        %{
+          name: target.name,
+          source_path: target.source_path,
+          status: to_string(status),
+          triggered: Map.get(result, :triggered?, false),
+          summary: Map.get(result, :summary),
+          meta: Map.get(result, :meta)
+        }
+
+      _ ->
+        %{}
+    end)
+  end
+
+  defp map_evaluation_targets(_), do: []
 
   defp delivery_event_type(meta) when is_map(meta), do: Map.get(meta, :event, :triggered)
   defp delivery_event_type(_), do: :triggered

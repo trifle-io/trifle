@@ -5,7 +5,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   """
 
   alias Trifle.Monitors
-  alias Trifle.Monitors.{Alert, Monitor}
+  alias Trifle.Monitors.{Alert, AlertSeries, Monitor}
   alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
@@ -14,7 +14,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   alias Trifle.Stats.Nocturnal.Parser
   alias Trifle.Exports.Series, as: SeriesExport
 
-  alias TrifleApp.Components.DashboardWidgets.{WidgetData, WidgetView}
+  alias TrifleApp.Components.DashboardWidgets.{LayoutTree, WidgetData, WidgetView}
   alias TrifleApp.Exports.Layout
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
@@ -25,22 +25,24 @@ defmodule TrifleApp.Exports.MonitorLayout do
   @doc """
   Returns the normalized grid widget definitions for an alert monitor.
   """
-  @spec alert_widgets(Monitor.t()) :: list()
-  def alert_widgets(%Monitor{} = monitor) do
-    metric_path =
-      monitor.alert_metric_path
-      |> to_string()
-      |> String.trim()
+  @spec alert_widgets(Monitor.t(), Series.t() | nil) :: list()
+  def alert_widgets(%Monitor{} = monitor, stats \\ nil) do
+    source_widget = AlertSeries.source_widget(monitor)
+    groups = alert_widget_groups(monitor, stats)
+    [source_widget | groups]
+  end
 
-    base_widgets =
-      case monitor_alert_widgets(monitor) do
-        nil -> build_default_alert_widgets(monitor, metric_path)
-        [] -> build_default_alert_widgets(monitor, metric_path)
-        list -> list
-      end
-
-    overlay_widgets = alert_overlay_widgets(monitor, metric_path, base_widgets || [])
-    (base_widgets || []) ++ overlay_widgets
+  @doc """
+  Builds the synthetic alert preview dashboard used by monitor pages and exports.
+  """
+  @spec alert_dashboard(Monitor.t(), Series.t() | nil) :: map()
+  def alert_dashboard(%Monitor{} = monitor, stats \\ nil) do
+    %{
+      id: "#{monitor.id}-alert-preview",
+      key: monitor.alert_metric_key,
+      name: monitor.name || "Alert Preview",
+      payload: %{"grid" => alert_widgets(monitor, stats)}
+    }
   end
 
   @doc """
@@ -374,9 +376,10 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
   defp compose_layout(monitor, export, timeframe, theme, viewport, source, selected_widget_id) do
     stats_struct = export.raw.series
-    dashboard = insights_dashboard(monitor)
-    grid_items_all = WidgetView.grid_items(dashboard)
-    grid_items = maybe_filter_widgets(grid_items_all, selected_widget_id)
+    dashboard = insights_dashboard(monitor, stats_struct)
+    root_items_all = WidgetView.root_grid_items(dashboard)
+    grid_items = maybe_filter_widgets(root_items_all, selected_widget_id)
+    widget_items = LayoutTree.flatten_widgets(grid_items)
 
     cond do
       grid_items == [] and selected_widget_id ->
@@ -389,7 +392,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
         datasets =
           WidgetData.datasets_from_dashboard(stats_struct, dashboard)
           |> WidgetData.dataset_maps()
-          |> maybe_prune_dataset_maps(Enum.map(grid_items, &widget_id/1))
+          |> maybe_prune_dataset_maps(Enum.map(widget_items, &widget_id/1))
 
         {datasets, _alert_evaluations} =
           inject_alert_overlay(datasets, monitor, stats_struct)
@@ -453,25 +456,14 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp theme_class(:dark), do: "dark"
   defp theme_class(_), do: nil
 
-  defp insights_dashboard(%Monitor{type: :report, dashboard: %{} = dashboard}), do: dashboard
+  defp insights_dashboard(%Monitor{type: :report, dashboard: %{} = dashboard}, _stats),
+    do: dashboard
 
-  defp insights_dashboard(%Monitor{type: :alert} = monitor) do
-    _metric_path =
-      monitor.alert_metric_path
-      |> to_string()
-      |> String.trim()
-
-    widgets = alert_widgets(monitor)
-
-    %{
-      id: "#{monitor.id}-alert-preview",
-      key: monitor.alert_metric_key,
-      name: monitor.name || "Alert Preview",
-      payload: %{"grid" => widgets}
-    }
+  defp insights_dashboard(%Monitor{type: :alert} = monitor, stats) do
+    alert_dashboard(monitor, stats)
   end
 
-  defp insights_dashboard(%Monitor{} = monitor) do
+  defp insights_dashboard(%Monitor{} = monitor, _stats) do
     %{
       id: "#{monitor.id}-preview",
       key: nil,
@@ -483,9 +475,10 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp maybe_filter_widgets(items, nil), do: items
 
   defp maybe_filter_widgets(items, widget_id) do
-    items
-    |> Enum.filter(fn item -> widget_id(item) == widget_id end)
-    |> normalize_single_widget_layout()
+    case LayoutTree.find_node(items, widget_id) do
+      nil -> []
+      item -> normalize_single_widget_layout([item])
+    end
   end
 
   defp maybe_prune_dataset_maps(datasets, widget_ids) do
@@ -607,22 +600,6 @@ defmodule TrifleApp.Exports.MonitorLayout do
 
   defp widget_print_cell_height(_, _, _), do: nil
 
-  defp monitor_alert_widgets(%Monitor{} = monitor) do
-    case extract_target_widgets(monitor.target) do
-      nil ->
-        nil
-
-      [] ->
-        []
-
-      widgets when is_list(widgets) ->
-        widgets
-        |> Enum.with_index()
-        |> Enum.map(&build_alert_widget(monitor, &1))
-        |> Enum.reject(&is_nil/1)
-    end
-  end
-
   defp monitor_alerts(%Monitor{} = monitor), do: Monitors.sort_alerts(monitor.alerts)
   defp monitor_alerts(_), do: []
 
@@ -645,409 +622,286 @@ defmodule TrifleApp.Exports.MonitorLayout do
   end
 
   def inject_alert_overlay(datasets, %Monitor{} = monitor, %Series{} = stats) do
-    metric_path =
-      monitor.alert_metric_path
-      |> to_string()
-      |> String.trim()
+    {dataset_overrides, evaluations} = build_alert_overlay_map(monitor, stats)
 
-    if metric_path == "" do
-      {datasets, %{}}
-    else
-      {overlay_map, evaluations} = build_alert_overlay_map(monitor, stats, metric_path)
+    updated_timeseries =
+      Enum.reduce(dataset_overrides, Map.get(datasets, :timeseries, %{}), fn {widget_id, extras},
+                                                                             acc ->
+        Map.update(acc, widget_id, extras, &Map.merge(&1, extras))
+      end)
 
-      updated_timeseries =
-        Enum.reduce(overlay_map, Map.get(datasets, :timeseries, %{}), fn {widget_id, extras},
-                                                                         acc ->
-          if Map.has_key?(acc, widget_id) do
-            Map.update!(acc, widget_id, &Map.merge(&1, extras))
-          else
-            acc
-          end
-        end)
+    datasets =
+      datasets
+      |> Map.put(:timeseries, updated_timeseries)
 
-      datasets =
-        datasets
-        |> Map.put(:timeseries, updated_timeseries)
-
-      {datasets, evaluations}
-    end
+    {datasets, evaluations}
   end
 
   def inject_alert_overlay(datasets, _monitor, _stats), do: {datasets, %{}}
 
-  defp build_alert_overlay_map(%Monitor{} = monitor, %Series{} = stats, metric_path) do
-    monitor
-    |> monitor_alerts()
-    |> Enum.reduce({%{}, %{}}, fn
-      %Alert{id: nil}, acc ->
-        acc
+  defp build_alert_overlay_map(%Monitor{} = monitor, %Series{} = stats) do
+    alerts = monitor_alerts(monitor)
+    targets = AlertSeries.resolved_final_targets(stats, monitor)
 
-      %Alert{id: alert_id} = alert, {overlay_map, evaluations} ->
-        widget_id = alert_widget_id(monitor, alert)
+    {dataset_map, evaluation_acc} =
+      Enum.reduce(targets, {%{}, %{}}, fn target, {dataset_acc, eval_acc} ->
+        Enum.reduce(alerts, {dataset_acc, eval_acc}, fn
+          %Alert{id: nil}, acc ->
+            acc
 
-        with widget_id when is_binary(widget_id) <- widget_id,
-             {:ok, result} <- AlertEvaluator.evaluate(alert, stats, metric_path) do
-          overlay = AlertEvaluator.overlay(result)
+          %Alert{} = alert, {dataset_inner, eval_inner} ->
+            widget_id = alert_target_widget_id(monitor, target, alert)
 
-          dataset_extras = %{
-            alert_overlay: overlay,
-            alert_baseline_series: Map.get(overlay, :baseline_series, []),
-            alert_triggered: result.triggered?,
-            alert_summary: result.summary,
-            alert_meta: result.meta || %{},
-            alert_ref: to_string(alert_id),
-            alert_strategy: alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
-          }
+            case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
+              {:ok, result} ->
+                overlay = AlertEvaluator.overlay(result)
 
-          {
-            Map.put(overlay_map, widget_id, dataset_extras),
-            Map.put(evaluations, alert_id, result)
-          }
-        else
-          _ -> {overlay_map, evaluations}
-        end
-    end)
+                dataset =
+                  build_alert_widget_dataset(
+                    widget_id,
+                    alert,
+                    target,
+                    %{
+                      alert_overlay: overlay,
+                      alert_baseline_series: Map.get(overlay, :baseline_series, []),
+                      alert_triggered: result.triggered?,
+                      alert_summary: result.summary,
+                      alert_meta:
+                        Map.merge(result.meta || %{}, %{
+                          series_name: target.name,
+                          series_source_path: target.source_path
+                        }),
+                      alert_ref: to_string(alert.id),
+                      alert_strategy:
+                        alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
+                    }
+                  )
+
+                {
+                  Map.put(dataset_inner, widget_id, dataset),
+                  Map.update(
+                    eval_inner,
+                    alert.id,
+                    [%{target: target, result: result}],
+                    fn existing ->
+                      existing ++ [%{target: target, result: result}]
+                    end
+                  )
+                }
+
+              {:error, reason} ->
+                dataset =
+                  build_alert_widget_dataset(
+                    widget_id,
+                    alert,
+                    target,
+                    %{
+                      alert_overlay: nil,
+                      alert_baseline_series: [],
+                      alert_triggered: false,
+                      alert_summary: "Alert evaluation failed: #{inspect(reason)}",
+                      alert_meta: %{
+                        error: reason,
+                        series_name: target.name,
+                        series_source_path: target.source_path
+                      },
+                      alert_ref: to_string(alert.id),
+                      alert_strategy:
+                        alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
+                    }
+                  )
+
+                {
+                  Map.put(dataset_inner, widget_id, dataset),
+                  Map.update(
+                    eval_inner,
+                    alert.id,
+                    [%{target: target, error: reason}],
+                    fn existing ->
+                      existing ++ [%{target: target, error: reason}]
+                    end
+                  )
+                }
+            end
+        end)
+      end)
+
+    evaluations =
+      Enum.into(evaluation_acc, %{}, fn {alert_id, results} ->
+        alert = Enum.find(alerts, &(&1.id == alert_id))
+        {alert_id, aggregate_alert_results(alert, results)}
+      end)
+
+    {dataset_map, evaluations}
   end
 
-  defp alert_overlay_widgets(_monitor, "", _base_widgets), do: []
+  defp alert_widget_groups(%Monitor{} = monitor, %Series{} = stats) do
+    alerts = monitor_alerts(monitor)
+    targets = AlertSeries.resolved_final_targets(stats, monitor)
+    base_y = AlertSeries.source_widget_height()
 
-  defp alert_overlay_widgets(%Monitor{} = monitor, metric_path, base_widgets) do
-    base_rows =
-      base_widgets
-      |> List.wrap()
-      |> Enum.reduce(0, fn widget, acc -> acc + widget_height(widget) end)
-
-    monitor
-    |> monitor_alerts()
-    |> Enum.reject(fn
-      %Alert{id: nil} -> true
-      _ -> false
-    end)
-    |> Enum.with_index()
-    |> Enum.map(fn {alert, order} ->
-      case alert_widget_id(monitor, alert) do
-        nil ->
-          nil
-
-        widget_id ->
-          overlay_height = 4
-          y_offset = base_rows + order * overlay_height
-
-          %{
-            "id" => widget_id,
-            "type" => "timeseries",
-            "title" => alert_label(alert),
-            "chart_type" => "line",
-            "legend" => false,
-            "stacked" => false,
-            "normalized" => false,
-            "paths" => [metric_path],
-            "y_label" => metric_path,
-            "w" => 12,
-            "h" => overlay_height,
-            "x" => 0,
-            "y" => y_offset,
-            "alert_ref" => to_string(alert.id),
-            "alert_strategy" =>
-              alert.analysis_strategy
-              |> Kernel.||(:threshold)
-              |> to_string()
-          }
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp extract_target_widgets(%{"widgets" => widgets}) when is_list(widgets), do: widgets
-  defp extract_target_widgets(%{widgets: widgets}) when is_list(widgets), do: widgets
-  defp extract_target_widgets(_), do: nil
-
-  defp build_alert_widget(%Monitor{} = monitor, {widget, index}) when is_map(widget) do
-    widget
-    |> normalize_widget_map()
-    |> adapt_alert_widget(monitor, index)
-  end
-
-  defp build_alert_widget(_monitor, _entry), do: nil
-
-  defp normalize_widget_map(%{} = map) do
-    Enum.reduce(map, %{}, fn {key, value}, acc ->
-      string_key = to_string(key)
-
-      normalized_value =
-        cond do
-          is_map(value) ->
-            normalize_widget_map(value)
-
-          is_list(value) ->
-            Enum.map(value, fn elem ->
-              if is_map(elem), do: normalize_widget_map(elem), else: elem
-            end)
-
-          true ->
-            value
-        end
-
-      Map.put(acc, string_key, normalized_value)
-    end)
-  end
-
-  defp normalize_widget_map(other), do: other
-
-  defp adapt_alert_widget(widget, monitor, index) when is_map(widget) do
-    type =
-      widget
-      |> Map.get("type", "timeseries")
-      |> to_string()
-      |> String.trim()
-      |> String.downcase()
-      |> case do
-        "" -> "timeseries"
-        value -> value
-      end
-
-    normalized = Map.put(widget, "type", type)
-
-    base_id =
-      normalized
-      |> Map.get("id")
-      |> case do
-        nil -> nil
-        value -> value |> to_string() |> String.trim()
-      end
-
-    generated_id =
-      base_id
-      |> case do
-        "" -> nil
-        value -> value
-      end || "#{monitor.id}-alert-widget-#{index}"
-
-    layout = extract_widget_layout(normalized, index)
-
-    cleaned_widget =
-      normalized
-      |> Map.drop(["layout", "dataset", :layout, :dataset])
-      |> Map.put("id", generated_id)
-      |> Map.put("title", widget_title(normalized, monitor))
-      |> Map.merge(layout)
-
-    dataset = normalized |> Map.get("dataset", %{}) |> normalize_widget_map()
-
-    cleaned_widget
-    |> apply_type_specific_defaults(type, normalized, dataset, monitor)
-    |> ensure_default_booleans(type, normalized, dataset)
-    |> sanitize_widget_values()
-  end
-
-  defp adapt_alert_widget(_widget, _monitor, _index), do: nil
-
-  defp widget_title(widget, monitor) do
-    widget
-    |> Map.get("title")
-    |> case do
-      nil ->
-        widget |> Map.get("label") || monitor.alert_metric_key || monitor.name || "Alert widget"
-
-      title ->
-        title
-    end
-  end
-
-  defp extract_widget_layout(widget, index) do
-    layout = widget["layout"] || %{}
-
-    width = coerce_int(layout["w"] || layout["width"] || widget["w"] || widget["width"], 12)
-    raw_height = coerce_int(layout["h"] || layout["height"] || widget["h"] || widget["height"], 4)
-    height = clamp_height(raw_height, index)
-
-    %{
-      "w" => width,
-      "h" => height,
-      "x" => coerce_int(layout["x"] || layout["column"] || widget["x"], default_x(index)),
-      "y" => coerce_int(layout["y"] || layout["row"] || widget["y"], default_y(index, height))
-    }
-  end
-
-  defp default_x(_index), do: 0
-  defp default_y(index, height), do: index * height
-
-  defp clamp_height(_value, _index), do: 4
-
-  defp widget_height(_), do: 4
-
-  defp apply_type_specific_defaults(widget, "timeseries" = _type, original, dataset, monitor) do
-    paths =
+    if alerts == [] do
       []
-      |> concat_paths(original["paths"])
-      |> concat_paths(dataset["paths"])
-      |> concat_paths(original["path"])
-      |> concat_paths(dataset["path"])
-      |> concat_paths(original["metric_path"])
-      |> concat_paths(original["metric_paths"])
-      |> concat_paths(dataset["metric_path"])
-      |> concat_paths(dataset["metric_paths"])
-      |> case do
-        [] -> concat_paths([], monitor.alert_metric_path)
-        other -> other
-      end
+    else
+      targets
+      |> Enum.with_index()
+      |> Enum.map(fn {target, index} ->
+        group_height = alert_group_height(length(alerts))
 
-    widget =
-      widget
-      |> Map.put("paths", paths)
-
-    widget
-    |> maybe_put(original, dataset, "chart_type", "line")
-    |> maybe_put(original, dataset, "legend", false)
-    |> maybe_put(original, dataset, "stacked", false)
-    |> maybe_put(original, dataset, "normalized", false)
-    |> maybe_put(original, dataset, "y_label", monitor.alert_metric_path)
-  end
-
-  defp apply_type_specific_defaults(widget, "kpi", original, dataset, _monitor) do
-    widget
-    |> maybe_put(original, dataset, "stat_type", "number")
-    |> maybe_put(original, dataset, "comparison", false)
-  end
-
-  defp apply_type_specific_defaults(widget, "category", original, dataset, _monitor) do
-    widget
-    |> maybe_put(original, dataset, "path", nil)
-    |> maybe_put(original, dataset, "limit", 5)
-  end
-
-  defp apply_type_specific_defaults(widget, _other, _original, _dataset, _monitor), do: widget
-
-  defp ensure_default_booleans(widget, "timeseries", original, dataset) do
-    widget
-    |> ensure_boolean("legend", original, dataset, false)
-    |> ensure_boolean("stacked", original, dataset, false)
-    |> ensure_boolean("normalized", original, dataset, false)
-  end
-
-  defp ensure_default_booleans(widget, _type, _original, _dataset), do: widget
-
-  defp ensure_boolean(widget, key, original, dataset, fallback) do
-    value = coerce_bool(widget[key] || original[key] || dataset[key], fallback)
-    Map.put(widget, key, value)
-  end
-
-  defp maybe_put(widget, original, dataset, key, default) do
-    value =
-      widget[key] || original[key] || dataset[key] || default
-
-    case value do
-      nil -> widget
-      _ -> Map.put(widget, key, value)
+        %{
+          "id" => alert_group_id(monitor, target),
+          "type" => "group",
+          "title" => target.name,
+          "w" => 12,
+          "h" => group_height,
+          "x" => 0,
+          "y" => base_y + index * group_height,
+          "children" => alert_group_widgets(monitor, target, alerts)
+        }
+      end)
     end
   end
 
-  defp concat_paths(list, value) when is_list(list) do
-    sanitized =
-      value
-      |> normalize_path_list()
-      |> Enum.map(&to_string/1)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+  defp alert_widget_groups(_monitor, _stats), do: []
 
-    list ++ sanitized
-  end
-
-  defp concat_paths(list, value) do
-    concat_paths(list, normalize_path_list(value))
-  end
-
-  defp normalize_path_list(value) when is_list(value), do: value
-  defp normalize_path_list(value) when is_binary(value), do: [value]
-  defp normalize_path_list(value) when is_atom(value), do: [Atom.to_string(value)]
-  defp normalize_path_list(value) when is_number(value), do: [to_string(value)]
-  defp normalize_path_list(_), do: []
-
-  defp sanitize_widget_values(%{} = widget) do
-    widget
-    |> Enum.reduce(%{}, fn {key, value}, acc ->
-      cond do
-        key in ["w", "h", "x", "y"] ->
-          Map.put(acc, key, coerce_int(value, acc_default(key)))
-
-        key in ["legend", "stacked", "normalized", "comparison"] ->
-          Map.put(acc, key, coerce_bool(value, false))
-
-        key == "paths" ->
-          Map.put(acc, key, ensure_list_of_strings(value))
-
-        true ->
-          Map.put(acc, key, value)
-      end
-    end)
-  end
-
-  defp acc_default("w"), do: 12
-  defp acc_default("h"), do: 5
-  defp acc_default("x"), do: 0
-  defp acc_default("y"), do: 0
-  defp acc_default(_), do: nil
-
-  defp ensure_list_of_strings(value) when is_list(value) do
-    value
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
-
-  defp ensure_list_of_strings(value), do: ensure_list_of_strings(List.wrap(value))
-
-  defp coerce_int(value, _default) when is_integer(value), do: value
-  defp coerce_int(value, _default) when is_float(value), do: round(value)
-
-  defp coerce_int(value, default) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, _} -> int
-      :error -> default
-    end
-  end
-
-  defp coerce_int(true, default), do: if(default, do: default, else: 1)
-  defp coerce_int(false, default), do: default
-  defp coerce_int(nil, default), do: default
-  defp coerce_int(_other, default), do: default
-
-  defp coerce_bool(value, _default) when is_boolean(value), do: value
-
-  defp coerce_bool(value, default) when is_binary(value) do
-    value = String.downcase(String.trim(value))
-
-    cond do
-      value in ["true", "1", "yes", "on"] -> true
-      value in ["false", "0", "no", "off"] -> false
-      true -> default
-    end
-  end
-
-  defp coerce_bool(value, _default) when is_integer(value), do: value != 0
-  defp coerce_bool(_other, default), do: default
-
-  defp build_default_alert_widgets(_monitor, ""), do: []
-
-  defp build_default_alert_widgets(monitor, metric_path) do
-    [
+  defp alert_group_widgets(%Monitor{} = monitor, target, alerts) do
+    alerts
+    |> Enum.reject(&is_nil(&1.id))
+    |> Enum.with_index()
+    |> Enum.map(fn {alert, index} ->
       %{
-        "id" => "#{monitor.id}-alert-series",
+        "id" => alert_target_widget_id(monitor, target, alert),
         "type" => "timeseries",
-        "title" => monitor.alert_metric_key || monitor.name || "Alert series",
+        "title" => alert_label(alert),
         "chart_type" => "line",
         "legend" => false,
         "stacked" => false,
         "normalized" => false,
-        "paths" => [metric_path],
-        "y_label" => metric_path,
         "w" => 12,
-        "h" => 4,
+        "h" => alert_chart_height(),
         "x" => 0,
-        "y" => 0
+        "y" => index * alert_chart_height(),
+        "alert_ref" => to_string(alert.id),
+        "alert_strategy" => alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
       }
-    ]
+    end)
   end
+
+  defp build_alert_widget_dataset(widget_id, alert, target, extras) do
+    Map.merge(
+      %{
+        id: widget_id,
+        chart_type: "line",
+        stacked: false,
+        normalized: false,
+        legend: false,
+        y_label: target.name,
+        hovered_only: false,
+        series: [
+          %{
+            name: target.name,
+            data: target.data,
+            color: target.color,
+            source_path: target.source_path
+          }
+        ],
+        alert_ref: to_string(alert.id),
+        alert_strategy: alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
+      },
+      extras
+    )
+  end
+
+  defp aggregate_alert_results(%Alert{} = alert, results) do
+    triggered =
+      Enum.filter(results, fn
+        %{result: %{triggered?: true}} -> true
+        _ -> false
+      end)
+
+    successful =
+      Enum.filter(results, fn
+        %{result: %AlertEvaluator.Result{}} -> true
+        _ -> false
+      end)
+
+    failures = Enum.reject(results, &(&1 in successful))
+
+    base_result =
+      case List.first(triggered) || List.first(successful) do
+        %{result: %AlertEvaluator.Result{} = result} -> result
+        _ -> %AlertEvaluator.Result{}
+      end
+
+    summary =
+      cond do
+        successful == [] ->
+          "Alert evaluation failed for all resolved series."
+
+        triggered == [] and length(successful) <= 1 ->
+          base_result.summary || "No recent breaches detected."
+
+        triggered == [] ->
+          "No recent breaches detected across #{length(successful)} series."
+
+        length(triggered) == 1 ->
+          trigger = List.first(triggered)
+
+          "#{trigger.target.name}: #{trigger.result.summary || "Triggered in the latest evaluation window."}"
+
+        true ->
+          names =
+            triggered
+            |> Enum.map(& &1.target.name)
+            |> Enum.join(", ")
+
+          "#{length(triggered)} series triggered: #{names}."
+      end
+
+    %AlertEvaluator.Result{
+      base_result
+      | alert_id: alert && alert.id,
+        strategy: alert && (alert.analysis_strategy || :threshold),
+        triggered?: triggered != [],
+        summary: summary,
+        meta:
+          Map.merge(base_result.meta || %{}, %{
+            series_results:
+              Enum.map(successful, fn %{target: target, result: result} ->
+                %{
+                  name: target.name,
+                  source_path: target.source_path,
+                  triggered: result.triggered?,
+                  summary: result.summary,
+                  meta: result.meta || %{}
+                }
+              end),
+            series_errors:
+              Enum.map(failures, fn %{target: target, error: error} ->
+                %{
+                  name: target.name,
+                  source_path: target.source_path,
+                  error: error
+                }
+              end)
+          })
+    }
+  end
+
+  defp alert_group_id(%Monitor{id: monitor_id}, target) do
+    "#{monitor_id}-alert-series-#{target.index}-group"
+  end
+
+  defp alert_target_widget_id(%Monitor{id: monitor_id}, target, %Alert{id: alert_id}) do
+    "#{monitor_id}-alert-series-#{target.index}-alert-#{alert_id}-chart"
+  end
+
+  defp alert_chart_height, do: 5
+
+  defp alert_group_height(alert_count) when alert_count > 0,
+    do: alert_count * alert_chart_height()
+
+  defp alert_group_height(_alert_count), do: alert_chart_height()
 
   defp compute_report_time_range(%Monitor{} = monitor, timeframe_input, config) do
     settings = monitor.report_settings || %{}

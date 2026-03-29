@@ -1,0 +1,89 @@
+defmodule TrifleApp.Exports.MonitorLayoutTest do
+  use ExUnit.Case, async: true
+
+  alias Trifle.Monitors.Alert
+  alias Trifle.Monitors.Alert.Settings
+  alias Trifle.Monitors.Monitor
+  alias Trifle.Stats.Series
+  alias TrifleApp.Components.DashboardWidgets.WidgetData
+  alias TrifleApp.Exports.MonitorLayout
+
+  test "builds per-series alert groups from the final resolved series row" do
+    stats = build_series()
+
+    monitor = %Monitor{
+      id: "monitor-1",
+      type: :alert,
+      name: "Latency guard",
+      alert_metric_key: "latency.p95",
+      alert_series: [
+        %{"kind" => "path", "path" => "incoming.*", "visible" => false},
+        %{"kind" => "path", "path" => "outgoing.*", "visible" => false},
+        %{"kind" => "expression", "expression" => "a - b", "label" => "delta", "visible" => true}
+      ],
+      alerts: [
+        %Alert{
+          id: "warning",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 6.0}
+        },
+        %Alert{
+          id: "critical",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 12.0}
+        }
+      ]
+    }
+
+    dashboard = MonitorLayout.alert_dashboard(monitor, stats)
+    [source_widget | groups] = get_in(dashboard, [:payload, "grid"])
+
+    assert source_widget["id"] == "#{monitor.id}-alert-source"
+    assert length(groups) == 2
+    assert Enum.all?(groups, &(&1["type"] == "group"))
+    assert Enum.all?(groups, &(length(&1["children"]) == 2))
+
+    datasets =
+      stats
+      |> WidgetData.datasets_from_dashboard(dashboard)
+      |> WidgetData.dataset_maps()
+      |> then(fn maps -> MonitorLayout.inject_alert_overlay(maps, monitor, stats) end)
+      |> elem(0)
+
+    series_a_widget_id = "#{monitor.id}-alert-series-0-alert-warning-chart"
+    series_b_widget_id = "#{monitor.id}-alert-series-1-alert-critical-chart"
+
+    assert %{series: [%{name: name_a}]} = datasets.timeseries[series_a_widget_id]
+    assert %{series: [%{name: name_b}]} = datasets.timeseries[series_b_widget_id]
+    assert name_a == "delta: a"
+    assert name_b == "delta: b"
+  end
+
+  defp build_series do
+    base_time = ~U[2025-01-01 00:00:00Z]
+
+    raw = %{
+      at: [
+        base_time,
+        DateTime.add(base_time, 60, :second),
+        DateTime.add(base_time, 120, :second)
+      ],
+      values: [
+        %{
+          "incoming" => %{"a" => 10.0, "b" => 16.0},
+          "outgoing" => %{"a" => 3.0, "b" => 4.0}
+        },
+        %{
+          "incoming" => %{"a" => 12.0, "b" => 18.0},
+          "outgoing" => %{"a" => 5.0, "b" => 6.0}
+        },
+        %{
+          "incoming" => %{"a" => 15.0, "b" => 22.0},
+          "outgoing" => %{"a" => 7.0, "b" => 8.0}
+        }
+      ]
+    }
+
+    Series.new(raw)
+  end
+end

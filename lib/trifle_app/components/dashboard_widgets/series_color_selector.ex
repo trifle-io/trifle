@@ -12,6 +12,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
   attr :selector, :string, default: nil
   attr :id_prefix, :string, default: "series-color-selector"
   attr :class, :string, default: ""
+  attr :input_data_role, :string, default: nil
 
   def input(assigns) do
     selector = Helpers.normalize_series_color_selector(Map.get(assigns, :selector))
@@ -85,6 +86,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
                       name={@radio_name}
                       value={rotate_value}
                       checked={@selector == rotate_value}
+                      data-role={@input_data_role}
                       class="peer sr-only"
                     />
                     <span class="inline-flex min-h-6 w-full items-center rounded-md border border-transparent px-1.5 py-1 text-xs font-medium text-gray-700 transition hover:bg-slate-100 peer-checked:border-teal-300 peer-checked:bg-teal-100/70 peer-checked:text-teal-900 dark:text-slate-200 dark:hover:bg-slate-700 dark:peer-checked:border-teal-700 dark:peer-checked:bg-teal-900/40 dark:peer-checked:text-teal-100">
@@ -104,6 +106,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
                           name={@radio_name}
                           value={single_value}
                           checked={@selector == single_value}
+                          data-role={@input_data_role}
                           class="peer sr-only"
                         />
                         <span
@@ -132,6 +135,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
                         name={@radio_name}
                         value={custom_value}
                         checked={@selector == custom_value}
+                        data-role={@input_data_role}
                         class="peer sr-only"
                       />
                       <span
