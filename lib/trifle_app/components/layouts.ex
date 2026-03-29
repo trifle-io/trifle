@@ -13,7 +13,17 @@ defmodule TrifleApp.Layouts do
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
       |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
-      |> assign(:link_attrs, if(Map.get(assigns.item, :use_href, false), do: [href: assigns.item.to], else: [navigate: assigns.item.to]))
+      |> assign(
+        :link_attrs,
+        if(Map.get(assigns.item, :use_href, false),
+          do: [href: assigns.item.to],
+          else: [navigate: assigns.item.to]
+        ) ++
+          [
+            {"data-fast-tooltip", true},
+            {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)}
+          ]
+      )
 
     ~H"""
     <.link
@@ -21,7 +31,7 @@ defmodule TrifleApp.Layouts do
       aria-current={if @active?, do: "page"}
       aria-label={@item.label}
       class={[
-        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
         SidebarHelpers.sidebar_link_classes(@active?, :teal)
       ]}
     >
@@ -33,13 +43,17 @@ defmodule TrifleApp.Layouts do
       <span
         class="flex items-center gap-3"
         x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
-        data-fast-tooltip
-        x-bind:data-tooltip={@tooltip_expr}
       >
-        <span class={["flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition", SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)]}>
+        <span class={[
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition",
+          SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)
+        ]}>
           <TrifleApp.SidebarIcons.icon
             name={@item.icon}
-            class={["h-[1.05rem] w-[1.05rem] shrink-0 transition", SidebarHelpers.sidebar_icon_classes(@active?, :teal)]}
+            class={[
+              "h-[1.05rem] w-[1.05rem] shrink-0 transition",
+              SidebarHelpers.sidebar_icon_classes(@active?, :teal)
+            ]}
           />
         </span>
         <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
@@ -76,18 +90,32 @@ defmodule TrifleApp.Layouts do
     current_user = Map.get(socket.assigns, :current_user)
     current_membership = Map.get(socket.assigns, :current_membership)
 
-    case Enum.find(sidebar_nav_items(current_user, current_membership), &active_nav?(socket, &1.menu)) do
+    case Enum.find(
+           sidebar_nav_items(current_user, current_membership),
+           &active_nav?(socket, &1.menu)
+         ) do
       %{label: label} -> label
       _ -> "Workspace"
     end
   end
 
   defp organization_item do
-    %{menu: :organization, label: "Organization", to: ~p"/organization/profile", icon: "sidebar-organization"}
+    %{
+      menu: :organization,
+      label: "Organization",
+      to: ~p"/organization/profile",
+      icon: "sidebar-organization"
+    }
   end
 
   defp admin_console_item do
-    %{menu: :admin_console, label: "Admin Console", to: "/admin", icon: "sidebar-admin", use_href: true}
+    %{
+      menu: :admin_console,
+      label: "Admin Console",
+      to: "/admin",
+      icon: "sidebar-admin",
+      use_href: true
+    }
   end
 
   defp sidebar_nav_items(current_user, current_membership) do

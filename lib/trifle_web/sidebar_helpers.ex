@@ -8,7 +8,7 @@ defmodule TrifleWeb.SidebarHelpers do
   end
 
   def sidebar_link_classes(false, _accent) do
-    "text-slate-600 hover:bg-white/95 hover:text-slate-950 hover:shadow-[0_14px_24px_-24px_rgba(15,23,42,0.45)] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white"
+    "text-slate-600 hover:bg-white/95 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white"
   end
 
   def sidebar_link_classes(true, :teal) do

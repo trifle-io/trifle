@@ -13,7 +13,17 @@ defmodule TrifleAdmin.Layouts do
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
       |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
-      |> assign(:link_attrs, if(Map.get(assigns.item, :use_href, false), do: [href: assigns.item.to], else: [navigate: assigns.item.to]))
+      |> assign(
+        :link_attrs,
+        if(Map.get(assigns.item, :use_href, false),
+          do: [href: assigns.item.to],
+          else: [navigate: assigns.item.to]
+        ) ++
+          [
+            {"data-fast-tooltip", true},
+            {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)}
+          ]
+      )
 
     ~H"""
     <.link
@@ -21,7 +31,7 @@ defmodule TrifleAdmin.Layouts do
       aria-current={if @active?, do: "page"}
       aria-label={@item.label}
       class={[
-        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
         SidebarHelpers.sidebar_link_classes(@active?, :orange)
       ]}
     >
@@ -33,13 +43,17 @@ defmodule TrifleAdmin.Layouts do
       <span
         class="flex items-center gap-3"
         x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
-        data-fast-tooltip
-        x-bind:data-tooltip={@tooltip_expr}
       >
-        <span class={["flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition", SidebarHelpers.sidebar_icon_shell_classes(@active?, :orange)]}>
+        <span class={[
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition",
+          SidebarHelpers.sidebar_icon_shell_classes(@active?, :orange)
+        ]}>
           <TrifleApp.SidebarIcons.icon
             name={@item.icon}
-            class={["h-[1.05rem] w-[1.05rem] shrink-0 transition", SidebarHelpers.sidebar_icon_classes(@active?, :orange)]}
+            class={[
+              "h-[1.05rem] w-[1.05rem] shrink-0 transition",
+              SidebarHelpers.sidebar_icon_classes(@active?, :orange)
+            ]}
           />
         </span>
         <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
@@ -53,12 +67,32 @@ defmodule TrifleAdmin.Layouts do
   def nav_items do
     [
       %{menu: :dashboard, label: "Overview", to: ~p"/admin", icon: "sidebar-overview"},
-      %{menu: :organizations, label: "Organizations", to: ~p"/admin/organizations", icon: "sidebar-organization"},
+      %{
+        menu: :organizations,
+        label: "Organizations",
+        to: ~p"/admin/organizations",
+        icon: "sidebar-organization"
+      },
       %{menu: :users, label: "Users", to: ~p"/admin/users", icon: "sidebar-users"},
       %{menu: :projects, label: "Projects", to: ~p"/admin/projects", icon: "sidebar-projects"},
-      %{menu: :project_clusters, label: "Project Clusters", to: ~p"/admin/project-clusters", icon: "sidebar-project-clusters"},
-      %{menu: :databases, label: "Databases", to: ~p"/admin/databases", icon: "sidebar-databases"},
-      %{menu: :dashboards, label: "Dashboards", to: ~p"/admin/dashboards", icon: "sidebar-dashboards"},
+      %{
+        menu: :project_clusters,
+        label: "Project Clusters",
+        to: ~p"/admin/project-clusters",
+        icon: "sidebar-project-clusters"
+      },
+      %{
+        menu: :databases,
+        label: "Databases",
+        to: ~p"/admin/databases",
+        icon: "sidebar-databases"
+      },
+      %{
+        menu: :dashboards,
+        label: "Dashboards",
+        to: ~p"/admin/dashboards",
+        icon: "sidebar-dashboards"
+      },
       %{menu: :monitors, label: "Monitors", to: ~p"/admin/monitors", icon: "sidebar-monitors"},
       %{menu: :billing, label: "Billing", to: ~p"/admin/billing", icon: "sidebar-billing"}
     ]
@@ -66,7 +100,13 @@ defmodule TrifleAdmin.Layouts do
 
   def secondary_nav_items do
     [
-      %{menu: :exit_admin, label: "Exit Admin", to: ~p"/", icon: "hero-arrow-uturn-left", use_href: true}
+      %{
+        menu: :exit_admin,
+        label: "Exit Admin",
+        to: ~p"/",
+        icon: "hero-arrow-uturn-left",
+        use_href: true
+      }
     ]
   end
 

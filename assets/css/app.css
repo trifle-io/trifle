@@ -48,8 +48,8 @@ body.trifle-sidebar-open {
     padding-left: 6.25rem;
   }
 
-  html[data-trifle-client-sidebar="collapsed"] [data-sidebar-shell="client"] .sidebar-nav-link:not(:focus-visible),
-  html[data-trifle-admin-sidebar="collapsed"] [data-sidebar-shell="admin"] .sidebar-nav-link:not(:focus-visible) {
+  html[data-trifle-client-sidebar="collapsed"] [data-sidebar-shell="client"] .sidebar-nav-link:not(:focus-visible):not(:hover),
+  html[data-trifle-admin-sidebar="collapsed"] [data-sidebar-shell="admin"] .sidebar-nav-link:not(:focus-visible):not(:hover) {
     background: transparent !important;
     box-shadow: none !important;
   }
