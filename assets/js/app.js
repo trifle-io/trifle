@@ -2367,21 +2367,30 @@ Hooks.PathAutocomplete = {
 Hooks.WidgetSeriesRows = {
   mounted() {
     this.widgetId = this.el.dataset.widgetId;
-    this.seriesTextInputSelector =
-      'input[name^="widget_series_path["], input[data-role="series-expression"], input[data-role="series-label"]';
+    this.eventName = this.el.dataset.eventName || 'widget_series_rows_update';
     this.inputDebounceMs = 250;
     this._rowsInputTimer = null;
     this._lastRowsPayload = null;
+    this._eventTarget = this.el.closest('[data-phx-component]') || null;
+
+    this.emitRows = (rows) => {
+      const payload = {
+        widget_id: this.widgetId,
+        rows
+      };
+
+      if (this._eventTarget && typeof this.pushEventTo === 'function') {
+        this.pushEventTo(this._eventTarget, this.eventName, payload);
+      } else {
+        this.pushEvent(this.eventName, payload);
+      }
+    };
 
     this.pushRows = (rows) => {
       const payload = JSON.stringify(rows || []);
       if (payload === this._lastRowsPayload) return;
       this._lastRowsPayload = payload;
-
-      this.pushEvent('widget_series_rows_update', {
-        widget_id: this.widgetId,
-        rows
-      });
+      this.emitRows(rows);
     };
 
     this.queueRowsPush = () => {
@@ -2456,7 +2465,13 @@ Hooks.WidgetSeriesRows = {
         return;
       }
 
-      if (input.matches(this.seriesTextInputSelector)) {
+      if (input.matches('input[data-role="series-color"]')) {
+        event.stopPropagation();
+        this.pushRows(this.readRows());
+        return;
+      }
+
+      if (input.matches('input[data-role="series-path"], input[data-role="series-expression"], input[data-role="series-label"]')) {
         event.stopPropagation();
         this.flushRowsPush();
       }
@@ -2466,7 +2481,7 @@ Hooks.WidgetSeriesRows = {
       const input = event.target;
       if (!input) return;
 
-      if (input.matches(this.seriesTextInputSelector)) {
+      if (input.matches('input[data-role="series-path"], input[data-role="series-expression"], input[data-role="series-label"]')) {
         event.stopPropagation();
         this.queueRowsPush();
       }
@@ -2481,6 +2496,8 @@ Hooks.WidgetSeriesRows = {
 
   updated() {
     this.widgetId = this.el.dataset.widgetId;
+    this.eventName = this.el.dataset.eventName || 'widget_series_rows_update';
+    this._eventTarget = this.el.closest('[data-phx-component]') || null;
     this._lastRowsPayload = JSON.stringify(this.readRows());
   },
 
@@ -2522,18 +2539,16 @@ Hooks.WidgetSeriesRows = {
       };
 
       const checkedColor = rowEl.querySelector(
-        'input[type="radio"][name^="widget_series_color_selector["]:checked'
+        'input[data-role="series-color"]:checked'
       );
-      const kindInput = rowEl.querySelector(
-        'input[type="radio"][name^="widget_series_kind["]:checked'
-      );
+      const kindInput = rowEl.querySelector('input[data-role="series-kind"]:checked');
       const visibleInput = rowEl.querySelector('input[data-role="series-visible"]');
 
       return {
         kind: kindInput ? kindInput.value || 'path' : 'path',
-        path: valueFor('input[name^="widget_series_path["]'),
-        expression: valueFor('input[name^="widget_series_expression["]'),
-        label: valueFor('input[name^="widget_series_label["]'),
+        path: valueFor('input[data-role="series-path"]'),
+        expression: valueFor('input[data-role="series-expression"]'),
+        label: valueFor('input[data-role="series-label"]'),
         visible: !!(visibleInput && visibleInput.checked),
         color_selector: checkedColor ? checkedColor.value || 'default.*' : 'default.*'
       };

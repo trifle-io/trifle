@@ -278,6 +278,45 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
     end
   end
 
+  describe "evaluate_points/4" do
+    test "evaluates resolved expression output points" do
+      alert =
+        %Alert{
+          id: "alert-expression-threshold",
+          analysis_strategy: :threshold,
+          settings: %Settings{
+            threshold_direction: :above,
+            threshold_value: 10.0
+          }
+        }
+
+      base_time = ~U[2025-01-01 00:00:00Z]
+
+      points =
+        [5.0, 9.0, 12.0]
+        |> Enum.with_index()
+        |> Enum.map(fn {value, index} ->
+          at = DateTime.add(base_time, index * 60, :second)
+
+          %{
+            at: at,
+            at_iso: DateTime.to_iso8601(at),
+            ts: DateTime.to_unix(at, :millisecond),
+            value: value
+          }
+        end)
+
+      {:ok, result} =
+        AlertEvaluator.evaluate_points(alert, "__expression__.2.single", points,
+          exclude_recent: false
+        )
+
+      assert result.triggered?
+      assert result.path == "__expression__.2.single"
+      assert result.latest_point.value == 12.0
+    end
+  end
+
   defp build_series(values) when is_list(values) do
     base_time = ~U[2025-01-01 00:00:00Z]
 

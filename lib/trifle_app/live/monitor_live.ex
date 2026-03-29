@@ -4,6 +4,7 @@ defmodule TrifleApp.MonitorLive do
   alias Phoenix.LiveView.JS
   alias Ecto.Changeset
   alias Trifle.Monitors
+  alias Trifle.Monitors.AlertSeries
   alias Trifle.Monitors.AlertEvaluator
   alias Trifle.Monitors.AlertAdvisor
   alias Trifle.Monitors.{Alert, Execution, Monitor}
@@ -21,6 +22,7 @@ defmodule TrifleApp.MonitorLive do
     Category,
     Distribution,
     Kpi,
+    LayoutTree,
     Table,
     Text,
     Timeseries,
@@ -301,6 +303,38 @@ defmodule TrifleApp.MonitorLive do
   def handle_event("close_expanded_widget", _params, socket) do
     {:noreply, assign(socket, :expanded_widget, nil)}
   end
+
+  def handle_event(
+        "alert_series_rows_update",
+        %{"widget_id" => widget_id, "rows" => raw_rows},
+        %{assigns: %{live_action: :configure}} = socket
+      ) do
+    monitor = socket.assigns[:modal_monitor] || socket.assigns.monitor
+
+    if to_string(widget_id) != alert_series_editor_id(monitor) do
+      {:noreply, socket}
+    else
+      rows = AlertSeries.normalize_rows(raw_rows, preserve_empty: true, ensure_default: false)
+
+      changeset =
+        monitor
+        |> change_monitor_with_alert_series_rows(
+          socket
+          |> current_modal_monitor_form_params()
+          |> strip_alert_series_row_params()
+          |> Map.put("alert_series", rows),
+          rows
+        )
+        |> maybe_copy_modal_changeset_action(socket)
+
+      {:noreply,
+       socket
+       |> assign(:modal_changeset, changeset)
+       |> assign(:modal_monitor, monitor)}
+    end
+  end
+
+  def handle_event("alert_series_rows_update", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_status", _params, socket) do
     %{monitor: monitor, current_membership: membership} = socket.assigns
@@ -813,7 +847,7 @@ defmodule TrifleApp.MonitorLive do
   end
 
   defp format_ai_error(:missing_metric_path),
-    do: "Set a metric path for this monitor before requesting recommendations."
+    do: "Define a final alert series for this monitor before requesting recommendations."
 
   defp format_ai_error(:no_data),
     do: "No recent data available for this metric. Adjust the timeframe and retry."
@@ -1564,11 +1598,7 @@ defmodule TrifleApp.MonitorLive do
   defp assign_monitor_widget_datasets(socket, stats) do
     monitor = socket.assigns.monitor
 
-    dashboard =
-      case socket.assigns[:insights_dashboard] do
-        nil -> build_monitor_insights_dashboard(monitor)
-        existing -> existing
-      end
+    dashboard = build_monitor_insights_dashboard(monitor, stats)
 
     datasets = dataset_maps_for_dashboard(stats, dashboard)
     {datasets, alert_evaluations} = MonitorLayout.inject_alert_overlay(datasets, monitor, stats)
@@ -1624,10 +1654,13 @@ defmodule TrifleApp.MonitorLive do
     |> WidgetData.dataset_maps()
   end
 
-  defp build_monitor_insights_dashboard(%Monitor{type: :report, dashboard: %{} = dashboard}),
-    do: dashboard
+  defp build_monitor_insights_dashboard(
+         %Monitor{type: :report, dashboard: %{} = dashboard},
+         _stats
+       ),
+       do: dashboard
 
-  defp build_monitor_insights_dashboard(%Monitor{type: :report} = monitor) do
+  defp build_monitor_insights_dashboard(%Monitor{type: :report} = monitor, _stats) do
     %{
       id: "#{monitor.id}-report-preview",
       key: nil,
@@ -1636,11 +1669,11 @@ defmodule TrifleApp.MonitorLive do
     }
   end
 
-  defp build_monitor_insights_dashboard(%Monitor{type: :alert} = monitor) do
-    build_alert_preview_dashboard(monitor)
+  defp build_monitor_insights_dashboard(%Monitor{type: :alert} = monitor, stats) do
+    build_alert_preview_dashboard(monitor, stats)
   end
 
-  defp build_monitor_insights_dashboard(%Monitor{} = monitor) do
+  defp build_monitor_insights_dashboard(%Monitor{} = monitor, _stats) do
     %{
       id: "#{monitor.id}-preview",
       key: nil,
@@ -1649,39 +1682,19 @@ defmodule TrifleApp.MonitorLive do
     }
   end
 
-  defp build_alert_preview_dashboard(%Monitor{} = monitor) do
-    %{
-      id: "#{monitor.id}-alert-preview",
-      key: monitor.alert_metric_key,
-      name: monitor.name,
-      payload: %{"grid" => MonitorLayout.alert_widgets(monitor)}
-    }
+  defp build_monitor_insights_dashboard(%Monitor{} = monitor),
+    do: build_monitor_insights_dashboard(monitor, nil)
+
+  defp build_alert_preview_dashboard(%Monitor{} = monitor, stats) do
+    MonitorLayout.alert_dashboard(monitor, stats)
   end
 
   defp find_monitor_widget(nil, _id), do: nil
 
   defp find_monitor_widget(%{payload: payload}, id) when is_map(payload) do
-    id = to_string(id)
-
     payload
-    |> Map.get("grid", [])
-    |> case do
-      [] ->
-        payload
-        |> Map.get(:grid, [])
-
-      list ->
-        list
-    end
-    |> Enum.find(fn item ->
-      widget_id =
-        item
-        |> Map.get("id") ||
-          item
-          |> Map.get(:id)
-
-      to_string(widget_id) == id
-    end)
+    |> Map.get("grid", Map.get(payload, :grid, []))
+    |> LayoutTree.find_node(id)
   end
 
   defp find_monitor_widget(_, _id), do: nil
@@ -1841,6 +1854,59 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:alert_modal_changeset, nil)
     |> assign(:alert_modal_action, nil)
   end
+
+  defp current_modal_monitor_form_params(socket) do
+    case socket.assigns[:modal_changeset] do
+      %Changeset{params: params} when is_map(params) -> params
+      _ -> %{}
+    end
+  end
+
+  defp change_monitor_with_alert_series_rows(%Monitor{} = monitor, params, rows)
+       when is_map(params) and is_list(rows) do
+    monitor
+    |> Monitors.change_monitor(params)
+    |> Changeset.put_change(:alert_series, rows)
+    |> Changeset.put_change(:alert_metric_path, AlertSeries.legacy_metric_path(rows))
+  end
+
+  defp maybe_copy_modal_changeset_action(%Changeset{} = changeset, socket) do
+    case socket.assigns[:modal_changeset] do
+      %Changeset{action: action} when not is_nil(action) -> Map.put(changeset, :action, action)
+      _ -> changeset
+    end
+  end
+
+  defp strip_alert_series_row_params(params) when is_map(params) do
+    Enum.reduce(
+      [
+        "alert_series_kind",
+        "alert_series_path",
+        "alert_series_expression",
+        "alert_series_label",
+        "alert_series_visible",
+        "alert_series_color_selector"
+      ],
+      params,
+      fn key, acc ->
+        acc
+        |> Map.delete(key)
+        |> Map.delete("#{key}[]")
+      end
+    )
+  end
+
+  defp strip_alert_series_row_params(params), do: params
+
+  defp alert_series_editor_id(%Monitor{} = monitor) do
+    "monitor-alert-series-" <>
+      case monitor.id do
+        nil -> "new"
+        value -> to_string(value)
+      end
+  end
+
+  defp alert_series_editor_id(_monitor), do: "monitor-alert-series-new"
 
   defp find_alert(%Monitor{} = monitor, id) do
     id = to_string(id)
@@ -2397,9 +2463,9 @@ defmodule TrifleApp.MonitorLive do
                 <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
                   {value_or_dash(@monitor.alert_metric_key)}
                 </code>
-                at
+                using
                 <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-                  {value_or_dash(@monitor.alert_metric_path)}
+                  {value_or_dash(AlertSeries.final_row_display(@monitor))}
                 </code>
               <% end %>
             </p>
@@ -2557,7 +2623,7 @@ defmodule TrifleApp.MonitorLive do
 
           alert_path_missing? =
             @monitor.type == :alert &&
-              blank?(@monitor.alert_metric_path) %>
+              not AlertSeries.has_final_row?(@monitor) %>
 
           <div class="relative">
             <% progress = @loading_progress %>
@@ -2603,10 +2669,10 @@ defmodule TrifleApp.MonitorLive do
                 <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-amber-300 bg-amber-50 text-center dark:border-amber-600/60 dark:bg-amber-900/20">
                   <div class="max-w-sm space-y-2">
                     <p class="text-sm font-semibold text-amber-700 dark:text-amber-200">
-                      Metric path required
+                      Final series required
                     </p>
                     <p class="text-xs text-amber-700/80 dark:text-amber-100/80">
-                      Configure a metric key and path for this alert to generate a chart preview.
+                      Configure alert series and leave the last row as the evaluation source to generate alert charts.
                     </p>
                   </div>
                 </div>

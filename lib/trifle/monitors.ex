@@ -8,7 +8,7 @@ defmodule Trifle.Monitors do
   alias Ecto.Multi
   alias Trifle.Accounts.User
   alias Trifle.Integrations
-  alias Trifle.Monitors.{Alert, Execution, Monitor}
+  alias Trifle.Monitors.{Alert, AlertSeries, Execution, Monitor}
   alias Trifle.Monitors.TestDelivery
   alias Trifle.Monitors.Monitor.DeliveryMedium
   alias Trifle.Organizations.OrganizationMembership
@@ -450,6 +450,7 @@ defmodule Trifle.Monitors do
       alert_granularity: "5m",
       alert_metric_key: "",
       alert_metric_path: "",
+      alert_series: [],
       alert_notify_every: 1
     }
   end
@@ -777,6 +778,7 @@ defmodule Trifle.Monitors do
     |> update_nested(:report_settings, &normalize_report_settings/1)
     |> update_nested(:alert_settings, &normalize_alert_settings/1)
     |> apply_alert_settings()
+    |> AlertSeries.normalize_attrs()
     |> normalize_alert_fields()
     |> update_nested_list(:delivery_media, &normalize_delivery_medium/1)
     |> ensure_delivery_media_default()
@@ -1092,6 +1094,10 @@ defmodule Trifle.Monitors do
         attrs
         |> put_unless_present(:alert_metric_key, fetch_string(settings_map, ["metric_key"]))
         |> put_unless_present(:alert_metric_path, fetch_string(settings_map, ["metric_path"]))
+        |> put_unless_present(
+          :alert_series,
+          Map.get(settings_map, "series") || Map.get(settings_map, :series)
+        )
         |> put_unless_present(:alert_timeframe, fetch_string(settings_map, ["timeframe"]))
         |> put_unless_present(:alert_granularity, fetch_string(settings_map, ["granularity"]))
         |> put_unless_present(

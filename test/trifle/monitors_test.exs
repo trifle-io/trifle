@@ -72,6 +72,7 @@ defmodule Trifle.MonitorsTest do
 
       assert monitor.name == "Error Spike"
       assert monitor.alert_metric_key == "errors.total"
+      assert [%{"path" => "$.service.api", "kind" => "path"}] = monitor.alert_series
       assert monitor.delivery_channels |> List.first() |> Map.get(:target) == "oncall@example.com"
       assert monitor.organization_id == membership.organization_id
       assert monitor.source_type == :database
@@ -164,6 +165,34 @@ defmodule Trifle.MonitorsTest do
                })
 
       assert updated.alert_notify_every == 5
+    end
+
+    test "update_monitor_for_membership/3 persists alert series and derives legacy path", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      attrs = %{
+        alert_series: [
+          %{"kind" => "path", "path" => "$.incoming.*", "visible" => false},
+          %{"kind" => "path", "path" => "$.outgoing.*", "visible" => false},
+          %{
+            "kind" => "expression",
+            "expression" => "a - b",
+            "label" => "delta",
+            "visible" => true
+          }
+        ]
+      }
+
+      assert {:ok, %Monitor{} = updated} =
+               Monitors.update_monitor_for_membership(monitor, membership, attrs)
+
+      assert length(updated.alert_series) == 3
+      assert updated.alert_metric_path in [nil, ""]
+      assert List.last(updated.alert_series)["expression"] == "a - b"
     end
 
     test "update_monitor_for_membership/3 rejects out of range alert cadence", %{

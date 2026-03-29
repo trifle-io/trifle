@@ -5,6 +5,7 @@ defmodule TrifleApp.MonitorComponents do
   use TrifleApp, :html
 
   alias Trifle.Monitors
+  alias Trifle.Monitors.AlertSeries
   alias Trifle.Monitors.Monitor
 
   attr :monitor, Monitor, required: true
@@ -213,12 +214,20 @@ defmodule TrifleApp.MonitorComponents do
           </div>
           <div>
             <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Metric path
+              Final series
             </dt>
             <dd class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
               <code class="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-700 dark:text-slate-200">
-                {present_or_dash(@monitor.alert_metric_path)}
+                {present_or_dash(AlertSeries.final_row_display(@monitor))}
               </code>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Series rows
+            </dt>
+            <dd class="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {AlertSeries.series_count(@monitor)}
             </dd>
           </div>
         </div>

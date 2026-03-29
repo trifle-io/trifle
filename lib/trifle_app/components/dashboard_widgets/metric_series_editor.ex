@@ -12,23 +12,34 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   attr :path_placeholder, :string, default: "metrics.total"
   attr :path_help, :string, default: nil
   attr :title, :string, default: "Series"
+  attr :field_prefix, :string, default: "widget_series"
+  attr :field_scope, :string, default: nil
+  attr :event_name, :string, default: "widget_series_rows_update"
+  attr :editor_id, :string, default: nil
+  attr :layout, :string, default: "full"
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
     rows = MetricSeries.rows_for_form(widget, Map.get(assigns, :path_options, []))
-    widget_id = widget_id(widget)
+    widget_id = Map.get(assigns, :editor_id) || widget_id(widget)
 
     assigns =
       assigns
       |> assign(:widget, widget)
       |> assign(:rows, rows)
       |> assign(:widget_id, widget_id)
+      |> assign(:event_name, Map.get(assigns, :event_name))
+      |> assign(:field_prefix, Map.get(assigns, :field_prefix))
+      |> assign(:field_scope, blank_to_nil(Map.get(assigns, :field_scope)))
+      |> assign(:layout, normalize_layout(Map.get(assigns, :layout)))
 
     ~H"""
     <div
       id={"widget-#{@widget_id}-series"}
       phx-hook="WidgetSeriesRows"
       data-widget-id={@widget_id}
+      data-event-name={@event_name}
+      data-field-prefix={@field_prefix}
       class="space-y-3"
     >
       <div class="space-y-1">
@@ -51,127 +62,79 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
             data-index={row["index"]}
             class={row_shell_classes()}
           >
-            <div class="space-y-3 lg:grid lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] lg:items-center lg:gap-3 lg:space-y-0">
-              <div class="flex items-start gap-3 lg:contents">
-                <label class="inline-flex shrink-0">
-                  <input
-                    type="hidden"
-                    name={input_name("widget_series_visible", row["index"])}
-                    value="false"
+            <%= if @layout == "compact" do %>
+              <div class="space-y-3">
+                <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
+                  <.series_visibility_toggle
+                    row={row}
+                    field_scope={@field_scope}
+                    field_prefix={@field_prefix}
                   />
-                  <input
-                    type="checkbox"
-                    name={input_name("widget_series_visible", row["index"])}
-                    value="true"
-                    data-role="series-visible"
-                    checked={MetricSeries.visible?(row)}
-                    class="peer sr-only"
-                  />
-                  <span class={visibility_toggle_classes()}>
-                    <span class="sr-only">Toggle series visibility</span>
-                    {row["row_letter"]}
-                  </span>
-                </label>
 
-                <div class="min-w-0 flex-1">
                   <div class={series_input_shell_classes()}>
-                    <label class={kind_icon_classes(MetricSeries.path_row?(row))}>
-                      <input
-                        type="radio"
-                        name={input_name("widget_series_kind", row["index"])}
-                        value="path"
-                        aria-label="Path series"
-                        data-role="series-kind"
-                        checked={MetricSeries.path_row?(row)}
-                        class="sr-only"
-                      />
-                      <span class="sr-only">Path series</span>
-                      <.path_icon />
-                    </label>
-                    <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
-                      <input
-                        type="radio"
-                        name={input_name("widget_series_kind", row["index"])}
-                        value="expression"
-                        aria-label="Expression series"
-                        data-role="series-kind"
-                        checked={MetricSeries.expression_row?(row)}
-                        class="sr-only"
-                      />
-                      <span class="sr-only">Expression series</span>
-                      <.formula_icon />
-                    </label>
-                    <div class={shell_divider_classes()}></div>
+                    <.series_kind_radios
+                      row={row}
+                      field_scope={@field_scope}
+                      field_prefix={@field_prefix}
+                    />
+                    <.series_value_input
+                      row={row}
+                      widget_id={@widget_id}
+                      field_scope={@field_scope}
+                      field_prefix={@field_prefix}
+                      path_options={@path_options}
+                      path_placeholder={@path_placeholder}
+                    />
+                  </div>
+                </div>
 
-                    <div class="min-w-0 flex-1">
-                      <%= if MetricSeries.path_row?(row) do %>
-                        <.path_autocomplete_input
-                          id={"widget-series-path-#{@widget_id}-#{row["index"]}"}
-                          name={input_name("widget_series_path", row["index"])}
-                          value={row["path"]}
-                          placeholder={@path_placeholder}
-                          path_options={@path_options}
-                          annotated={true}
-                          preview_class={path_preview_classes()}
-                          wrapper_class="relative z-20"
-                          input_class={joined_input_classes()}
-                        />
-                        <input
-                          type="hidden"
-                          name={input_name("widget_series_expression", row["index"])}
-                          value=""
-                        />
-                      <% else %>
-                        <input
-                          type="text"
-                          name={input_name("widget_series_expression", row["index"])}
-                          value={row["expression"]}
-                          data-role="series-expression"
-                          class={joined_input_classes()}
-                          placeholder="a / b"
-                          spellcheck="false"
-                        />
-                        <input
-                          type="hidden"
-                          name={input_name("widget_series_path", row["index"])}
-                          value=""
-                        />
-                      <% end %>
+                <.series_row_controls
+                  row={row}
+                  widget_id={@widget_id}
+                  field_scope={@field_scope}
+                  field_prefix={@field_prefix}
+                  rows_count={length(@rows)}
+                  container_class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
+                />
+              </div>
+            <% else %>
+              <div class="space-y-3 lg:grid lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] lg:items-center lg:gap-3 lg:space-y-0">
+                <div class="flex items-start gap-3 lg:contents">
+                  <.series_visibility_toggle
+                    row={row}
+                    field_scope={@field_scope}
+                    field_prefix={@field_prefix}
+                  />
+
+                  <div class="min-w-0 flex-1">
+                    <div class={series_input_shell_classes()}>
+                      <.series_kind_radios
+                        row={row}
+                        field_scope={@field_scope}
+                        field_prefix={@field_prefix}
+                      />
+                      <.series_value_input
+                        row={row}
+                        widget_id={@widget_id}
+                        field_scope={@field_scope}
+                        field_prefix={@field_prefix}
+                        path_options={@path_options}
+                        path_placeholder={@path_placeholder}
+                      />
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] lg:contents">
-                <input
-                  type="text"
-                  name={input_name("widget_series_label", row["index"])}
-                  value={row["label"]}
-                  data-role="series-label"
-                  class={input_classes()}
-                  placeholder="Alias"
+                <.series_row_controls
+                  row={row}
+                  widget_id={@widget_id}
+                  field_scope={@field_scope}
+                  field_prefix={@field_prefix}
+                  rows_count={length(@rows)}
+                  container_class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] lg:contents"
                 />
-
-                <SeriesColorSelector.input
-                  id_prefix={"widget-series-color-#{@widget_id}"}
-                  name="widget_series_color_selector"
-                  index={row["index"]}
-                  selector={row["selector"]}
-                  class="w-full"
-                />
-
-                <button
-                  type="button"
-                  data-action="remove"
-                  data-index={row["index"]}
-                  class={remove_button_classes()}
-                  aria-label="Remove series"
-                  disabled={length(@rows) == 1}
-                >
-                  <.remove_icon />
-                </button>
               </div>
-            </div>
+            <% end %>
           </div>
         <% end %>
       </div>
@@ -192,7 +155,167 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
     """
   end
 
-  defp input_name(field, index), do: "#{field}[#{index}]"
+  attr :row, :map, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+
+  defp series_visibility_toggle(assigns) do
+    ~H"""
+    <label class="inline-flex shrink-0">
+      <input
+        type="hidden"
+        name={input_name(@field_scope, @field_prefix, "visible", @row["index"])}
+        value="false"
+      />
+      <input
+        type="checkbox"
+        name={input_name(@field_scope, @field_prefix, "visible", @row["index"])}
+        value="true"
+        data-role="series-visible"
+        checked={MetricSeries.visible?(@row)}
+        class="peer sr-only"
+      />
+      <span class={visibility_toggle_classes()}>
+        <span class="sr-only">Toggle series visibility</span>
+        {@row["row_letter"]}
+      </span>
+    </label>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :widget_id, :string, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+  attr :rows_count, :integer, required: true
+  attr :container_class, :string, required: true
+
+  defp series_row_controls(assigns) do
+    ~H"""
+    <div class={@container_class}>
+      <input
+        type="text"
+        name={input_name(@field_scope, @field_prefix, "label", @row["index"])}
+        value={@row["label"]}
+        data-role="series-label"
+        class={input_classes()}
+        placeholder="Alias"
+      />
+
+      <SeriesColorSelector.input
+        id_prefix={"widget-series-color-#{@widget_id}"}
+        name={input_name_base(@field_scope, @field_prefix, "color_selector")}
+        index={@row["index"]}
+        selector={@row["selector"]}
+        input_data_role="series-color"
+        class="w-full"
+      />
+
+      <button
+        type="button"
+        data-action="remove"
+        data-index={@row["index"]}
+        class={remove_button_classes()}
+        aria-label="Remove series"
+        disabled={@rows_count == 1}
+      >
+        <.remove_icon />
+      </button>
+    </div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+
+  defp series_kind_radios(assigns) do
+    ~H"""
+    <label class={kind_icon_classes(MetricSeries.path_row?(@row))}>
+      <input
+        type="radio"
+        name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
+        value="path"
+        aria-label="Path series"
+        data-role="series-kind"
+        checked={MetricSeries.path_row?(@row)}
+        class="sr-only"
+      />
+      <span class="sr-only">Path series</span>
+      <.path_icon />
+    </label>
+    <label class={kind_icon_classes(MetricSeries.expression_row?(@row))}>
+      <input
+        type="radio"
+        name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
+        value="expression"
+        aria-label="Expression series"
+        data-role="series-kind"
+        checked={MetricSeries.expression_row?(@row)}
+        class="sr-only"
+      />
+      <span class="sr-only">Expression series</span>
+      <.formula_icon />
+    </label>
+    <div class={shell_divider_classes()}></div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :widget_id, :string, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+  attr :path_options, :list, default: []
+  attr :path_placeholder, :string, default: "metrics.total"
+
+  defp series_value_input(assigns) do
+    ~H"""
+    <div class="min-w-0 flex-1">
+      <%= if MetricSeries.path_row?(@row) do %>
+        <.path_autocomplete_input
+          id={"widget-series-path-#{@widget_id}-#{@row["index"]}"}
+          name={input_name(@field_scope, @field_prefix, "path", @row["index"])}
+          value={@row["path"]}
+          placeholder={@path_placeholder}
+          path_options={@path_options}
+          annotated={true}
+          input_data_role="series-path"
+          preview_class={path_preview_classes()}
+          wrapper_class="relative z-20"
+          input_class={joined_input_classes()}
+        />
+        <input
+          type="hidden"
+          name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
+          value=""
+        />
+      <% else %>
+        <input
+          type="text"
+          name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
+          value={@row["expression"]}
+          data-role="series-expression"
+          class={joined_input_classes()}
+          placeholder="a / b"
+          spellcheck="false"
+        />
+        <input
+          type="hidden"
+          name={input_name(@field_scope, @field_prefix, "path", @row["index"])}
+          value=""
+        />
+      <% end %>
+    </div>
+    """
+  end
+
+  defp input_name(scope, prefix, suffix, index) do
+    "#{input_name_base(scope, prefix, suffix)}[#{index}]"
+  end
+
+  defp input_name_base(nil, prefix, suffix), do: "#{prefix}_#{suffix}"
+  defp input_name_base("", prefix, suffix), do: input_name_base(nil, prefix, suffix)
+  defp input_name_base(scope, prefix, suffix), do: "#{scope}[#{prefix}_#{suffix}]"
 
   defp widget_id(widget) when is_map(widget) do
     widget
@@ -201,6 +324,18 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   end
 
   defp widget_id(_), do: ""
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(value), do: value
+
+  defp normalize_layout(value) when value in ["compact", "full"], do: value
+  defp normalize_layout(_value), do: "full"
 
   defp row_shell_classes do
     "px-3 py-3"

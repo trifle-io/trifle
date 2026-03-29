@@ -11,6 +11,7 @@ defmodule TrifleApp.Components.PathInput do
   attr :wrapper_class, :string, default: nil
   attr :annotated, :boolean, default: false
   attr :preview_class, :string, default: nil
+  attr :input_data_role, :string, default: "path-input"
 
   attr :input_class, :string,
     default:
@@ -45,7 +46,7 @@ defmodule TrifleApp.Components.PathInput do
         class={@input_class}
         autocomplete="off"
         spellcheck="false"
-        data-role="path-input"
+        data-role={@input_data_role}
       />
       <div
         id={"#{@id}-suggestions"}

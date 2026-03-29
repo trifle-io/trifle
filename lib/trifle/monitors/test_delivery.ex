@@ -109,9 +109,6 @@ defmodule Trifle.Monitors.TestDelivery do
       Enum.empty?(channels) ->
         {:error, "No delivery targets configured for this monitor."}
 
-      MonitorLayout.alert_widget_id(monitor, alert) == nil ->
-        {:error, "Unable to resolve alert widget for export."}
-
       true ->
         Logger.info(
           "[monitor_export #{log_label}] deliver_alert start channels=#{length(channels)} media=#{inspect(media)} params=#{describe_export_params(export_params)}"
@@ -368,76 +365,69 @@ defmodule Trifle.Monitors.TestDelivery do
   defp build_alert_export(monitor, alert, medium, params, builder, exporter, exporter_opts) do
     log_context = Keyword.get(exporter_opts, :log_context, %{})
     log_label = ExportLog.label(log_context)
-    widget_id = MonitorLayout.alert_widget_id(monitor, alert)
 
-    if is_nil(widget_id) do
-      Logger.error("[monitor_export #{log_label}] alert_widget_missing medium=#{medium}")
-
-      {:error, "Unable to resolve alert widget for export."}
-    else
-      theme =
-        case medium do
-          :png_dark -> :dark
-          _ -> :light
-        end
-
-      layout_opts =
-        case medium do
-          :pdf ->
-            [
-              params: params,
-              theme: :light,
-              viewport: @default_monitor_viewport
-            ]
-
-          _ ->
-            [
-              params: params,
-              theme: theme
-            ]
-        end
-
-      Logger.info(
-        "[monitor_export #{log_label}] alert_layout_build start medium=#{medium} widget=#{widget_id} theme=#{theme}"
-      )
-
-      case builder.build_widget(monitor, widget_id, layout_opts) do
-        {:ok, %Layout{} = layout} ->
-          Logger.info(
-            "[monitor_export #{log_label}] alert_layout_build success layout_id=#{layout.id}"
-          )
-
-          case export_binary(medium, layout, exporter, exporter_opts) do
-            {:ok, binary, content_type} ->
-              Logger.info(
-                "[monitor_export #{log_label}] alert_export_binary success medium=#{medium} bytes=#{byte_size(binary)}"
-              )
-
-              filename = build_filename({:alert, monitor, alert}, medium)
-
-              {:ok,
-               %{
-                 medium: medium,
-                 filename: filename,
-                 content_type: content_type,
-                 binary: binary
-               }}
-
-            {:error, reason} ->
-              Logger.error(
-                "[monitor_export #{log_label}] alert_export_binary failed medium=#{medium} reason=#{inspect(reason)}"
-              )
-
-              {:error, reason}
-          end
-
-        {:error, reason} ->
-          Logger.error(
-            "[monitor_export #{log_label}] alert_layout_build failed medium=#{medium} widget=#{widget_id} reason=#{inspect(reason)}"
-          )
-
-          {:error, reason}
+    theme =
+      case medium do
+        :png_dark -> :dark
+        _ -> :light
       end
+
+    layout_opts =
+      case medium do
+        :pdf ->
+          [
+            params: params,
+            theme: :light,
+            viewport: @default_monitor_viewport
+          ]
+
+        _ ->
+          [
+            params: params,
+            theme: theme
+          ]
+      end
+
+    Logger.info(
+      "[monitor_export #{log_label}] alert_layout_build start medium=#{medium} theme=#{theme}"
+    )
+
+    case builder.build(monitor, layout_opts) do
+      {:ok, %Layout{} = layout} ->
+        Logger.info(
+          "[monitor_export #{log_label}] alert_layout_build success layout_id=#{layout.id}"
+        )
+
+        case export_binary(medium, layout, exporter, exporter_opts) do
+          {:ok, binary, content_type} ->
+            Logger.info(
+              "[monitor_export #{log_label}] alert_export_binary success medium=#{medium} bytes=#{byte_size(binary)}"
+            )
+
+            filename = build_filename({:alert, monitor, alert}, medium)
+
+            {:ok,
+             %{
+               medium: medium,
+               filename: filename,
+               content_type: content_type,
+               binary: binary
+             }}
+
+          {:error, reason} ->
+            Logger.error(
+              "[monitor_export #{log_label}] alert_export_binary failed medium=#{medium} reason=#{inspect(reason)}"
+            )
+
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        Logger.error(
+          "[monitor_export #{log_label}] alert_layout_build failed medium=#{medium} reason=#{inspect(reason)}"
+        )
+
+        {:error, reason}
     end
   end
 

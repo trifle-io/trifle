@@ -26,6 +26,7 @@ defmodule TrifleApi.MonitorsJSON do
       dashboard_id: monitor.dashboard_id,
       alert_metric_key: monitor.alert_metric_key,
       alert_metric_path: monitor.alert_metric_path,
+      alert_series: monitor.alert_series || [],
       alert_timeframe: monitor.alert_timeframe,
       alert_granularity: monitor.alert_granularity,
       alert_notify_every: monitor.alert_notify_every,

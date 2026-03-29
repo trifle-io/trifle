@@ -7,6 +7,7 @@ defmodule Trifle.Monitors.Monitor do
   import Ecto.Changeset
 
   alias Trifle.Accounts.User
+  alias Trifle.Monitors.AlertSeries
   alias Trifle.Monitors.{Alert, Execution}
   alias Trifle.Organizations.{Dashboard, DashboardSegments, Organization}
   alias Trifle.Timeframe
@@ -31,6 +32,7 @@ defmodule Trifle.Monitors.Monitor do
     field :source_id, :binary_id
     field :alert_metric_key, :string
     field :alert_metric_path, :string
+    field :alert_series, {:array, :map}, default: []
     field :alert_timeframe, :string
     field :alert_granularity, :string
     field :alert_notify_every, :integer, default: 1
@@ -94,6 +96,7 @@ defmodule Trifle.Monitors.Monitor do
       :source_id,
       :alert_metric_key,
       :alert_metric_path,
+      :alert_series,
       :alert_timeframe,
       :alert_granularity,
       :alert_notify_every
@@ -270,9 +273,10 @@ defmodule Trifle.Monitors.Monitor do
     case get_field(changeset, :type) do
       :alert ->
         changeset
-        |> validate_required([:alert_metric_key, :alert_metric_path])
+        |> validate_required([:alert_metric_key])
         |> validate_length(:alert_metric_key, max: 255)
         |> validate_length(:alert_metric_path, max: 255)
+        |> validate_alert_series()
 
       _ ->
         changeset
@@ -311,6 +315,16 @@ defmodule Trifle.Monitors.Monitor do
         add_error(changeset, :source_id, "must reference a source")
 
       true ->
+        changeset
+    end
+  end
+
+  defp validate_alert_series(%Ecto.Changeset{} = changeset) do
+    case AlertSeries.final_row(get_field(changeset, :alert_series) || []) do
+      nil ->
+        add_error(changeset, :alert_series, "must define at least one alert series")
+
+      _row ->
         changeset
     end
   end

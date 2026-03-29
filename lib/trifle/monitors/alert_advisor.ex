@@ -10,7 +10,7 @@ defmodule Trifle.Monitors.AlertAdvisor do
   require Logger
   alias Decimal
   alias Trifle.Chat.OpenAIClient
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{AlertSeries, Monitor}
   alias Trifle.Stats.Series
 
   @type variant :: :conservative | :balanced | :sensitive
@@ -92,15 +92,13 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
     client = Keyword.get(opts, :client, &OpenAIClient.chat_completion/2)
     max_points = Keyword.get(opts, :max_points, @max_points)
-    path = String.trim(to_string(monitor.alert_metric_path || ""))
 
     with runtime_api_key <- runtime_api_key(),
          model <- advisor_model(),
          max_tokens <- advisor_max_completion_tokens(),
          {:ok, strategy} <- ensure_supported_strategy(strategy),
          {:ok, variant} <- ensure_supported_variant(variant),
-         :ok <- ensure_metric_path(path),
-         {:ok, points} <- extract_series_points(series, path, max_points),
+         {:ok, {path, points}} <- extract_monitor_series_points(monitor, series, max_points),
          {:ok, summary} <- summarise_points(points),
          {:ok, payload_map} <-
            build_prompt_payload(monitor, path, strategy, variant, summary, points),
@@ -132,6 +130,97 @@ defmodule Trifle.Monitors.AlertAdvisor do
   end
 
   def recommend(_, _, _), do: {:error, :unsupported_context}
+
+  defp extract_monitor_series_points(%Monitor{} = monitor, %Series{} = series, max_points) do
+    case AlertSeries.resolved_final_targets(series, monitor) do
+      targets when is_list(targets) and targets != [] ->
+        points =
+          targets
+          |> Enum.flat_map(&normalize_resolved_target_points/1)
+          |> Enum.sort_by(& &1["at"], &<=/2)
+          |> maybe_trim(max_points)
+
+        case points do
+          [] ->
+            {:error, :no_data}
+
+          _ ->
+            {:ok, {resolved_target_display(targets, monitor), points}}
+        end
+
+      [] ->
+        case String.trim(to_string(monitor.alert_metric_path || "")) do
+          "" ->
+            {:error, :missing_metric_path}
+
+          path ->
+            case extract_series_points(series, path, max_points) do
+              {:ok, points} -> {:ok, {path, points}}
+              {:error, reason} -> {:error, reason}
+            end
+        end
+    end
+  end
+
+  defp normalize_resolved_target_points(%{points: points}) when is_list(points) do
+    points
+    |> Enum.map(&normalize_resolved_target_point/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp normalize_resolved_target_points(_target), do: []
+
+  defp normalize_resolved_target_point(%{} = point) do
+    at = Map.get(point, :at_iso) || Map.get(point, "at_iso")
+
+    value =
+      case Map.fetch(point, :value) do
+        {:ok, value} -> value
+        :error -> Map.get(point, "value")
+      end
+
+    cond do
+      is_binary(at) and is_number(value) ->
+        %{"at" => at, "value" => value * 1.0}
+
+      true ->
+        nil
+    end
+  end
+
+  defp normalize_resolved_target_point(_point), do: nil
+
+  defp resolved_target_display(targets, %Monitor{} = monitor) do
+    paths =
+      targets
+      |> Enum.map(&(Map.get(&1, :source_path) || Map.get(&1, "source_path")))
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+
+    case paths do
+      [path] ->
+        path
+
+      [] ->
+        AlertSeries.final_row_display(monitor)
+
+      _many ->
+        names =
+          targets
+          |> Enum.map(&(Map.get(&1, :name) || Map.get(&1, "name")))
+          |> Enum.map(&to_string/1)
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.uniq()
+
+        case names do
+          [name] -> name
+          _ -> AlertSeries.final_row_display(monitor)
+        end
+    end
+  end
 
   defp normalize_strategy(nil, %Monitor{alerts: [first | _]}) do
     first.analysis_strategy || :threshold
@@ -181,9 +270,6 @@ defmodule Trifle.Monitors.AlertAdvisor do
        do: {:ok, variant}
 
   defp ensure_supported_variant(_), do: {:error, :unsupported_variant}
-
-  defp ensure_metric_path(""), do: {:error, :missing_metric_path}
-  defp ensure_metric_path(_), do: :ok
 
   defp runtime_api_key do
     env_key =

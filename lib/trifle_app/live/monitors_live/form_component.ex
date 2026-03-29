@@ -3,14 +3,14 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
 
   alias Ecto.Changeset
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
-  import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
   import TrifleApp.Components.TimeframeInput, only: [timeframe_input: 1]
   alias Trifle.Monitors
-  alias Trifle.Monitors.Monitor
+  alias Trifle.Monitors.{AlertSeries, Monitor}
   alias Trifle.Monitors.Monitor.{DeliveryChannel, DeliveryMedium, ReportSettings}
   alias Trifle.Stats.Source
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
+  alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
   alias TrifleApp.Granularity
   alias TrifleApp.PathSuggestions
   require Logger
@@ -324,7 +324,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                     </.inputs_for>
                   <% else %>
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
+                      <div class="md:col-span-2">
                         <.input
                           field={@form[:alert_metric_key]}
                           label="Metric key"
@@ -332,20 +332,20 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                           required
                         />
                       </div>
-                      <div>
-                        <% path_field = @form[:alert_metric_path] %>
-                        <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
-                          Metric path <span class="text-rose-500">*</span>
-                        </label>
-                        <.path_autocomplete_input
-                          id="monitor-alert-metric-path"
-                          name={path_field.name}
-                          value={path_field.value || ""}
-                          placeholder="e.g. $.country.US"
+                      <div class="md:col-span-2">
+                        <MetricSeriesEditor.editor
+                          widget={alert_series_widget(@monitor, @form)}
+                          editor_id={alert_series_editor_id(@monitor)}
+                          field_scope="monitor"
+                          field_prefix="alert_series"
+                          event_name="alert_series_rows_update"
+                          layout="compact"
+                          title="Series"
                           path_options={@path_options}
-                          input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                          path_placeholder="e.g. $.country.US"
+                          path_help="Compose the alert source the same way as a widget. The last defined series is always used for alert evaluation, even when it is hidden."
                         />
-                        <%= for error <- path_field.errors do %>
+                        <%= for error <- @form[:alert_series].errors do %>
                           <p class="mt-1 text-xs text-rose-600 dark:text-rose-400">
                             {translate_error(error)}
                           </p>
@@ -637,6 +637,33 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end
   end
 
+  def handle_event(
+        "alert_series_rows_update",
+        %{"widget_id" => widget_id, "rows" => raw_rows},
+        socket
+      ) do
+    if to_string(widget_id) != alert_series_editor_id(socket.assigns.monitor) do
+      {:noreply, socket}
+    else
+      rows = AlertSeries.normalize_rows(raw_rows, preserve_empty: true, ensure_default: false)
+
+      params =
+        current_monitor_form_params(socket)
+        |> strip_alert_series_row_params()
+        |> Map.put("alert_series", rows)
+
+      changeset =
+        socket.assigns.persisted_monitor
+        |> change_monitor_with_alert_series_rows(params, rows)
+        |> maybe_copy_form_action(socket)
+
+      {:noreply,
+       socket
+       |> assign_form(changeset)
+       |> maybe_refresh_path_options()}
+    end
+  end
+
   def handle_event("toggle_lock", _params, socket) do
     monitor = socket.assigns.persisted_monitor
 
@@ -872,6 +899,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     end)
     |> Map.put_new(:alert_metric_key, alert_defaults.alert_metric_key)
     |> Map.put_new(:alert_metric_path, alert_defaults.alert_metric_path)
+    |> Map.put_new(:alert_series, alert_defaults.alert_series)
     |> Map.put_new(:alert_timeframe, alert_defaults.alert_timeframe)
     |> Map.put_new(:alert_granularity, alert_defaults.alert_granularity)
     |> Map.put_new(:alert_notify_every, alert_defaults.alert_notify_every)
@@ -1690,4 +1718,104 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
     |> assign(:report_granularity_options, report_options)
     |> assign(:selected_source_ref, monitor_source_ref(monitor))
   end
+
+  defp current_monitor_form_params(socket) do
+    case socket.assigns[:form] do
+      %{source: %Changeset{params: params}} when is_map(params) -> params
+      _ -> %{}
+    end
+  end
+
+  defp change_monitor_with_alert_series_rows(%Monitor{} = monitor, params, rows)
+       when is_map(params) and is_list(rows) do
+    monitor
+    |> Monitors.change_monitor(params)
+    |> Changeset.put_change(:alert_series, rows)
+    |> Changeset.put_change(:alert_metric_path, AlertSeries.legacy_metric_path(rows))
+  end
+
+  defp maybe_copy_form_action(%Changeset{} = changeset, socket) do
+    case socket.assigns[:form] do
+      %{source: %Changeset{action: action}} when not is_nil(action) ->
+        Map.put(changeset, :action, action)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp strip_alert_series_row_params(params) when is_map(params) do
+    Enum.reduce(
+      [
+        "alert_series_kind",
+        "alert_series_path",
+        "alert_series_expression",
+        "alert_series_label",
+        "alert_series_visible",
+        "alert_series_color_selector"
+      ],
+      params,
+      fn key, acc ->
+        acc
+        |> Map.delete(key)
+        |> Map.delete("#{key}[]")
+      end
+    )
+  end
+
+  defp strip_alert_series_row_params(params), do: params
+
+  defp alert_series_widget(%Monitor{} = monitor, form) do
+    build_alert_series_form_widget(%{
+      id: monitor.id,
+      alert_metric_key: form_field_value(form, :alert_metric_key) || monitor.alert_metric_key,
+      alert_metric_path: form_field_value(form, :alert_metric_path) || monitor.alert_metric_path,
+      alert_series: form_field_value(form, :alert_series) || monitor.alert_series
+    })
+  end
+
+  defp alert_series_widget(_monitor, form) do
+    build_alert_series_form_widget(%{
+      alert_metric_key: form_field_value(form, :alert_metric_key),
+      alert_metric_path: form_field_value(form, :alert_metric_path),
+      alert_series: form_field_value(form, :alert_series)
+    })
+  end
+
+  defp build_alert_series_form_widget(attrs) when is_map(attrs) do
+    %{
+      "id" => AlertSeries.source_widget_id(attrs),
+      "type" => "timeseries",
+      "title" => "Source series",
+      "chart_type" => "line",
+      "legend" => true,
+      "stacked" => false,
+      "normalized" => false,
+      "series" => AlertSeries.rows(attrs, preserve_empty: true),
+      "y_label" => Map.get(attrs, :alert_metric_key) || Map.get(attrs, "alert_metric_key") || "",
+      "w" => 12,
+      "h" => AlertSeries.source_widget_height(),
+      "x" => 0,
+      "y" => 0
+    }
+  end
+
+  defp form_field_value(form, field) when is_map(form) do
+    case Map.get(form, field) do
+      %{value: value} -> value
+      _ -> nil
+    end
+  end
+
+  defp form_field_value(_form, _field), do: nil
+
+  defp alert_series_editor_id(%Monitor{} = monitor) do
+    "monitor-alert-series-" <>
+      case monitor.id do
+        nil -> "new"
+        value -> to_string(value)
+      end
+  end
+
+  defp alert_series_editor_id(_monitor), do: "monitor-alert-series-new"
 end

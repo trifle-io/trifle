@@ -94,6 +94,21 @@ defmodule Trifle.Monitors.AlertEvaluator do
   def evaluate(%Alert{} = alert, %Series{} = series, path, opts \\ []) do
     with {:ok, resolved_path, points} <- timeline_points(series, path),
          false <- Enum.empty?(points) do
+      evaluate_points(alert, resolved_path, points, opts)
+    else
+      true -> {:error, :no_data}
+      {:error, _} = error -> error
+    end
+  end
+
+  @spec evaluate_points(Alert.t(), String.t() | nil, list(), keyword()) ::
+          {:ok, result()} | evaluation_error
+  def evaluate_points(%Alert{} = alert, path, points, opts \\ []) when is_list(points) do
+    points = sort_points(points)
+
+    if Enum.empty?(points) do
+      {:error, :no_data}
+    else
       points = maybe_fill_missing(points, alert)
 
       exclude_recent? = Keyword.get(opts, :exclude_recent, true)
@@ -105,6 +120,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
         |> normalize_window(alert)
 
       latest_point = List.last(effective_points) || List.last(points)
+      resolved_path = path |> to_string() |> String.trim()
 
       case alert.analysis_strategy || :threshold do
         :threshold ->
@@ -129,9 +145,6 @@ defmodule Trifle.Monitors.AlertEvaluator do
         other ->
           other
       end
-    else
-      true -> {:error, :no_data}
-      {:error, _} = error -> error
     end
   end
 

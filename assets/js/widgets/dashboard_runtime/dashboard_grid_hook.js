@@ -161,8 +161,9 @@ Hooks.DashboardGrid = {
     this.minRows = parseInt(this.el.dataset.minRows || '8', 10);
     this.addBtnId = this.el.dataset.addBtnId;
     this.addGroupBtnId = this.el.dataset.addGroupBtnId;
+    this._initialItemsPayload = this.el.dataset.initialGrid || '[]';
     try {
-      this.initialItems = this.el.dataset.initialGrid ? JSON.parse(this.el.dataset.initialGrid) : [];
+      this.initialItems = this._initialItemsPayload ? JSON.parse(this._initialItemsPayload) : [];
     } catch (_) {
       this.initialItems = [];
     }
@@ -202,6 +203,8 @@ Hooks.DashboardGrid = {
       if (!this.el) return;
       this.el.classList.remove('opacity-0', 'pointer-events-none');
       this.el.classList.add('opacity-100');
+      this._refreshGroupGridGeometry();
+      this._scheduleDeferredResize();
     };
 
     requestAnimationFrame(() => requestAnimationFrame(revealGrid));
@@ -476,6 +479,7 @@ Hooks.DashboardGrid = {
   },
 
   updated() {
+    this._syncInitialGridFromServer();
     this._enableServerRenderedWidgetPreference();
     this._ensureGroupGrids();
     this.syncServerRenderedItems();
@@ -769,6 +773,7 @@ Hooks.DashboardGrid = {
     if (this._observedLayoutResizeRaf) return;
     this._observedLayoutResizeRaf = requestAnimationFrame(() => {
       this._observedLayoutResizeRaf = null;
+      this._refreshGroupGridGeometry();
       this._scheduleDeferredResize();
     });
   },
@@ -817,11 +822,13 @@ Hooks.DashboardGrid = {
       this._deferredResizeRaf = null;
       this._deferredResizeRaf2 = requestAnimationFrame(() => {
         this._deferredResizeRaf2 = null;
+        this._refreshGroupGridGeometry();
         this._resizeAllCharts();
       });
     });
     [120, 260, 420].forEach((delay) => {
       const timer = setTimeout(() => {
+        this._refreshGroupGridGeometry();
         this._resizeAllCharts();
       }, delay);
       this._deferredResizeTimers.push(timer);
@@ -1059,6 +1066,15 @@ Hooks.DashboardGrid = {
     }
 
     this._syncGroupConstraints(groupItem, nestedGrid);
+  },
+
+  _refreshGroupGridGeometry() {
+    if (!this.grid) return;
+    this._gridItems(this.grid).forEach((item) => {
+      if (this._isGroupItem(item)) {
+        this._syncGroupGridGeometry(item);
+      }
+    });
   },
 
   _ensureGroupGrids() {
@@ -1426,6 +1442,59 @@ Hooks.DashboardGrid = {
     this._refreshAllGroupHints();
   },
 
+  _syncInitialGridFromServer() {
+    const payload = this.el && this.el.dataset ? (this.el.dataset.initialGrid || '[]') : '[]';
+    if (payload === this._initialItemsPayload) return;
+
+    let items = [];
+    try {
+      items = payload ? JSON.parse(payload) : [];
+    } catch (_) {
+      items = [];
+    }
+
+    this._initialItemsPayload = payload;
+    this.initialItems = Array.isArray(items) ? items : [];
+
+    if (!this.grid || this.editable) return;
+
+    this._replaceReadOnlyGridItems(this.initialItems);
+  },
+
+  _replaceReadOnlyGridItems(items) {
+    if (!this.grid) return;
+
+    this._suppressSave = true;
+
+    try {
+      this._gridItems(this.grid).forEach((item) => this._removeGridItem(item));
+      this._pruneStaleGroupGrids({});
+
+      (Array.isArray(items) ? items : []).forEach((item) => this.addGridItemEl(item));
+
+      this._syncGridWidgets(this.grid);
+      this._ensureGroupGrids();
+      this._rerenderRegisteredWidgets();
+      this._markServerRenderedWidgetsReady();
+    } finally {
+      this._suppressSave = false;
+    }
+  },
+
+  _rerenderRegisteredWidgets() {
+    const registry = this._widgetRegistry || {};
+    const sorted = (values) => this._sortedWidgetValues(values || {});
+
+    this._render_kpi_values(sorted(registry.kpiValues));
+    this._render_kpi_visuals(sorted(registry.kpiVisuals));
+    this._render_timeseries(sorted(registry.timeseries));
+    this._render_category(sorted(registry.category));
+    this._render_distribution(sorted(registry.distribution));
+    this._render_table(sorted(registry.table));
+    this._render_text(sorted(registry.text));
+    this._render_list(sorted(registry.list));
+  },
+
   _removeGridItem(item) {
     if (!item) return;
     const gridEl = item.closest && item.closest('.grid-stack');
@@ -1530,6 +1599,7 @@ Hooks.DashboardGrid = {
       this._seen.kpi_values = true;
       this._scheduleReadyMark();
       this._render_kpi_visuals(this._sortedWidgetValues(registry.kpiVisuals));
+      this._scheduleDeferredResize();
       return;
     }
 
@@ -1545,6 +1615,7 @@ Hooks.DashboardGrid = {
         this._disposeChartEntry(this._sparklines, normalizedId);
       }
       this._render_timeseries(this._sortedWidgetValues(registry.timeseries));
+      this._scheduleDeferredResize();
       return;
     }
 
@@ -1556,6 +1627,7 @@ Hooks.DashboardGrid = {
         this._disposeChartEntry(this._catCharts, normalizedId);
       }
       this._render_category(this._sortedWidgetValues(registry.category));
+      this._scheduleDeferredResize();
       return;
     }
 
@@ -1605,6 +1677,7 @@ Hooks.DashboardGrid = {
         this._disposeChartEntry(this._distCharts, normalizedId);
       }
       this._render_distribution(this._sortedWidgetValues(registry.distribution));
+      this._scheduleDeferredResize();
       return;
     }
 
