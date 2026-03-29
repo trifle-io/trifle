@@ -133,13 +133,85 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
   defp extract_monitor_series_points(%Monitor{} = monitor, %Series{} = series, max_points) do
     case AlertSeries.resolved_final_targets(series, monitor) do
-      [%{source_path: path, points: points} | _rest] ->
-        {:ok, {path || AlertSeries.final_row_display(monitor), Enum.take(points, -max_points)}}
+      targets when is_list(targets) and targets != [] ->
+        points =
+          targets
+          |> Enum.flat_map(&normalize_resolved_target_points/1)
+          |> Enum.sort_by(& &1["at"], &<=/2)
+          |> maybe_trim(max_points)
+
+        case points do
+          [] ->
+            {:error, :no_data}
+
+          _ ->
+            {:ok, {resolved_target_display(targets, monitor), points}}
+        end
 
       [] ->
         case String.trim(to_string(monitor.alert_metric_path || "")) do
           "" -> {:error, :missing_metric_path}
           path -> {:ok, {path, extract_series_points(series, path, max_points)}}
+        end
+    end
+  end
+
+  defp normalize_resolved_target_points(%{points: points}) when is_list(points) do
+    points
+    |> Enum.map(&normalize_resolved_target_point/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp normalize_resolved_target_points(_target), do: []
+
+  defp normalize_resolved_target_point(%{} = point) do
+    at = Map.get(point, :at_iso) || Map.get(point, "at_iso")
+
+    value =
+      case Map.fetch(point, :value) do
+        {:ok, value} -> value
+        :error -> Map.get(point, "value")
+      end
+
+    cond do
+      is_binary(at) and is_number(value) ->
+        %{"at" => at, "value" => value * 1.0}
+
+      true ->
+        nil
+    end
+  end
+
+  defp normalize_resolved_target_point(_point), do: nil
+
+  defp resolved_target_display(targets, %Monitor{} = monitor) do
+    paths =
+      targets
+      |> Enum.map(&(Map.get(&1, :source_path) || Map.get(&1, "source_path")))
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+
+    case paths do
+      [path] ->
+        path
+
+      [] ->
+        AlertSeries.final_row_display(monitor)
+
+      _many ->
+        names =
+          targets
+          |> Enum.map(&(Map.get(&1, :name) || Map.get(&1, "name")))
+          |> Enum.map(&to_string/1)
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.uniq()
+
+        case names do
+          [name] -> name
+          _ -> AlertSeries.final_row_display(monitor)
         end
     end
   end

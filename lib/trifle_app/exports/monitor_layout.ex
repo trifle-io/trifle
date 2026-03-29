@@ -7,6 +7,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
   alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, AlertSeries, Monitor}
   alias Trifle.Monitors.AlertEvaluator
+  alias Trifle.Monitors.AlertEvaluator.Utils, as: AlertEvaluatorUtils
   alias Trifle.Organizations
   alias Trifle.Organizations.DashboardSegments
   alias Trifle.Stats.{Series, Source}
@@ -813,79 +814,11 @@ defmodule TrifleApp.Exports.MonitorLayout do
   end
 
   defp aggregate_alert_results(%Alert{} = alert, results) do
-    triggered =
-      Enum.filter(results, fn
-        %{result: %{triggered?: true}} -> true
-        _ -> false
-      end)
-
-    successful =
-      Enum.filter(results, fn
-        %{result: %AlertEvaluator.Result{}} -> true
-        _ -> false
-      end)
-
-    failures = Enum.reject(results, &(&1 in successful))
-
-    base_result =
-      case List.first(triggered) || List.first(successful) do
-        %{result: %AlertEvaluator.Result{} = result} -> result
-        _ -> %AlertEvaluator.Result{}
-      end
-
-    summary =
-      cond do
-        successful == [] ->
-          "Alert evaluation failed for all resolved series."
-
-        triggered == [] and length(successful) <= 1 ->
-          base_result.summary || "No recent breaches detected."
-
-        triggered == [] ->
-          "No recent breaches detected across #{length(successful)} series."
-
-        length(triggered) == 1 ->
-          trigger = List.first(triggered)
-
-          "#{trigger.target.name}: #{trigger.result.summary || "Triggered in the latest evaluation window."}"
-
-        true ->
-          names =
-            triggered
-            |> Enum.map(& &1.target.name)
-            |> Enum.join(", ")
-
-          "#{length(triggered)} series triggered: #{names}."
-      end
-
-    %AlertEvaluator.Result{
-      base_result
-      | alert_id: alert && alert.id,
-        strategy: alert && (alert.analysis_strategy || :threshold),
-        triggered?: triggered != [],
-        summary: summary,
-        meta:
-          Map.merge(base_result.meta || %{}, %{
-            series_results:
-              Enum.map(successful, fn %{target: target, result: result} ->
-                %{
-                  name: target.name,
-                  source_path: target.source_path,
-                  triggered: result.triggered?,
-                  summary: result.summary,
-                  meta: result.meta || %{}
-                }
-              end),
-            series_errors:
-              Enum.map(failures, fn %{target: target, error: error} ->
-                %{
-                  name: target.name,
-                  source_path: target.source_path,
-                  error: error
-                }
-              end)
-          })
-    }
+    AlertEvaluatorUtils.build_series_aggregation(
+      results,
+      alert_id: alert && alert.id,
+      strategy: alert && (alert.analysis_strategy || :threshold)
+    )
   end
 
   defp alert_group_id(%Monitor{id: monitor_id}, target) do

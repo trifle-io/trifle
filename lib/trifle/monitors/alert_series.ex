@@ -1,6 +1,8 @@
 defmodule Trifle.Monitors.AlertSeries do
   @moduledoc false
 
+  require Logger
+
   alias Trifle.Monitors.Monitor
   alias Trifle.Stats.Series
 
@@ -162,13 +164,12 @@ defmodule Trifle.Monitors.AlertSeries do
   end
 
   def legacy_metric_path(monitor_or_rows) do
-    case final_row(monitor_or_rows) do
-      row ->
-        if is_map(row) and MetricSeries.path_row?(row) do
-          MetricSeries.row_path(row)
-        else
-          ""
-        end
+    row = final_row(monitor_or_rows)
+
+    if is_map(row) and MetricSeries.path_row?(row) do
+      MetricSeries.row_path(row)
+    else
+      ""
     end
   end
 
@@ -379,7 +380,12 @@ defmodule Trifle.Monitors.AlertSeries do
   defp normalize_datetime(%NaiveDateTime{} = naive) do
     DateTime.from_naive!(naive, "Etc/UTC")
   rescue
-    _ -> nil
+    exception ->
+      Logger.warning(
+        "AlertSeries.normalize_datetime/1 failed DateTime.from_naive! for #{inspect(naive)}: #{Exception.message(exception)}"
+      )
+
+      nil
   end
 
   defp normalize_datetime(_), do: nil

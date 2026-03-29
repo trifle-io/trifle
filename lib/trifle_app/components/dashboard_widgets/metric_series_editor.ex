@@ -86,70 +86,19 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                   </label>
 
                   <div class={series_input_shell_classes()}>
-                    <label class={kind_icon_classes(MetricSeries.path_row?(row))}>
-                      <input
-                        type="radio"
-                        name={input_name(@field_scope, @field_prefix, "kind", row["index"])}
-                        value="path"
-                        aria-label="Path series"
-                        data-role="series-kind"
-                        checked={MetricSeries.path_row?(row)}
-                        class="sr-only"
-                      />
-                      <span class="sr-only">Path series</span>
-                      <.path_icon />
-                    </label>
-                    <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
-                      <input
-                        type="radio"
-                        name={input_name(@field_scope, @field_prefix, "kind", row["index"])}
-                        value="expression"
-                        aria-label="Expression series"
-                        data-role="series-kind"
-                        checked={MetricSeries.expression_row?(row)}
-                        class="sr-only"
-                      />
-                      <span class="sr-only">Expression series</span>
-                      <.formula_icon />
-                    </label>
-                    <div class={shell_divider_classes()}></div>
-
-                    <div class="min-w-0 flex-1">
-                      <%= if MetricSeries.path_row?(row) do %>
-                        <.path_autocomplete_input
-                          id={"widget-series-path-#{@widget_id}-#{row["index"]}"}
-                          name={input_name(@field_scope, @field_prefix, "path", row["index"])}
-                          value={row["path"]}
-                          placeholder={@path_placeholder}
-                          path_options={@path_options}
-                          annotated={true}
-                          input_data_role="series-path"
-                          preview_class={path_preview_classes()}
-                          wrapper_class="relative z-20"
-                          input_class={joined_input_classes()}
-                        />
-                        <input
-                          type="hidden"
-                          name={input_name(@field_scope, @field_prefix, "expression", row["index"])}
-                          value=""
-                        />
-                      <% else %>
-                        <input
-                          type="text"
-                          name={input_name(@field_scope, @field_prefix, "expression", row["index"])}
-                          value={row["expression"]}
-                          data-role="series-expression"
-                          class={joined_input_classes()}
-                          placeholder="a / b"
-                          spellcheck="false"
-                        />
-                        <input
-                          type="hidden"
-                          name={input_name(@field_scope, @field_prefix, "path", row["index"])}
-                          value=""
-                        />
-                      <% end %>
-                    </div>
+                    <.series_kind_radios
+                      row={row}
+                      field_scope={@field_scope}
+                      field_prefix={@field_prefix}
+                    />
+                    <.series_value_input
+                      row={row}
+                      widget_id={@widget_id}
+                      field_scope={@field_scope}
+                      field_prefix={@field_prefix}
+                      path_options={@path_options}
+                      path_placeholder={@path_placeholder}
+                    />
                   </div>
                 </div>
 
@@ -209,70 +158,19 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
                   <div class="min-w-0 flex-1">
                     <div class={series_input_shell_classes()}>
-                      <label class={kind_icon_classes(MetricSeries.path_row?(row))}>
-                        <input
-                          type="radio"
-                          name={input_name(@field_scope, @field_prefix, "kind", row["index"])}
-                          value="path"
-                          aria-label="Path series"
-                          data-role="series-kind"
-                          checked={MetricSeries.path_row?(row)}
-                          class="sr-only"
-                        />
-                        <span class="sr-only">Path series</span>
-                        <.path_icon />
-                      </label>
-                      <label class={kind_icon_classes(MetricSeries.expression_row?(row))}>
-                        <input
-                          type="radio"
-                          name={input_name(@field_scope, @field_prefix, "kind", row["index"])}
-                          value="expression"
-                          aria-label="Expression series"
-                          data-role="series-kind"
-                          checked={MetricSeries.expression_row?(row)}
-                          class="sr-only"
-                        />
-                        <span class="sr-only">Expression series</span>
-                        <.formula_icon />
-                      </label>
-                      <div class={shell_divider_classes()}></div>
-
-                      <div class="min-w-0 flex-1">
-                        <%= if MetricSeries.path_row?(row) do %>
-                          <.path_autocomplete_input
-                            id={"widget-series-path-#{@widget_id}-#{row["index"]}"}
-                            name={input_name(@field_scope, @field_prefix, "path", row["index"])}
-                            value={row["path"]}
-                            placeholder={@path_placeholder}
-                            path_options={@path_options}
-                            annotated={true}
-                            input_data_role="series-path"
-                            preview_class={path_preview_classes()}
-                            wrapper_class="relative z-20"
-                            input_class={joined_input_classes()}
-                          />
-                          <input
-                            type="hidden"
-                            name={input_name(@field_scope, @field_prefix, "expression", row["index"])}
-                            value=""
-                          />
-                        <% else %>
-                          <input
-                            type="text"
-                            name={input_name(@field_scope, @field_prefix, "expression", row["index"])}
-                            value={row["expression"]}
-                            data-role="series-expression"
-                            class={joined_input_classes()}
-                            placeholder="a / b"
-                            spellcheck="false"
-                          />
-                          <input
-                            type="hidden"
-                            name={input_name(@field_scope, @field_prefix, "path", row["index"])}
-                            value=""
-                          />
-                        <% end %>
-                      </div>
+                      <.series_kind_radios
+                        row={row}
+                        field_scope={@field_scope}
+                        field_prefix={@field_prefix}
+                      />
+                      <.series_value_input
+                        row={row}
+                        widget_id={@widget_id}
+                        field_scope={@field_scope}
+                        field_prefix={@field_prefix}
+                        path_options={@path_options}
+                        path_placeholder={@path_placeholder}
+                      />
                     </div>
                   </div>
                 </div>
@@ -325,6 +223,90 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
         {@path_help ||
           "Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c and use the same syntax as transponders. Hidden source rows can feed visible expression rows."}
       </p>
+    </div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+
+  defp series_kind_radios(assigns) do
+    ~H"""
+    <label class={kind_icon_classes(MetricSeries.path_row?(@row))}>
+      <input
+        type="radio"
+        name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
+        value="path"
+        aria-label="Path series"
+        data-role="series-kind"
+        checked={MetricSeries.path_row?(@row)}
+        class="sr-only"
+      />
+      <span class="sr-only">Path series</span>
+      <.path_icon />
+    </label>
+    <label class={kind_icon_classes(MetricSeries.expression_row?(@row))}>
+      <input
+        type="radio"
+        name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
+        value="expression"
+        aria-label="Expression series"
+        data-role="series-kind"
+        checked={MetricSeries.expression_row?(@row)}
+        class="sr-only"
+      />
+      <span class="sr-only">Expression series</span>
+      <.formula_icon />
+    </label>
+    <div class={shell_divider_classes()}></div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :widget_id, :string, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+  attr :path_options, :list, default: []
+  attr :path_placeholder, :string, default: "metrics.total"
+
+  defp series_value_input(assigns) do
+    ~H"""
+    <div class="min-w-0 flex-1">
+      <%= if MetricSeries.path_row?(@row) do %>
+        <.path_autocomplete_input
+          id={"widget-series-path-#{@widget_id}-#{@row["index"]}"}
+          name={input_name(@field_scope, @field_prefix, "path", @row["index"])}
+          value={@row["path"]}
+          placeholder={@path_placeholder}
+          path_options={@path_options}
+          annotated={true}
+          input_data_role="series-path"
+          preview_class={path_preview_classes()}
+          wrapper_class="relative z-20"
+          input_class={joined_input_classes()}
+        />
+        <input
+          type="hidden"
+          name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
+          value=""
+        />
+      <% else %>
+        <input
+          type="text"
+          name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
+          value={@row["expression"]}
+          data-role="series-expression"
+          class={joined_input_classes()}
+          placeholder="a / b"
+          spellcheck="false"
+        />
+        <input
+          type="hidden"
+          name={input_name(@field_scope, @field_prefix, "path", @row["index"])}
+          value=""
+        />
+      <% end %>
     </div>
     """
   end
