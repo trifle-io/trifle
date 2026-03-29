@@ -62,14 +62,21 @@ defmodule Trifle.Monitors.AlertSeries do
   def normalize_attrs(attrs, prefix) when is_map(attrs) do
     cond do
       row_params_present?(attrs, prefix) ->
-        rows = normalize_rows_params(attrs, prefix, ensure_default: false)
+        rows =
+          attrs
+          |> normalize_rows_params(prefix, ensure_default: false)
+          |> fallback_legacy_rows(fetch_value(attrs, :alert_metric_path))
 
         attrs
         |> put_value(:alert_series, rows)
         |> put_value(:alert_metric_path, legacy_metric_path(rows))
 
       has_value_key?(attrs, :alert_series) ->
-        rows = normalize_rows(fetch_value(attrs, :alert_series), ensure_default: false)
+        rows =
+          attrs
+          |> fetch_value(:alert_series)
+          |> normalize_rows(ensure_default: false)
+          |> fallback_legacy_rows(fetch_value(attrs, :alert_metric_path))
 
         attrs
         |> put_value(:alert_series, rows)
@@ -77,9 +84,11 @@ defmodule Trifle.Monitors.AlertSeries do
 
       has_value_key?(attrs, :alert_metric_path) ->
         rows =
-          normalize_rows(legacy_rows(fetch_value(attrs, :alert_metric_path)),
-            ensure_default: false
-          )
+          attrs
+          |> fetch_value(:alert_metric_path)
+          |> legacy_rows()
+          |> normalize_rows(ensure_default: false)
+          |> fallback_legacy_rows(fetch_value(attrs, :alert_metric_path))
 
         attrs
         |> put_value(:alert_series, rows)
@@ -265,21 +274,23 @@ defmodule Trifle.Monitors.AlertSeries do
 
   defp current_rows(%Monitor{} = monitor) do
     monitor.alert_series
-    |> case do
-      list when is_list(list) and list != [] -> list
-      _ -> legacy_rows(monitor.alert_metric_path)
-    end
+    |> fallback_legacy_rows(monitor.alert_metric_path)
   end
 
   defp current_rows(%{} = monitor) do
-    fetch_value(monitor, :alert_series)
-    |> case do
-      list when is_list(list) and list != [] -> list
-      _ -> legacy_rows(fetch_value(monitor, :alert_metric_path))
-    end
+    monitor
+    |> fetch_value(:alert_series)
+    |> fallback_legacy_rows(fetch_value(monitor, :alert_metric_path))
   end
 
   defp current_rows(_), do: []
+
+  defp fallback_legacy_rows(rows, path) do
+    case final_row(rows) do
+      nil -> legacy_rows(path)
+      _row -> rows
+    end
+  end
 
   defp legacy_rows(path) do
     case path |> to_string() |> String.trim() do

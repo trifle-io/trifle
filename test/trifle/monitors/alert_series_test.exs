@@ -28,6 +28,34 @@ defmodule Trifle.Monitors.AlertSeriesTest do
            ] = Enum.map(rows, &Map.take(&1, ["kind", "path", "expression", "label", "visible"]))
   end
 
+  test "normalize_attrs falls back to legacy metric path when row params have no final row" do
+    attrs = %{
+      "alert_series_kind[]" => [""],
+      "alert_series_path[]" => [""],
+      "alert_series_expression[]" => [""],
+      "alert_series_label[]" => [""],
+      "alert_series_visible[]" => ["true"],
+      "alert_series_color_selector[]" => ["default.*"],
+      "alert_metric_path" => "orders"
+    }
+
+    normalized = AlertSeries.normalize_attrs(attrs)
+
+    assert normalized["alert_metric_path"] == "orders"
+    assert [%{"kind" => "path", "path" => "orders"}] = normalized["alert_series"]
+  end
+
+  test "rows fall back to legacy metric path when stored alert_series has no final row" do
+    monitor = %Monitor{
+      id: "monitor-1",
+      alert_metric_key: "sales",
+      alert_metric_path: "orders",
+      alert_series: [%{"kind" => "path", "path" => "", "visible" => true}]
+    }
+
+    assert [%{"kind" => "path", "path" => "orders"}] = AlertSeries.rows(monitor)
+  end
+
   test "resolved_final_targets drops nil-valued points before evaluation data is built" do
     base_time = ~U[2025-01-01 00:00:00Z]
 
