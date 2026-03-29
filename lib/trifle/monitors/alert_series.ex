@@ -239,11 +239,13 @@ defmodule Trifle.Monitors.AlertSeries do
         end)
         |> Enum.with_index()
         |> Enum.map(fn {{binding_key, entry}, emitted_index} ->
-          points =
+          chart_points =
             entry
             |> Map.get(:samples, %{})
             |> samples_to_points()
-            |> Enum.reject(&is_nil(Map.get(&1, :value)))
+
+          points =
+            Enum.reject(chart_points, &is_nil(Map.get(&1, :value)))
 
           %{
             index: emitted_index,
@@ -258,7 +260,7 @@ defmodule Trifle.Monitors.AlertSeries do
               |> Helpers.resolve_series_color(emitted_index),
             points: points,
             data:
-              Enum.map(points, fn point ->
+              Enum.map(chart_points, fn point ->
                 [Map.get(point, :ts), Map.get(point, :value)]
               end)
           }

@@ -107,6 +107,53 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
     refute Map.has_key?(datasets.timeseries[critical_widget_id], :alert_summary)
   end
 
+  test "inject_alert_overlay preserves trailing chart gaps for alert widgets" do
+    base_time = ~U[2025-01-01 00:00:00Z]
+
+    stats =
+      Series.new(%{
+        at: [
+          base_time,
+          DateTime.add(base_time, 60, :second),
+          DateTime.add(base_time, 120, :second)
+        ],
+        values: [
+          %{"orders" => 10.0},
+          %{"orders" => nil},
+          %{"orders" => 14.0}
+        ]
+      })
+
+    monitor = %Monitor{
+      id: "monitor-1",
+      type: :alert,
+      name: "Sales tracking",
+      alert_metric_key: "sales",
+      alert_series: [%{"kind" => "path", "path" => "orders", "visible" => true}],
+      alerts: [
+        %Alert{
+          id: "warning",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 6.0}
+        }
+      ]
+    }
+
+    dashboard = MonitorLayout.alert_dashboard(monitor, stats)
+
+    datasets =
+      stats
+      |> WidgetData.datasets_from_dashboard(dashboard)
+      |> WidgetData.dataset_maps()
+      |> then(fn maps -> MonitorLayout.inject_alert_overlay(maps, monitor, stats) end)
+      |> elem(0)
+
+    widget_id = "#{monitor.id}-alert-series-0-alert-warning-chart"
+
+    assert %{series: [%{data: data}]} = datasets.timeseries[widget_id]
+    assert Enum.map(data, fn [_ts, value] -> value end) == [10.0, nil, 14.0]
+  end
+
   test "alert_dashboard logs and skips widget groups when stats are missing" do
     monitor = %Monitor{
       id: "monitor-1",

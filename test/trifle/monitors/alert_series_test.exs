@@ -56,7 +56,7 @@ defmodule Trifle.Monitors.AlertSeriesTest do
     assert [%{"kind" => "path", "path" => "orders"}] = AlertSeries.rows(monitor)
   end
 
-  test "resolved_final_targets drops nil-valued points before evaluation data is built" do
+  test "resolved_final_targets keeps chart gaps while dropping nil-valued evaluation points" do
     base_time = ~U[2025-01-01 00:00:00Z]
 
     stats =
@@ -82,6 +82,6 @@ defmodule Trifle.Monitors.AlertSeriesTest do
     [target] = AlertSeries.resolved_final_targets(stats, monitor)
 
     assert Enum.map(target.points, & &1.value) == [10.0, 14.0]
-    assert Enum.map(target.data, fn [_ts, value] -> value end) == [10.0, 14.0]
+    assert Enum.map(target.data, fn [_ts, value] -> value end) == [10.0, nil, 14.0]
   end
 end
