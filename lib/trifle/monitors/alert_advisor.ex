@@ -150,8 +150,14 @@ defmodule Trifle.Monitors.AlertAdvisor do
 
       [] ->
         case String.trim(to_string(monitor.alert_metric_path || "")) do
-          "" -> {:error, :missing_metric_path}
-          path -> {:ok, {path, extract_series_points(series, path, max_points)}}
+          "" ->
+            {:error, :missing_metric_path}
+
+          path ->
+            case extract_series_points(series, path, max_points) do
+              {:ok, points} -> {:ok, {path, points}}
+              {:error, reason} -> {:error, reason}
+            end
         end
     end
   end

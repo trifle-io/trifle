@@ -67,6 +67,64 @@ defmodule Trifle.Monitors.AlertAdvisorTest do
     assert Enum.member?(payload["recent_values"], 14.0)
   end
 
+  test "recommend unwraps legacy fallback series points" do
+    stats = build_series()
+
+    monitor = %Monitor{
+      id: "monitor-legacy",
+      name: "Legacy guard",
+      alert_metric_key: "latency.p95",
+      alert_metric_path: "incoming.a",
+      alert_timeframe: "12h",
+      alert_granularity: "1h",
+      alert_series: [%{"kind" => "path", "path" => "", "visible" => true}]
+    }
+
+    test_pid = self()
+
+    client = fn messages, _opts ->
+      send(test_pid, {:legacy_advisor_messages, messages})
+
+      {:ok,
+       %{
+         "choices" => [
+           %{
+             "message" => %{
+               "content" =>
+                 Jason.encode!(%{
+                   "settings" => %{
+                     "threshold_value" => 10.0,
+                     "threshold_direction" => "above"
+                   },
+                   "explanation" => "Use the current level as the baseline."
+                 })
+             }
+           }
+         ]
+       }}
+    end
+
+    assert {:ok, %{strategy: :threshold}} =
+             AlertAdvisor.recommend(
+               monitor,
+               stats,
+               strategy: :threshold,
+               client: client,
+               max_points: 3
+             )
+
+    assert_received {:legacy_advisor_messages, messages}
+
+    payload =
+      messages
+      |> Enum.find(&(&1["role"] == "user"))
+      |> Map.fetch!("content")
+      |> extract_payload()
+
+    assert payload["monitor"]["metric_path"] == "incoming.a"
+    assert payload["recent_values"] == [10.0, 12.0, 15.0]
+  end
+
   defp extract_payload(content) do
     [json] = Regex.run(~r/(\{.*\})\s*$/s, content, capture: :all_but_first)
     Jason.decode!(json)

@@ -65,25 +65,11 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
             <%= if @layout == "compact" do %>
               <div class="space-y-3">
                 <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
-                  <label class="inline-flex shrink-0">
-                    <input
-                      type="hidden"
-                      name={input_name(@field_scope, @field_prefix, "visible", row["index"])}
-                      value="false"
-                    />
-                    <input
-                      type="checkbox"
-                      name={input_name(@field_scope, @field_prefix, "visible", row["index"])}
-                      value="true"
-                      data-role="series-visible"
-                      checked={MetricSeries.visible?(row)}
-                      class="peer sr-only"
-                    />
-                    <span class={visibility_toggle_classes()}>
-                      <span class="sr-only">Toggle series visibility</span>
-                      {row["row_letter"]}
-                    </span>
-                  </label>
+                  <.series_visibility_toggle
+                    row={row}
+                    field_scope={@field_scope}
+                    field_prefix={@field_prefix}
+                  />
 
                   <div class={series_input_shell_classes()}>
                     <.series_kind_radios
@@ -102,59 +88,23 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                   </div>
                 </div>
 
-                <div class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto]">
-                  <input
-                    type="text"
-                    name={input_name(@field_scope, @field_prefix, "label", row["index"])}
-                    value={row["label"]}
-                    data-role="series-label"
-                    class={input_classes()}
-                    placeholder="Alias"
-                  />
-
-                  <SeriesColorSelector.input
-                    id_prefix={"widget-series-color-#{@widget_id}"}
-                    name={input_name_base(@field_scope, @field_prefix, "color_selector")}
-                    index={row["index"]}
-                    selector={row["selector"]}
-                    input_data_role="series-color"
-                    class="w-full"
-                  />
-
-                  <button
-                    type="button"
-                    data-action="remove"
-                    data-index={row["index"]}
-                    class={remove_button_classes()}
-                    aria-label="Remove series"
-                    disabled={length(@rows) == 1}
-                  >
-                    <.remove_icon />
-                  </button>
-                </div>
+                <.series_row_controls
+                  row={row}
+                  widget_id={@widget_id}
+                  field_scope={@field_scope}
+                  field_prefix={@field_prefix}
+                  rows_count={length(@rows)}
+                  container_class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
+                />
               </div>
             <% else %>
               <div class="space-y-3 lg:grid lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] lg:items-center lg:gap-3 lg:space-y-0">
                 <div class="flex items-start gap-3 lg:contents">
-                  <label class="inline-flex shrink-0">
-                    <input
-                      type="hidden"
-                      name={input_name(@field_scope, @field_prefix, "visible", row["index"])}
-                      value="false"
-                    />
-                    <input
-                      type="checkbox"
-                      name={input_name(@field_scope, @field_prefix, "visible", row["index"])}
-                      value="true"
-                      data-role="series-visible"
-                      checked={MetricSeries.visible?(row)}
-                      class="peer sr-only"
-                    />
-                    <span class={visibility_toggle_classes()}>
-                      <span class="sr-only">Toggle series visibility</span>
-                      {row["row_letter"]}
-                    </span>
-                  </label>
+                  <.series_visibility_toggle
+                    row={row}
+                    field_scope={@field_scope}
+                    field_prefix={@field_prefix}
+                  />
 
                   <div class="min-w-0 flex-1">
                     <div class={series_input_shell_classes()}>
@@ -175,36 +125,14 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                   </div>
                 </div>
 
-                <div class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] lg:contents">
-                  <input
-                    type="text"
-                    name={input_name(@field_scope, @field_prefix, "label", row["index"])}
-                    value={row["label"]}
-                    data-role="series-label"
-                    class={input_classes()}
-                    placeholder="Alias"
-                  />
-
-                  <SeriesColorSelector.input
-                    id_prefix={"widget-series-color-#{@widget_id}"}
-                    name={input_name_base(@field_scope, @field_prefix, "color_selector")}
-                    index={row["index"]}
-                    selector={row["selector"]}
-                    input_data_role="series-color"
-                    class="w-full"
-                  />
-
-                  <button
-                    type="button"
-                    data-action="remove"
-                    data-index={row["index"]}
-                    class={remove_button_classes()}
-                    aria-label="Remove series"
-                    disabled={length(@rows) == 1}
-                  >
-                    <.remove_icon />
-                  </button>
-                </div>
+                <.series_row_controls
+                  row={row}
+                  widget_id={@widget_id}
+                  field_scope={@field_scope}
+                  field_prefix={@field_prefix}
+                  rows_count={length(@rows)}
+                  container_class="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] lg:contents"
+                />
               </div>
             <% end %>
           </div>
@@ -230,6 +158,72 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   attr :row, :map, required: true
   attr :field_scope, :string, default: nil
   attr :field_prefix, :string, required: true
+
+  defp series_visibility_toggle(assigns) do
+    ~H"""
+    <label class="inline-flex shrink-0">
+      <input
+        type="hidden"
+        name={input_name(@field_scope, @field_prefix, "visible", @row["index"])}
+        value="false"
+      />
+      <input
+        type="checkbox"
+        name={input_name(@field_scope, @field_prefix, "visible", @row["index"])}
+        value="true"
+        data-role="series-visible"
+        checked={MetricSeries.visible?(@row)}
+        class="peer sr-only"
+      />
+      <span class={visibility_toggle_classes()}>
+        <span class="sr-only">Toggle series visibility</span>
+        {@row["row_letter"]}
+      </span>
+    </label>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :widget_id, :string, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
+  attr :rows_count, :integer, required: true
+  attr :container_class, :string, required: true
+
+  defp series_row_controls(assigns) do
+    ~H"""
+    <div class={@container_class}>
+      <input
+        type="text"
+        name={input_name(@field_scope, @field_prefix, "label", @row["index"])}
+        value={@row["label"]}
+        data-role="series-label"
+        class={input_classes()}
+        placeholder="Alias"
+      />
+
+      <SeriesColorSelector.input
+        id_prefix={"widget-series-color-#{@widget_id}"}
+        name={input_name_base(@field_scope, @field_prefix, "color_selector")}
+        index={@row["index"]}
+        selector={@row["selector"]}
+        input_data_role="series-color"
+        class="w-full"
+      />
+
+      <button
+        type="button"
+        data-action="remove"
+        data-index={@row["index"]}
+        class={remove_button_classes()}
+        aria-label="Remove series"
+        disabled={@rows_count == 1}
+      >
+        <.remove_icon />
+      </button>
+    </div>
+    """
+  end
 
   defp series_kind_radios(assigns) do
     ~H"""

@@ -59,6 +59,52 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
     assert name_b == "delta: b"
   end
 
+  test "inject_alert_overlay limits evaluation to rendered alert widgets when ids are provided" do
+    stats = build_series()
+
+    monitor = %Monitor{
+      id: "monitor-1",
+      type: :alert,
+      name: "Latency guard",
+      alert_metric_key: "latency.p95",
+      alert_series: [
+        %{"kind" => "path", "path" => "incoming.*", "visible" => false},
+        %{"kind" => "path", "path" => "outgoing.*", "visible" => false},
+        %{"kind" => "expression", "expression" => "a - b", "label" => "delta", "visible" => true}
+      ],
+      alerts: [
+        %Alert{
+          id: "warning",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 6.0}
+        },
+        %Alert{
+          id: "critical",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 12.0}
+        }
+      ]
+    }
+
+    dashboard = MonitorLayout.alert_dashboard(monitor, stats)
+
+    datasets =
+      stats
+      |> WidgetData.datasets_from_dashboard(dashboard)
+      |> WidgetData.dataset_maps()
+
+    warning_widget_id = "#{monitor.id}-alert-series-0-alert-warning-chart"
+    critical_widget_id = "#{monitor.id}-alert-series-0-alert-critical-chart"
+
+    {datasets, evaluations} =
+      MonitorLayout.inject_alert_overlay(datasets, monitor, stats, [warning_widget_id])
+
+    assert datasets.timeseries[warning_widget_id].alert_summary
+    refute Map.has_key?(evaluations, "critical")
+    assert Map.has_key?(evaluations, "warning")
+    refute Map.has_key?(datasets.timeseries[critical_widget_id], :alert_summary)
+  end
+
   defp build_series do
     base_time = ~U[2025-01-01 00:00:00Z]
 

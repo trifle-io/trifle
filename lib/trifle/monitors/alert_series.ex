@@ -24,12 +24,12 @@ defmodule Trifle.Monitors.AlertSeries do
   def normalize_rows_params(params, prefix, opts) when is_map(params) do
     MetricSeries.normalize_series_rows_params(
       %{
-        "widget_series_kind" => fetch_value(params, "#{prefix}_kind"),
-        "widget_series_path" => fetch_value(params, "#{prefix}_path"),
-        "widget_series_expression" => fetch_value(params, "#{prefix}_expression"),
-        "widget_series_label" => fetch_value(params, "#{prefix}_label"),
-        "widget_series_visible" => fetch_value(params, "#{prefix}_visible"),
-        "widget_series_color_selector" => fetch_value(params, "#{prefix}_color_selector")
+        "widget_series_kind" => fetch_param_value(params, "#{prefix}_kind"),
+        "widget_series_path" => fetch_param_value(params, "#{prefix}_path"),
+        "widget_series_expression" => fetch_param_value(params, "#{prefix}_expression"),
+        "widget_series_label" => fetch_param_value(params, "#{prefix}_label"),
+        "widget_series_visible" => fetch_param_value(params, "#{prefix}_visible"),
+        "widget_series_color_selector" => fetch_param_value(params, "#{prefix}_color_selector")
       },
       opts
     )
@@ -229,7 +229,11 @@ defmodule Trifle.Monitors.AlertSeries do
         end)
         |> Enum.with_index()
         |> Enum.map(fn {{binding_key, entry}, emitted_index} ->
-          points = samples_to_points(Map.get(entry, :samples, %{}))
+          points =
+            entry
+            |> Map.get(:samples, %{})
+            |> samples_to_points()
+            |> Enum.reject(&is_nil(Map.get(&1, :value)))
 
           %{
             index: emitted_index,
@@ -296,14 +300,26 @@ defmodule Trifle.Monitors.AlertSeries do
   end
 
   defp fetch_value(map, key) when is_atom(key) and is_map(map) do
-    Map.get(map, key) || Map.get(map, Atom.to_string(key))
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> fetch_value(map, Atom.to_string(key))
+    end
   end
 
   defp fetch_value(map, key) when is_binary(key) and is_map(map) do
-    Map.get(map, key)
+    fetch_param_value(map, key)
   end
 
   defp fetch_value(_map, _key), do: nil
+
+  defp fetch_param_value(map, key) when is_binary(key) and is_map(map) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> Map.get(map, "#{key}[]")
+    end
+  end
+
+  defp fetch_param_value(_map, _key), do: nil
 
   defp has_value_key?(attrs, key) when is_atom(key) and is_map(attrs) do
     Map.has_key?(attrs, key) || Map.has_key?(attrs, Atom.to_string(key))
