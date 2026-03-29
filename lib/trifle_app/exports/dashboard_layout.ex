@@ -7,7 +7,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
   alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Organizations
   alias Trifle.Stats.Source
-  alias TrifleApp.Components.DashboardWidgets.{WidgetData, WidgetView}
+  alias TrifleApp.Components.DashboardWidgets.{LayoutTree, WidgetData, WidgetView}
   alias TrifleApp.Exports.Layout
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
@@ -146,8 +146,9 @@ defmodule TrifleApp.Exports.DashboardLayout do
 
     datasets_raw = WidgetData.datasets_from_dashboard(stats_struct, dashboard)
     dataset_maps = WidgetData.dataset_maps(datasets_raw)
-    all_grid_items = WidgetView.grid_items(dashboard)
-    filtered_grid = maybe_filter_widgets(all_grid_items, selected_widget_id)
+    root_items_all = WidgetView.root_grid_items(dashboard)
+    filtered_grid = maybe_filter_widgets(root_items_all, selected_widget_id)
+    widget_items = LayoutTree.flatten_widgets(filtered_grid)
 
     cond do
       filtered_grid == [] and selected_widget_id ->
@@ -158,7 +159,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
 
       true ->
         pruned_datasets =
-          maybe_prune_dataset_maps(dataset_maps, Enum.map(filtered_grid, &widget_id/1))
+          maybe_prune_dataset_maps(dataset_maps, Enum.map(widget_items, &widget_id/1))
 
         render_assigns = %{
           dashboard: %{
@@ -219,9 +220,10 @@ defmodule TrifleApp.Exports.DashboardLayout do
   defp maybe_filter_widgets(items, nil), do: items
 
   defp maybe_filter_widgets(items, widget_id) do
-    items
-    |> Enum.filter(fn item -> widget_id(item) == widget_id end)
-    |> normalize_single_widget_layout()
+    case LayoutTree.find_node(items, widget_id) do
+      nil -> []
+      item -> normalize_single_widget_layout([item])
+    end
   end
 
   defp maybe_prune_dataset_maps(datasets, widget_ids) do
