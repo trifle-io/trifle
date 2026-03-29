@@ -36,16 +36,25 @@ defmodule TrifleApp.Layouts do
       ]}
     >
       <span
+        :if={!@active?}
+        class={[
+          "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100",
+          SidebarHelpers.sidebar_hover_line_classes(:teal)
+        ]}
+      />
+      <span
         :if={@active?}
-        class="pointer-events-none absolute left-2 top-1/2 hidden h-8 w-1 -translate-y-1/2 rounded-full bg-teal-500 shadow-[0_0_16px_rgba(20,184,166,0.35)] dark:bg-teal-300 dark:shadow-[0_0_18px_rgba(94,234,212,0.28)]"
-        x-bind:class="compact ? 'hidden' : 'block'"
+        class={[
+          "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full",
+          SidebarHelpers.sidebar_active_line_classes(:teal)
+        ]}
       />
       <span
         class="flex items-center gap-3"
         x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
       >
         <span class={[
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ring-1 transition",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition",
           SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)
         ]}>
           <TrifleApp.SidebarIcons.icon
