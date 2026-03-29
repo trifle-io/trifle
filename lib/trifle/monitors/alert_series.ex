@@ -13,6 +13,7 @@ defmodule Trifle.Monitors.AlertSeries do
   }
 
   @default_color_selector "default.*"
+  @max_safe_integer 9_007_199_254_740_992
   @source_widget_height 7
 
   def normalize_rows(rows, opts \\ []) do
@@ -405,6 +406,9 @@ defmodule Trifle.Monitors.AlertSeries do
   end
 
   defp normalize_datetime(_), do: nil
+
+  defp normalize_number(value) when is_integer(value) and abs(value) > @max_safe_integer,
+    do: Decimal.new(value)
 
   defp normalize_number(value) when is_integer(value), do: value * 1.0
   defp normalize_number(value) when is_float(value), do: value

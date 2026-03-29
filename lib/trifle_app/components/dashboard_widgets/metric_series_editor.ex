@@ -28,8 +28,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       |> assign(:widget, widget)
       |> assign(:rows, rows)
       |> assign(:widget_id, widget_id)
-      |> assign(:event_name, Map.get(assigns, :event_name) || "widget_series_rows_update")
-      |> assign(:field_prefix, Map.get(assigns, :field_prefix) || "widget_series")
+      |> assign(:event_name, Map.get(assigns, :event_name))
+      |> assign(:field_prefix, Map.get(assigns, :field_prefix))
       |> assign(:field_scope, blank_to_nil(Map.get(assigns, :field_scope)))
       |> assign(:layout, normalize_layout(Map.get(assigns, :layout)))
 
@@ -224,6 +224,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
     </div>
     """
   end
+
+  attr :row, :map, required: true
+  attr :field_scope, :string, default: nil
+  attr :field_prefix, :string, required: true
 
   defp series_kind_radios(assigns) do
     ~H"""

@@ -1,6 +1,8 @@
 defmodule TrifleApp.Exports.MonitorLayoutTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Trifle.Monitors.Alert
   alias Trifle.Monitors.Alert.Settings
   alias Trifle.Monitors.Monitor
@@ -103,6 +105,31 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
     refute Map.has_key?(evaluations, "critical")
     assert Map.has_key?(evaluations, "warning")
     refute Map.has_key?(datasets.timeseries[critical_widget_id], :alert_summary)
+  end
+
+  test "alert_dashboard logs and skips widget groups when stats are missing" do
+    monitor = %Monitor{
+      id: "monitor-1",
+      type: :alert,
+      name: "Latency guard",
+      alert_metric_key: "latency.p95",
+      alert_series: [%{"kind" => "path", "path" => "incoming.*", "visible" => true}],
+      alerts: [
+        %Alert{
+          id: "warning",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 6.0}
+        }
+      ]
+    }
+
+    log =
+      capture_log(fn ->
+        dashboard = MonitorLayout.alert_dashboard(monitor, nil)
+        assert length(get_in(dashboard, [:payload, "grid"])) == 1
+      end)
+
+    assert log =~ "Skipping alert widget groups"
   end
 
   defp build_series do

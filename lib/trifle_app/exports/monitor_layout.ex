@@ -4,6 +4,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
   via the shared Chrome exporter pipeline.
   """
 
+  require Logger
+
   alias Trifle.Monitors
   alias Trifle.Monitors.{Alert, AlertSeries, Monitor}
   alias Trifle.Monitors.AlertEvaluator
@@ -655,84 +657,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
           %Alert{id: nil}, acc ->
             acc
 
-          %Alert{} = alert, {dataset_inner, eval_inner} ->
-            widget_id = alert_target_widget_id(monitor, target, alert)
-
-            if rendered_widget?(rendered_widget_ids, widget_id) do
-              case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
-                {:ok, result} ->
-                  overlay = AlertEvaluator.overlay(result)
-
-                  dataset =
-                    build_alert_widget_dataset(
-                      widget_id,
-                      alert,
-                      target,
-                      %{
-                        alert_overlay: overlay,
-                        alert_baseline_series: Map.get(overlay, :baseline_series, []),
-                        alert_triggered: result.triggered?,
-                        alert_summary: result.summary,
-                        alert_meta:
-                          Map.merge(result.meta || %{}, %{
-                            series_name: target.name,
-                            series_source_path: target.source_path
-                          }),
-                        alert_ref: to_string(alert.id),
-                        alert_strategy:
-                          alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
-                      }
-                    )
-
-                  {
-                    Map.put(dataset_inner, widget_id, dataset),
-                    Map.update(
-                      eval_inner,
-                      alert.id,
-                      [%{target: target, result: result}],
-                      fn existing ->
-                        existing ++ [%{target: target, result: result}]
-                      end
-                    )
-                  }
-
-                {:error, reason} ->
-                  dataset =
-                    build_alert_widget_dataset(
-                      widget_id,
-                      alert,
-                      target,
-                      %{
-                        alert_overlay: nil,
-                        alert_baseline_series: [],
-                        alert_triggered: false,
-                        alert_summary: "Alert evaluation failed: #{inspect(reason)}",
-                        alert_meta: %{
-                          error: reason,
-                          series_name: target.name,
-                          series_source_path: target.source_path
-                        },
-                        alert_ref: to_string(alert.id),
-                        alert_strategy:
-                          alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
-                      }
-                    )
-
-                  {
-                    Map.put(dataset_inner, widget_id, dataset),
-                    Map.update(
-                      eval_inner,
-                      alert.id,
-                      [%{target: target, error: reason}],
-                      fn existing ->
-                        existing ++ [%{target: target, error: reason}]
-                      end
-                    )
-                  }
-              end
-            else
-              {dataset_inner, eval_inner}
-            end
+          %Alert{} = alert, acc ->
+            process_alert_for_target(alert, target, monitor, rendered_widget_ids, acc)
         end)
       end)
 
@@ -760,6 +686,90 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp rendered_widget?(%MapSet{} = widget_ids, widget_id),
     do: MapSet.member?(widget_ids, widget_id)
 
+  defp process_alert_for_target(
+         %Alert{} = alert,
+         target,
+         %Monitor{} = monitor,
+         rendered_widget_ids,
+         {dataset_acc, eval_acc}
+       ) do
+    widget_id = alert_target_widget_id(monitor, target, alert)
+
+    if rendered_widget?(rendered_widget_ids, widget_id) do
+      case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
+        {:ok, result} ->
+          overlay = AlertEvaluator.overlay(result)
+
+          dataset =
+            build_alert_widget_dataset(
+              widget_id,
+              alert,
+              target,
+              %{
+                alert_overlay: overlay,
+                alert_baseline_series: Map.get(overlay, :baseline_series, []),
+                alert_triggered: result.triggered?,
+                alert_summary: result.summary,
+                alert_meta:
+                  Map.merge(result.meta || %{}, %{
+                    series_name: target.name,
+                    series_source_path: target.source_path
+                  }),
+                alert_ref: to_string(alert.id),
+                alert_strategy: alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
+              }
+            )
+
+          {
+            Map.put(dataset_acc, widget_id, dataset),
+            Map.update(
+              eval_acc,
+              alert.id,
+              [%{target: target, result: result}],
+              fn existing ->
+                existing ++ [%{target: target, result: result}]
+              end
+            )
+          }
+
+        {:error, reason} ->
+          dataset =
+            build_alert_widget_dataset(
+              widget_id,
+              alert,
+              target,
+              %{
+                alert_overlay: nil,
+                alert_baseline_series: [],
+                alert_triggered: false,
+                alert_summary: "Alert evaluation failed: #{inspect(reason)}",
+                alert_meta: %{
+                  error: reason,
+                  series_name: target.name,
+                  series_source_path: target.source_path
+                },
+                alert_ref: to_string(alert.id),
+                alert_strategy: alert.analysis_strategy |> Kernel.||(:threshold) |> to_string()
+              }
+            )
+
+          {
+            Map.put(dataset_acc, widget_id, dataset),
+            Map.update(
+              eval_acc,
+              alert.id,
+              [%{target: target, error: reason}],
+              fn existing ->
+                existing ++ [%{target: target, error: reason}]
+              end
+            )
+          }
+      end
+    else
+      {dataset_acc, eval_acc}
+    end
+  end
+
   defp alert_widget_groups(%Monitor{} = monitor, %Series{} = stats) do
     alerts = monitor_alerts(monitor)
     targets = AlertSeries.resolved_final_targets(stats, monitor)
@@ -785,6 +795,16 @@ defmodule TrifleApp.Exports.MonitorLayout do
         }
       end)
     end
+  end
+
+  defp alert_widget_groups(%Monitor{} = monitor, nil) do
+    if monitor_alerts(monitor) != [] do
+      Logger.warning(
+        "Skipping alert widget groups for monitor #{inspect(monitor.id)}: stats are missing"
+      )
+    end
+
+    []
   end
 
   defp alert_widget_groups(_monitor, _stats), do: []

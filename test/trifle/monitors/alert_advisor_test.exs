@@ -126,8 +126,58 @@ defmodule Trifle.Monitors.AlertAdvisorTest do
   end
 
   defp extract_payload(content) do
-    [json] = Regex.run(~r/(\{.*\})\s*$/s, content, capture: :all_but_first)
-    Jason.decode!(json)
+    content
+    |> extract_json_object()
+    |> Jason.decode!()
+  end
+
+  defp extract_json_object(content) when is_binary(content) do
+    start_index =
+      case :binary.match(content, "{") do
+        {index, 1} -> index
+        :nomatch -> raise ArgumentError, "no JSON object found in payload"
+      end
+
+    do_extract_json_object(content, start_index, start_index, 0, false, false)
+  end
+
+  defp do_extract_json_object(content, start_index, index, depth, in_string?, escaped?)
+       when index < byte_size(content) do
+    char = :binary.at(content, index)
+
+    cond do
+      in_string? and escaped? ->
+        do_extract_json_object(content, start_index, index + 1, depth, true, false)
+
+      in_string? and char == ?\\ ->
+        do_extract_json_object(content, start_index, index + 1, depth, true, true)
+
+      in_string? and char == ?" ->
+        do_extract_json_object(content, start_index, index + 1, depth, false, false)
+
+      in_string? ->
+        do_extract_json_object(content, start_index, index + 1, depth, true, false)
+
+      char == ?" ->
+        do_extract_json_object(content, start_index, index + 1, depth, true, false)
+
+      char == ?{ ->
+        do_extract_json_object(content, start_index, index + 1, depth + 1, false, false)
+
+      char == ?} and depth == 1 ->
+        byte_size = index - start_index + 1
+        binary_part(content, start_index, byte_size)
+
+      char == ?} ->
+        do_extract_json_object(content, start_index, index + 1, depth - 1, false, false)
+
+      true ->
+        do_extract_json_object(content, start_index, index + 1, depth, false, false)
+    end
+  end
+
+  defp do_extract_json_object(_content, _start_index, _index, _depth, _in_string?, _escaped?) do
+    raise ArgumentError, "unterminated JSON object in payload"
   end
 
   defp build_series do
