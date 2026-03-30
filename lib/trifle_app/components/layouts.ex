@@ -21,7 +21,8 @@ defmodule TrifleApp.Layouts do
         ) ++
           [
             {"data-fast-tooltip", true},
-            {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)}
+            {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)},
+            {"x-bind:data-tooltip-placement", SidebarHelpers.compact_tooltip_placement_expr()}
           ]
       )
 

@@ -7,6 +7,10 @@ defmodule TrifleWeb.SidebarHelpers do
     "compact ? #{Phoenix.json_library().encode!(text)} : null"
   end
 
+  def compact_tooltip_placement_expr do
+    "compact ? 'right' : null"
+  end
+
   def sidebar_link_classes(false, _accent) do
     "text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
   end

@@ -41,6 +41,9 @@
                 class="flex shrink-0 items-center justify-center bg-[linear-gradient(160deg,#0f172a,#9a3412)] text-orange-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_34px_-22px_rgba(249,115,22,0.55)] dark:bg-[linear-gradient(160deg,rgba(251,146,60,0.26),rgba(15,23,42,0.95))] dark:text-orange-100"
                 data-fast-tooltip
                 x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr("Admin")}
+                x-bind:data-tooltip-placement={
+                  TrifleWeb.SidebarHelpers.compact_tooltip_placement_expr()
+                }
                 x-bind:class="compact ? 'h-10 w-10 rounded-xl' : 'h-12 w-12 rounded-xl'"
               >
                 <span
@@ -79,6 +82,9 @@
                   data-fast-tooltip
                   x-bind:data-tooltip={
                     TrifleWeb.SidebarHelpers.compact_tooltip_expr("Expand sidebar")
+                  }
+                  x-bind:data-tooltip-placement={
+                    TrifleWeb.SidebarHelpers.compact_tooltip_placement_expr()
                   }
                   x-bind:class="compact ? 'h-8 w-8 rounded-xl' : 'h-10 w-10 rounded-2xl'"
                   x-on:click="toggleDesktop()"
@@ -141,6 +147,9 @@
                     data-fast-tooltip
                     x-bind:data-tooltip={
                       TrifleWeb.SidebarHelpers.compact_tooltip_expr(@current_user.email)
+                    }
+                    x-bind:data-tooltip-placement={
+                      TrifleWeb.SidebarHelpers.compact_tooltip_placement_expr()
                     }
                     x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center rounded-xl bg-white/92 shadow-[0_18px_34px_-28px_rgba(15,23,42,0.55)] ring-1 ring-slate-200/80 hover:bg-white dark:bg-slate-900/88 dark:ring-white/10 dark:hover:bg-slate-800' : 'w-full justify-start rounded-xl bg-slate-950/[0.03] px-3 py-2.5 hover:bg-white focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-white/[0.04] dark:hover:bg-white/[0.07] dark:focus-visible:ring-offset-slate-900'"
                     x-on:click="open = !open"

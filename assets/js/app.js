@@ -2686,6 +2686,12 @@ Hooks.FastTooltip = {
     const isDarkMode = document.documentElement.classList.contains('dark');
     const backgroundColor = isDarkMode ? '#0f172a' : '#374151';
     const textColor = isDarkMode ? '#ffffff' : '#ffffff';
+    const placement = String(element.dataset.tooltipPlacement || 'top').toLowerCase();
+    const gap = 8;
+    const viewportLeft = window.scrollX + 8;
+    const viewportRight = window.scrollX + window.innerWidth - 8;
+    const viewportTop = window.scrollY + 8;
+    const viewportBottom = window.scrollY + window.innerHeight - 8;
     
     // Create tooltip element
     const tooltip = document.createElement('div');
@@ -2709,17 +2715,45 @@ Hooks.FastTooltip = {
     // Position tooltip
     const rect = element.getBoundingClientRect();
     const tooltipRect = tooltip.getBoundingClientRect();
-    
-    let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2) + window.scrollX;
-    let top = rect.top - tooltipRect.height - 8 + window.scrollY;
-    
-    // Keep tooltip within viewport
-    if (left < 8) left = 8;
-    if (left + tooltipRect.width > window.innerWidth - 8) {
-      left = window.innerWidth - tooltipRect.width - 8;
-    }
-    if (top < 8 + window.scrollY) {
-      top = rect.bottom + 8 + window.scrollY;
+
+    let left;
+    let top;
+
+    if (placement === 'right') {
+      left = rect.right + gap + window.scrollX;
+      top = rect.top + (rect.height / 2) - (tooltipRect.height / 2) + window.scrollY;
+
+      if (left + tooltipRect.width > viewportRight) {
+        left = rect.left - tooltipRect.width - gap + window.scrollX;
+      }
+
+      if (left < viewportLeft) {
+        left = viewportLeft;
+      }
+
+      if (top < viewportTop) {
+        top = viewportTop;
+      }
+
+      if (top + tooltipRect.height > viewportBottom) {
+        top = viewportBottom - tooltipRect.height;
+      }
+    } else {
+      left = rect.left + (rect.width / 2) - (tooltipRect.width / 2) + window.scrollX;
+      top = rect.top - tooltipRect.height - gap + window.scrollY;
+
+      // Keep tooltip within viewport
+      if (left < viewportLeft) left = viewportLeft;
+      if (left + tooltipRect.width > viewportRight) {
+        left = viewportRight - tooltipRect.width;
+      }
+      if (top < viewportTop) {
+        top = rect.bottom + gap + window.scrollY;
+      }
+
+      if (top + tooltipRect.height > viewportBottom) {
+        top = viewportBottom - tooltipRect.height;
+      }
     }
     
     tooltip.style.left = left + 'px';
