@@ -6,6 +6,8 @@ defmodule Trifle.Organizations do
   import Ecto.Query, warn: false
   require Logger
   alias Ecto.Multi
+  alias Trifle.Billing
+  alias Trifle.Billing.Subscription
   alias Trifle.Repo
   alias Trifle.SqliteUploads
 
@@ -1386,7 +1388,17 @@ defmodule Trifle.Organizations do
 
   """
   def delete_project(%Project{} = project) do
-    Repo.delete(project)
+    case get_project_subscription(project) do
+      %Subscription{} = subscription ->
+        if project_subscription_inactive?(subscription) do
+          delete_project_with_dependencies(project)
+        else
+          {:error, :active_subscription}
+        end
+
+      nil ->
+        delete_project_with_dependencies(project)
+    end
   end
 
   @doc """
@@ -1400,6 +1412,31 @@ defmodule Trifle.Organizations do
   """
   def change_project(%Project{} = project, attrs \\ %{}) do
     Project.changeset(project, attrs)
+  end
+
+  def get_project_subscription(%Project{} = project) do
+    Billing.get_scope_subscription(project.organization_id, "project", project.id)
+  end
+
+  def project_deletable?(%Project{} = project) do
+    case get_project_subscription(project) do
+      nil -> true
+      %Subscription{} = subscription -> project_subscription_inactive?(subscription)
+    end
+  end
+
+  def project_delete_block_reason(%Project{} = project) do
+    case get_project_subscription(project) do
+      nil ->
+        nil
+
+      %Subscription{} = subscription ->
+        if project_subscription_inactive?(subscription) do
+          nil
+        else
+          "Project can only be deleted when its subscription is inactive."
+        end
+    end
   end
 
   defp ensure_project_cluster(%Ecto.Changeset{} = changeset, organization_id) do
@@ -2292,14 +2329,21 @@ defmodule Trifle.Organizations do
   Deletes a database.
   """
   def delete_database(%Database{} = database) do
-    case Repo.delete(database) do
-      {:ok, deleted_database} ->
+    Multi.new()
+    |> Multi.delete_all(:transponders, transponders_for_source_query(:database, database.id))
+    |> Multi.delete(:database, database)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{database: deleted_database}} ->
         _ = Trifle.DatabasePools.PoolManager.stop_all_pools_for_database(deleted_database.id)
         maybe_cleanup_deleted_sqlite_file(deleted_database)
         {:ok, deleted_database}
 
-      error ->
-        error
+      {:error, :database, reason, _changes} ->
+        {:error, reason}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
     end
   end
 
@@ -2543,6 +2587,14 @@ defmodule Trifle.Organizations do
     Repo.all(query)
   end
 
+  defp transponders_for_source_query(type, source_id) do
+    type_string = source_type_string(type)
+
+    from(t in Transponder,
+      where: t.source_type == ^type_string and t.source_id == ^source_id
+    )
+  end
+
   defp update_transponder_order_for_source(type, source_id, transponder_ids) do
     type_string = source_type_string(type)
 
@@ -2623,6 +2675,37 @@ defmodule Trifle.Organizations do
   end
 
   defp normalize_source_type(_), do: nil
+
+  defp project_subscription_query(%Project{} = project) do
+    from(s in Subscription,
+      where:
+        s.organization_id == ^project.organization_id and
+          s.scope_type == "project" and
+          s.scope_id == ^project.id
+    )
+  end
+
+  defp project_subscription_inactive?(%Subscription{status: status}) do
+    status in [nil, "", "canceled", "incomplete", "incomplete_expired", "paused"]
+  end
+
+  defp delete_project_with_dependencies(%Project{} = project) do
+    Multi.new()
+    |> Multi.delete_all(:transponders, transponders_for_source_query(:project, project.id))
+    |> Multi.delete_all(:subscription, project_subscription_query(project))
+    |> Multi.delete(:project, project)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{project: deleted_project}} ->
+        {:ok, deleted_project}
+
+      {:error, :project, reason, _changes} ->
+        {:error, reason}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
+    end
+  end
 
   defp source_type_string(type) when is_atom(type) do
     type

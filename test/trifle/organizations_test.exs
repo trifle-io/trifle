@@ -4,7 +4,9 @@ defmodule Trifle.OrganizationsTest do
   alias Trifle.Organizations
 
   describe "projects" do
+    alias Trifle.Billing.Subscription
     alias Trifle.Organizations.Project
+    alias Trifle.Repo
 
     import Trifle.OrganizationsFixtures
     import Trifle.AccountsFixtures
@@ -105,6 +107,52 @@ defmodule Trifle.OrganizationsTest do
       project = project_fixture(%{user: user})
       assert {:ok, %Project{}} = Organizations.delete_project(project)
       assert_raise Ecto.NoResultsError, fn -> Organizations.get_project!(project.id) end
+    end
+
+    test "delete_project/1 deletes linked transponders and inactive subscription", %{user: user} do
+      project = project_fixture(%{user: user})
+
+      {:ok, transponder} =
+        Organizations.create_transponder_for_project(project, transponder_attrs("Project Total"))
+
+      subscription =
+        Repo.insert!(
+          Subscription.changeset(%Subscription{}, %{
+            organization_id: project.organization_id,
+            scope_type: "project",
+            scope_id: project.id,
+            stripe_subscription_id: "sub_#{System.unique_integer([:positive])}",
+            status: "canceled"
+          })
+        )
+
+      assert {:ok, %Project{}} = Organizations.delete_project(project)
+      assert_raise Ecto.NoResultsError, fn -> Organizations.get_project!(project.id) end
+      assert_raise Ecto.NoResultsError, fn -> Organizations.get_transponder!(transponder.id) end
+      assert Repo.get(Subscription, subscription.id) == nil
+    end
+
+    test "delete_project/1 rejects projects with active subscription", %{user: user} do
+      project = project_fixture(%{user: user})
+
+      {:ok, transponder} =
+        Organizations.create_transponder_for_project(project, transponder_attrs("Project Ratio"))
+
+      subscription =
+        Repo.insert!(
+          Subscription.changeset(%Subscription{}, %{
+            organization_id: project.organization_id,
+            scope_type: "project",
+            scope_id: project.id,
+            stripe_subscription_id: "sub_#{System.unique_integer([:positive])}",
+            status: "active"
+          })
+        )
+
+      assert {:error, :active_subscription} = Organizations.delete_project(project)
+      assert Organizations.get_project!(project.id).id == project.id
+      assert Organizations.get_transponder!(transponder.id).id == transponder.id
+      assert Repo.get(Subscription, subscription.id).id == subscription.id
     end
 
     test "change_project/1 returns a project changeset", %{user: user} do
@@ -365,5 +413,34 @@ defmodule Trifle.OrganizationsTest do
       database_token = database_token_fixture(%{database: database})
       assert %Ecto.Changeset{} = Organizations.change_database_token(database_token)
     end
+  end
+
+  describe "databases" do
+    import Trifle.OrganizationsFixtures
+
+    test "delete_database/1 deletes linked transponders" do
+      database = database_fixture()
+
+      {:ok, transponder} =
+        Organizations.create_transponder_for_database(
+          database,
+          transponder_attrs("Database Total")
+        )
+
+      assert {:ok, _deleted_database} = Organizations.delete_database(database)
+      assert_raise Ecto.NoResultsError, fn -> Organizations.get_transponder!(transponder.id) end
+    end
+  end
+
+  defp transponder_attrs(name) do
+    %{
+      "name" => name,
+      "key" => "metric::#{System.unique_integer([:positive])}",
+      "config" => %{
+        "paths" => ["foo"],
+        "expression" => "a",
+        "response" => "total"
+      }
+    }
   end
 end

@@ -17,6 +17,9 @@ defmodule TrifleAdmin.ProjectsLive do
        page_title: "Projects",
        projects: [],
        project: nil,
+       project_subscription: nil,
+       can_delete_project: false,
+       project_delete_reason: nil,
        query: "",
        pagination: Pagination.build(0, 1, @page_size)
      )}
@@ -44,17 +47,48 @@ defmodule TrifleAdmin.ProjectsLive do
     handle_event("filter", %{"q" => query}, socket)
   end
 
-  defp apply_action(socket, :show, %{"id" => id}) do
-    project =
-      id
-      |> Organizations.get_project!()
-      |> Repo.preload([:user, :organization, :project_cluster])
+  def handle_event("delete_project", %{"id" => id}, socket) do
+    project = Organizations.get_project!(id)
 
-    assign(socket, project: project)
+    case Organizations.delete_project(project) do
+      {:ok, _deleted_project} ->
+        list_path =
+          ~p"/admin/projects?#{Pagination.list_params(socket.assigns.query, socket.assigns.pagination.page)}"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Project deleted successfully.")
+         |> push_patch(to: list_path)}
+
+      {:error, :active_subscription} ->
+        refreshed_project = load_project(id)
+
+        {:noreply,
+         socket
+         |> assign_project_details(refreshed_project)
+         |> put_flash(
+           :error,
+           Organizations.project_delete_block_reason(refreshed_project) ||
+             "Project cannot be deleted while its subscription is active."
+         )}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Project could not be deleted.")}
+    end
+  end
+
+  defp apply_action(socket, :show, %{"id" => id}) do
+    socket
+    |> assign_project_details(load_project(id))
   end
 
   defp apply_action(socket, :index, _params) do
-    assign(socket, project: nil)
+    assign(socket,
+      project: nil,
+      project_subscription: nil,
+      can_delete_project: false,
+      project_delete_reason: nil
+    )
   end
 
   def render(assigns) do
@@ -294,6 +328,63 @@ defmodule TrifleAdmin.ProjectsLive do
             </div>
           </dl>
         </div>
+
+        <div class="mt-8 overflow-hidden rounded-lg border border-red-200 bg-white dark:border-red-900/40 dark:bg-slate-900">
+          <div class="px-4 py-6 sm:px-6">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <h3 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                  Danger zone
+                </h3>
+                <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
+                  Deleting a project permanently removes the project record, its linked transponders,
+                  and its inactive subscription.
+                </p>
+              </div>
+
+              <%= if @project_subscription do %>
+                <.status_badge variant={subscription_status_variant(@project_subscription.status)}>
+                  Subscription: {@project_subscription.status || "unknown"}
+                </.status_badge>
+              <% end %>
+            </div>
+          </div>
+
+          <div class="border-t border-red-100 px-4 py-5 sm:px-6 dark:border-red-900/40">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+              <div class="max-w-xl text-sm text-gray-600 dark:text-slate-300">
+                <p :if={@can_delete_project}>
+                  This action cannot be undone.
+                </p>
+                <p :if={!@can_delete_project}>
+                  {@project_delete_reason || "This project cannot be deleted right now."}
+                </p>
+              </div>
+
+              <button
+                phx-click="delete_project"
+                phx-value-id={@project.id}
+                type="button"
+                disabled={!@can_delete_project}
+                data-confirm={
+                  if @can_delete_project do
+                    "Are you sure you want to delete this project? This action cannot be undone."
+                  end
+                }
+                class={[
+                  "inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                  if(@can_delete_project,
+                    do: "bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600",
+                    else:
+                      "cursor-not-allowed border border-gray-200 bg-gray-100 text-gray-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+                  )
+                ]}
+              >
+                Delete project
+              </button>
+            </div>
+          </div>
+        </div>
       </:body>
     </.app_modal>
     """
@@ -324,6 +415,23 @@ defmodule TrifleAdmin.ProjectsLive do
     )
   end
 
+  defp assign_project_details(socket, %Project{} = project) do
+    subscription = Organizations.get_project_subscription(project)
+
+    assign(socket,
+      project: project,
+      project_subscription: subscription,
+      can_delete_project: project_deletable?(subscription),
+      project_delete_reason: project_delete_reason(subscription)
+    )
+  end
+
+  defp load_project(id) do
+    id
+    |> Organizations.get_project!()
+    |> Repo.preload([:user, :organization, :project_cluster])
+  end
+
   defp owner_email(%Project{user: %{email: email}}), do: email
   defp owner_email(%Project{user: nil}), do: "N/A"
   defp owner_email(_), do: "N/A"
@@ -340,6 +448,31 @@ defmodule TrifleAdmin.ProjectsLive do
     |> case do
       nil -> "N/A"
       value -> value |> Atom.to_string() |> String.capitalize()
+    end
+  end
+
+  defp subscription_status_variant(status) when status in ["active", "trialing"], do: "success"
+  defp subscription_status_variant(status) when status in ["past_due", "unpaid"], do: "warning"
+
+  defp subscription_status_variant(status)
+       when status in ["canceled", "incomplete", "incomplete_expired", "paused"],
+       do: "error"
+
+  defp subscription_status_variant(_), do: "default"
+
+  defp project_deletable?(nil), do: true
+
+  defp project_deletable?(subscription) do
+    subscription.status in [nil, "", "canceled", "incomplete", "incomplete_expired", "paused"]
+  end
+
+  defp project_delete_reason(nil), do: nil
+
+  defp project_delete_reason(subscription) do
+    if project_deletable?(subscription) do
+      nil
+    else
+      "Project can only be deleted when its subscription is inactive."
     end
   end
 

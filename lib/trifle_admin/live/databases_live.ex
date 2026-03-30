@@ -44,6 +44,24 @@ defmodule TrifleAdmin.DatabasesLive do
     handle_event("filter", %{"q" => query}, socket)
   end
 
+  def handle_event("delete_database", %{"id" => id}, socket) do
+    database = Organizations.get_database!(id)
+
+    case Organizations.delete_database(database) do
+      {:ok, _deleted_database} ->
+        list_path =
+          ~p"/admin/databases?#{Pagination.list_params(socket.assigns.query, socket.assigns.pagination.page)}"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Database deleted successfully.")
+         |> push_patch(to: list_path)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Database could not be deleted.")}
+    end
+  end
+
   defp apply_action(socket, :show, %{"id" => id}) do
     database =
       id
@@ -234,12 +252,41 @@ defmodule TrifleAdmin.DatabasesLive do
     >
       <:title>Database Details</:title>
       <:body>
-        <.live_component
-          module={TrifleAdmin.DatabasesLive.DetailsComponent}
-          id={@database.id}
-          database={@database}
-          patch={~p"/admin/databases"}
-        />
+        <div class="space-y-8">
+          <.live_component
+            module={TrifleAdmin.DatabasesLive.DetailsComponent}
+            id={@database.id}
+            database={@database}
+            patch={~p"/admin/databases"}
+          />
+
+          <div class="overflow-hidden rounded-lg border border-red-200 bg-white dark:border-red-900/40 dark:bg-slate-900">
+            <div class="px-4 py-6 sm:px-6">
+              <h3 class="text-base/7 font-semibold text-gray-900 dark:text-white">Danger zone</h3>
+              <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
+                Deleting a database permanently removes the configuration and all linked transponders.
+              </p>
+            </div>
+
+            <div class="border-t border-red-100 px-4 py-5 sm:px-6 dark:border-red-900/40">
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="max-w-xl text-sm text-gray-600 dark:text-slate-300">
+                  <p>This action cannot be undone.</p>
+                </div>
+
+                <button
+                  phx-click="delete_database"
+                  phx-value-id={@database.id}
+                  type="button"
+                  data-confirm="Are you sure you want to delete this database? This action cannot be undone."
+                  class="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+                >
+                  Delete database
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </:body>
     </.app_modal>
     """

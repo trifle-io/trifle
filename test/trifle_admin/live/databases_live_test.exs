@@ -32,6 +32,27 @@ defmodule TrifleAdmin.DatabasesLiveTest do
     {:ok, _lv, html} = live(conn, "/admin/databases/#{database.id}/show")
 
     assert html =~ "MySQL database connection"
+    assert html =~ "Danger zone"
+  end
+
+  test "admin database modal deletes database and linked transponders", %{
+    conn: conn,
+    organization: organization
+  } do
+    assert {:ok, database} = Organizations.create_database_for_org(organization, mysql_attrs())
+
+    {:ok, transponder} =
+      Organizations.create_transponder_for_database(database, transponder_attrs("DB Total"))
+
+    {:ok, lv, _html} = live(conn, "/admin/databases/#{database.id}/show")
+
+    lv
+    |> element("button[phx-click=\"delete_database\"]")
+    |> render_click()
+
+    assert_patch(lv, "/admin/databases")
+    assert_raise Ecto.NoResultsError, fn -> Organizations.get_database!(database.id) end
+    assert_raise Ecto.NoResultsError, fn -> Organizations.get_transponder!(transponder.id) end
   end
 
   test "admin database form component includes MySQL driver option", %{organization: organization} do
@@ -61,5 +82,17 @@ defmodule TrifleAdmin.DatabasesLiveTest do
       },
       overrides
     )
+  end
+
+  defp transponder_attrs(name) do
+    %{
+      "name" => name,
+      "key" => "metric::#{System.unique_integer([:positive])}",
+      "config" => %{
+        "paths" => ["foo"],
+        "expression" => "a",
+        "response" => "total"
+      }
+    }
   end
 end
