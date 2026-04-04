@@ -145,4 +145,15 @@ defmodule TrifleApp.Exports.DashboardLayoutTest do
     assert widget["y"] == 0
     assert widget["w"] == 12
   end
+
+  test "returns a source error when the dashboard source has been cleared", %{
+    dashboard: dashboard
+  } do
+    database = Organizations.get_dashboard!(dashboard.id).database
+    assert {:ok, _deleted_database} = Organizations.delete_database(database)
+
+    dashboard = Organizations.get_dashboard!(dashboard.id)
+
+    assert {:error, :source_not_configured} = DashboardLayout.build(dashboard)
+  end
 end

@@ -164,8 +164,11 @@ defmodule TrifleApp.ExportController do
       |> put_download_token_cookie(params)
       |> send_download({:binary, csv}, filename: filename, content_type: "text/csv")
     else
-      {:error, :no_data} -> send_resp(conn, 400, "No data to export")
-      {:error, reason} -> send_resp(conn, 500, "CSV export failed: #{inspect(reason)}")
+      {:error, %NoResultsError{}} ->
+        send_resp(conn, 404, "Dashboard not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), dashboard_error_message(reason))
     end
   end
 
@@ -178,8 +181,11 @@ defmodule TrifleApp.ExportController do
       |> put_download_token_cookie(params)
       |> send_download({:binary, json}, filename: filename, content_type: "application/json")
     else
-      {:error, :no_data} -> send_resp(conn, 400, "No data to export")
-      {:error, reason} -> send_resp(conn, 500, "JSON export failed: #{inspect(reason)}")
+      {:error, %NoResultsError{}} ->
+        send_resp(conn, 404, "Dashboard not found")
+
+      {:error, reason} ->
+        send_resp(conn, error_status(reason), dashboard_error_message(reason))
     end
   end
 
@@ -329,39 +335,33 @@ defmodule TrifleApp.ExportController do
   defp fetch_series_for_export(dashboard_id, params) do
     dashboard = Organizations.get_dashboard!(dashboard_id)
 
-    source =
-      case dashboard.source_type do
-        "project" ->
-          Source.from_project(
-            Organizations.get_project_for_org!(dashboard.organization_id, dashboard.source_id)
-          )
+    with {:ok, source} <- Organizations.resolve_dashboard_source(dashboard) do
+      config = Source.stats_config(source)
+      available_granularities = Source.available_granularities(source)
 
-        _ ->
-          Source.from_database(Organizations.get_database!(dashboard.source_id))
-      end
+      defaults = %{
+        default_timeframe:
+          dashboard.default_timeframe || Source.default_timeframe(source) || "24h",
+        default_granularity:
+          dashboard.default_granularity || Source.default_granularity(source) || "1h"
+      }
 
-    config = Source.stats_config(source)
-    available_granularities = Source.available_granularities(source)
+      {from, to, granularity, _smart, _use_fixed} =
+        UrlParsing.parse_url_params(params, config, available_granularities, defaults)
 
-    defaults = %{
-      default_timeframe: dashboard.default_timeframe || Source.default_timeframe(source) || "24h",
-      default_granularity:
-        dashboard.default_granularity || Source.default_granularity(source) || "1h"
-    }
+      resolved_key = resolved_key_from_params(dashboard, params)
 
-    {from, to, granularity, _smart, _use_fixed} =
-      UrlParsing.parse_url_params(params, config, available_granularities, defaults)
-
-    resolved_key = resolved_key_from_params(dashboard, params)
-
-    SeriesExport.fetch(
-      source,
-      resolved_key,
-      from,
-      to,
-      granularity,
-      progress_callback: nil
-    )
+      SeriesExport.fetch(
+        source,
+        resolved_key,
+        from,
+        to,
+        granularity,
+        progress_callback: nil
+      )
+    end
+  rescue
+    e in NoResultsError -> {:error, e}
   end
 
   defp resolved_key_from_params(dashboard, params) do
@@ -466,6 +466,8 @@ defmodule TrifleApp.ExportController do
 
   defp dashboard_error_message(:no_widgets), do: "Dashboard has no widgets to export"
   defp dashboard_error_message(:no_data), do: "No data to export"
+  defp dashboard_error_message(:source_not_configured), do: "Dashboard source is not configured"
+  defp dashboard_error_message(:source_not_found), do: "Dashboard source could not be found"
   defp dashboard_error_message(:chrome_not_found), do: "Chrome binary not found"
 
   defp dashboard_error_message({:error, reason}),
@@ -484,6 +486,8 @@ defmodule TrifleApp.ExportController do
 
   defp widget_error_message(:widget_not_found), do: "Widget not found"
   defp widget_error_message(:no_widgets), do: "Widget not found"
+  defp widget_error_message(:source_not_configured), do: "Dashboard source is not configured"
+  defp widget_error_message(:source_not_found), do: "Dashboard source could not be found"
   defp widget_error_message(:chrome_not_found), do: "Chrome binary not found"
   defp widget_error_message({:error, reason}), do: "Widget export failed: #{inspect(reason)}"
   defp widget_error_message(reason), do: "Widget export failed: #{inspect(reason)}"

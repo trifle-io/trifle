@@ -85,17 +85,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
     e in Ecto.NoResultsError -> {:error, e}
   end
 
-  defp dashboard_source(%{source_type: "project", source_id: id, organization_id: org_id}) do
-    {:ok, Organizations.get_project_for_org!(org_id, id) |> Source.from_project()}
-  rescue
-    e in Ecto.NoResultsError -> {:error, e}
-  end
-
-  defp dashboard_source(%{source_id: id}) do
-    {:ok, Organizations.get_database!(id) |> Source.from_database()}
-  rescue
-    e in Ecto.NoResultsError -> {:error, e}
-  end
+  defp dashboard_source(dashboard), do: Organizations.resolve_dashboard_source(dashboard)
 
   defp resolve_timeframe(source, dashboard, params) do
     config = Source.stats_config(source)

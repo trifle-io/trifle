@@ -3,6 +3,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations.DashboardSegments
+  alias Trifle.Stats.Configuration
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
   alias Phoenix.HTML
@@ -28,6 +29,8 @@ defmodule TrifleApp.DashboardLive do
 
   alias TrifleApp.Components.DashboardWidgets.List, as: WidgetList
   require Logger
+
+  @default_granularities ["15m", "1h", "6h", "1d", "1w", "1mo"]
 
   def mount(%{"id" => _dashboard_id}, _session, %{assigns: %{current_membership: nil}} = socket) do
     {:ok, redirect(socket, to: ~p"/organization/profile")}
@@ -131,8 +134,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:temp_name, socket.assigns.dashboard.name)
     |> assign(
       :temp_timeframe,
-      socket.assigns.dashboard.default_timeframe || socket.assigns.database.default_timeframe ||
-        "24h"
+      dashboard_default_timeframe(socket.assigns.dashboard, socket.assigns.source)
     )
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, component_source_ref(socket.assigns.source))
@@ -455,40 +457,47 @@ defmodule TrifleApp.DashboardLive do
 
       source = socket.assigns.source
 
-      default_timeframe =
-        original.default_timeframe || Source.default_timeframe(source) || "24h"
+      if is_nil(source) do
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           dashboard_source_error_message(socket.assigns[:dashboard_source_status])
+         )}
+      else
+        default_timeframe = dashboard_default_timeframe(original, source)
+        default_granularity = dashboard_default_granularity(original, source)
 
-      default_granularity =
-        original.default_granularity ||
-          Source.default_granularity(source) ||
-          Source.available_granularities(source) |> List.first() || "1h"
+        attrs = %{
+          "name" => (original.name || "Dashboard") <> " (copy)",
+          "key" => original.key || "dashboard",
+          "payload" => original.payload || %{},
+          "visibility" => original.visibility,
+          "group_id" => original.group_id,
+          "position" =>
+            Organizations.get_next_dashboard_position_for_membership(
+              membership,
+              original.group_id
+            ),
+          "source_type" => Atom.to_string(Source.type(source)),
+          "source_id" => to_string(Source.id(source)),
+          "default_timeframe" => default_timeframe,
+          "default_granularity" => default_granularity,
+          "database_id" =>
+            if(Source.type(source) == :database, do: to_string(Source.id(source)), else: nil)
+        }
 
-      attrs = %{
-        "name" => (original.name || "Dashboard") <> " (copy)",
-        "key" => original.key || "dashboard",
-        "payload" => original.payload || %{},
-        "visibility" => original.visibility,
-        "group_id" => original.group_id,
-        "position" =>
-          Organizations.get_next_dashboard_position_for_membership(membership, original.group_id),
-        "source_type" => Atom.to_string(Source.type(source)),
-        "source_id" => to_string(Source.id(source)),
-        "default_timeframe" => default_timeframe,
-        "default_granularity" => default_granularity,
-        "database_id" =>
-          if(Source.type(source) == :database, do: to_string(Source.id(source)), else: nil)
-      }
+        case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
+          {:ok, new_dash} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "Dashboard duplicated")
+             |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
 
-      case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
-        {:ok, new_dash} ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Dashboard duplicated")
-           |> push_navigate(to: ~p"/dashboards/#{new_dash.id}")}
-
-        {:error, %Ecto.Changeset{} = changeset} ->
-          message = changeset_error_message(changeset)
-          {:noreply, put_flash(socket, :error, message || "Could not duplicate dashboard")}
+          {:error, %Ecto.Changeset{} = changeset} ->
+            message = changeset_error_message(changeset)
+            {:noreply, put_flash(socket, :error, message || "Could not duplicate dashboard")}
+        end
       end
     end
   end
@@ -1231,11 +1240,7 @@ defmodule TrifleApp.DashboardLive do
              socket
              |> assign_dashboard(updated_dashboard)
              |> assign(:temp_name, updated_dashboard.name)
-             |> assign(
-               :temp_timeframe,
-               updated_dashboard.default_timeframe ||
-                 socket.assigns.database.default_timeframe || "24h"
-             )
+             |> assign(:temp_timeframe, dashboard_default_timeframe(updated_dashboard, source))
              |> assign(:page_title, updated_page_title)
              |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
              |> put_flash(:info, "Settings saved")
@@ -1421,20 +1426,13 @@ defmodule TrifleApp.DashboardLive do
   # Dashboard Data Management
 
   defp initialize_dashboard_state(socket, dashboard, membership, is_public_access, public_token) do
-    {source, database} =
-      case dashboard.source_type do
-        "project" ->
-          project =
-            Organizations.get_project_for_org!(dashboard.organization_id, dashboard.source_id)
-
-          {Source.from_project(project), nil}
-
-        _ ->
-          database =
-            dashboard.database || Organizations.get_database!(dashboard.source_id)
-
-          {Source.from_database(database), database}
+    {dashboard_source_status, source} =
+      case Organizations.resolve_dashboard_source(dashboard) do
+        {:ok, resolved_source} -> {:available, resolved_source}
+        {:error, reason} -> {reason, nil}
       end
+
+    database = database_from_source(source)
 
     sources =
       case membership do
@@ -1448,16 +1446,17 @@ defmodule TrifleApp.DashboardLive do
     {from, to, granularity, smart_timeframe_input, use_fixed_display} =
       get_default_timeframe_params(source)
 
-    database_config = Source.stats_config(source)
+    database_config = source_stats_config(source)
     available_granularities = get_available_granularities(source)
 
     {transponder_info, transponder_response_paths} =
-      Source.transponders(source)
+      source_transponders(source)
       |> build_transponder_info()
 
     socket
     |> assign(:database, database)
     |> assign(:source, source)
+    |> assign(:dashboard_source_status, dashboard_source_status)
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, selected_source_ref)
     |> assign_dashboard(dashboard)
@@ -1509,13 +1508,9 @@ defmodule TrifleApp.DashboardLive do
 
     defaults = %{
       default_timeframe:
-        socket.assigns.dashboard.default_timeframe ||
-          Source.default_timeframe(socket.assigns.source) ||
-          "24h",
+        dashboard_default_timeframe(socket.assigns.dashboard, socket.assigns.source),
       default_granularity:
-        socket.assigns.dashboard.default_granularity ||
-          Source.default_granularity(socket.assigns.source) ||
-          "1h"
+        dashboard_default_granularity(socket.assigns.dashboard, socket.assigns.source)
     }
 
     {from, to, granularity, smart_timeframe_input, use_fixed_display} =
@@ -1540,12 +1535,11 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp get_default_timeframe_params(source) do
-    config = Source.stats_config(source)
+    config = source_stats_config(source)
     granularities = get_available_granularities(source)
 
-    # Use source defaults if present
-    default_tf = Source.default_timeframe(source) || "24h"
-    default_gran = Source.default_granularity(source) || "1h"
+    default_tf = source_default_timeframe(source)
+    default_gran = source_default_granularity(source)
 
     case TimeframeParsing.parse_smart_timeframe(default_tf, config) do
       {:ok, from, to, smart_input, use_fixed} ->
@@ -1564,8 +1558,36 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  defp source_stats_config(nil) do
+    %Configuration{
+      time_zone: "UTC",
+      time_zone_database: Tzdata.TimeZoneDatabase,
+      beginning_of_week: :monday,
+      track_granularities: @default_granularities,
+      granularities: @default_granularities,
+      validate_driver: false
+    }
+  end
+
+  defp source_stats_config(source), do: Source.stats_config(source)
+
+  defp source_default_timeframe(nil), do: "24h"
+  defp source_default_timeframe(source), do: Source.default_timeframe(source) || "24h"
+
+  defp source_default_granularity(nil), do: "1h"
+  defp source_default_granularity(source), do: Source.default_granularity(source) || "1h"
+
   defp get_available_granularities(source) do
-    Source.available_granularities(source)
+    case source do
+      nil ->
+        @default_granularities
+
+      _ ->
+        case Source.available_granularities(source) do
+          list when is_list(list) and list != [] -> list
+          _ -> @default_granularities
+        end
+    end
   end
 
   def dashboard_has_key?(socket) when is_struct(socket, Phoenix.LiveView.Socket) do
@@ -1585,55 +1607,66 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp load_dashboard_data(socket) do
-    if dashboard_has_key?(socket) do
-      socket =
-        assign(socket,
-          load_start_time: System.monotonic_time(:microsecond),
-          loading: true,
-          loading_chunks: true,
-          loading_progress: nil,
-          transponding: false
-        )
+    cond do
+      !dashboard_has_key?(socket) ->
+        socket
 
-      # Extract values to avoid async socket warnings
-      source = socket.assigns.source
-      key = socket.assigns.resolved_key || socket.assigns.dashboard.key
-      key = key || ""
-      granularity = socket.assigns.granularity
-      from = socket.assigns.from
-      to = socket.assigns.to
-      # Capture LiveView PID before async task
-      liveview_pid = self()
+      is_nil(socket.assigns[:source]) ->
+        socket
 
-      start_async(socket, :dashboard_data_task, fn ->
-        # Create progress callback to send updates back to LiveView
-        progress_callback = fn progress_info ->
-          case progress_info do
-            {:chunk_progress, current, total} ->
-              send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+      is_nil(socket.assigns[:from]) or is_nil(socket.assigns[:to]) ->
+        socket
 
-            {:transponder_progress, :starting} ->
-              send(liveview_pid, {:transponding, true})
+      is_nil(socket.assigns[:granularity]) ->
+        socket
 
-            {:transponder_progress, :finished} ->
-              send(liveview_pid, {:transponding, false})
+      true ->
+        socket =
+          assign(socket,
+            load_start_time: System.monotonic_time(:microsecond),
+            loading: true,
+            loading_chunks: true,
+            loading_progress: nil,
+            transponding: false
+          )
+
+        # Extract values to avoid async socket warnings
+        source = socket.assigns.source
+        key = socket.assigns.resolved_key || socket.assigns.dashboard.key
+        key = key || ""
+        granularity = socket.assigns.granularity
+        from = socket.assigns.from
+        to = socket.assigns.to
+        # Capture LiveView PID before async task
+        liveview_pid = self()
+
+        start_async(socket, :dashboard_data_task, fn ->
+          # Create progress callback to send updates back to LiveView
+          progress_callback = fn progress_info ->
+            case progress_info do
+              {:chunk_progress, current, total} ->
+                send(liveview_pid, {:loading_progress, %{current: current, total: total}})
+
+              {:transponder_progress, :starting} ->
+                send(liveview_pid, {:transponding, true})
+
+              {:transponder_progress, :finished} ->
+                send(liveview_pid, {:transponding, false})
+            end
           end
-        end
 
-        case Source.fetch_series(
-               source,
-               key,
-               from,
-               to,
-               granularity,
-               progress_callback: progress_callback
-             ) do
-          {:ok, result} -> result
-          {:error, error} -> {:error, error}
-        end
-      end)
-    else
-      socket
+          case Source.fetch_series(
+                 source,
+                 key,
+                 from,
+                 to,
+                 granularity,
+                 progress_callback: progress_callback
+               ) do
+            {:ok, result} -> result
+            {:error, error} -> {:error, error}
+          end
+        end)
     end
   end
 
@@ -2503,6 +2536,8 @@ defmodule TrifleApp.DashboardLive do
     {:ok, attrs}
   end
 
+  defp database_from_source(nil), do: nil
+
   defp database_from_source(source) do
     case Source.type(source) do
       :database -> Source.record(source)
@@ -2541,6 +2576,29 @@ defmodule TrifleApp.DashboardLive do
         end)
     end
   end
+
+  defp dashboard_default_timeframe(dashboard, source) do
+    dashboard.default_timeframe || source_default_timeframe(source)
+  end
+
+  defp dashboard_default_granularity(dashboard, source) do
+    dashboard.default_granularity ||
+      source_default_granularity(source) ||
+      List.first(get_available_granularities(source)) ||
+      "1h"
+  end
+
+  defp source_transponders(nil), do: []
+  defp source_transponders(source), do: Source.transponders(source)
+
+  defp dashboard_source_error_message(:source_not_found),
+    do: "The linked source for this dashboard could not be found."
+
+  defp dashboard_source_error_message(:source_not_configured),
+    do: "This dashboard does not have a source assigned."
+
+  defp dashboard_source_error_message(_reason),
+    do: "This dashboard does not have a usable source."
 
   defp ensure_segment_params(socket, params) when is_map(params) do
     cond do
@@ -3856,15 +3914,28 @@ defmodule TrifleApp.DashboardLive do
     Map.get(params, key) || Map.get(params, String.replace(key, "_", "-"))
   end
 
+  defp apply_dashboard_source_change(socket, nil) do
+    socket
+    |> assign(:source, nil)
+    |> assign(:dashboard_source_status, :source_not_configured)
+    |> assign(:selected_source_ref, nil)
+    |> assign(:database, nil)
+    |> assign(:database_config, source_stats_config(nil))
+    |> assign(:available_granularities, get_available_granularities(nil))
+    |> assign(:transponder_info, %{})
+    |> assign(:transponder_response_paths, [])
+  end
+
   defp apply_dashboard_source_change(socket, source) do
     {transponder_info, transponder_response_paths} =
-      build_transponder_info(Source.transponders(source))
+      build_transponder_info(source_transponders(source))
 
-    database_config = Source.stats_config(source)
+    database_config = source_stats_config(source)
     available_granularities = get_available_granularities(source)
 
     socket
     |> assign(:source, source)
+    |> assign(:dashboard_source_status, :available)
     |> assign(:sources, ensure_source_in_list(socket.assigns[:sources] || [], source))
     |> assign(:selected_source_ref, component_source_ref(source))
     |> assign(:database, database_from_source(source))

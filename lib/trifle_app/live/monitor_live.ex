@@ -1281,13 +1281,14 @@ defmodule TrifleApp.MonitorLive do
   end
 
   defp source_stats_config(nil) do
-    Configuration.configure(
-      nil,
+    %Configuration{
       time_zone: "UTC",
       time_zone_database: Tzdata.TimeZoneDatabase,
       beginning_of_week: :monday,
-      track_granularities: @default_granularities
-    )
+      track_granularities: @default_granularities,
+      granularities: @default_granularities,
+      validate_driver: false
+    }
   end
 
   defp source_stats_config(source), do: StatsSource.stats_config(source)

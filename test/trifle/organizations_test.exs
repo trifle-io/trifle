@@ -5,6 +5,7 @@ defmodule Trifle.OrganizationsTest do
 
   describe "projects" do
     alias Trifle.Billing.Subscription
+    alias Trifle.Monitors
     alias Trifle.Organizations.Project
     alias Trifle.Repo
 
@@ -130,6 +131,51 @@ defmodule Trifle.OrganizationsTest do
       assert_raise Ecto.NoResultsError, fn -> Organizations.get_project!(project.id) end
       assert_raise Ecto.NoResultsError, fn -> Organizations.get_transponder!(transponder.id) end
       assert Repo.get(Subscription, subscription.id) == nil
+    end
+
+    test "delete_project/1 unassigns linked dashboards and monitors", %{
+      user: user,
+      organization: organization
+    } do
+      membership = Organizations.get_membership_for_user(user)
+      project = project_fixture(%{user: user, organization: organization})
+
+      {:ok, dashboard} =
+        Organizations.create_dashboard_for_membership(user, membership, %{
+          "name" => "Project dashboard",
+          "key" => "project-#{System.unique_integer([:positive])}",
+          "source_type" => "project",
+          "source_id" => project.id,
+          "default_timeframe" => "24h",
+          "default_granularity" => "1h",
+          "payload" => %{"grid" => []}
+        })
+
+      {:ok, monitor} =
+        Monitors.create_monitor_for_membership(user, membership, %{
+          "name" => "Project alert",
+          "type" => "alert",
+          "alert_metric_key" => "project.latency",
+          "alert_metric_path" => "$.global",
+          "alert_timeframe" => "15m",
+          "alert_granularity" => "5m",
+          "delivery_channels" => [
+            %{"channel" => "email", "label" => "Primary", "target" => "alerts@example.com"}
+          ],
+          "source_type" => "project",
+          "source_id" => project.id
+        })
+
+      assert {:ok, %Project{}} = Organizations.delete_project(project)
+
+      dashboard = Organizations.get_dashboard!(dashboard.id)
+      monitor = Monitors.get_monitor!(monitor.id)
+
+      assert dashboard.source_type == nil
+      assert dashboard.source_id == nil
+      assert dashboard.database_id == nil
+      assert monitor.source_type == nil
+      assert monitor.source_id == nil
     end
 
     test "delete_project/1 rejects projects with active subscription", %{user: user} do
@@ -416,6 +462,9 @@ defmodule Trifle.OrganizationsTest do
   end
 
   describe "databases" do
+    alias Trifle.Monitors
+
+    import Trifle.AccountsFixtures
     import Trifle.OrganizationsFixtures
 
     test "delete_database/1 deletes linked transponders" do
@@ -429,6 +478,51 @@ defmodule Trifle.OrganizationsTest do
 
       assert {:ok, _deleted_database} = Organizations.delete_database(database)
       assert_raise Ecto.NoResultsError, fn -> Organizations.get_transponder!(transponder.id) end
+    end
+
+    test "delete_database/1 unassigns linked dashboards and monitors" do
+      user = user_fixture()
+      organization = organization_fixture(%{user: user})
+      membership = Organizations.get_membership_for_user(user)
+      database = database_fixture(%{organization: organization})
+
+      {:ok, dashboard} =
+        Organizations.create_dashboard_for_membership(user, membership, %{
+          "name" => "Database dashboard",
+          "key" => "database-#{System.unique_integer([:positive])}",
+          "source_type" => "database",
+          "source_id" => database.id,
+          "database_id" => database.id,
+          "default_timeframe" => "24h",
+          "default_granularity" => "1h",
+          "payload" => %{"grid" => []}
+        })
+
+      {:ok, monitor} =
+        Monitors.create_monitor_for_membership(user, membership, %{
+          "name" => "Database alert",
+          "type" => "alert",
+          "alert_metric_key" => "database.latency",
+          "alert_metric_path" => "$.global",
+          "alert_timeframe" => "15m",
+          "alert_granularity" => "5m",
+          "delivery_channels" => [
+            %{"channel" => "email", "label" => "Primary", "target" => "alerts@example.com"}
+          ],
+          "source_type" => "database",
+          "source_id" => database.id
+        })
+
+      assert {:ok, _deleted_database} = Organizations.delete_database(database)
+
+      dashboard = Organizations.get_dashboard!(dashboard.id)
+      monitor = Monitors.get_monitor!(monitor.id)
+
+      assert dashboard.source_type == nil
+      assert dashboard.source_id == nil
+      assert dashboard.database_id == nil
+      assert monitor.source_type == nil
+      assert monitor.source_id == nil
     end
   end
 

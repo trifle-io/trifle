@@ -187,7 +187,7 @@ defmodule Trifle.Monitors do
         can_manage? = can_manage_monitor?(monitor, membership)
         attrs = normalize_monitor_attrs(attrs)
 
-        with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor),
+        with {:ok, attrs} <- maybe_ensure_source_reference(attrs, membership, monitor),
              {:ok, sanitized_attrs} <- sanitize_monitor_update_attrs(attrs, can_manage?) do
           monitor
           |> Monitor.changeset(stringify_keys(sanitized_attrs))
@@ -816,6 +816,14 @@ defmodule Trifle.Monitors do
     end
   end
 
+  defp maybe_ensure_source_reference(attrs, membership, monitor) do
+    if monitor_has_source?(monitor) or monitor_source_context_present?(attrs) do
+      ensure_source_reference(attrs, membership, monitor)
+    else
+      {:ok, attrs}
+    end
+  end
+
   defp resolve_source_reference(attrs) do
     case fetch_attr(attrs, :source) do
       %{} = source_map ->
@@ -837,6 +845,24 @@ defmodule Trifle.Monitors do
         end
     end
   end
+
+  defp monitor_source_context_present?(attrs) when is_map(attrs) do
+    Enum.any?(
+      [
+        :source,
+        "source",
+        :source_type,
+        "source_type",
+        :source_id,
+        "source_id",
+        :dashboard_id,
+        "dashboard_id"
+      ],
+      &Map.has_key?(attrs, &1)
+    )
+  end
+
+  defp monitor_source_context_present?(_attrs), do: false
 
   defp normalize_source_tuple(type, id) do
     type =

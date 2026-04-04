@@ -43,7 +43,25 @@ defmodule TrifleApp.DashboardLiveTest do
     {:ok, dashboard} =
       Organizations.create_dashboard_for_membership(user, membership, dashboard_attrs)
 
-    {:ok, conn: log_in_user(conn, user), dashboard: dashboard, membership: membership}
+    {:ok,
+     conn: log_in_user(conn, user),
+     user: user,
+     database: database,
+     dashboard: dashboard,
+     membership: membership}
+  end
+
+  test "renders a warning instead of crashing when the source has been removed", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database
+  } do
+    assert {:ok, _deleted_database} = Organizations.delete_database(database)
+
+    {:ok, view, html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert html =~ "Source not configured"
+    refute has_element?(view, "#dashboard_filter_bar")
   end
 
   test "opens workspace in edit mode and supports tab toggling", %{

@@ -68,7 +68,8 @@ defmodule Trifle.Organizations.Dashboard do
       :source_type,
       :source_id
     ])
-    |> validate_required([:user_id, :name, :key, :organization_id, :source_type, :source_id])
+    |> validate_required([:user_id, :name, :key, :organization_id])
+    |> validate_source_reference()
     |> validate_source_type()
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
@@ -455,11 +456,28 @@ defmodule Trifle.Organizations.Dashboard do
   defp validate_source_type(changeset) do
     validate_change(changeset, :source_type, fn :source_type, value ->
       case value do
+        nil -> []
         "database" -> []
         "project" -> []
         _ -> [source_type: "is invalid"]
       end
     end)
+  end
+
+  defp validate_source_reference(changeset) do
+    source_type = get_field(changeset, :source_type)
+    source_id = get_field(changeset, :source_id)
+
+    cond do
+      is_nil(source_id) ->
+        changeset
+
+      is_nil(source_type) ->
+        add_error(changeset, :source_id, "must reference a source")
+
+      true ->
+        changeset
+    end
   end
 
   defp maybe_sync_database_reference(changeset) do

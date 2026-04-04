@@ -28,6 +28,7 @@ defmodule TrifleApp.Components.DashboardPage do
       assigns
       |> assign_new(:can_view_dashboard_payload, fn -> false end)
       |> assign_new(:show_dashboard_payload_modal, fn -> false end)
+      |> assign_new(:dashboard_source_status, fn -> :available end)
 
     ~H"""
     <div
@@ -394,7 +395,7 @@ defmodule TrifleApp.Components.DashboardPage do
         </div>
         
     <!-- Filter Bar (only show if dashboard has a key) -->
-        <%= if dashboard_has_key?(assigns) do %>
+        <%= if dashboard_has_key?(assigns) && @dashboard_source_status == :available do %>
           <.live_component
             module={TrifleApp.Components.FilterBar}
             id="dashboard_filter_bar"
@@ -413,6 +414,14 @@ defmodule TrifleApp.Components.DashboardPage do
             source_locked={true}
             force_granularity_dropdown={@print_mode}
           />
+        <% end %>
+        <%= if @dashboard_source_status != :available do %>
+          <div class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+            <p class="text-sm font-semibold">{dashboard_source_heading(@dashboard_source_status)}</p>
+            <p class="mt-1 text-xs text-amber-800/80 dark:text-amber-100/80">
+              {dashboard_source_message(@dashboard_source_status)}
+            </p>
+          </div>
         <% end %>
         <% segment_definitions = @dashboard_segments || [] %>
         <%= if !@print_mode and segment_definitions != [] do %>
@@ -944,7 +953,7 @@ defmodule TrifleApp.Components.DashboardPage do
                           label="Timeframe"
                           value={
                             @temp_timeframe || @dashboard.default_timeframe ||
-                              @database.default_timeframe || "24h"
+                              database_default_timeframe(@database) || "24h"
                           }
                           placeholder="e.g. 24h, 2d, 1w, 1mo, 1y"
                         />
@@ -956,7 +965,8 @@ defmodule TrifleApp.Components.DashboardPage do
                           label="Granularity"
                           wrapper_class="grid grid-cols-1 sm:max-w-xs mt-2"
                           value={
-                            @dashboard.default_granularity || @database.default_granularity || "1h"
+                            @dashboard.default_granularity ||
+                              database_default_granularity(@database) || "1h"
                           }
                           options={Granularity.options(@available_granularities)}
                           prompt="Use source default"
@@ -1824,5 +1834,27 @@ defmodule TrifleApp.Components.DashboardPage do
       true ->
         color || ChartColors.primary()
     end
+  end
+
+  defp database_default_timeframe(nil), do: nil
+  defp database_default_timeframe(database), do: database.default_timeframe
+
+  defp database_default_granularity(nil), do: nil
+  defp database_default_granularity(database), do: database.default_granularity
+
+  defp dashboard_source_heading(:source_not_found), do: "Source unavailable"
+  defp dashboard_source_heading(:source_not_configured), do: "Source not configured"
+  defp dashboard_source_heading(_status), do: "Source unavailable"
+
+  defp dashboard_source_message(:source_not_found) do
+    "The linked project or database could not be found. Assign a new source in dashboard settings to restore data."
+  end
+
+  defp dashboard_source_message(:source_not_configured) do
+    "This dashboard no longer has a project or database assigned. Assign a new source in dashboard settings to restore data."
+  end
+
+  defp dashboard_source_message(_status) do
+    "This dashboard does not currently have a usable source."
   end
 end

@@ -85,58 +85,53 @@ defmodule TrifleApp.DashboardsLive do
     current_user = socket.assigns.current_user
 
     if Organizations.can_clone_dashboard?(original, membership) do
-      source =
-        case original.source_type do
-          "project" ->
-            Source.from_project(
-              Organizations.get_project_for_org!(membership.organization_id, original.source_id)
-            )
+      case Organizations.resolve_dashboard_source(original) do
+        {:ok, source} ->
+          default_timeframe =
+            original.default_timeframe || Source.default_timeframe(source) || "24h"
 
-          _ ->
-            database =
-              original.database ||
-                Organizations.get_database_for_org!(
-                  membership.organization_id,
-                  original.source_id
-                )
+          default_granularity =
+            original.default_granularity ||
+              Source.default_granularity(source) ||
+              Source.available_granularities(source) |> List.first() || "1h"
 
-            Source.from_database(database)
-        end
+          attrs = %{
+            "name" => (original.name || "Dashboard") <> " (copy)",
+            "key" => original.key || "dashboard",
+            "payload" => original.payload || %{},
+            "visibility" => original.visibility,
+            "group_id" => original.group_id,
+            "position" =>
+              Organizations.get_next_dashboard_position_for_membership(
+                membership,
+                original.group_id
+              ),
+            "source_type" => Atom.to_string(Source.type(source)),
+            "source_id" => to_string(Source.id(source)),
+            "default_timeframe" => default_timeframe,
+            "default_granularity" => default_granularity,
+            "database_id" =>
+              if(Source.type(source) == :database, do: to_string(Source.id(source)), else: nil)
+          }
 
-      default_timeframe =
-        original.default_timeframe || Source.default_timeframe(source) || "24h"
+          case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
+            {:ok, _new_dash} ->
+              {:noreply,
+               socket
+               |> refresh_tree()
+               |> put_flash(:info, "Dashboard duplicated")}
 
-      default_granularity =
-        original.default_granularity ||
-          Source.default_granularity(source) ||
-          Source.available_granularities(source) |> List.first() || "1h"
+            {:error, %Ecto.Changeset{} = changeset} ->
+              message = changeset_error_message(changeset)
+              {:noreply, put_flash(socket, :error, message || "Could not duplicate dashboard")}
+          end
 
-      attrs = %{
-        "name" => (original.name || "Dashboard") <> " (copy)",
-        "key" => original.key || "dashboard",
-        "payload" => original.payload || %{},
-        "visibility" => original.visibility,
-        "group_id" => original.group_id,
-        "position" =>
-          Organizations.get_next_dashboard_position_for_membership(membership, original.group_id),
-        "source_type" => Atom.to_string(Source.type(source)),
-        "source_id" => to_string(Source.id(source)),
-        "default_timeframe" => default_timeframe,
-        "default_granularity" => default_granularity,
-        "database_id" =>
-          if(Source.type(source) == :database, do: to_string(Source.id(source)), else: nil)
-      }
-
-      case Organizations.create_dashboard_for_membership(current_user, membership, attrs) do
-        {:ok, _new_dash} ->
+        {:error, :source_not_found} ->
           {:noreply,
-           socket
-           |> refresh_tree()
-           |> put_flash(:info, "Dashboard duplicated")}
+           put_flash(socket, :error, "The linked source for this dashboard could not be found")}
 
-        {:error, %Ecto.Changeset{} = changeset} ->
-          message = changeset_error_message(changeset)
-          {:noreply, put_flash(socket, :error, message || "Could not duplicate dashboard")}
+        {:error, :source_not_configured} ->
+          {:noreply, put_flash(socket, :error, "This dashboard does not have a source assigned")}
       end
     else
       {:noreply,

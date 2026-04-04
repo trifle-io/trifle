@@ -8,8 +8,10 @@ defmodule Trifle.Organizations do
   alias Ecto.Multi
   alias Trifle.Billing
   alias Trifle.Billing.Subscription
+  alias Trifle.Monitors.Monitor
   alias Trifle.Repo
   alias Trifle.SqliteUploads
+  alias Trifle.Stats.Source, as: StatsSource
 
   alias Trifle.Accounts.User
 
@@ -760,6 +762,14 @@ defmodule Trifle.Organizations do
     end
   end
 
+  defp maybe_ensure_dashboard_source(attrs, %OrganizationMembership{} = membership, default) do
+    if valid_source_tuple?(default) or dashboard_source_params_present?(attrs) do
+      ensure_dashboard_source(attrs, membership, default)
+    else
+      {:ok, attrs}
+    end
+  end
+
   defp resolve_dashboard_source(attrs, default) do
     case fetch_attr(attrs, "source") do
       %{} = source_map ->
@@ -846,6 +856,24 @@ defmodule Trifle.Organizations do
     |> Map.delete("source")
     |> Map.delete(:source)
   end
+
+  defp dashboard_source_params_present?(attrs) when is_map(attrs) do
+    Enum.any?(
+      [
+        :source,
+        "source",
+        :source_type,
+        "source_type",
+        :source_id,
+        "source_id",
+        :database_id,
+        "database_id"
+      ],
+      &Map.has_key?(attrs, &1)
+    )
+  end
+
+  defp dashboard_source_params_present?(_attrs), do: false
 
   defp fetch_attr(attrs, key) when is_binary(key) do
     Map.get(attrs, key) || Map.get(attrs, String.to_atom(key))
@@ -2330,6 +2358,12 @@ defmodule Trifle.Organizations do
   """
   def delete_database(%Database{} = database) do
     Multi.new()
+    |> Multi.update_all(:dashboards, dashboards_for_source_query(:database, database.id),
+      set: [source_type: nil, source_id: nil, database_id: nil]
+    )
+    |> Multi.update_all(:monitors, monitors_for_source_query(:database, database.id),
+      set: [source_type: nil, source_id: nil]
+    )
     |> Multi.delete_all(:transponders, transponders_for_source_query(:database, database.id))
     |> Multi.delete(:database, database)
     |> Repo.transaction()
@@ -2691,6 +2725,12 @@ defmodule Trifle.Organizations do
 
   defp delete_project_with_dependencies(%Project{} = project) do
     Multi.new()
+    |> Multi.update_all(:dashboards, dashboards_for_source_query(:project, project.id),
+      set: [source_type: nil, source_id: nil, database_id: nil]
+    )
+    |> Multi.update_all(:monitors, monitors_for_source_query(:project, project.id),
+      set: [source_type: nil, source_id: nil]
+    )
     |> Multi.delete_all(:transponders, transponders_for_source_query(:project, project.id))
     |> Multi.delete_all(:subscription, project_subscription_query(project))
     |> Multi.delete(:project, project)
@@ -2718,6 +2758,34 @@ defmodule Trifle.Organizations do
     |> String.trim()
     |> String.downcase()
   end
+
+  defp dashboards_for_source_query(:database, source_id) do
+    from(d in Dashboard,
+      where:
+        (d.source_type == "database" and d.source_id == ^source_id) or d.database_id == ^source_id
+    )
+  end
+
+  defp dashboards_for_source_query(type, source_id) do
+    type = source_type_string(type)
+
+    from(d in Dashboard,
+      where: d.source_type == ^type and d.source_id == ^source_id
+    )
+  end
+
+  defp monitors_for_source_query(type, source_id) do
+    type = monitor_source_type(type)
+
+    from(m in Monitor,
+      where: m.source_type == ^type and m.source_id == ^source_id
+    )
+  end
+
+  defp monitor_source_type(:database), do: :database
+  defp monitor_source_type(:project), do: :project
+  defp monitor_source_type("database"), do: :database
+  defp monitor_source_type("project"), do: :project
 
   defp dashboards_base_query(
          %User{} = user,
@@ -2983,7 +3051,7 @@ defmodule Trifle.Organizations do
 
         default_source = {dashboard.source_type, dashboard.source_id}
 
-        with {:ok, attrs} <- ensure_dashboard_source(attrs, membership, default_source),
+        with {:ok, attrs} <- maybe_ensure_dashboard_source(attrs, membership, default_source),
              {:ok, sanitized_attrs} <- sanitize_dashboard_update_attrs(attrs, can_manage?) do
           dashboard
           |> Dashboard.changeset(
@@ -3376,6 +3444,35 @@ defmodule Trifle.Organizations do
     Dashboard
     |> Repo.get!(id)
     |> Repo.preload([:user, :database])
+  end
+
+  def resolve_dashboard_source(%Dashboard{} = dashboard) do
+    cond do
+      dashboard.source_type in [nil, ""] or dashboard.source_id in [nil, ""] ->
+        {:error, :source_not_configured}
+
+      dashboard.source_type == "project" ->
+        try do
+          project = get_project_for_org!(dashboard.organization_id, dashboard.source_id)
+          {:ok, StatsSource.from_project(project)}
+        rescue
+          Ecto.NoResultsError -> {:error, :source_not_found}
+        end
+
+      dashboard.source_type == "database" and match?(%Database{}, dashboard.database) ->
+        {:ok, StatsSource.from_database(dashboard.database)}
+
+      dashboard.source_type == "database" ->
+        try do
+          database = get_database_for_org!(dashboard.organization_id, dashboard.source_id)
+          {:ok, StatsSource.from_database(database)}
+        rescue
+          Ecto.NoResultsError -> {:error, :source_not_found}
+        end
+
+      true ->
+        {:error, :source_not_configured}
+    end
   end
 
   @doc """

@@ -112,9 +112,7 @@ defmodule Trifle.Monitors.Monitor do
       :user_id,
       :name,
       :type,
-      :status,
-      :source_type,
-      :source_id
+      :status
     ])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:alert_notify_every,
@@ -311,7 +309,10 @@ defmodule Trifle.Monitors.Monitor do
     source_id = get_field(changeset, :source_id) || changeset.data.source_id
 
     cond do
-      is_nil(source_type) or is_nil(source_id) ->
+      is_nil(source_id) ->
+        changeset
+
+      is_nil(source_type) ->
         add_error(changeset, :source_id, "must reference a source")
 
       true ->
