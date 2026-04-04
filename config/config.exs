@@ -37,6 +37,7 @@ config :trifle, TrifleWeb.Endpoint,
   url: [host: "localhost"],
   render_errors: [
     formats: [html: TrifleApp.ErrorHTML, json: TrifleApp.ErrorJSON],
+    root_layout: [html: {TrifleApp.Layouts, :root}],
     layout: false
   ],
   pubsub_server: Trifle.PubSub,

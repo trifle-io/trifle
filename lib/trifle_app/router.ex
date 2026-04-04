@@ -20,7 +20,6 @@ defmodule TrifleApp.Router do
   scope "/", TrifleApp do
     pipe_through :browser
 
-    get "/home", PageController, :home_page
     get "/toc", PageController, :toc
     get "/privacy", PageController, :privacy
   end
@@ -39,6 +38,8 @@ defmodule TrifleApp.Router do
     scope "/dev" do
       pipe_through :browser
 
+      get "/errors/404", TrifleApp.DevPreviewController, :error_404
+      get "/errors/500", TrifleApp.DevPreviewController, :error_500
       live_dashboard "/dashboard", metrics: TrifleWeb.Telemetry, ecto_repos: [Trifle.Repo]
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end

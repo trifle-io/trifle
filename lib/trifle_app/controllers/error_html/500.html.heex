@@ -1,0 +1,126 @@
+<div class="relative isolate min-h-screen overflow-hidden bg-[#120f10] text-[#f1e8df]">
+  <div class="pointer-events-none absolute inset-0 overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,0.16),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(251,113,133,0.16),transparent_34%)]" />
+    <div class="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(251,191,36,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(251,191,36,0.08)_1px,transparent_1px)] [background-size:2.75rem_2.75rem]" />
+    <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-200/35 to-transparent" />
+  </div>
+
+  <main class="relative mx-auto flex min-h-screen max-w-6xl items-center px-6 py-12 sm:py-16">
+    <section class="w-full rounded-[2rem] border border-white/10 bg-[#181213]/88 p-4 shadow-[0_42px_120px_-56px_rgba(0,0,0,0.85)] ring-1 ring-white/5 backdrop-blur-sm sm:p-6 lg:p-8">
+      <div class="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div class="rounded-[1.6rem] border border-white/10 bg-[#1d1718] p-6 sm:p-8">
+          <div class="flex flex-wrap items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#d3b998]">
+            <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#140f10] px-3 py-1.5">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,0.65)]" />
+              Trifle // Render Fault
+            </span>
+            <span class="font-mono text-[#8d7260]">status:500</span>
+          </div>
+
+          <div class="mt-8 grid gap-5 xl:grid-cols-[11rem_minmax(0,1fr)] xl:items-start">
+            <div class="rounded-[1.45rem] border border-white/10 bg-[#161011] p-5 shadow-[inset_0_1px_0_rgba(251,241,233,0.03)]">
+              <p class="font-mono text-[0.68rem] uppercase tracking-[0.24em] text-[#b7977b]">
+                fault_sector
+              </p>
+              <div class="mt-4 font-mono text-6xl font-semibold tracking-[-0.08em] text-[#f6dca8] sm:text-7xl">
+                500
+              </div>
+              <div class="mt-5 space-y-2 font-mono text-xs text-[#e8d7cb]">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-[#9b7f6a]">render</span>
+                  <span>halted</span>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-[#9b7f6a]">retry</span>
+                  <span>safe</span>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-[#9b7f6a]">scope</span>
+                  <span>server</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="min-w-0 space-y-4">
+              <p class="font-mono text-sm uppercase tracking-[0.28em] text-[#e2cab1]">
+                render_fault()
+              </p>
+              <h1 class="max-w-xl text-4xl font-semibold tracking-tight text-[#fbf1e9] sm:text-5xl">
+                The page hit an internal fault mid-render.
+              </h1>
+              <p class="max-w-xl text-base leading-7 text-[#cfb8a8]">
+                The server ran into a problem while composing this response. Give it a moment,
+                then retry the request or jump back to home.
+              </p>
+
+              <div class="mt-8 space-y-4">
+                <div class="rounded-2xl border border-white/8 bg-white/[0.025] p-4">
+                  <p class="font-mono text-[0.72rem] uppercase tracking-[0.24em] text-[#b7977b]">
+                    recovery_vector
+                  </p>
+                  <p class="mt-3 max-w-lg text-sm leading-6 text-[#eedfd4]">
+                    Retry the response path first. If the render fault persists, return home and
+                    inspect the failing route from inside the app.
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onclick="window.location.reload()"
+                    class="inline-flex items-center justify-center rounded-2xl border border-amber-300/35 bg-amber-300/14 px-5 py-3 text-sm font-semibold text-[#fbf1e9] transition hover:border-amber-200/50 hover:bg-amber-300/22 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1d1718]"
+                  >
+                    Retry Request
+                  </button>
+                  <.link
+                    href={~p"/"}
+                    class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm font-semibold text-[#ead9cd] transition hover:border-white/20 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1d1718]"
+                  >
+                    Open Home
+                  </.link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#100c0d]">
+          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <div class="flex items-center gap-2">
+              <span class="h-2.5 w-2.5 rounded-full bg-rose-300/85" />
+              <span class="h-2.5 w-2.5 rounded-full bg-amber-300/85" />
+              <span class="h-2.5 w-2.5 rounded-full bg-lime-300/85" />
+            </div>
+            <p class="font-mono text-[0.72rem] uppercase tracking-[0.24em] text-[#b7977b]">
+              ops.trace
+            </p>
+          </div>
+
+          <div class="space-y-4 px-5 py-5 font-mono text-sm leading-6 text-[#f0e1d6]">
+            <p><span class="text-amber-300">boot</span> assembling response payload</p>
+            <p><span class="text-sky-300">info</span> passing through render pipeline</p>
+            <p><span class="text-rose-300">warn</span> execution interrupted before completion</p>
+
+            <div class="rounded-2xl border border-white/10 bg-[#161011] p-4">
+              <p class="text-[0.72rem] uppercase tracking-[0.24em] text-[#b7977b]">
+                current_state
+              </p>
+              <ul class="mt-3 space-y-2 text-[#f0e1d6]">
+                <li>the request did not finish cleanly</li>
+                <li>the page needs a fresh render attempt</li>
+                <li>persistent errors likely need investigation</li>
+              </ul>
+            </div>
+
+            <div class="rounded-2xl border border-white/8 bg-white/[0.025] p-4">
+              <p class="text-[0.72rem] uppercase tracking-[0.24em] text-[#b7977b]">next_move</p>
+              <p class="mt-3 text-[#f0e1d6]">
+                Retry now. If the fault keeps repeating, head back home and inspect the failing route.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
