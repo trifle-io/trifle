@@ -36,6 +36,8 @@ defmodule TrifleApp.MonitorLive do
   alias TrifleApp.MonitorComponents
   alias TrifleApp.MonitorAlertFormComponent
   alias TrifleApp.MonitorsLive.FormComponent
+  alias TrifleApp.ChatBus
+  alias TrifleApp.ChatPageContext
   alias TrifleApp.TimeframeParsing
   alias TrifleApp.Exports.MonitorLayout
   import TrifleApp.Components.DashboardFooter, only: [dashboard_footer: 1]
@@ -54,6 +56,7 @@ defmodule TrifleApp.MonitorLive do
       ) do
     {:ok,
      socket
+     |> ChatBus.maybe_subscribe_page_channel()
      |> assign(:current_user, user)
      |> assign(:current_membership, membership)
      |> assign(:nav_section, :monitors)
@@ -111,8 +114,9 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:page_title, build_page_title(socket.assigns.live_action, monitor))
       |> assign(:executions, Monitors.list_recent_executions(monitor))
       |> initialize_monitor_context()
+      |> publish_chat_page_context()
 
-    {:noreply, apply_action(socket, socket.assigns.live_action)}
+    {:noreply, socket |> apply_action(socket.assigns.live_action) |> publish_chat_page_context()}
   end
 
   defp apply_action(socket, :show) do
@@ -462,8 +466,13 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, put_flash(socket, :error, message)}
   end
 
+  def handle_info({:chat_context_request, request_id, requester}, socket) do
+    send(requester, {:chat_context_response, request_id, monitor_chat_context(socket)})
+    {:noreply, socket}
+  end
+
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
-    {:noreply, handle_filter_change(socket, changes)}
+    {:noreply, socket |> handle_filter_change(changes) |> publish_chat_page_context()}
   end
 
   def handle_info({:loading_progress, progress_map}, socket) do
@@ -937,6 +946,54 @@ defmodule TrifleApp.MonitorLive do
     |> assign(:insights_dashboard, build_monitor_insights_dashboard(monitor))
     |> reset_monitor_widget_datasets()
   end
+
+  defp publish_chat_page_context(%{assigns: %{monitor: %Monitor{id: _}}} = socket) do
+    ChatBus.publish_page_context(socket, monitor_chat_context(socket))
+  end
+
+  defp publish_chat_page_context(socket), do: socket
+
+  defp monitor_chat_context(socket) do
+    monitor = socket.assigns.monitor
+    metrics_key = socket.assigns[:resolved_key] || monitor_metric_key(monitor)
+
+    ChatPageContext.build(:monitor,
+      entity: %{
+        id: to_string(monitor.id),
+        title: monitor.name,
+        monitor_type: monitor.type,
+        route: ~p"/monitors/#{monitor.id}"
+      },
+      query: %{
+        source_ref: ChatPageContext.source_ref(socket.assigns[:source]),
+        timeframe:
+          ChatPageContext.timeframe(
+            socket.assigns[:smart_timeframe_input],
+            socket.assigns[:from],
+            socket.assigns[:to],
+            socket.assigns[:use_fixed_display]
+          ),
+        granularity: socket.assigns[:granularity],
+        metrics_key: metrics_key
+      },
+      query_origin: %{
+        source_ref: "monitor_source",
+        timeframe: "monitor_filter_bar",
+        granularity: "monitor_filter_bar",
+        metrics_key: "monitor_definition"
+      },
+      capabilities: %{
+        can_navigate: true,
+        can_change_query: true,
+        can_preview_dashboard_update: false,
+        can_apply_dashboard_update: false
+      }
+    )
+  end
+
+  defp monitor_metric_key(%Monitor{type: :alert} = monitor), do: monitor.alert_metric_key
+  defp monitor_metric_key(%Monitor{dashboard: %{key: key}}), do: key
+  defp monitor_metric_key(_monitor), do: nil
 
   defp handle_filter_change(socket, changes) when is_map(changes) do
     socket =

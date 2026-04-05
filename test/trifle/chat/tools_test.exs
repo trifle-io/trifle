@@ -281,6 +281,42 @@ defmodule Trifle.Chat.ToolsTest do
       assert error =~ "chat limit"
     end
 
+    test "prefers exact page-context timeframe bounds when no timeframe args are provided" do
+      source = Source.new(FakeSource, %FakeSourceRecord{})
+
+      context = %{
+        page_context: %{
+          query: %{
+            timeframe: %{
+              value: "2d",
+              from: "2024-01-03T00:00:00Z",
+              to: "2024-01-05T00:00:00Z"
+            }
+          }
+        }
+      }
+
+      assert {:ok, {from, to, "2d"}} =
+               Tools.__resolve_timeframe_for_test__(%{}, source, context)
+
+      assert DateTime.compare(from, ~U[2024-01-03 00:00:00Z]) == :eq
+      assert DateTime.compare(to, ~U[2024-01-05 00:00:00Z]) == :eq
+    end
+
+    test "prefers page-context granularity when no granularity arg is provided" do
+      source = Source.new(FakeSource, %FakeSourceRecord{})
+
+      context = %{
+        page_context: %{
+          query: %{
+            granularity: "1d"
+          }
+        }
+      }
+
+      assert {:ok, "1d"} = Tools.__resolve_granularity_for_test__(%{}, source, context)
+    end
+
     test "builds a schema payload from a single sampled point" do
       from = ~U[2024-01-01 00:00:00Z]
       to = ~U[2024-01-02 00:00:00Z]

@@ -3,14 +3,38 @@ defmodule Trifle.Chat.Progress do
   Shared helpers for chat progress events (status lines, human-readable text).
   """
 
+  @thinking_labels [
+    "Thinking",
+    "Baking",
+    "Cooking",
+    "Mixing",
+    "Whisking",
+    "Sifting",
+    "Folding",
+    "Creaming",
+    "Layering",
+    "Frosting",
+    "Icing",
+    "Decorating",
+    "Piping",
+    "Glazing"
+  ]
+
   @type event_type :: atom() | String.t()
   @type payload :: map()
+
+  @spec thinking_labels() :: [String.t()]
+  def thinking_labels, do: @thinking_labels
+
+  @spec random_thinking_label() :: String.t()
+  def random_thinking_label, do: Enum.random(@thinking_labels)
 
   @spec text(event_type(), payload()) :: String.t() | nil
   def text(type, payload \\ %{})
 
   def text(type, payload) when is_binary(type) do
     case type do
+      "received" -> text(:received, payload)
       "resume" -> text(:resume, payload)
       "thinking" -> text(:thinking, payload)
       "fetching_timeseries" -> text(:fetching_timeseries, payload)
@@ -26,13 +50,19 @@ defmodule Trifle.Chat.Progress do
     end
   end
 
+  def text(:received, _payload), do: ensure_period("Waiting for AI response")
   def text(:resume, _payload), do: ensure_period("Resuming conversation")
 
-  def text(:thinking, %{"iteration" => iteration}) when is_integer(iteration) and iteration > 1 do
-    ensure_period("Refining approach")
+  def text(:thinking, payload) when is_map(payload) do
+    label =
+      Map.get(payload, "label") ||
+        Map.get(payload, :label) ||
+        random_thinking_label()
+
+    ensure_period(label)
   end
 
-  def text(:thinking, _payload), do: ensure_period("Thinking")
+  def text(:thinking, _payload), do: ensure_period(random_thinking_label())
 
   def text(:fetching_timeseries, payload) when is_map(payload) do
     metric = Map.get(payload, "metric_key") || Map.get(payload, :metric_key)

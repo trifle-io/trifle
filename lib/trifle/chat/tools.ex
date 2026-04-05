@@ -10,6 +10,7 @@ defmodule Trifle.Chat.Tools do
   alias Trifle.Chat.Notifier
   alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Metrics.Query, as: MetricsQuery
+  alias Trifle.Organizations
   alias Trifle.Stats.Nocturnal.Parser, as: GranularityParser
   alias Trifle.Stats.Source
   alias TrifleApp.TimeframeParsing
@@ -27,6 +28,8 @@ defmodule Trifle.Chat.Tools do
           optional(:sources) => [Source.t()],
           optional(:user) => struct(),
           optional(:organization) => struct(),
+          optional(:membership) => struct(),
+          optional(:page_context) => map(),
           optional(:notify) => function() | pid()
         }
 
@@ -180,6 +183,20 @@ defmodule Trifle.Chat.Tools do
       %{
         "type" => "function",
         "function" => %{
+          "name" => "get_current_dashboard_payload",
+          "description" =>
+            "Return the current dashboard payload for the page the user is looking at. " <>
+              "Use this before proposing edits to an existing dashboard.",
+          "parameters" => %{
+            "type" => "object",
+            "properties" => %{},
+            "required" => []
+          }
+        }
+      },
+      %{
+        "type" => "function",
+        "function" => %{
           "name" => "build_metric_dashboard",
           "description" =>
             "Validate a GridStack dashboard payload, fetch series data for a Metrics Key, and return a persisted inline dashboard visualization block for chat rendering. " <>
@@ -259,8 +276,8 @@ defmodule Trifle.Chat.Tools do
     with {:ok, args} <- decode_args(arguments_json),
          {:ok, source} <- ensure_source(context),
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
-         {:ok, requested_granularity} <- resolve_granularity(args, source),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source, context),
+         {:ok, requested_granularity} <- resolve_granularity(args, source, context),
          {:ok, {granularity, adjusted_from}} <-
            adjust_chat_fetch_granularity(source, requested_granularity, from, to),
          :ok <-
@@ -326,8 +343,8 @@ defmodule Trifle.Chat.Tools do
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
          {:ok, value_path} <- require_string(args, "value_path", "Value path required."),
          {:ok, {aggregator_name, aggregator_fun}} <- resolve_aggregator(args["aggregator"]),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
-         {:ok, requested_granularity} <- resolve_granularity(args, source),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source, context),
+         {:ok, requested_granularity} <- resolve_granularity(args, source, context),
          {:ok, {granularity, adjusted_from}} <-
            adjust_chat_fetch_granularity(source, requested_granularity, from, to),
          {:ok, slices} <- resolve_slices(args),
@@ -522,13 +539,42 @@ defmodule Trifle.Chat.Tools do
      }}
   end
 
+  def execute("get_current_dashboard_payload", _arguments_json, context) do
+    with {:ok, membership} <- ensure_membership(context),
+         {:ok, dashboard_id} <- current_dashboard_id(context) do
+      try do
+        dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
+
+        {:ok,
+         %{
+           status: "ok",
+           dashboard: %{
+             id: dashboard.id,
+             name: dashboard.name,
+             key: dashboard.key,
+             default_timeframe: dashboard.default_timeframe,
+             default_granularity: dashboard.default_granularity,
+             payload: dashboard.payload || %{}
+           }
+         }}
+      rescue
+        Ecto.NoResultsError ->
+          {:error,
+           %{
+             status: "error",
+             error: "The current dashboard could not be loaded."
+           }}
+      end
+    end
+  end
+
   def execute("build_metric_dashboard", arguments_json, context) do
     with {:ok, args} <- decode_args(arguments_json),
          {:ok, source} <- ensure_source(context),
          {:ok, metric_key} <- require_string(args, "metric_key", "Metrics Key required."),
          {:ok, grid} <- require_grid(args),
-         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source),
-         {:ok, requested_granularity} <- resolve_granularity(args, source),
+         {:ok, {from, to, timeframe_label}} <- resolve_timeframe(args, source, context),
+         {:ok, requested_granularity} <- resolve_granularity(args, source, context),
          {:ok, {granularity, adjusted_from}} <-
            adjust_chat_fetch_granularity(source, requested_granularity, from, to),
          :ok <-
@@ -657,12 +703,44 @@ defmodule Trifle.Chat.Tools do
       end)
       |> Enum.join("\n")
 
+    page_context_text =
+      case Map.get(context, :page_context) do
+        %{} = page_context ->
+          summary = Map.get(page_context, :summary, Map.get(page_context, "summary"))
+          query = Map.get(page_context, :query, Map.get(page_context, "query", %{}))
+          timeframe = Map.get(query, :timeframe, Map.get(query, "timeframe", %{}))
+          from = Map.get(timeframe, :from, Map.get(timeframe, "from"))
+          to = Map.get(timeframe, :to, Map.get(timeframe, "to"))
+          granularity = Map.get(query, :granularity, Map.get(query, "granularity"))
+          metrics_key = Map.get(query, :metrics_key, Map.get(query, "metrics_key"))
+
+          [
+            "Current page context:",
+            summary && "- #{summary}",
+            from && to && "- Exact timeframe bounds: #{from} to #{to}",
+            granularity && "- Current granularity: #{granularity}",
+            metrics_key && "- Current Metrics Key: #{metrics_key}",
+            "- Unless the user says otherwise, use the current page context as the default scope for analysis.",
+            if(current_dashboard_context?(page_context),
+              do:
+                "- The current dashboard payload can be fetched with `get_current_dashboard_payload`.",
+              else: nil
+            )
+          ]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join("\n")
+
+        _ ->
+          nil
+      end
+
     """
     You are Trifle AI, an analytics copilot inside Trifle. You help users interpret metrics and must
     rely on the provided tools when data is required. Never fabricate numbers – fetch them.
 
     #{active_source_text}
     #{if sources_text != "", do: "Accessible sources:\n#{sources_text}", else: ""}
+    #{if page_context_text not in [nil, ""], do: "\n" <> page_context_text, else: ""}
 
     If the user already named a Metrics Key such as `sales`, skip `list_available_metrics` and call
     `inspect_metric_schema` directly. Only call `list_available_metrics` when the user did not give you
@@ -754,6 +832,54 @@ defmodule Trifle.Chat.Tools do
          error: "No analytics source selected. Ask the user to pick one."
        }}
 
+  defp ensure_membership(%{membership: membership}) when not is_nil(membership),
+    do: {:ok, membership}
+
+  defp ensure_membership(_context) do
+    {:error,
+     %{
+       status: "error",
+       error: "Workspace membership is unavailable for this request."
+     }}
+  end
+
+  defp current_dashboard_id(%{page_context: %{} = page_context}) do
+    editable_ref =
+      Map.get(page_context, :editable_payload_ref, Map.get(page_context, "editable_payload_ref"))
+
+    with true <- current_dashboard_context?(page_context),
+         %{} = ref <- editable_ref,
+         id when is_binary(id) <- map_get(ref, "id") do
+      {:ok, id}
+    else
+      _ ->
+        {:error,
+         %{
+           status: "error",
+           error: "The current page is not an editable dashboard."
+         }}
+    end
+  end
+
+  defp current_dashboard_id(_context) do
+    {:error,
+     %{
+       status: "error",
+       error: "The current page is not an editable dashboard."
+     }}
+  end
+
+  defp current_dashboard_context?(%{} = page_context) do
+    page_type = Map.get(page_context, :page_type, Map.get(page_context, "page_type"))
+
+    editable_ref =
+      Map.get(page_context, :editable_payload_ref, Map.get(page_context, "editable_payload_ref"))
+
+    to_string(page_type) == "dashboard" and is_map(editable_ref)
+  end
+
+  defp current_dashboard_context?(_), do: false
+
   defp require_string(args, key, message) do
     value = Map.get(args, key)
 
@@ -823,7 +949,7 @@ defmodule Trifle.Chat.Tools do
     )
   end
 
-  defp resolve_timeframe(args, source, default_shorthand \\ @default_timeframe) do
+  defp resolve_timeframe(args, source, context, default_shorthand \\ @default_timeframe) do
     config = Source.stats_config(source)
     now = DateTime.utc_now() |> DateTime.shift_zone!(config.time_zone || "UTC")
 
@@ -843,15 +969,61 @@ defmodule Trifle.Chat.Tools do
         end
 
       true ->
-        shorthand =
-          Source.default_timeframe(source) ||
-            default_shorthand ||
-            derive_shorthand(now, 24 * 60 * 60)
+        case page_context_timeframe(context, config.time_zone) do
+          {:ok, timeframe} ->
+            {:ok, timeframe}
 
-        case TimeframeParsing.parse_smart_timeframe(shorthand, config) do
-          {:ok, from, to, label, _} -> {:ok, {from, to, label}}
-          {:error, _} -> {:error, %{status: "error", error: "Unable to determine timeframe"}}
+          :error ->
+            shorthand =
+              Source.default_timeframe(source) ||
+                default_shorthand ||
+                derive_shorthand(now, 24 * 60 * 60)
+
+            case TimeframeParsing.parse_smart_timeframe(shorthand, config) do
+              {:ok, from, to, label, _} -> {:ok, {from, to, label}}
+              {:error, _} -> {:error, %{status: "error", error: "Unable to determine timeframe"}}
+            end
         end
+    end
+  end
+
+  defp page_context_timeframe(context, time_zone) do
+    with %{} = page_context <- Map.get(context, :page_context),
+         %{} = query <- Map.get(page_context, :query, Map.get(page_context, "query", %{})),
+         %{} = timeframe <- Map.get(query, :timeframe, Map.get(query, "timeframe", %{})),
+         from when is_binary(from) and from != "" <- Map.get(timeframe, :from, Map.get(timeframe, "from")),
+         to when is_binary(to) and to != "" <- Map.get(timeframe, :to, Map.get(timeframe, "to")),
+         {:ok, from_dt} <- parse_datetime(from, time_zone),
+         {:ok, to_dt} <- parse_datetime(to, time_zone) do
+      label = Map.get(timeframe, :value, Map.get(timeframe, "value")) || "custom"
+      {:ok, {from_dt, to_dt, label}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp page_context_granularity(source, context) do
+    query =
+      case Map.get(context, :page_context) do
+        %{} = page_context -> Map.get(page_context, :query, Map.get(page_context, "query", %{}))
+        _ -> %{}
+      end
+
+    granularity = Map.get(query, :granularity, Map.get(query, "granularity"))
+    available = source |> Source.available_granularities() |> List.wrap()
+
+    cond do
+      not is_binary(granularity) or String.trim(granularity) == "" ->
+        nil
+
+      available == [] ->
+        granularity
+
+      granularity in available ->
+        granularity
+
+      true ->
+        nil
     end
   end
 
@@ -879,13 +1051,14 @@ defmodule Trifle.Chat.Tools do
     end
   end
 
-  defp resolve_granularity(args, source) do
+  defp resolve_granularity(args, source, context) do
     available =
       source
       |> Source.available_granularities()
       |> List.wrap()
 
     supplied = args["granularity"]
+    context_granularity = page_context_granularity(source, context)
 
     cond do
       is_binary(supplied) and supplied in available ->
@@ -898,6 +1071,9 @@ defmodule Trifle.Chat.Tools do
            error: "Granularity #{supplied} not supported.",
            allowed: available
          }}
+
+      is_binary(context_granularity) ->
+        {:ok, context_granularity}
 
       available != [] ->
         {:ok,
@@ -1131,6 +1307,23 @@ defmodule Trifle.Chat.Tools do
     %{
       status: payload |> map_get("status") || "ok",
       note: "dashboard widget spec already provided"
+    }
+  end
+
+  defp compact_tool_payload("get_current_dashboard_payload", payload) do
+    dashboard = payload |> map_get("dashboard") |> Kernel.||(%{})
+    grid = dashboard |> map_get("payload") |> map_get("grid") |> List.wrap()
+
+    %{
+      status: payload |> map_get("status") || "ok",
+      dashboard: %{
+        id: dashboard |> map_get("id"),
+        name: dashboard |> map_get("name"),
+        key: dashboard |> map_get("key"),
+        default_timeframe: dashboard |> map_get("default_timeframe"),
+        default_granularity: dashboard |> map_get("default_granularity"),
+        grid: grid
+      }
     }
   end
 
@@ -1459,6 +1652,16 @@ defmodule Trifle.Chat.Tools do
     @doc false
     def __adjust_chat_fetch_granularity_for_test__(source, granularity, from, to) do
       adjust_chat_fetch_granularity(source, granularity, from, to)
+    end
+
+    @doc false
+    def __resolve_timeframe_for_test__(args, source, context, default_shorthand \\ @default_timeframe) do
+      resolve_timeframe(args, source, context, default_shorthand)
+    end
+
+    @doc false
+    def __resolve_granularity_for_test__(args, source, context) do
+      resolve_granularity(args, source, context)
     end
 
     @doc false

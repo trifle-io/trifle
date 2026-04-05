@@ -13,77 +13,135 @@ defmodule TrifleApp.Layouts do
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
       |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
-      |> assign(
-        :link_attrs,
+      |> assign(:chat_toggle?, Map.get(assigns.item, :toggle_chat, false))
+      |> assign(:icon_size_class, sidebar_icon_size_class(assigns.item))
+
+    link_attrs =
+      if assigns.chat_toggle? do
+        [
+          {"type", "button"},
+          {"x-on:click", "toggleChat(); closeMobile()"}
+        ]
+      else
         if(Map.get(assigns.item, :use_href, false),
           do: [href: assigns.item.to],
           else: [navigate: assigns.item.to]
-        ) ++
-          [
-            {"data-fast-tooltip", true},
-            {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)},
-            {"x-bind:data-tooltip-placement", SidebarHelpers.compact_tooltip_placement_expr()}
-          ]
-      )
+        )
+      end ++
+        [
+          {"data-fast-tooltip", true},
+          {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)},
+          {"x-bind:data-tooltip-placement", SidebarHelpers.compact_tooltip_placement_expr()}
+        ]
+
+    assigns = assign(assigns, :link_attrs, link_attrs)
 
     ~H"""
-    <.link
-      {@link_attrs}
-      aria-current={if @active?, do: "page"}
-      aria-label={@item.label}
-      class={[
-        "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
-        SidebarHelpers.sidebar_link_classes(@active?, :teal)
-      ]}
-    >
-      <span
-        :if={!@active?}
+    <%= if @chat_toggle? do %>
+      <button
+        {@link_attrs}
+        aria-label={@item.label}
         class={[
-          "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100",
-          SidebarHelpers.sidebar_hover_line_classes(:teal)
+          "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+          SidebarHelpers.sidebar_link_classes(@active?, :teal)
         ]}
-      />
-      <span
-        :if={@active?}
-        class={[
-          "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full",
-          SidebarHelpers.sidebar_active_line_classes(:teal)
-        ]}
-      />
-      <span
-        class="flex items-center gap-3"
-        x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
       >
-        <span class={[
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition",
-          SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)
-        ]}>
-          <TrifleApp.SidebarIcons.icon
-            name={@item.icon}
-            class={[
-              "h-[1.05rem] w-[1.05rem] shrink-0 transition",
-              SidebarHelpers.sidebar_icon_classes(@active?, :teal)
-            ]}
-          />
+        <span
+          :if={!@active?}
+          class={[
+            "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100",
+            SidebarHelpers.sidebar_hover_line_classes(:teal)
+          ]}
+        />
+        <span
+          :if={@active?}
+          class={[
+            "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full",
+            SidebarHelpers.sidebar_active_line_classes(:teal)
+          ]}
+        />
+        <span
+          class="flex items-center gap-3"
+          x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
+        >
+          <span class={[
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition",
+            SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)
+          ]}>
+            <TrifleApp.SidebarIcons.icon
+              name={@item.icon}
+              class={[
+                @icon_size_class,
+                "shrink-0 transition",
+                SidebarHelpers.sidebar_icon_classes(@active?, :teal)
+              ]}
+            />
+          </span>
+          <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
+            {@item.label}
+          </span>
         </span>
-        <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
-          {@item.label}
+      </button>
+    <% else %>
+      <.link
+        {@link_attrs}
+        aria-current={if @active?, do: "page"}
+        aria-label={@item.label}
+        class={[
+          "sidebar-nav-link group relative block w-full rounded-[1.15rem] text-sm font-semibold transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
+          SidebarHelpers.sidebar_link_classes(@active?, :teal)
+        ]}
+      >
+        <span
+          :if={!@active?}
+          class={[
+            "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100",
+            SidebarHelpers.sidebar_hover_line_classes(:teal)
+          ]}
+        />
+        <span
+          :if={@active?}
+          class={[
+            "pointer-events-none absolute left-0.5 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full",
+            SidebarHelpers.sidebar_active_line_classes(:teal)
+          ]}
+        />
+        <span
+          class="flex items-center gap-3"
+          x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
+        >
+          <span class={[
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition",
+            SidebarHelpers.sidebar_icon_shell_classes(@active?, :teal)
+          ]}>
+            <TrifleApp.SidebarIcons.icon
+              name={@item.icon}
+              class={[
+                @icon_size_class,
+                "shrink-0 transition",
+                SidebarHelpers.sidebar_icon_classes(@active?, :teal)
+              ]}
+            />
+          </span>
+          <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
+            {@item.label}
+          </span>
         </span>
-      </span>
-    </.link>
+      </.link>
+    <% end %>
     """
   end
 
   def nav_items do
     [
       %{menu: :home, label: "Home", to: ~p"/", icon: "sidebar-home"},
+      %{menu: :chat, label: "Baker Agent", to: ~p"/chat", icon: "chef-hat-alt-2", toggle_chat: true},
       %{menu: :dashboards, label: "Dashboards", to: ~p"/dashboards", icon: "sidebar-dashboards"},
       %{menu: :monitors, label: "Monitors", to: ~p"/monitors", icon: "sidebar-monitors"},
       %{menu: :explore, label: "Explore", to: ~p"/explore", icon: "sidebar-explore"},
       Trifle.Config.projects_enabled?() &&
         %{menu: :projects, label: "Projects", to: ~p"/projects", icon: "sidebar-projects"},
-      %{menu: :databases, label: "Databases", to: ~p"/dbs", icon: "sidebar-databases"},
-      %{menu: :chat, label: "Trifle AI", to: ~p"/chat", icon: "sidebar-ai"}
+      %{menu: :databases, label: "Databases", to: ~p"/dbs", icon: "sidebar-databases"}
     ]
     |> Enum.filter(& &1)
   end
@@ -131,6 +189,9 @@ defmodule TrifleApp.Layouts do
   defp sidebar_nav_items(current_user, current_membership) do
     nav_items() ++ secondary_nav_items(current_user, current_membership)
   end
+
+  defp sidebar_icon_size_class(%{icon: "chef-hat-alt-2"}), do: "h-[1.3rem] w-[1.3rem]"
+  defp sidebar_icon_size_class(_item), do: "h-[1.05rem] w-[1.05rem]"
 
   defp active_nav?(%Phoenix.LiveView.Socket{} = socket, menu) do
     view = socket.view

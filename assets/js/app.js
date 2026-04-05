@@ -2643,10 +2643,15 @@ Hooks.PhantomRows = {
 Hooks.FastTooltip = {
   mounted() {
     this.initTooltips();
+    this.setupChatContextRefresh();
   },
   
   updated() {
     this.initTooltips();
+  },
+
+  destroyed() {
+    this.teardownChatContextRefresh();
   },
   
   initTooltips() {
@@ -2679,6 +2684,39 @@ Hooks.FastTooltip = {
         this.hideTooltip();
       });
     });
+  },
+
+  setupChatContextRefresh() {
+    if (this.el.dataset.chatContextRefresh !== 'true' || this._chatContextRefreshBound) return;
+
+    this._chatContextRefreshBound = true;
+    this._chatContextRefreshTimeout = null;
+    this._handleChatContextRefreshNavigate = () => {
+      if (this._chatContextRefreshTimeout) {
+        clearTimeout(this._chatContextRefreshTimeout);
+      }
+
+      this._chatContextRefreshTimeout = setTimeout(() => {
+        this.pushEvent("refresh_page_context", {});
+      }, 50);
+    };
+
+    window.addEventListener("phx:page-loading-stop", this._handleChatContextRefreshNavigate);
+    window.addEventListener("phx:navigate", this._handleChatContextRefreshNavigate);
+  },
+
+  teardownChatContextRefresh() {
+    if (this._chatContextRefreshTimeout) {
+      clearTimeout(this._chatContextRefreshTimeout);
+      this._chatContextRefreshTimeout = null;
+    }
+
+    if (!this._chatContextRefreshBound || !this._handleChatContextRefreshNavigate) return;
+
+    window.removeEventListener("phx:page-loading-stop", this._handleChatContextRefreshNavigate);
+    window.removeEventListener("phx:navigate", this._handleChatContextRefreshNavigate);
+    this._handleChatContextRefreshNavigate = null;
+    this._chatContextRefreshBound = false;
   },
   
   showTooltip(element, text) {
@@ -2902,6 +2940,7 @@ Hooks.SocketStatusDot = {
 }
 
 const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
+const CHAT_SHELL_STORAGE_KEY = "trifle:chat-shell-open";
 const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
   "trifle:client-sidebar": "trifleClientSidebar",
   "trifle:admin-sidebar": "trifleAdminSidebar"
@@ -2925,19 +2964,45 @@ const syncSidebarRootState = (storageKey, desktopCollapsed) => {
   document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
 };
 
+const getOrCreateTabId = () => {
+  const storageKey = "trifle:tab-id";
+
+  try {
+    const existing = window.sessionStorage ? window.sessionStorage.getItem(storageKey) : null;
+    if (existing) return existing;
+
+    const generated =
+      window.crypto && typeof window.crypto.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    if (window.sessionStorage) {
+      window.sessionStorage.setItem(storageKey, generated);
+    }
+
+    return generated;
+  } catch (_) {
+    return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+};
+
 window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = false } = {}) => ({
   storageKey,
   defaultCollapsed,
   mobileOpen: false,
   desktopCollapsed: defaultCollapsed,
+  chatOpen: false,
   desktopViewport: false,
   _mediaQuery: null,
   _handleViewportChange: null,
   _mobileFocusOrigin: null,
   _handleMobileKeydown: null,
+  _handleChatToggle: null,
+  _handleChatSetOpen: null,
 
   init() {
     this.loadState();
+    this.loadChatState();
     this.syncViewport();
 
     this._mediaQuery = window.matchMedia("(min-width: 1024px)");
@@ -2953,6 +3018,15 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       this.syncBodyScrollLock();
       this.syncMobileFocus(isOpen);
     });
+
+    this._handleChatToggle = () => this.toggleChat();
+    this._handleChatSetOpen = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      this.setChatOpen(detail.open !== false);
+    };
+
+    window.addEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
+    window.addEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
   },
 
   get compact() {
@@ -2993,6 +3067,15 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     }
 
     syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  loadChatState() {
+    try {
+      const stored = window.localStorage ? window.localStorage.getItem(CHAT_SHELL_STORAGE_KEY) : null;
+      this.chatOpen = stored === "open";
+    } catch (_) {
+      this.chatOpen = false;
+    }
   },
 
   syncViewport(mediaQuery = null) {
@@ -3150,9 +3233,27 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     syncSidebarRootState(this.storageKey, this.desktopCollapsed);
   },
 
+  persistChatState() {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(CHAT_SHELL_STORAGE_KEY, this.chatOpen ? "open" : "closed");
+      }
+    } catch (_) {}
+  },
+
   toggleDesktop() {
     this.desktopCollapsed = !this.desktopCollapsed;
     this.persistState();
+  },
+
+  setChatOpen(open) {
+    this.chatOpen = !!open;
+    this.persistChatState();
+  },
+
+  toggleChat() {
+    this.chatOpen = !this.chatOpen;
+    this.persistChatState();
   },
 
   toggleMobile(focusOrigin = null) {
@@ -3171,6 +3272,16 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   destroy() {
     this.deactivateMobileFocusTrap({ restoreFocus: false });
 
+    if (this._handleChatToggle) {
+      window.removeEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
+      this._handleChatToggle = null;
+    }
+
+    if (this._handleChatSetOpen) {
+      window.removeEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
+      this._handleChatSetOpen = null;
+    }
+
     if (!this._mediaQuery || !this._handleViewportChange) return;
 
     if (typeof this._mediaQuery.removeEventListener === "function") {
@@ -3183,7 +3294,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
 
 let liveSocket = new LiveSocket("/live", Socket, {
-  params: {_csrf_token: csrfToken},
+  params: {_csrf_token: csrfToken, tab_id: getOrCreateTabId()},
   hooks: Hooks,
   dom: {
     onBeforeElUpdated(from, to) {
