@@ -16,7 +16,13 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <.form_container for={@form} phx-target={@myself} phx-change="validate" phx-submit="save">
+      <.form_container
+        id="database-form"
+        for={@form}
+        phx-target={@myself}
+        phx-change="validate"
+        phx-submit="save"
+      >
         <:header title={@title} subtitle="Configure database connection for Trifle::Stats drivers" />
 
         <.form_field field={@form[:display_name]} label="Display Name" required />

@@ -25,7 +25,7 @@ defmodule TrifleApp.DatabasesLiveTest do
 
     html =
       lv
-      |> element("form")
+      |> element("#database-form")
       |> render_change(%{"database" => %{"driver" => "sqlite"}})
 
     assert html =~ "SQLite File Upload"
