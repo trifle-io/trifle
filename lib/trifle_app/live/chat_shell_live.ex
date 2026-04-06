@@ -616,7 +616,10 @@ defmodule TrifleApp.ChatShellLive do
     end
   end
 
-  def handle_info(_message, socket), do: {:noreply, socket}
+  def handle_info(message, socket) do
+    Logger.debug("ChatShellLive: unhandled message #{inspect(message)}")
+    {:noreply, socket}
+  end
 
   @impl true
   def render(assigns) do

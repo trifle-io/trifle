@@ -139,7 +139,7 @@ defmodule TrifleApp.ChatPageContext do
   def extract_fingerprint(nil), do: nil
 
   def extract_fingerprint(content) when is_binary(content) do
-    case Regex.run(~r/\[page_context fingerprint=([0-9a-z-]+)\]/, content) do
+    case Regex.run(~r/\[page_context fingerprint=([0-9a-f]+)\]/, content) do
       [_, fingerprint] -> fingerprint
       _ -> nil
     end

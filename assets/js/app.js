@@ -3000,7 +3000,14 @@ const getOrCreateTabId = (() => {
   };
 
   try {
-    refreshCurrentTabId();
+    const storedTabId = window.sessionStorage && window.sessionStorage.getItem(storageKey);
+
+    if (storedTabId) {
+      currentTabId = storedTabId;
+      persistCurrentTabId();
+    } else {
+      refreshCurrentTabId();
+    }
   } catch (_) {
     currentTabId = generateTabId();
   }

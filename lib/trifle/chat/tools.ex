@@ -564,6 +564,30 @@ defmodule Trifle.Chat.Tools do
              status: "error",
              error: "The current dashboard could not be loaded."
            }}
+
+        error in ArgumentError ->
+          Logger.warning(
+            "get_current_dashboard_payload failed for dashboard id #{inspect(dashboard_id)}: #{Exception.message(error)}"
+          )
+
+          {:error,
+           %{
+             status: "error",
+             error: "The current dashboard could not be loaded.",
+             details: Exception.message(error)
+           }}
+
+        error ->
+          Logger.error(
+            "get_current_dashboard_payload crashed for dashboard id #{inspect(dashboard_id)}: #{Exception.format(:error, error, __STACKTRACE__)}"
+          )
+
+          {:error,
+           %{
+             status: "error",
+             error: "The current dashboard could not be loaded.",
+             details: Exception.message(error)
+           }}
       end
     end
   end
