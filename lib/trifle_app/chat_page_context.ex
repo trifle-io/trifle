@@ -145,6 +145,37 @@ defmodule TrifleApp.ChatPageContext do
     end
   end
 
+  @spec parse_system_message(String.t() | nil) :: context() | nil
+  def parse_system_message(nil), do: nil
+
+  def parse_system_message(content) when is_binary(content) do
+    with fingerprint when is_binary(fingerprint) and fingerprint != "none" <-
+           extract_fingerprint(content),
+         fields when is_map(fields) <- parse_message_fields(content),
+         page_type when not is_nil(page_type) <- parse_page_type(fields["page_type"]) do
+      build(page_type,
+        entity: %{
+          id: blank_to_nil(fields["entity_id"]),
+          title: blank_to_nil(fields["entity_title"])
+        },
+        query: %{
+          source_ref: parse_source_ref_label(fields["source_ref"], fields["source"]),
+          timeframe: %{
+            value: blank_to_nil(fields["timeframe"]),
+            from: blank_to_nil(fields["timeframe_from"]),
+            to: blank_to_nil(fields["timeframe_to"]),
+            display: blank_to_nil(fields["timeframe_display"])
+          },
+          granularity: blank_to_nil(fields["granularity"]),
+          metrics_key: blank_to_nil(fields["metrics_key"])
+        },
+        summary: blank_to_nil(fields["summary"])
+      )
+    else
+      _ -> nil
+    end
+  end
+
   @spec summary_line(context() | nil) :: String.t() | nil
   def summary_line(nil), do: nil
   def summary_line(%{} = context), do: Map.get(context, :summary, Map.get(context, "summary"))
@@ -206,6 +237,49 @@ defmodule TrifleApp.ChatPageContext do
   end
 
   defp source_ref_label(_), do: nil
+
+  defp parse_message_fields(content) when is_binary(content) do
+    content
+    |> String.split("\n", trim: true)
+    |> Enum.reduce(%{}, fn line, acc ->
+      case String.split(line, "=", parts: 2) do
+        [key, value] -> Map.put(acc, key, value)
+        _ -> acc
+      end
+    end)
+  end
+
+  defp parse_page_type(value) when is_binary(value) do
+    case blank_to_nil(value) do
+      "dashboard" -> :dashboard
+      "monitor" -> :monitor
+      "explore" -> :explore
+      "dashboards" -> :dashboards
+      "monitors" -> :monitors
+      "projects" -> :projects
+      "databases" -> :databases
+      _ -> nil
+    end
+  end
+
+  defp parse_page_type(_), do: nil
+
+  defp parse_source_ref_label(label, display_name) when is_binary(label) do
+    case String.split(label, ":", parts: 2) do
+      [type, id] ->
+        %{
+          type: blank_to_nil(type),
+          id: blank_to_nil(id),
+          display_name: blank_to_nil(display_name)
+        }
+        |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_source_ref_label(_label, _display_name), do: nil
 
   defp map_value(context, [root_key, leaf_key]) do
     root = Map.get(context, root_key, Map.get(context, to_string(root_key), %{}))

@@ -2643,15 +2643,10 @@ Hooks.PhantomRows = {
 Hooks.FastTooltip = {
   mounted() {
     this.initTooltips();
-    this.setupChatContextRefresh();
   },
   
   updated() {
     this.initTooltips();
-  },
-
-  destroyed() {
-    this.teardownChatContextRefresh();
   },
   
   initTooltips() {
@@ -2684,39 +2679,6 @@ Hooks.FastTooltip = {
         this.hideTooltip();
       });
     });
-  },
-
-  setupChatContextRefresh() {
-    if (this.el.dataset.chatContextRefresh !== 'true' || this._chatContextRefreshBound) return;
-
-    this._chatContextRefreshBound = true;
-    this._chatContextRefreshTimeout = null;
-    this._handleChatContextRefreshNavigate = () => {
-      if (this._chatContextRefreshTimeout) {
-        clearTimeout(this._chatContextRefreshTimeout);
-      }
-
-      this._chatContextRefreshTimeout = setTimeout(() => {
-        this.pushEvent("refresh_page_context", {});
-      }, 50);
-    };
-
-    window.addEventListener("phx:page-loading-stop", this._handleChatContextRefreshNavigate);
-    window.addEventListener("phx:navigate", this._handleChatContextRefreshNavigate);
-  },
-
-  teardownChatContextRefresh() {
-    if (this._chatContextRefreshTimeout) {
-      clearTimeout(this._chatContextRefreshTimeout);
-      this._chatContextRefreshTimeout = null;
-    }
-
-    if (!this._chatContextRefreshBound || !this._handleChatContextRefreshNavigate) return;
-
-    window.removeEventListener("phx:page-loading-stop", this._handleChatContextRefreshNavigate);
-    window.removeEventListener("phx:navigate", this._handleChatContextRefreshNavigate);
-    this._handleChatContextRefreshNavigate = null;
-    this._chatContextRefreshBound = false;
   },
   
   showTooltip(element, text) {
@@ -2800,6 +2762,49 @@ Hooks.FastTooltip = {
   
   hideTooltip() {
     document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
+  }
+}
+
+Hooks.ChatContextRefresh = {
+  mounted() {
+    this.setupRefresh();
+  },
+
+  destroyed() {
+    this.teardownRefresh();
+  },
+
+  setupRefresh() {
+    if (this.el.dataset.chatContextRefresh !== "true" || this._chatContextRefreshBound) return;
+
+    this._chatContextRefreshBound = true;
+    this._chatContextRefreshTimeout = null;
+    this._handleChatContextRefreshNavigate = () => {
+      if (this._chatContextRefreshTimeout) {
+        clearTimeout(this._chatContextRefreshTimeout);
+      }
+
+      this._chatContextRefreshTimeout = setTimeout(() => {
+        this.pushEvent("refresh_page_context", {});
+      }, 50);
+    };
+
+    window.addEventListener("phx:page-loading-stop", this._handleChatContextRefreshNavigate);
+    window.addEventListener("phx:navigate", this._handleChatContextRefreshNavigate);
+  },
+
+  teardownRefresh() {
+    if (this._chatContextRefreshTimeout) {
+      clearTimeout(this._chatContextRefreshTimeout);
+      this._chatContextRefreshTimeout = null;
+    }
+
+    if (!this._chatContextRefreshBound || !this._handleChatContextRefreshNavigate) return;
+
+    window.removeEventListener("phx:page-loading-stop", this._handleChatContextRefreshNavigate);
+    window.removeEventListener("phx:navigate", this._handleChatContextRefreshNavigate);
+    this._handleChatContextRefreshNavigate = null;
+    this._chatContextRefreshBound = false;
   }
 }
 

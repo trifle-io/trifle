@@ -22,6 +22,7 @@ defmodule TrifleApp.ChatShellLive do
   @context_request_timeout_ms 250
   @initial_context_request_delay_ms 75
   @navigation_context_request_delay_ms 75
+  @page_action_timeout_ms 5_000
 
   @impl true
   def mount(_params, session, socket) do
@@ -61,9 +62,10 @@ defmodule TrifleApp.ChatShellLive do
               socket
               |> assign(:session, session)
               |> assign_messages(session)
+              |> assign(:session_page_context, session_page_context(session))
               |> maybe_subscribe_session(session)
-              |> maybe_resume_pending()
               |> maybe_request_initial_context()
+              |> maybe_resume_pending()
 
             {:error, reason} ->
               put_flash(socket, :error, "Unable to load chat session: #{format_error(reason)}")
@@ -301,10 +303,19 @@ defmodule TrifleApp.ChatShellLive do
 
       ChatBus.send_page_action(user_id, tab_id, request_id, self(), action)
 
+      timer_ref =
+        Process.send_after(
+          self(),
+          {:pending_page_action_request_timeout, request_id},
+          @page_action_timeout_ms
+        )
+
       {:noreply,
        socket
+       |> cancel_pending_page_action_request()
        |> assign(:pending_page_action_request_id, request_id)
-       |> assign(:pending_page_action, :dashboard_apply_update)}
+       |> assign(:pending_page_action, :dashboard_apply_update)
+       |> assign(:pending_page_action_timer_ref, timer_ref)}
     else
       _ ->
         {:noreply,
@@ -318,10 +329,10 @@ defmodule TrifleApp.ChatShellLive do
         {:noreply, socket}
 
       not is_binary(current_user_id(socket)) ->
-        {:noreply, assign(socket, :current_page_context, nil)}
+        {:noreply, clear_current_page_context(socket)}
 
       not is_binary(socket.assigns[:chat_tab_id]) ->
-        {:noreply, assign(socket, :current_page_context, nil)}
+        {:noreply, clear_current_page_context(socket)}
 
       true ->
         request_id = UUID.generate()
@@ -438,9 +449,10 @@ defmodule TrifleApp.ChatShellLive do
   def handle_info({:chat_context_updated, context}, socket) when is_map(context) do
     {:noreply,
      socket
+     |> cancel_initial_context_request()
      |> cancel_navigation_context_request()
      |> assign(:current_page_context, context)
-     |> assign(:initial_context_request_id, nil)}
+     |> maybe_resume_pending()}
   end
 
   def handle_info({:chat_context_response, request_id, context}, socket) do
@@ -455,10 +467,12 @@ defmodule TrifleApp.ChatShellLive do
         {:noreply, start_chat_response(socket, context)}
 
       request_id == socket.assigns[:initial_context_request_id] ->
-        {:noreply,
-         socket
-         |> assign(:current_page_context, context)
-         |> assign(:initial_context_request_id, nil)}
+        socket =
+          socket
+          |> cancel_initial_context_request()
+          |> assign(:current_page_context, context)
+
+        {:noreply, maybe_resume_pending(socket)}
 
       request_id == socket.assigns[:navigation_context_request_id] ->
         {:noreply,
@@ -468,6 +482,14 @@ defmodule TrifleApp.ChatShellLive do
 
       true ->
         {:noreply, socket}
+    end
+  end
+
+  def handle_info({:initial_chat_context_timeout, request_id}, socket) do
+    if request_id == socket.assigns[:initial_context_request_id] do
+      {:noreply, socket |> cancel_initial_context_request() |> maybe_resume_pending()}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -507,7 +529,18 @@ defmodule TrifleApp.ChatShellLive do
       {:noreply,
        socket
        |> cancel_navigation_context_request()
-       |> assign(:current_page_context, nil)}
+       |> clear_current_page_context()}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:pending_page_action_request_timeout, request_id}, socket) do
+    if request_id == socket.assigns[:pending_page_action_request_id] do
+      {:noreply,
+       socket
+       |> cancel_pending_page_action_request()
+       |> put_flash(:error, "Dashboard update timed out. Try again.")}
     else
       {:noreply, socket}
     end
@@ -517,8 +550,7 @@ defmodule TrifleApp.ChatShellLive do
     if request_id == socket.assigns[:pending_page_action_request_id] do
       socket =
         socket
-        |> assign(:pending_page_action_request_id, nil)
-        |> assign(:pending_page_action, nil)
+        |> cancel_pending_page_action_request()
         |> assign(:show_dashboard_preview_modal, false)
         |> assign(:selected_visualization, nil)
         |> put_flash(
@@ -536,8 +568,7 @@ defmodule TrifleApp.ChatShellLive do
     if request_id == socket.assigns[:pending_page_action_request_id] do
       socket =
         socket
-        |> assign(:pending_page_action_request_id, nil)
-        |> assign(:pending_page_action, nil)
+        |> cancel_pending_page_action_request()
         |> put_flash(:error, format_error(reason))
 
       {:noreply, socket}
@@ -592,291 +623,293 @@ defmodule TrifleApp.ChatShellLive do
     ~H"""
     <section
       id="chat-shell-panel"
-      class="flex h-full flex-col overflow-hidden"
-      phx-hook="FastTooltip"
+      class="h-full"
+      phx-hook="ChatContextRefresh"
       data-chat-context-refresh="true"
     >
-      <div class="relative border-b border-slate-200/80 px-5 py-4 dark:border-slate-800/80">
-        <div class="flex items-center justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2.5">
-              <div class="flex shrink-0 items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                <TrifleApp.SidebarIcons.icon name="chef-hat-alt-2" class="h-7 w-7" />
-              </div>
-              <h2 class="truncate text-lg font-semibold leading-none text-slate-900 dark:text-white">
-                Baker Agent
-              </h2>
-            </div>
-          </div>
-
-          <div class="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              phx-click="open_source_modal"
-              class="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:border-teal-400 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-teal-400 dark:hover:text-white"
-            >
-              Source
-            </button>
-            <button
-              type="button"
-              phx-click="reset_chat"
-              class="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:border-amber-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-amber-400 dark:hover:text-white"
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              onclick="window.dispatchEvent(new CustomEvent('trifle:chat-shell:set-open', { detail: { open: false } }))"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
-              aria-label="Close chat"
-            >
-              <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <p :if={@show_unavailable_notice} class="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Join or create an organization to use the persistent chat shell.
-        </p>
-        <div :if={@current_page_context} class="mt-3 text-sm text-slate-600 dark:text-slate-300">
-          <span class="font-semibold text-slate-700 dark:text-slate-100">Context:</span>
-          {current_context_summary(@current_page_context)}
-        </div>
-      </div>
-
       <div
-        id="chat-messages"
-        class="flex-1 overflow-y-auto px-5 py-4"
-        data-chat-container
-        phx-hook="ChatScroll"
+        id="chat-shell-fast-tooltip"
+        class="flex h-full flex-col overflow-hidden"
+        phx-hook="FastTooltip"
       >
-        <div class="space-y-4">
-          <.no_source_notice :if={
-            @messages == [] and is_nil(displayed_source(@selected_source))
-          } />
+        <div class="relative border-b border-slate-200/80 px-5 py-4 dark:border-slate-800/80">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2.5">
+                <div class="flex shrink-0 items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                  <TrifleApp.SidebarIcons.icon name="chef-hat-alt-2" class="h-7 w-7" />
+                </div>
+                <h2 class="truncate text-lg font-semibold leading-none text-slate-900 dark:text-white">
+                  Baker Agent
+                </h2>
+              </div>
+            </div>
 
-          <% {messages_without_last, last_message} = split_messages(@messages) %>
-
-          <.chat_message
-            :for={message <- messages_without_last}
-            message={message}
-            current_user={@current_user}
-            can_view_dashboard_payload={@can_view_dashboard_payload}
-            can_apply_dashboard_update={can_apply_dashboard_update?(@current_page_context)}
-          />
-
-          <.progress_events
-            :if={progress_before_last?(@progress_events, @sending, last_message)}
-            events={@progress_events}
-            active={@sending}
-            tick_at={@progress_tick_at}
-          />
-
-          <.chat_message
-            :if={last_message}
-            message={last_message}
-            current_user={@current_user}
-            can_view_dashboard_payload={@can_view_dashboard_payload}
-            can_apply_dashboard_update={can_apply_dashboard_update?(@current_page_context)}
-          />
-
-          <.progress_events
-            :if={progress_after_last?(@progress_events, @sending, last_message)}
-            events={@progress_events}
-            active={@sending}
-            tick_at={@progress_tick_at}
-          />
-
-          <div
-            :if={
-              @messages == [] and displayed_source(@selected_source)
-            }
-            class="rounded-2xl bg-slate-50/70 px-4 py-4 dark:bg-slate-900/30"
-          >
-            <p class="text-base font-semibold text-slate-900 dark:text-slate-100">
-              Ask me anything about your data.
-            </p>
-            <p class="mb-3 mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-              I can help you explore current activity, summarize performance over time, analyze
-              trends, spot anomalies, and forecast what might happen next.
-            </p>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex shrink-0 items-center gap-2">
               <button
-                :for={prompt <- starter_prompts()}
                 type="button"
-                phx-click="starter_message"
-                phx-value-message={prompt.message}
-                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 shadow-sm transition hover:border-teal-300 hover:text-teal-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-teal-500/60 dark:hover:text-teal-300"
-                disabled={@show_unavailable_notice or @sending}
+                phx-click="open_source_modal"
+                class="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:border-teal-400 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-teal-400 dark:hover:text-white"
               >
-                {prompt.label}
+                Source
+              </button>
+              <button
+                type="button"
+                phx-click="reset_chat"
+                class="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:border-amber-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-amber-400 dark:hover:text-white"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onclick="window.dispatchEvent(new CustomEvent('trifle:chat-shell:set-open', { detail: { open: false } }))"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
+                aria-label="Close chat"
+              >
+                <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-4 w-4" />
               </button>
             </div>
           </div>
+
+          <p :if={@show_unavailable_notice} class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Join or create an organization to use the persistent chat shell.
+          </p>
+          <div :if={@current_page_context} class="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            <span class="font-semibold text-slate-700 dark:text-slate-100">Context:</span>
+            {current_context_summary(@current_page_context)}
+          </div>
         </div>
-      </div>
 
-      <div class="border-t border-slate-200/80 px-5 pb-5 pt-4 dark:border-slate-800/80">
-        <% selected_source = displayed_source(@selected_source) %>
-        <.source_tag :if={selected_source} source={selected_source} class="mb-1" />
-        <.form for={@form} phx-submit="send_message" class="mt-auto">
-          <div class="relative overflow-hidden rounded-2xl border border-transparent bg-white/70 shadow-lg backdrop-blur-xl focus-within:border-teal-500/60 dark:border-slate-700 dark:bg-slate-900/50 dark:shadow-none dark:focus-within:border-teal-400">
-            <div class="flex items-end">
-              <textarea
-                id="chat-message-input"
-                name="chat[message]"
-                rows="3"
-                placeholder="Ask me about your metrics..."
-                class="flex-1 resize-none border-0 bg-transparent px-4 py-4 text-sm text-slate-900 focus:border-0 focus:ring-0 dark:text-slate-100"
-                phx-hook="ChatInput"
-                required
-                disabled={@show_unavailable_notice or @sending}
-              ><%= Phoenix.HTML.Form.input_value(@form, :message) %></textarea>
+        <div
+          id="chat-messages"
+          class="flex-1 overflow-y-auto px-5 py-4"
+          data-chat-container
+          phx-hook="ChatScroll"
+        >
+          <div class="space-y-4">
+            <.no_source_notice :if={@messages == [] and is_nil(displayed_source(@selected_source))} />
 
-              <%= if @sending do %>
+            <% {messages_without_last, last_message} = split_messages(@messages) %>
+
+            <.chat_message
+              :for={message <- messages_without_last}
+              message={message}
+              current_user={@current_user}
+              can_view_dashboard_payload={@can_view_dashboard_payload}
+              can_apply_dashboard_update={can_apply_dashboard_update?(@current_page_context)}
+            />
+
+            <.progress_events
+              :if={progress_before_last?(@progress_events, @sending, last_message)}
+              events={@progress_events}
+              active={@sending}
+              tick_at={@progress_tick_at}
+            />
+
+            <.chat_message
+              :if={last_message}
+              message={last_message}
+              current_user={@current_user}
+              can_view_dashboard_payload={@can_view_dashboard_payload}
+              can_apply_dashboard_update={can_apply_dashboard_update?(@current_page_context)}
+            />
+
+            <.progress_events
+              :if={progress_after_last?(@progress_events, @sending, last_message)}
+              events={@progress_events}
+              active={@sending}
+              tick_at={@progress_tick_at}
+            />
+
+            <div
+              :if={@messages == [] and displayed_source(@selected_source)}
+              class="rounded-2xl bg-slate-50/70 px-4 py-4 dark:bg-slate-900/30"
+            >
+              <p class="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Ask me anything about your data.
+              </p>
+              <p class="mb-3 mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                I can help you explore current activity, summarize performance over time, analyze
+                trends, spot anomalies, and forecast what might happen next.
+              </p>
+              <div class="flex flex-wrap gap-2">
                 <button
+                  :for={prompt <- starter_prompts()}
                   type="button"
-                  phx-click="cancel_message"
-                  class="mb-3 mr-3 inline-flex items-center justify-center rounded-xl bg-rose-500 px-4 py-3 text-sm text-white shadow-sm hover:bg-rose-600"
+                  phx-click="starter_message"
+                  phx-value-message={prompt.message}
+                  class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 shadow-sm transition hover:border-teal-300 hover:text-teal-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-teal-500/60 dark:hover:text-teal-300"
+                  disabled={@show_unavailable_notice or @sending}
                 >
-                  <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-4 w-4" />
+                  {prompt.label}
                 </button>
-              <% else %>
-                <button
-                  type="submit"
-                  class="mb-3 mr-3 inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-3 text-sm text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={@show_unavailable_notice}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
-                    class="h-5 w-5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
-                    />
-                  </svg>
-                </button>
-              <% end %>
+              </div>
             </div>
           </div>
-        </.form>
-      </div>
+        </div>
 
-      <.app_modal
-        id="chat-source-modal"
-        show={@show_source_modal}
-        on_cancel="close_source_modal"
-        size="md"
-      >
-        <:title>Fallback analytics source</:title>
-        <:body>
-          <p class="mb-4 text-sm text-slate-600 dark:text-slate-300">
-            The current page usually provides the active source. Use this when you want a fallback
-            source while chatting from a page without source context.
-          </p>
+        <div class="border-t border-slate-200/80 px-5 pb-5 pt-4 dark:border-slate-800/80">
+          <% selected_source = displayed_source(@selected_source) %>
+          <.source_tag :if={selected_source} source={selected_source} class="mb-1" />
+          <.form for={@form} phx-submit="send_message" class="mt-auto">
+            <div class="relative overflow-hidden rounded-2xl border border-transparent bg-white/70 shadow-lg backdrop-blur-xl focus-within:border-teal-500/60 dark:border-slate-700 dark:bg-slate-900/50 dark:shadow-none dark:focus-within:border-teal-400">
+              <div class="flex items-end">
+                <textarea
+                  id="chat-message-input"
+                  name="chat[message]"
+                  rows="3"
+                  placeholder="Ask me about your metrics..."
+                  class="flex-1 resize-none border-0 bg-transparent px-4 py-4 text-sm text-slate-900 focus:border-0 focus:ring-0 dark:text-slate-100"
+                  phx-hook="ChatInput"
+                  required
+                  disabled={@show_unavailable_notice or @sending}
+                ><%= Phoenix.HTML.Form.input_value(@form, :message) %></textarea>
 
-          <%= if Enum.empty?(@grouped_sources) do %>
-            <p class="text-sm text-slate-600 dark:text-slate-300">
-              Add a database or project to start chatting with Baker Agent.
-            </p>
-          <% else %>
-            <div class="space-y-6">
-              <%= for group <- @grouped_sources do %>
-                <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    {group.label}
-                  </p>
-                  <div class="mt-3 space-y-2">
-                    <%= for source <- group.sources do %>
-                      <button
-                        type="button"
-                        phx-click="select_source"
-                        phx-value-ref={encode_source_ref(source)}
-                        class={source_option_classes(source, @selected_source)}
-                      >
-                        <div class="flex items-center justify-between gap-4">
-                          <div class="flex flex-col">
-                            <span class="text-sm font-medium text-slate-900 dark:text-slate-100">
-                              {Source.display_name(source)}
-                            </span>
-                            <span class="text-xs text-slate-500 dark:text-slate-400">
-                              {source_option_hint(source)}
-                            </span>
-                          </div>
-                          <%= if source_selected?(source, @selected_source) do %>
-                            <span class="text-xs font-medium text-teal-600 dark:text-teal-300">
-                              Selected
-                            </span>
-                          <% end %>
-                        </div>
-                      </button>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
+                <%= if @sending do %>
+                  <button
+                    type="button"
+                    phx-click="cancel_message"
+                    class="mb-3 mr-3 inline-flex items-center justify-center rounded-xl bg-rose-500 px-4 py-3 text-sm text-white shadow-sm hover:bg-rose-600"
+                  >
+                    <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-4 w-4" />
+                  </button>
+                <% else %>
+                  <button
+                    type="submit"
+                    class="mb-3 mr-3 inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-3 text-sm text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={@show_unavailable_notice}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                      class="h-5 w-5"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+                      />
+                    </svg>
+                  </button>
+                <% end %>
+              </div>
             </div>
-          <% end %>
-        </:body>
-      </.app_modal>
+          </.form>
+        </div>
 
-      <.app_modal
-        id="chat-dashboard-payload-modal"
-        show={@show_dashboard_payload_modal}
-        on_cancel="close_dashboard_payload_modal"
-        size="xl"
-      >
-        <:title>{@selected_dashboard_payload_title || "Dashboard payload"}</:title>
-        <:body>
-          <DashboardPayload.payload_view payload={@selected_dashboard_payload || "{}"} />
-        </:body>
-        <:actions>
-          <button
-            type="button"
-            phx-click="close_dashboard_payload_modal"
-            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
-          >
-            Close
-          </button>
-        </:actions>
-      </.app_modal>
+        <.app_modal
+          id="chat-source-modal"
+          show={@show_source_modal}
+          on_cancel="close_source_modal"
+          size="md"
+        >
+          <:title>Fallback analytics source</:title>
+          <:body>
+            <p class="mb-4 text-sm text-slate-600 dark:text-slate-300">
+              The current page usually provides the active source. Use this when you want a fallback
+              source while chatting from a page without source context.
+            </p>
 
-      <.app_modal
-        id="chat-dashboard-preview-modal"
-        show={@show_dashboard_preview_modal}
-        on_cancel="close_dashboard_preview_modal"
-        size="xl"
-      >
-        <:title>{@selected_dashboard_payload_title || "Dashboard update preview"}</:title>
-        <:body>
-          <p class="mb-4 text-sm text-slate-600 dark:text-slate-300">
-            Review the proposed dashboard payload before applying it to the current dashboard.
-          </p>
-          <DashboardPayload.payload_view payload={@selected_dashboard_payload || "{}"} />
-        </:body>
-        <:actions>
-          <button
-            type="button"
-            phx-click="close_dashboard_preview_modal"
-            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            phx-click="apply_dashboard_update"
-            class="inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={@pending_page_action == :dashboard_apply_update}
-          >
-            Apply to current dashboard
-          </button>
-        </:actions>
-      </.app_modal>
+            <%= if Enum.empty?(@grouped_sources) do %>
+              <p class="text-sm text-slate-600 dark:text-slate-300">
+                Add a database or project to start chatting with Baker Agent.
+              </p>
+            <% else %>
+              <div class="space-y-6">
+                <%= for group <- @grouped_sources do %>
+                  <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {group.label}
+                    </p>
+                    <div class="mt-3 space-y-2">
+                      <%= for source <- group.sources do %>
+                        <button
+                          type="button"
+                          phx-click="select_source"
+                          phx-value-ref={encode_source_ref(source)}
+                          class={source_option_classes(source, @selected_source)}
+                        >
+                          <div class="flex items-center justify-between gap-4">
+                            <div class="flex flex-col">
+                              <span class="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                {Source.display_name(source)}
+                              </span>
+                              <span class="text-xs text-slate-500 dark:text-slate-400">
+                                {source_option_hint(source)}
+                              </span>
+                            </div>
+                            <%= if source_selected?(source, @selected_source) do %>
+                              <span class="text-xs font-medium text-teal-600 dark:text-teal-300">
+                                Selected
+                              </span>
+                            <% end %>
+                          </div>
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </:body>
+        </.app_modal>
+
+        <.app_modal
+          id="chat-dashboard-payload-modal"
+          show={@show_dashboard_payload_modal}
+          on_cancel="close_dashboard_payload_modal"
+          size="xl"
+        >
+          <:title>{@selected_dashboard_payload_title || "Dashboard payload"}</:title>
+          <:body>
+            <DashboardPayload.payload_view payload={@selected_dashboard_payload || "{}"} />
+          </:body>
+          <:actions>
+            <button
+              type="button"
+              phx-click="close_dashboard_payload_modal"
+              class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+            >
+              Close
+            </button>
+          </:actions>
+        </.app_modal>
+
+        <.app_modal
+          id="chat-dashboard-preview-modal"
+          show={@show_dashboard_preview_modal}
+          on_cancel="close_dashboard_preview_modal"
+          size="xl"
+        >
+          <:title>{@selected_dashboard_payload_title || "Dashboard update preview"}</:title>
+          <:body>
+            <p class="mb-4 text-sm text-slate-600 dark:text-slate-300">
+              Review the proposed dashboard payload before applying it to the current dashboard.
+            </p>
+            <DashboardPayload.payload_view payload={@selected_dashboard_payload || "{}"} />
+          </:body>
+          <:actions>
+            <button
+              type="button"
+              phx-click="close_dashboard_preview_modal"
+              class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              phx-click="apply_dashboard_update"
+              class="inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={@pending_page_action == :dashboard_apply_update}
+            >
+              Apply to current dashboard
+            </button>
+          </:actions>
+        </.app_modal>
+      </div>
     </section>
     """
   end
@@ -1208,10 +1241,7 @@ defmodule TrifleApp.ChatShellLive do
     ~H"""
     <div class={[@class]}>
       <span class="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200">
-        <TrifleApp.SidebarIcons.icon
-          name={source_tag_icon(@source)}
-          class="h-3.5 w-3.5 shrink-0"
-        />
+        <TrifleApp.SidebarIcons.icon name={source_tag_icon(@source)} class="h-3.5 w-3.5 shrink-0" />
         <span class="truncate">{Source.display_name(@source)}</span>
       </span>
     </div>
@@ -1262,14 +1292,17 @@ defmodule TrifleApp.ChatShellLive do
     |> assign(:selected_dashboard_payload_title, nil)
     |> assign(:selected_visualization, nil)
     |> assign(:current_page_context, nil)
+    |> assign(:session_page_context, nil)
     |> assign(:pending_context_request_id, nil)
     |> assign(:pending_context_timer_ref, nil)
     |> assign(:initial_context_request_id, nil)
+    |> assign(:initial_context_timer_ref, nil)
     |> assign(:navigation_context_request_id, nil)
     |> assign(:navigation_context_timer_ref, nil)
     |> assign(:pending_page_context_override, nil)
     |> assign(:pending_page_action_request_id, nil)
     |> assign(:pending_page_action, nil)
+    |> assign(:pending_page_action_timer_ref, nil)
     |> assign(:form, to_form(%{"message" => ""}))
   end
 
@@ -1309,6 +1342,40 @@ defmodule TrifleApp.ChatShellLive do
     end
   end
 
+  defp cancel_initial_context_request(socket) do
+    case socket.assigns[:initial_context_timer_ref] do
+      nil ->
+        socket
+        |> assign(:initial_context_request_id, nil)
+        |> assign(:initial_context_timer_ref, nil)
+
+      ref ->
+        Process.cancel_timer(ref)
+
+        socket
+        |> assign(:initial_context_request_id, nil)
+        |> assign(:initial_context_timer_ref, nil)
+    end
+  end
+
+  defp cancel_pending_page_action_request(socket) do
+    case socket.assigns[:pending_page_action_timer_ref] do
+      nil ->
+        socket
+        |> assign(:pending_page_action_request_id, nil)
+        |> assign(:pending_page_action, nil)
+        |> assign(:pending_page_action_timer_ref, nil)
+
+      ref ->
+        Process.cancel_timer(ref)
+
+        socket
+        |> assign(:pending_page_action_request_id, nil)
+        |> assign(:pending_page_action, nil)
+        |> assign(:pending_page_action_timer_ref, nil)
+    end
+  end
+
   defp maybe_request_initial_context(socket) do
     cond do
       not connected?(socket) ->
@@ -1329,13 +1396,22 @@ defmodule TrifleApp.ChatShellLive do
       true ->
         request_id = UUID.generate()
 
+        timer_ref =
+          Process.send_after(
+            self(),
+            {:initial_chat_context_timeout, request_id},
+            @context_request_timeout_ms + @initial_context_request_delay_ms
+          )
+
         Process.send_after(
           self(),
           {:request_initial_chat_context, request_id},
           @initial_context_request_delay_ms
         )
 
-        assign(socket, :initial_context_request_id, request_id)
+        socket
+        |> assign(:initial_context_request_id, request_id)
+        |> assign(:initial_context_timer_ref, timer_ref)
     end
   end
 
@@ -1441,58 +1517,64 @@ defmodule TrifleApp.ChatShellLive do
 
   defp maybe_resume_pending(socket) do
     session = socket.assigns[:session]
+    page_context = socket.assigns[:current_page_context] || socket.assigns[:session_page_context]
 
     if match?(%Session{}, session) and Chat.pending?(session) do
-      now = DateTime.utc_now()
-      {rehydrated_events, stage_start} = rehydrate_progress_events(session)
-
-      started_at =
-        session.pending_started_at ||
-          earliest_started_at(rehydrated_events) ||
-          latest_message_created_at(session) ||
-          now
-
-      socket =
-        socket
-        |> assign(:sending, true)
-        |> assign(
-          :progress_events,
-          ensure_pending_progress_visible(rehydrated_events, started_at)
-        )
-        |> assign(:progress_started_at, started_at)
-        |> assign(:progress_stage_started_at, stage_start || started_at)
-        |> assign(:progress_tick_at, now)
-        |> ensure_progress_timer()
-
-      case claim_chat_run(session) do
-        :ok ->
-          parent = self()
-          notify = fn event -> send(parent, {:chat_progress, event}) end
-          page_context = socket.assigns[:current_page_context]
-
-          active_source =
-            resolve_active_source(
-              page_context,
-              socket.assigns[:selected_source],
-              socket.assigns[:sources]
-            )
-
-          context =
-            Chat.build_context(
-              active_source,
-              socket.assigns[:sources] || [],
-              socket.assigns
-              |> Map.put(:notify, notify)
-              |> Map.put(:page_context, page_context)
-            )
-
+      cond do
+        is_nil(page_context) and socket.assigns[:initial_context_request_id] ->
           socket
-          |> assign(:chat_run_owner, true)
-          |> assign(:chat_run_session_id, session.id)
-          |> start_async(:chat_response, fn -> Chat.resume_pending(session, context) end)
 
-        {:error, :chat_run_in_progress} ->
-          socket
+        true ->
+          now = DateTime.utc_now()
+          {rehydrated_events, stage_start} = rehydrate_progress_events(session)
+
+          started_at =
+            session.pending_started_at ||
+              earliest_started_at(rehydrated_events) ||
+              latest_message_created_at(session) ||
+              now
+
+          socket =
+            socket
+            |> assign(:sending, true)
+            |> assign(
+              :progress_events,
+              ensure_pending_progress_visible(rehydrated_events, started_at)
+            )
+            |> assign(:progress_started_at, started_at)
+            |> assign(:progress_stage_started_at, stage_start || started_at)
+            |> assign(:progress_tick_at, now)
+            |> ensure_progress_timer()
+
+          case claim_chat_run(session) do
+            :ok ->
+              parent = self()
+              notify = fn event -> send(parent, {:chat_progress, event}) end
+
+              active_source =
+                resolve_active_source(
+                  page_context,
+                  socket.assigns[:selected_source],
+                  socket.assigns[:sources]
+                )
+
+              context =
+                Chat.build_context(
+                  active_source,
+                  socket.assigns[:sources] || [],
+                  socket.assigns
+                  |> Map.put(:notify, notify)
+                  |> Map.put(:page_context, page_context)
+                )
+
+              socket
+              |> assign(:chat_run_owner, true)
+              |> assign(:chat_run_session_id, session.id)
+              |> start_async(:chat_response, fn -> Chat.resume_pending(session, context) end)
+
+            {:error, :chat_run_in_progress} ->
+              socket
+          end
       end
     else
       socket
@@ -1922,6 +2004,21 @@ defmodule TrifleApp.ChatShellLive do
 
   defp assign_messages(socket, _), do: assign(socket, :messages, [])
 
+  defp session_page_context(%Session{messages: messages}) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find_value(fn message ->
+      role = Map.get(message, :role, Map.get(message, "role"))
+      content = Map.get(message, :content, Map.get(message, "content"))
+
+      if role == "system" do
+        ChatPageContext.parse_system_message(content)
+      end
+    end)
+  end
+
+  defp session_page_context(_), do: nil
+
   defp build_renderable_messages(%Session{} = session) do
     session
     |> Chat.renderable_messages()
@@ -2348,12 +2445,22 @@ defmodule TrifleApp.ChatShellLive do
   defp display_role("assistant"), do: "Baker Agent"
   defp display_role(role), do: role
 
-  defp avatar_url(%{role: "user"}, current_user) do
-    email = current_user && current_user.email
-    gravatar_url(email, 64)
+  defp avatar_url(message = %{role: "user"}, current_user) do
+    message
+    |> message_author()
+    |> user_avatar_asset() ||
+      current_user
+      |> user_avatar_asset() ||
+      identicon_data_url(current_user || message, "Y", "#0f766e")
   end
 
-  defp avatar_url(_message, _current_user), do: gravatar_url("chatlive@trifle.app", 64)
+  defp avatar_url(message, _current_user) do
+    message
+    |> message_author()
+    |> user_avatar_asset() ||
+      identicon_data_url("baker-agent", "B", "#7c3aed")
+  end
+
   defp avatar_alt(%{role: "assistant"}), do: "Baker Agent avatar"
   defp avatar_alt(_), do: "Your avatar"
 
@@ -2411,6 +2518,81 @@ defmodule TrifleApp.ChatShellLive do
 
   defp map_get_existing_atom(_map, _key), do: nil
 
+  defp clear_current_page_context(socket) do
+    assign(socket, :current_page_context, nil)
+  end
+
+  defp message_author(message) when is_map(message) do
+    Map.get(message, :author) || Map.get(message, "author")
+  end
+
+  defp message_author(_), do: nil
+
+  defp user_avatar_asset(entity) when is_map(entity) do
+    [:avatar, :avatar_url, "avatar", "avatar_url"]
+    |> Enum.find_value(fn key ->
+      case Map.get(entity, key) do
+        value when is_binary(value) and value != "" -> value
+        _ -> nil
+      end
+    end)
+  end
+
+  defp user_avatar_asset(_), do: nil
+
+  defp identicon_data_url(seed, fallback_label, background) do
+    label = avatar_label(seed, fallback_label)
+    seed_value = avatar_seed(seed, fallback_label)
+    background = avatar_background(seed_value, background)
+    foreground = "#ffffff"
+
+    svg = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="#{label}">
+      <rect width="64" height="64" rx="20" fill="#{background}" />
+      <text x="32" y="38" text-anchor="middle" font-size="26" font-family="Inter,Arial,sans-serif" fill="#{foreground}" font-weight="700">
+        #{label}
+      </text>
+    </svg>
+    """
+
+    "data:image/svg+xml;base64," <> Base.encode64(svg)
+  end
+
+  defp avatar_seed(%{} = entity, fallback_label) do
+    Map.get(entity, :id) ||
+      Map.get(entity, "id") ||
+      Map.get(entity, :name) ||
+      Map.get(entity, "name") ||
+      fallback_label
+      |> to_string()
+  end
+
+  defp avatar_seed(seed, _fallback_label), do: to_string(seed)
+
+  defp avatar_label(%{} = entity, fallback_label) do
+    entity
+    |> Map.get(:name, Map.get(entity, "name", fallback_label))
+    |> to_string()
+    |> String.trim()
+    |> String.first()
+    |> case do
+      nil -> fallback_label
+      value -> String.upcase(value)
+    end
+  end
+
+  defp avatar_label(_seed, fallback_label), do: fallback_label
+
+  defp avatar_background(seed_value, fallback) do
+    case Base.encode16(:crypto.hash(:sha256, to_string(seed_value)), case: :lower) do
+      <<r::binary-size(2), g::binary-size(2), b::binary-size(2), _::binary>> ->
+        "#" <> r <> g <> b
+
+      _ ->
+        fallback
+    end
+  end
+
   defp admin_user?(%{is_admin: true}), do: true
   defp admin_user?(_), do: false
 
@@ -2447,21 +2629,4 @@ defmodule TrifleApp.ChatShellLive do
       _ -> "Dashboard payload"
     end
   end
-
-  defp gravatar_url(email, size) when is_binary(email) do
-    trimmed = String.trim(email)
-
-    if trimmed == "" do
-      default_gravatar(size)
-    else
-      trimmed
-      |> String.downcase()
-      |> then(&:crypto.hash(:md5, &1))
-      |> Base.encode16(case: :lower)
-      |> then(fn hash -> "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=identicon" end)
-    end
-  end
-
-  defp gravatar_url(_email, size), do: default_gravatar(size)
-  defp default_gravatar(size), do: "https://www.gravatar.com/avatar/?s=#{size}&d=identicon"
 end

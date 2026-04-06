@@ -39,6 +39,21 @@ defmodule Trifle.Chat.ToolsTest do
     def transponders(_record), do: []
   end
 
+  defmodule UnrestrictedSource do
+    @behaviour Source.Behaviour
+
+    def type(_record), do: :database
+    def id(_record), do: "unrestricted-source"
+    def organization_id(_record), do: "org-1"
+    def display_name(_record), do: "Unrestricted Source"
+    def stats_config(_record), do: %{time_zone: "UTC"}
+    def default_timeframe(_record), do: "24h"
+    def default_granularity(_record), do: "1h"
+    def available_granularities(_record), do: []
+    def time_zone(_record), do: "UTC"
+    def transponders(_record), do: []
+  end
+
   describe "__tabularize_for_test__/2" do
     test "returns columns and rows sorted chronologically" do
       series = series_fixture()
@@ -242,6 +257,33 @@ defmodule Trifle.Chat.ToolsTest do
       assert compact.available_paths_truncated
       refute Map.has_key?(compact, :table)
     end
+
+    test "omits nil dashboard fields from current dashboard payload summaries" do
+      payload = %{
+        "status" => "ok",
+        "dashboard" => %{
+          "id" => "dash-1",
+          "payload" => %{
+            "grid" => []
+          }
+        }
+      }
+
+      compact = Tools.compact_tool_payload_for_model("get_current_dashboard_payload", payload)
+
+      assert compact == %{
+               status: "ok",
+               dashboard: %{
+                 id: "dash-1",
+                 grid: []
+               }
+             }
+
+      refute Map.has_key?(compact.dashboard, :name)
+      refute Map.has_key?(compact.dashboard, :key)
+      refute Map.has_key?(compact.dashboard, :default_timeframe)
+      refute Map.has_key?(compact.dashboard, :default_granularity)
+    end
   end
 
   describe "schema helpers" do
@@ -315,6 +357,20 @@ defmodule Trifle.Chat.ToolsTest do
       }
 
       assert {:ok, "1d"} = Tools.__resolve_granularity_for_test__(%{}, source, context)
+    end
+
+    test "does not trust unrestricted page-context granularity values" do
+      source = Source.new(UnrestrictedSource, %FakeSourceRecord{})
+
+      context = %{
+        page_context: %{
+          query: %{
+            granularity: "15m"
+          }
+        }
+      }
+
+      assert {:ok, "1h"} = Tools.__resolve_granularity_for_test__(%{}, source, context)
     end
 
     test "builds a schema payload from a single sampled point" do

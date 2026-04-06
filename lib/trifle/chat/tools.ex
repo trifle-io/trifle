@@ -1004,7 +1004,8 @@ defmodule Trifle.Chat.Tools do
     with %{} = page_context <- Map.get(context, :page_context),
          %{} = query <- Map.get(page_context, :query, Map.get(page_context, "query", %{})),
          %{} = timeframe <- Map.get(query, :timeframe, Map.get(query, "timeframe", %{})),
-         from when is_binary(from) and from != "" <- Map.get(timeframe, :from, Map.get(timeframe, "from")),
+         from when is_binary(from) and from != "" <-
+           Map.get(timeframe, :from, Map.get(timeframe, "from")),
          to when is_binary(to) and to != "" <- Map.get(timeframe, :to, Map.get(timeframe, "to")),
          {:ok, from_dt} <- parse_datetime(from, time_zone),
          {:ok, to_dt} <- parse_datetime(to, time_zone) do
@@ -1030,7 +1031,7 @@ defmodule Trifle.Chat.Tools do
         nil
 
       available == [] ->
-        granularity
+        nil
 
       granularity in available ->
         granularity
@@ -1327,9 +1328,8 @@ defmodule Trifle.Chat.Tools do
     dashboard = payload |> map_get("dashboard") |> Kernel.||(%{})
     grid = dashboard |> map_get("payload") |> map_get("grid") |> List.wrap()
 
-    %{
-      status: payload |> map_get("status") || "ok",
-      dashboard: %{
+    compact_dashboard =
+      %{
         id: dashboard |> map_get("id"),
         name: dashboard |> map_get("name"),
         key: dashboard |> map_get("key"),
@@ -1337,7 +1337,15 @@ defmodule Trifle.Chat.Tools do
         default_granularity: dashboard |> map_get("default_granularity"),
         grid: grid
       }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    %{
+      status: payload |> map_get("status") || "ok",
+      dashboard: compact_dashboard
     }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
   end
 
   defp compact_tool_payload("build_metric_dashboard", payload) do
@@ -1668,7 +1676,12 @@ defmodule Trifle.Chat.Tools do
     end
 
     @doc false
-    def __resolve_timeframe_for_test__(args, source, context, default_shorthand \\ @default_timeframe) do
+    def __resolve_timeframe_for_test__(
+          args,
+          source,
+          context,
+          default_shorthand \\ @default_timeframe
+        ) do
       resolve_timeframe(args, source, context, default_shorthand)
     end
 
