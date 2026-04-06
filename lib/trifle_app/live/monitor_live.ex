@@ -114,7 +114,6 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:page_title, build_page_title(socket.assigns.live_action, monitor))
       |> assign(:executions, Monitors.list_recent_executions(monitor))
       |> initialize_monitor_context()
-      |> publish_chat_page_context()
 
     {:noreply, socket |> apply_action(socket.assigns.live_action) |> publish_chat_page_context()}
   end

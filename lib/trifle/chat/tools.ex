@@ -847,12 +847,25 @@ defmodule Trifle.Chat.Tools do
     editable_ref =
       Map.get(page_context, :editable_payload_ref, Map.get(page_context, "editable_payload_ref"))
 
-    with true <- current_dashboard_context?(page_context),
-         %{} = ref <- editable_ref,
-         id when is_binary(id) <- map_get(ref, "id") do
-      {:ok, id}
-    else
-      _ ->
+    cond do
+      !current_dashboard_context?(page_context) ->
+        {:error,
+         %{
+           status: "error",
+           error: "The current page is not an editable dashboard."
+         }}
+
+      is_map(editable_ref) and !is_binary(map_get(editable_ref, "id")) ->
+        {:error,
+         %{
+           status: "error",
+           error: "The current dashboard editable_payload_ref is missing an id"
+         }}
+
+      is_map(editable_ref) ->
+        {:ok, map_get(editable_ref, "id")}
+
+      true ->
         {:error,
          %{
            status: "error",

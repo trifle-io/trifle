@@ -1376,22 +1376,25 @@ defmodule TrifleApp.DashboardLive do
     {:noreply, socket}
   end
 
-  def handle_info(
-        {:chat_page_action, request_id, requester,
-         %{"type" => "dashboard_apply_update", "visualization" => visualization}},
-        socket
-      ) do
-    {socket, result} = apply_dashboard_update_from_visualization(socket, visualization)
-    send(requester, {:chat_page_action_result, request_id, result})
-    {:noreply, socket}
-  end
+  def handle_info({:chat_page_action, request_id, requester, payload}, socket) do
+    type = if is_map(payload), do: Map.get(payload, "type") || Map.get(payload, :type)
 
-  def handle_info(
-        {:chat_page_action, request_id, requester,
-         %{type: "dashboard_apply_update", visualization: visualization}},
-        socket
-      ) do
-    {socket, result} = apply_dashboard_update_from_visualization(socket, visualization)
+    visualization =
+      if is_map(payload),
+        do: Map.get(payload, "visualization") || Map.get(payload, :visualization)
+
+    {socket, result} =
+      case {type, visualization} do
+        {"dashboard_apply_update", visualization} when not is_nil(visualization) ->
+          apply_dashboard_update_from_visualization(socket, visualization)
+
+        {"dashboard_apply_update", _} ->
+          {socket, {:error, "Dashboard update payload is missing a visualization."}}
+
+        _ ->
+          {socket, {:error, "Unsupported dashboard chat action."}}
+      end
+
     send(requester, {:chat_page_action_result, request_id, result})
     {:noreply, socket}
   end
@@ -1521,11 +1524,8 @@ defmodule TrifleApp.DashboardLive do
         source =
           visualization_source(visualization, socket.assigns[:sources]) || socket.assigns[:source]
 
-        payload = visualization_value(dashboard_data, "payload") || %{}
-
         attrs =
           %{
-            "payload" => payload,
             "key" => visualization_value(dashboard_data, "key") || socket.assigns.dashboard.key,
             "default_timeframe" =>
               visualization_value(dashboard_data, "default_timeframe") ||
@@ -1534,6 +1534,7 @@ defmodule TrifleApp.DashboardLive do
               visualization_value(dashboard_data, "default_granularity") ||
                 socket.assigns.dashboard.default_granularity
           }
+          |> maybe_put_dashboard_payload(visualization_value(dashboard_data, "payload"))
           |> maybe_put_dashboard_source_attrs(source)
 
         case Organizations.update_dashboard_for_membership(
@@ -1573,6 +1574,9 @@ defmodule TrifleApp.DashboardLive do
         end
     end
   end
+
+  defp maybe_put_dashboard_payload(attrs, %{} = payload), do: Map.put(attrs, "payload", payload)
+  defp maybe_put_dashboard_payload(attrs, _payload), do: attrs
 
   defp maybe_put_dashboard_source_attrs(attrs, nil), do: attrs
 

@@ -2964,27 +2964,47 @@ const syncSidebarRootState = (storageKey, desktopCollapsed) => {
   document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
 };
 
-const getOrCreateTabId = () => {
+const generateTabId = () =>
+  window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const getOrCreateTabId = (() => {
   const storageKey = "trifle:tab-id";
+  let currentTabId = null;
+
+  const persistCurrentTabId = () => {
+    if (!currentTabId || !window.sessionStorage) return;
+    window.sessionStorage.setItem(storageKey, currentTabId);
+  };
+
+  const refreshCurrentTabId = () => {
+    currentTabId = generateTabId();
+    persistCurrentTabId();
+    return currentTabId;
+  };
+
+  const syncTabIdOnShow = () => {
+    if (document.visibilityState && document.visibilityState !== "visible") return;
+
+    try {
+      persistCurrentTabId();
+    } catch (_) {
+      // Ignore storage failures and keep using the in-memory tab id.
+    }
+  };
 
   try {
-    const existing = window.sessionStorage ? window.sessionStorage.getItem(storageKey) : null;
-    if (existing) return existing;
-
-    const generated =
-      window.crypto && typeof window.crypto.randomUUID === "function"
-        ? window.crypto.randomUUID()
-        : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-    if (window.sessionStorage) {
-      window.sessionStorage.setItem(storageKey, generated);
-    }
-
-    return generated;
+    refreshCurrentTabId();
   } catch (_) {
-    return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    currentTabId = generateTabId();
   }
-};
+
+  window.addEventListener("pageshow", syncTabIdOnShow);
+  document.addEventListener("visibilitychange", syncTabIdOnShow);
+
+  return () => currentTabId || refreshCurrentTabId();
+})();
 
 window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = false } = {}) => ({
   storageKey,

@@ -20,7 +20,7 @@ defmodule TrifleApp.ChatBus do
         get_connect_params(socket)["tab_id"]
       end
   rescue
-    _ -> nil
+    RuntimeError -> nil
   end
 
   @spec maybe_subscribe_page_channel(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()

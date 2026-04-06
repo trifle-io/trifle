@@ -42,6 +42,9 @@ defmodule TrifleApp.ChatLive do
       |> assign(:progress_stage_started_at, nil)
       |> assign(:chat_run_owner, false)
       |> assign(:chat_run_session_id, nil)
+      |> assign(:chat_response_generation, 0)
+      |> assign(:current_chat_response_key, nil)
+      |> assign(:chat_response_sessions, %{})
       |> assign(:show_source_modal, false)
       |> assign(:can_view_dashboard_payload, admin_user?(socket.assigns[:current_user]))
       |> assign(:show_dashboard_payload_modal, false)
@@ -96,6 +99,8 @@ defmodule TrifleApp.ChatLive do
 
         case claim_chat_run(session) do
           :ok ->
+            {socket, chat_response_key} = register_chat_response(socket, session.id)
+
             socket =
               socket
               |> assign(:session_snapshot, session)
@@ -112,7 +117,7 @@ defmodule TrifleApp.ChatLive do
               |> assign(:progress_stage_started_at, started_at)
               |> assign(:progress_tick_at, started_at)
               |> push_event("chat_scroll_bottom", %{})
-              |> start_async(:chat_response, fn ->
+              |> start_async(chat_response_key, fn ->
                 Chat.handle_user_message(session, message, context)
               end)
 
@@ -194,8 +199,7 @@ defmodule TrifleApp.ChatLive do
 
           socket =
             socket
-            |> release_chat_run()
-            |> cancel_async(:chat_response, @chat_cancel_reason)
+            |> cancel_current_chat_response()
             |> cancel_progress_timer()
             |> assign(:show_source_modal, false)
             |> assign(:selected_source, source)
@@ -232,8 +236,7 @@ defmodule TrifleApp.ChatLive do
   def handle_event("cancel_message", _params, socket) do
     socket =
       socket
-      |> release_chat_run()
-      |> cancel_async(:chat_response, @chat_cancel_reason)
+      |> cancel_current_chat_response()
       |> cancel_progress_timer()
 
     {socket, session} = restore_session_snapshot(socket)
@@ -267,77 +270,101 @@ defmodule TrifleApp.ChatLive do
   end
 
   @impl true
-  def handle_async(:chat_response, {:ok, {:ok, session, latest_message}}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:session, session)
-      |> assign_messages(session)
-      |> assign(:sending, false)
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> maybe_flash_tool_error(latest_message)
-      |> append_final_duration()
+  def handle_async({:chat_response, _generation} = key, {:ok, {:ok, session, latest_message}}, socket) do
+    if current_chat_response?(socket, key) do
+      socket =
+        socket
+        |> finish_chat_response(key)
+        |> assign(:session, session)
+        |> assign_messages(session)
+        |> assign(:sending, false)
+        |> assign(:session_snapshot, nil)
+        |> assign(:pending_user_message, nil)
+        |> maybe_flash_tool_error(latest_message)
+        |> append_final_duration()
 
-    {:noreply, socket |> push_event("chat_scroll_bottom", %{})}
+      {:noreply, socket |> push_event("chat_scroll_bottom", %{})}
+    else
+      {:noreply, finish_chat_response(socket, key)}
+    end
   end
 
-  def handle_async(:chat_response, {:ok, {:error, %{status: :missing_api_key} = error}}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session, reload_session(socket.assigns.session))
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> put_flash(:error, format_error(error))
-      |> append_final_duration()
+  def handle_async(
+        {:chat_response, _generation} = key,
+        {:ok, {:error, %{status: :missing_api_key} = error}},
+        socket
+      ) do
+    if current_chat_response?(socket, key) do
+      socket =
+        socket
+        |> finish_chat_response(key)
+        |> assign(:sending, false)
+        |> assign(:session, reload_session(socket.assigns.session))
+        |> assign(:session_snapshot, nil)
+        |> assign(:pending_user_message, nil)
+        |> put_flash(:error, format_error(error))
+        |> append_final_duration()
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, finish_chat_response(socket, key)}
+    end
   end
 
-  def handle_async(:chat_response, {:ok, {:error, reason}}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session, reload_session(socket.assigns.session))
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> put_flash(:error, format_error(reason))
-      |> append_final_duration()
+  def handle_async({:chat_response, _generation} = key, {:ok, {:error, reason}}, socket) do
+    if current_chat_response?(socket, key) do
+      socket =
+        socket
+        |> finish_chat_response(key)
+        |> assign(:sending, false)
+        |> assign(:session, reload_session(socket.assigns.session))
+        |> assign(:session_snapshot, nil)
+        |> assign(:pending_user_message, nil)
+        |> put_flash(:error, format_error(reason))
+        |> append_final_duration()
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, finish_chat_response(socket, key)}
+    end
   end
 
-  def handle_async(:chat_response, {:exit, reason}, socket)
+  def handle_async({:chat_response, _generation} = key, {:exit, reason}, socket)
       when reason in [@chat_cancel_reason, {:shutdown, :cancel}] do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> cancel_progress_timer()
-      |> assign(:progress_events, [])
-      |> assign(:progress_started_at, nil)
-      |> assign(:progress_stage_started_at, nil)
-      |> assign(:progress_tick_at, nil)
+    if current_chat_response?(socket, key) do
+      socket =
+        socket
+        |> finish_chat_response(key)
+        |> assign(:sending, false)
+        |> assign(:session_snapshot, nil)
+        |> assign(:pending_user_message, nil)
+        |> cancel_progress_timer()
+        |> assign(:progress_events, [])
+        |> assign(:progress_started_at, nil)
+        |> assign(:progress_stage_started_at, nil)
+        |> assign(:progress_tick_at, nil)
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, finish_chat_response(socket, key)}
+    end
   end
 
-  def handle_async(:chat_response, {:exit, reason}, socket) do
-    socket =
-      socket
-      |> release_chat_run()
-      |> assign(:sending, false)
-      |> assign(:session_snapshot, nil)
-      |> assign(:pending_user_message, nil)
-      |> put_flash(:error, "Chat process crashed: #{inspect(reason)}")
-      |> append_final_duration()
+  def handle_async({:chat_response, _generation} = key, {:exit, reason}, socket) do
+    if current_chat_response?(socket, key) do
+      socket =
+        socket
+        |> finish_chat_response(key)
+        |> assign(:sending, false)
+        |> assign(:session_snapshot, nil)
+        |> assign(:pending_user_message, nil)
+        |> put_flash(:error, "Chat process crashed: #{inspect(reason)}")
+        |> append_final_duration()
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, finish_chat_response(socket, key)}
+    end
   end
 
   @impl true
@@ -472,7 +499,7 @@ defmodule TrifleApp.ChatLive do
 
   defp init_session(socket, nil) do
     socket
-    |> release_chat_run()
+    |> cancel_current_chat_response()
     |> cancel_progress_timer()
     |> assign(:selected_source, nil)
     |> assign(:session, nil)
@@ -493,6 +520,11 @@ defmodule TrifleApp.ChatLive do
   end
 
   defp init_session(socket, %Source{} = source) do
+    socket =
+      socket
+      |> cancel_current_chat_response()
+      |> cancel_progress_timer()
+
     with {:ok, session} <-
            Chat.ensure_session(
              socket.assigns.current_user,
@@ -500,8 +532,6 @@ defmodule TrifleApp.ChatLive do
              source
            ) do
       socket
-      |> release_chat_run()
-      |> cancel_progress_timer()
       |> assign(:selected_source, source)
       |> assign(:session, session)
       |> assign_messages(session)
@@ -521,7 +551,6 @@ defmodule TrifleApp.ChatLive do
     else
       {:error, error} ->
         socket
-        |> cancel_progress_timer()
         |> assign(:selected_source, source)
         |> assign(:session, nil)
         |> assign(:messages, [])
@@ -582,7 +611,10 @@ defmodule TrifleApp.ChatLive do
           socket
           |> assign(:chat_run_owner, true)
           |> assign(:chat_run_session_id, session.id)
-          |> start_async(:chat_response, fn -> Chat.resume_pending(session, context) end)
+          |> then(fn socket ->
+            {socket, chat_response_key} = register_chat_response(socket, session.id)
+            start_async(socket, chat_response_key, fn -> Chat.resume_pending(session, context) end)
+          end)
 
         {:error, :chat_run_in_progress} ->
           socket
@@ -649,14 +681,77 @@ defmodule TrifleApp.ChatLive do
 
   defp claim_chat_run(_), do: {:error, :chat_run_in_progress}
 
-  defp release_chat_run(socket) do
-    if socket.assigns[:chat_run_owner] and is_binary(socket.assigns[:chat_run_session_id]) do
-      RunnerRegistry.release(socket.assigns[:chat_run_session_id])
-    end
+  defp register_chat_response(socket, session_id) when is_binary(session_id) do
+    generation = (socket.assigns[:chat_response_generation] || 0) + 1
+    chat_response_key = {:chat_response, generation}
+
+    socket =
+      socket
+      |> assign(:chat_response_generation, generation)
+      |> assign(:current_chat_response_key, chat_response_key)
+      |> update(:chat_response_sessions, fn sessions ->
+        Map.put(sessions || %{}, chat_response_key, session_id)
+      end)
+
+    {socket, chat_response_key}
+  end
+
+  defp current_chat_response?(socket, chat_response_key) do
+    socket.assigns[:current_chat_response_key] == chat_response_key
+  end
+
+  defp finish_chat_response(socket, chat_response_key) do
+    session_id =
+      socket.assigns[:chat_response_sessions]
+      |> Kernel.||(%{})
+      |> Map.get(chat_response_key)
 
     socket
-    |> assign(:chat_run_owner, false)
-    |> assign(:chat_run_session_id, nil)
+    |> update(:chat_response_sessions, fn sessions ->
+      Map.delete(sessions || %{}, chat_response_key)
+    end)
+    |> maybe_clear_current_chat_response_key(chat_response_key)
+    |> release_chat_run_for_session(session_id)
+  end
+
+  defp maybe_clear_current_chat_response_key(socket, chat_response_key) do
+    if current_chat_response?(socket, chat_response_key) do
+      assign(socket, :current_chat_response_key, nil)
+    else
+      socket
+    end
+  end
+
+  defp cancel_current_chat_response(socket) do
+    case socket.assigns[:current_chat_response_key] do
+      {:chat_response, _generation} = chat_response_key ->
+        socket
+        |> assign(:current_chat_response_key, nil)
+        |> assign(:chat_run_owner, false)
+        |> assign(:chat_run_session_id, nil)
+        |> cancel_async(chat_response_key, @chat_cancel_reason)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp release_chat_run_for_session(socket, session_id) when is_binary(session_id) do
+    RunnerRegistry.release(session_id)
+
+    if socket.assigns[:chat_run_session_id] == session_id do
+      socket
+      |> assign(:chat_run_owner, false)
+      |> assign(:chat_run_session_id, nil)
+    else
+      socket
+    end
+  end
+
+  defp release_chat_run_for_session(socket, _session_id), do: socket
+
+  defp release_chat_run(socket) do
+    release_chat_run_for_session(socket, socket.assigns[:chat_run_session_id])
   end
 
   defp group_sources(sources) when is_list(sources) do

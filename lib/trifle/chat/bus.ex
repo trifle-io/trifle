@@ -17,7 +17,7 @@ defmodule Trifle.Chat.Bus do
     Phoenix.PubSub.subscribe(@pubsub, session_topic(session_id))
   end
 
-  @spec broadcast_session_updated(Session.t()) :: :ok
+  @spec broadcast_session_updated(Session.t()) :: :ok | {:error, term()}
   def broadcast_session_updated(%Session{id: session_id} = session) do
     Phoenix.PubSub.broadcast(
       @pubsub,

@@ -1,5 +1,6 @@
 defmodule TrifleApp.ChatShellLive do
   use TrifleApp, :live_view
+  require Logger
 
   alias Ecto.UUID
   alias Trifle.Accounts
@@ -75,7 +76,9 @@ defmodule TrifleApp.ChatShellLive do
   defp load_current_user(%{"current_user_id" => id}) when is_binary(id) and id != "" do
     Accounts.get_user!(id)
   rescue
-    Ecto.NoResultsError -> nil
+    Ecto.NoResultsError ->
+      Logger.debug("ChatShellLive: no user found for id: #{id}")
+      nil
   end
 
   defp load_current_user(_session), do: nil
@@ -84,7 +87,9 @@ defmodule TrifleApp.ChatShellLive do
        when is_binary(id) and id != "" do
     Organizations.get_membership!(id)
   rescue
-    Ecto.NoResultsError -> nil
+    Ecto.NoResultsError ->
+      Logger.debug("ChatShellLive: no membership found for id: #{id}")
+      nil
   end
 
   defp load_current_membership(_session), do: nil
@@ -2391,11 +2396,20 @@ defmodule TrifleApp.ChatShellLive do
   defp map_get(nil, _key), do: nil
 
   defp map_get(map, key) when is_map(map) do
-    Map.get(map, key) || Map.get(map, to_string(key)) ||
-      Map.get(map, String.to_atom(to_string(key)))
-  rescue
-    _ -> Map.get(map, key) || Map.get(map, to_string(key))
+    Map.get(map, key) ||
+      Map.get(map, to_string(key)) ||
+      map_get_existing_atom(map, key)
   end
+
+  defp map_get_existing_atom(map, key) when is_map(map) and is_binary(key) do
+    try do
+      Map.get(map, String.to_existing_atom(key))
+    rescue
+      ArgumentError -> nil
+    end
+  end
+
+  defp map_get_existing_atom(_map, _key), do: nil
 
   defp admin_user?(%{is_admin: true}), do: true
   defp admin_user?(_), do: false

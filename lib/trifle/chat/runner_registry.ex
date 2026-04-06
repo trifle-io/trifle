@@ -12,14 +12,13 @@ defmodule Trifle.Chat.RunnerRegistry do
     Registry.child_spec(keys: :unique, name: @registry)
   end
 
-  @spec claim(String.t(), pid()) :: :ok | {:error, pid()}
-  def claim(session_id, owner \\ self())
-      when is_binary(session_id) and is_pid(owner) do
+  @spec claim(String.t()) :: :ok | {:error, pid()}
+  def claim(session_id) when is_binary(session_id) do
     case Registry.register(@registry, session_id, nil) do
       {:ok, _} ->
         :ok
 
-      {:error, {:already_registered, pid}} when pid == owner ->
+      {:error, {:already_registered, pid}} when pid == self() ->
         :ok
 
       {:error, {:already_registered, pid}} ->
@@ -27,11 +26,10 @@ defmodule Trifle.Chat.RunnerRegistry do
     end
   end
 
-  @spec release(String.t(), pid()) :: :ok
-  def release(session_id, owner \\ self())
-      when is_binary(session_id) and is_pid(owner) do
+  @spec release(String.t()) :: :ok
+  def release(session_id) when is_binary(session_id) do
     case Registry.lookup(@registry, session_id) do
-      [{pid, _}] when pid == owner ->
+      [{pid, _}] when pid == self() ->
         Registry.unregister(@registry, session_id)
         :ok
 

@@ -83,8 +83,7 @@ defmodule TrifleApp.ChatPageContext do
         Map.get(query, :granularity, Map.get(query, "granularity")),
         Map.get(query, :metrics_key, Map.get(query, "metrics_key"))
       ]
-      |> Enum.map(&to_string(&1 || ""))
-      |> Enum.join("|")
+      |> Jason.encode!()
 
     :sha256
     |> :crypto.hash(payload)
