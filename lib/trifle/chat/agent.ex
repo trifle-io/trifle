@@ -6,6 +6,7 @@ defmodule Trifle.Chat.Agent do
   alias MapSet
   alias Trifle.Chat.Notifier
   alias Trifle.Chat.OpenAIClient
+  alias Trifle.Chat.Progress
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionStore
   alias Trifle.Chat.Tools
@@ -53,7 +54,7 @@ defmodule Trifle.Chat.Agent do
   end
 
   defp run_loop(%Session{} = session, context, iteration) do
-    Notifier.notify(context, {:progress, :thinking, iteration})
+    Notifier.notify(context, {:progress, :thinking, thinking_payload(iteration)})
     base_messages = build_messages(session, context)
 
     case OpenAIClient.chat_completion(base_messages,
@@ -83,6 +84,13 @@ defmodule Trifle.Chat.Agent do
         Notifier.notify(context, {:progress, :error, reason})
         {:error, normalize_openai_error(reason, session)}
     end
+  end
+
+  defp thinking_payload(iteration) do
+    %{
+      iteration: iteration,
+      label: Progress.random_thinking_label()
+    }
   end
 
   defp handle_tool_calls(session, context, message, iteration) do
@@ -198,7 +206,10 @@ defmodule Trifle.Chat.Agent do
     |> maybe_put("role", role)
     |> maybe_put("content", encoded_content)
     |> maybe_put("tool_calls", Map.get(message, :tool_calls, Map.get(message, "tool_calls")))
-    |> maybe_put("tool_call_id", Map.get(message, :tool_call_id, Map.get(message, "tool_call_id")))
+    |> maybe_put(
+      "tool_call_id",
+      Map.get(message, :tool_call_id, Map.get(message, "tool_call_id"))
+    )
     |> maybe_put("name", name)
   end
 

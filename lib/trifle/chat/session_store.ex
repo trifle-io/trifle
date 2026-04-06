@@ -11,6 +11,7 @@ defmodule Trifle.Chat.SessionStore do
 
   alias Ecto.Changeset
   alias Ecto.UUID
+  alias Trifle.Chat.Bus
   alias Trifle.Chat.Session
   alias Trifle.Chat.SessionRecord
   alias Trifle.Repo
@@ -254,6 +255,11 @@ defmodule Trifle.Chat.SessionStore do
     |> Map.update!(:user_id, &cast_uuid!/1)
     |> Map.update!(:organization_id, &cast_uuid!/1)
     |> Map.update!(:source_id, &cast_uuid!/1)
+  end
+
+  defp unwrap_transaction({:ok, %Session{} = session}) do
+    Bus.broadcast_session_updated(session)
+    {:ok, session}
   end
 
   defp unwrap_transaction({:ok, value}), do: {:ok, value}

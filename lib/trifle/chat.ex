@@ -24,6 +24,18 @@ defmodule Trifle.Chat do
   end
 
   @doc """
+  Ensures a workspace-wide session exists for the given user and organization.
+  """
+  @spec ensure_workspace_session(struct(), struct()) ::
+          {:ok, Session.t()} | {:error, term()}
+  def ensure_workspace_session(user, membership) do
+    user_id = user.id |> to_string()
+    org_id = membership.organization_id |> to_string()
+
+    SessionStore.fetch_or_create(user_id, org_id, %{type: "workspace", id: org_id})
+  end
+
+  @doc """
   Resets the conversation, clearing all messages while preserving the session.
   """
   @spec reset(Session.t()) :: {:ok, Session.t()} | {:error, term()}
@@ -91,7 +103,9 @@ defmodule Trifle.Chat do
       source: active_source,
       sources: sources,
       user: Map.get(assigns, :current_user),
-      organization: Map.get(assigns, :current_organization)
+      organization: Map.get(assigns, :current_organization),
+      membership: Map.get(assigns, :current_membership),
+      page_context: Map.get(assigns, :page_context)
     }
 
     case Map.get(assigns, :notify) do
@@ -118,6 +132,7 @@ defmodule Trifle.Chat do
 
           role == "assistant" ->
             entry = build_renderable_message(message)
+
             entry =
               case Map.get(entry, :visualizations, []) do
                 [] -> Map.put(entry, :visualizations, pending)

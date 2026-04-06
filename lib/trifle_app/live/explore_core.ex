@@ -4,6 +4,8 @@ defmodule TrifleApp.ExploreCore do
   alias Decimal
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
+  alias TrifleApp.ChatBus
+  alias TrifleApp.ChatPageContext
   alias TrifleApp.Components.DataTable
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.TimeframeParsing
@@ -17,6 +19,7 @@ defmodule TrifleApp.ExploreCore do
 
     socket =
       socket
+      |> ChatBus.maybe_subscribe_page_channel()
       |> assign(:explore_path, default_explore_path())
       |> assign(:sources, sources)
 
@@ -800,7 +803,7 @@ defmodule TrifleApp.ExploreCore do
   def handle_params(params, _session, socket) do
     cond do
       is_nil(socket.assigns[:source]) ->
-        {:noreply, socket}
+        {:noreply, publish_chat_page_context(socket)}
 
       true ->
         socket =
@@ -894,14 +897,20 @@ defmodule TrifleApp.ExploreCore do
             url_params =
               if params["key"], do: Map.put(url_params, :key, params["key"]), else: url_params
 
-            socket = push_source_patch(socket, url_params)
+            socket =
+              socket
+              |> publish_chat_page_context()
+              |> push_source_patch(url_params)
+
             {:noreply, socket}
           else
             if socket.assigns[:loading] do
               send(self(), :load_data)
-              {:noreply, socket}
+              {:noreply, publish_chat_page_context(socket)}
             else
-              load_data_and_update_socket(socket)
+              socket
+              |> publish_chat_page_context()
+              |> load_data_and_update_socket()
             end
           end
         end
@@ -929,6 +938,11 @@ defmodule TrifleApp.ExploreCore do
 
   def handle_info({:hide_timeframe_dropdown, _component_id}, socket) do
     # Handle timeframe dropdown hide from FilterBar component
+    {:noreply, socket}
+  end
+
+  def handle_info({:chat_context_request, request_id, requester}, socket) do
+    send(requester, {:chat_context_response, request_id, explore_chat_context(socket)})
     {:noreply, socket}
   end
 
@@ -993,12 +1007,17 @@ defmodule TrifleApp.ExploreCore do
             url_params
           end
 
-        {:noreply, push_source_patch(updated_socket, url_params)}
+        {:noreply,
+         updated_socket
+         |> publish_chat_page_context()
+         |> push_source_patch(url_params)}
       else
         if Map.has_key?(changes, :reload) do
-          load_data_and_update_socket(updated_socket)
+          updated_socket
+          |> publish_chat_page_context()
+          |> load_data_and_update_socket()
         else
-          {:noreply, updated_socket}
+          {:noreply, publish_chat_page_context(updated_socket)}
         end
       end
     end
@@ -1239,6 +1258,46 @@ defmodule TrifleApp.ExploreCore do
        end,
        timeout: 300_000
      )}
+  end
+
+  defp publish_chat_page_context(socket) do
+    ChatBus.publish_page_context(socket, explore_chat_context(socket))
+  end
+
+  defp explore_chat_context(socket) do
+    source = socket.assigns[:source]
+
+    ChatPageContext.build(:explore,
+      entity: %{
+        id: "explore",
+        title: "Explore",
+        route: explore_base_path(socket)
+      },
+      query: %{
+        source_ref: ChatPageContext.source_ref(source),
+        timeframe:
+          ChatPageContext.timeframe(
+            socket.assigns[:smart_timeframe_input],
+            socket.assigns[:from],
+            socket.assigns[:to],
+            socket.assigns[:use_fixed_display]
+          ),
+        granularity: socket.assigns[:granularity],
+        metrics_key: socket.assigns[:key]
+      },
+      query_origin: %{
+        source_ref: "filter_bar",
+        timeframe: "filter_bar",
+        granularity: "filter_bar",
+        metrics_key: "filter_bar"
+      },
+      capabilities: %{
+        can_navigate: true,
+        can_change_query: true,
+        can_preview_dashboard_update: false,
+        can_apply_dashboard_update: false
+      }
+    )
   end
 
   def reduce_stats(values) when is_list(values) do

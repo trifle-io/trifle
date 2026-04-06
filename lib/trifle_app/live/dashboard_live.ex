@@ -12,6 +12,8 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.TimeframeParsing.Url, as: UrlParsing
   alias Ecto.UUID
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: DashboardWidgetHelpers
+  alias TrifleApp.ChatBus
+  alias TrifleApp.ChatPageContext
 
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
@@ -54,6 +56,7 @@ defmodule TrifleApp.DashboardLive do
 
     {:ok,
      socket
+     |> ChatBus.maybe_subscribe_page_channel()
      |> assign(:page_title, page_title)
      |> assign(:current_membership, membership)
      |> assign_dashboard_permissions()}
@@ -77,6 +80,7 @@ defmodule TrifleApp.DashboardLive do
         socket
         |> assign(:print_mode, params["print"] in ["1", "true", "yes"])
         |> apply_action(socket.assigns.live_action, params)
+        |> publish_chat_page_context()
 
       {:noreply, socket}
     end
@@ -1367,6 +1371,34 @@ defmodule TrifleApp.DashboardLive do
   end
 
   # Filter bar message handling
+  def handle_info({:chat_context_request, request_id, requester}, socket) do
+    send(requester, {:chat_context_response, request_id, dashboard_chat_context(socket)})
+    {:noreply, socket}
+  end
+
+  def handle_info({:chat_page_action, request_id, requester, payload}, socket) do
+    type = if is_map(payload), do: Map.get(payload, "type") || Map.get(payload, :type)
+
+    visualization =
+      if is_map(payload),
+        do: Map.get(payload, "visualization") || Map.get(payload, :visualization)
+
+    {socket, result} =
+      case {type, visualization} do
+        {"dashboard_apply_update", visualization} when not is_nil(visualization) ->
+          apply_dashboard_update_from_visualization(socket, visualization)
+
+        {"dashboard_apply_update", _} ->
+          {socket, {:error, "Dashboard update payload is missing a visualization."}}
+
+        _ ->
+          {socket, {:error, "Unsupported dashboard chat action."}}
+      end
+
+    send(requester, {:chat_page_action_result, request_id, result})
+    {:noreply, socket}
+  end
+
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     updated_socket =
       Enum.reduce(changes, socket, fn
@@ -1411,6 +1443,8 @@ defmodule TrifleApp.DashboardLive do
         updated_socket
       end
 
+    updated_socket = publish_chat_page_context(updated_socket)
+
     {:noreply, updated_socket}
   end
 
@@ -1422,6 +1456,202 @@ defmodule TrifleApp.DashboardLive do
   def handle_info({:transponding, state}, socket) do
     {:noreply, assign(socket, :transponding, state)}
   end
+
+  defp publish_chat_page_context(%{assigns: %{is_public_access: true}} = socket), do: socket
+
+  defp publish_chat_page_context(%{assigns: %{dashboard: %{id: _}}} = socket) do
+    ChatBus.publish_page_context(socket, dashboard_chat_context(socket))
+  end
+
+  defp publish_chat_page_context(socket), do: socket
+
+  defp dashboard_chat_context(socket) do
+    dashboard = socket.assigns.dashboard
+    metrics_key = socket.assigns[:resolved_key] || dashboard.key
+
+    ChatPageContext.build(:dashboard,
+      entity: %{
+        id: to_string(dashboard.id),
+        title: dashboard.name,
+        route: ~p"/dashboards/#{dashboard.id}"
+      },
+      query: %{
+        source_ref: ChatPageContext.source_ref(socket.assigns[:source]),
+        timeframe:
+          ChatPageContext.timeframe(
+            socket.assigns[:smart_timeframe_input],
+            socket.assigns[:from],
+            socket.assigns[:to],
+            socket.assigns[:use_fixed_display]
+          ),
+        granularity: socket.assigns[:granularity],
+        metrics_key: metrics_key
+      },
+      query_origin: %{
+        source_ref: "dashboard_source",
+        timeframe: "dashboard_filter_bar",
+        granularity: "dashboard_filter_bar",
+        metrics_key:
+          if(metrics_key == dashboard.key, do: "dashboard_key", else: "dashboard_segments")
+      },
+      capabilities: %{
+        can_navigate: true,
+        can_change_query: true,
+        can_preview_dashboard_update: true,
+        can_apply_dashboard_update: socket.assigns[:can_edit_dashboard] == true
+      },
+      editable_payload_ref:
+        if(socket.assigns[:can_edit_dashboard],
+          do: %{type: "dashboard", id: to_string(dashboard.id)}
+        )
+    )
+  end
+
+  defp apply_dashboard_update_from_visualization(socket, visualization) do
+    error_message =
+      permission_message(socket, "You do not have permission to modify this dashboard")
+
+    cond do
+      socket.assigns[:is_public_access] ->
+        {socket, {:error, "Public dashboards cannot be modified from chat."}}
+
+      !socket.assigns[:can_edit_dashboard] ->
+        {socket, {:error, error_message}}
+
+      true ->
+        dashboard_data = visualization_dashboard_data(visualization)
+
+        source =
+          visualization_source(visualization, socket.assigns[:sources]) || socket.assigns[:source]
+
+        attrs =
+          %{
+            "key" => visualization_value(dashboard_data, "key") || socket.assigns.dashboard.key,
+            "default_timeframe" =>
+              visualization_value(dashboard_data, "default_timeframe") ||
+                socket.assigns.dashboard.default_timeframe,
+            "default_granularity" =>
+              visualization_value(dashboard_data, "default_granularity") ||
+                socket.assigns.dashboard.default_granularity
+          }
+          |> maybe_put_dashboard_payload(visualization_value(dashboard_data, "payload"))
+          |> maybe_put_dashboard_source_attrs(source)
+
+        case Organizations.update_dashboard_for_membership(
+               socket.assigns.dashboard,
+               socket.assigns.current_membership,
+               attrs
+             ) do
+          {:ok, updated_dashboard} ->
+            updated_socket =
+              socket
+              |> assign_dashboard(updated_dashboard)
+              |> maybe_apply_updated_dashboard_source(source)
+              |> normalize_dashboard_query_after_update(updated_dashboard, source)
+
+            updated_socket =
+              if dashboard_has_key?(updated_socket) do
+                load_dashboard_data(updated_socket)
+              else
+                updated_socket
+              end
+
+            updated_socket = publish_chat_page_context(updated_socket)
+
+            {updated_socket, {:ok, %{message: "Dashboard updated successfully"}}}
+
+          {:error, :forbidden} ->
+            {socket, {:error, error_message}}
+
+          {:error, :unauthorized} ->
+            {socket, {:error, error_message}}
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            {socket, {:error, changeset_error_message(changeset) || "Failed to update dashboard"}}
+
+          {:error, reason} ->
+            {socket, {:error, reason}}
+        end
+    end
+  end
+
+  defp maybe_put_dashboard_payload(attrs, %{} = payload), do: Map.put(attrs, "payload", payload)
+  defp maybe_put_dashboard_payload(attrs, _payload), do: attrs
+
+  defp maybe_put_dashboard_source_attrs(attrs, nil), do: attrs
+
+  defp maybe_put_dashboard_source_attrs(attrs, source) do
+    attrs
+    |> Map.put("source_type", Source.type(source) |> Atom.to_string())
+    |> Map.put("source_id", Source.id(source) |> to_string())
+    |> Map.put(
+      "database_id",
+      if(Source.type(source) == :database, do: Source.id(source) |> to_string(), else: nil)
+    )
+  end
+
+  defp maybe_apply_updated_dashboard_source(socket, nil), do: socket
+
+  defp maybe_apply_updated_dashboard_source(socket, source) do
+    case socket.assigns[:source] do
+      current when is_nil(current) ->
+        apply_dashboard_source_change(socket, source)
+
+      current ->
+        if source_same?(current, source),
+          do: socket,
+          else: apply_dashboard_source_change(socket, source)
+    end
+  end
+
+  defp normalize_dashboard_query_after_update(socket, dashboard, source) do
+    available_granularities = get_available_granularities(source)
+    current_granularity = socket.assigns[:granularity]
+
+    granularity =
+      if current_granularity in available_granularities do
+        current_granularity
+      else
+        dashboard_default_granularity(dashboard, source)
+      end
+
+    assign(socket, :granularity, granularity)
+  end
+
+  defp visualization_source(visualization, sources) do
+    source_ref = visualization_value(visualization, "source")
+    type = visualization_value(source_ref, "type")
+    id = visualization_value(source_ref, "id")
+
+    Enum.find(sources || [], fn source ->
+      to_string(Source.type(source)) == to_string(type) and
+        to_string(Source.id(source)) == to_string(id)
+    end)
+  end
+
+  defp visualization_dashboard_data(visualization) do
+    visualization_value(visualization, "dashboard") || %{}
+  end
+
+  defp visualization_value(nil, _key), do: nil
+
+  defp visualization_value(map, key) when is_map(map) do
+    case Map.get(map, key) do
+      nil ->
+        case maybe_existing_atom(key) do
+          nil -> nil
+          atom_key -> Map.get(map, atom_key)
+        end
+
+      value ->
+        value
+    end
+  rescue
+    ArgumentError -> Map.get(map, key)
+  end
+
+  defp maybe_existing_atom(key) when is_binary(key), do: String.to_existing_atom(key)
+  defp maybe_existing_atom(_key), do: nil
 
   # Dashboard Data Management
 
