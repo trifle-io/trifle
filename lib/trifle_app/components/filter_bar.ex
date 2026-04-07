@@ -138,7 +138,7 @@ defmodule TrifleApp.Components.FilterBar do
                 <div
                   phx-click-away="hide_timeframe_dropdown"
                   phx-target={@myself}
-                  class="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg z-20"
+                  class="absolute top-full left-0 right-0 z-20 mt-1 rounded-md bg-white shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10"
                 >
                   <div class="px-3 py-2 border-b border-gray-200 dark:border-slate-700">
                     <h6 class="text-xs font-semibold uppercase text-gray-500 dark:text-slate-400">
@@ -700,7 +700,7 @@ defmodule TrifleApp.Components.FilterBar do
         Granularity
       </label>
       <div
-        class="inline-flex rounded-md shadow-sm border border-gray-300 dark:border-slate-600"
+        class="inline-flex rounded-md ring-1 ring-black/10 dark:ring-white/10"
         role="group"
       >
         <%= for {granularity, index} <- Enum.with_index(@available_granularities) do %>

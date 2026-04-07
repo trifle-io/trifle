@@ -25,7 +25,7 @@ defmodule TrifleApp.UserRegistrationLive do
         </div>
         
     <!-- Registration Form -->
-        <div class="bg-white dark:bg-slate-800 py-8 px-6 shadow-xl rounded-xl border border-gray-100 dark:border-slate-700">
+        <div class="rounded-xl bg-white px-6 py-8 shadow-xl ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10">
           <div
             :if={@invitation}
             class="mb-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 dark:border-teal-700/70 dark:bg-slate-700/60 dark:text-teal-100"

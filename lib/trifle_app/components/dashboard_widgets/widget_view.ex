@@ -1217,7 +1217,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   <div
                     data-role="download-dropdown"
                     data-widget-dropdown
-                    class="absolute right-0 top-7 w-44 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-50 hidden"
+                    class="absolute right-0 top-7 z-50 w-44 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10 hidden"
                     role="menu"
                     aria-hidden="true"
                   >

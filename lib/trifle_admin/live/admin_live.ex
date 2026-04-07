@@ -154,7 +154,7 @@ defmodule TrifleAdmin.AdminLive do
 
   defp summary_card(assigns) do
     ~H"""
-    <div class="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
+    <div class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/5">
       <div class="flex items-start justify-between">
         <div>
           <p class="text-sm font-medium text-gray-600 dark:text-gray-300">{@title}</p>

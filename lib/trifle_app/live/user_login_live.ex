@@ -19,7 +19,7 @@ defmodule TrifleApp.UserLoginLive do
         </div>
         
     <!-- Login Form -->
-        <div class="bg-white dark:bg-slate-800 py-8 px-6 shadow-xl rounded-xl border border-gray-100 dark:border-slate-700">
+        <div class="rounded-xl bg-white px-6 py-8 shadow-xl ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10">
           <.form_container
             id="login_form"
             for={@form}

@@ -227,7 +227,7 @@ defmodule TrifleApp.Components.DashboardFooter do
               <% export_params = @export_params %>
               <div
                 data-role="download-dropdown"
-                class="absolute bottom-9 right-0 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-40"
+                class="absolute bottom-9 right-0 z-40 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10"
                 phx-click-away="hide_export_dropdown"
               >
                 <%= if @export_menu != [] do %>

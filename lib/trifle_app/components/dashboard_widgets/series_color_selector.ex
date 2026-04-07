@@ -61,7 +61,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesColorSelector do
           </div>
         </summary>
 
-        <div class="absolute right-0 z-40 mt-2 inline-block w-max max-w-[85vw] rounded-lg border border-slate-200 bg-white p-2.5 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+        <div class="absolute right-0 z-40 mt-2 inline-block w-max max-w-[85vw] rounded-lg bg-white p-2.5 shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10">
           <div class="space-y-2">
             <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
               Palette & Color
