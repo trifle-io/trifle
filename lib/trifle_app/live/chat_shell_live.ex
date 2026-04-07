@@ -2436,10 +2436,10 @@ defmodule TrifleApp.ChatShellLive do
   defp bubble_author_classes(%{role: "user"}), do: "font-semibold text-white"
 
   defp bubble_text_classes(%{role: "assistant"}),
-    do: "whitespace-pre-line text-sm leading-snug text-slate-800 dark:text-slate-100"
+    do: "whitespace-pre-line text-sm leading-5 text-slate-800 dark:text-slate-100"
 
   defp bubble_text_classes(%{role: "user"}),
-    do: "whitespace-pre-line text-right text-sm leading-snug text-white"
+    do: "whitespace-pre-line text-right text-sm leading-5 text-white"
 
   defp bubble_timestamp_classes(%{role: "user"}), do: "text-xs text-white/80"
   defp bubble_timestamp_classes(_), do: "text-xs text-slate-400 dark:text-slate-500"

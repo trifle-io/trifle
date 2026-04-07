@@ -2837,7 +2837,7 @@ defmodule TrifleApp.MonitorLive do
                     </p>
                   </div>
                 <% else %>
-                  <ul class="mt-2 space-y-2">
+                  <ul role="list" class="mt-2 space-y-2">
                     <%= for alert <- @alerts do %>
                       <% evaluation = Map.get(@alert_evaluations || %{}, alert.id) %>
                       <% status = alert.status || :passed %>
@@ -3227,7 +3227,7 @@ defmodule TrifleApp.MonitorLive do
               <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Payload
               </h4>
-              <div class="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+              <div class="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
                 <pre class="max-h-[320px] overflow-auto whitespace-pre-wrap">
     {pretty_execution_details(@selected_execution.details)}
                 </pre>

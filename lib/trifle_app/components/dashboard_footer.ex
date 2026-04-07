@@ -31,7 +31,7 @@ defmodule TrifleApp.Components.DashboardFooter do
       {@rest}
     >
       <% summary = @summary %>
-      <div class="flex flex-wrap items-center gap-4 text-xs">
+      <div class="flex flex-wrap items-center gap-4 text-xs tabular-nums">
         <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
           <svg
             class="h-4 w-4 text-teal-500"

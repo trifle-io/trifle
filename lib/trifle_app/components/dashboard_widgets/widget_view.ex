@@ -286,10 +286,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         <div class={[
           "flex flex-wrap items-baseline gap-x-2",
           @kpi_size_class,
-          "font-bold text-gray-900 dark:text-white"
+          "tabular-nums font-bold text-gray-900 dark:text-white"
         ]}>
           <span>{@current_label}</span>
-          <span class="text-sm font-medium text-gray-500 dark:text-slate-400">
+          <span class="text-sm font-medium tabular-nums text-gray-500 dark:text-slate-400">
             from {@previous_label}
           </span>
         </div>
@@ -318,7 +318,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         <div class={[
           "flex flex-wrap items-baseline gap-x-2",
           @kpi_size_class,
-          "font-bold text-gray-900 dark:text-white"
+          "tabular-nums font-bold text-gray-900 dark:text-white"
         ]}>
           <span>{@value_label}</span>
         </div>
@@ -347,7 +347,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:value_label, value_label)
 
     ~H"""
-    <div class={[@kpi_size_class, "font-bold text-gray-900 dark:text-white"]}>
+    <div class={[@kpi_size_class, "tabular-nums font-bold text-gray-900 dark:text-white"]}>
       {@value_label}
     </div>
     """
@@ -505,12 +505,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       style={text_body_style(@text_subtype)}
     >
       <%= if @text_subtype == "html" do %>
-        <div class="text-widget-html w-full leading-relaxed">
+        <div class="text-widget-html w-full leading-7">
           {text_widget_html(@text_html)}
         </div>
       <% else %>
         <div class="text-widget-header-content w-full flex flex-col gap-2">
-          <div class={["text-widget-title font-semibold leading-tight", @text_title_size_class]}>
+          <div class={["text-widget-title font-semibold", @text_title_size_class]}>
             <%= if String.trim(@text_title) == "" do %>
               <span>&nbsp;</span>
             <% else %>
@@ -518,7 +518,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <% end %>
           </div>
           <%= if String.trim(@text_subtitle) != "" do %>
-            <div class="text-widget-subtitle text-base leading-relaxed opacity-80">
+            <div class="text-widget-subtitle text-base leading-7 opacity-80">
               {text_widget_subtitle(@text_subtitle)}
             </div>
           <% end %>
@@ -542,7 +542,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col min-h-0 gap-0">
-      <ul class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto list-none m-0 p-0">
+      <ul role="list" class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto list-none m-0 p-0">
         <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
           <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
           <li class="first:pt-0 last:pb-0">

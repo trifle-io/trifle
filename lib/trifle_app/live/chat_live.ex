@@ -1741,11 +1741,11 @@ defmodule TrifleApp.ChatLive do
   defp bubble_author_classes(%{role: "user"}), do: "font-semibold text-white"
 
   defp bubble_text_classes(%{role: "assistant"}) do
-    "text-sm text-slate-800 dark:text-slate-100 whitespace-pre-line leading-snug"
+    "text-sm text-slate-800 dark:text-slate-100 whitespace-pre-line leading-5"
   end
 
   defp bubble_text_classes(%{role: "user"}) do
-    "text-sm text-white whitespace-pre-line text-right leading-snug"
+    "text-sm text-white whitespace-pre-line text-right leading-5"
   end
 
   defp bubble_timestamp_classes(%{role: "user"}) do

@@ -119,7 +119,7 @@ defmodule TrifleApp.HomeLive do
                 You don't have any dashboards yet. Add a source to get started.
               </div>
             <% true -> %>
-              <ul class="divide-y divide-gray-200 dark:divide-slate-700">
+              <ul role="list" class="divide-y divide-gray-200 dark:divide-slate-700">
                 <%= for visit <- @dashboard_visits do %>
                   <li class="py-3 flex items-center justify-between">
                     <div>
@@ -199,7 +199,7 @@ defmodule TrifleApp.HomeLive do
                 You don't have any monitors yet. Add a source to get started.
               </div>
             <% true -> %>
-              <ul class="divide-y divide-gray-200 dark:divide-slate-700">
+              <ul role="list" class="divide-y divide-gray-200 dark:divide-slate-700">
                 <%= for monitor <- @triggered_monitors do %>
                   <li class="py-3 flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3">

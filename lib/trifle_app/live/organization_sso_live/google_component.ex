@@ -54,7 +54,7 @@ defmodule TrifleApp.OrganizationSSOLive.GoogleComponent do
           <p class="font-semibold text-amber-900 dark:text-amber-200">
             Configure Google OAuth credentials to enable sign-in.
           </p>
-          <p class="mt-2 leading-relaxed">
+          <p class="mt-2 leading-7">
             Create an OAuth 2.0 Web application in the Google Cloud Console and set the redirect URI to <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-900 dark:text-amber-200">{@sso_info.redirect_uri}</code>.
             Provide the client ID and client secret as environment variables (see the deployment guide below).
           </p>

@@ -59,7 +59,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
           <p class="font-semibold text-amber-900 dark:text-amber-200">
             Connect your own Slack application to enable channel delivery.
           </p>
-          <p class="mt-2 leading-relaxed">
+          <p class="mt-2 leading-7">
             You only need one Slack App for Trifle. After the app is configured you can authorize multiple Slack workspaces
             and map their channels to references such as <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-900 dark:text-amber-200">slack_workspace#incident-room</code>.
           </p>
@@ -99,7 +99,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
               Redeploy the chart so the release picks up the new environment variables.
             </li>
           </ol>
-          <p class="mt-3 leading-relaxed">
+          <p class="mt-3 leading-7">
             When the environment variables are present this panel will unlock the workflow for authorizing workspaces and selecting delivery channels.
           </p>
         </div>
@@ -110,7 +110,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
             class="rounded-lg border border-rose-200 bg-rose-50/80 px-4 py-3 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200"
           >
             <p class="font-medium">Slack reported a configuration issue.</p>
-            <p class="mt-1 leading-relaxed text-xs">
+            <p class="mt-1 leading-7 text-xs">
               Re-run workspace sync and review your Helm values for typos. If the issue persists, redeploy with a fresh client secret and check the app logs for Slack error codes.
             </p>
           </div>
@@ -119,7 +119,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.SlackComponent do
             <p class="font-medium">
               Slack credentials detected. Authorize workspaces and reference channels with the pattern <code class="rounded bg-white/80 dark:bg-slate-700/80 px-1 py-0.5 text-xs text-emerald-700 dark:text-emerald-200">slack_workspace#channel-name</code>.
             </p>
-            <p class="mt-2 leading-relaxed">
+            <p class="mt-2 leading-7">
               One Slack app can authorize multiple workspaces. Each workspace you connect can expose several channels as delivery targets.
             </p>
           </div>

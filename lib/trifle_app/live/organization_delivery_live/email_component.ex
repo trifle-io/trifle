@@ -57,7 +57,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.EmailComponent do
             Email delivery is active via {@email_info.adapter_label ||
               "your configured Swoosh adapter"}.
           </p>
-          <p class="mt-2 leading-relaxed">
+          <p class="mt-2 leading-7">
             Reference recipients anywhere in Trifle using <code class="rounded bg-white/80 dark:bg-slate-700/80 px-1 py-0.5 text-xs text-emerald-700 dark:text-emerald-200">email#you@example.com</code>.
             Messages will be queued through the configured Swoosh adapter and delivered through your infrastructure.
           </p>
@@ -70,7 +70,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.EmailComponent do
           <p class="font-medium">
             Email delivery is currently using the local mailbox adapter.
           </p>
-          <p class="mt-2 leading-relaxed">
+          <p class="mt-2 leading-7">
             Update your Helm values to point Trifle at a real mail provider. The chart exposes Swoosh adapters through
             <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-800 dark:text-amber-200">
               app.mailer.*
@@ -97,7 +97,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.EmailComponent do
               Redeploy the chart so runtime picks up the new environment variables and restarts the app.
             </li>
           </ol>
-          <p class="mt-3 leading-relaxed">
+          <p class="mt-3 leading-7">
             Once complete you can reference real recipients using <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-800 dark:text-amber-200">email#team@example.com</code>.
           </p>
         </div>

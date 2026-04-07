@@ -58,7 +58,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.DiscordComponent do
           <p class="font-semibold text-amber-900 dark:text-amber-200">
             Connect a Discord bot to enable channel delivery.
           </p>
-          <p class="mt-2 leading-relaxed">
+          <p class="mt-2 leading-7">
             One Discord application can serve all of your Trifle organizations. After the bot is configured you can authorize multiple servers and map their channels to references such as <code class="rounded bg-white/70 dark:bg-slate-800/80 px-1 py-0.5 text-xs text-amber-900 dark:text-amber-200">discord_server#alerts</code>.
           </p>
           <ol class="mt-3 list-decimal space-y-2 pl-5">
@@ -97,7 +97,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.DiscordComponent do
               Redeploy so the release picks up the new environment variables.
             </li>
           </ol>
-          <p class="mt-3 leading-relaxed">
+          <p class="mt-3 leading-7">
             When the environment variables are present this panel unlocks the workflow for authorizing servers and selecting delivery targets.
           </p>
         </div>
@@ -110,7 +110,7 @@ defmodule TrifleApp.OrganizationDeliveryLive.DiscordComponent do
             <p class="font-medium">
               Discord credentials detected. Reference channels with <code class="rounded bg-white/80 dark:bg-slate-700/80 px-1 py-0.5 text-xs text-indigo-700 dark:text-indigo-200">discord_server#channel</code>.
             </p>
-            <p class="mt-2 leading-relaxed">
+            <p class="mt-2 leading-7">
               One Discord bot can join multiple servers. Each server you connect exposes its text channels as delivery targets.
             </p>
           </div>

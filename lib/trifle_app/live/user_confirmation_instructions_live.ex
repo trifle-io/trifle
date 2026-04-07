@@ -11,7 +11,7 @@ defmodule TrifleApp.UserConfirmationInstructionsLive do
           <div class="flex justify-center">
             <.trifle_logo class="h-20 w-auto text-teal-600 dark:text-teal-400" />
           </div>
-          <h1 class="mt-6 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h1 class="mt-6 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
             Resend confirmation email
           </h1>
           <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">

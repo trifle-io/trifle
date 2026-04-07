@@ -282,7 +282,7 @@ defmodule TrifleApp.ProjectBillingLive do
               </div>
 
               <%!-- Feature list --%>
-              <ul class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
+              <ul role="list" class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
                 <%= if limit = tier[:hard_limit] do %>
                   <li class="flex items-start gap-2">
                     <.check_icon />

@@ -353,7 +353,7 @@ defmodule TrifleApp.OrganizationBillingLive do
               </div>
 
               <%!-- Feature list --%>
-              <ul class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
+              <ul role="list" class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
                 <li class="flex items-start gap-2">
                   <.check_icon />
                   <span>{tier_user_label(tier)}</span>

@@ -135,7 +135,7 @@ defmodule TrifleApp.Components.DashboardPage do
           <div class="flex items-center justify-between">
             <!-- Left: Title only -->
             <div class="min-w-0">
-              <h1 class="text-2xl font-bold text-gray-900 dark:text-white truncate">
+              <h1 class="truncate text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
                 {@dashboard.name}
               </h1>
             </div>
