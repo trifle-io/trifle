@@ -147,7 +147,7 @@ defmodule TrifleApp.DesignSystem.FormContainer do
         "border-t border-gray-200 dark:border-slate-700 pt-6"
 
       "slide_over" ->
-        "flex-shrink-0 border-t border-gray-200 dark:border-slate-700 px-4 py-5 sm:px-6"
+        "shrink-0 border-t border-gray-200 dark:border-slate-700 px-4 py-5 sm:px-6"
     end
   end
 end

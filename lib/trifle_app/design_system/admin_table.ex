@@ -29,15 +29,15 @@ defmodule TrifleApp.DesignSystem.AdminTable do
 
   def admin_table_header(assigns) do
     ~H"""
-    <div class={["sm:flex sm:items-center", @class]}>
+    <div class={["sm:flex sm:items-center sm:gap-6", @class]}>
       <div class="sm:flex-auto">
-        <h1 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">{@title}</h1>
+        <h1 class="text-base font-semibold text-gray-900 dark:text-white">{@title}</h1>
         <%= if @description do %>
           <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">{@description}</p>
         <% end %>
       </div>
       <%= if @actions != [] do %>
-        <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
+        <div class="mt-4 sm:mt-0 sm:flex-none">
           {render_slot(@actions)}
         </div>
       <% end %>

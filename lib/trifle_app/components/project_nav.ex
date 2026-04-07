@@ -8,7 +8,7 @@ defmodule TrifleApp.Components.ProjectNav do
   def project_nav(assigns) do
     ~H"""
     <div class="border-b border-gray-200 dark:border-slate-700">
-      <nav class="-mb-px flex space-x-4 sm:space-x-8" aria-label="Project tabs">
+      <nav class="-mb-px flex gap-4 sm:gap-8" aria-label="Project tabs">
         <.nav_link
           id={:transponders}
           current={@current}

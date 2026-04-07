@@ -73,7 +73,7 @@ defmodule TrifleApp.MonitorComponents do
             Once triggers occur, you will see a chronological log with the reason and outcome.
           </p>
         </div>
-        <ul :if={Enum.any?(@executions)} class="mt-3 space-y-2">
+        <ul :if={Enum.any?(@executions)} role="list" class="mt-3 space-y-2">
           <li
             :for={execution <- @executions}
             class={[

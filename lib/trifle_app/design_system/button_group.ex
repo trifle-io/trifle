@@ -93,7 +93,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
 
   defp button_classes(button, position) do
     base_classes =
-      "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus:outline-none focus-visible:outline-none focus:bg-white dark:focus:bg-slate-800 active:bg-white dark:active:bg-slate-800"
+      "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800"
 
     position_classes =
       case position do

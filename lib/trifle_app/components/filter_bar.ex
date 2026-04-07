@@ -28,7 +28,7 @@ defmodule TrifleApp.Components.FilterBar do
                   type="button"
                   phx-target={@myself}
                   phx-click="toggle_source_dropdown"
-                  class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:hover:bg-slate-700"
+                  class="relative w-full h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus-visible:border-teal-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500 dark:hover:bg-slate-700"
                 >
                   <div class="flex items-center justify-between">
                     <span class="truncate">
@@ -58,7 +58,7 @@ defmodule TrifleApp.Components.FilterBar do
                   <div
                     phx-click-away="hide_source_dropdown"
                     phx-target={@myself}
-                    class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                    class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black/5 focus-visible:outline-none sm:text-sm"
                   >
                     <%= for {group_type, sources} <- grouped_sources(@sources) do %>
                       <div class="py-1">
@@ -170,7 +170,7 @@ defmodule TrifleApp.Components.FilterBar do
           </div>
           
     <!-- Controls and Granularity Section -->
-          <div class="flex items-center gap-4 flex-shrink-0 md:w-full md:justify-end lg:w-auto lg:ml-auto">
+          <div class="flex shrink-0 items-center gap-4 md:w-full md:justify-end lg:w-auto lg:ml-auto">
             <!-- Controls Section -->
             <%= if @show_controls do %>
               <div id="controls-container" phx-hook="FastTooltip">
@@ -302,7 +302,7 @@ defmodule TrifleApp.Components.FilterBar do
                   type="button"
                   phx-target={@myself}
                   phx-click="toggle_granularity_dropdown"
-                  class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:hover:bg-slate-700"
+                  class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus-visible:border-teal-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500 dark:hover:bg-slate-700"
                 >
                   <div class="flex items-center justify-between">
                     <span>{Granularity.display_name(@granularity)}</span>
@@ -331,7 +331,7 @@ defmodule TrifleApp.Components.FilterBar do
                   <div
                     phx-click-away="hide_granularity_dropdown"
                     phx-target={@myself}
-                    class="absolute z-50 mt-1 w-40 max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                    class="absolute z-50 mt-1 w-40 max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black/5 focus-visible:outline-none sm:text-sm"
                   >
                     <%= for granularity <- @available_granularities do %>
                       <button
@@ -718,7 +718,7 @@ defmodule TrifleApp.Components.FilterBar do
             phx-value-granularity={granularity}
             data-tooltip={Granularity.display_name(granularity)}
             class={[
-              "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus:outline-none focus-visible:outline-none focus:bg-white dark:focus:bg-slate-800 active:bg-white dark:active:bg-slate-800",
+              "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800",
               case position do
                 :only -> "rounded-md"
                 :first -> "rounded-l-md"

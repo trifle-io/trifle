@@ -26,7 +26,7 @@ defmodule TrifleApp.TranspondersComponents do
           </div>
           <.link
             patch={@new_path}
-            class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+            class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
           >
             <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
               <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
@@ -78,7 +78,7 @@ defmodule TrifleApp.TranspondersComponents do
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3">
-                    <div class="flex-shrink-0 text-gray-400 dark:text-slate-500 text-lg font-medium min-w-[2rem] text-center">
+                    <div class="shrink-0 text-gray-400 dark:text-slate-500 text-lg font-medium min-w-[2rem] text-center">
                       {transponder.order + 1}
                     </div>
 
@@ -184,7 +184,7 @@ defmodule TrifleApp.TranspondersComponents do
                       phx-click="toggle_transponder"
                       phx-value-id={transponder.id}
                       class={[
-                        "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:focus:ring-offset-slate-800",
+                        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800",
                         if(transponder.enabled,
                           do: "bg-teal-600",
                           else: "bg-gray-200 dark:bg-slate-600"

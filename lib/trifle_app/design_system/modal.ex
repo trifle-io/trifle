@@ -43,7 +43,7 @@ defmodule TrifleApp.DesignSystem.Modal do
       phx-key={if(cancel_action, do: "escape", else: nil)}
     >
       <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-80 transition-opacity">
+        <div class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-slate-900/80">
         </div>
 
         <div class={[
@@ -57,7 +57,7 @@ defmodule TrifleApp.DesignSystem.Modal do
               <button
                 type="button"
                 phx-click={cancel_action}
-                class="rounded-md bg-white dark:bg-slate-800 text-gray-400 dark:text-slate-500 hover:text-gray-500 dark:hover:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+                class="rounded-md bg-white text-gray-400 hover:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-400 dark:focus-visible:ring-offset-slate-800"
               >
                 <span class="sr-only">Close</span>
                 <svg
@@ -77,7 +77,7 @@ defmodule TrifleApp.DesignSystem.Modal do
           <div class={["sm:flex sm:items-start", if(@size == "full", do: "flex-none")]}>
             <div class="mt-3 w-full text-center sm:ml-0 sm:mt-0 sm:text-left">
               <h3
-                class="text-base font-semibold leading-6 text-gray-900 dark:text-white"
+                class="text-base font-semibold text-gray-900 dark:text-white"
                 id={"#{@id}-title"}
               >
                 {render_slot(@title)}
@@ -93,7 +93,7 @@ defmodule TrifleApp.DesignSystem.Modal do
     <!-- Actions -->
           <%= if @actions != [] do %>
             <div class={[
-              "mt-5 sm:mt-6 sm:flex sm:justify-end sm:space-x-3",
+              "mt-5 sm:mt-6 sm:flex sm:justify-end sm:gap-3",
               if(@size == "full", do: "flex-none")
             ]}>
               {render_slot(@actions)}

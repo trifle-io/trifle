@@ -393,7 +393,7 @@ defmodule TrifleApp.Components.DashboardFooter do
     <%= if @show_error_modal && @summary && length(@summary.transponder_errors || []) > 0 do %>
       <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-          <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75">
+          <div class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-gray-900/75">
           </div>
 
           <div
@@ -401,7 +401,7 @@ defmodule TrifleApp.Components.DashboardFooter do
             phx-click-away="hide_transponder_errors"
           >
             <div class="sm:flex sm:items-start">
-              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
+              <div class="mx-auto flex shrink-0 items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 sm:mx-0 sm:h-10 sm:w-10">
                 <svg
                   class="h-6 w-6 text-red-600 dark:text-red-400"
                   fill="none"
@@ -417,7 +417,7 @@ defmodule TrifleApp.Components.DashboardFooter do
                 </svg>
               </div>
               <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Transponder Errors
                 </h3>
                 <div class="mt-4">
@@ -442,7 +442,7 @@ defmodule TrifleApp.Components.DashboardFooter do
               <button
                 type="button"
                 phx-click="hide_transponder_errors"
-                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gray-600 text-base font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:ml-3 sm:w-auto sm:text-sm"
+                class="w-full inline-flex justify-center rounded-md border border-transparent bg-gray-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500 sm:w-auto sm:text-sm"
               >
                 Close
               </button>

@@ -76,7 +76,7 @@ defmodule TrifleApp.Components.DeliverySelector do
             class="absolute left-0 right-0 top-full z-[12060] mt-2 max-h-60 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg"
             x-on:mousedown="cancelScheduledClose()"
           >
-            <ul class="divide-y divide-slate-100 dark:divide-slate-800">
+            <ul role="list" class="divide-y divide-slate-100 dark:divide-slate-800">
               <template x-for="(option, index) in filtered" x-bind:key="option.handle">
                 <li>
                   <button
