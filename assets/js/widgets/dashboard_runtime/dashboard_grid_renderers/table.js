@@ -176,9 +176,10 @@ export const createDashboardGridTableRendererMethods = ({
           }
           const value = (params && params.value != null) ? params.value : '';
           const pathColor = params && params.data ? params.data.__tablePathColor : '';
+          const pathHtml = params && params.data ? params.data[TABLE_PATH_HTML_FIELD] : '';
           const wrapper = document.createElement('div');
           wrapper.className = 'aggrid-path-cell';
-          this._populate_table_path_cell(wrapper, value, pathColor);
+          this._populate_table_path_cell(wrapper, value, pathColor, pathHtml);
           return wrapper;
         };
         baseDef.cellClass += ' aggrid-path-cell-wrapper';
@@ -408,8 +409,15 @@ export const createDashboardGridTableRendererMethods = ({
     };
   },
 
-  _populate_table_path_cell(wrapper, value, color) {
+  _populate_table_path_cell(wrapper, value, color, html = '') {
     if (!wrapper) return;
+    const safeHtml = typeof html === 'string' ? html.trim() : '';
+
+    if (safeHtml !== '') {
+      wrapper.innerHTML = safeHtml;
+      return;
+    }
+
     const label = value == null ? '' : String(value);
     const safeColor = this._normalize_table_path_color(color);
 

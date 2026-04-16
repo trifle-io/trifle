@@ -204,7 +204,8 @@ Hooks.ExpandedAgGridTable = {
           const value =
             params && params.value != null ? String(params.value) : (params && params.data && params.data.path) || '';
           const color = params && params.data ? params.data.__pathColor : '';
-          this.populatePathCell(wrapper, value, color);
+          const html = params && params.data ? params.data.__pathHtml : '';
+          this.populatePathCell(wrapper, value, color, html);
           return wrapper;
         },
         cellClass: 'aggrid-path-cell-wrapper aggrid-body-cell ag-left-aligned-cell',
@@ -243,7 +244,8 @@ Hooks.ExpandedAgGridTable = {
     return rows.map((row) => {
       const data = {
         path: row && (row.display_path || row.path || ''),
-        __pathColor: row && row.path_color ? row.path_color : ''
+        __pathColor: row && row.path_color ? row.path_color : '',
+        __pathHtml: row && row.path_html ? row.path_html : ''
       };
       const values = Array.isArray(row && row.values) ? row.values : [];
       columns.forEach((_, idx) => {
@@ -258,8 +260,15 @@ Hooks.ExpandedAgGridTable = {
     return input.replace(/<[^>]*>/g, '').trim();
   },
 
-  populatePathCell(wrapper, value, color) {
+  populatePathCell(wrapper, value, color, html = '') {
     if (!wrapper) return;
+    const safeHtml = typeof html === 'string' ? html.trim() : '';
+
+    if (safeHtml !== '') {
+      wrapper.innerHTML = safeHtml;
+      return;
+    }
+
     const label = value == null ? '' : String(value);
     const safeColor = this.normalizePathColor(color);
 
