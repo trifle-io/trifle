@@ -1,6 +1,6 @@
 defmodule Trifle.Chat.OpenAIClient do
   @moduledoc """
-  Minimal OpenAI HTTP client tailored for ChatLive.
+  Minimal OpenAI HTTP client tailored for Baker Agent chat.
   """
 
   require Logger

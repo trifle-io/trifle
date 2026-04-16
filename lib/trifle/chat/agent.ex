@@ -1,6 +1,6 @@
 defmodule Trifle.Chat.Agent do
   @moduledoc """
-  Orchestrates the ChatLive conversation loop with OpenAI and internal tools.
+  Orchestrates the Baker Agent conversation loop with OpenAI and internal tools.
   """
 
   alias MapSet

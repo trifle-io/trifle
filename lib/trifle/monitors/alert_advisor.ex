@@ -1,7 +1,7 @@
 defmodule Trifle.Monitors.AlertAdvisor do
   @moduledoc """
   Generates AI-assisted alert configuration recommendations by leveraging the
-  existing OpenAI integration used for ChatLive. The advisor takes the
+  existing OpenAI integration used for Baker Agent chat. The advisor takes the
   monitor's configured metric series, prepares a concise payload for the
   current alert strategy, and asks OpenAI to propose sensible configuration
   values for the desired sensitivity variant.

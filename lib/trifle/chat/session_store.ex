@@ -1,6 +1,6 @@
 defmodule Trifle.Chat.SessionStore do
   @moduledoc """
-  Persistence layer for ChatLive sessions backed by Postgres.
+  Persistence layer for Baker Agent chat sessions backed by Postgres.
 
   The store keeps a single rolling conversation per user, organization,
   and analytics source combination. Messages are appended in order while

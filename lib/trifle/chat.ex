@@ -1,6 +1,6 @@
 defmodule Trifle.Chat do
   @moduledoc """
-  Public-facing API for the ChatLive feature.
+  Public-facing API for the Baker Agent chat feature.
   """
 
   alias Trifle.Chat.Agent

@@ -99,7 +99,6 @@ defmodule TrifleApp.Router do
       live "/monitors/new", MonitorsLive, :new
       live "/monitors/:id", MonitorLive, :show
       live "/monitors/:id/configure", MonitorLive, :configure
-      live "/chat", ChatLive, :show
       live "/projects", ProjectsLive, :index
       live "/projects/new", ProjectsLive, :new
       live "/projects/:id", ProjectRedirectLive, :index

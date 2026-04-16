@@ -1,6 +1,6 @@
 defmodule Trifle.Chat.Session do
   @moduledoc """
-  In-memory representation of a ChatLive conversation persisted to Postgres.
+  In-memory representation of a Baker Agent conversation persisted to Postgres.
 
   A session belongs to a specific user within an organization and analytics
   source. The message list mirrors the OpenAI chat API payload while adding

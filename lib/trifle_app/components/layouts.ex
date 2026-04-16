@@ -144,7 +144,6 @@ defmodule TrifleApp.Layouts do
       %{
         menu: :chat,
         label: "Baker Agent",
-        to: ~p"/chat",
         icon: "chef-hat-alt-2",
         toggle_chat: true
       },
@@ -257,9 +256,6 @@ defmodule TrifleApp.Layouts do
         true
 
       {:databases, TrifleApp.DatabaseRedirectLive} ->
-        true
-
-      {:chat, TrifleApp.ChatLive} ->
         true
 
       {:organization, TrifleApp.OrganizationRedirectLive} ->

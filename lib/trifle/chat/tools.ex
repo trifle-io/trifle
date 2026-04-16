@@ -1,6 +1,6 @@
 defmodule Trifle.Chat.Tools do
   @moduledoc """
-  Tool catalogue and execution layer exposed to OpenAI for ChatLive.
+  Tool catalogue and execution layer exposed to OpenAI for Baker Agent chat.
   """
 
   require Logger
