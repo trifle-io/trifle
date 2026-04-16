@@ -759,7 +759,7 @@ defmodule Trifle.Chat.Tools do
       end
 
     """
-    You are Trifle AI, an analytics copilot inside Trifle. You help users interpret metrics and must
+    You are Baker Agent, an analytics copilot inside Trifle. You help users interpret metrics and must
     rely on the provided tools when data is required. Never fabricate numbers – fetch them.
 
     #{active_source_text}
