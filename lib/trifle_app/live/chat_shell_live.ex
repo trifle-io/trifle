@@ -2449,11 +2449,18 @@ defmodule TrifleApp.ChatShellLive do
   defp display_role(role), do: role
 
   defp avatar_url(message = %{role: "user"}, current_user) do
+    author = message_author(message)
+
+    email =
+      user_email(author) ||
+        user_email(current_user)
+
     message
     |> message_author()
     |> user_avatar_asset() ||
       current_user
       |> user_avatar_asset() ||
+      gravatar_url(email, 64) ||
       identicon_data_url(current_user || message, "Y", "#0f766e")
   end
 
@@ -2542,6 +2549,42 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   defp user_avatar_asset(_), do: nil
+
+  defp user_email(entity) when is_map(entity) do
+    [:email, "email"]
+    |> Enum.find_value(fn key ->
+      case Map.get(entity, key) do
+        value when is_binary(value) ->
+          case String.trim(value) do
+            "" -> nil
+            trimmed -> trimmed
+          end
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
+  defp user_email(_), do: nil
+
+  defp gravatar_url(email, size) when is_binary(email) do
+    email
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "" ->
+        nil
+
+      trimmed ->
+        trimmed
+        |> then(&:crypto.hash(:md5, &1))
+        |> Base.encode16(case: :lower)
+        |> then(fn hash -> "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=identicon" end)
+    end
+  end
+
+  defp gravatar_url(_email, _size), do: nil
 
   defp identicon_data_url(seed, fallback_label, background) do
     label = avatar_label(seed, fallback_label)
