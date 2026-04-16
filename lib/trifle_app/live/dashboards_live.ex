@@ -911,8 +911,8 @@ defmodule TrifleApp.DashboardsLive do
   defp render_dashboard(assigns) do
     ~H"""
     <div
-      class="pr-0 py-3 group border-b border-gray-100 dark:border-slate-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 grid items-center"
-      style={"padding-left: #{max(@level, 0) * 12 + 12}px; grid-template-columns: minmax(0,1fr) auto auto; column-gap: 1.5rem;"}
+      class="group grid cursor-pointer items-center gap-x-3 border-b border-gray-100 py-3 hover:bg-gray-50 [grid-template-columns:minmax(0,1fr)_auto] dark:border-slate-700 dark:hover:bg-slate-700/50 md:gap-x-6 md:[grid-template-columns:minmax(0,1fr)_auto_auto]"
+      style={"padding-left: #{max(@level, 0) * 12 + 12}px;"}
       data-id={@dashboard.id}
       data-type="dashboard"
       phx-click="dashboard_clicked"
@@ -943,14 +943,14 @@ defmodule TrifleApp.DashboardsLive do
           </span>
         </div>
       </div>
-      <div class="justify-self-end mr-6">
+      <div class="justify-self-end pr-3 sm:pr-0 sm:mr-6">
         <%= if @dashboard.user do %>
           <div class="h-6 w-6" title={"Created by #{@dashboard.user.email}"}>
             <img src={gravatar_url(@dashboard.user.email)} class="h-6 w-6 rounded-full" />
           </div>
         <% end %>
       </div>
-      <div class="flex items-center gap-2 justify-self-end mr-3" phx-click="noop">
+      <div class="flex items-center gap-2 justify-self-end mr-3 max-md:hidden" phx-click="noop">
         <div class="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
           <%= if @can_clone_dashboard do %>
             <button
