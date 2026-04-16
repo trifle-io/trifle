@@ -415,13 +415,14 @@ Hooks.DashboardGrid = {
     } catch (_) {}
 
     // LiveView -> Hook updates for widget edits/deletes
-    this.handleEvent('dashboard_grid_widget_updated', ({ id, title, type }) => {
+    this.handleEvent('dashboard_grid_widget_updated', ({ id, title, type, group_header_style }) => {
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
       const content = item && item.querySelector('.grid-stack-item-content');
       const titleEl = item && item.querySelector('.grid-widget-title');
       const widgetType = type ? String(type).toLowerCase() : ((content && content.dataset && content.dataset.widgetType) || '');
       const isTextWidget = widgetType === 'text';
       const isListWidget = widgetType === 'list';
+      const isGroupWidget = widgetType === 'group';
 
       // The dashboard grid root uses phx-update="ignore", so widget shell metadata
       // must be updated manually after saves or the next layout sync can serialize
@@ -464,6 +465,50 @@ Hooks.DashboardGrid = {
           titleEl.style.opacity = '';
           titleEl.style.pointerEvents = '';
           titleEl.textContent = title;
+        }
+      }
+
+      if (isGroupWidget && content) {
+        const header = content.querySelector('.grid-widget-header');
+        const editButton = content.querySelector('.grid-widget-edit');
+        const editIcon = editButton && editButton.querySelector('svg');
+
+        if (header) {
+          const shouldReset = !group_header_style || group_header_style.default;
+
+          if (shouldReset) {
+            header.style.backgroundColor = '';
+            header.style.color = '';
+            header.style.borderColor = '';
+          } else {
+            header.style.backgroundColor = group_header_style.background || '';
+            header.style.color = group_header_style.text || '';
+            header.style.borderColor = group_header_style.border || '';
+          }
+        }
+
+        if (titleEl) {
+          if (!group_header_style || group_header_style.default) {
+            titleEl.style.color = '';
+          } else {
+            titleEl.style.color = group_header_style.text || '';
+          }
+        }
+
+        if (editButton) {
+          if (!group_header_style || group_header_style.default) {
+            editButton.style.color = '';
+          } else {
+            editButton.style.color = group_header_style.text || '';
+          }
+        }
+
+        if (editIcon) {
+          if (!group_header_style || group_header_style.default) {
+            editIcon.style.color = '';
+          } else {
+            editIcon.style.color = group_header_style.text || '';
+          }
         }
       }
 

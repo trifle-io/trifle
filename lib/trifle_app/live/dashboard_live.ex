@@ -661,6 +661,8 @@ defmodule TrifleApp.DashboardLive do
                %{payload: payload}
              ) do
           {:ok, dashboard} ->
+            saved_item = LayoutTree.find_node(updated, id) || %{}
+
             # After saving, recompute KPI values if stats already loaded
             socket =
               socket
@@ -670,11 +672,10 @@ defmodule TrifleApp.DashboardLive do
 
             {:noreply,
              socket
-             |> push_event("dashboard_grid_widget_updated", %{
-               id: id,
-               title: title,
-               type: resolved_type
-             })}
+             |> push_event(
+               "dashboard_grid_widget_updated",
+               widget_update_event_payload(id, title, resolved_type, saved_item)
+             )}
 
           {:error, _} ->
             {:noreply, socket}
@@ -768,13 +769,7 @@ defmodule TrifleApp.DashboardLive do
          subtype when not is_nil(subtype) <- param(params, "text_subtype") do
       w = socket.assigns.editing_widget || %{"id" => id}
       normalized = DashboardWidgetHelpers.normalize_text_subtype(subtype)
-
-      w =
-        w
-        |> Map.put("subtype", normalized)
-        |> Map.put_new("color", "default")
-
-      {:noreply, assign_editing_widget(socket, w)}
+      {:noreply, assign_editing_widget(socket, Map.put(w, "subtype", normalized))}
     else
       _ -> {:noreply, socket}
     end
@@ -784,8 +779,14 @@ defmodule TrifleApp.DashboardLive do
     with id when not is_nil(id) <- param(params, "widget_id"),
          color when not is_nil(color) <- param(params, "color") do
       w = socket.assigns.editing_widget || %{"id" => id}
-      normalized = DashboardWidgetHelpers.normalize_text_color_id(color)
-      w = Map.put(w, "color", normalized)
+      normalized = DashboardWidgetHelpers.normalize_surface_color_selector(color)
+
+      w =
+        put_optional_widget_field(
+          w,
+          "background_color_selector",
+          normalized
+        )
 
       {:noreply, assign_editing_widget(socket, w)}
     else
@@ -2985,7 +2986,14 @@ defmodule TrifleApp.DashboardLive do
 
     case type do
       "group" ->
-        LayoutTree.normalize_group_item(widget)
+        header_color_selector =
+          params
+          |> Map.get("group_header_color_selector", Map.get(widget, "header_color_selector"))
+          |> DashboardWidgetHelpers.normalize_surface_color_selector()
+
+        widget
+        |> put_optional_widget_field("header_color_selector", header_color_selector)
+        |> LayoutTree.normalize_group_item()
 
       "kpi" ->
         subtype =
@@ -3091,20 +3099,24 @@ defmodule TrifleApp.DashboardLive do
           |> Map.get("text_subtype", Map.get(widget, "subtype") || "header")
           |> DashboardWidgetHelpers.normalize_text_subtype()
 
-        color_id =
+        background_color_selector =
           params
-          |> Map.get("text_color", Map.get(widget, "color"))
-          |> DashboardWidgetHelpers.normalize_text_color_id()
+          |> Map.get(
+            "text_background_color_selector",
+            Map.get(widget, "background_color_selector")
+          )
+          |> DashboardWidgetHelpers.normalize_surface_color_selector()
 
         widget =
           widget
           |> Map.put("type", "text")
           |> Map.put("subtype", subtype)
-          |> Map.put("color", color_id)
+          |> put_optional_widget_field("background_color_selector", background_color_selector)
           |> drop_series_display_options()
           |> Map.delete("path_inputs")
           |> Map.delete("series")
           |> Map.delete("series_color_selectors")
+          |> Map.delete("color")
 
         widget =
           if Map.has_key?(params, "text_payload") do
@@ -3237,6 +3249,43 @@ defmodule TrifleApp.DashboardLive do
     |> Map.delete("color_mode")
     |> Map.delete("color_config")
   end
+
+  defp put_optional_widget_field(widget, _field, _value) when not is_map(widget), do: widget
+
+  defp put_optional_widget_field(widget, field, value) do
+    case value do
+      nil -> Map.delete(widget, field)
+      "" -> Map.delete(widget, field)
+      normalized -> Map.put(widget, field, normalized)
+    end
+  end
+
+  defp widget_update_event_payload(id, title, type, item) do
+    base = %{
+      id: id,
+      title: title,
+      type: type
+    }
+
+    if type == "group" and is_map(item) do
+      Map.put(base, :group_header_style, group_header_style_payload(item))
+    else
+      base
+    end
+  end
+
+  defp group_header_style_payload(group) when is_map(group) do
+    surface = DashboardWidgetHelpers.group_header_surface_colors(group)
+
+    %{
+      default: Map.get(surface, :default?, true),
+      background: Map.get(surface, :background),
+      text: Map.get(surface, :text),
+      border: Map.get(surface, :border)
+    }
+  end
+
+  defp group_header_style_payload(_), do: nil
 
   defp put_metric_series(base, params, source_widget, opts \\ [])
        when is_map(base) and is_map(source_widget) do
@@ -3416,7 +3465,13 @@ defmodule TrifleApp.DashboardLive do
 
     case type do
       "group" ->
-        LayoutTree.normalize_group_item(base)
+        header_color_selector =
+          Map.get(params, "group_header_color_selector", item["header_color_selector"])
+          |> DashboardWidgetHelpers.normalize_surface_color_selector()
+
+        base
+        |> put_optional_widget_field("header_color_selector", header_color_selector)
+        |> LayoutTree.normalize_group_item()
 
       "kpi" ->
         subtype =
@@ -3531,15 +3586,15 @@ defmodule TrifleApp.DashboardLive do
           Map.get(params, "text_subtype", item["subtype"] || "header")
           |> DashboardWidgetHelpers.normalize_text_subtype()
 
-        color_id =
-          Map.get(params, "text_color", item["color"])
-          |> DashboardWidgetHelpers.normalize_text_color_id()
+        background_color_selector =
+          Map.get(params, "text_background_color_selector", item["background_color_selector"])
+          |> DashboardWidgetHelpers.normalize_surface_color_selector()
 
         base =
           base
           |> Map.put("type", "text")
           |> Map.put("subtype", subtype)
-          |> Map.put("color", color_id)
+          |> put_optional_widget_field("background_color_selector", background_color_selector)
           |> drop_series_display_options()
           |> Map.delete("path")
           |> Map.delete("function")
@@ -3559,6 +3614,7 @@ defmodule TrifleApp.DashboardLive do
           |> Map.delete("y_label")
           |> Map.delete("series")
           |> Map.delete("series_color_selectors")
+          |> Map.delete("color")
 
         case subtype do
           "html" ->

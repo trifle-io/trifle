@@ -47,6 +47,26 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     assert Helpers.resolve_series_color("custom.#FF00AA", 0) == "#FF00AA"
   end
 
+  test "normalizes widget surface selectors to single colors" do
+    assert Helpers.normalize_surface_color_selector(nil) == nil
+    assert Helpers.normalize_surface_color_selector("  ") == nil
+    assert Helpers.normalize_surface_color_selector("default.*") == "default.0"
+    assert Helpers.normalize_surface_color_selector("warm.4") == "warm.4"
+    assert Helpers.normalize_surface_color_selector("custom.#14b8a6") == "custom.#14B8A6"
+  end
+
+  test "resolves widget surface styles with readable foreground colors" do
+    default_surface = Helpers.resolve_surface_style(nil, default_background: "#FFFFFF")
+    custom_surface = Helpers.resolve_surface_style("cool.4", default_background: "#FFFFFF")
+
+    assert default_surface.default?
+    assert default_surface.background == "#FFFFFF"
+    assert default_surface.text == "#0F172A"
+    refute custom_surface.default?
+    assert custom_surface.background == "#0EA5E9"
+    assert custom_surface.text == "#0F172A"
+  end
+
   test "builds selector map from typed paths and selector list" do
     path_inputs = ["metrics.a.*", "metrics.b", ""]
     selector_values = ["default.*", "default.3", "default.1"]

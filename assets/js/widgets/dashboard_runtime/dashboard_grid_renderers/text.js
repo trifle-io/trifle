@@ -93,15 +93,19 @@ export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => 
 
       const bg = typeof it.background_color === 'string' ? it.background_color : '';
       const fg = typeof it.text_color === 'string' ? it.text_color : '';
-
-      const colorId = (it.color_id || 'default').toLowerCase();
-      const hasCustomColor = colorId !== 'default' && bg && isHexColor(bg);
+      const border = typeof it.border_color === 'string' ? it.border_color : '';
+      const usesDefaultBackground = !!it.uses_default_background;
+      const hasCustomColor = !usesDefaultBackground && bg && isHexColor(bg);
 
       if (hasCustomColor) {
         content.style.backgroundColor = bg;
         content.style.color = fg || '';
-        const isDark = isColorDark(bg);
-        content.style.borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)';
+        if (border) {
+          content.style.borderColor = border;
+        } else {
+          const isDark = isColorDark(bg);
+          content.style.borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)';
+        }
         content.dataset.customBg = '1';
       } else {
         content.style.backgroundColor = '';

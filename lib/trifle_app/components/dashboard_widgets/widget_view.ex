@@ -542,7 +542,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class="grid-widget-body flex-1 flex flex-col min-h-0 gap-0">
-      <ul role="list" class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto list-none m-0 p-0">
+      <ul
+        role="list"
+        class="flex-1 divide-y divide-gray-100 dark:divide-slate-800 overflow-auto list-none m-0 p-0"
+      >
         <%= for item <- Enum.reject(@list_items, &is_nil/1) do %>
           <% selected = list_item_selected?(item, @list_selected_key, @list_selected_path) %>
           <li class="first:pt-0 last:pb-0">
@@ -761,17 +764,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   end
 
   defp content_style("text", dataset) do
-    color_id = value_for(dataset, :color_id) || "default"
+    uses_default_background = truthy?(value_for(dataset, :uses_default_background))
     background = value_for(dataset, :background_color)
     text_color = value_for(dataset, :text_color)
+    border_color = value_for(dataset, :border_color)
 
-    if background && String.downcase(color_id) != "default" do
-      border_color =
-        if background && color_dark?(background),
-          do: "rgba(255,255,255,0.12)",
-          else: "rgba(15,23,42,0.08)"
-
-      "background-color: #{background}; color: #{text_color || ""}; border-color: #{border_color};"
+    if background && !uses_default_background do
+      "background-color: #{background}; color: #{text_color || ""}; border-color: #{border_color || ""};"
     else
       nil
     end
@@ -976,32 +975,6 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     |> String.replace(~r/(\.\d*?)0+$/, "\\1")
     |> String.trim_trailing(".")
   end
-
-  defp color_dark?(color) when is_binary(color) do
-    color
-    |> String.trim()
-    |> String.downcase()
-    |> case do
-      <<"#", rest::binary>> ->
-        color_dark?(rest)
-
-      <<r1::binary-size(1), r2::binary-size(1), g1::binary-size(1), g2::binary-size(1),
-        b1::binary-size(1), b2::binary-size(1)>> ->
-        with {r, ""} <- Integer.parse(r1 <> r2, 16),
-             {g, ""} <- Integer.parse(g1 <> g2, 16),
-             {b, ""} <- Integer.parse(b1 <> b2, 16) do
-          luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-          luminance < 0.5
-        else
-          _ -> false
-        end
-
-      _ ->
-        false
-    end
-  end
-
-  defp color_dark?(_), do: false
 
   defp normalize_export_params(params) when is_map(params), do: params
 
@@ -1401,6 +1374,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   def group_item(assigns) do
     group_id = widget_id(assigns.group)
     children = LayoutTree.group_children(assigns.group)
+    header_surface = WidgetHelpers.group_header_surface_colors(assigns.group)
 
     assigns =
       assigns
@@ -1409,6 +1383,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:min_grid, group_min_grid_position(assigns.group))
       |> assign(:title, widget_title(assigns.group))
       |> assign(:children, children)
+      |> assign(:group_header_surface, header_surface)
       |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
 
     ~H"""
@@ -1431,12 +1406,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-item-kind="group"
         data-widget-title={@title}
       >
-        <div class="grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80">
+        <div
+          class="grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80"
+          style={group_header_style(@group_header_surface)}
+        >
           <div class="grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0">
-            <div
-              class="grid-widget-title font-semibold truncate text-slate-800 dark:text-slate-100"
-              data-original-title={@title}
-            >
+            <div class={group_title_classnames(@group_header_surface)} data-original-title={@title}>
               {@title}
             </div>
           </div>
@@ -1444,7 +1419,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <%= if @editable do %>
               <button
                 type="button"
-                class="grid-widget-edit inline-flex items-center p-1 rounded group"
+                class={group_edit_button_classnames(@group_header_surface)}
                 data-widget-id={@group_id}
                 title="Edit group"
               >
@@ -1454,7 +1429,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   viewBox="0 0 24 24"
                   stroke-width="1.5"
                   stroke="currentColor"
-                  class="h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-100"
+                  class={group_edit_icon_classnames(@group_header_surface)}
                 >
                   <path
                     stroke-linecap="round"
@@ -1515,6 +1490,44 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       </div>
     </div>
     """
+  end
+
+  defp group_header_style(%{default?: true}), do: nil
+
+  defp group_header_style(%{background: background, text: text, border: border}) do
+    "background-color: #{background}; color: #{text}; border-color: #{border};"
+  end
+
+  defp group_title_classnames(%{default?: true}) do
+    ["grid-widget-title", "font-semibold", "truncate", "text-slate-800", "dark:text-slate-100"]
+  end
+
+  defp group_title_classnames(_surface) do
+    ["grid-widget-title", "font-semibold", "truncate", "text-current"]
+  end
+
+  defp group_edit_button_classnames(%{default?: true}) do
+    ["grid-widget-edit", "inline-flex", "items-center", "p-1", "rounded", "group"]
+  end
+
+  defp group_edit_button_classnames(_surface) do
+    ["grid-widget-edit", "inline-flex", "items-center", "p-1", "rounded", "group", "text-current"]
+  end
+
+  defp group_edit_icon_classnames(%{default?: true}) do
+    [
+      "h-4",
+      "w-4",
+      "text-slate-600",
+      "dark:text-slate-300",
+      "transition-colors",
+      "group-hover:text-slate-800",
+      "dark:group-hover:text-slate-100"
+    ]
+  end
+
+  defp group_edit_icon_classnames(_surface) do
+    ["h-4", "w-4", "text-current", "transition-colors"]
   end
 
   defp widget_payload(assigns, widget) do

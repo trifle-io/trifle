@@ -212,6 +212,92 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert String.contains?(classes, "text-widget-body")
   end
 
+  test "renders explicit text widget background styles server-side" do
+    grid_items = [
+      %{
+        "id" => "text-colored",
+        "type" => "text",
+        "title" => "Styled",
+        "subtitle" => "Colored shell",
+        "background_color_selector" => "cool.4",
+        "w" => 4,
+        "h" => 2,
+        "x" => 0,
+        "y" => 0
+      }
+    ]
+
+    dataset_maps =
+      nil
+      |> WidgetData.datasets(grid_items)
+      |> WidgetData.dataset_maps()
+
+    assigns = %{
+      dashboard: %{id: "dash-colored", payload: %{"grid" => grid_items}},
+      grid_dom_id: "chat-grid-colored",
+      print_mode: false,
+      current_user: nil,
+      can_edit_dashboard: false,
+      is_public_access: false,
+      public_token: nil,
+      kpi_values: dataset_maps.kpi_values,
+      kpi_visuals: dataset_maps.kpi_visuals,
+      timeseries: dataset_maps.timeseries,
+      category: dataset_maps.category,
+      table: dataset_maps.table,
+      text_widgets: dataset_maps.text,
+      list: dataset_maps.list,
+      distribution: dataset_maps.distribution
+    }
+
+    html = render_component(&WidgetView.grid/1, assigns)
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"div", attrs, _}] =
+      Floki.find(document, "#chat-grid-colored-grid-widget-content-text-colored")
+
+    style = attrs |> Map.new() |> Map.get("style", "")
+
+    assert style =~ "background-color: #0EA5E9"
+    assert style =~ "color: #0F172A"
+  end
+
+  test "renders group header color without styling the whole group shell" do
+    group = %{
+      "id" => "group-1",
+      "type" => "group",
+      "title" => "Latency",
+      "header_color_selector" => "warm.4",
+      "x" => 0,
+      "y" => 0,
+      "w" => 6,
+      "h" => 4,
+      "children" => []
+    }
+
+    html =
+      render_component(&WidgetView.group_item/1,
+        group: group,
+        dashboard: %{id: "dash-group", payload: %{"grid" => [group]}},
+        editable: true
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"div", shell_attrs, _}] =
+      Floki.find(document, "#dashboard-grid-grid-widget-content-group-1")
+
+    refute Map.has_key?(Map.new(shell_attrs), "style")
+
+    [{"div", header_attrs, _}] =
+      Floki.find(document, "#dashboard-grid-grid-widget-content-group-1 .grid-widget-header")
+
+    style = header_attrs |> Map.new() |> Map.get("style", "")
+
+    assert style =~ "background-color: #F97316"
+    assert style =~ "color: #0F172A"
+  end
+
   test "renders list widget entries", %{assigns: assigns} do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)

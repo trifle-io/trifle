@@ -34,6 +34,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
     "td" => MapSet.new(~w[colspan rowspan])
   }
   @safe_url_schemes ["http", "https", "mailto", "tel"]
+  @default_text_widget_background "#FFFFFF"
+  @default_group_header_background "#F8FAFC"
+  @light_surface_text_color "#0F172A"
+  @dark_surface_text_color "#F8FAFC"
+  @light_surface_border_color "rgba(15,23,42,0.08)"
+  @dark_surface_border_color "rgba(255,255,255,0.12)"
 
   ## Text helpers
 
@@ -90,6 +96,95 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def normalize_text_color_id(value) do
     resolve_text_widget_color(value).id
   end
+
+  def default_text_widget_background_preview, do: @default_text_widget_background
+  def default_group_header_background_preview, do: @default_group_header_background
+
+  def text_widget_background_selector_for_form(widget) when is_map(widget) do
+    widget
+    |> Map.get("background_color_selector", Map.get(widget, :background_color_selector))
+    |> normalize_surface_color_selector()
+  end
+
+  def text_widget_background_selector_for_form(_), do: nil
+
+  def group_header_color_selector_for_form(widget) when is_map(widget) do
+    widget
+    |> Map.get("header_color_selector", Map.get(widget, :header_color_selector))
+    |> normalize_surface_color_selector()
+  end
+
+  def group_header_color_selector_for_form(_), do: nil
+
+  def normalize_surface_color_selector(selector) do
+    case selector |> to_string() |> String.trim() do
+      "" ->
+        nil
+
+      value ->
+        value
+        |> normalize_series_color_selector()
+        |> parse_series_color_selector()
+        |> case do
+          %{type: :palette_rotate, palette_id: palette_id} ->
+            "#{palette_id}.0"
+
+          %{type: :single_palette, palette_id: palette_id, index: index} ->
+            "#{palette_id}.#{index}"
+
+          %{type: :single_custom, color: color} ->
+            "custom.#{color}"
+        end
+    end
+  end
+
+  def resolve_surface_style(selector, opts \\ []) do
+    fallback_background =
+      opts
+      |> Keyword.get(:default_background, @default_text_widget_background)
+      |> normalize_hex_color()
+      |> Kernel.||(@default_text_widget_background)
+
+    normalized_selector = normalize_surface_color_selector(selector)
+
+    background =
+      case normalized_selector do
+        nil ->
+          fallback_background
+
+        value ->
+          resolve_series_color(value, 0)
+          |> normalize_hex_color()
+          |> Kernel.||(fallback_background)
+      end
+
+    dark? = dark_hex_color?(background)
+
+    %{
+      selector: normalized_selector,
+      default?: is_nil(normalized_selector),
+      background: background,
+      text: if(dark?, do: @dark_surface_text_color, else: @light_surface_text_color),
+      border: if(dark?, do: @dark_surface_border_color, else: @light_surface_border_color)
+    }
+  end
+
+  def text_widget_surface_colors(widget) when is_map(widget) do
+    widget
+    |> Map.get("background_color_selector", Map.get(widget, :background_color_selector))
+    |> resolve_surface_style(default_background: @default_text_widget_background)
+  end
+
+  def text_widget_surface_colors(_), do: resolve_surface_style(nil)
+
+  def group_header_surface_colors(widget) when is_map(widget) do
+    widget
+    |> Map.get("header_color_selector", Map.get(widget, :header_color_selector))
+    |> resolve_surface_style(default_background: @default_group_header_background)
+  end
+
+  def group_header_surface_colors(_),
+    do: resolve_surface_style(nil, default_background: @default_group_header_background)
 
   def sanitize_text_widget_html(value) do
     safe_html =
@@ -1336,6 +1431,23 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   defp normalize_hex_color(_), do: nil
+
+  defp dark_hex_color?(value) do
+    case normalize_hex_color(value) do
+      <<"#", r::binary-size(2), g::binary-size(2), b::binary-size(2)>> ->
+        with {red, ""} <- Integer.parse(r, 16),
+             {green, ""} <- Integer.parse(g, 16),
+             {blue, ""} <- Integer.parse(b, 16) do
+          luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255
+          luminance < 0.5
+        else
+          _ -> false
+        end
+
+      _ ->
+        false
+    end
+  end
 
   defp normalize_palette_id(value) do
     palette_id =

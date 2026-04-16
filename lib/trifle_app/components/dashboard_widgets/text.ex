@@ -20,15 +20,16 @@ defmodule TrifleApp.Components.DashboardWidgets.Text do
   def widget(item) do
     id = to_string(item["id"])
     subtype = WidgetHelpers.normalize_text_subtype(item["subtype"])
-    color = WidgetHelpers.resolve_text_widget_color(item["color"])
+    surface = WidgetHelpers.text_widget_surface_colors(item)
 
     base = %{
       id: id,
       subtype: subtype,
       title: to_string(item["title"] || ""),
-      color_id: color.id,
-      background_color: color.background,
-      text_color: color.text
+      uses_default_background: surface.default?,
+      background_color: surface.background,
+      text_color: surface.text,
+      border_color: surface.border
     }
 
     case subtype do

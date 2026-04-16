@@ -141,6 +141,40 @@ defmodule TrifleApp.DashboardLiveTest do
     assert Regex.match?(~r/id="widget_title".*dark:bg-slate-800/s, render(view))
   end
 
+  test "text widgets preview and save a background selector", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_change(view, "widget_editor_change", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "text",
+      "widget_title" => "Original Title",
+      "text_subtype" => "header",
+      "text_background_color_selector" => "warm.3"
+    })
+
+    assert render(view) =~ "background-color: #F59E0B"
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "text",
+      "widget_title" => "Original Title",
+      "text_subtype" => "header",
+      "text_background_color_selector" => "warm.3"
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["background_color_selector"] == "warm.3"
+    refute Map.has_key?(widget, "color")
+  end
+
   test "saves metric widgets with series rows and drops legacy path fields", %{
     conn: conn,
     dashboard: dashboard,
@@ -688,7 +722,20 @@ defmodule TrifleApp.DashboardLiveTest do
     render_submit(view, "save_widget", %{
       "widget_id" => "group-1",
       "widget_type" => "group",
-      "widget_title" => "Latency Group"
+      "widget_title" => "Latency Group",
+      "group_header_color_selector" => "cool.4"
+    })
+
+    assert_push_event(view, "dashboard_grid_widget_updated", %{
+      id: "group-1",
+      title: "Latency Group",
+      type: "group",
+      group_header_style: %{
+        background: "#0EA5E9",
+        border: "rgba(15,23,42,0.08)",
+        default: false,
+        text: "#0F172A"
+      }
     })
 
     updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
@@ -696,6 +743,7 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert group["type"] == "group"
     assert group["title"] == "Latency Group"
+    assert group["header_color_selector"] == "cool.4"
     assert [%{"id" => "widget-1"}] = group["children"]
 
     html =
@@ -708,6 +756,7 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert html =~ "grid-widget-title"
     assert html =~ ~s(data-original-title="Latency Group")
+    assert html =~ "background-color: #0EA5E9"
 
     render_hook(view, "dashboard_grid_changed", %{
       "items" => [
@@ -737,6 +786,7 @@ defmodule TrifleApp.DashboardLiveTest do
     [group_after_layout] = updated_after_layout.payload["grid"]
 
     assert group_after_layout["title"] == "Latency Group"
+    assert group_after_layout["header_color_selector"] == "cool.4"
   end
 
   test "moving a widget into a group preserves its original type and payload", %{
