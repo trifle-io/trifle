@@ -47,6 +47,7 @@ defmodule TrifleApp.Components.PathInput do
         autocomplete="off"
         spellcheck="false"
         data-role={@input_data_role}
+        data-path-autocomplete-input="true"
       />
       <div
         id={"#{@id}-suggestions"}

@@ -139,6 +139,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
       )
 
     assert html =~ ~s(data-role="path-preview")
+    assert html =~ ~s(data-role="series-path")
+    assert html =~ ~s(data-path-autocomplete-input="true")
     assert html =~ ~s(data-paths=)
     assert html =~ "state.success"
     refute html =~ "overflow-hidden rounded-md border border-gray-300"

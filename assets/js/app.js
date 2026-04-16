@@ -2120,7 +2120,9 @@ Hooks.PathAutocomplete = {
   },
 
   refreshElements() {
-    const nextInput = this.el.querySelector('[data-role="path-input"]');
+    const nextInput =
+      this.el.querySelector('[data-path-autocomplete-input="true"]') ||
+      this.el.querySelector('[data-role="path-input"]');
     const nextPathPreview = this.el.querySelector('[data-role="path-preview"]');
     const nextSuggestionBox = this.el.querySelector('[data-role="suggestions"]');
 
