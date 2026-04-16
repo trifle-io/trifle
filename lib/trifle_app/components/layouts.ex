@@ -14,7 +14,11 @@ defmodule TrifleApp.Layouts do
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
       |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
       |> assign(:chat_toggle?, Map.get(assigns.item, :toggle_chat, false))
-      |> assign(:icon_size_class, sidebar_icon_size_class(assigns.item))
+      |> assign(:icon_size_style, sidebar_icon_size_style(assigns.item))
+      |> assign(:icon_bind_attrs, [
+        {"x-bind:style",
+         "compact ? '#{sidebar_compact_icon_size_style(assigns.item)}' : '#{sidebar_icon_size_style(assigns.item)}'"}
+      ])
 
     link_attrs =
       if assigns.chat_toggle? do
@@ -62,7 +66,7 @@ defmodule TrifleApp.Layouts do
         />
         <span
           class="flex items-center gap-3"
-          x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
+          x-bind:class="compact ? 'mx-auto h-9 w-9 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
         >
           <span class={[
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition",
@@ -71,10 +75,11 @@ defmodule TrifleApp.Layouts do
             <TrifleApp.SidebarIcons.icon
               name={@item.icon}
               class={[
-                @icon_size_class,
                 "shrink-0 transition",
                 SidebarHelpers.sidebar_icon_classes(@active?, :teal)
               ]}
+              style={@icon_size_style}
+              {@icon_bind_attrs}
             />
           </span>
           <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
@@ -108,7 +113,7 @@ defmodule TrifleApp.Layouts do
         />
         <span
           class="flex items-center gap-3"
-          x-bind:class="compact ? 'mx-auto h-10 w-10 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
+          x-bind:class="compact ? 'mx-auto h-9 w-9 justify-center px-0' : 'min-h-[3.1rem] w-full justify-start px-3.5'"
         >
           <span class={[
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition",
@@ -117,10 +122,11 @@ defmodule TrifleApp.Layouts do
             <TrifleApp.SidebarIcons.icon
               name={@item.icon}
               class={[
-                @icon_size_class,
                 "shrink-0 transition",
                 SidebarHelpers.sidebar_icon_classes(@active?, :teal)
               ]}
+              style={@icon_size_style}
+              {@icon_bind_attrs}
             />
           </span>
           <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
@@ -135,7 +141,13 @@ defmodule TrifleApp.Layouts do
   def nav_items do
     [
       %{menu: :home, label: "Home", to: ~p"/", icon: "sidebar-home"},
-      %{menu: :chat, label: "Baker Agent", to: ~p"/chat", icon: "chef-hat-alt-2", toggle_chat: true},
+      %{
+        menu: :chat,
+        label: "Baker Agent",
+        to: ~p"/chat",
+        icon: "chef-hat-alt-2",
+        toggle_chat: true
+      },
       %{menu: :dashboards, label: "Dashboards", to: ~p"/dashboards", icon: "sidebar-dashboards"},
       %{menu: :monitors, label: "Monitors", to: ~p"/monitors", icon: "sidebar-monitors"},
       %{menu: :explore, label: "Explore", to: ~p"/explore", icon: "sidebar-explore"},
@@ -190,8 +202,13 @@ defmodule TrifleApp.Layouts do
     nav_items() ++ secondary_nav_items(current_user, current_membership)
   end
 
-  defp sidebar_icon_size_class(%{icon: "chef-hat-alt-2"}), do: "h-[1.3rem] w-[1.3rem]"
-  defp sidebar_icon_size_class(_item), do: "h-[1.05rem] w-[1.05rem]"
+  defp sidebar_icon_size_style(%{icon: "chef-hat-alt-2"}), do: "height: 1.3rem; width: 1.3rem;"
+  defp sidebar_icon_size_style(_item), do: "height: 1.05rem; width: 1.05rem;"
+
+  defp sidebar_compact_icon_size_style(%{icon: "chef-hat-alt-2"}),
+    do: "height: 1.45rem; width: 1.45rem;"
+
+  defp sidebar_compact_icon_size_style(_item), do: "height: 1.2rem; width: 1.2rem;"
 
   defp active_nav?(%Phoenix.LiveView.Socket{} = socket, menu) do
     view = socket.view
