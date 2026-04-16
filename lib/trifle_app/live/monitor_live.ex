@@ -2660,6 +2660,10 @@ defmodule TrifleApp.MonitorLive do
         sources={@sources || []}
         selected_source={@selected_source_ref}
         source_locked={true}
+        loading={@loading}
+        loading_progress={@loading_progress}
+        transponding={@transponding}
+        show_transponding_status={false}
       />
 
       <div class="grid gap-6 lg:grid-cols-3">
@@ -2683,33 +2687,6 @@ defmodule TrifleApp.MonitorLive do
               not AlertSeries.has_final_row?(@monitor) %>
 
           <div class="relative">
-            <% progress = @loading_progress %>
-            <% show_overlay? = progress && progress.total && progress.total > 0 %>
-
-            <%= if show_overlay? do %>
-              <% percent = min(progress.current / progress.total * 100, 100.0) %>
-              <div class="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 dark:bg-slate-900/80">
-                <div class="flex flex-col items-center space-y-3">
-                  <div class="flex items-center space-x-2">
-                    <div class="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-teal-500 dark:border-slate-600">
-                    </div>
-                    <span class="text-sm text-gray-600 dark:text-white">
-                      Scientificating piece {progress.current} of {progress.total}...
-                    </span>
-                  </div>
-                  <div class="h-2 w-64">
-                    <div class="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-600">
-                      <div
-                        class="h-2 rounded-full bg-teal-500 transition-all duration-300"
-                        style={"width: #{Float.round(percent, 1)}%"}
-                      >
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            <% end %>
-
             <%= cond do %>
               <% report_missing_dashboard? -> %>
                 <div class="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center dark:border-slate-600 dark:bg-slate-900/30">
@@ -2752,6 +2729,7 @@ defmodule TrifleApp.MonitorLive do
                   can_edit_dashboard={false}
                   is_public_access={true}
                   print_mode={false}
+                  loading={@loading}
                   kpi_values={@insights_kpi_values}
                   kpi_visuals={@insights_kpi_visuals}
                   timeseries={@insights_timeseries}

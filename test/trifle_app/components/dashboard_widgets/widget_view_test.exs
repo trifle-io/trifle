@@ -437,4 +437,51 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert [_] = Floki.find(document, "#chat-grid-1-widget-download-menu-kpi-1")
     assert [_] = Floki.find(document, "#chat-grid-1-aggrid-table-table-1")
   end
+
+  test "renders centered widget loading bodies on first load when datasets are missing", %{
+    assigns: assigns
+  } do
+    empty_assigns =
+      assigns
+      |> Map.put(:loading, true)
+      |> Map.put(:kpi_values, %{})
+      |> Map.put(:kpi_visuals, %{})
+      |> Map.put(:timeseries, %{})
+      |> Map.put(:category, %{})
+      |> Map.put(:table, %{})
+      |> Map.put(:text_widgets, %{})
+      |> Map.put(:list, %{})
+      |> Map.put(:distribution, %{})
+
+    html = render_component(&WidgetView.grid/1, empty_assigns)
+    {:ok, document} = Floki.parse_document(html)
+
+    assert [_] =
+             Floki.find(
+               document,
+               "#chat-grid-1-grid-widget-content-kpi-1 [data-role=\"widget-loading-body\"]"
+             )
+
+    [{"div", attrs, _}] = Floki.find(document, "#chat-grid-1-widget-data-kpi-1")
+    assert Map.new(attrs)["data-widget-loading-state"] == "initial"
+  end
+
+  test "renders header refresh spinners when data already exists during loading", %{
+    assigns: assigns
+  } do
+    html = render_component(&WidgetView.grid/1, Map.put(assigns, :loading, true))
+
+    {:ok, document} = Floki.parse_document(html)
+
+    assert [_] =
+             Floki.find(
+               document,
+               "#chat-grid-1-grid-widget-content-kpi-1 [data-role=\"widget-refresh-spinner\"]"
+             )
+
+    assert [_] = Floki.find(document, "#chat-grid-1-grid-widget-content-kpi-1 .kpi-wrap")
+
+    [{"div", attrs, _}] = Floki.find(document, "#chat-grid-1-widget-data-kpi-1")
+    assert Map.new(attrs)["data-widget-loading-state"] == "refresh"
+  end
 end

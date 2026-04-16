@@ -13,7 +13,38 @@ defmodule TrifleApp.Components.FilterBar do
   def render(assigns) do
     ~H"""
     <div class="sticky top-0 z-50 mb-6">
-      <div class="rounded-2xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 p-4 shadow-lg dark:shadow-none backdrop-blur-xl transition-colors">
+      <div
+        class="relative rounded-2xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 p-4 shadow-lg dark:shadow-none backdrop-blur-xl transition-colors"
+        aria-busy={if show_loading_status?(assigns), do: "true", else: "false"}
+      >
+        <%= if show_loading_status?(assigns) do %>
+          <div class="absolute inset-0 z-[60] flex items-center justify-center rounded-2xl bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90">
+            <div class="flex flex-col items-center space-y-3">
+              <div class="flex items-center space-x-2">
+                <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500">
+                </div>
+                <span class="text-sm text-gray-600 dark:text-white">
+                  <%= if show_transponding_status?(assigns) do %>
+                    Transponding data...
+                  <% else %>
+                    Scientificating piece {@loading_progress.current} of {@loading_progress.total}...
+                  <% end %>
+                </span>
+              </div>
+              <div class="w-64 h-2">
+                <%= if show_loading_progress?(assigns) do %>
+                  <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                    <div
+                      class="bg-teal-500 h-2 rounded-full transition-all duration-300"
+                      style={"width: #{loading_progress_percent(assigns)}%"}
+                    >
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
         <div class="flex flex-col md:flex-row md:flex-wrap lg:flex-nowrap md:items-start lg:items-center gap-3 lg:gap-4">
           
     <!-- Source Dropdown (optional; only if >1 source) -->
@@ -409,6 +440,17 @@ defmodule TrifleApp.Components.FilterBar do
 
     range_mode = Map.get(assigns, :range_mode, socket.assigns[:range_mode] || :exclusive_end)
     clamp_to_now = Map.get(assigns, :clamp_to_now, Map.get(socket.assigns, :clamp_to_now, true))
+    loading = Map.get(assigns, :loading, false)
+    loading_chunks = Map.get(assigns, :loading_chunks, false)
+    loading_progress = Map.get(assigns, :loading_progress, nil)
+    transponding = Map.get(assigns, :transponding, false)
+
+    show_transponding_status =
+      Map.get(
+        assigns,
+        :show_transponding_status,
+        Map.get(socket.assigns, :show_transponding_status, true)
+      )
 
     socket =
       socket
@@ -418,6 +460,11 @@ defmodule TrifleApp.Components.FilterBar do
       |> assign(:selected_source, selected_source_ref)
       |> assign(:range_mode, range_mode)
       |> assign(:clamp_to_now, clamp_to_now)
+      |> assign(:loading, loading)
+      |> assign(:loading_chunks, loading_chunks)
+      |> assign(:loading_progress, loading_progress)
+      |> assign(:transponding, transponding)
+      |> assign(:show_transponding_status, show_transponding_status)
       |> assign(current_input_value: current_input)
 
     # Ensure source dropdown visibility flag exists (component manages it internally)
@@ -677,6 +724,39 @@ defmodule TrifleApp.Components.FilterBar do
     send(self(), {:filter_bar, message})
   end
 
+  defp show_loading_status?(assigns) do
+    show_loading_progress?(assigns) || show_transponding_status?(assigns)
+  end
+
+  defp show_loading_progress?(assigns) do
+    progress = Map.get(assigns, :loading_progress)
+    is_map(progress) && is_integer(progress.total) && progress.total > 0
+  end
+
+  defp show_transponding_status?(assigns) do
+    Map.get(assigns, :show_transponding_status, true) &&
+      Map.get(assigns, :loading_chunks, false) &&
+      Map.get(assigns, :transponding, false)
+  end
+
+  defp loading_progress_percent(assigns) do
+    progress = Map.get(assigns, :loading_progress, %{})
+    current = Map.get(progress, :current) || Map.get(progress, "current") || 0
+    total = Map.get(progress, :total) || Map.get(progress, "total") || 0
+
+    cond do
+      !is_number(current) or !is_number(total) or total <= 0 ->
+        0
+
+      true ->
+        current
+        |> Kernel./(total)
+        |> Kernel.*(100)
+        |> min(100.0)
+        |> Float.round(1)
+    end
+  end
+
   defp get_input_value(smart_timeframe_input, _use_fixed_display, from, to) do
     cond do
       # Always show the datetime range if we have from/to dates
@@ -699,10 +779,7 @@ defmodule TrifleApp.Components.FilterBar do
       <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
         Granularity
       </label>
-      <div
-        class="inline-flex rounded-md ring-1 ring-black/10 dark:ring-white/10"
-        role="group"
-      >
+      <div class="inline-flex rounded-md ring-1 ring-black/10 dark:ring-white/10" role="group">
         <%= for {granularity, index} <- Enum.with_index(@available_granularities) do %>
           <% position =
             cond do

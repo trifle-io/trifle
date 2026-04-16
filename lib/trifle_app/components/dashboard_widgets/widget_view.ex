@@ -32,6 +32,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :print_width, :integer, default: nil
   attr :print_cell_height, :integer, default: nil
   attr :transponder_info, :map, default: %{}
+  attr :loading, :boolean, default: false
   attr :grid_dom_id, :string, default: nil
 
   def grid(assigns) do
@@ -60,6 +61,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:distribution, fn -> %{} end)
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
+      |> assign_new(:loading, fn -> false end)
       |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
       |> assign_new(:print_width, fn -> nil end)
       |> assign(:dataset_maps, build_dataset_maps(assigns))
@@ -113,6 +115,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               dashboard={@dashboard}
               widget_export={@widget_export}
               transponder_info={@transponder_info}
+              loading={@loading}
             />
           <% else %>
             <.grid_item
@@ -133,6 +136,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               dashboard={@dashboard}
               widget_export={@widget_export}
               transponder_info={@transponder_info}
+              loading={@loading}
             />
           <% end %>
         <% end %>
@@ -148,6 +152,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           data-widget-type={payload.widget_type}
           data-title={payload.title}
           data-widget-payload={payload.payload_json}
+          data-widget-loading-state={payload.widget_loading_state}
           data-grid-id={@grid_dom_id}
           phx-hook="DashboardWidgetData"
         >
@@ -745,6 +750,22 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     """
   end
 
+  defp widget_loading_body(assigns) do
+    ~H"""
+    <div
+      class="grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400"
+      data-role="widget-loading-body"
+      data-widget-loading-state="initial"
+    >
+      <div
+        class="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-teal-500 dark:border-slate-600"
+        aria-label="Loading widget"
+      >
+      </div>
+    </div>
+    """
+  end
+
   defp content_classnames(_widget_type) do
     [
       "grid-stack-item-content",
@@ -781,6 +802,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp header_classnames("text") do
     [
       "grid-widget-header",
+      "relative",
       "flex",
       "items-center",
       "justify-between",
@@ -796,6 +818,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp header_classnames(_widget_type) do
     [
       "grid-widget-header",
+      "relative",
       "flex",
       "items-center",
       "justify-between",
@@ -1056,6 +1079,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :dashboard, :map, required: true
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :transponder_info, :map, default: %{}
+  attr :loading, :boolean, default: false
   attr :grid_dom_id, :string, default: nil
   attr :nested, :boolean, default: false
 
@@ -1086,6 +1110,23 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:text_dataset, text_dataset)
       |> assign(:list_dataset, list_dataset)
       |> assign(:distribution_dataset, distribution_dataset)
+      |> assign(
+        :widget_loading_state,
+        widget_loading_state(
+          widget_type,
+          Map.get(assigns, :loading, false),
+          %{
+            kpi_value: kpi_value_dataset,
+            kpi_visual: kpi_visual_dataset,
+            timeseries: timeseries_dataset,
+            category: category_dataset,
+            table: table_dataset,
+            text: text_dataset,
+            list: list_dataset,
+            distribution: distribution_dataset
+          }
+        )
+      )
       |> assign(:content_classnames, content_classnames(widget_type))
       |> assign(:header_classnames, header_classnames(widget_type))
       |> assign(:title_classnames, title_classnames(widget_type))
@@ -1121,6 +1162,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-text-widget={if @widget_type == "text", do: "1", else: nil}
         data-list-widget={if @widget_type == "list", do: "1", else: nil}
         data-widget-title={widget_title_data(@widget_type, @text_dataset, @title)}
+        data-widget-loading-state={@widget_loading_state || "idle"}
         style={content_style(@widget_type, @text_dataset)}
       >
         <div class={@header_classnames} style={header_style(@widget_type)}>
@@ -1138,6 +1180,16 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               {title_content(@widget_type, @title)}
             </div>
           </div>
+          <%= if @widget_loading_state == :refresh do %>
+            <div
+              class="grid-widget-loading-indicator pointer-events-none absolute left-1/2 top-1/2 z-10 inline-flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-teal-600 dark:text-teal-300"
+              data-role="widget-refresh-spinner"
+              aria-label="Refreshing widget"
+            >
+              <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent">
+              </span>
+            </div>
+          <% end %>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
             <%= unless @print_mode do %>
               <% export_links =
@@ -1347,7 +1399,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <% end %>
           </div>
         </div>
-        {render_widget_body(assigns)}
+        <%= if @widget_loading_state == :initial do %>
+          <.widget_loading_body />
+        <% else %>
+          {render_widget_body(assigns)}
+        <% end %>
       </div>
     </div>
     """
@@ -1369,6 +1425,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :dashboard, :map, required: true
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :transponder_info, :map, default: %{}
+  attr :loading, :boolean, default: false
   attr :grid_dom_id, :string, default: nil
 
   def group_item(assigns) do
@@ -1475,6 +1532,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   dashboard={@dashboard}
                   widget_export={@widget_export}
                   transponder_info={@transponder_info}
+                  loading={Map.get(assigns, :loading, false)}
                 />
               <% end %>
             </div>
@@ -1536,6 +1594,18 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     dataset_maps = Map.get(assigns, :dataset_maps, %{})
     payload = Registry.client_payload(widget_type, widget_id, dataset_maps)
 
+    widget_loading_state =
+      widget_loading_state(widget_type, Map.get(assigns, :loading, false), %{
+        kpi_value: dataset_value(dataset_maps.kpi_values, widget_id),
+        kpi_visual: dataset_value(dataset_maps.kpi_visuals, widget_id),
+        timeseries: dataset_value(dataset_maps.timeseries, widget_id),
+        category: dataset_value(dataset_maps.category, widget_id),
+        table: dataset_value(dataset_maps.table, widget_id),
+        text: dataset_value(dataset_maps.text, widget_id),
+        list: dataset_value(dataset_maps.list, widget_id),
+        distribution: dataset_value(dataset_maps.distribution, widget_id)
+      })
+
     envelope = %{
       id: widget_id,
       type: widget_type,
@@ -1547,7 +1617,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       widget_id: widget_id,
       widget_type: widget_type,
       title: widget_title(widget),
-      payload_json: Jason.encode!(envelope)
+      payload_json: Jason.encode!(envelope),
+      widget_loading_state: widget_loading_state || "idle"
     }
   end
 
@@ -1567,6 +1638,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp map_or_empty(value) when is_map(value), do: value
   defp map_or_empty(_value), do: %{}
 
+  defp dataset_value(map, id), do: fetch_dataset(map, id)
+
   defp fetch_dataset(map, id) when is_map(map) do
     map
     |> Map.get(id)
@@ -1577,6 +1650,49 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   end
 
   defp fetch_dataset(_map, _id), do: nil
+
+  defp widget_loading_state(widget_type, true, datasets) do
+    if dynamic_widget?(widget_type) do
+      if widget_has_renderable_data?(widget_type, datasets), do: :refresh, else: :initial
+    else
+      nil
+    end
+  end
+
+  defp widget_loading_state(_widget_type, _loading, _datasets), do: nil
+
+  defp dynamic_widget?(widget_type),
+    do:
+      widget_type in ["kpi", "timeseries", "category", "table", "list", "distribution", "heatmap"]
+
+  defp widget_has_renderable_data?("kpi", datasets) do
+    present_dataset?(Map.get(datasets, :kpi_value)) ||
+      present_dataset?(Map.get(datasets, :kpi_visual))
+  end
+
+  defp widget_has_renderable_data?("timeseries", datasets),
+    do: present_dataset?(Map.get(datasets, :timeseries))
+
+  defp widget_has_renderable_data?("category", datasets),
+    do: present_dataset?(Map.get(datasets, :category))
+
+  defp widget_has_renderable_data?("table", datasets),
+    do: present_dataset?(Map.get(datasets, :table))
+
+  defp widget_has_renderable_data?("list", datasets),
+    do: present_dataset?(Map.get(datasets, :list))
+
+  defp widget_has_renderable_data?("distribution", datasets),
+    do: present_dataset?(Map.get(datasets, :distribution))
+
+  defp widget_has_renderable_data?("heatmap", datasets),
+    do: present_dataset?(Map.get(datasets, :distribution))
+
+  defp widget_has_renderable_data?(_widget_type, _datasets), do: false
+
+  defp present_dataset?(nil), do: false
+  defp present_dataset?(dataset) when is_map(dataset), do: dataset != %{}
+  defp present_dataset?(_dataset), do: true
 
   defp widget_type(widget) do
     Registry.widget_type(widget)

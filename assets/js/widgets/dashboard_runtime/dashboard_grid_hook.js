@@ -1650,8 +1650,8 @@ Hooks.DashboardGrid = {
         </svg>
       </button>` : '';
     return `
-      <div class=\"grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group\" data-widget-id=\"${safeWidgetId}\" data-widget-type=\"${this.escapeHtml(widgetType)}\" data-item-kind=\"widget\" data-widget-title=\"${this.escapeHtml(titleText)}\">
-        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">
+      <div class=\"grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group\" data-widget-id=\"${safeWidgetId}\" data-widget-type=\"${this.escapeHtml(widgetType)}\" data-item-kind=\"widget\" data-widget-title=\"${this.escapeHtml(titleText)}\" data-widget-loading-state=\"idle\">
+        <div class=\"grid-widget-header relative flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">
           <div class=\"grid-widget-handle ${handleClass} cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\" data-original-title=\"${this.escapeHtml(titleText)}\">${this.escapeHtml(titleText)}</div></div>
           <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
             <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Expand widget\">
@@ -2094,6 +2094,104 @@ Hooks.DashboardGrid = {
     delete registry.text[normalizedId];
     delete registry.list[normalizedId];
     delete registry.distribution[normalizedId];
+  },
+
+  setWidgetLoadingState(type, id, state = 'idle') {
+    if (!id) return;
+    const normalizedType = type == null ? '' : String(type).toLowerCase();
+    const normalizedState =
+      (state === 'initial' || state === 'refresh') && this._widgetSupportsLoadingState(normalizedType)
+        ? state
+        : 'idle';
+    const item = this.el ? this.el.querySelector(`.grid-stack-item[gs-id="${String(id)}"]`) : null;
+    if (!item) return;
+    const content = item.querySelector('.grid-stack-item-content');
+    if (!content) return;
+    content.dataset.widgetLoadingState = normalizedState;
+    this._syncWidgetRefreshSpinner(content, normalizedState);
+    this._syncWidgetLoadingBody(content, normalizedType, normalizedState);
+  },
+
+  _widgetSupportsLoadingState(type) {
+    return ['kpi', 'timeseries', 'category', 'table', 'list', 'distribution', 'heatmap'].includes(type);
+  },
+
+  _syncWidgetRefreshSpinner(content, state) {
+    if (!content || !content.querySelector) return;
+    const header = content.querySelector('.grid-widget-header');
+    if (!header) return;
+    const actions = content.querySelector('.grid-widget-actions');
+    const existing = header.querySelector('[data-role="widget-refresh-spinner"]');
+    if (state === 'refresh') {
+      if (existing) return;
+      const spinner = document.createElement('div');
+      spinner.className = 'grid-widget-loading-indicator pointer-events-none absolute left-1/2 top-1/2 z-10 inline-flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-teal-600 dark:text-teal-300';
+      spinner.setAttribute('data-role', 'widget-refresh-spinner');
+      spinner.setAttribute('aria-label', 'Refreshing widget');
+      spinner.innerHTML = '<span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>';
+      header.insertBefore(spinner, actions || null);
+      return;
+    }
+    if (existing) existing.remove();
+  },
+
+  _syncWidgetLoadingBody(content, type, state) {
+    if (!content || !content.querySelector) return;
+    const body = content.querySelector('.grid-widget-body');
+    if (!body) return;
+    const isLoadingBody =
+      body.getAttribute('data-role') === 'widget-loading-body' ||
+      body.dataset.widgetLoadingState === 'initial';
+
+    if (state === 'initial') {
+      body.className = 'grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400';
+      body.setAttribute('data-role', 'widget-loading-body');
+      body.dataset.widgetLoadingState = 'initial';
+      body.innerHTML =
+        '<div class="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-teal-500 dark:border-slate-600" data-role="widget-loading-spinner" aria-label="Loading widget"></div>';
+      return;
+    }
+
+    if (!isLoadingBody) return;
+
+    body.removeAttribute('data-role');
+    delete body.dataset.widgetLoadingState;
+
+    if (!this._widgetBodyHasRenderedContent(type, body)) {
+      this._restoreWidgetPlaceholderBody(type, body, content);
+    }
+  },
+
+  _widgetBodyHasRenderedContent(type, body) {
+    if (!body) return false;
+    const text = (body.textContent || '').trim();
+    const hasMeaningfulText = text !== '' && text !== 'Chart is coming soon';
+    switch (type) {
+      case 'kpi':
+        return !!body.querySelector('.kpi-wrap');
+      case 'timeseries':
+        return !!body.querySelector('.ts-chart') || hasMeaningfulText;
+      case 'category':
+        return !!body.querySelector('.cat-chart') || hasMeaningfulText;
+      case 'table':
+        return !!body.querySelector('[data-role="aggrid-table"], .ag-theme-alpine, .ag-theme-alpine-dark') || hasMeaningfulText;
+      case 'list':
+        return !!body.querySelector('ul, li, button.list-widget-row') || hasMeaningfulText;
+      case 'distribution':
+      case 'heatmap':
+        return !!body.querySelector('.distribution-chart') || hasMeaningfulText;
+      default:
+        return hasMeaningfulText;
+    }
+  },
+
+  _restoreWidgetPlaceholderBody(type, body, content) {
+    if (type === 'list' && typeof this._resetListWidget === 'function') {
+      this._resetListWidget(content);
+      return;
+    }
+    body.className = 'grid-widget-body flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-slate-400';
+    body.innerHTML = 'Chart is coming soon';
   },
 
   unregisterWidget(type, id) {

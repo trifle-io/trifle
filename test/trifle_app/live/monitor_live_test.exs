@@ -45,4 +45,14 @@ defmodule TrifleApp.MonitorLiveTest do
     assert html =~ "Latency Watch"
     assert html =~ "Not set"
   end
+
+  test "renders the shared filter bar without the old insights overlay shell", %{
+    conn: conn,
+    monitor: monitor
+  } do
+    {:ok, view, html} = live(conn, ~p"/monitors/#{monitor.id}")
+
+    assert has_element?(view, "#smart_timeframe")
+    refute html =~ "top: 33%;"
+  end
 end

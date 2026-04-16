@@ -2006,40 +2006,7 @@ defmodule TrifleApp.ExploreCore do
         class="flex flex-col dark:bg-slate-900 min-h-screen relative"
         phx-hook="FileDownload"
       >
-        <!-- Loading Overlay (covers entire page content; message at 1/3 height) -->
-        <%= if (@loading_chunks && @loading_progress) || @transponding do %>
-          <div class="absolute inset-0 bg-white bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-90 z-50">
-            <div class="absolute left-1/2 -translate-x-1/2" style="top: 33%;">
-              <div class="flex flex-col items-center space-y-3">
-                <div class="flex items-center space-x-2">
-                  <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 dark:border-slate-600 border-t-teal-500">
-                  </div>
-                  <span class="text-sm text-gray-600 dark:text-white">
-                    <%= if @transponding do %>
-                      Transponding data...
-                    <% else %>
-                      Scientificating piece {@loading_progress.current} of {@loading_progress.total}...
-                    <% end %>
-                  </span>
-                </div>
-                <!-- Always reserve space for progress bar to keep text position consistent -->
-                <div class="w-64 h-2">
-                  <%= if @loading_chunks && @loading_progress do %>
-                    <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                      <div
-                        class="bg-teal-500 h-2 rounded-full transition-all duration-300"
-                        style={"width: #{(@loading_progress.current / @loading_progress.total * 100)}%"}
-                      >
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-        
-    <!-- Filter Bar Component -->
+        <!-- Filter Bar Component -->
         <.live_component
           module={TrifleApp.Components.FilterBar}
           id="explore-filter-bar"
@@ -2056,6 +2023,10 @@ defmodule TrifleApp.ExploreCore do
           sources={@sources}
           selected_source={@selected_source_ref}
           force_granularity_dropdown={false}
+          loading={@loading}
+          loading_chunks={@loading_chunks}
+          loading_progress={@loading_progress}
+          transponding={@transponding}
         />
         
     <!-- Row 2: Activity/Events Chart -->

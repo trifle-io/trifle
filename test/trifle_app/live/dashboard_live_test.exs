@@ -64,6 +64,16 @@ defmodule TrifleApp.DashboardLiveTest do
     refute has_element?(view, "#dashboard_filter_bar")
   end
 
+  test "renders the shared filter bar without the old content overlay shell", %{
+    conn: conn,
+    dashboard: dashboard
+  } do
+    {:ok, view, html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert has_element?(view, "#smart_timeframe")
+    refute html =~ "top: 33%;"
+  end
+
   test "opens workspace in edit mode and supports tab toggling", %{
     conn: conn,
     dashboard: dashboard

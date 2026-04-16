@@ -5,6 +5,7 @@ Hooks.DashboardWidgetData = {
     this.widgetId = this.el.dataset.widgetId || '';
     this.widgetType = (this.el.dataset.widgetType || '').toLowerCase() || 'kpi';
     this.widgetPayload = parseJsonSafe(this.el.dataset.widgetPayload || '');
+    this.widgetLoadingState = this.el.dataset.widgetLoadingState || 'idle';
     this._retryTimer = null;
     this._lastKey = null;
     this._registeredType = null;
@@ -53,7 +54,8 @@ Hooks.DashboardWidgetData = {
       payloadEnvelope && typeof payloadEnvelope.title === 'string'
         ? payloadEnvelope.title
         : this.el.dataset.title || '';
-    const key = [this.widgetType, this.widgetId, this.el.dataset.widgetPayload || '', titleData].join('||');
+    const loadingState = this.el.dataset.widgetLoadingState || 'idle';
+    const key = [this.widgetType, this.widgetId, this.el.dataset.widgetPayload || '', titleData, loadingState].join('||');
     if (key === this._lastKey) return;
     this._lastKey = key;
 
@@ -86,14 +88,19 @@ Hooks.DashboardWidgetData = {
         envelope && Object.prototype.hasOwnProperty.call(envelope, 'payload')
           ? envelope.payload
           : null;
+      const widgetLoadingState = this.el.dataset.widgetLoadingState || 'idle';
 
       this.widgetId = id;
       this.widgetType = type;
+      this.widgetLoadingState = widgetLoadingState;
 
       if (this.shouldPreferServerRenderedWidget(gridHook, type, id)) {
         this._registeredType = type || null;
         this._registeredWidgetId = id || null;
         this.updateWidgetTitle(titleData, type);
+        if (typeof gridHook.setWidgetLoadingState === 'function') {
+          gridHook.setWidgetLoadingState(type || null, id, widgetLoadingState);
+        }
         if (typeof gridHook._markServerRenderedWidgetsReady === 'function') {
           gridHook._markServerRenderedWidgetsReady();
         }
@@ -150,6 +157,9 @@ Hooks.DashboardWidgetData = {
       this._registeredType = type || null;
       this._registeredWidgetId = id || null;
       this.updateWidgetTitle(titleData, type);
+      if (typeof gridHook.setWidgetLoadingState === 'function') {
+        gridHook.setWidgetLoadingState(type || null, id, widgetLoadingState);
+      }
     };
 
     attempt();
