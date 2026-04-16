@@ -106,6 +106,17 @@ Hooks.DashboardGrid = {
       } catch (_) {}
     };
     window.addEventListener('resize', this._onWindowResize);
+    this._viewportScrollRaf = null;
+    this._onViewportScroll = () => {
+      if (this._viewportScrollRaf) return;
+      this._viewportScrollRaf = requestAnimationFrame(() => {
+        this._viewportScrollRaf = null;
+        try {
+          this._refreshViewportTargets();
+        } catch (_) {}
+      });
+    };
+    document.addEventListener('scroll', this._onViewportScroll, true);
     // Avoid persisting transient responsive changes when navigating away
     const hideableLoadingKinds = new Set(['patch', 'redirect']);
     this._gridHiddenForLoading = false;
@@ -595,6 +606,10 @@ Hooks.DashboardGrid = {
       window.removeEventListener('resize', this._onWindowResize);
       this._onWindowResize = null;
     }
+    if (this._onViewportScroll) {
+      document.removeEventListener('scroll', this._onViewportScroll, true);
+      this._onViewportScroll = null;
+    }
     if (this._onPageLoadingStart) {
       window.removeEventListener('phx:page-loading-start', this._onPageLoadingStart);
       this._onPageLoadingStart = null;
@@ -666,6 +681,10 @@ Hooks.DashboardGrid = {
     if (this._viewportActivationRaf) {
       cancelAnimationFrame(this._viewportActivationRaf);
       this._viewportActivationRaf = null;
+    }
+    if (this._viewportScrollRaf) {
+      cancelAnimationFrame(this._viewportScrollRaf);
+      this._viewportScrollRaf = null;
     }
     if (this._viewportObserver) {
       try { this._viewportObserver.disconnect(); } catch (_) {}
@@ -1264,6 +1283,18 @@ Hooks.DashboardGrid = {
         this._registerTsSyncGroup(syncGroup);
       }
     });
+
+    if (this._tsHoveringGroup && (Number.isFinite(this._tsLastValue) || typeof this._tsLastValue === 'string')) {
+      const hoveringCharts = activeGroups.get(this._tsHoveringGroup) || [];
+      if (hoveringCharts.length > 1) {
+        this._queue_ts_sync({
+          type: 'show',
+          value: this._tsLastValue,
+          sourceId: this._tsHoveringId,
+          syncGroup: this._tsHoveringGroup
+        });
+      }
+    }
   },
 
   _syncItemHandleClass(item, nested = false) {
