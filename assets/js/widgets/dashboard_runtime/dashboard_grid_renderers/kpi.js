@@ -251,22 +251,36 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
       };
 
       ensureClass(type);
+      this._observeViewportTarget(visual, { kind: 'kpi-visual', widgetId: it.id });
 
       const render = () => {
         let chart = this._sparklines[it.id];
         const initTheme = isDarkMode ? 'dark' : undefined;
-       if (!chart) {
-         if (visual.clientWidth === 0 || visual.clientHeight === 0) {
-           if (this._sparkTimers && this._sparkTimers[it.id]) clearTimeout(this._sparkTimers[it.id]);
-           if (this._sparkTimers) {
-             this._sparkTimers[it.id] = setTimeout(render, 80);
-           }
-           return;
-         }
-         chart = echarts.init(visual, initTheme, withChartOpts({ height: type === 'progress' ? 20 : 40 }));
-         this._sparklines[it.id] = chart;
-       }
-       if (this._sparkTimers && this._sparkTimers[it.id]) delete this._sparkTimers[it.id];
+        if (chart && typeof chart.getDom === 'function' && chart.getDom() !== visual) {
+          this._disposeChartEntry(this._sparklines, it.id);
+          chart = null;
+        }
+        if (this._shouldDeferViewportRender(visual)) {
+          visual.dataset.renderPending = '1';
+          return;
+        }
+        delete visual.dataset.renderPending;
+        if (!chart) {
+          if (visual.clientWidth === 0 || visual.clientHeight === 0) {
+            if (this._sparkTimers && this._sparkTimers[it.id]) clearTimeout(this._sparkTimers[it.id]);
+            if (this._sparkTimers) {
+              this._sparkTimers[it.id] = setTimeout(render, 80);
+            }
+            return;
+          }
+          chart = echarts.init(
+            visual,
+            initTheme,
+            this._chartInitOpts ? this._chartInitOpts({ height: type === 'progress' ? 20 : 40 }) : withChartOpts({ height: type === 'progress' ? 20 : 40 })
+          );
+          this._sparklines[it.id] = chart;
+        }
+        if (this._sparkTimers && this._sparkTimers[it.id]) delete this._sparkTimers[it.id];
 
         if (type === 'progress') {
           const currentNum = Number.isFinite(Number(it.current)) ? Math.max(Number(it.current), 0) : 0;
@@ -313,19 +327,19 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
             animation: false
           }, true);
         }
-       try {
-         chart.off('finished');
-         chart.on('finished', () => {
-           try { visual.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch (_) {}
-         });
-       } catch (_) {}
-       chart.resize();
+        try {
+          chart.off('finished');
+          chart.on('finished', () => {
+            try { visual.dataset.echartsReady = '1'; this._scheduleReadyMark(); } catch (_) {}
+          });
+        } catch (_) {}
+        chart.resize();
 
         if (!this._sparkResize) {
           this._sparkResize = () => {
             Object.values(this._sparklines || {}).forEach((c) => {
-              if (c && !c.isDisposed()) {
-                c.resize();
+              if (c && !c.isDisposed() && this._shouldResizeChartInstance(c)) {
+                this._resizeChartInstance(c);
               }
             });
           };

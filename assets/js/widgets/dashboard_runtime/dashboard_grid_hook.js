@@ -76,6 +76,7 @@ Hooks.DashboardGrid = {
     this._sparkTypes = {};
     this._tsCharts = {};
     this._tsSeriesData = {};
+    this._tsPrimarySeriesTs = {};
     this._catCharts = {};
     this._distCharts = {};
     this._tableCache = {};
@@ -149,7 +150,6 @@ Hooks.DashboardGrid = {
     this._tsHoveringId = null;
     this._tsHoveringGroup = null;
     this._tsLastValue = null;
-    this._tsSyncLoop = null;
     this._tsHideTimer = null;
     this._tsPointerMove = null;
     this._deferredResizeRaf = null;
@@ -175,7 +175,8 @@ Hooks.DashboardGrid = {
       category: {},
       table: {},
       text: {},
-      list: {}
+      list: {},
+      distribution: {}
     };
     this._aggridTables = {};
     this._aggridResizeTimers = {};
@@ -186,6 +187,7 @@ Hooks.DashboardGrid = {
 
     // Determine renderer/devicePixelRatio for charts (SVG for print exports for crisp output)
     const printMode = (this.el.dataset.printMode === 'true' || this.el.dataset.printMode === '');
+    this._printMode = printMode;
     this._chartInitOpts = (extra = {}) => {
       const baseDpr = Number.isFinite(echartsDevicePixelRatio)
         ? echartsDevicePixelRatio
@@ -193,6 +195,23 @@ Hooks.DashboardGrid = {
       const base = printMode ? { devicePixelRatio: Math.max(2, baseDpr) } : {};
       return withChartOpts(Object.assign({}, base, extra));
     };
+    this._viewportPreloadMargin = printMode ? 0 : 240;
+    this._observedViewportTargets = new Set();
+    this._viewportActivationQueue = new Map();
+    this._viewportActivationRaf = null;
+    this._perfDebug = (() => {
+      try { return window.localStorage && window.localStorage.getItem('trifle:dashboard-perf') === '1'; } catch (_) { return false; }
+    })();
+    this._viewportObserver = (!printMode && typeof IntersectionObserver === 'function')
+      ? new IntersectionObserver(
+          (entries) => this._handleViewportEntries(entries),
+          {
+            root: null,
+            rootMargin: `${this._viewportPreloadMargin}px 0px ${this._viewportPreloadMargin}px 0px`,
+            threshold: 0
+          }
+        )
+      : null;
 
     this._enableServerRenderedWidgetPreference();
     this.initGrid();
@@ -359,7 +378,10 @@ Hooks.DashboardGrid = {
           if (node.classList && node.classList.contains('kpi-visual')) {
             const hasVisual = node.dataset && node.dataset.visualType && node.dataset.visualType !== '';
             const isHidden = node.offsetParent === null || getComputedStyle(node).display === 'none';
-            return hasVisual && !isHidden;
+            if (!hasVisual || isHidden) return false;
+          }
+          if (this._viewportObserver && !this._isElementNearViewport(node)) {
+            return false;
           }
           return true;
         });
@@ -549,6 +571,7 @@ Hooks.DashboardGrid = {
       this._tsCharts = {};
     }
     this._tsSeriesData = {};
+    this._tsPrimarySeriesTs = {};
     if (this._catCharts) {
       Object.values(this._catCharts).forEach((c) => {
         if (c && !c.isDisposed()) c.dispose();
@@ -579,10 +602,6 @@ Hooks.DashboardGrid = {
       cancelAnimationFrame(this._tsSyncRaf);
       this._tsSyncRaf = null;
     }
-    if (this._tsSyncLoop) {
-      cancelAnimationFrame(this._tsSyncLoop);
-      this._tsSyncLoop = null;
-    }
     if (this._tsHideTimer) {
       clearTimeout(this._tsHideTimer);
       this._tsHideTimer = null;
@@ -598,6 +617,14 @@ Hooks.DashboardGrid = {
     if (this._layoutResizeObserver) {
       try { this._layoutResizeObserver.disconnect(); } catch (_) {}
       this._layoutResizeObserver = null;
+    }
+    if (this._viewportActivationRaf) {
+      cancelAnimationFrame(this._viewportActivationRaf);
+      this._viewportActivationRaf = null;
+    }
+    if (this._viewportObserver) {
+      try { this._viewportObserver.disconnect(); } catch (_) {}
+      this._viewportObserver = null;
     }
     this._cancelDeferredResize();
     this._tsHoveringId = null;
@@ -727,27 +754,40 @@ Hooks.DashboardGrid = {
   },
 
   _resizeAllCharts() {
-    if (this._sparklines) {
-      Object.values(this._sparklines).forEach((c) => {
-        this._resizeChartInstance(c);
+    this._refreshViewportTargets();
+
+    const resizeChartMap = (map) => {
+      Object.values(map || {}).forEach((chart) => {
+        if (this._shouldResizeChartInstance(chart)) {
+          this._resizeChartInstance(chart);
+        }
       });
+    };
+
+    const visibleTsCharts = this._tsCharts
+      ? Object.values(this._tsCharts).filter((chart) => this._isChartVisible(chart)).length
+      : 0;
+
+    if (this._sparklines) {
+      resizeChartMap(this._sparklines);
     }
     if (this._tsCharts) {
-      Object.values(this._tsCharts).forEach((c) => {
-        this._resizeChartInstance(c);
-      });
+      resizeChartMap(this._tsCharts);
     }
     if (this._catCharts) {
-      Object.values(this._catCharts).forEach((c) => {
-        this._resizeChartInstance(c);
-      });
+      resizeChartMap(this._catCharts);
     }
     if (this._distCharts) {
-      Object.values(this._distCharts).forEach((c) => {
-        this._resizeChartInstance(c);
-      });
+      resizeChartMap(this._distCharts);
     }
     this._resizeAgGridTables();
+    this._debugDashboardPerf('resize-pass', {
+      visibleTimeseriesCharts: visibleTsCharts,
+      resizedSparklineCharts: Object.values(this._sparklines || {}).filter((chart) => this._shouldResizeChartInstance(chart)).length,
+      resizedTimeseriesCharts: Object.values(this._tsCharts || {}).filter((chart) => this._shouldResizeChartInstance(chart)).length,
+      resizedCategoryCharts: Object.values(this._catCharts || {}).filter((chart) => this._shouldResizeChartInstance(chart)).length,
+      resizedDistributionCharts: Object.values(this._distCharts || {}).filter((chart) => this._shouldResizeChartInstance(chart)).length
+    });
   },
 
   _resizeChartInstance(chart) {
@@ -767,6 +807,13 @@ Hooks.DashboardGrid = {
         chart.resize();
       }
     } catch (_) {}
+  },
+
+  _shouldResizeChartInstance(chart) {
+    if (!chart || (typeof chart.isDisposed === 'function' && chart.isDisposed())) return false;
+    if (!this._viewportObserver) return true;
+    const dom = typeof chart.getDom === 'function' ? chart.getDom() : null;
+    return this._isElementNearViewport(dom);
   },
 
   _scheduleObservedLayoutResize() {
@@ -797,6 +844,251 @@ Hooks.DashboardGrid = {
     selectors.forEach((selector) => {
       this.el.querySelectorAll(selector).forEach((target) => this._observeLayoutResizeTarget(target));
     });
+  },
+
+  _debugDashboardPerf(label, payload = {}) {
+    if (!this._perfDebug) return;
+    try {
+      console.debug('[DashboardPerf]', label, payload);
+    } catch (_) {}
+  },
+
+  _measureElementViewportState(target) {
+    if (!target || !target.isConnected) return { near: false, visible: false };
+    if (target.offsetParent === null) return { near: false, visible: false };
+    const rect = typeof target.getBoundingClientRect === 'function' ? target.getBoundingClientRect() : null;
+    if (!rect) return { near: false, visible: false };
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const preload = Number.isFinite(this._viewportPreloadMargin) ? this._viewportPreloadMargin : 0;
+    return {
+      near:
+        rect.bottom >= -preload &&
+        rect.top <= viewportHeight + preload &&
+        rect.right >= -preload &&
+        rect.left <= viewportWidth + preload,
+      visible:
+        rect.bottom >= 0 &&
+        rect.top <= viewportHeight &&
+        rect.right >= 0 &&
+        rect.left <= viewportWidth
+    };
+  },
+
+  _isElementNearViewport(target) {
+    if (!target) return true;
+    if (!this._viewportObserver) return true;
+    if (typeof target.__dashboardNearViewport === 'boolean') return target.__dashboardNearViewport;
+    return this._measureElementViewportState(target).near;
+  },
+
+  _isElementVisible(target) {
+    if (!target) return true;
+    if (!this._viewportObserver) return true;
+    if (typeof target.__dashboardVisible === 'boolean') return target.__dashboardVisible;
+    return this._measureElementViewportState(target).visible;
+  },
+
+  _observeViewportTarget(target, meta = {}) {
+    if (!target) return;
+    if (meta.kind) target.dataset.viewportKind = meta.kind;
+    if (meta.widgetId != null) target.dataset.viewportWidgetId = String(meta.widgetId);
+    const state = this._measureElementViewportState(target);
+    target.__dashboardNearViewport = state.near;
+    target.__dashboardVisible = state.visible;
+    if (!this._viewportObserver || !this._observedViewportTargets) return;
+    if (this._observedViewportTargets.has(target)) return;
+    try {
+      this._viewportObserver.observe(target);
+      this._observedViewportTargets.add(target);
+    } catch (_) {}
+  },
+
+  _unobserveViewportTarget(target) {
+    if (!target) return;
+    if (this._viewportObserver) {
+      try { this._viewportObserver.unobserve(target); } catch (_) {}
+    }
+    if (this._observedViewportTargets && typeof this._observedViewportTargets.delete === 'function') {
+      this._observedViewportTargets.delete(target);
+    }
+    delete target.__dashboardNearViewport;
+    delete target.__dashboardVisible;
+  },
+
+  _refreshViewportTargets() {
+    if (!this._observedViewportTargets || this._observedViewportTargets.size === 0) return;
+    let syncGroupsDirty = false;
+
+    Array.from(this._observedViewportTargets).forEach((target) => {
+      if (!target) return;
+      if (!target.isConnected) {
+        this._observedViewportTargets.delete(target);
+        return;
+      }
+
+      const prevNear = !!target.__dashboardNearViewport;
+      const prevVisible = !!target.__dashboardVisible;
+      const state = this._measureElementViewportState(target);
+      target.__dashboardNearViewport = state.near;
+      target.__dashboardVisible = state.visible;
+
+      if (target.dataset && target.dataset.viewportKind === 'timeseries' && (prevNear !== state.near || prevVisible !== state.visible)) {
+        syncGroupsDirty = true;
+      }
+      if ((!prevNear && state.near) || (!prevVisible && state.visible)) {
+        this._queueViewportActivation(target);
+      }
+    });
+
+    if (syncGroupsDirty) {
+      this._syncTimeseriesHoverGroups();
+    }
+  },
+
+  _handleViewportEntries(entries) {
+    if (!Array.isArray(entries)) return;
+    let syncGroupsDirty = false;
+    entries.forEach((entry) => {
+      const target = entry && entry.target;
+      if (!target) return;
+      const prevNear = !!target.__dashboardNearViewport;
+      const prevVisible = !!target.__dashboardVisible;
+      const state = this._measureElementViewportState(target);
+      target.__dashboardNearViewport = state.near;
+      target.__dashboardVisible = state.visible;
+      if (target.dataset && target.dataset.viewportKind === 'timeseries' && (prevVisible !== state.visible || prevNear !== state.near)) {
+        syncGroupsDirty = true;
+      }
+      if ((!prevNear && state.near) || (!prevVisible && state.visible)) {
+        this._queueViewportActivation(target);
+      }
+    });
+    if (syncGroupsDirty) {
+      this._syncTimeseriesHoverGroups();
+    }
+  },
+
+  _queueViewportActivation(target) {
+    if (!target || !target.dataset) return;
+    const kind = target.dataset.viewportKind;
+    const widgetId = target.dataset.viewportWidgetId;
+    if (!kind || !widgetId) return;
+    const key = `${kind}:${widgetId}`;
+    this._viewportActivationQueue.set(key, { kind, widgetId });
+    if (this._viewportActivationRaf) return;
+    this._viewportActivationRaf = requestAnimationFrame(() => {
+      this._viewportActivationRaf = null;
+      const pending = Array.from(this._viewportActivationQueue.values());
+      this._viewportActivationQueue.clear();
+      pending.forEach(({ kind: nextKind, widgetId: nextWidgetId }) => {
+        this._activateViewportTarget(nextKind, nextWidgetId);
+      });
+    });
+  },
+
+  _activateViewportTarget(kind, widgetId) {
+    if (!kind || !widgetId) return;
+    const resolvedKind = kind === 'kpi-visual' ? 'kpi-visual' : kind;
+    const chartMap = this._chartMapForKind(resolvedKind);
+    const chart = chartMap && chartMap[String(widgetId)];
+    if (chart && !this._needsViewportRerender(chart)) {
+      if (resolvedKind === 'timeseries') {
+        this._syncTimeseriesHoverGroups();
+      }
+      this._resizeChartInstance(chart);
+      return;
+    }
+    if (resolvedKind === 'table') {
+      const entry = this._aggridTables && this._aggridTables[String(widgetId)];
+      if (!entry || (entry.root && entry.root.dataset && entry.root.dataset.renderPending === '1')) {
+        this._renderRegisteredWidget('table', widgetId);
+        return;
+      }
+      if (entry && entry.api && typeof entry.api.sizeColumnsToFit === 'function') {
+        try { entry.api.sizeColumnsToFit(); } catch (_) {}
+      }
+      return;
+    }
+    this._renderRegisteredWidget(resolvedKind, widgetId);
+  },
+
+  _chartMapForKind(kind) {
+    switch (kind) {
+      case 'kpi-visual':
+        return this._sparklines;
+      case 'timeseries':
+        return this._tsCharts;
+      case 'category':
+        return this._catCharts;
+      case 'distribution':
+      case 'heatmap':
+        return this._distCharts;
+      default:
+        return null;
+    }
+  },
+
+  _needsViewportRerender(chart) {
+    if (!chart || (typeof chart.isDisposed === 'function' && chart.isDisposed())) return true;
+    const dom = typeof chart.getDom === 'function' ? chart.getDom() : null;
+    if (!dom || !dom.dataset) return false;
+    return dom.dataset.renderPending === '1';
+  },
+
+  _shouldDeferViewportRender(target) {
+    return !!(this._viewportObserver && target && !this._isElementNearViewport(target));
+  },
+
+  _isChartVisible(chart) {
+    if (!chart || (typeof chart.isDisposed === 'function' && chart.isDisposed())) return false;
+    const dom = typeof chart.getDom === 'function' ? chart.getDom() : null;
+    return this._isElementVisible(dom);
+  },
+
+  _renderRegisteredWidget(type, id) {
+    if (!id) return;
+    const normalizedId = String(id);
+    const registry = this._widgetRegistry || {};
+    if (type === 'kpi-visual') {
+      const payload = registry.kpiVisuals && registry.kpiVisuals[normalizedId];
+      if (payload) {
+        this._render_kpi_visuals([payload]);
+        this._refreshLastRenderedCache('kpi');
+      }
+      return;
+    }
+    if (type === 'timeseries') {
+      const payload = registry.timeseries && registry.timeseries[normalizedId];
+      if (payload) {
+        this._render_timeseries([payload]);
+        this._refreshLastRenderedCache('timeseries');
+      }
+      return;
+    }
+    if (type === 'category') {
+      const payload = registry.category && registry.category[normalizedId];
+      if (payload) {
+        this._render_category([payload]);
+        this._refreshLastRenderedCache('category');
+      }
+      return;
+    }
+    if (type === 'distribution' || type === 'heatmap') {
+      const payload = registry.distribution && registry.distribution[normalizedId];
+      if (payload) {
+        this._render_distribution([payload]);
+        this._refreshLastRenderedCache('distribution');
+      }
+      return;
+    }
+    if (type === 'table') {
+      const payload = registry.table && registry.table[normalizedId];
+      if (payload) {
+        this._render_table([payload], { prune: false });
+        this._refreshLastRenderedCache('table');
+      }
+    }
   },
 
   _cancelDeferredResize() {
@@ -874,34 +1166,58 @@ Hooks.DashboardGrid = {
   },
 
   _registerTsSyncGroup(syncGroup) {
-    if (!syncGroup || !echarts || typeof echarts.connect !== 'function') return;
-    if (!this._tsConnectedGroups) {
-      this._tsConnectedGroups = new Set();
-    }
-    if (this._tsConnectedGroups.has(syncGroup)) return;
+    if (!syncGroup || !echarts || typeof echarts.connect !== 'function') return syncGroup;
+    if (!this._tsConnectedGroups) this._tsConnectedGroups = new Set();
+    if (this._tsConnectedGroups.has(syncGroup)) return syncGroup;
     try {
       echarts.connect(syncGroup);
       this._tsConnectedGroups.add(syncGroup);
     } catch (_) {}
+    return syncGroup;
   },
 
   _tsChartsForGroup(syncGroup) {
     if (!syncGroup || !this._tsCharts) return [];
     return Object.entries(this._tsCharts)
-      .filter(([, chart]) => chart && !(chart.isDisposed && chart.isDisposed()) && chart.__tsSyncGroup === syncGroup);
+      .filter(([, chart]) =>
+        chart &&
+        !(chart.isDisposed && chart.isDisposed()) &&
+        chart.__tsSyncGroup === syncGroup &&
+        this._isChartVisible(chart)
+      );
   },
 
   _syncTimeseriesHoverGroups() {
     if (!this._tsCharts) return;
+    const activeGroups = new Map();
+
+    if (this._tsConnectedGroups && typeof echarts.disconnect === 'function') {
+      this._tsConnectedGroups.forEach((groupKey) => {
+        try { echarts.disconnect(groupKey); } catch (_) {}
+      });
+      this._tsConnectedGroups.clear();
+    }
+
     Object.entries(this._tsCharts).forEach(([widgetId, chart]) => {
       if (!chart || (chart.isDisposed && chart.isDisposed())) return;
       const syncGroup = this._tsSyncGroupForWidget(widgetId);
+      const visible = this._isChartVisible(chart);
       chart.__tsWidgetId = String(widgetId);
       chart.__tsSyncGroup = syncGroup;
-      if (chart.group !== syncGroup) {
-        chart.group = syncGroup;
+      const assignedGroup = visible ? syncGroup : `${syncGroup}:inactive:${widgetId}`;
+      if (chart.group !== assignedGroup) {
+        chart.group = assignedGroup;
       }
-      this._registerTsSyncGroup(syncGroup);
+      if (!visible) return;
+      const bucket = activeGroups.get(syncGroup) || [];
+      bucket.push(chart);
+      activeGroups.set(syncGroup, bucket);
+    });
+
+    activeGroups.forEach((charts, syncGroup) => {
+      if (charts.length > 1) {
+        this._registerTsSyncGroup(syncGroup);
+      }
     });
   },
 
@@ -1556,6 +1872,8 @@ Hooks.DashboardGrid = {
     const chart = map[id];
     if (chart) {
       try {
+        const dom = typeof chart.getDom === 'function' ? chart.getDom() : null;
+        if (dom) this._unobserveViewportTarget(dom);
         if (typeof chart.dispose === 'function') {
           chart.dispose();
         } else if (typeof chart.destroy === 'function') {
@@ -1564,6 +1882,30 @@ Hooks.DashboardGrid = {
       } catch (_) {}
     }
     delete map[id];
+  },
+
+  _refreshLastRenderedCache(type) {
+    const registry = this._widgetRegistry || {};
+    switch (type) {
+      case 'kpi':
+        this._lastKpiValues = this._deepClone(this._sortedWidgetValues(registry.kpiValues));
+        this._lastKpiVisuals = this._deepClone(this._sortedWidgetValues(registry.kpiVisuals));
+        break;
+      case 'timeseries':
+        this._lastTimeseries = this._deepClone(this._sortedWidgetValues(registry.timeseries));
+        break;
+      case 'category':
+        this._lastCategory = this._deepClone(this._sortedWidgetValues(registry.category));
+        break;
+      case 'table':
+        this._lastTable = this._deepClone(this._sortedWidgetValues(registry.table));
+        break;
+      case 'distribution':
+        this._lastDistribution = this._deepClone(this._sortedWidgetValues(registry.distribution));
+        break;
+      default:
+        break;
+    }
   },
 
   registerWidget(type, id, payload = null) {
@@ -1599,6 +1941,7 @@ Hooks.DashboardGrid = {
       this._seen.kpi_values = true;
       this._scheduleReadyMark();
       this._render_kpi_visuals(this._sortedWidgetValues(registry.kpiVisuals));
+      this._refreshLastRenderedCache('kpi');
       this._scheduleDeferredResize();
       return;
     }
@@ -1611,10 +1954,17 @@ Hooks.DashboardGrid = {
         if (this._tsSeriesData) {
           delete this._tsSeriesData[normalizedId];
         }
+        if (this._tsPrimarySeriesTs) {
+          delete this._tsPrimarySeriesTs[normalizedId];
+        }
         this._disposeChartEntry(this._tsCharts, normalizedId);
         this._disposeChartEntry(this._sparklines, normalizedId);
       }
-      this._render_timeseries(this._sortedWidgetValues(registry.timeseries));
+      const nextPayload = registry.timeseries[normalizedId];
+      if (nextPayload) {
+        this._render_timeseries([nextPayload]);
+      }
+      this._refreshLastRenderedCache('timeseries');
       this._scheduleDeferredResize();
       return;
     }
@@ -1626,7 +1976,11 @@ Hooks.DashboardGrid = {
         delete registry.category[normalizedId];
         this._disposeChartEntry(this._catCharts, normalizedId);
       }
-      this._render_category(this._sortedWidgetValues(registry.category));
+      const nextPayload = registry.category[normalizedId];
+      if (nextPayload) {
+        this._render_category([nextPayload]);
+      }
+      this._refreshLastRenderedCache('category');
       this._scheduleDeferredResize();
       return;
     }
@@ -1639,6 +1993,7 @@ Hooks.DashboardGrid = {
       }
       this._render_table(this._sortedWidgetValues(registry.table));
       this._seen.table = true;
+      this._refreshLastRenderedCache('table');
       this._scheduleReadyMark();
       return;
     }
@@ -1676,7 +2031,11 @@ Hooks.DashboardGrid = {
         delete registry.distribution[normalizedId];
         this._disposeChartEntry(this._distCharts, normalizedId);
       }
-      this._render_distribution(this._sortedWidgetValues(registry.distribution));
+      const nextPayload = registry.distribution[normalizedId];
+      if (nextPayload) {
+        this._render_distribution([nextPayload]);
+      }
+      this._refreshLastRenderedCache('distribution');
       this._scheduleDeferredResize();
       return;
     }

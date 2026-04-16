@@ -72,17 +72,27 @@ export const createDashboardGridDistributionRendererMethods = ({
         container.dataset.echartsReady = '0';
         body.appendChild(container);
       }
+      this._observeViewportTarget(container, { kind: 'distribution', widgetId: it.id });
 
       let chart = this._distCharts[it.id];
+      if (chart && typeof chart.getDom === 'function' && chart.getDom() !== container) {
+        this._disposeChartEntry(this._distCharts, widgetId);
+        chart = null;
+      }
       const initTheme = isDarkMode ? 'dark' : undefined;
       const ensureInit = () => {
+        if (this._shouldDeferViewportRender(container)) {
+          container.dataset.renderPending = '1';
+          return;
+        }
+        delete container.dataset.renderPending;
         if (!chart || chart.isDisposed?.()) {
           const existing = echarts.getInstanceByDom(container);
           if (existing) {
             chart = existing;
           } else {
             if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
-            chart = echarts.init(container, initTheme, withChartOpts());
+            chart = echarts.init(container, initTheme, this._chartInitOpts ? this._chartInitOpts() : withChartOpts());
           }
           this._distCharts[it.id] = chart;
         }

@@ -6,8 +6,9 @@ export const createDashboardGridTableRendererMethods = ({
   ensureAgGridCommunity,
   getAggridHeaderComponentClass
 }) => ({
-  _render_table(items) {
+  _render_table(items, options = {}) {
     if (!Array.isArray(items)) return;
+    const shouldPrune = options.prune !== false;
     this._lastTable = this._deepClone(items);
     const seenAggridTables = new Set();
 
@@ -30,7 +31,7 @@ export const createDashboardGridTableRendererMethods = ({
       if (tableId) seenAggridTables.add(tableId);
     });
 
-    if (this._aggridTables) {
+    if (shouldPrune && this._aggridTables) {
       Object.keys(this._aggridTables).forEach((id) => {
         if (!seenAggridTables.has(id)) {
           this._destroy_aggrid_table(id);
@@ -87,6 +88,12 @@ export const createDashboardGridTableRendererMethods = ({
     const root = container.querySelector('[data-role="aggrid-table-root"]');
     const tableId = this._tableKey(payload.id);
     if (!root || !tableId) return;
+    this._observeViewportTarget(root, { kind: 'table', widgetId: payload.id });
+    if (this._shouldDeferViewportRender(root)) {
+      root.dataset.renderPending = '1';
+      return;
+    }
+    delete root.dataset.renderPending;
 
     if (!window.agGrid || typeof window.agGrid.Grid !== 'function') {
       ensureAgGridCommunity()
@@ -310,6 +317,7 @@ export const createDashboardGridTableRendererMethods = ({
     };
     if (typeof ResizeObserver !== 'undefined') {
       entry.resizeObserver = new ResizeObserver(() => {
+        if (!this._isElementNearViewport(root)) return;
         const dataset = entry.dataset;
         const payload = entry.payload;
         const container = entry.shell;
@@ -336,6 +344,9 @@ export const createDashboardGridTableRendererMethods = ({
   _destroy_aggrid_table(id) {
     if (!this._aggridTables || !id || !this._aggridTables[id]) return;
     const entry = this._aggridTables[id];
+    if (entry && entry.root) {
+      this._unobserveViewportTarget(entry.root);
+    }
     if (entry && entry.resizeObserver) {
       try { entry.resizeObserver.disconnect(); } catch (_) {}
       entry.resizeObserver = null;
@@ -502,6 +513,7 @@ export const createDashboardGridTableRendererMethods = ({
   _resizeAgGridTables() {
     if (!this._aggridTables) return;
     Object.values(this._aggridTables).forEach((entry) => {
+      if (!entry || !this._isElementNearViewport(entry.root)) return;
       if (entry && entry.api && typeof entry.api.sizeColumnsToFit === 'function') {
         try { entry.api.sizeColumnsToFit(); } catch (_) {}
       }

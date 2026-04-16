@@ -69,19 +69,29 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         container.style.height = '100%';
         body.appendChild(container);
       }
+      container.dataset.echartsReady = container.dataset.echartsReady || '0';
+      this._observeViewportTarget(container, { kind: 'timeseries', widgetId: it.id });
       let chart = this._tsCharts[it.id];
+      if (chart && typeof chart.getDom === 'function' && chart.getDom() !== container) {
+        this._disposeChartEntry(this._tsCharts, it.id);
+        chart = null;
+      }
       const initTheme = isDarkMode ? 'dark' : undefined;
       const tooltipHoveredOnly = !!it.hovered_only;
       const ensureInit = () => {
         const syncGroup = this._tsSyncGroupForWidget(it.id);
+        if (this._shouldDeferViewportRender(container)) {
+          container.dataset.renderPending = '1';
+          return;
+        }
+        delete container.dataset.renderPending;
         if (!chart) {
           if (container.clientWidth === 0 || container.clientHeight === 0) { setTimeout(ensureInit, 80); return; }
-          chart = echarts.init(container, initTheme, withChartOpts());
+          chart = echarts.init(container, initTheme, this._chartInitOpts ? this._chartInitOpts() : withChartOpts());
           chart.group = syncGroup;
           chart.__tsWidgetId = String(it.id || '');
           chart.__tsSyncGroup = syncGroup;
           chart.__tsTooltipHoveredOnly = tooltipHoveredOnly;
-          this._registerTsSyncGroup(syncGroup);
           this._tsCharts[it.id] = chart;
         } else {
           chart.__tsWidgetId = String(it.id || '');
@@ -90,7 +100,6 @@ export const createDashboardGridTimeseriesRendererMethods = ({
           if (chart.group !== syncGroup) {
             chart.group = syncGroup;
           }
-          this._registerTsSyncGroup(syncGroup);
         }
         const type = (it.chart_type || 'line');
         const isBar = type === 'bar';
@@ -359,6 +368,9 @@ export const createDashboardGridTimeseriesRendererMethods = ({
 
         const finalSeries = series.concat(baselineSeries);
         this._tsSeriesData[it.id] = series.map((s) => Array.isArray(s.data) ? s.data : []);
+        this._tsPrimarySeriesTs[it.id] = Array.isArray(series[0]?.data)
+          ? series[0].data.map((point) => extractTimestamp(point))
+          : [];
         const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
         const extractPointValue = (point) => {
           if (Array.isArray(point)) return Number(point[1]);
@@ -512,6 +524,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         } catch (_) {}
         chart.resize();
         this._bind_ts_sync(chart, it.id);
+        this._syncTimeseriesHoverGroups();
       };
       setTimeout(ensureInit, 0);
     });
@@ -530,7 +543,6 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       if (chart.group !== syncGroup) {
         chart.group = syncGroup;
       }
-      this._registerTsSyncGroup(syncGroup);
       return syncGroup;
     };
     if (chart.__tsSyncHandlers) {
@@ -567,7 +579,6 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       this._tsHoveringGroup = syncGroup;
       this._tsLastValue = value;
       this._queue_ts_sync({ type: 'show', value, sourceId: id, syncGroup });
-      this._kick_ts_sync_loop();
       this._ensure_ts_pointer_listener();
     };
     const leave = () => this._schedule_ts_hide(id, resolveSyncGroup());
@@ -615,7 +626,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         if (!chart || (chart.isDisposed && chart.isDisposed())) return false;
         if (chart.__tsTooltipHoveredOnly) return false;
         if (!syncGroup) return true;
-        return chart.__tsSyncGroup === syncGroup;
+        return chart.__tsSyncGroup === syncGroup && this._isChartVisible(chart);
       });
     if (entries.length === 0) return;
     if (entries.length === 1 && payload.type === 'show') return;
@@ -640,36 +651,19 @@ export const createDashboardGridTimeseriesRendererMethods = ({
           try { chart.dispatchAction({ type: 'downplay', seriesIndex: 0 }); } catch (_) {}
         }
       });
+      this._debugDashboardPerf('hover-sync', {
+        syncGroup,
+        syncedCharts: entries.length,
+        type
+      });
     } finally {
       this._tsSyncApplying = false;
     }
   },
 
-  _kick_ts_sync_loop() {
-    if (this._tsSyncLoop) return;
-    const tick = () => {
-      this._tsSyncLoop = null;
-      if (!this._tsHoveringId || this._tsLastValue == null || !this._tsHoveringGroup) {
-        return;
-      }
-      this._apply_ts_sync({
-        type: 'show',
-        value: this._tsLastValue,
-        sourceId: this._tsHoveringId,
-        syncGroup: this._tsHoveringGroup
-      });
-      this._tsSyncLoop = requestAnimationFrame(tick);
-    };
-    this._tsSyncLoop = requestAnimationFrame(tick);
-  },
-
   _schedule_ts_hide(sourceId, syncGroup = this._tsHoveringGroup) {
     if (!syncGroup) return;
     if (this._tsHideTimer) return;
-    if (this._tsSyncLoop) {
-      cancelAnimationFrame(this._tsSyncLoop);
-      this._tsSyncLoop = null;
-    }
     this._tsHideTimer = setTimeout(() => {
       this._tsHideTimer = null;
       if (this._tsHoveringGroup === syncGroup) {
@@ -709,6 +703,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       const chart = charts[i];
       if (!chart || (chart.isDisposed && chart.isDisposed())) continue;
       if (syncGroup && chart.__tsSyncGroup !== syncGroup) continue;
+      if (!this._isChartVisible(chart)) continue;
       const dom = chart.getDom ? chart.getDom() : null;
       if (!dom || dom.offsetParent === null) continue;
       const rect = dom.getBoundingClientRect();
@@ -720,24 +715,69 @@ export const createDashboardGridTimeseriesRendererMethods = ({
   _nearest_ts_index(chart, value) {
     const id = Object.entries(this._tsCharts || {}).find(([, c]) => c === chart)?.[0];
     if (!id) return null;
-    const seriesData = (this._tsSeriesData && this._tsSeriesData[id]) || [];
-    if (!Array.isArray(seriesData) || !seriesData.length) return null;
+    const timestamps = (this._tsPrimarySeriesTs && this._tsPrimarySeriesTs[id]) || [];
+    if (!Array.isArray(timestamps) || timestamps.length === 0) return null;
     const target = typeof value === 'string' ? new Date(value).getTime() : Number(value);
     if (!Number.isFinite(target)) return null;
+
+    let left = 0;
+    let right = timestamps.length - 1;
     let best = null;
     let bestDiff = Infinity;
-    const extractTs = (point) => extractTimestamp(point);
-    const data = Array.isArray(seriesData[0]) ? seriesData[0] : [];
-    for (let i = 0; i < data.length; i += 1) {
-      const ts = extractTs(data[i]);
-      if (!Number.isFinite(ts)) continue;
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const ts = timestamps[mid];
+      if (!Number.isFinite(ts)) {
+        let fallbackFound = false;
+        for (let offset = 1; offset < timestamps.length; offset += 1) {
+          const lo = mid - offset;
+          const hi = mid + offset;
+          if (lo >= left && Number.isFinite(timestamps[lo])) {
+            const diff = Math.abs(timestamps[lo] - target);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              best = lo;
+            }
+            fallbackFound = true;
+            break;
+          }
+          if (hi <= right && Number.isFinite(timestamps[hi])) {
+            const diff = Math.abs(timestamps[hi] - target);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              best = hi;
+            }
+            fallbackFound = true;
+            break;
+          }
+        }
+        if (!fallbackFound) break;
+        break;
+      }
+
       const diff = Math.abs(ts - target);
       if (diff < bestDiff) {
         bestDiff = diff;
-        best = i;
-        if (diff === 0) break;
+        best = mid;
+      }
+      if (ts === target) break;
+      if (ts < target) {
+        left = mid + 1;
+      } else {
+        right = mid - 1;
       }
     }
+
+    if (left < timestamps.length && Number.isFinite(timestamps[left])) {
+      const diff = Math.abs(timestamps[left] - target);
+      if (diff < bestDiff) best = left;
+    }
+    if (right >= 0 && Number.isFinite(timestamps[right])) {
+      const diff = Math.abs(timestamps[right] - target);
+      if (diff < bestDiff) best = right;
+    }
+
     return best;
   },
 });
