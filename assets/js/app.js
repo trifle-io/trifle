@@ -2996,6 +2996,24 @@ const emitChatShellModeChanged = (mode) => {
   );
 };
 
+const isEditableShortcutTarget = (target) => {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+
+  const tagName = String(target.tagName || "").toLowerCase();
+  return ["input", "textarea", "select"].includes(tagName);
+};
+
+const isApplePlatform = () => {
+  try {
+    const platform = navigator.userAgentData?.platform || navigator.platform || "";
+    const userAgent = navigator.userAgent || "";
+    return /Mac|iPhone|iPad|iPod/i.test(`${platform} ${userAgent}`);
+  } catch (_) {
+    return false;
+  }
+};
+
 const generateTabId = () =>
   window.crypto && typeof window.crypto.randomUUID === "function"
     ? window.crypto.randomUUID()
@@ -3060,6 +3078,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   _handleChatToggle: null,
   _handleChatSetOpen: null,
   _handleChatSetMode: null,
+  _handleChatShortcut: null,
   _handleStorageSync: null,
 
   init() {
@@ -3091,17 +3110,23 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       const detail = event && event.detail ? event.detail : {};
       this.setChatMode(detail.mode);
     };
+    this._handleChatShortcut = (event) => this.handleChatShortcut(event);
     this._handleStorageSync = (event) => this.syncStorageEvent(event);
 
     window.addEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
     window.addEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
     window.addEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
+    window.addEventListener("keydown", this._handleChatShortcut);
     window.addEventListener("storage", this._handleStorageSync);
     emitChatShellModeChanged(this.chatMode);
   },
 
   get compact() {
     return this.desktopViewport && this.desktopCollapsed;
+  },
+
+  chatShortcutLabel() {
+    return isApplePlatform() ? "⌘+/" : "Ctrl+/";
   },
 
   loadState() {
@@ -3372,6 +3397,17 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     this.persistChatState();
   },
 
+  handleChatShortcut(event) {
+    if (this.storageKey !== "trifle:client-sidebar" || !event || event.defaultPrevented) return;
+    if (event.isComposing || event.repeat) return;
+    if (event.altKey || !(event.metaKey || event.ctrlKey)) return;
+    if (event.code !== "Slash") return;
+    if (isEditableShortcutTarget(event.target)) return;
+
+    event.preventDefault();
+    this.toggleChat();
+  },
+
   syncStorageEvent(event) {
     if (!event || event.key !== CHAT_SHELL_STORAGE_KEY) return;
     this.chatOpen = event.newValue === "open";
@@ -3406,6 +3442,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     if (this._handleChatSetMode) {
       window.removeEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
       this._handleChatSetMode = null;
+    }
+
+    if (this._handleChatShortcut) {
+      window.removeEventListener("keydown", this._handleChatShortcut);
+      this._handleChatShortcut = null;
     }
 
     if (this._handleStorageSync) {

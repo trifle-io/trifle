@@ -12,8 +12,9 @@ defmodule TrifleApp.Layouts do
     assigns =
       assigns
       |> assign(:active?, active_nav?(assigns.socket, assigns.item.menu))
-      |> assign(:tooltip_expr, SidebarHelpers.compact_tooltip_expr(assigns.item.label))
       |> assign(:chat_toggle?, Map.get(assigns.item, :toggle_chat, false))
+      |> assign(:shortcut_hint?, Map.get(assigns.item, :shortcut_hint, false))
+      |> assign(:tooltip_expr, sidebar_tooltip_expr(assigns.item))
       |> assign(:icon_size_style, sidebar_icon_size_style(assigns.item))
       |> assign(:icon_bind_attrs, [
         {"x-bind:style",
@@ -34,7 +35,7 @@ defmodule TrifleApp.Layouts do
       end ++
         [
           {"data-fast-tooltip", true},
-          {"x-bind:data-tooltip", SidebarHelpers.compact_tooltip_expr(assigns.item.label)},
+          {"x-bind:data-tooltip", assigns.tooltip_expr},
           {"x-bind:data-tooltip-placement", SidebarHelpers.compact_tooltip_placement_expr()}
         ]
 
@@ -82,8 +83,20 @@ defmodule TrifleApp.Layouts do
               {@icon_bind_attrs}
             />
           </span>
-          <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
-            {@item.label}
+          <span
+            x-cloak
+            x-show="!compact"
+            x-transition.opacity.duration.150ms
+            class="min-w-0 flex-1"
+          >
+            <span class="flex items-center justify-between gap-2">
+              <span class="min-w-0 truncate">{@item.label}</span>
+              <span
+                :if={@shortcut_hint?}
+                class="inline-flex shrink-0 items-center rounded-full border border-slate-200/80 bg-white/85 px-1.5 py-0.5 text-[0.62rem] font-semibold text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-400"
+                x-text="chatShortcutLabel()"
+              />
+            </span>
           </span>
         </span>
       </button>
@@ -129,8 +142,20 @@ defmodule TrifleApp.Layouts do
               {@icon_bind_attrs}
             />
           </span>
-          <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="truncate">
-            {@item.label}
+          <span
+            x-cloak
+            x-show="!compact"
+            x-transition.opacity.duration.150ms
+            class="min-w-0 flex-1"
+          >
+            <span class="flex items-center justify-between gap-2">
+              <span class="min-w-0 truncate">{@item.label}</span>
+              <span
+                :if={@shortcut_hint?}
+                class="inline-flex shrink-0 items-center rounded-full border border-slate-200/80 bg-white/85 px-1.5 py-0.5 text-[0.62rem] font-semibold text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-400"
+                x-text="chatShortcutLabel()"
+              />
+            </span>
           </span>
         </span>
       </.link>
@@ -143,9 +168,10 @@ defmodule TrifleApp.Layouts do
       %{menu: :home, label: "Home", to: ~p"/", icon: "sidebar-home"},
       %{
         menu: :chat,
-        label: "Baker Agent",
+        label: "Mr. Baker",
         icon: "chef-hat-alt-2",
-        toggle_chat: true
+        toggle_chat: true,
+        shortcut_hint: true
       },
       %{menu: :dashboards, label: "Dashboards", to: ~p"/dashboards", icon: "sidebar-dashboards"},
       %{menu: :monitors, label: "Monitors", to: ~p"/monitors", icon: "sidebar-monitors"},
@@ -200,6 +226,13 @@ defmodule TrifleApp.Layouts do
   defp sidebar_nav_items(current_user, current_membership) do
     nav_items() ++ secondary_nav_items(current_user, current_membership)
   end
+
+  defp sidebar_tooltip_expr(%{shortcut_hint: true, label: label}) do
+    compact_label = Phoenix.json_library().encode!(label)
+    "compact ? #{compact_label} + ' • ' + chatShortcutLabel() : null"
+  end
+
+  defp sidebar_tooltip_expr(%{label: label}), do: SidebarHelpers.compact_tooltip_expr(label)
 
   defp sidebar_icon_size_style(%{icon: "chef-hat-alt-2"}), do: "height: 1.3rem; width: 1.3rem;"
   defp sidebar_icon_size_style(_item), do: "height: 1.05rem; width: 1.05rem;"
