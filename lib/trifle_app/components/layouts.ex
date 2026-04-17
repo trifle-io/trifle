@@ -83,17 +83,12 @@ defmodule TrifleApp.Layouts do
               {@icon_bind_attrs}
             />
           </span>
-          <span
-            x-cloak
-            x-show="!compact"
-            x-transition.opacity.duration.150ms
-            class="min-w-0 flex-1"
-          >
+          <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="min-w-0 flex-1">
             <span class="flex items-center justify-between gap-2">
               <span class="min-w-0 truncate">{@item.label}</span>
               <span
                 :if={@shortcut_hint?}
-                class="inline-flex shrink-0 items-center rounded-full border border-slate-200/80 bg-white/85 px-1.5 py-0.5 text-[0.62rem] font-semibold text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-400"
+                class={shortcut_hint_classes()}
                 x-text="chatShortcutLabel()"
               />
             </span>
@@ -142,17 +137,12 @@ defmodule TrifleApp.Layouts do
               {@icon_bind_attrs}
             />
           </span>
-          <span
-            x-cloak
-            x-show="!compact"
-            x-transition.opacity.duration.150ms
-            class="min-w-0 flex-1"
-          >
+          <span x-cloak x-show="!compact" x-transition.opacity.duration.150ms class="min-w-0 flex-1">
             <span class="flex items-center justify-between gap-2">
               <span class="min-w-0 truncate">{@item.label}</span>
               <span
                 :if={@shortcut_hint?}
-                class="inline-flex shrink-0 items-center rounded-full border border-slate-200/80 bg-white/85 px-1.5 py-0.5 text-[0.62rem] font-semibold text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-400"
+                class={shortcut_hint_classes()}
                 x-text="chatShortcutLabel()"
               />
             </span>
@@ -233,6 +223,10 @@ defmodule TrifleApp.Layouts do
   end
 
   defp sidebar_tooltip_expr(%{label: label}), do: SidebarHelpers.compact_tooltip_expr(label)
+
+  defp shortcut_hint_classes do
+    "inline-flex h-7 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/88 px-2.5 text-[0.68rem] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-slate-700/80 dark:bg-slate-950/75 dark:text-slate-300 dark:shadow-none"
+  end
 
   defp sidebar_icon_size_style(%{icon: "chef-hat-alt-2"}), do: "height: 1.3rem; width: 1.3rem;"
   defp sidebar_icon_size_style(_item), do: "height: 1.05rem; width: 1.05rem;"
