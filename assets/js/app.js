@@ -2787,7 +2787,9 @@ Hooks.ChatContextRefresh = {
       }
 
       this._chatContextRefreshTimeout = setTimeout(() => {
-        this.pushEvent("refresh_page_context", {});
+        this.pushEvent("refresh_page_context", {
+          path: window.location?.pathname || null
+        });
       }, 50);
     };
 

@@ -55,15 +55,24 @@ defmodule TrifleApp.ChatBus do
     end
   end
 
-  @spec request_page_context(String.t(), String.t(), String.t(), pid()) :: :ok
-  def request_page_context(user_id, tab_id, request_id, requester)
+  @spec request_page_context(String.t(), String.t(), String.t(), pid(), String.t() | nil) :: :ok
+  def request_page_context(user_id, tab_id, request_id, requester, path \\ nil)
       when is_binary(user_id) and is_binary(tab_id) and is_binary(request_id) and
-             is_pid(requester) do
+             is_pid(requester) and (is_nil(path) or is_binary(path)) do
+    message =
+      case path do
+        value when is_binary(value) and value != "" ->
+          {:chat_context_request, request_id, requester, value}
+
+        _ ->
+          {:chat_context_request, request_id, requester}
+      end
+
     Phoenix.PubSub.broadcast_from(
       @pubsub,
       self(),
       page_topic(user_id, tab_id),
-      {:chat_context_request, request_id, requester}
+      message
     )
   end
 

@@ -90,6 +90,28 @@ defmodule TrifleApp.ChatPageContext do
     |> Base.encode16(case: :lower)
   end
 
+  @spec route(context() | map() | nil) :: String.t() | nil
+  def route(%{} = context) do
+    context
+    |> Map.get(:entity, Map.get(context, "entity", %{}))
+    |> case do
+      %{} = entity -> Map.get(entity, :route, Map.get(entity, "route"))
+      _ -> nil
+    end
+    |> normalize_path()
+  end
+
+  def route(_), do: nil
+
+  @spec matches_path?(context() | map() | nil, String.t() | nil) :: boolean()
+  def matches_path?(_context, nil), do: true
+
+  def matches_path?(%{} = context, path) when is_binary(path) do
+    route(context) == normalize_path(path)
+  end
+
+  def matches_path?(_, _), do: false
+
   @spec system_message(context()) :: String.t()
   def system_message(%{} = context) do
     fingerprint = fingerprint(context)
@@ -280,6 +302,15 @@ defmodule TrifleApp.ChatPageContext do
   end
 
   defp parse_source_ref_label(_label, _display_name), do: nil
+
+  defp normalize_path(path) when is_binary(path) do
+    case path |> String.trim() |> URI.parse() do
+      %URI{path: normalized} when is_binary(normalized) and normalized != "" -> normalized
+      _ -> nil
+    end
+  end
+
+  defp normalize_path(_), do: nil
 
   defp map_value(context, [root_key, leaf_key]) do
     root = Map.get(context, root_key, Map.get(context, to_string(root_key), %{}))

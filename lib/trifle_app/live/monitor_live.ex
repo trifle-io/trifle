@@ -470,6 +470,16 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, socket}
   end
 
+  def handle_info({:chat_context_request, request_id, requester, expected_path}, socket) do
+    context = monitor_chat_context(socket)
+
+    if ChatPageContext.matches_path?(context, expected_path) do
+      send(requester, {:chat_context_response, request_id, context})
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     {:noreply, socket |> handle_filter_change(changes) |> publish_chat_page_context()}
   end

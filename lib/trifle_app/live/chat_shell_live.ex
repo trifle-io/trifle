@@ -323,16 +323,26 @@ defmodule TrifleApp.ChatShellLive do
     end
   end
 
-  def handle_event("refresh_page_context", _params, socket) do
+  def handle_event("refresh_page_context", params, socket) do
+    requested_path =
+      normalize_context_path(params["path"] || params[:path]) ||
+        ChatPageContext.route(socket.assigns[:current_page_context])
+
     cond do
       not connected?(socket) ->
         {:noreply, socket}
 
       not is_binary(current_user_id(socket)) ->
-        {:noreply, clear_current_page_context(socket)}
+        {:noreply,
+         socket
+         |> assign(:page_context_target_path, requested_path)
+         |> clear_current_page_context()}
 
       not is_binary(socket.assigns[:chat_tab_id]) ->
-        {:noreply, clear_current_page_context(socket)}
+        {:noreply,
+         socket
+         |> assign(:page_context_target_path, requested_path)
+         |> clear_current_page_context()}
 
       true ->
         request_id = UUID.generate()
@@ -340,6 +350,8 @@ defmodule TrifleApp.ChatShellLive do
         socket =
           socket
           |> cancel_navigation_context_request()
+          |> assign(:page_context_target_path, requested_path)
+          |> clear_current_page_context()
           |> assign(:navigation_context_request_id, request_id)
           |> assign(
             :navigation_context_timer_ref,
@@ -447,37 +459,48 @@ defmodule TrifleApp.ChatShellLive do
 
   @impl true
   def handle_info({:chat_context_updated, context}, socket) when is_map(context) do
-    {:noreply,
-     socket
-     |> cancel_initial_context_request()
-     |> cancel_navigation_context_request()
-     |> assign(:current_page_context, context)
-     |> maybe_resume_pending()}
+    if accept_page_context?(socket, context) do
+      {:noreply,
+       socket
+       |> cancel_initial_context_request()
+       |> cancel_navigation_context_request()
+       |> track_page_context_path(context)
+       |> assign(:current_page_context, context)
+       |> maybe_resume_pending()}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:chat_context_response, request_id, context}, socket) do
     cond do
-      request_id == socket.assigns[:pending_context_request_id] ->
+      request_id == socket.assigns[:pending_context_request_id] and
+          accept_page_context?(socket, context) ->
         socket =
           socket
           |> cancel_context_request()
+          |> track_page_context_path(context)
           |> assign(:current_page_context, context)
           |> assign(:pending_page_context_override, context)
 
         {:noreply, start_chat_response(socket, context)}
 
-      request_id == socket.assigns[:initial_context_request_id] ->
+      request_id == socket.assigns[:initial_context_request_id] and
+          accept_page_context?(socket, context) ->
         socket =
           socket
           |> cancel_initial_context_request()
+          |> track_page_context_path(context)
           |> assign(:current_page_context, context)
 
         {:noreply, maybe_resume_pending(socket)}
 
-      request_id == socket.assigns[:navigation_context_request_id] ->
+      request_id == socket.assigns[:navigation_context_request_id] and
+          accept_page_context?(socket, context) ->
         {:noreply,
          socket
          |> cancel_navigation_context_request()
+         |> track_page_context_path(context)
          |> assign(:current_page_context, context)}
 
       true ->
@@ -677,10 +700,6 @@ defmodule TrifleApp.ChatShellLive do
           <p :if={@show_unavailable_notice} class="mt-3 text-xs text-slate-500 dark:text-slate-400">
             Join or create an organization to use the persistent chat shell.
           </p>
-          <div :if={@current_page_context} class="mt-3 text-sm text-slate-600 dark:text-slate-300">
-            <span class="font-semibold text-slate-700 dark:text-slate-100">Context:</span>
-            {current_context_summary(@current_page_context)}
-          </div>
         </div>
 
         <div
@@ -752,8 +771,8 @@ defmodule TrifleApp.ChatShellLive do
         </div>
 
         <div class="border-t border-slate-200/80 px-5 pb-5 pt-4 dark:border-slate-800/80">
-          <% selected_source = displayed_source(@selected_source) %>
-          <.source_tag :if={selected_source} source={selected_source} class="mb-1" />
+          <% active_scope = composer_scope(@current_page_context, displayed_source(@selected_source)) %>
+          <.composer_scope_card :if={active_scope} scope={active_scope} class="mb-3" />
           <.form for={@form} phx-submit="send_message" class="mt-auto">
             <div class="relative overflow-hidden rounded-2xl border border-transparent bg-white/70 shadow-lg backdrop-blur-xl focus-within:border-teal-500/60 dark:border-slate-700 dark:bg-slate-900/50 dark:shadow-none dark:focus-within:border-teal-400">
               <div class="flex items-end">
@@ -920,7 +939,13 @@ defmodule TrifleApp.ChatShellLive do
   defp request_page_context(socket, request_id) do
     with user_id when is_binary(user_id) <- current_user_id(socket),
          tab_id when is_binary(tab_id) <- socket.assigns[:chat_tab_id] do
-      ChatBus.request_page_context(user_id, tab_id, request_id, self())
+      ChatBus.request_page_context(
+        user_id,
+        tab_id,
+        request_id,
+        self(),
+        socket.assigns[:page_context_target_path]
+      )
     else
       _ ->
         send(self(), {:chat_context_response, request_id, socket.assigns[:current_page_context]})
@@ -1159,9 +1184,6 @@ defmodule TrifleApp.ChatShellLive do
 
   defp can_apply_dashboard_update?(_), do: false
 
-  defp current_context_summary(nil), do: nil
-  defp current_context_summary(%{} = page_context), do: ChatPageContext.summary_line(page_context)
-
   defp displayed_source(%Source{} = source), do: source
   defp displayed_source(_), do: nil
 
@@ -1237,26 +1259,166 @@ defmodule TrifleApp.ChatShellLive do
     end
   end
 
-  attr :source, Source, required: true
+  attr :scope, :map, required: true
   attr :class, :string, default: nil
 
-  defp source_tag(assigns) do
+  defp composer_scope_card(assigns) do
     ~H"""
-    <div class={[@class]}>
-      <span class="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200">
-        <TrifleApp.SidebarIcons.icon name={source_tag_icon(@source)} class="h-3.5 w-3.5 shrink-0" />
-        <span class="truncate">{Source.display_name(@source)}</span>
-      </span>
+    <div
+      class={[
+        "rounded-2xl border border-slate-200/80 bg-slate-50/85 px-3 py-3 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/45",
+        @class
+      ]}
+      data-scope-kind={Map.get(@scope, :kind)}
+      data-scope-icon={@scope.icon}
+    >
+      <div class="flex items-start gap-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700/80">
+          <TrifleApp.SidebarIcons.icon name={@scope.icon} class="h-5 w-5 shrink-0" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {@scope.title}
+          </p>
+          <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            {@scope.details}
+          </p>
+        </div>
+      </div>
     </div>
     """
   end
 
-  defp source_tag_icon(%Source{} = source) do
+  defp composer_scope(%{} = page_context, selected_source) do
+    %{
+      kind: "context",
+      icon: context_scope_icon(page_context),
+      title: context_scope_title(page_context),
+      details: context_scope_details(page_context, selected_source)
+    }
+  end
+
+  defp composer_scope(nil, %Source{} = source) do
+    %{
+      kind: "source",
+      icon: source_scope_icon(source),
+      title: Source.display_name(source),
+      details: source_scope_details(source)
+    }
+  end
+
+  defp composer_scope(_, _), do: nil
+
+  defp context_scope_icon(%{} = page_context) do
+    case normalized_page_type(page_context) do
+      type when type in [:dashboard, :dashboards] -> "sidebar-dashboards"
+      type when type in [:monitor, :monitors] -> "sidebar-monitors"
+      :explore -> "sidebar-explore"
+      type when type in [:project, :projects] -> "sidebar-projects"
+      type when type in [:database, :databases] -> "sidebar-databases"
+      _ -> "chef-hat-alt-2"
+    end
+  end
+
+  defp context_scope_title(%{} = page_context) do
+    entity = map_get(page_context, "entity") || %{}
+
+    map_get(entity, "title") ||
+      map_get(entity, "name") ||
+      context_scope_label(page_context)
+  end
+
+  defp context_scope_details(%{} = page_context, selected_source) do
+    query = query_map(page_context)
+    source_ref = map_get(query, "source_ref") || %{}
+    timeframe = map_get(query, "timeframe") || %{}
+
+    details =
+      [
+        map_get(source_ref, "display_name") || source_scope_name(selected_source),
+        map_get(timeframe, "value") || map_get(timeframe, "display"),
+        granularity_scope_detail(map_get(query, "granularity")),
+        metrics_key_scope_detail(map_get(query, "metrics_key"))
+      ]
+      |> Enum.reject(&(&1 in [nil, ""]))
+
+    case details do
+      [] -> ChatPageContext.summary_line(page_context) || context_scope_label(page_context)
+      list -> Enum.join(list, " · ")
+    end
+  end
+
+  defp source_scope_details(%Source{} = source) do
+    [Source.time_zone(source)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" · ")
+  end
+
+  defp source_scope_icon(%Source{} = source) do
     case Source.type(source) do
       :project -> "sidebar-projects"
       _ -> "sidebar-databases"
     end
   end
+
+  defp source_scope_name(%Source{} = source), do: Source.display_name(source)
+  defp source_scope_name(_), do: nil
+
+  defp context_scope_label(%{} = page_context) do
+    case normalized_page_type(page_context) do
+      type when type in [:dashboard, :dashboards] -> "Dashboard"
+      type when type in [:monitor, :monitors] -> "Monitor"
+      :explore -> "Explore"
+      type when type in [:project, :projects] -> "Project"
+      type when type in [:database, :databases] -> "Database"
+      other when is_atom(other) -> other |> Atom.to_string() |> String.capitalize()
+      _ -> "Context"
+    end
+  end
+
+  defp normalized_page_type(%{} = page_context) do
+    case map_get(page_context, "page_type") do
+      value when is_atom(value) ->
+        value
+
+      value when is_binary(value) ->
+        value
+        |> String.trim()
+        |> case do
+          "dashboard" -> :dashboard
+          "dashboards" -> :dashboards
+          "monitor" -> :monitor
+          "monitors" -> :monitors
+          "explore" -> :explore
+          "project" -> :project
+          "projects" -> :projects
+          "database" -> :database
+          "databases" -> :databases
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp granularity_scope_detail(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> "#{trimmed} granularity"
+    end
+  end
+
+  defp granularity_scope_detail(_), do: nil
+
+  defp metrics_key_scope_detail(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> "metrics key #{trimmed}"
+    end
+  end
+
+  defp metrics_key_scope_detail(_), do: nil
 
   defp visualization_timeframe_value(visualization) do
     visualization
@@ -1302,6 +1464,7 @@ defmodule TrifleApp.ChatShellLive do
     |> assign(:initial_context_timer_ref, nil)
     |> assign(:navigation_context_request_id, nil)
     |> assign(:navigation_context_timer_ref, nil)
+    |> assign(:page_context_target_path, nil)
     |> assign(:pending_page_context_override, nil)
     |> assign(:pending_page_action_request_id, nil)
     |> assign(:pending_page_action, nil)
@@ -2531,6 +2694,30 @@ defmodule TrifleApp.ChatShellLive do
   defp clear_current_page_context(socket) do
     assign(socket, :current_page_context, nil)
   end
+
+  defp accept_page_context?(socket, %{} = context) do
+    ChatPageContext.matches_path?(context, socket.assigns[:page_context_target_path])
+  end
+
+  defp accept_page_context?(_socket, _context), do: false
+
+  defp track_page_context_path(socket, %{} = context) do
+    case ChatPageContext.route(context) do
+      path when is_binary(path) -> assign(socket, :page_context_target_path, path)
+      _ -> socket
+    end
+  end
+
+  defp track_page_context_path(socket, _context), do: socket
+
+  defp normalize_context_path(path) when is_binary(path) do
+    case path |> String.trim() |> URI.parse() do
+      %URI{path: normalized} when is_binary(normalized) and normalized != "" -> normalized
+      _ -> nil
+    end
+  end
+
+  defp normalize_context_path(_), do: nil
 
   defp message_author(message) when is_map(message) do
     Map.get(message, :author) || Map.get(message, "author")

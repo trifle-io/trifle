@@ -1377,6 +1377,16 @@ defmodule TrifleApp.DashboardLive do
     {:noreply, socket}
   end
 
+  def handle_info({:chat_context_request, request_id, requester, expected_path}, socket) do
+    context = dashboard_chat_context(socket)
+
+    if ChatPageContext.matches_path?(context, expected_path) do
+      send(requester, {:chat_context_response, request_id, context})
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_info({:chat_page_action, request_id, requester, payload}, socket) do
     type = if is_map(payload), do: Map.get(payload, "type") || Map.get(payload, :type)
 

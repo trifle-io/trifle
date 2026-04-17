@@ -946,6 +946,16 @@ defmodule TrifleApp.ExploreCore do
     {:noreply, socket}
   end
 
+  def handle_info({:chat_context_request, request_id, requester, expected_path}, socket) do
+    context = explore_chat_context(socket)
+
+    if ChatPageContext.matches_path?(context, expected_path) do
+      send(requester, {:chat_context_response, request_id, context})
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     require Logger
     Logger.info("ExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
