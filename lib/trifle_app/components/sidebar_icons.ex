@@ -52,6 +52,21 @@ defmodule TrifleApp.SidebarIcons do
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0 1 12 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5" />
         </svg>
+      <% "chat-mode-pinned" -> %>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
+          <rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2.25" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 5.75v12.5M7.5 9.25h3.5M7.5 12h3.5M7.5 14.75h2.25" />
+        </svg>
+      <% "chat-mode-panel" -> %>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
+          <rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2.25" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 9.25h4.25M7.5 12h3.25M14.5 7.75h3.25c.552 0 1 .448 1 1v6.5c0 .552-.448 1-1 1H14.5c-.552 0-1-.448-1-1v-6.5c0-.552.448-1 1-1Z" />
+        </svg>
+      <% "chat-mode-fullscreen" -> %>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
+          <rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2.25" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 10.5V8.25h2.25M15.75 10.5V8.25H13.5M8.25 13.5v2.25h2.25M15.75 13.5v2.25H13.5" />
+        </svg>
       <% "chef-hat" -> %>
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
           <path
@@ -148,6 +163,18 @@ defmodule TrifleApp.SidebarIcons do
       <% "hero-x-mark" -> %>
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      <% "hero-ellipsis-horizontal" -> %>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 1 0 0 .001V12Zm5.25 0a.75.75 0 1 0 0 .001V12Zm5.25 0a.75.75 0 1 0 0 .001V12Z" />
+        </svg>
+      <% "hero-circle-stack" -> %>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+        </svg>
+      <% "hero-arrow-path" -> %>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356m-1.636 14.288A9 9 0 0 1 5.106 5.106m13.273 13.538 1.636-1.636m0 0H15.02m4.995 0v4.995" />
         </svg>
       <% "hero-chevron-double-left" -> %>
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class={@class} aria-hidden="true" {@rest}>

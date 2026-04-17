@@ -45,6 +45,14 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert html =~ ~s(class="flex h-10 w-10 shrink-0 items-center justify-center)
     assert html =~ ~s(class="h-5 w-5 shrink-0")
     refute html =~ "Fallback database source"
+    assert html =~ ~s(data-chat-shell-mode-group)
+    assert html =~ ~s(data-chat-shell-mode-button="pinned")
+    assert html =~ ~s(data-chat-shell-mode-button="panel")
+    assert html =~ ~s(data-chat-shell-mode-button="fullscreen")
+    assert html =~ ~s(data-chat-shell-control="more")
+    assert html =~ ~s(data-chat-shell-control="close")
+    assert html =~ ~s(data-chat-shell-more-action="source")
+    assert html =~ ~s(data-chat-shell-more-action="reset")
 
     source = Source.from_database(database)
 

@@ -2950,6 +2950,11 @@ Hooks.SocketStatusDot = {
 
 const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
 const CHAT_SHELL_STORAGE_KEY = "trifle:chat-shell-open";
+const CHAT_SHELL_MODE_STORAGE_KEY = "trifle:chat-shell-mode";
+const CHAT_SHELL_DEFAULT_MODE = "pinned";
+const CHAT_SHELL_MODES = new Set(["pinned", "panel", "fullscreen"]);
+const CHAT_SHELL_SET_MODE_EVENT = "trifle:chat-shell:set-mode";
+const CHAT_SHELL_MODE_CHANGED_EVENT = "trifle:chat-shell:mode-changed";
 const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
   "trifle:client-sidebar": "trifleClientSidebar",
   "trifle:admin-sidebar": "trifleAdminSidebar"
@@ -2971,6 +2976,24 @@ const syncSidebarRootState = (storageKey, desktopCollapsed) => {
   const datasetKey = SIDEBAR_ROOT_DATASET_KEYS[storageKey];
   if (!datasetKey || !document.documentElement) return;
   document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
+};
+
+const readChatShellMode = () => {
+  try {
+    const stored =
+      window.sessionStorage ? window.sessionStorage.getItem(CHAT_SHELL_MODE_STORAGE_KEY) : null;
+    return CHAT_SHELL_MODES.has(stored) ? stored : CHAT_SHELL_DEFAULT_MODE;
+  } catch (_) {
+    return CHAT_SHELL_DEFAULT_MODE;
+  }
+};
+
+const emitChatShellModeChanged = (mode) => {
+  window.dispatchEvent(
+    new CustomEvent(CHAT_SHELL_MODE_CHANGED_EVENT, {
+      detail: { mode }
+    })
+  );
 };
 
 const generateTabId = () =>
@@ -3028,6 +3051,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   mobileOpen: false,
   desktopCollapsed: defaultCollapsed,
   chatOpen: false,
+  chatMode: CHAT_SHELL_DEFAULT_MODE,
   desktopViewport: false,
   _mediaQuery: null,
   _handleViewportChange: null,
@@ -3035,11 +3059,13 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   _handleMobileKeydown: null,
   _handleChatToggle: null,
   _handleChatSetOpen: null,
+  _handleChatSetMode: null,
   _handleStorageSync: null,
 
   init() {
     this.loadState();
     this.loadChatState();
+    this.loadChatMode();
     this.syncViewport();
 
     this._mediaQuery = window.matchMedia("(min-width: 1024px)");
@@ -3061,11 +3087,17 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       const detail = event && event.detail ? event.detail : {};
       this.setChatOpen(detail.open !== false);
     };
+    this._handleChatSetMode = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      this.setChatMode(detail.mode);
+    };
     this._handleStorageSync = (event) => this.syncStorageEvent(event);
 
     window.addEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
     window.addEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
+    window.addEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
     window.addEventListener("storage", this._handleStorageSync);
+    emitChatShellModeChanged(this.chatMode);
   },
 
   get compact() {
@@ -3117,6 +3149,10 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     }
   },
 
+  loadChatMode() {
+    this.chatMode = readChatShellMode();
+  },
+
   syncViewport(mediaQuery = null) {
     const query = mediaQuery || window.matchMedia("(min-width: 1024px)");
     this.desktopViewport = !!query.matches;
@@ -3126,6 +3162,32 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     }
 
     this.syncBodyScrollLock();
+  },
+
+  effectiveChatMode() {
+    return this.desktopViewport ? this.chatMode : "fullscreen";
+  },
+
+  mainContentClasses() {
+    const base = this.compact ? "lg:pl-[6.25rem]" : "lg:pl-[18rem]";
+    const pinnedOpen =
+      this.chatOpen && this.desktopViewport && this.effectiveChatMode() === "pinned";
+
+    return pinnedOpen ? `${base} lg:pr-[34rem]` : base;
+  },
+
+  mainContentHidden() {
+    return (
+      (!this.desktopViewport && this.mobileOpen) ||
+      (this.chatOpen && this.effectiveChatMode() === "fullscreen")
+    );
+  },
+
+  chatShellViewportClasses() {
+    const widthClass =
+      this.desktopViewport && this.effectiveChatMode() !== "fullscreen" ? " lg:w-[34rem]" : "";
+
+    return `${widthClass}${this.chatOpen ? " translate-x-0" : " translate-x-full"}`;
   },
 
   syncBodyScrollLock() {
@@ -3280,6 +3342,14 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     } catch (_) {}
   },
 
+  persistChatMode() {
+    try {
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(CHAT_SHELL_MODE_STORAGE_KEY, this.chatMode);
+      }
+    } catch (_) {}
+  },
+
   toggleDesktop() {
     this.desktopCollapsed = !this.desktopCollapsed;
     this.persistState();
@@ -3288,6 +3358,13 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   setChatOpen(open) {
     this.chatOpen = !!open;
     this.persistChatState();
+  },
+
+  setChatMode(mode) {
+    if (!CHAT_SHELL_MODES.has(mode)) return;
+    this.chatMode = mode;
+    this.persistChatMode();
+    emitChatShellModeChanged(this.chatMode);
   },
 
   toggleChat() {
@@ -3326,6 +3403,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       this._handleChatSetOpen = null;
     }
 
+    if (this._handleChatSetMode) {
+      window.removeEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
+      this._handleChatSetMode = null;
+    }
+
     if (this._handleStorageSync) {
       window.removeEventListener("storage", this._handleStorageSync);
       this._handleStorageSync = null;
@@ -3337,6 +3419,39 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       this._mediaQuery.removeEventListener("change", this._handleViewportChange);
     } else if (typeof this._mediaQuery.removeListener === "function") {
       this._mediaQuery.removeListener(this._handleViewportChange);
+    }
+  }
+});
+
+window.trifleChatShellHeader = () => ({
+  moreOpen: false,
+  chatMode: readChatShellMode(),
+  _handleChatModeChanged: null,
+
+  init() {
+    this._handleChatModeChanged = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      this.chatMode = CHAT_SHELL_MODES.has(detail.mode) ? detail.mode : readChatShellMode();
+    };
+
+    window.addEventListener(CHAT_SHELL_MODE_CHANGED_EVENT, this._handleChatModeChanged);
+    this.chatMode = readChatShellMode();
+  },
+
+  setMode(mode) {
+    if (!CHAT_SHELL_MODES.has(mode)) return;
+    this.chatMode = mode;
+    window.dispatchEvent(
+      new CustomEvent(CHAT_SHELL_SET_MODE_EVENT, {
+        detail: { mode }
+      })
+    );
+  },
+
+  destroy() {
+    if (this._handleChatModeChanged) {
+      window.removeEventListener(CHAT_SHELL_MODE_CHANGED_EVENT, this._handleChatModeChanged);
+      this._handleChatModeChanged = null;
     }
   }
 });

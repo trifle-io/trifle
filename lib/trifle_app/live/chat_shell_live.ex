@@ -671,28 +671,118 @@ defmodule TrifleApp.ChatShellLive do
               </div>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                phx-click="open_source_modal"
-                class="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:border-teal-400 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-teal-400 dark:hover:text-white"
+            <div
+              class="flex shrink-0 items-center gap-2"
+              x-data="trifleChatShellHeader()"
+              x-on:keydown.escape.stop.prevent="moreOpen = false"
+            >
+              <div
+                class="flex items-center gap-1 rounded-full bg-slate-100/85 p-1 ring-1 ring-slate-200/80 dark:bg-slate-900/70 dark:ring-white/10"
+                data-chat-shell-mode-group
               >
-                Source
-              </button>
+                <button
+                  type="button"
+                  class={chat_header_icon_button_base_classes()}
+                  x-on:click="setMode('pinned')"
+                  x-bind:class={chat_mode_button_bind_classes("pinned")}
+                  x-bind:aria-pressed="(chatMode === 'pinned').toString()"
+                  data-fast-tooltip
+                  data-tooltip="Pinned mode"
+                  data-tooltip-placement="bottom"
+                  data-chat-shell-mode-button="pinned"
+                  aria-label="Pinned mode"
+                >
+                  <TrifleApp.SidebarIcons.icon name="chat-mode-pinned" class="h-4 w-4 shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  class={chat_header_icon_button_base_classes()}
+                  x-on:click="setMode('panel')"
+                  x-bind:class={chat_mode_button_bind_classes("panel")}
+                  x-bind:aria-pressed="(chatMode === 'panel').toString()"
+                  data-fast-tooltip
+                  data-tooltip="Panel mode"
+                  data-tooltip-placement="bottom"
+                  data-chat-shell-mode-button="panel"
+                  aria-label="Panel mode"
+                >
+                  <TrifleApp.SidebarIcons.icon name="chat-mode-panel" class="h-4 w-4 shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  class={chat_header_icon_button_base_classes()}
+                  x-on:click="setMode('fullscreen')"
+                  x-bind:class={chat_mode_button_bind_classes("fullscreen")}
+                  x-bind:aria-pressed="(chatMode === 'fullscreen').toString()"
+                  data-fast-tooltip
+                  data-tooltip="Fullscreen mode"
+                  data-tooltip-placement="bottom"
+                  data-chat-shell-mode-button="fullscreen"
+                  aria-label="Fullscreen mode"
+                >
+                  <TrifleApp.SidebarIcons.icon name="chat-mode-fullscreen" class="h-4 w-4 shrink-0" />
+                </button>
+              </div>
+
+              <div class="relative" x-on:click.outside="moreOpen = false">
+                <button
+                  type="button"
+                  class={chat_header_icon_button_idle_classes()}
+                  x-on:click="moreOpen = !moreOpen"
+                  x-bind:aria-expanded="moreOpen.toString()"
+                  data-fast-tooltip
+                  data-tooltip="More"
+                  data-tooltip-placement="bottom"
+                  data-chat-shell-control="more"
+                  aria-label="More chat actions"
+                >
+                  <TrifleApp.SidebarIcons.icon name="hero-bars-3" class="h-5 w-5" />
+                </button>
+
+                <div
+                  class="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-2 shadow-[0_18px_48px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_18px_52px_-30px_rgba(2,6,23,0.95)]"
+                  x-cloak
+                  x-show="moreOpen"
+                  x-transition:enter="transition ease-out duration-150"
+                  x-transition:enter-start="opacity-0 translate-y-2"
+                  x-transition:enter-end="opacity-100 translate-y-0"
+                  x-transition:leave="transition ease-in duration-100"
+                  x-transition:leave-start="opacity-100 translate-y-0"
+                  x-transition:leave-end="opacity-0 translate-y-2"
+                  data-chat-shell-more-menu
+                >
+                  <button
+                    type="button"
+                    phx-click="open_source_modal"
+                    x-on:click="moreOpen = false"
+                    class="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-offset-slate-900"
+                    data-chat-shell-more-action="source"
+                  >
+                    <span>Source</span>
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="reset_chat"
+                    x-on:click="moreOpen = false"
+                    class="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-offset-slate-900"
+                    data-chat-shell-more-action="reset"
+                  >
+                    <span>Reset</span>
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="button"
-                phx-click="reset_chat"
-                class="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:border-amber-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-amber-400 dark:hover:text-white"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onclick="window.dispatchEvent(new CustomEvent('trifle:chat-shell:set-open', { detail: { open: false } }))"
-                class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
+                class={chat_header_icon_button_idle_classes()}
+                x-on:click="window.dispatchEvent(new CustomEvent('trifle:chat-shell:set-open', { detail: { open: false } }))"
+                data-fast-tooltip
+                data-tooltip="Close"
+                data-tooltip-placement="bottom"
+                data-chat-shell-control="close"
                 aria-label="Close chat"
               >
-                <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-4 w-4" />
+                <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -1287,6 +1377,26 @@ defmodule TrifleApp.ChatShellLive do
       </div>
     </div>
     """
+  end
+
+  defp chat_header_icon_button_base_classes do
+    "relative inline-flex h-9 w-9 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900"
+  end
+
+  defp chat_header_icon_button_idle_classes do
+    [
+      chat_header_icon_button_base_classes(),
+      "text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
+    ]
+  end
+
+  defp chat_mode_button_bind_classes(mode) when mode in ["pinned", "panel", "fullscreen"] do
+    active =
+      "bg-white text-slate-900 shadow-[0_8px_20px_-14px_rgba(15,23,42,0.55)] ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-white dark:ring-white/10"
+
+    inactive = "text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
+
+    "chatMode === '#{mode}' ? '#{active}' : '#{inactive}'"
   end
 
   defp composer_scope(%{} = page_context, selected_source) do
