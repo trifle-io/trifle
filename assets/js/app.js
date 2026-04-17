@@ -2978,6 +2978,24 @@ const syncSidebarRootState = (storageKey, desktopCollapsed) => {
   document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
 };
 
+const dispatchSyntheticResize = () => {
+  try {
+    window.dispatchEvent(new Event("resize"));
+  } catch (_) {}
+};
+
+const scheduleSyntheticResize = () => {
+  dispatchSyntheticResize();
+
+  try {
+    window.requestAnimationFrame(() => dispatchSyntheticResize());
+  } catch (_) {}
+
+  [160, 340, 520].forEach((delay) => {
+    window.setTimeout(() => dispatchSyntheticResize(), delay);
+  });
+};
+
 const readChatShellMode = () => {
   try {
     const stored =
@@ -3378,11 +3396,13 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   toggleDesktop() {
     this.desktopCollapsed = !this.desktopCollapsed;
     this.persistState();
+    scheduleSyntheticResize();
   },
 
   setChatOpen(open) {
     this.chatOpen = !!open;
     this.persistChatState();
+    scheduleSyntheticResize();
   },
 
   setChatMode(mode) {
@@ -3390,6 +3410,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     this.chatMode = mode;
     this.persistChatMode();
     emitChatShellModeChanged(this.chatMode);
+    scheduleSyntheticResize();
   },
 
   toggleChat() {
@@ -3411,6 +3432,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   syncStorageEvent(event) {
     if (!event || event.key !== CHAT_SHELL_STORAGE_KEY) return;
     this.chatOpen = event.newValue === "open";
+    scheduleSyntheticResize();
   },
 
   toggleMobile(focusOrigin = null) {

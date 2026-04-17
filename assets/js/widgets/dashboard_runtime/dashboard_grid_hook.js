@@ -117,6 +117,15 @@ Hooks.DashboardGrid = {
       });
     };
     document.addEventListener('scroll', this._onViewportScroll, true);
+    this._onVisibilityResume = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      try {
+        this._refreshViewportTargets();
+        this._scheduleDeferredResize();
+      } catch (_) {}
+    };
+    document.addEventListener('visibilitychange', this._onVisibilityResume);
+    window.addEventListener('pageshow', this._onVisibilityResume);
     // Avoid persisting transient responsive changes when navigating away
     const hideableLoadingKinds = new Set(['patch', 'redirect']);
     this._gridHiddenForLoading = false;
@@ -609,6 +618,11 @@ Hooks.DashboardGrid = {
     if (this._onViewportScroll) {
       document.removeEventListener('scroll', this._onViewportScroll, true);
       this._onViewportScroll = null;
+    }
+    if (this._onVisibilityResume) {
+      document.removeEventListener('visibilitychange', this._onVisibilityResume);
+      window.removeEventListener('pageshow', this._onVisibilityResume);
+      this._onVisibilityResume = null;
     }
     if (this._onPageLoadingStart) {
       window.removeEventListener('phx:page-loading-start', this._onPageLoadingStart);
