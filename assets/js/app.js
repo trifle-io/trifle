@@ -3035,6 +3035,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   _handleMobileKeydown: null,
   _handleChatToggle: null,
   _handleChatSetOpen: null,
+  _handleStorageSync: null,
 
   init() {
     this.loadState();
@@ -3060,9 +3061,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       const detail = event && event.detail ? event.detail : {};
       this.setChatOpen(detail.open !== false);
     };
+    this._handleStorageSync = (event) => this.syncStorageEvent(event);
 
     window.addEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
     window.addEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
+    window.addEventListener("storage", this._handleStorageSync);
   },
 
   get compact() {
@@ -3292,6 +3295,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     this.persistChatState();
   },
 
+  syncStorageEvent(event) {
+    if (!event || event.key !== CHAT_SHELL_STORAGE_KEY) return;
+    this.chatOpen = event.newValue === "open";
+  },
+
   toggleMobile(focusOrigin = null) {
     if (!this.mobileOpen) {
       this.captureMobileFocusOrigin(focusOrigin);
@@ -3316,6 +3324,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     if (this._handleChatSetOpen) {
       window.removeEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
       this._handleChatSetOpen = null;
+    }
+
+    if (this._handleStorageSync) {
+      window.removeEventListener("storage", this._handleStorageSync);
+      this._handleStorageSync = null;
     }
 
     if (!this._mediaQuery || !this._handleViewportChange) return;
