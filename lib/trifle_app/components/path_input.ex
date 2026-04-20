@@ -53,7 +53,7 @@ defmodule TrifleApp.Components.PathInput do
         id={"#{@id}-suggestions"}
         data-role="suggestions"
         phx-update="ignore"
-        class="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
+        class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 hidden"
       >
       </div>
     </div>

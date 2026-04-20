@@ -281,7 +281,6 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
           annotated={true}
           input_data_role="series-path"
           preview_class={path_preview_classes()}
-          wrapper_class="relative z-20"
           input_class={joined_input_classes()}
         />
         <input
