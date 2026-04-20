@@ -29,6 +29,10 @@ defmodule TrifleApp.Components.DashboardPage do
       |> assign_new(:can_view_dashboard_payload, fn -> false end)
       |> assign_new(:show_dashboard_payload_modal, fn -> false end)
       |> assign_new(:dashboard_source_status, fn -> :available end)
+      |> assign_new(:source_annotation_groups, fn -> [] end)
+      |> assign_new(:source_annotation_count, fn -> 0 end)
+      |> assign_new(:annotation_editor, fn -> nil end)
+      |> assign_new(:annotation_group, fn -> nil end)
 
     ~H"""
     <div
@@ -514,6 +518,7 @@ defmodule TrifleApp.Components.DashboardPage do
           text_widgets={@widget_text || %{}}
           list={@widget_list || %{}}
           distribution={@widget_distribution || %{}}
+          annotation_groups={@source_annotation_groups || []}
           transponder_info={@transponder_info || %{}}
           export_params={export_params}
           loading={@loading}
@@ -542,6 +547,199 @@ defmodule TrifleApp.Components.DashboardPage do
               Close
             </button>
           </:actions>
+        </.app_modal>
+
+        <.app_modal
+          id="annotation-editor-modal"
+          show={!is_nil(@annotation_editor)}
+          on_cancel="close_annotation_editor"
+          size="md"
+        >
+          <:title>Add annotation</:title>
+          <:body>
+            <%= if @annotation_editor do %>
+              <.form
+                for={%{}}
+                as={:annotation}
+                id="annotation-editor-form"
+                phx-submit="save_annotation"
+                class="space-y-5"
+              >
+                <input type="hidden" name="annotation[at]" value={@annotation_editor.at_iso} />
+                <div>
+                  <p class="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    Timestamp
+                  </p>
+                  <p class="mt-1 font-mono text-sm tabular-nums text-slate-900 dark:text-slate-100">
+                    {format_annotation_timestamp(@annotation_editor.at)}
+                  </p>
+                  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Rounded to {@annotation_editor.source_granularity}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    for="annotation-body"
+                    class="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300"
+                  >
+                    Note
+                  </label>
+                  <textarea
+                    id="annotation-body"
+                    name="annotation[body]"
+                    rows="5"
+                    maxlength="2000"
+                    required
+                    class="block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                  ><%= @annotation_editor.body || "" %></textarea>
+                  <p
+                    :if={@annotation_editor.error}
+                    class="mt-2 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {@annotation_editor.error}
+                  </p>
+                </div>
+              </.form>
+            <% end %>
+          </:body>
+          <:actions>
+            <button
+              type="button"
+              phx-click="close_annotation_editor"
+              class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="annotation-editor-form"
+              class="inline-flex items-center justify-center rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            >
+              Save
+            </button>
+          </:actions>
+        </.app_modal>
+
+        <.app_modal
+          id="annotation-group-modal"
+          show={!is_nil(@annotation_group)}
+          on_cancel="close_annotation_group"
+          size="lg"
+        >
+          <:title>Annotation</:title>
+          <:body>
+            <%= if @annotation_group do %>
+              <% annotations = @annotation_group.annotations || [] %>
+              <% show_annotation_times = length(annotations) > 1 %>
+              <div class="space-y-5">
+                <div>
+                  <p class="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    Timestamp
+                  </p>
+                  <p class="mt-1 font-mono text-sm tabular-nums text-slate-900 dark:text-slate-100">
+                    {format_annotation_timestamp(@annotation_group.at)}
+                  </p>
+                  <p
+                    :if={show_annotation_times}
+                    class="mt-1 text-sm text-slate-500 dark:text-slate-400"
+                  >
+                    {length(annotations)} notes grouped at this chart time.
+                  </p>
+                </div>
+
+                <div class="divide-y divide-slate-950/10 dark:divide-white/10">
+                  <%= for annotation <- annotations do %>
+                    <section class="py-5 first:pt-0 last:pb-0">
+                      <.form
+                        for={%{}}
+                        as={:annotation}
+                        id={"annotation-update-form-#{annotation.id}"}
+                        phx-submit="update_annotation"
+                        class="space-y-4"
+                      >
+                        <input type="hidden" name="annotation[id]" value={annotation.id} />
+                        <input type="hidden" name="annotation[group_id]" value={@annotation_group.id} />
+                        <div class="space-y-2">
+                          <%= if show_annotation_times do %>
+                            <div>
+                              <p class="text-sm font-medium text-slate-500 dark:text-slate-400">
+                                Source timestamp
+                              </p>
+                              <p class="mt-1 font-mono text-sm tabular-nums text-slate-600 dark:text-slate-300">
+                                {format_annotation_timestamp(annotation.at_iso)}
+                              </p>
+                            </div>
+                          <% end %>
+                          <label for={"annotation-body-#{annotation.id}"} class="sr-only">
+                            Note
+                          </label>
+                          <textarea
+                            id={"annotation-body-#{annotation.id}"}
+                            name="annotation[body]"
+                            rows="4"
+                            maxlength="2000"
+                            required
+                            class="block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          ><%= annotation.body %></textarea>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 border-t border-slate-950/10 pt-4 dark:border-white/10">
+                          <button
+                            type="button"
+                            phx-click="close_annotation_group"
+                            class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            class="inline-flex items-center justify-center rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+                          >
+                            Save changes
+                          </button>
+                        </div>
+
+                        <div class="border-t border-red-200 pt-4 dark:border-red-900/50">
+                          <div class="mb-3">
+                            <h4 class="text-sm font-semibold text-red-600 dark:text-red-400">
+                              Danger zone
+                            </h4>
+                            <p class="mt-1 text-sm text-red-600 dark:text-red-400">
+                              Deleting this annotation cannot be undone.
+                            </p>
+                          </div>
+                          <.danger_button
+                            type="button"
+                            phx-click="delete_annotation"
+                            phx-value-id={annotation.id}
+                            phx-value-group_id={@annotation_group.id}
+                            class="w-full gap-2"
+                          >
+                            <svg
+                              class="h-4 w-4"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke-width="1.5"
+                              stroke="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673A2.25 2.25 0 0 1 15.916 21.75H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                              />
+                            </svg>
+                            Delete annotation
+                          </.danger_button>
+                        </div>
+                      </.form>
+                    </section>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          </:body>
         </.app_modal>
         
     <!-- Configure Modal -->
@@ -1119,14 +1317,13 @@ defmodule TrifleApp.Components.DashboardPage do
                             Copied
                           </span>
                         </button>
-                        <button
+                        <.danger_button
                           type="button"
                           phx-click="remove_public_token"
                           data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
-                          class="inline-flex items-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
                         >
                           Remove Link
-                        </button>
+                        </.danger_button>
                       </div>
                     <% else %>
                       <button
@@ -1196,30 +1393,29 @@ defmodule TrifleApp.Components.DashboardPage do
                           <% end %>
                         </select>
                       </.form>
-                      <button
+                      <.danger_button
                         type="button"
-                        class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
                         phx-click="transfer_dashboard_owner"
                         data-confirm="Transfer ownership to the selected member?"
                         disabled={@dashboard_owner_selection in [nil, ""]}
                       >
                         Transfer ownership
-                      </button>
+                      </.danger_button>
                     </div>
                     <p :if={@dashboard_owner_error} class="text-xs text-rose-600 dark:text-rose-400">
                       {@dashboard_owner_error}
                     </p>
                   </div>
 
-                  <button
+                  <.danger_button
                     type="button"
                     phx-click="delete_dashboard"
                     data-confirm="Are you sure you want to delete this dashboard? This action cannot be undone."
-                    class="w-full inline-flex items-center justify-center rounded-md bg-red-50 dark:bg-red-900 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-200 ring-1 ring-inset ring-red-600/20 dark:ring-red-500/30 hover:bg-red-100 dark:hover:bg-red-800"
+                    class="w-full"
                     title="Delete this dashboard"
                   >
                     Delete Dashboard
-                  </button>
+                  </.danger_button>
                 </div>
               <% end %>
             </:below_actions>
@@ -1626,6 +1822,7 @@ defmodule TrifleApp.Components.DashboardPage do
             dashboard={@dashboard}
             export_params={export_params}
             show_error_modal={@show_error_modal}
+            annotation_count={@source_annotation_count || 0}
           />
           <TrifleApp.Components.DashboardFooter.transponder_errors_modal
             summary={summary}
@@ -1808,6 +2005,18 @@ defmodule TrifleApp.Components.DashboardPage do
         color || ChartColors.primary()
     end
   end
+
+  defp format_annotation_timestamp(%DateTime{} = datetime),
+    do: Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S %Z")
+
+  defp format_annotation_timestamp(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> format_annotation_timestamp(datetime)
+      _ -> value
+    end
+  end
+
+  defp format_annotation_timestamp(_value), do: ""
 
   defp database_default_timeframe(nil), do: nil
   defp database_default_timeframe(database), do: database.default_timeframe

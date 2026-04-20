@@ -312,15 +312,15 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                 Deleting this alert cannot be undone.
               </p>
             </div>
-            <button
+            <.danger_button
               type="button"
-              class="mt-3 w-full inline-flex items-center justify-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+              class="mt-3 w-full gap-2"
               phx-click="delete"
               phx-target={@myself}
               data-confirm="Are you sure you want to delete this alert?"
             >
               <svg
-                class="-ml-0.5 mr-1.5 h-4 w-4"
+                class="h-4 w-4"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -334,7 +334,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
                 />
               </svg>
               Delete alert
-            </button>
+            </.danger_button>
           </div>
         </:below_actions>
       </.app_modal>

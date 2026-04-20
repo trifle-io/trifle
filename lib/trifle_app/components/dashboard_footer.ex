@@ -18,6 +18,7 @@ defmodule TrifleApp.Components.DashboardFooter do
   attr :export_menu?, :boolean, default: true
   attr :download_menu_id, :string, default: "dashboard-download-menu"
   attr :show_error_modal, :boolean, default: false
+  attr :annotation_count, :integer, default: 0
   slot :export_menu
   attr :rest, :global
 
@@ -149,6 +150,42 @@ defmodule TrifleApp.Components.DashboardFooter do
               <span class="text-gray-900 dark:text-white">0</span>
             <% end %>
           </div>
+        </div>
+
+        <div
+          id="dashboard-annotation-toggle"
+          class="flex items-center gap-2 text-gray-600 dark:text-slate-300"
+          phx-hook="DashboardAnnotationToggle"
+        >
+          <svg
+            class="h-4 w-4 text-teal-500"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25h12A2.25 2.25 0 0 0 20.25 18v-1.5M7.5 3.75h9M7.5 3.75v16.5M16.5 3.75h1.5A2.25 2.25 0 0 1 20.25 6v10.5M16.5 3.75v16.5"
+            />
+          </svg>
+          <span class="text-xs font-medium">Annotations:</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">{@annotation_count}</span>
+          <button
+            type="button"
+            data-role="annotation-toggle"
+            aria-pressed="true"
+            aria-label="Toggle annotations"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-teal-600 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+          >
+            <span
+              data-role="annotation-toggle-knob"
+              class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+            >
+            </span>
+          </button>
         </div>
 
         <%= if @load_duration_microseconds do %>
@@ -393,8 +430,7 @@ defmodule TrifleApp.Components.DashboardFooter do
     <%= if @show_error_modal && @summary && length(@summary.transponder_errors || []) > 0 do %>
       <div class="fixed inset-0 z-50 overflow-y-auto" phx-click="hide_transponder_errors">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-          <div class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-gray-900/75">
-          </div>
+          <div class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-gray-900/75"></div>
 
           <div
             class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6"

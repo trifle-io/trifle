@@ -6,6 +6,8 @@ defmodule TrifleApp.DashboardLiveTest do
 
   alias Trifle.AccountsFixtures
   alias Trifle.Organizations
+  alias Trifle.Organizations.SourceAnnotations
+  alias Trifle.Stats.Source
   alias TrifleApp.Components.DashboardWidgets.WidgetView
 
   setup %{conn: conn} do
@@ -72,6 +74,102 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert has_element?(view, "#smart_timeframe")
     refute html =~ "top: 33%;"
+  end
+
+  test "authenticated dashboards expose annotation payloads and handle CRUD events", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database,
+    membership: membership
+  } do
+    source = Source.from_database(database)
+
+    at =
+      DateTime.utc_now()
+      |> DateTime.add(-3600, :second)
+      |> DateTime.truncate(:second)
+
+    at_iso = DateTime.to_iso8601(at)
+
+    {:ok, existing} =
+      SourceAnnotations.create_for_source(membership, source, %{
+        "at" => at_iso,
+        "body" => "Existing annotation"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert render(view) =~ "DashboardAnnotationsData"
+
+    render_hook(view, "open_annotation_editor", %{"at" => at_iso})
+    assert has_element?(view, "#annotation-editor-modal", "Rounded to 1m")
+
+    view
+    |> form("#annotation-editor-form", %{
+      "annotation" => %{"body" => "Release started"}
+    })
+    |> render_submit()
+
+    annotations =
+      SourceAnnotations.list_for_source(
+        membership,
+        source,
+        DateTime.add(at, -3600, :second),
+        DateTime.add(at, 3600, :second),
+        "1m"
+      )
+
+    assert Enum.any?(annotations, &(&1.body == "Release started"))
+
+    group =
+      membership
+      |> SourceAnnotations.grouped_for_source(
+        source,
+        DateTime.add(at, -3600, :second),
+        DateTime.add(at, 3600, :second),
+        "1m"
+      )
+      |> Enum.find(fn group ->
+        Enum.any?(group.annotations, &(&1.id == existing.id))
+      end)
+
+    render_hook(view, "open_annotation_group", %{"id" => group.id})
+    assert has_element?(view, "#annotation-group-modal", "Existing annotation")
+
+    render_submit(view, "update_annotation", %{
+      "annotation" => %{
+        "id" => existing.id,
+        "group_id" => group.id,
+        "body" => "Updated annotation"
+      }
+    })
+
+    assert SourceAnnotations.get_annotation(membership, existing.id).body == "Updated annotation"
+
+    render_click(view, "delete_annotation", %{"id" => existing.id, "group_id" => group.id})
+    assert SourceAnnotations.get_annotation(membership, existing.id) == nil
+  end
+
+  test "public dashboards omit annotation payloads", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database,
+    membership: membership
+  } do
+    source = Source.from_database(database)
+
+    {:ok, _annotation} =
+      SourceAnnotations.create_for_source(membership, source, %{
+        "at" => DateTime.utc_now() |> DateTime.add(-3600, :second) |> DateTime.to_iso8601(),
+        "body" => "Private annotation"
+      })
+
+    {:ok, dashboard} = Organizations.generate_dashboard_public_token(dashboard)
+
+    {:ok, _view, html} = live(conn, ~p"/d/#{dashboard.id}?token=#{dashboard.access_token}")
+
+    assert html =~ "DashboardAnnotationsData"
+    refute html =~ "Private annotation"
   end
 
   test "opens workspace in edit mode and supports tab toggling", %{

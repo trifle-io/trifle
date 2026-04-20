@@ -24,6 +24,84 @@ export const registerExpandedWidgetViewHook = (Hooks, deps) => {
 
   const renderTimeseriesTooltipLines = (lines) => `<div>${lines.join('<br/>')}</div>`;
 
+  const readAnnotationsCookie = () => {
+    try {
+      const match = document.cookie
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith('trifle_dashboard_annotations='));
+      if (!match) return true;
+      return match.split('=').slice(1).join('=') !== '0';
+    } catch (_) {
+      return true;
+    }
+  };
+
+  const timestampMs = (value) => {
+    if (Number.isFinite(value)) return Number(value);
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    if (Array.isArray(value)) return timestampMs(value[0]);
+    if (value && Array.isArray(value.value)) return timestampMs(value.value[0]);
+    return null;
+  };
+
+  const annotationGroupForAxisValue = (groups, value) => {
+    const ts = timestampMs(value);
+    if (!Number.isFinite(ts)) return null;
+    return groups.find((group) => Math.abs(Number(group.at_ts) - ts) < 1) || null;
+  };
+
+  const renderAnnotationTooltipSection = (group, isDarkMode = false) => {
+    if (!group || !Array.isArray(group.annotations) || group.annotations.length === 0) return '';
+    const titleColor = isDarkMode ? '#f8fafc' : '#0f172a';
+    const bodyColor = isDarkMode ? '#cbd5e1' : '#334155';
+    const borderColor = isDarkMode ? 'rgba(148,163,184,0.25)' : 'rgba(100,116,139,0.25)';
+    const rows = group.annotations.slice(0, 10).map((annotation) => {
+      const text = escapeTimeseriesTooltipHtml(annotation.snippet || annotation.body || '');
+      return `<div style="margin-top:2px;color:${bodyColor};">${text}</div>`;
+    });
+    const remaining = group.annotations.length - rows.length;
+    const more = remaining > 0
+      ? `<div style="margin-top:2px;color:#64748b;">${remaining} more</div>`
+      : '';
+    return [
+      `<div style="margin-top:8px;padding-top:6px;border-top:1px solid ${borderColor};">`,
+      `<div style="font-weight:600;color:${titleColor};">Annotations</div>`,
+      rows.join(''),
+      more,
+      '</div>'
+    ].join('');
+  };
+
+  const buildAnnotationMarkLineSeries = (groups) => ({
+    name: 'Annotations',
+    type: 'line',
+    data: [],
+    showSymbol: false,
+    animation: false,
+    silent: false,
+    tooltip: { show: false },
+    markLine: {
+      symbol: 'none',
+      silent: false,
+      animation: false,
+      label: { show: false },
+      emphasis: { lineStyle: { width: 2 } },
+      data: groups.map((group) => ({
+        name: group.count === 1 ? '1 annotation' : `${group.count || 0} annotations`,
+        xAxis: group.at_iso,
+        annotation: true,
+        annotationGroupId: group.id,
+        lineStyle: { color: '#3b82f6', width: 1, type: 'solid', opacity: 0.9 },
+        emphasis: { lineStyle: { color: '#1d4ed8', width: 2 } }
+      }))
+    },
+    z: 40
+  });
+
   const resolveHoveredTimeseriesParam = (chart, params) => {
     if (!chart || !Array.isArray(params) || params.length <= 1) return null;
 
@@ -76,8 +154,16 @@ Hooks.ExpandedWidgetView = {
       }
     };
     this.handleThemeChange = () => this.render(true);
+    this._annotationsVisible = readAnnotationsCookie();
+    this.handleAnnotationsVisibility = (event) => {
+      const enabled = !(event && event.detail && event.detail.enabled === false);
+      if (enabled === this._annotationsVisible) return;
+      this._annotationsVisible = enabled;
+      this.render(true);
+    };
     window.addEventListener('resize', this.handleResize);
     window.addEventListener('trifle:theme-changed', this.handleThemeChange);
+    window.addEventListener('trifle:annotations-visibility-changed', this.handleAnnotationsVisibility);
     this.render();
   },
 
@@ -96,6 +182,7 @@ Hooks.ExpandedWidgetView = {
     }
     window.removeEventListener('resize', this.handleResize);
     window.removeEventListener('trifle:theme-changed', this.handleThemeChange);
+    window.removeEventListener('trifle:annotations-visibility-changed', this.handleAnnotationsVisibility);
   },
 
   getTheme() {
@@ -442,8 +529,16 @@ Hooks.ExpandedWidgetView = {
       }
     }
 
-    const finalSeries = series.concat(baselineSeries);
-    const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
+    const annotationGroups =
+      data.annotations_enabled !== false &&
+      data.annotations_enabled !== 'false' &&
+      this._annotationsVisible !== false &&
+      Array.isArray(data.annotation_groups)
+        ? data.annotation_groups
+        : [];
+    const annotationSeries = annotationGroups.length ? [buildAnnotationMarkLineSeries(annotationGroups)] : [];
+    const finalSeries = series.concat(baselineSeries).concat(annotationSeries);
+    const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '' && name !== 'Annotations')));
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
     const legendText = isDarkMode ? '#D1D5DB' : '#374151';
@@ -524,14 +619,29 @@ Hooks.ExpandedWidgetView = {
             const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
             return `${p.marker || ''}${escapeTimeseriesTooltipHtml(p.seriesName || '')}: <strong>${formatValue(raw)}</strong>`;
           });
+          const annotationGroup = annotationGroupForAxisValue(
+            annotationGroups,
+            effectiveList[0].axisValue ?? effectiveList[0].value
+          );
+          const annotations = renderAnnotationTooltipSection(annotationGroup, isDarkMode);
           const note = ongoingInfo
             ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>'
             : '';
-          return `<div>${header}</div>${renderTimeseriesTooltipLines(lines)}${note}`;
+          return `<div>${header}</div>${renderTimeseriesTooltipLines(lines)}${annotations}${note}`;
         }
       },
       series: finalSeries
     }, true);
+
+    try {
+      chart.off('click');
+      chart.on('click', (params) => {
+        const groupId = params && params.data && params.data.annotationGroupId;
+        if (groupId) {
+          this.pushEvent('open_annotation_group', { id: groupId, widget_id: data.id || '' });
+        }
+      });
+    } catch (_) {}
 
     if (chart.__tsHoveredOnlyHandlers) {
       const { hover, globalout, zr } = chart.__tsHoveredOnlyHandlers;

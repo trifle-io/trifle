@@ -20,6 +20,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
       |> assign(:normalized, !!Map.get(widget, "normalized"))
       |> assign(:legend, !!Map.get(widget, "legend"))
       |> assign(:hovered_only, !!Map.get(widget, "hovered_only"))
+      |> assign(:annotations_enabled, annotations_enabled?(widget))
 
     ~H"""
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -84,9 +85,28 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
           <input type="checkbox" name="ts_hovered_only" value="true" checked={@hovered_only} />
           Show only hovered series
         </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+          <input type="hidden" name="ts_annotations_enabled" value="false" />
+          <input
+            type="checkbox"
+            name="ts_annotations_enabled"
+            value="true"
+            checked={@annotations_enabled}
+          /> Annotations
+        </label>
       </div>
     </div>
     """
+  end
+
+  defp annotations_enabled?(widget) do
+    case Map.get(widget, "annotations_enabled", true) do
+      false -> false
+      "false" -> false
+      "0" -> false
+      0 -> false
+      _ -> true
+    end
   end
 
   defp chart_type_options_ts do

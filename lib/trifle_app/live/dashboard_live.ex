@@ -3,6 +3,7 @@ defmodule TrifleApp.DashboardLive do
   alias Trifle.Organizations
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations.DashboardSegments
+  alias Trifle.Organizations.SourceAnnotations
   alias Trifle.Stats.Configuration
   alias Trifle.Stats.Source
   alias Trifle.Exports.Series, as: SeriesExport
@@ -683,6 +684,134 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event("open_annotation_editor", params, socket) do
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:current_user]) or is_nil(socket.assigns[:current_membership]) ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:source]) ->
+        {:noreply, socket}
+
+      true ->
+        case SourceAnnotations.floor_source_timestamp(
+               socket.assigns.source,
+               Map.get(params, "at")
+             ) do
+          {:ok, at, source_granularity} ->
+            {:noreply,
+             assign(socket, :annotation_editor, %{
+               id: nil,
+               at: at,
+               at_iso: DateTime.to_iso8601(at),
+               source_granularity: source_granularity,
+               body: "",
+               error: nil
+             })}
+
+          {:error, _reason} ->
+            {:noreply, socket}
+        end
+    end
+  end
+
+  def handle_event("close_annotation_editor", _params, socket) do
+    {:noreply, assign(socket, :annotation_editor, nil)}
+  end
+
+  def handle_event("save_annotation", params, socket) do
+    attrs = Map.get(params, "annotation", params)
+
+    cond do
+      socket.assigns.is_public_access ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:current_membership]) or is_nil(socket.assigns[:source]) ->
+        {:noreply, socket}
+
+      true ->
+        case SourceAnnotations.create_for_source(
+               socket.assigns.current_membership,
+               socket.assigns.source,
+               attrs
+             ) do
+          {:ok, _annotation} ->
+            {:noreply,
+             socket
+             |> assign(:annotation_editor, nil)
+             |> refresh_source_annotations()}
+
+          {:error, changeset} ->
+            editor =
+              socket.assigns[:annotation_editor] ||
+                %{
+                  id: nil,
+                  at: nil,
+                  at_iso: Map.get(attrs, "at"),
+                  source_granularity: nil,
+                  body: ""
+                }
+
+            {:noreply,
+             assign(
+               socket,
+               :annotation_editor,
+               Map.merge(editor, %{
+                 body: Map.get(attrs, "body", ""),
+                 error: annotation_error_message(changeset)
+               })
+             )}
+        end
+    end
+  end
+
+  def handle_event("open_annotation_group", params, socket) do
+    group_id = Map.get(params, "id") || Map.get(params, "group_id")
+
+    {:noreply, assign(socket, :annotation_group, find_annotation_group(socket, group_id))}
+  end
+
+  def handle_event("close_annotation_group", _params, socket) do
+    {:noreply, assign(socket, :annotation_group, nil)}
+  end
+
+  def handle_event("update_annotation", params, socket) do
+    attrs = Map.get(params, "annotation", params)
+    id = Map.get(attrs, "id")
+    group_id = Map.get(attrs, "group_id") || Map.get(params, "group_id")
+
+    with %OrganizationMembership{} = membership <- socket.assigns[:current_membership],
+         annotation when not is_nil(annotation) <-
+           SourceAnnotations.get_annotation(membership, id),
+         {:ok, _annotation} <- SourceAnnotations.update_annotation(membership, annotation, attrs) do
+      {:noreply,
+       socket
+       |> refresh_source_annotations(group_id)}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Could not update annotation.")}
+    end
+  end
+
+  def handle_event("delete_annotation", params, socket) do
+    id = Map.get(params, "id")
+    group_id = Map.get(params, "group_id")
+
+    with %OrganizationMembership{} = membership <- socket.assigns[:current_membership],
+         annotation when not is_nil(annotation) <-
+           SourceAnnotations.get_annotation(membership, id),
+         {:ok, _annotation} <- SourceAnnotations.delete_annotation(membership, annotation) do
+      {:noreply,
+       socket
+       |> refresh_source_annotations(group_id)}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Could not delete annotation.")}
+    end
+  end
+
   def handle_event("widget_editor_change", params, socket) do
     cond do
       socket.assigns.is_public_access ->
@@ -1299,6 +1428,7 @@ defmodule TrifleApp.DashboardLive do
       type == "timeseries" ->
         stats
         |> Timeseries.dataset(widget)
+        |> maybe_put_timeseries_annotations(socket)
         |> maybe_put_chart(base)
 
       type == "category" ->
@@ -1342,6 +1472,12 @@ defmodule TrifleApp.DashboardLive do
 
   defp maybe_put_chart(nil, base), do: base
   defp maybe_put_chart(chart_map, base), do: Map.put(base, :chart_data, chart_map)
+
+  defp maybe_put_timeseries_annotations(nil, _socket), do: nil
+
+  defp maybe_put_timeseries_annotations(chart_map, socket) when is_map(chart_map) do
+    Map.put(chart_map, :annotation_groups, socket.assigns[:source_annotation_groups] || [])
+  end
 
   defp maybe_put_kpi_data(nil, base), do: base
 
@@ -1735,6 +1871,10 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_table, %{})
     |> assign(:widget_list, %{})
     |> assign(:widget_distribution, %{})
+    |> assign(:source_annotation_groups, [])
+    |> assign(:source_annotation_count, 0)
+    |> assign(:annotation_editor, nil)
+    |> assign(:annotation_group, nil)
     |> assign(:show_dashboard_payload_modal, false)
     |> assign(
       :can_view_dashboard_payload,
@@ -1863,7 +2003,9 @@ defmodule TrifleApp.DashboardLive do
 
       true ->
         socket =
-          assign(socket,
+          socket
+          |> refresh_source_annotations()
+          |> assign(
             load_start_time: System.monotonic_time(:microsecond),
             loading: true,
             loading_chunks: true,
@@ -2523,6 +2665,66 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:widget_distribution, %{})
   end
 
+  defp refresh_source_annotations(socket, selected_group_id \\ nil)
+
+  defp refresh_source_annotations(
+         %{
+           assigns: %{
+             is_public_access: false,
+             current_membership: %OrganizationMembership{} = membership,
+             source: %Source{} = source,
+             from: %DateTime{} = from,
+             to: %DateTime{} = to,
+             granularity: granularity
+           }
+         } = socket,
+         selected_group_id
+       ) do
+    groups = SourceAnnotations.grouped_for_source(membership, source, from, to, granularity)
+    count = SourceAnnotations.source_annotation_count(groups)
+    group = find_annotation_group(groups, selected_group_id)
+
+    socket
+    |> assign(:source_annotation_groups, groups)
+    |> assign(:source_annotation_count, count)
+    |> assign(:annotation_group, group)
+  end
+
+  defp refresh_source_annotations(socket, _selected_group_id) do
+    socket
+    |> assign(:source_annotation_groups, [])
+    |> assign(:source_annotation_count, 0)
+    |> assign(:annotation_group, nil)
+  end
+
+  defp find_annotation_group(socket, group_id) when is_map(socket) do
+    socket.assigns
+    |> Map.get(:source_annotation_groups, [])
+    |> find_annotation_group(group_id)
+  end
+
+  defp find_annotation_group(groups, group_id) when is_list(groups) and is_binary(group_id) do
+    Enum.find(groups, &(to_string(Map.get(&1, :id)) == group_id))
+  end
+
+  defp find_annotation_group(_groups, _group_id), do: nil
+
+  defp annotation_error_message(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
+      Enum.reduce(opts, message, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.flat_map(fn {field, messages} ->
+      Enum.map(messages, fn message -> "#{field} #{message}" end)
+    end)
+    |> List.first()
+    |> Kernel.||("Annotation could not be saved.")
+  end
+
+  defp annotation_error_message(_error), do: "Annotation could not be saved."
+
   # Summary stats for footer (with transponder statistics)
   def get_summary_stats(assigns) do
     case assigns do
@@ -3059,6 +3261,12 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
         |> Map.put("legend", Map.has_key?(params, "ts_legend"))
         |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
+        |> Map.put(
+          "annotations_enabled",
+          params
+          |> Map.get("ts_annotations_enabled", Map.get(widget, "annotations_enabled", true))
+          |> normalize_widget_checkbox(true)
+        )
         |> put_series_display_options(params, widget, hovered_key: "ts_hovered_only")
 
       "category" ->
@@ -3540,6 +3748,12 @@ defmodule TrifleApp.DashboardLive do
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
         |> Map.put("legend", Map.has_key?(params, "ts_legend"))
         |> Map.put("y_label", Map.get(params, "ts_y_label", ""))
+        |> Map.put(
+          "annotations_enabled",
+          params
+          |> Map.get("ts_annotations_enabled", Map.get(item, "annotations_enabled", true))
+          |> normalize_widget_checkbox(true)
+        )
         |> put_series_display_options(params, item, hovered_key: "ts_hovered_only")
 
       "category" ->

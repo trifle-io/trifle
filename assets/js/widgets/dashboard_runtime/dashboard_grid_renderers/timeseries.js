@@ -9,6 +9,90 @@ const escapeTimeseriesTooltipHtml = (value) =>
 
 const renderTimeseriesTooltipLines = (lines) => `<div>${lines.join('<br/>')}</div>`;
 
+const annotationGroupsForItem = (context, item) => {
+  if (!item || item.annotations_enabled === false || item.annotations_enabled === 'false') return [];
+  if (context && context._annotationsVisible === false) return [];
+  const payload = context && context._annotationPayload;
+  return payload && Array.isArray(payload.groups) ? payload.groups : [];
+};
+
+const timestampMs = (value) => {
+  if (Number.isFinite(value)) return Number(value);
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (Array.isArray(value)) return timestampMs(value[0]);
+  if (value && Array.isArray(value.value)) return timestampMs(value.value[0]);
+  return null;
+};
+
+const annotationGroupForAxisValue = (groups, value) => {
+  const ts = timestampMs(value);
+  if (!Number.isFinite(ts)) return null;
+  return groups.find((group) => Math.abs(Number(group.at_ts) - ts) < 1) || null;
+};
+
+const renderAnnotationTooltipSection = (group, isDarkMode = false) => {
+  if (!group || !Array.isArray(group.annotations) || group.annotations.length === 0) return '';
+  const titleColor = isDarkMode ? '#f8fafc' : '#0f172a';
+  const bodyColor = isDarkMode ? '#cbd5e1' : '#334155';
+  const borderColor = isDarkMode ? 'rgba(148,163,184,0.25)' : 'rgba(100,116,139,0.25)';
+  const rows = group.annotations.slice(0, 10).map((annotation) => {
+    const text = escapeTimeseriesTooltipHtml(annotation.snippet || annotation.body || '');
+    return `<div style="margin-top:2px;color:${bodyColor};">${text}</div>`;
+  });
+  const remaining = group.annotations.length - rows.length;
+  const more = remaining > 0
+    ? `<div style="margin-top:2px;color:#64748b;">${remaining} more</div>`
+    : '';
+  return [
+    `<div style="margin-top:8px;padding-top:6px;border-top:1px solid ${borderColor};">`,
+    `<div style="font-weight:600;color:${titleColor};">Annotations</div>`,
+    rows.join(''),
+    more,
+    '</div>'
+  ].join('');
+};
+
+const buildAnnotationMarkLineSeries = (groups) => ({
+  name: 'Annotations',
+  type: 'line',
+  data: [],
+  showSymbol: false,
+  animation: false,
+  silent: false,
+  tooltip: { show: false },
+  markLine: {
+    symbol: 'none',
+    silent: false,
+    animation: false,
+    label: { show: false },
+    emphasis: {
+      lineStyle: { width: 2 }
+    },
+    data: groups.map((group) => ({
+      name: group.count === 1 ? '1 annotation' : `${group.count || 0} annotations`,
+      xAxis: group.at_iso,
+      annotation: true,
+      annotationGroupId: group.id,
+      lineStyle: {
+        color: '#3b82f6',
+        width: 1,
+        type: 'solid',
+        opacity: 0.9
+      },
+      emphasis: {
+        lineStyle: {
+          color: '#1d4ed8',
+          width: 2
+        }
+      }
+    }))
+  },
+  z: 40
+});
+
 const resolveHoveredTimeseriesParam = (chart, params) => {
   if (!chart || !Array.isArray(params) || params.length <= 1) return null;
 
@@ -366,12 +450,14 @@ export const createDashboardGridTimeseriesRendererMethods = ({
           }
         }
 
-        const finalSeries = series.concat(baselineSeries);
+        const annotationGroups = annotationGroupsForItem(this, it);
+        const annotationSeries = annotationGroups.length ? [buildAnnotationMarkLineSeries(annotationGroups)] : [];
+        const finalSeries = series.concat(baselineSeries).concat(annotationSeries);
         this._tsSeriesData[it.id] = series.map((s) => Array.isArray(s.data) ? s.data : []);
         this._tsPrimarySeriesTs[it.id] = Array.isArray(series[0]?.data)
           ? series[0].data.map((point) => extractTimestamp(point))
           : [];
-        const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '')));
+        const legendData = Array.from(new Set(finalSeries.map((s) => s.name).filter((name) => name != null && name !== '' && name !== 'Annotations')));
         const extractPointValue = (point) => {
           if (Array.isArray(point)) return Number(point[1]);
           if (point && typeof point === 'object') {
@@ -510,8 +596,13 @@ export const createDashboardGridTimeseriesRendererMethods = ({
                 const seriesName = escapeTimeseriesTooltipHtml(p.seriesName || '');
                 return `${p.marker || ''}${seriesName}: <strong>${formatValue(raw)}</strong>`;
               });
+              const annotationGroup = annotationGroupForAxisValue(
+                annotationGroups,
+                effectiveList[0].axisValue ?? effectiveList[0].value
+              );
+              const annotations = renderAnnotationTooltipSection(annotationGroup, isDarkMode);
               const note = ongoingInfo ? '<div style="margin-top:6px;color:#64748b;font-size:11px;">Latest segment is still in progress</div>' : '';
-              return `<div>${header}</div>${renderTimeseriesTooltipLines(lines)}${note}`;
+              return `<div>${header}</div>${renderTimeseriesTooltipLines(lines)}${annotations}${note}`;
             }
           },
           series: finalSeries
@@ -524,6 +615,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         } catch (_) {}
         chart.resize();
         this._bind_ts_sync(chart, it.id);
+        this._bind_ts_annotations(chart, it, annotationGroups);
         this._syncTimeseriesHoverGroups();
       };
       setTimeout(ensureInit, 0);
@@ -531,6 +623,125 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     this._seen.timeseries = true;
     this._scheduleReadyMark();
     this._lastTimeseries = this._deepClone(items);
+  },
+
+  _bind_ts_annotations(chart, item, annotationGroups) {
+    if (!chart || typeof chart.on !== 'function') return;
+    const widgetId = String(item && item.id ? item.id : '');
+    const enabled = item && item.annotations_enabled !== false && item.annotations_enabled !== 'false';
+
+    if (chart.__tsAnnotationHandlers) {
+      const { click, blankClick, zr } = chart.__tsAnnotationHandlers;
+      try { chart.off('click', click); } catch (_) {}
+      if (zr && zr.off && blankClick) {
+        try { zr.off('click', blankClick); } catch (_) {}
+      }
+    }
+
+    const openEditorAtPixel = (offsetX, offsetY) => {
+      if (!enabled || this._annotationsVisible === false) return;
+      if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) return;
+      try {
+        if (!chart.containPixel({ gridIndex: 0 }, [offsetX, offsetY])) return;
+        const converted = chart.convertFromPixel({ gridIndex: 0 }, [offsetX, offsetY]);
+        const x = Array.isArray(converted) ? converted[0] : converted;
+        const ts = timestampMs(x);
+        if (!Number.isFinite(ts)) return;
+        const date = new Date(ts);
+        if (Number.isNaN(date.getTime())) return;
+        this._showAnnotationPopover(chart, widgetId, date.toISOString(), offsetX, offsetY);
+      } catch (_) {}
+    };
+
+    const click = (params) => {
+      const data = params && params.data ? params.data : null;
+      const groupId = data && data.annotationGroupId;
+      if (groupId) {
+        chart.__tsAnnotationClickHandledAt = Date.now();
+        this._hideAnnotationPopover();
+        this.pushEvent('open_annotation_group', { id: groupId, widget_id: widgetId });
+        return;
+      }
+
+      const event = params && params.event;
+      const offsetX = event && Number.isFinite(event.offsetX) ? event.offsetX : null;
+      const offsetY = event && Number.isFinite(event.offsetY) ? event.offsetY : null;
+      if (offsetX != null && offsetY != null) {
+        chart.__tsAnnotationClickHandledAt = Date.now();
+        openEditorAtPixel(offsetX, offsetY);
+      }
+    };
+
+    const blankClick = (event) => {
+      if (Date.now() - (chart.__tsAnnotationClickHandledAt || 0) < 80) return;
+      if (event && event.target) return;
+      openEditorAtPixel(event && event.offsetX, event && event.offsetY);
+    };
+
+    chart.on('click', click);
+    const zr = chart.getZr ? chart.getZr() : null;
+    if (zr && zr.on) {
+      zr.on('click', blankClick);
+    }
+    chart.__tsAnnotationHandlers = { click, blankClick, zr, groups: annotationGroups || [] };
+  },
+
+  _showAnnotationPopover(chart, widgetId, atIso, offsetX, offsetY) {
+    this._hideAnnotationPopover();
+    const dom = chart && chart.getDom ? chart.getDom() : null;
+    if (!dom || !document.body) return;
+    const rect = dom.getBoundingClientRect();
+    const popover = document.createElement('div');
+    popover.className = 'dashboard-annotation-popover';
+    popover.style.position = 'fixed';
+    popover.style.left = `${Math.round(rect.left + offsetX + 8)}px`;
+    popover.style.top = `${Math.round(rect.top + offsetY + 8)}px`;
+    popover.style.zIndex = '12000';
+    popover.style.background = document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff';
+    popover.style.color = document.documentElement.classList.contains('dark') ? '#f8fafc' : '#0f172a';
+    popover.style.border = '1px solid rgba(37,99,235,0.45)';
+    popover.style.boxShadow = '0 12px 30px rgba(15,23,42,0.20)';
+    popover.style.borderRadius = '6px';
+    popover.style.padding = '8px';
+    popover.style.font = '12px Inter var, Inter, ui-sans-serif, system-ui, sans-serif';
+    popover.innerHTML = [
+      '<button type="button" data-role="annotate-button" style="display:block;width:100%;border:0;background:#2563eb;color:white;border-radius:4px;padding:6px 10px;font-weight:600;cursor:pointer;">Annotate</button>',
+      `<div style="margin-top:6px;max-width:220px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeTimeseriesTooltipHtml(atIso)}</div>`
+    ].join('');
+
+    const button = popover.querySelector('[data-role="annotate-button"]');
+    const onButtonClick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this._hideAnnotationPopover();
+      this.pushEvent('open_annotation_editor', { widget_id: widgetId, at: atIso });
+    };
+    const onDocumentPointerDown = (event) => {
+      if (popover.contains(event.target)) return;
+      this._hideAnnotationPopover();
+    };
+
+    if (button) {
+      button.addEventListener('click', onButtonClick);
+    }
+    setTimeout(() => document.addEventListener('pointerdown', onDocumentPointerDown, true), 0);
+    document.body.appendChild(popover);
+    this._annotationPopover = { el: popover, button, onButtonClick, onDocumentPointerDown };
+  },
+
+  _hideAnnotationPopover() {
+    const popover = this._annotationPopover;
+    if (!popover) return;
+    if (popover.button && popover.onButtonClick) {
+      try { popover.button.removeEventListener('click', popover.onButtonClick); } catch (_) {}
+    }
+    if (popover.onDocumentPointerDown) {
+      try { document.removeEventListener('pointerdown', popover.onDocumentPointerDown, true); } catch (_) {}
+    }
+    if (popover.el && popover.el.parentNode) {
+      try { popover.el.parentNode.removeChild(popover.el); } catch (_) {}
+    }
+    this._annotationPopover = null;
   },
 
   _bind_ts_sync(chart, widgetId) {

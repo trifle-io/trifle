@@ -43,6 +43,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
     legend = !!item["legend"]
     y_label = to_string(item["y_label"] || "")
     hovered_only = !!item["hovered_only"]
+    annotations_enabled = truthy?(Map.get(item, "annotations_enabled", true))
 
     per_path =
       series_struct
@@ -100,6 +101,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
       legend: legend,
       y_label: y_label,
       hovered_only: hovered_only,
+      annotations_enabled: annotations_enabled,
       series: series
     }
   end
@@ -140,4 +142,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
   def normalize_timeline_points(nil), do: []
   def normalize_timeline_points(list) when is_list(list), do: list
   def normalize_timeline_points(other), do: List.wrap(other)
+
+  defp truthy?(false), do: false
+  defp truthy?("false"), do: false
+  defp truthy?("0"), do: false
+  defp truthy?(0), do: false
+  defp truthy?(nil), do: false
+  defp truthy?(_value), do: true
 end

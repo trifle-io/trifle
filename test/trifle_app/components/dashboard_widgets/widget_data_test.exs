@@ -124,6 +124,28 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
              dataset_maps.distribution
   end
 
+  test "timeseries annotation setting defaults on and can be disabled", %{series: series} do
+    default_item = %{
+      "id" => "ts-default",
+      "type" => "timeseries",
+      "paths" => ["metrics.count"]
+    }
+
+    disabled_item = %{
+      "id" => "ts-disabled",
+      "type" => "timeseries",
+      "paths" => ["metrics.count"],
+      "annotations_enabled" => false
+    }
+
+    dataset = WidgetData.datasets(series, [default_item, disabled_item])
+
+    assert %{annotations_enabled: true} = Enum.find(dataset.timeseries, &(&1.id == "ts-default"))
+
+    assert %{annotations_enabled: false} =
+             Enum.find(dataset.timeseries, &(&1.id == "ts-disabled"))
+  end
+
   test "widget payload envelopes are derived from dataset maps", %{series: series} do
     dataset_maps =
       series

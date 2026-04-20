@@ -163,6 +163,44 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert text_payload_envelope["payload"]["title"] == "Highlights"
   end
 
+  test "renders hidden annotation payload node", %{assigns: assigns} do
+    annotation_groups = [
+      %{
+        id: "annotation-group-1",
+        at_iso: "2024-01-01T00:00:00Z",
+        at_ts: 1_704_067_200_000,
+        count: 1,
+        annotations: [
+          %{
+            id: "annotation-1",
+            body: "Launch started",
+            snippet: "Launch started",
+            at_iso: "2024-01-01T00:00:00Z",
+            at_ts: 1_704_067_200_000
+          }
+        ]
+      }
+    ]
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :annotation_groups, annotation_groups)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+    [{"div", attrs, _}] = Floki.find(document, "#chat-grid-1-annotations-data-source")
+
+    payload =
+      attrs
+      |> Map.new()
+      |> Map.fetch!("data-annotations-payload")
+      |> Jason.decode!()
+
+    assert payload["groups"] |> hd() |> Map.fetch!("id") == "annotation-group-1"
+    assert Map.new(attrs)["phx-hook"] == "DashboardAnnotationsData"
+  end
+
   test "exposes grid metadata for GridStack initialisation", %{
     assigns: assigns,
     grid_items: grid_items

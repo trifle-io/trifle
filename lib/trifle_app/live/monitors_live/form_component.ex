@@ -546,30 +546,29 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                     </option>
                   <% end %>
                 </select>
-                <button
+                <.danger_button
                   type="button"
-                  class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-600/20 transition hover:bg-red-50 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
                   phx-click="transfer_monitor_owner"
                   phx-target={@myself}
                   data-confirm="Transfer ownership to the selected member?"
                   disabled={@selected_transfer_membership_id in [nil, ""]}
                 >
                   Transfer ownership
-                </button>
+                </.danger_button>
               </div>
               <p :if={@ownership_transfer_error} class="text-xs text-rose-600 dark:text-rose-400">
                 {@ownership_transfer_error}
               </p>
             </div>
-            <button
+            <.danger_button
               type="button"
               phx-click="delete_monitor"
               phx-target={@myself}
               data-confirm="Are you sure you want to delete this monitor? This action cannot be undone."
-              class="w-full inline-flex items-center justify-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 dark:bg-red-900 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-800"
+              class="w-full gap-2"
             >
               <svg
-                class="-ml-0.5 mr-1.5 h-4 w-4"
+                class="h-4 w-4"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -583,7 +582,7 @@ defmodule TrifleApp.MonitorsLive.FormComponent do
                 />
               </svg>
               Delete Monitor
-            </button>
+            </.danger_button>
           </div>
         </:below_actions>
       </.app_modal>

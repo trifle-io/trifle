@@ -6,6 +6,19 @@ import { createDashboardGridTableRendererMethods } from "./dashboard_grid_render
 import { createDashboardGridTextRendererMethods } from "./dashboard_grid_renderers/text";
 import { createDashboardGridListRendererMethods } from "./dashboard_grid_renderers/list";
 
+const readDashboardAnnotationsCookie = () => {
+  try {
+    const match = document.cookie
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('trifle_dashboard_annotations='));
+    if (!match) return true;
+    return match.split('=').slice(1).join('=') !== '0';
+  } catch (_) {
+    return true;
+  }
+};
+
 export const registerDashboardGridHook = (Hooks, deps) => {
   const {
     echarts,
@@ -83,6 +96,8 @@ Hooks.DashboardGrid = {
     this._lastKpiValues = [];
     this._lastKpiVisuals = [];
     this._lastTimeseries = [];
+    this._annotationPayload = { groups: [] };
+    this._annotationsVisible = readDashboardAnnotationsCookie();
     this._lastCategory = [];
     this._lastDistribution = [];
     this._lastTable = [];
@@ -106,6 +121,13 @@ Hooks.DashboardGrid = {
       } catch (_) {}
     };
     window.addEventListener('resize', this._onWindowResize);
+    this._onAnnotationsVisibilityChanged = (event) => {
+      const enabled = !(event && event.detail && event.detail.enabled === false);
+      if (enabled === this._annotationsVisible) return;
+      this._annotationsVisible = enabled;
+      this._rerenderTimeseriesAnnotations();
+    };
+    window.addEventListener('trifle:annotations-visibility-changed', this._onAnnotationsVisibilityChanged);
     this._viewportScrollRaf = null;
     this._onViewportScroll = () => {
       if (this._viewportScrollRaf) return;
@@ -615,6 +637,10 @@ Hooks.DashboardGrid = {
       window.removeEventListener('resize', this._onWindowResize);
       this._onWindowResize = null;
     }
+    if (this._onAnnotationsVisibilityChanged) {
+      window.removeEventListener('trifle:annotations-visibility-changed', this._onAnnotationsVisibilityChanged);
+      this._onAnnotationsVisibilityChanged = null;
+    }
     if (this._onViewportScroll) {
       document.removeEventListener('scroll', this._onViewportScroll, true);
       this._onViewportScroll = null;
@@ -683,6 +709,9 @@ Hooks.DashboardGrid = {
     if (this._tsPointerMove) {
       window.removeEventListener('pointermove', this._tsPointerMove, true);
       this._tsPointerMove = null;
+    }
+    if (typeof this._hideAnnotationPopover === 'function') {
+      this._hideAnnotationPopover();
     }
     if (this._observedLayoutResizeRaf) {
       cancelAnimationFrame(this._observedLayoutResizeRaf);
@@ -1996,6 +2025,17 @@ Hooks.DashboardGrid = {
       default:
         break;
     }
+  },
+
+  setAnnotations(payload = {}) {
+    const groups = payload && Array.isArray(payload.groups) ? payload.groups : [];
+    this._annotationPayload = { groups };
+    this._rerenderTimeseriesAnnotations();
+  },
+
+  _rerenderTimeseriesAnnotations() {
+    if (!Array.isArray(this._lastTimeseries) || this._lastTimeseries.length === 0) return;
+    this._render_timeseries(this._lastTimeseries);
   },
 
   registerWidget(type, id, payload = null) {

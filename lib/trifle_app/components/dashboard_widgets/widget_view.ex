@@ -27,6 +27,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :text_widgets, :map, default: %{}
   attr :list, :map, default: %{}
   attr :distribution, :map, default: %{}
+  attr :annotation_groups, :list, default: []
   attr :export_params, :map, default: %{}
   attr :widget_export, :map, default: %{type: :dashboard}
   attr :print_width, :integer, default: nil
@@ -59,6 +60,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign_new(:text_items, fn -> text_items(widget_items) end)
       |> assign_new(:list, fn -> %{} end)
       |> assign_new(:distribution, fn -> %{} end)
+      |> assign_new(:annotation_groups, fn -> [] end)
       |> assign_new(:export_params, fn -> %{} end)
       |> assign_new(:widget_export, fn -> %{type: :dashboard} end)
       |> assign_new(:loading, fn -> false end)
@@ -144,6 +146,13 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     </div>
 
     <div class="hidden" aria-hidden="true">
+      <div
+        id={widget_dom_id(@grid_dom_id, "annotations-data", "source")}
+        data-grid-id={@grid_dom_id}
+        data-annotations-payload={Jason.encode!(%{groups: @annotation_groups || []})}
+        phx-hook="DashboardAnnotationsData"
+      >
+      </div>
       <%= for widget <- @widget_items do %>
         <% payload = widget_payload(assigns, widget) %>
         <div
