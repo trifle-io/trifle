@@ -1,41 +1,36 @@
-defmodule TrifleApp.Components.ProjectNav do
+defmodule TrifleApp.Components.DatabaseNav do
   use Phoenix.Component
   use TrifleApp, :verified_routes
 
-  attr :project, Trifle.Organizations.Project, required: true
+  alias Trifle.Organizations.Database
+
+  attr :database, Database, required: true
   attr :current, :atom, required: true
 
-  def project_nav(assigns) do
+  def database_nav(assigns) do
     ~H"""
     <div class="space-y-4">
       <div class="min-w-0">
         <h1 class="truncate text-2xl font-semibold text-slate-900 dark:text-white">
-          {@project.name}
+          {@database.display_name}
         </h1>
       </div>
 
       <div class="border-b border-gray-200 dark:border-slate-700">
-        <nav class="-mb-px flex gap-4 sm:gap-8" aria-label="Project tabs">
+        <nav class="-mb-px flex gap-4 sm:gap-8" aria-label="Database tabs">
           <.nav_link
             id={:transponders}
             current={@current}
             label="Transponders"
-            to={~p"/projects/#{@project.id}"}
+            to={~p"/dbs/#{@database.id}/transponders"}
             icon={:transponders}
           />
           <.nav_link
             id={:settings}
             current={@current}
             label="Settings"
-            to={~p"/projects/#{@project.id}/settings"}
+            to={~p"/dbs/#{@database.id}/settings"}
             icon={:settings}
-          />
-          <.nav_link
-            id={:billing}
-            current={@current}
-            label="Billing"
-            to={~p"/projects/#{@project.id}/billing"}
-            icon={:billing}
           />
         </nav>
       </div>
@@ -94,21 +89,6 @@ defmodule TrifleApp.Components.ProjectNav do
               stroke-linecap="round"
               stroke-linejoin="round"
               d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z"
-            />
-          </svg>
-        <% :billing -> %>
-          <svg
-            class={icon_classes(@active?)}
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M2.25 8.25h19.5M3.75 6h16.5A1.5 1.5 0 0121.75 7.5v9A1.5 1.5 0 0120.25 18H3.75a1.5 1.5 0 01-1.5-1.5v-9A1.5 1.5 0 013.75 6zm12.75 7.5h2.25"
             />
           </svg>
       <% end %>
