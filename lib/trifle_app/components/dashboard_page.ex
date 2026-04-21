@@ -553,7 +553,7 @@ defmodule TrifleApp.Components.DashboardPage do
           id="annotation-editor-modal"
           show={!is_nil(@annotation_editor)}
           on_cancel="close_annotation_editor"
-          size="md"
+          size="lg"
         >
           <:title>Add annotation</:title>
           <:body>
@@ -577,10 +577,10 @@ defmodule TrifleApp.Components.DashboardPage do
                     Rounded to {@annotation_editor.source_granularity}
                   </p>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label
                     for="annotation-body"
-                    class="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300"
+                    class="block text-sm font-medium text-gray-700 dark:text-slate-300"
                   >
                     Note
                   </label>
@@ -599,25 +599,25 @@ defmodule TrifleApp.Components.DashboardPage do
                     {@annotation_editor.error}
                   </p>
                 </div>
+
+                <div class="flex items-center justify-end gap-3 border-t border-slate-950/10 pt-4 dark:border-white/10">
+                  <button
+                    type="button"
+                    phx-click="close_annotation_editor"
+                    class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="inline-flex items-center justify-center rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+                  >
+                    Save
+                  </button>
+                </div>
               </.form>
             <% end %>
           </:body>
-          <:actions>
-            <button
-              type="button"
-              phx-click="close_annotation_editor"
-              class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="annotation-editor-form"
-              class="inline-flex items-center justify-center rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-            >
-              Save
-            </button>
-          </:actions>
         </.app_modal>
 
         <.app_modal
@@ -626,7 +626,7 @@ defmodule TrifleApp.Components.DashboardPage do
           on_cancel="close_annotation_group"
           size="lg"
         >
-          <:title>Annotation</:title>
+          <:title>Edit annotation</:title>
           <:body>
             <%= if @annotation_group do %>
               <% annotations = @annotation_group.annotations || [] %>
@@ -655,7 +655,7 @@ defmodule TrifleApp.Components.DashboardPage do
                         as={:annotation}
                         id={"annotation-update-form-#{annotation.id}"}
                         phx-submit="update_annotation"
-                        class="space-y-4"
+                        class="space-y-5"
                       >
                         <input type="hidden" name="annotation[id]" value={annotation.id} />
                         <input type="hidden" name="annotation[group_id]" value={@annotation_group.id} />
@@ -670,13 +670,16 @@ defmodule TrifleApp.Components.DashboardPage do
                               </p>
                             </div>
                           <% end %>
-                          <label for={"annotation-body-#{annotation.id}"} class="sr-only">
+                          <label
+                            for={"annotation-body-#{annotation.id}"}
+                            class="block text-sm font-medium text-gray-700 dark:text-slate-300"
+                          >
                             Note
                           </label>
                           <textarea
                             id={"annotation-body-#{annotation.id}"}
                             name="annotation[body]"
-                            rows="4"
+                            rows="5"
                             maxlength="2000"
                             required
                             class="block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"

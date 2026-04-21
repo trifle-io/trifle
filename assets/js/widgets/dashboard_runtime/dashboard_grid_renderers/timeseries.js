@@ -8,6 +8,8 @@ const escapeTimeseriesTooltipHtml = (value) =>
   }[s]));
 
 const renderTimeseriesTooltipLines = (lines) => `<div>${lines.join('<br/>')}</div>`;
+const TIMESERIES_TOOLTIP_Z_INDEX = 10000;
+const ANNOTATION_POPOVER_Z_INDEX = 12050;
 
 const annotationGroupsForItem = (context, item) => {
   if (!item || item.annotations_enabled === false || item.annotations_enabled === 'false') return [];
@@ -575,6 +577,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       tooltip: {
         trigger: 'axis',
         appendToBody: true,
+        extraCssText: `z-index:${TIMESERIES_TOOLTIP_Z_INDEX};`,
         textStyle: { fontFamily: chartFontFamily },
             formatter: (params) => {
               const list = Array.isArray(params) ? params : [params];
@@ -690,13 +693,14 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     this._hideAnnotationPopover();
     const dom = chart && chart.getDom ? chart.getDom() : null;
     if (!dom || !document.body) return;
+    try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) {}
     const rect = dom.getBoundingClientRect();
     const popover = document.createElement('div');
     popover.className = 'dashboard-annotation-popover';
     popover.style.position = 'fixed';
     popover.style.left = `${Math.round(rect.left + offsetX + 8)}px`;
     popover.style.top = `${Math.round(rect.top + offsetY + 8)}px`;
-    popover.style.zIndex = '12000';
+    popover.style.zIndex = String(ANNOTATION_POPOVER_Z_INDEX);
     popover.style.background = document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff';
     popover.style.color = document.documentElement.classList.contains('dark') ? '#f8fafc' : '#0f172a';
     popover.style.border = '1px solid rgba(37,99,235,0.45)';

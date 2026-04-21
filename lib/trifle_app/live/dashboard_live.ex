@@ -741,7 +741,8 @@ defmodule TrifleApp.DashboardLive do
             {:noreply,
              socket
              |> assign(:annotation_editor, nil)
-             |> refresh_source_annotations()}
+             |> refresh_source_annotations()
+             |> put_flash(:info, "Annotation created successfully")}
 
           {:error, changeset} ->
             editor =
@@ -780,7 +781,6 @@ defmodule TrifleApp.DashboardLive do
   def handle_event("update_annotation", params, socket) do
     attrs = Map.get(params, "annotation", params)
     id = Map.get(attrs, "id")
-    group_id = Map.get(attrs, "group_id") || Map.get(params, "group_id")
 
     with %OrganizationMembership{} = membership <- socket.assigns[:current_membership],
          annotation when not is_nil(annotation) <-
@@ -788,7 +788,8 @@ defmodule TrifleApp.DashboardLive do
          {:ok, _annotation} <- SourceAnnotations.update_annotation(membership, annotation, attrs) do
       {:noreply,
        socket
-       |> refresh_source_annotations(group_id)}
+       |> refresh_source_annotations()
+       |> put_flash(:info, "Annotation updated successfully")}
     else
       _ ->
         {:noreply, put_flash(socket, :error, "Could not update annotation.")}
@@ -805,7 +806,8 @@ defmodule TrifleApp.DashboardLive do
          {:ok, _annotation} <- SourceAnnotations.delete_annotation(membership, annotation) do
       {:noreply,
        socket
-       |> refresh_source_annotations(group_id)}
+       |> refresh_source_annotations(group_id)
+       |> put_flash(:info, "Annotation deleted successfully")}
     else
       _ ->
         {:noreply, put_flash(socket, :error, "Could not delete annotation.")}

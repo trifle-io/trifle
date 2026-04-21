@@ -104,11 +104,14 @@ defmodule TrifleApp.DashboardLiveTest do
     render_hook(view, "open_annotation_editor", %{"at" => at_iso})
     assert has_element?(view, "#annotation-editor-modal", "Rounded to 1m")
 
-    view
-    |> form("#annotation-editor-form", %{
-      "annotation" => %{"body" => "Release started"}
-    })
-    |> render_submit()
+    create_html =
+      view
+      |> form("#annotation-editor-form", %{
+        "annotation" => %{"body" => "Release started"}
+      })
+      |> render_submit()
+
+    assert create_html =~ "Annotation created successfully"
 
     annotations =
       SourceAnnotations.list_for_source(
@@ -136,17 +139,23 @@ defmodule TrifleApp.DashboardLiveTest do
     render_hook(view, "open_annotation_group", %{"id" => group.id})
     assert has_element?(view, "#annotation-group-modal", "Existing annotation")
 
-    render_submit(view, "update_annotation", %{
-      "annotation" => %{
-        "id" => existing.id,
-        "group_id" => group.id,
-        "body" => "Updated annotation"
-      }
-    })
+    html =
+      render_submit(view, "update_annotation", %{
+        "annotation" => %{
+          "id" => existing.id,
+          "group_id" => group.id,
+          "body" => "Updated annotation"
+        }
+      })
 
     assert SourceAnnotations.get_annotation(membership, existing.id).body == "Updated annotation"
+    assert html =~ "Annotation updated successfully"
+    refute has_element?(view, "#annotation-group-modal")
 
-    render_click(view, "delete_annotation", %{"id" => existing.id, "group_id" => group.id})
+    delete_html =
+      render_click(view, "delete_annotation", %{"id" => existing.id, "group_id" => group.id})
+
+    assert delete_html =~ "Annotation deleted successfully"
     assert SourceAnnotations.get_annotation(membership, existing.id) == nil
   end
 
