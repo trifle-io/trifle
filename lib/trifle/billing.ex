@@ -1321,33 +1321,40 @@ defmodule Trifle.Billing do
   end
 
   defp process_and_mark_event(%Trifle.Billing.WebhookEvent{} = event) do
-    result = process_stripe_event(event.payload)
-
-    case result do
+    case process_stripe_event(event.payload) do
       :ok ->
-        Trifle.Repo.update(
-          Trifle.Billing.WebhookEvent.changeset(
-            event,
-            %{status: "processed", processed_at: now(), error: nil}
-          )
-        )
+        mark_webhook_event_processed(event)
 
       {:ok, _} ->
-        Trifle.Repo.update(
-          Trifle.Billing.WebhookEvent.changeset(
-            event,
-            %{status: "processed", processed_at: now(), error: nil}
-          )
-        )
+        mark_webhook_event_processed(event)
 
       {:error, reason} ->
-        Trifle.Repo.update(
-          Trifle.Billing.WebhookEvent.changeset(
-            event,
-            %{status: "failed", processed_at: now(), error: Kernel.inspect(reason)}
-          )
-        )
+        case mark_webhook_event_failed(event, reason) do
+          {:ok, _event} ->
+            {:error, reason}
+
+          {:error, update_reason} ->
+            {:error, {:webhook_event_update_failed, reason, update_reason}}
+        end
     end
+  end
+
+  defp mark_webhook_event_processed(%Trifle.Billing.WebhookEvent{} = event) do
+    Trifle.Repo.update(
+      Trifle.Billing.WebhookEvent.changeset(
+        event,
+        %{status: "processed", processed_at: now(), error: nil}
+      )
+    )
+  end
+
+  defp mark_webhook_event_failed(%Trifle.Billing.WebhookEvent{} = event, reason) do
+    Trifle.Repo.update(
+      Trifle.Billing.WebhookEvent.changeset(
+        event,
+        %{status: "failed", processed_at: now(), error: Kernel.inspect(reason)}
+      )
+    )
   end
 
   defp prefers_plan?(

@@ -139,7 +139,8 @@ config :trifle, Oban,
     default: 10,
     monitors: 5,
     reports: 5,
-    alerts: 5
+    alerts: 5,
+    billing: 1
   ],
   plugins: [
     {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
