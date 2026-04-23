@@ -43,6 +43,19 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
         |> render("403.json", %{})
         |> halt()
 
+      {:error, :source_inactive, reason} ->
+        conn
+        |> assign(:current_project, nil)
+        |> put_resp_content_type("application/json")
+        |> put_status(:forbidden)
+        |> json(%{
+          errors: %{
+            detail: "source_inactive",
+            reason: reason |> Trifle.Billing.source_access_status_reason() |> Atom.to_string()
+          }
+        })
+        |> halt()
+
       _error ->
         conn
         |> assign(:current_project, nil)
@@ -59,9 +72,12 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
          {:ok, source_id} <- extract_source_id(conn),
          {:ok, %{token: token_record, user: user}} <- Organizations.get_api_token_auth(token),
          organization_id when is_binary(organization_id) <- token_record.organization_id,
-         {:ok, source_type, record} <- Organizations.get_source_for_org(organization_id, source_id),
+         {:ok, source_type, record} <-
+           Organizations.get_operational_source_for_org(organization_id, source_id),
          :ok <- Organizations.ensure_token_permission(token_record, source_type, source_id, mode) do
-      _ = Organizations.touch_organization_api_token(token, %{last_used_from: request_source(conn)})
+      _ =
+        Organizations.touch_organization_api_token(token, %{last_used_from: request_source(conn)})
+
       {:ok, build_auth(source_type, record, token_record, user)}
     else
       nil ->
@@ -78,6 +94,9 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
 
       {:error, :invalid_permissions} ->
         {:error, :invalid_permissions}
+
+      {:error, :source_inactive, reason} ->
+        {:error, :source_inactive, reason}
 
       {:error, :not_found} ->
         {:error, :not_found}

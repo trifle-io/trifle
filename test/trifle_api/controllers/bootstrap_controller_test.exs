@@ -2,6 +2,7 @@ defmodule TrifleApi.BootstrapControllerTest do
   use TrifleApp.ConnCase
 
   import Trifle.AccountsFixtures
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
   alias Trifle.Accounts
@@ -97,6 +98,8 @@ defmodule TrifleApi.BootstrapControllerTest do
     setup %{user: user} do
       {:ok, organization, _membership} =
         Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+      app_entitlement_fixture(organization)
 
       {:ok, _token_record, user_token} =
         Organizations.create_organization_api_token(user, %{
@@ -273,7 +276,13 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       assert %{
                "data" => %{
-                 "source" => %{"id" => database_id, "type" => "database"}
+                 "source" => %{
+                   "id" => database_id,
+                   "type" => "database",
+                   "billing_state" => "active",
+                   "active" => true,
+                   "inactive_reason" => nil
+                 }
                }
              } = json_response(create_db_conn, 201)
 
@@ -301,7 +310,13 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       assert %{
                "data" => %{
-                 "source" => %{"id" => project_id, "type" => "project"}
+                 "source" => %{
+                   "id" => project_id,
+                   "type" => "project",
+                   "billing_state" => "pending_checkout",
+                   "active" => false,
+                   "inactive_reason" => "pending_checkout"
+                 }
                }
              } = json_response(create_project_conn, 201)
 
@@ -378,6 +393,13 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       assert Enum.any?(projects, &(&1["id"] == project_id))
       assert Enum.any?(databases, &(&1["id"] == database_id))
+
+      assert Enum.any?(
+               projects,
+               &(&1["id"] == project_id && &1["inactive_reason"] == "pending_checkout")
+             )
+
+      assert Enum.any?(databases, &(&1["id"] == database_id && &1["active"] == true))
     end
 
     test "can upload sqlite file when creating bootstrap database source", %{
@@ -491,6 +513,59 @@ defmodule TrifleApi.BootstrapControllerTest do
 
       assert {:ok, %{token: token_record}} = Organizations.get_api_token_auth(user_token)
       assert token_record.organization_id == organization_id
+    end
+  end
+
+  describe "authenticated bootstrap billing enforcement" do
+    setup %{user: user} do
+      {:ok, organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "No Billing Inc"}, user)
+
+      {:ok, _token_record, user_token} =
+        Organizations.create_organization_api_token(user, %{
+          name: "Bootstrap",
+          organization_id: organization.id
+        })
+
+      {:ok, organization: organization, user_token: user_token}
+    end
+
+    test "rejects database creation without an active organization subscription", %{
+      conn: conn,
+      user_token: user_token
+    } do
+      file_path =
+        Path.join(System.tmp_dir!(), "bootstrap-no-billing-#{Ecto.UUID.generate()}.sqlite")
+
+      on_exit(fn -> File.rm(file_path) end)
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Blocked DB",
+          "driver" => "sqlite",
+          "file_path" => file_path
+        })
+
+      assert %{"errors" => %{"detail" => "missing_app_subscription"}} = json_response(conn, 403)
+    end
+
+    test "rejects project creation without an active organization subscription", %{
+      conn: conn,
+      user_token: user_token
+    } do
+      cluster = project_cluster_fixture(%{is_default: true})
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/projects", %{
+          "name" => "Blocked Project",
+          "project_cluster_id" => cluster.id
+        })
+
+      assert %{"errors" => %{"detail" => "missing_app_subscription"}} = json_response(conn, 403)
     end
   end
 

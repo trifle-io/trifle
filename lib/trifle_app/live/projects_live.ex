@@ -4,6 +4,7 @@ defmodule TrifleApp.ProjectsLive do
   on_mount {TrifleApp.UserAuth, :ensure_projects_enabled}
 
   alias Phoenix.LiveView.JS
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
 
@@ -31,18 +32,27 @@ defmodule TrifleApp.ProjectsLive do
             Pick a Project to configure Transponders, Access Tokens and other Settings.
           </p>
         </div>
-        <div class="flex gap-2">
+        <%= if @app_subscription_active? do %>
+          <div class="flex gap-2">
+            <.link
+              patch={~p"/projects/new"}
+              aria-label="New Project"
+              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            >
+              <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+              </svg>
+              <span class="hidden md:inline">New Project</span>
+            </.link>
+          </div>
+        <% else %>
           <.link
-            patch={~p"/projects/new"}
-            aria-label="New Project"
-            class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            navigate={~p"/organization/billing"}
+            class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20"
           >
-            <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-            </svg>
-            <span class="hidden md:inline">New Project</span>
+            Activate subscription
           </.link>
-        </div>
+        <% end %>
       </div>
 
       <%= if Enum.empty?(@projects) do %>
@@ -67,20 +77,34 @@ defmodule TrifleApp.ProjectsLive do
             Create your first project to start collecting metrics and sharing dashboards.
           </p>
           <div class="mt-4">
-            <.link
-              patch={~p"/projects/new"}
-              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-            >
-              New Project
-            </.link>
+            <%= if @app_subscription_active? do %>
+              <.link
+                patch={~p"/projects/new"}
+                class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+              >
+                New Project
+              </.link>
+            <% else %>
+              <.link
+                navigate={~p"/organization/billing"}
+                class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20"
+              >
+                Activate subscription
+              </.link>
+            <% end %>
           </div>
         </div>
       <% else %>
         <div class="space-y-3">
-          <%= for project <- @projects do %>
+          <%= for %{project: project, access: access} <- @project_entries do %>
             <div
-              class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
-              phx-click={JS.navigate(~p"/projects/#{project.id}")}
+              class={[
+                "group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-colors",
+                access.active? &&
+                  "hover:bg-gray-50 dark:hover:bg-slate-700/40 cursor-pointer",
+                !access.active? && "opacity-90"
+              ]}
+              phx-click={if access.active?, do: JS.navigate(~p"/projects/#{project.id}")}
             >
               <div class="flex items-center gap-3 pl-3 py-3">
                 <div class={"h-10 w-1.5 rounded " <> project_accent_class(project)}></div>
@@ -104,9 +128,18 @@ defmodule TrifleApp.ProjectsLive do
                       <% end %>
                     </div>
                   <% end %>
+                  <div :if={!access.active?} class="mt-2 text-xs text-amber-700 dark:text-amber-200">
+                    {inactive_project_message(access)}
+                  </div>
                 </div>
               </div>
               <div class="flex items-center gap-3 pr-3">
+                <span
+                  :if={!access.active?}
+                  class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+                >
+                  {inactive_project_badge(access.billing_state)}
+                </span>
                 <button
                   type="button"
                   class="hidden rounded-md border border-gray-200 dark:border-slate-600 px-2 py-1 text-xs font-medium text-gray-600 dark:text-slate-300 hover:border-teal-400 hover:text-teal-600 dark:hover:border-teal-400 dark:hover:text-teal-300 sm:inline-flex"
@@ -115,7 +148,17 @@ defmodule TrifleApp.ProjectsLive do
                 >
                   Settings
                 </button>
+                <%= if !access.active? do %>
+                  <.link
+                    navigate={~p"/projects/#{project.id}/billing"}
+                    onclick="event.stopPropagation();"
+                    class="hidden rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20 sm:inline-flex"
+                  >
+                    Billing
+                  </.link>
+                <% end %>
                 <svg
+                  :if={access.active?}
                   class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -276,6 +319,7 @@ defmodule TrifleApp.ProjectsLive do
     socket =
       socket
       |> assign(:projects, projects)
+      |> assign(:project_entries, build_project_entries(projects))
       |> assign(:form, to_form(changeset))
       |> assign(:time_zones, time_zones())
       |> assign(:week_options, @week_options)
@@ -283,6 +327,7 @@ defmodule TrifleApp.ProjectsLive do
       |> assign(:project_cluster_options, cluster_options(cluster_choices))
       |> assign(:page_title, "Projects")
       |> assign(:show_new_modal, false)
+      |> assign(:app_subscription_active?, app_subscription_active?(membership))
 
     {:ok, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -292,21 +337,30 @@ defmodule TrifleApp.ProjectsLive do
   end
 
   defp apply_action(socket, :new, _params) do
-    cluster_choices = socket.assigns.project_cluster_choices
-    default_cluster_id = default_cluster_id(cluster_choices)
+    if socket.assigns.app_subscription_active? do
+      cluster_choices = socket.assigns.project_cluster_choices
+      default_cluster_id = default_cluster_id(cluster_choices)
 
-    socket
-    |> assign(:page_title, "Projects · New")
-    |> assign(:show_new_modal, true)
-    |> assign(
-      :form,
-      to_form(
-        Organizations.change_project(%Project{
-          project_cluster_id: default_cluster_id,
-          expire_after: Project.basic_retention_seconds()
-        })
+      socket
+      |> assign(:page_title, "Projects · New")
+      |> assign(:show_new_modal, true)
+      |> assign(
+        :form,
+        to_form(
+          Organizations.change_project(%Project{
+            project_cluster_id: default_cluster_id,
+            expire_after: Project.basic_retention_seconds()
+          })
+        )
       )
-    )
+    else
+      socket
+      |> put_flash(
+        :error,
+        "An active organization subscription is required before you can add projects."
+      )
+      |> push_patch(to: ~p"/projects")
+    end
   end
 
   defp apply_action(socket, :index, _params) do
@@ -316,6 +370,8 @@ defmodule TrifleApp.ProjectsLive do
     |> assign(:page_title, "Projects")
     |> assign(:show_new_modal, false)
     |> assign(:projects, list_projects_for_membership(membership))
+    |> assign(:project_entries, build_project_entries(list_projects_for_membership(membership)))
+    |> assign(:app_subscription_active?, app_subscription_active?(membership))
   end
 
   defp apply_action(socket, _action, _params), do: socket
@@ -337,32 +393,53 @@ defmodule TrifleApp.ProjectsLive do
   def handle_event("create", %{"project" => project_params}, socket) do
     membership = socket.assigns.current_membership
 
-    case create_project_for_membership(project_params, membership, socket.assigns.current_user) do
-      {:error, changeset} ->
-        {:noreply, assign(socket, :form, to_form(changeset))}
+    case Billing.app_access_allowed_for_org_id(membership.organization_id) do
+      :ok ->
+        case create_project_for_membership(
+               project_params,
+               membership,
+               socket.assigns.current_user
+             ) do
+          {:error, changeset} ->
+            {:noreply, assign(socket, :form, to_form(changeset))}
 
-      {:ok, project} ->
-        cluster_choices = list_cluster_choices_for_membership(membership)
-        default_cluster_id = default_cluster_id(cluster_choices)
+          {:ok, project} ->
+            cluster_choices = list_cluster_choices_for_membership(membership)
+            default_cluster_id = default_cluster_id(cluster_choices)
+            projects = list_projects_for_membership(membership)
 
-        socket =
-          socket
-          |> put_flash(:info, "#{project.name} created")
-          |> assign(:projects, list_projects_for_membership(membership))
-          |> assign(:project_cluster_choices, cluster_choices)
-          |> assign(:project_cluster_options, cluster_options(cluster_choices))
-          |> assign(
-            :form,
-            to_form(
-              Organizations.change_project(%Project{
-                project_cluster_id: default_cluster_id,
-                expire_after: Project.basic_retention_seconds()
-              })
-            )
+            socket =
+              socket
+              |> put_flash(:info, "#{project.name} created")
+              |> assign(:projects, projects)
+              |> assign(:project_entries, build_project_entries(projects))
+              |> assign(:project_cluster_choices, cluster_choices)
+              |> assign(:project_cluster_options, cluster_options(cluster_choices))
+              |> assign(
+                :form,
+                to_form(
+                  Organizations.change_project(%Project{
+                    project_cluster_id: default_cluster_id,
+                    expire_after: Project.basic_retention_seconds()
+                  })
+                )
+              )
+              |> assign(:show_new_modal, false)
+
+            {:noreply, push_patch(socket, to: ~p"/projects")}
+        end
+
+      {:error, _reason} ->
+        changeset =
+          %Project{expire_after: Project.basic_retention_seconds()}
+          |> Organizations.change_project(project_params)
+          |> Ecto.Changeset.add_error(
+            :name,
+            "an active organization subscription is required before you can add projects"
           )
-          |> assign(:show_new_modal, false)
+          |> Map.put(:action, :validate)
 
-        {:noreply, push_patch(socket, to: ~p"/projects")}
+        {:noreply, assign(socket, :form, to_form(changeset))}
     end
   end
 
@@ -413,6 +490,37 @@ defmodule TrifleApp.ProjectsLive do
   defp list_projects_for_membership(membership) do
     Organizations.list_projects_for_membership(membership)
   end
+
+  defp build_project_entries(projects) do
+    Enum.map(projects, fn project ->
+      %{project: project, access: Billing.source_access_status(:project, project)}
+    end)
+  end
+
+  defp app_subscription_active?(nil), do: false
+
+  defp app_subscription_active?(membership) do
+    match?(:ok, Billing.app_access_allowed_for_org_id(membership.organization_id))
+  end
+
+  defp inactive_project_badge("pending_checkout"), do: "Checkout required"
+  defp inactive_project_badge("locked"), do: "Subscription required"
+  defp inactive_project_badge(_state), do: "Inactive"
+
+  defp inactive_project_message(%{inactive_reason: :pending_checkout}),
+    do: "Complete project checkout to start using this project."
+
+  defp inactive_project_message(%{inactive_reason: :missing_app_subscription}),
+    do: "Activate your organization subscription before this project can be used."
+
+  defp inactive_project_message(%{inactive_reason: :billing_locked}),
+    do: "Billing is locked for this organization. Update billing to restore project access."
+
+  defp inactive_project_message(%{inactive_reason: :subscription_inactive}),
+    do: "Project subscription is inactive. Reactivate billing to restore access."
+
+  defp inactive_project_message(_access),
+    do: "This project is inactive until billing is restored."
 
   defp list_cluster_choices_for_membership(nil), do: []
 

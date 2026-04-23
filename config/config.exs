@@ -12,7 +12,7 @@ config :trifle,
 
 config :trifle, :deployment_mode, :saas
 
-config :trifle, :projects_enabled, true
+config :trifle, :projects_enabled, nil
 
 config :trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024
 config :trifle, :sqlite_upload_root, Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")

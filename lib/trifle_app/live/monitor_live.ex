@@ -68,6 +68,7 @@ defmodule TrifleApp.MonitorLive do
      |> assign(:modal_monitor, nil)
      |> assign(:modal_changeset, nil)
      |> assign(:source, nil)
+     |> assign(:monitor_source_status, :source_not_configured)
      |> assign(:stats_config, nil)
      |> assign(:available_granularities, [])
      |> assign(:from, nil)
@@ -925,7 +926,7 @@ defmodule TrifleApp.MonitorLive do
   defp initialize_monitor_context(socket) do
     monitor = socket.assigns.monitor
     sources = socket.assigns[:sources] || []
-    source = resolve_monitor_source(sources, monitor)
+    {source, source_status} = resolve_monitor_source(sources, monitor)
     updated_sources = ensure_source_in_list(sources, source)
     config = source_stats_config(source)
     granularities = available_granularity_options(source)
@@ -939,6 +940,7 @@ defmodule TrifleApp.MonitorLive do
 
     socket
     |> assign(:source, source)
+    |> assign(:monitor_source_status, source_status)
     |> assign(:sources, updated_sources)
     |> assign(:stats_config, config)
     |> assign(:available_granularities, granularities)
@@ -1411,10 +1413,54 @@ defmodule TrifleApp.MonitorLive do
 
   defp resolve_monitor_source(sources, monitor) do
     case monitor_source_tuple(monitor) do
-      {:ok, type, id} -> StatsSource.find_in_list(sources, type, id)
-      _ -> nil
+      {:ok, type, id} ->
+        case StatsSource.find_in_list(sources, type, id) do
+          %StatsSource{} = source ->
+            {source, :available}
+
+          _ ->
+            resolve_unavailable_monitor_source(monitor, type, id)
+        end
+
+      _ ->
+        {nil, :source_not_configured}
     end
   end
+
+  defp resolve_unavailable_monitor_source(
+         %Monitor{organization_id: org_id},
+         type,
+         id
+       )
+       when is_binary(org_id) and is_binary(id) do
+    case Organizations.get_source_for_org(org_id, id) do
+      {:ok, ^type, record} ->
+        access = Trifle.Billing.source_access_status(type, record)
+
+        if access.active? do
+          {source_from_record(type, record), :available}
+        else
+          {nil, {:source_inactive, access.inactive_reason}}
+        end
+
+      {:ok, resolved_type, record} ->
+        access = Trifle.Billing.source_access_status(resolved_type, record)
+
+        if access.active? do
+          {source_from_record(resolved_type, record), :available}
+        else
+          {nil, {:source_inactive, access.inactive_reason}}
+        end
+
+      _ ->
+        {nil, :source_not_found}
+    end
+  end
+
+  defp resolve_unavailable_monitor_source(_monitor, _type, _id), do: {nil, :source_not_found}
+
+  defp source_from_record(:database, database), do: StatsSource.from_database(database)
+  defp source_from_record(:project, project), do: StatsSource.from_project(project)
 
   defp ensure_source_in_list(sources, source) do
     cond do
@@ -1545,7 +1591,7 @@ defmodule TrifleApp.MonitorLive do
   defp status_label(:paused), do: "paused"
   defp status_label(_), do: "updated"
 
-  defp monitor_source_label(%Monitor{} = monitor, sources) do
+  defp monitor_source_label(%Monitor{} = monitor, sources, status) do
     with {:ok, type, id} <- monitor_source_tuple(monitor),
          %StatsSource{} = source <- StatsSource.find_in_list(sources, type, id) do
       "#{source_type_label(type)} · #{StatsSource.display_name(source)}"
@@ -1555,8 +1601,15 @@ defmodule TrifleApp.MonitorLive do
 
       _ ->
         case monitor_source_tuple(monitor) do
-          {:ok, type, _} -> source_type_label(type)
-          _ -> "Unknown"
+          {:ok, type, _} ->
+            case status do
+              {:source_inactive, _reason} -> "#{source_type_label(type)} · inactive"
+              :source_not_found -> "#{source_type_label(type)} · unavailable"
+              _ -> source_type_label(type)
+            end
+
+          _ ->
+            "Unknown"
         end
     end
   end
@@ -1576,6 +1629,27 @@ defmodule TrifleApp.MonitorLive do
   end
 
   defp source_type_label(value), do: to_string(value)
+
+  defp monitor_source_unavailable_heading({:source_inactive, _reason}), do: "Source inactive"
+  defp monitor_source_unavailable_heading(:source_not_found), do: "Source unavailable"
+  defp monitor_source_unavailable_heading(:source_not_configured), do: "Source not configured"
+  defp monitor_source_unavailable_heading(_status), do: "Source unavailable"
+
+  defp monitor_source_unavailable_message({:source_inactive, _reason}) do
+    "This monitor's source is inactive because billing is no longer active. Reactivate billing or repoint the monitor before running it again."
+  end
+
+  defp monitor_source_unavailable_message(:source_not_found) do
+    "The linked project or database could not be found. Repoint the monitor to restore data."
+  end
+
+  defp monitor_source_unavailable_message(:source_not_configured) do
+    "This monitor does not have a source assigned."
+  end
+
+  defp monitor_source_unavailable_message(_status) do
+    "This monitor does not currently have a usable source."
+  end
 
   defp monitor_icon(assigns) do
     ~H"""
@@ -2538,7 +2612,7 @@ defmodule TrifleApp.MonitorLive do
             </p>
             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
               <span class="font-semibold text-slate-600 dark:text-slate-300">Source:</span>
-              {monitor_source_label(@monitor, @sources)}
+              {monitor_source_label(@monitor, @sources, @monitor_source_status)}
             </p>
             <p :if={@monitor.description} class="mt-2 text-sm text-slate-500 dark:text-slate-300">
               {@monitor.description}
@@ -2576,10 +2650,14 @@ defmodule TrifleApp.MonitorLive do
             type="button"
             class={[
               "inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600",
-              match?({:monitor, :running}, @test_delivery_state) && "opacity-80 cursor-wait"
+              (match?({:monitor, :running}, @test_delivery_state) or
+                 @monitor_source_status != :available) && "opacity-80 cursor-not-allowed"
             ]}
             phx-click="test_delivery"
-            disabled={match?({:monitor, :running}, @test_delivery_state)}
+            disabled={
+              match?({:monitor, :running}, @test_delivery_state) or
+                @monitor_source_status != :available
+            }
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -2676,6 +2754,16 @@ defmodule TrifleApp.MonitorLive do
         show_transponding_status={false}
       />
 
+      <div
+        :if={@monitor_source_status != :available}
+        class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+      >
+        <p class="font-semibold">{monitor_source_unavailable_heading(@monitor_source_status)}</p>
+        <p class="mt-1 text-xs text-amber-800/90 dark:text-amber-100/80">
+          {monitor_source_unavailable_message(@monitor_source_status)}
+        </p>
+      </div>
+
       <div class="grid gap-6 lg:grid-cols-3">
         <div class="lg:col-span-2 space-y-4">
           <% export_params = build_monitor_export_params(assigns) %>
@@ -2760,12 +2848,12 @@ defmodule TrifleApp.MonitorLive do
             <MonitorComponents.report_panel
               monitor={@monitor}
               dashboard={@monitor.dashboard}
-              source_label={monitor_source_label(@monitor, @sources)}
+              source_label={monitor_source_label(@monitor, @sources, @monitor_source_status)}
             />
           <% else %>
             <MonitorComponents.alert_panel
               monitor={@monitor}
-              source_label={monitor_source_label(@monitor, @sources)}
+              source_label={monitor_source_label(@monitor, @sources, @monitor_source_status)}
             />
             <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
               <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

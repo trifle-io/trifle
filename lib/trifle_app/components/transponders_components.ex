@@ -12,6 +12,7 @@ defmodule TrifleApp.TranspondersComponents do
   attr :new_path, :string, required: true
   attr :show_path, :any, required: true
   attr :edit_path, :any, required: true
+  attr :source_active?, :boolean, default: true
 
   def transponder_list(assigns) do
     ~H"""
@@ -24,15 +25,21 @@ defmodule TrifleApp.TranspondersComponents do
               {Enum.count(@transponders_stream)}
             </span>
           </div>
-          <.link
-            patch={@new_path}
-            class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
-          >
-            <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-            </svg>
-            <span class="hidden md:inline">New Transponder</span>
-          </.link>
+          <%= if @source_active? do %>
+            <.link
+              patch={@new_path}
+              class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+            >
+              <svg class="h-5 w-5 md:-ml-0.5 md:mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+              </svg>
+              <span class="hidden md:inline">New Transponder</span>
+            </.link>
+          <% else %>
+            <span class="inline-flex items-center rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-500 ring-1 ring-inset ring-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:ring-slate-600">
+              Source inactive
+            </span>
+          <% end %>
         </div>
 
         <div class="divide-y divide-gray-100 dark:divide-slate-700">
@@ -106,7 +113,10 @@ defmodule TrifleApp.TranspondersComponents do
                   </div>
 
                   <div class="flex items-center gap-2" phx-click="noop">
-                    <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                    <div
+                      :if={@source_active?}
+                      class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto"
+                    >
                       <button
                         type="button"
                         phx-click="duplicate_transponder"
@@ -179,40 +189,46 @@ defmodule TrifleApp.TranspondersComponents do
                       </button>
                     </div>
 
-                    <button
-                      type="button"
-                      phx-click="toggle_transponder"
-                      phx-value-id={transponder.id}
-                      class={[
-                        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800",
-                        if(transponder.enabled,
-                          do: "bg-teal-600",
-                          else: "bg-gray-200 dark:bg-slate-600"
-                        )
-                      ]}
-                    >
-                      <span class="sr-only">Toggle transponder</span>
-                      <span class={[
-                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                        if(transponder.enabled, do: "translate-x-5", else: "translate-x-0")
-                      ]} />
-                    </button>
-
-                    <div
-                      class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300"
-                      phx-click="noop"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="h-5 w-5"
+                    <%= if @source_active? do %>
+                      <button
+                        type="button"
+                        phx-click="toggle_transponder"
+                        phx-value-id={transponder.id}
+                        class={[
+                          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800",
+                          if(transponder.enabled,
+                            do: "bg-teal-600",
+                            else: "bg-gray-200 dark:bg-slate-600"
+                          )
+                        ]}
                       >
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
-                      </svg>
-                    </div>
+                        <span class="sr-only">Toggle transponder</span>
+                        <span class={[
+                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                          if(transponder.enabled, do: "translate-x-5", else: "translate-x-0")
+                        ]} />
+                      </button>
+
+                      <div
+                        class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300"
+                        phx-click="noop"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-5 w-5"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 8h18M3 16h18" />
+                        </svg>
+                      </div>
+                    <% else %>
+                      <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30">
+                        Inactive
+                      </span>
+                    <% end %>
                   </div>
                 </div>
               </div>

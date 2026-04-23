@@ -1808,6 +1808,7 @@ defmodule TrifleApp.DashboardLive do
     {dashboard_source_status, source} =
       case Organizations.resolve_dashboard_source(dashboard) do
         {:ok, resolved_source} -> {:available, resolved_source}
+        {:error, :source_inactive, reason} -> {{:source_inactive, reason}, nil}
         {:error, reason} -> {reason, nil}
       end
 
@@ -3041,6 +3042,9 @@ defmodule TrifleApp.DashboardLive do
 
   defp dashboard_source_error_message(:source_not_configured),
     do: "This dashboard does not have a source assigned."
+
+  defp dashboard_source_error_message({:source_inactive, _reason}),
+    do: "The linked source for this dashboard is inactive until billing is restored."
 
   defp dashboard_source_error_message(_reason),
     do: "This dashboard does not have a usable source."

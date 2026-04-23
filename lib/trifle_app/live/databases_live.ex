@@ -1,6 +1,7 @@
 defmodule TrifleApp.DatabasesLive do
   use TrifleApp, :live_view
 
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
 
@@ -17,8 +18,10 @@ defmodule TrifleApp.DatabasesLive do
       socket
       |> assign(:page_title, "Databases")
       |> assign(:databases, databases)
+      |> assign(:database_entries, build_database_entries(databases))
       |> assign(:database, nil)
       |> assign(:can_manage_databases, can_manage)
+      |> assign(:app_subscription_active?, app_subscription_active?(membership))
 
     if length(databases) == 1 and not can_manage and socket.assigns.live_action == :index do
       {:ok, push_navigate(socket, to: ~p"/dbs/#{hd(databases).id}/transponders")}
@@ -33,15 +36,22 @@ defmodule TrifleApp.DatabasesLive do
   end
 
   defp apply_action(socket, :new, _params) do
-    if socket.assigns.can_manage_databases do
+    if socket.assigns.can_manage_databases and socket.assigns.app_subscription_active? do
       membership = socket.assigns.current_membership
 
       socket
       |> assign(:page_title, "Databases · New")
       |> assign(:database, %Database{organization_id: membership.organization_id})
     else
+      message =
+        if socket.assigns.can_manage_databases do
+          "An active organization subscription is required before you can add databases."
+        else
+          "Only organization owners can create databases."
+        end
+
       socket
-      |> put_flash(:error, "Only organization owners can create databases.")
+      |> put_flash(:error, message)
       |> push_patch(to: ~p"/dbs")
     end
   end
@@ -54,6 +64,8 @@ defmodule TrifleApp.DatabasesLive do
     |> assign(:page_title, "Databases")
     |> assign(:database, nil)
     |> assign(:databases, databases)
+    |> assign(:database_entries, build_database_entries(databases))
+    |> assign(:app_subscription_active?, app_subscription_active?(membership))
     |> maybe_redirect_single_database()
   end
 
@@ -68,7 +80,10 @@ defmodule TrifleApp.DatabasesLive do
     membership = socket.assigns.current_membership
     databases = Organizations.list_databases_for_org(membership.organization_id)
 
-    assign(socket, :databases, databases)
+    socket
+    |> assign(:databases, databases)
+    |> assign(:database_entries, build_database_entries(databases))
+    |> assign(:app_subscription_active?, app_subscription_active?(membership))
   end
 
   defp maybe_redirect_single_database(
@@ -78,6 +93,30 @@ defmodule TrifleApp.DatabasesLive do
   end
 
   defp maybe_redirect_single_database(socket), do: socket
+
+  defp build_database_entries(databases) do
+    Enum.map(databases, fn database ->
+      %{database: database, access: Billing.source_access_status(:database, database)}
+    end)
+  end
+
+  defp app_subscription_active?(nil), do: false
+
+  defp app_subscription_active?(membership) do
+    match?(:ok, Billing.app_access_allowed_for_org_id(membership.organization_id))
+  end
+
+  defp inactive_database_badge("locked"), do: "Subscription required"
+  defp inactive_database_badge(_state), do: "Inactive"
+
+  defp inactive_database_message(%{inactive_reason: :missing_app_subscription}),
+    do: "Activate your organization subscription to use this database."
+
+  defp inactive_database_message(%{inactive_reason: :billing_locked}),
+    do: "Billing is locked for this organization. Update billing to restore database access."
+
+  defp inactive_database_message(_access),
+    do: "This database is inactive until billing is restored."
 
   defp is_supported_driver?("redis"), do: true
   defp is_supported_driver?("mongo"), do: true
@@ -99,7 +138,7 @@ defmodule TrifleApp.DatabasesLive do
             Pick a Database to configure Transponders and other Settings.
           </p>
         </div>
-        <%= if @can_manage_databases do %>
+        <%= if @can_manage_databases and @app_subscription_active? do %>
           <div class="flex gap-2">
             <.link
               patch={~p"/dbs/new"}
@@ -112,15 +151,28 @@ defmodule TrifleApp.DatabasesLive do
               <span class="hidden md:inline">New Database</span>
             </.link>
           </div>
+        <% else %>
+          <.link
+            :if={@can_manage_databases}
+            navigate={~p"/organization/billing"}
+            class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20"
+          >
+            Activate subscription
+          </.link>
         <% end %>
       </div>
 
       <div class="space-y-3">
-        <%= for database <- @databases do %>
+        <%= for %{database: database, access: access} <- @database_entries do %>
           <%= if is_supported_driver?(database.driver) do %>
             <div
-              class="group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
-              phx-click={JS.navigate(~p"/dbs/#{database.id}/transponders")}
+              class={[
+                "group flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-colors",
+                access.active? &&
+                  "hover:bg-gray-50 dark:hover:bg-slate-700/40 cursor-pointer",
+                !access.active? && "opacity-90"
+              ]}
+              phx-click={if access.active?, do: JS.navigate(~p"/dbs/#{database.id}/transponders")}
             >
               <div class="flex items-center gap-3 pl-3 py-3">
                 <div class={"h-10 w-1.5 rounded " <> driver_accent_class(database.driver)}></div>
@@ -135,9 +187,18 @@ defmodule TrifleApp.DatabasesLive do
                       {database.host}{if database.port, do: ":#{database.port}"}
                     <% end %>
                   </div>
+                  <div :if={!access.active?} class="mt-2 text-xs text-amber-700 dark:text-amber-200">
+                    {inactive_database_message(access)}
+                  </div>
                 </div>
               </div>
               <div class="flex items-center gap-3 pr-3">
+                <span
+                  :if={!access.active?}
+                  class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"
+                >
+                  {inactive_database_badge(access.billing_state)}
+                </span>
                 <%= if @can_manage_databases do %>
                   <.link
                     navigate={~p"/dbs/#{database.id}/settings"}
@@ -148,6 +209,7 @@ defmodule TrifleApp.DatabasesLive do
                   </.link>
                 <% end %>
                 <svg
+                  :if={access.active?}
                   class="h-4 w-4 text-gray-400 group-hover:text-teal-500 dark:text-gray-500 dark:group-hover:text-teal-400"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -221,7 +283,7 @@ defmodule TrifleApp.DatabasesLive do
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Get started by configuring your first database connection.
           </p>
-          <%= if @can_manage_databases do %>
+          <%= if @can_manage_databases and @app_subscription_active? do %>
             <div class="mt-6">
               <.link
                 patch={~p"/dbs/new"}
@@ -231,9 +293,20 @@ defmodule TrifleApp.DatabasesLive do
               </.link>
             </div>
           <% else %>
-            <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">
-              Ask an organization owner to add one for your team.
-            </p>
+            <%= if @can_manage_databases do %>
+              <div class="mt-6">
+                <.link
+                  navigate={~p"/organization/billing"}
+                  class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20"
+                >
+                  Activate subscription
+                </.link>
+              </div>
+            <% else %>
+              <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">
+                Ask an organization owner to add one for your team.
+              </p>
+            <% end %>
           <% end %>
         </div>
       <% end %>

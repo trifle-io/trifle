@@ -6,6 +6,7 @@ defmodule TrifleApi.BootstrapController do
   alias Ecto.{NoResultsError, Query.CastError}
   alias Trifle.Accounts
   alias Trifle.Accounts.User
+  alias Trifle.Billing
   alias Trifle.Config
   alias Trifle.Organizations
   alias Trifle.Organizations.{Database, Organization, OrganizationMembership, Project}
@@ -175,6 +176,7 @@ defmodule TrifleApi.BootstrapController do
 
   def create_database(%{assigns: %{current_api_user: %User{} = user}} = conn, params) do
     with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
+         :ok <- ensure_app_subscription_active(membership),
          attrs <- normalize_database_attrs(params, membership),
          {:ok, attrs, uploaded_upload} <- maybe_store_sqlite_upload(attrs, params, membership) do
       case Organizations.create_database(attrs) do
@@ -210,6 +212,9 @@ defmodule TrifleApi.BootstrapController do
       {:error, :organization_required} ->
         render_error(conn, :conflict, "User does not belong to an organization")
 
+      {:error, reason} when reason in [:missing_app_subscription, :billing_locked] ->
+        render_billing_error(conn, reason)
+
       {:error, %Ecto.Changeset{} = changeset} ->
         render_changeset(conn, changeset)
 
@@ -220,7 +225,8 @@ defmodule TrifleApi.BootstrapController do
 
   def setup_database(%{assigns: %{current_api_user: %User{} = user}} = conn, %{"id" => id}) do
     with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
-         {:ok, %Database{} = database} <- fetch_database(membership, id) do
+         {:ok, %Database{} = database} <- fetch_database(membership, id),
+         :ok <- ensure_source_active(:database, database) do
       case Organizations.setup_database(database) do
         {:ok, message} ->
           checked =
@@ -253,6 +259,9 @@ defmodule TrifleApi.BootstrapController do
       {:error, :not_found} ->
         render_not_found(conn)
 
+      {:error, :source_inactive, reason} ->
+        render_billing_error(conn, {:source_inactive, reason})
+
       {:error, reason} ->
         render_error(conn, :unprocessable_entity, error_message(reason))
     end
@@ -261,6 +270,7 @@ defmodule TrifleApi.BootstrapController do
   def create_project(%{assigns: %{current_api_user: %User{} = user}} = conn, params) do
     with :ok <- ensure_projects_enabled(),
          {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
+         :ok <- ensure_app_subscription_active(membership),
          attrs <- normalize_project_attrs(params, membership),
          {:ok, %Project{} = project} <-
            Organizations.create_project_for_membership(attrs, membership, user) do
@@ -287,6 +297,9 @@ defmodule TrifleApi.BootstrapController do
 
       {:error, :organization_required} ->
         render_error(conn, :conflict, "User does not belong to an organization")
+
+      {:error, reason} when reason in [:missing_app_subscription, :billing_locked] ->
+        render_billing_error(conn, reason)
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render_changeset(conn, changeset)
@@ -396,6 +409,10 @@ defmodule TrifleApi.BootstrapController do
 
   defp ensure_projects_enabled do
     if Config.projects_enabled?(), do: :ok, else: {:error, :projects_disabled}
+  end
+
+  defp ensure_app_subscription_active(%OrganizationMembership{} = membership) do
+    Billing.app_access_allowed_for_org_id(membership.organization_id)
   end
 
   defp ensure_membership(%User{} = user) do
@@ -571,6 +588,13 @@ defmodule TrifleApi.BootstrapController do
   rescue
     NoResultsError -> {:error, :not_found}
     CastError -> {:error, :bad_request}
+  end
+
+  defp ensure_source_active(source_type, record) do
+    case Billing.source_access_status(source_type, record) do
+      %{active?: true} -> :ok
+      %{inactive_reason: reason} -> {:error, :source_inactive, reason}
+    end
   end
 
   defp maybe_grant_source_to_current_token(
@@ -827,6 +851,8 @@ defmodule TrifleApi.BootstrapController do
   end
 
   defp source_payload(:database, %Database{} = database) do
+    access = Billing.source_access_status(:database, database)
+
     %{
       id: database.id,
       type: "database",
@@ -835,11 +861,16 @@ defmodule TrifleApi.BootstrapController do
       default_granularity: database.default_granularity,
       available_granularities: available_database_granularities(database),
       time_zone: database.time_zone || "UTC",
-      setup_status: database.last_check_status
+      setup_status: database.last_check_status,
+      billing_state: access.billing_state,
+      active: access.active?,
+      inactive_reason: inactive_reason_payload(access.inactive_reason)
     }
   end
 
   defp source_payload(:project, %Project{} = project) do
+    access = Billing.source_access_status(:project, project)
+
     %{
       id: project.id,
       type: "project",
@@ -847,7 +878,10 @@ defmodule TrifleApi.BootstrapController do
       default_timeframe: project.default_timeframe,
       default_granularity: project.default_granularity,
       available_granularities: available_project_granularities(project),
-      time_zone: project.time_zone || "UTC"
+      time_zone: project.time_zone || "UTC",
+      billing_state: access.billing_state,
+      active: access.active?,
+      inactive_reason: inactive_reason_payload(access.inactive_reason)
     }
   end
 
@@ -979,6 +1013,33 @@ defmodule TrifleApi.BootstrapController do
   end
 
   defp normalize_string(_), do: nil
+
+  defp render_billing_error(conn, {:source_inactive, reason}) do
+    payload = %{
+      errors: %{
+        detail: "source_inactive",
+        reason: inactive_reason_payload(reason)
+      }
+    }
+
+    conn
+    |> put_status(:forbidden)
+    |> json(payload)
+  end
+
+  defp render_billing_error(conn, reason) do
+    conn
+    |> put_status(:forbidden)
+    |> json(%{errors: %{detail: inactive_reason_payload(reason)}})
+  end
+
+  defp inactive_reason_payload(nil), do: nil
+
+  defp inactive_reason_payload(reason) do
+    reason
+    |> Billing.source_access_status_reason()
+    |> Atom.to_string()
+  end
 
   defp parse_bool(value) when is_boolean(value), do: value
 

@@ -932,8 +932,15 @@ defmodule Trifle.Monitors do
 
   defp ensure_database_access(%OrganizationMembership{} = membership, id) when is_binary(id) do
     try do
-      _ = Organizations.get_database_for_org!(membership.organization_id, id)
-      :ok
+      database = Organizations.get_database_for_org!(membership.organization_id, id)
+
+      case Trifle.Billing.source_access_status(:database, database) do
+        %{active?: true} ->
+          :ok
+
+        %{inactive_reason: reason} ->
+          {:error, inactive_source_message("Database", reason)}
+      end
     rescue
       Ecto.NoResultsError ->
         {:error, "Database is not part of this organization"}
@@ -942,12 +949,14 @@ defmodule Trifle.Monitors do
 
   defp ensure_project_access(%OrganizationMembership{} = membership, id) when is_binary(id) do
     try do
-      project = Organizations.get_project!(id)
+      project = Organizations.get_project_for_org!(membership.organization_id, id)
 
-      if project.organization_id == membership.organization_id do
-        :ok
-      else
-        {:error, "Project is not available to this organization"}
+      case Trifle.Billing.source_access_status(:project, project) do
+        %{active?: true} ->
+          :ok
+
+        %{inactive_reason: reason} ->
+          {:error, inactive_source_message("Project", reason)}
       end
     rescue
       Ecto.NoResultsError ->
@@ -994,6 +1003,31 @@ defmodule Trifle.Monitors do
     monitor
     |> Monitor.changeset(attrs)
     |> Changeset.add_error(field, message)
+  end
+
+  defp inactive_source_message(source_label, reason) when is_binary(source_label) do
+    case Trifle.Billing.source_access_status_reason(reason) do
+      :pending_checkout ->
+        "#{source_label} requires an active subscription before it can be used."
+
+      :missing_app_subscription ->
+        "#{source_label} requires an active organization subscription."
+
+      :billing_locked ->
+        "#{source_label} is unavailable until billing is reactivated."
+
+      :subscription_inactive ->
+        "#{source_label} subscription is inactive."
+
+      :payment_grace_expired ->
+        "#{source_label} is unavailable because payment grace has expired."
+
+      :project_usage_limit_reached ->
+        "#{source_label} is unavailable because its usage limit has been reached."
+
+      _ ->
+        "#{source_label} is inactive and cannot be used right now."
+    end
   end
 
   defp monitor_has_source?(%Monitor{source_type: source_type, source_id: source_id}) do

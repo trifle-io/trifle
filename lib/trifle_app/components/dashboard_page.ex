@@ -2029,6 +2029,7 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp dashboard_source_heading(:source_not_found), do: "Source unavailable"
   defp dashboard_source_heading(:source_not_configured), do: "Source not configured"
+  defp dashboard_source_heading({:source_inactive, _reason}), do: "Source inactive"
   defp dashboard_source_heading(_status), do: "Source unavailable"
 
   defp dashboard_source_message(:source_not_found) do
@@ -2037,6 +2038,10 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp dashboard_source_message(:source_not_configured) do
     "This dashboard no longer has a project or database assigned. Assign a new source in dashboard settings to restore data."
+  end
+
+  defp dashboard_source_message({:source_inactive, _reason}) do
+    "This dashboard's source is inactive because billing is no longer active. Reactivate billing or assign a different source to restore data."
   end
 
   defp dashboard_source_message(_status) do

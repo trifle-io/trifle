@@ -9,10 +9,22 @@ defmodule Trifle.ConfigTest do
         Application.get_env(:trifle, :deployment_mode)
       end
 
+    previous_projects_enabled =
+      if Application.get_env(:trifle, :projects_enabled, :__missing__) == :__missing__ do
+        :__missing__
+      else
+        Application.get_env(:trifle, :projects_enabled)
+      end
+
     on_exit(fn ->
       case previous do
         :__missing__ -> Application.delete_env(:trifle, :deployment_mode)
         value -> Application.put_env(:trifle, :deployment_mode, value)
+      end
+
+      case previous_projects_enabled do
+        :__missing__ -> Application.delete_env(:trifle, :projects_enabled)
+        value -> Application.put_env(:trifle, :projects_enabled, value)
       end
     end)
 
@@ -41,6 +53,13 @@ defmodule Trifle.ConfigTest do
     assert Trifle.Config.deployment_mode() == :saas
     assert Trifle.Config.saas_mode?()
     refute Trifle.Config.self_hosted_mode?()
+  end
+
+  test "defaults projects to disabled in self-hosted mode when unset" do
+    Application.put_env(:trifle, :deployment_mode, :self_hosted)
+    Application.delete_env(:trifle, :projects_enabled)
+
+    refute Trifle.Config.projects_enabled?()
   end
 
   test "preserves explicit false for sqlite object store config values" do

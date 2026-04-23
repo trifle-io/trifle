@@ -817,14 +817,19 @@ defmodule Trifle.Organizations do
 
   defp coerce_dashboard_source(attrs, membership, "database", id) do
     try do
-      _ = get_database_for_org!(membership.organization_id, id)
+      database = get_database_for_org!(membership.organization_id, id)
 
-      {:ok,
-       attrs
-       |> drop_source_param()
-       |> put_attr("database_id", id)
-       |> put_attr("source_type", "database")
-       |> put_attr("source_id", id)}
+      with :ok <- ensure_source_active(:database, database) do
+        {:ok,
+         attrs
+         |> drop_source_param()
+         |> put_attr("database_id", id)
+         |> put_attr("source_type", "database")
+         |> put_attr("source_id", id)}
+      else
+        {:source_inactive, reason} ->
+          {:error, inactive_source_message("Database", reason)}
+      end
     rescue
       Ecto.NoResultsError ->
         {:error, "Database is not part of this organization"}
@@ -835,12 +840,17 @@ defmodule Trifle.Organizations do
     try do
       project = get_project_for_org!(membership.organization_id, id)
 
-      {:ok,
-       attrs
-       |> drop_source_param()
-       |> put_attr("database_id", nil)
-       |> put_attr("source_type", "project")
-       |> put_attr("source_id", project.id)}
+      with :ok <- ensure_source_active(:project, project) do
+        {:ok,
+         attrs
+         |> drop_source_param()
+         |> put_attr("database_id", nil)
+         |> put_attr("source_type", "project")
+         |> put_attr("source_id", project.id)}
+      else
+        {:source_inactive, reason} ->
+          {:error, inactive_source_message("Project", reason)}
+      end
     rescue
       Ecto.NoResultsError ->
         {:error, "Project not found"}
@@ -1359,7 +1369,7 @@ defmodule Trifle.Organizations do
   """
   def create_project(attrs \\ %{}) do
     %Project{}
-    |> Project.changeset(attrs)
+    |> Project.changeset(apply_project_billing_defaults(attrs))
     |> Repo.insert()
   end
 
@@ -1378,11 +1388,34 @@ defmodule Trifle.Organizations do
       attrs
       |> Map.put("user", user)
       |> Map.put("organization_id", membership.organization_id)
+      |> apply_project_billing_defaults()
 
     %Project{}
     |> Project.changeset(attrs)
     |> ensure_project_cluster(membership.organization_id)
     |> Repo.insert()
+  end
+
+  defp apply_project_billing_defaults(attrs) when is_map(attrs) do
+    if Trifle.Config.self_hosted_mode?() do
+      attrs
+      |> maybe_put_string_key("billing_required", false)
+      |> maybe_put_string_key("billing_state", "active")
+    else
+      attrs
+    end
+  end
+
+  defp apply_project_billing_defaults(attrs), do: attrs
+
+  defp maybe_put_string_key(attrs, key, value) when is_map(attrs) and is_binary(key) do
+    atom_key = String.to_atom(key)
+
+    cond do
+      Map.has_key?(attrs, key) -> attrs
+      Map.has_key?(attrs, atom_key) -> attrs
+      true -> Map.put(attrs, key, value)
+    end
   end
 
   @doc """
@@ -1779,6 +1812,51 @@ defmodule Trifle.Organizations do
   end
 
   def get_source_for_org(_organization_id, _source_id), do: {:error, :bad_request}
+
+  def get_operational_source_for_org(organization_id, source_id)
+      when is_binary(organization_id) and is_binary(source_id) do
+    with {:ok, source_type, record} <- get_source_for_org(organization_id, source_id),
+         :ok <- ensure_source_active(source_type, record) do
+      {:ok, source_type, record}
+    else
+      {:error, reason} -> {:error, reason}
+      {:source_inactive, reason} -> {:error, :source_inactive, reason}
+    end
+  end
+
+  def get_operational_source_for_org(_organization_id, _source_id), do: {:error, :bad_request}
+
+  defp ensure_source_active(source_type, record) do
+    case Billing.source_access_status(source_type, record) do
+      %{active?: true} -> :ok
+      %{inactive_reason: reason} -> {:source_inactive, reason}
+    end
+  end
+
+  defp inactive_source_message(source_label, reason) when is_binary(source_label) do
+    case Billing.source_access_status_reason(reason) do
+      :pending_checkout ->
+        "#{source_label} requires an active subscription before it can be used."
+
+      :missing_app_subscription ->
+        "#{source_label} requires an active organization subscription."
+
+      :billing_locked ->
+        "#{source_label} is unavailable until billing is reactivated."
+
+      :subscription_inactive ->
+        "#{source_label} subscription is inactive."
+
+      :payment_grace_expired ->
+        "#{source_label} is unavailable because payment grace has expired."
+
+      :project_usage_limit_reached ->
+        "#{source_label} is unavailable because its usage limit has been reached."
+
+      _ ->
+        "#{source_label} is inactive and cannot be used right now."
+    end
+  end
 
   def normalize_token_permissions(permissions) do
     wildcard =
@@ -3454,18 +3532,32 @@ defmodule Trifle.Organizations do
       dashboard.source_type == "project" ->
         try do
           project = get_project_for_org!(dashboard.organization_id, dashboard.source_id)
-          {:ok, StatsSource.from_project(project)}
+
+          with :ok <- ensure_source_active(:project, project) do
+            {:ok, StatsSource.from_project(project)}
+          else
+            {:source_inactive, reason} -> {:error, :source_inactive, reason}
+          end
         rescue
           Ecto.NoResultsError -> {:error, :source_not_found}
         end
 
       dashboard.source_type == "database" and match?(%Database{}, dashboard.database) ->
-        {:ok, StatsSource.from_database(dashboard.database)}
+        with :ok <- ensure_source_active(:database, dashboard.database) do
+          {:ok, StatsSource.from_database(dashboard.database)}
+        else
+          {:source_inactive, reason} -> {:error, :source_inactive, reason}
+        end
 
       dashboard.source_type == "database" ->
         try do
           database = get_database_for_org!(dashboard.organization_id, dashboard.source_id)
-          {:ok, StatsSource.from_database(database)}
+
+          with :ok <- ensure_source_active(:database, database) do
+            {:ok, StatsSource.from_database(database)}
+          else
+            {:source_inactive, reason} -> {:error, :source_inactive, reason}
+          end
         rescue
           Ecto.NoResultsError -> {:error, :source_not_found}
         end

@@ -5,6 +5,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   import TrifleApp.Components.TimeframeInput, only: [timeframe_input: 1]
 
   alias Ecto.Changeset
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.SqliteUploads
@@ -355,17 +356,34 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
     with org_id when is_binary(org_id) <- socket.assigns.database.organization_id do
       params = Map.put(database_params, "organization_id", org_id)
 
-      case Organizations.create_database(params) do
-        {:ok, database} ->
-          notify_parent({:saved, database})
+      case Billing.app_access_allowed_for_org_id(org_id) do
+        :ok ->
+          case Organizations.create_database(params) do
+            {:ok, database} ->
+              notify_parent({:saved, database})
 
-          {:noreply,
-           socket
-           |> put_flash(:info, "Database created successfully")
-           |> push_patch(to: socket.assigns.patch)}
+              {:noreply,
+               socket
+               |> put_flash(:info, "Database created successfully")
+               |> push_patch(to: socket.assigns.patch)}
 
-        {:error, %Ecto.Changeset{} = changeset} ->
+            {:error, %Ecto.Changeset{} = changeset} ->
+              cleanup_uploaded_sqlite_upload(uploaded_upload)
+              {:noreply, assign_form(socket, changeset)}
+          end
+
+        {:error, _reason} ->
           cleanup_uploaded_sqlite_upload(uploaded_upload)
+
+          changeset =
+            socket.assigns.database
+            |> Organizations.change_database(database_params)
+            |> Ecto.Changeset.add_error(
+              :display_name,
+              "an active organization subscription is required before you can add databases"
+            )
+            |> Map.put(:action, :validate)
+
           {:noreply, assign_form(socket, changeset)}
       end
     else

@@ -130,6 +130,10 @@ defmodule TrifleApp.DashboardsLive do
           {:noreply,
            put_flash(socket, :error, "The linked source for this dashboard could not be found")}
 
+        {:error, :source_inactive, _reason} ->
+          {:noreply,
+           put_flash(socket, :error, "The linked source for this dashboard is inactive")}
+
         {:error, :source_not_configured} ->
           {:noreply, put_flash(socket, :error, "This dashboard does not have a source assigned")}
       end

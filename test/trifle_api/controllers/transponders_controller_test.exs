@@ -2,6 +2,7 @@ defmodule TrifleApi.TranspondersControllerTest do
   use TrifleApp.ConnCase
 
   import Trifle.AccountsFixtures
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
   import TrifleApi.TestHelpers
 
@@ -13,6 +14,8 @@ defmodule TrifleApi.TranspondersControllerTest do
     {:ok, organization, _membership} =
       Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
 
+    app_entitlement_fixture(organization)
+
     file_path = Path.join(System.tmp_dir!(), "trifle-api-#{Ecto.UUID.generate()}.sqlite")
 
     {:ok, database} =
@@ -23,6 +26,7 @@ defmodule TrifleApi.TranspondersControllerTest do
       })
 
     project = project_fixture(%{user: user})
+    project_subscription_fixture(project)
 
     database_token =
       create_scoped_token!(user, organization.id, :database, database.id, true, false)

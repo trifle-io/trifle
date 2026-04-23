@@ -68,12 +68,23 @@ defmodule TrifleApp.DatabaseTranspondersLive do
           <.database_nav database={@database} current={:transponders} />
         </div>
 
+        <div
+          :if={!@source_active?}
+          class="mx-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 sm:mx-6 lg:mx-8"
+        >
+          <p class="font-semibold">Database inactive</p>
+          <p class="mt-1 text-xs text-amber-800/90 dark:text-amber-100/80">
+            This database remains visible for management, but transponders are disabled until billing is restored.
+          </p>
+        </div>
+
         <TranspondersComponents.transponder_list
           transponders_stream={@streams.transponders}
           transponders_empty={@transponders_empty}
           new_path={@new_path}
           show_path={@show_path}
           edit_path={@edit_path}
+          source_active?={@source_active?}
         />
       </div>
 

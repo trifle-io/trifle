@@ -8,6 +8,7 @@ defmodule TrifleApp.TranspondersLive.Shared do
   alias Ecto.NoResultsError
   alias Phoenix.Component
   alias Phoenix.LiveView
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.{Database, Project, Transponder}
 
@@ -16,9 +17,12 @@ defmodule TrifleApp.TranspondersLive.Shared do
   """
   def assign_initial(socket, source_assigns) do
     transponders = list_transponders_for_source(source_assigns.source)
+    access = source_access_status(source_assigns.source)
 
     socket
     |> Component.assign(source_assigns)
+    |> Component.assign(:source_access, access)
+    |> Component.assign(:source_active?, access.active?)
     |> Component.assign(:transponder, nil)
     |> Component.assign(:ui_action, :index)
     |> Component.assign(:transponders_empty, Enum.empty?(transponders))
@@ -54,27 +58,38 @@ defmodule TrifleApp.TranspondersLive.Shared do
       |> Component.assign(:page_title, page_title_for_action(base_action, source_type, source))
       |> Component.assign(:ui_action, base_action)
 
-    case {base_action, params} do
-      {:index, _} ->
-        Component.assign(socket, :transponder, nil)
-
-      {:new, _} ->
-        Component.assign(socket, :transponder, %Transponder{
-          source_type: Atom.to_string(source_type)
-        })
-
-      {action, %{"transponder_id" => transponder_id}} when action in [:show, :edit] ->
-        transponder = load_transponder(source, transponder_id)
-
+    cond do
+      not socket.assigns[:source_active?] and base_action in [:new, :edit] ->
         socket
-        |> Component.assign(:transponder, transponder)
-        |> Component.assign(
-          :page_title,
-          page_title_for_action(action, source_type, source, transponder)
-        )
+        |> LiveView.put_flash(:error, inactive_source_message(source_type))
+        |> LiveView.push_patch(to: socket.assigns.index_path)
+        |> Component.assign(:transponder, nil)
+        |> Component.assign(:ui_action, :index)
+        |> Component.assign(:page_title, page_title_for_action(:index, source_type, source))
 
-      _ ->
-        Component.assign(socket, :transponder, nil)
+      true ->
+        case {base_action, params} do
+          {:index, _} ->
+            Component.assign(socket, :transponder, nil)
+
+          {:new, _} ->
+            Component.assign(socket, :transponder, %Transponder{
+              source_type: Atom.to_string(source_type)
+            })
+
+          {action, %{"transponder_id" => transponder_id}} when action in [:show, :edit] ->
+            transponder = load_transponder(source, transponder_id)
+
+            socket
+            |> Component.assign(:transponder, transponder)
+            |> Component.assign(
+              :page_title,
+              page_title_for_action(action, source_type, source, transponder)
+            )
+
+          _ ->
+            Component.assign(socket, :transponder, nil)
+        end
     end
   end
 
@@ -94,76 +109,92 @@ defmodule TrifleApp.TranspondersLive.Shared do
   def handle_form_updated(socket, transponder), do: handle_form_saved(socket, transponder)
 
   def handle_delete(socket, %{"id" => id}) do
-    source = socket.assigns.source
-    transponder = load_transponder(source, id)
-    {:ok, _} = Organizations.delete_transponder(transponder)
+    with :ok <- ensure_source_active(socket) do
+      source = socket.assigns.source
+      transponder = load_transponder(source, id)
+      {:ok, _} = Organizations.delete_transponder(transponder)
 
-    remaining_transponders = list_transponders_for_source(source)
-    remaining_ids = Enum.map(remaining_transponders, & &1.id)
-    {:ok, _} = Organizations.update_transponder_order(source, remaining_ids)
+      remaining_transponders = list_transponders_for_source(source)
+      remaining_ids = Enum.map(remaining_transponders, & &1.id)
+      {:ok, _} = Organizations.update_transponder_order(source, remaining_ids)
 
-    transponders = list_transponders_for_source(source)
+      transponders = list_transponders_for_source(source)
 
-    {:noreply,
-     socket
-     |> Component.assign(:transponders_empty, Enum.empty?(transponders))
-     |> LiveView.stream(:transponders, transponders, reset: true)
-     |> LiveView.put_flash(:info, "Transponder deleted successfully")}
+      {:noreply,
+       socket
+       |> Component.assign(:transponders_empty, Enum.empty?(transponders))
+       |> LiveView.stream(:transponders, transponders, reset: true)
+       |> LiveView.put_flash(:info, "Transponder deleted successfully")}
+    else
+      {:error, message} -> {:noreply, LiveView.put_flash(socket, :error, message)}
+    end
   end
 
   def handle_toggle(socket, %{"id" => id}) do
-    source = socket.assigns.source
-    transponder = load_transponder(source, id)
+    with :ok <- ensure_source_active(socket) do
+      source = socket.assigns.source
+      transponder = load_transponder(source, id)
 
-    {:ok, updated_transponder} =
-      Organizations.update_transponder(transponder, %{enabled: !transponder.enabled})
+      {:ok, updated_transponder} =
+        Organizations.update_transponder(transponder, %{enabled: !transponder.enabled})
 
-    {:noreply, LiveView.stream_insert(socket, :transponders, updated_transponder)}
+      {:noreply, LiveView.stream_insert(socket, :transponders, updated_transponder)}
+    else
+      {:error, message} -> {:noreply, LiveView.put_flash(socket, :error, message)}
+    end
   end
 
   def handle_duplicate(socket, %{"id" => id}) do
-    source = socket.assigns.source
-    original = load_transponder(source, id)
-    next_order = Organizations.get_next_transponder_order(source)
+    with :ok <- ensure_source_active(socket) do
+      source = socket.assigns.source
+      original = load_transponder(source, id)
+      next_order = Organizations.get_next_transponder_order(source)
 
-    attrs =
-      %{
-        "name" => (original.name || original.key) <> " (copy)",
-        "key" => original.key,
-        "config" => original.config || %{},
-        "enabled" => false,
-        "order" => next_order
-      }
-      |> maybe_put_database_id(source)
+      attrs =
+        %{
+          "name" => (original.name || original.key) <> " (copy)",
+          "key" => original.key,
+          "config" => original.config || %{},
+          "enabled" => false,
+          "order" => next_order
+        }
+        |> maybe_put_database_id(source)
 
-    case create_transponder_for_source(source, attrs) do
-      {:ok, transponder} ->
-        {:noreply,
-         socket
-         |> Component.assign(:transponders_empty, false)
-         |> LiveView.stream_insert(:transponders, transponder)
-         |> LiveView.put_flash(:info, "Transponder duplicated")}
+      case create_transponder_for_source(source, attrs) do
+        {:ok, transponder} ->
+          {:noreply,
+           socket
+           |> Component.assign(:transponders_empty, false)
+           |> LiveView.stream_insert(:transponders, transponder)
+           |> LiveView.put_flash(:info, "Transponder duplicated")}
 
-      {:error, _changeset} ->
-        {:noreply, LiveView.put_flash(socket, :error, "Could not duplicate transponder")}
+        {:error, _changeset} ->
+          {:noreply, LiveView.put_flash(socket, :error, "Could not duplicate transponder")}
+      end
+    else
+      {:error, message} -> {:noreply, LiveView.put_flash(socket, :error, message)}
     end
   end
 
   def handle_reorder(socket, %{"ids" => ids}) do
-    source = socket.assigns.source
+    with :ok <- ensure_source_active(socket) do
+      source = socket.assigns.source
 
-    case Organizations.update_transponder_order(source, ids) do
-      {:ok, _} ->
-        transponders = list_transponders_for_source(source)
+      case Organizations.update_transponder_order(source, ids) do
+        {:ok, _} ->
+          transponders = list_transponders_for_source(source)
 
-        {:noreply,
-         socket
-         |> Component.assign(:transponders_empty, Enum.empty?(transponders))
-         |> LiveView.stream(:transponders, transponders, reset: true)
-         |> LiveView.put_flash(:info, "Transponder order updated successfully")}
+          {:noreply,
+           socket
+           |> Component.assign(:transponders_empty, Enum.empty?(transponders))
+           |> LiveView.stream(:transponders, transponders, reset: true)
+           |> LiveView.put_flash(:info, "Transponder order updated successfully")}
 
-      {:error, _} ->
-        {:noreply, LiveView.put_flash(socket, :error, "Failed to update transponder order")}
+        {:error, _} ->
+          {:noreply, LiveView.put_flash(socket, :error, "Failed to update transponder order")}
+      end
+    else
+      {:error, message} -> {:noreply, LiveView.put_flash(socket, :error, message)}
     end
   end
 
@@ -300,4 +331,24 @@ defmodule TrifleApp.TranspondersLive.Shared do
   def transponder_settings_path(:database, %Database{id: id}), do: ~p"/dbs/#{id}/settings"
   def transponder_settings_path(:project, %Project{id: id}), do: ~p"/projects/#{id}/settings"
   def transponder_settings_path(_, _), do: nil
+
+  defp ensure_source_active(%{assigns: %{source_active?: true}}), do: :ok
+
+  defp ensure_source_active(%{assigns: %{source_type: source_type}}) do
+    {:error, inactive_source_message(source_type)}
+  end
+
+  defp source_access_status(%Database{} = database),
+    do: Billing.source_access_status(:database, database)
+
+  defp source_access_status(%Project{} = project),
+    do: Billing.source_access_status(:project, project)
+
+  defp inactive_source_message(source_type) do
+    "#{source_type_label(source_type)} is inactive until billing is restored."
+  end
+
+  defp source_type_label(:database), do: "Database"
+  defp source_type_label(:project), do: "Project"
+  defp source_type_label(other), do: other |> to_string() |> String.capitalize()
 end

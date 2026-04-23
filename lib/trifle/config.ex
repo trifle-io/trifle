@@ -20,7 +20,10 @@ defmodule Trifle.Config do
 
   @spec projects_enabled?() :: boolean()
   def projects_enabled? do
-    Application.get_env(:trifle, :projects_enabled, true)
+    case Application.get_env(:trifle, :projects_enabled) do
+      value when is_boolean(value) -> value
+      _ -> deployment_mode() != :self_hosted
+    end
   end
 
   @spec sqlite_upload_max_bytes() :: pos_integer()

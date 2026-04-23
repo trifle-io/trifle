@@ -1,11 +1,15 @@
 defmodule TrifleApi.MetricsControllerTest do
   use TrifleApp.ConnCase
 
+  import Ecto.Query
   import Trifle.AccountsFixtures
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
   import TrifleApi.TestHelpers
 
+  alias Trifle.Billing.Entitlement
   alias Trifle.Organizations
+  alias Trifle.Repo
 
   setup do
     previous_metrics_module = Application.get_env(:trifle, :metrics_module)
@@ -18,6 +22,8 @@ defmodule TrifleApi.MetricsControllerTest do
     {:ok, organization, _membership} =
       Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
 
+    app_entitlement_fixture(organization)
+
     file_path = Path.join(System.tmp_dir!(), "trifle-api-#{Ecto.UUID.generate()}.sqlite")
 
     {:ok, database} =
@@ -28,6 +34,7 @@ defmodule TrifleApi.MetricsControllerTest do
       })
 
     project = project_fixture(%{user: user})
+    project_subscription_fixture(project)
 
     database_token =
       create_scoped_token!(user, organization.id, :database, database.id, true, false)
@@ -139,6 +146,31 @@ defmodule TrifleApi.MetricsControllerTest do
       assert at == [DateTime.to_iso8601(timestamp)]
       assert values == [1]
       assert %{fetch_series: 1, track: 0} = Trifle.MetricsMock.calls()
+    end
+
+    test "rejects inactive database sources after billing is removed", %{
+      conn: conn,
+      database_token: token,
+      database: database
+    } do
+      Repo.delete_all(
+        from entitlement in Entitlement,
+          where: entitlement.organization_id == ^database.organization_id
+      )
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, database.id)
+        |> get(~p"/api/v1/metrics", %{key: "metrics.total"})
+
+      assert %{
+               "errors" => %{
+                 "detail" => "source_inactive",
+                 "reason" => "missing_app_subscription"
+               }
+             } =
+               json_response(conn, 403)
     end
   end
 

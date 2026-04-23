@@ -1,14 +1,19 @@
 defmodule TrifleApp.DatabasesLiveTest do
   use TrifleApp.ConnCase
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
+  alias Trifle.Billing.Entitlement
   alias Trifle.Organizations
+  alias Trifle.Repo
 
   setup %{conn: conn} do
     user = Trifle.AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})
+    app_entitlement_fixture(organization)
 
     {:ok, conn: log_in_user(conn, user), organization: organization}
   end
@@ -110,6 +115,34 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Sqlite Storage"
     assert html =~ "backend"
     assert html =~ "trifle-sqlite-files"
+  end
+
+  test "inactive databases remain visible with a billing CTA", %{
+    conn: conn,
+    organization: organization
+  } do
+    assert {:ok, database} =
+             Organizations.create_database_for_org(
+               organization,
+               mysql_attrs(%{display_name: "Inactive DB"})
+             )
+
+    Repo.delete_all(
+      from entitlement in Entitlement, where: entitlement.organization_id == ^organization.id
+    )
+
+    {:ok, _lv, html} = live(conn, ~p"/dbs")
+
+    assert html =~ database.display_name
+    assert html =~ "Subscription required"
+    assert html =~ "Activate subscription"
+
+    app_entitlement_fixture(organization)
+
+    {:ok, _lv, html} = live(conn, ~p"/dbs")
+
+    assert html =~ database.display_name
+    refute html =~ "Subscription required"
   end
 
   defp mysql_attrs(overrides \\ %{}) do

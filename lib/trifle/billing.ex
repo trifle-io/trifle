@@ -525,6 +525,55 @@ defmodule Trifle.Billing do
     :ok
   end
 
+  def source_access_status(%Trifle.Organizations.Project{} = project) do
+    source_access_status(:project, project)
+  end
+
+  def source_access_status(%Trifle.Organizations.Database{} = database) do
+    source_access_status(:database, database)
+  end
+
+  def source_access_status(:project, %Trifle.Organizations.Project{} = project) do
+    case source_access_allowed?(:project, project) do
+      :ok ->
+        %{
+          billing_state: "active",
+          active?: true,
+          inactive_reason: nil
+        }
+
+      {:error, reason} ->
+        %{
+          billing_state: project_billing_state_for_reason(project, reason),
+          active?: false,
+          inactive_reason: source_inactive_reason(reason)
+        }
+    end
+  end
+
+  def source_access_status(:database, %{organization_id: organization_id})
+      when :erlang.is_binary(organization_id) do
+    case source_access_allowed?(:database, %{organization_id: organization_id}) do
+      :ok ->
+        %{billing_state: "active", active?: true, inactive_reason: nil}
+
+      {:error, reason} ->
+        %{
+          billing_state: "locked",
+          active?: false,
+          inactive_reason: source_inactive_reason(reason)
+        }
+    end
+  end
+
+  def source_access_status(_, _) do
+    %{billing_state: "active", active?: true, inactive_reason: nil}
+  end
+
+  def source_access_status_reason(reason) do
+    source_inactive_reason(reason)
+  end
+
   defp should_upsert_by_scope?("customer.subscription.created", _status) do
     true
   end
@@ -1128,6 +1177,16 @@ defmodule Trifle.Billing do
     end
   end
 
+  defp project_billing_state_for_reason(
+         %Trifle.Organizations.Project{} = _project,
+         reason
+       ) do
+    case source_inactive_reason(reason) do
+      :pending_checkout -> "pending_checkout"
+      _ -> "locked"
+    end
+  end
+
   defp project_hard_limit_from_price_id(price_id) do
     case plan_for_price_id(price_id) do
       %Trifle.Billing.Plan{} = plan -> project_hard_limit_from_plan(plan)
@@ -1595,12 +1654,28 @@ defmodule Trifle.Billing do
         {:ok, usage}
 
       true ->
-        Trifle.Repo.update(
-          Trifle.Billing.ProjectUsage.changeset(
-            usage,
-            %{locked_at: now()}
-          )
-        )
+        case Trifle.Repo.update(
+               Trifle.Billing.ProjectUsage.changeset(
+                 usage,
+                 %{locked_at: now()}
+               )
+             ) do
+          {:ok, updated_usage} ->
+            case Trifle.Repo.get(Trifle.Organizations.Project, usage.project_id) do
+              %Trifle.Organizations.Project{} = project ->
+                project
+                |> Ecto.Changeset.change(billing_state: "locked")
+                |> Trifle.Repo.update()
+
+              _ ->
+                :ok
+            end
+
+            {:ok, updated_usage}
+
+          error ->
+            error
+        end
     end
   end
 
@@ -2467,6 +2542,16 @@ defmodule Trifle.Billing do
         {:error, :subscription_inactive}
     end
   end
+
+  defp source_inactive_reason(:project_subscription_required), do: :pending_checkout
+  defp source_inactive_reason(:pending_checkout), do: :pending_checkout
+  defp source_inactive_reason(:missing_app_subscription), do: :missing_app_subscription
+  defp source_inactive_reason(:billing_locked), do: :billing_locked
+  defp source_inactive_reason(:subscription_inactive), do: :subscription_inactive
+  defp source_inactive_reason(:payment_grace_expired), do: :payment_grace_expired
+  defp source_inactive_reason(:project_usage_limit_reached), do: :project_usage_limit_reached
+  defp source_inactive_reason(reason) when is_atom(reason), do: reason
+  defp source_inactive_reason(_), do: :source_inactive
 
   defp ensure_seat_available(_organization_id, %Trifle.Billing.Entitlement{seat_limit: nil}) do
     :ok

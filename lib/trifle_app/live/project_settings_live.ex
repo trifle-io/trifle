@@ -6,6 +6,7 @@ defmodule TrifleApp.ProjectSettingsLive do
   import TrifleApp.Components.GranularitySelect, only: [granularity_select: 1]
 
   alias Ecto.Changeset
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Project
   alias TrifleApp.ProjectsLive
@@ -38,6 +39,7 @@ defmodule TrifleApp.ProjectSettingsLive do
         {:ok,
          socket
          |> assign(:project, project)
+         |> assign(:source_access, Billing.source_access_status(:project, project))
          |> assign(:project_cluster, project_cluster)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
          |> assign(:nav_section, :projects)
@@ -85,6 +87,7 @@ defmodule TrifleApp.ProjectSettingsLive do
          socket
          |> put_flash(:info, "Project updated successfully.")
          |> assign(:project, project)
+         |> assign(:source_access, Billing.source_access_status(:project, project))
          |> assign(:project_cluster, project_cluster)
          |> assign(:page_title, "Projects · #{project.name} · Settings")
          |> assign(:nav_section, :projects)
@@ -105,6 +108,16 @@ defmodule TrifleApp.ProjectSettingsLive do
       </div>
 
       <div class="space-y-6 px-4 pb-6 sm:px-6 lg:px-8">
+        <div
+          :if={!@source_access.active?}
+          class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+          <p class="font-semibold">Project inactive</p>
+          <p class="mt-1 text-xs text-amber-800/90 dark:text-amber-100/80">
+            This project remains visible for management, but it cannot be used in dashboards, monitors, Explore, AI, or API flows until billing is restored.
+          </p>
+        </div>
+
         <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
           <div class="px-4 py-6 sm:px-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

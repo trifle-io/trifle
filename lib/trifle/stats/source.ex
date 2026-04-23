@@ -8,6 +8,7 @@ defmodule Trifle.Stats.Source do
   defstruct [:module, :record]
 
   alias __MODULE__.Behaviour
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Project, as: OrgProject
   alias Trifle.Organizations.OrganizationMembership
@@ -29,6 +30,12 @@ defmodule Trifle.Stats.Source do
   end
 
   @type t :: %__MODULE__{module: module(), record: struct()}
+  @type catalog_entry :: %{
+          source: t(),
+          billing_state: String.t(),
+          active: boolean(),
+          inactive_reason: atom() | nil
+        }
 
   @spec new(module(), struct()) :: t()
   def new(module, record) when is_atom(module) and is_struct(record) do
@@ -95,14 +102,9 @@ defmodule Trifle.Stats.Source do
   def list_for_membership(nil), do: []
 
   def list_for_membership(%OrganizationMembership{organization_id: org_id}) do
-    databases = list_for_organization(org_id)
-
-    projects =
-      Organizations.list_projects_for_org(org_id)
-      |> Enum.map(&from_project/1)
-
-    (databases ++ projects)
-    |> sort_sources()
+    list_catalog_for_membership(%OrganizationMembership{organization_id: org_id})
+    |> Enum.filter(& &1.active)
+    |> Enum.map(& &1.source)
   end
 
   @spec list_for_organization(term()) :: [t()]
@@ -112,6 +114,21 @@ defmodule Trifle.Stats.Source do
     Organizations.list_databases_for_org(org_id)
     |> Enum.map(&from_database/1)
     |> sort_sources()
+  end
+
+  @spec list_catalog_for_membership(OrganizationMembership.t() | nil) :: [catalog_entry()]
+  def list_catalog_for_membership(nil), do: []
+
+  def list_catalog_for_membership(%OrganizationMembership{organization_id: org_id}) do
+    databases = list_for_organization(org_id)
+
+    projects =
+      Organizations.list_projects_for_org(org_id)
+      |> Enum.map(&from_project/1)
+
+    (databases ++ projects)
+    |> sort_sources()
+    |> Enum.map(&catalog_entry/1)
   end
 
   @spec find_in_list([t()], atom(), term()) :: t() | nil
@@ -225,5 +242,16 @@ defmodule Trifle.Stats.Source do
 
   defp delegate(%__MODULE__{module: module, record: record}, function) do
     apply(module, function, [record])
+  end
+
+  defp catalog_entry(%__MODULE__{} = source) do
+    access = Billing.source_access_status(type(source), record(source))
+
+    %{
+      source: source,
+      billing_state: access.billing_state,
+      active: access.active?,
+      inactive_reason: access.inactive_reason
+    }
   end
 end

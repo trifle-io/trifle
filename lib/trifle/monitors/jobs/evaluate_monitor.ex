@@ -82,6 +82,25 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
         :ok
 
+      {:error, {:source_inactive, reason}} ->
+        Logger.info(fn ->
+          "[EvaluateMonitor] skip report monitor=#{monitor.id} reason=source_inactive detail=#{inspect(reason)}"
+        end)
+
+        log_execution(monitor, %{
+          status: "skipped",
+          summary: "Report delivery skipped because the source is inactive.",
+          details: %{
+            kind: "report",
+            scheduled_for: scheduled_for,
+            frequency: monitor.report_settings && monitor.report_settings.frequency,
+            reason: "source_inactive",
+            inactive_reason: reason
+          }
+        })
+
+        :ok
+
       {:error, reason} ->
         Logger.debug(fn ->
           "[EvaluateMonitor] report delivery failed monitor=#{monitor.id} reason=#{inspect(reason)}"
@@ -228,6 +247,24 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
           "Alert evaluation skipped – final alert series did not resolve to any data.",
           scheduled_for
         )
+
+        maybe_update_trigger_status(monitor, [])
+
+      {:error, :source_inactive, reason} ->
+        Logger.info(fn ->
+          "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=source_inactive detail=#{inspect(reason)}"
+        end)
+
+        log_execution(monitor, %{
+          status: "skipped",
+          summary: "Alert evaluation skipped because the source is inactive.",
+          details: %{
+            kind: "alert",
+            scheduled_for: scheduled_for,
+            reason: "source_inactive",
+            inactive_reason: reason
+          }
+        })
 
         maybe_update_trigger_status(monitor, [])
 

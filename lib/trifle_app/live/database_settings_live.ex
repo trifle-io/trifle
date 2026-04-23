@@ -1,6 +1,7 @@
 defmodule TrifleApp.DatabaseSettingsLive do
   use TrifleApp, :live_view
 
+  alias Trifle.Billing
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
 
@@ -105,8 +106,11 @@ defmodule TrifleApp.DatabaseSettingsLive do
   end
 
   defp assign_database(socket, %Database{} = database) do
+    access = Billing.source_access_status(:database, database)
+
     socket
     |> assign(:database, database)
+    |> assign(:source_access, access)
     |> assign(:page_title, "Databases · #{database.display_name} · Settings")
     |> assign(:nav_section, :databases)
   end
@@ -160,6 +164,16 @@ defmodule TrifleApp.DatabaseSettingsLive do
       </div>
 
       <div class="space-y-6 px-4 pb-6 sm:px-6 lg:px-8">
+        <div
+          :if={!@source_access.active?}
+          class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+          <p class="font-semibold">Database inactive</p>
+          <p class="mt-1 text-xs text-amber-800/90 dark:text-amber-100/80">
+            This database remains visible for management, but setup and data actions are disabled until billing is restored.
+          </p>
+        </div>
+
         <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
           <div class="px-4 py-6 sm:px-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -178,6 +192,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
                 <button
                   type="button"
                   phx-click="edit"
+                  disabled={!@source_access.active?}
                   class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   Edit database
@@ -333,6 +348,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
               <button
                 phx-click="check_status"
                 type="button"
+                disabled={!@source_access.active?}
                 class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Check status
@@ -340,6 +356,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
               <button
                 phx-click="setup"
                 type="button"
+                disabled={!@source_access.active?}
                 class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
               >
                 Setup database
@@ -368,6 +385,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
                 <button
                   phx-click="nuke"
                   type="button"
+                  disabled={!@source_access.active?}
                   data-confirm="Are you sure you want to delete all metrics data for this database? This action cannot be undone."
                   class="inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-50 dark:border-red-500/40 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-500/10"
                 >

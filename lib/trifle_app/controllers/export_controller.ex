@@ -31,6 +31,13 @@ defmodule TrifleApp.ExportController do
       {:error, %NoResultsError{}} ->
         send_resp(conn, 404, "Dashboard not found")
 
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          dashboard_error_message({:source_inactive, reason})
+        )
+
       {:error, reason} ->
         send_resp(conn, error_status(reason), dashboard_error_message(reason))
     end
@@ -68,6 +75,13 @@ defmodule TrifleApp.ExportController do
       {:error, %NoResultsError{}} ->
         send_resp(conn, 404, "Dashboard not found")
 
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          dashboard_error_message({:source_inactive, reason})
+        )
+
       {:error, reason} ->
         send_resp(conn, error_status(reason), dashboard_error_message(reason))
     end
@@ -101,6 +115,13 @@ defmodule TrifleApp.ExportController do
 
       {:error, :widget_not_found} ->
         send_resp(conn, 404, "Widget not found")
+
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          widget_error_message({:source_inactive, reason})
+        )
 
       {:error, reason} ->
         send_resp(conn, error_status(reason), widget_error_message(reason))
@@ -150,6 +171,13 @@ defmodule TrifleApp.ExportController do
       {:error, :widget_not_found} ->
         send_resp(conn, 404, "Widget not found")
 
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          widget_error_message({:source_inactive, reason})
+        )
+
       {:error, reason} ->
         send_resp(conn, error_status(reason), widget_error_message(reason))
     end
@@ -167,6 +195,13 @@ defmodule TrifleApp.ExportController do
       {:error, %NoResultsError{}} ->
         send_resp(conn, 404, "Dashboard not found")
 
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          dashboard_error_message({:source_inactive, reason})
+        )
+
       {:error, reason} ->
         send_resp(conn, error_status(reason), dashboard_error_message(reason))
     end
@@ -183,6 +218,13 @@ defmodule TrifleApp.ExportController do
     else
       {:error, %NoResultsError{}} ->
         send_resp(conn, 404, "Dashboard not found")
+
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          dashboard_error_message({:source_inactive, reason})
+        )
 
       {:error, reason} ->
         send_resp(conn, error_status(reason), dashboard_error_message(reason))
@@ -212,6 +254,13 @@ defmodule TrifleApp.ExportController do
 
       {:error, :not_found} ->
         send_resp(conn, 404, "Monitor not found")
+
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          monitor_error_message({:source_inactive, reason})
+        )
 
       {:error, reason} ->
         send_resp(conn, error_status(reason), monitor_error_message(reason))
@@ -249,6 +298,13 @@ defmodule TrifleApp.ExportController do
       {:error, :not_found} ->
         send_resp(conn, 404, "Monitor not found")
 
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          monitor_error_message({:source_inactive, reason})
+        )
+
       {:error, reason} ->
         send_resp(conn, error_status(reason), monitor_error_message(reason))
     end
@@ -280,6 +336,13 @@ defmodule TrifleApp.ExportController do
 
       {:error, :widget_not_found} ->
         send_resp(conn, 404, "Widget not found")
+
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          widget_error_message({:source_inactive, reason})
+        )
 
       {:error, reason} ->
         send_resp(conn, error_status(reason), widget_error_message(reason))
@@ -326,6 +389,13 @@ defmodule TrifleApp.ExportController do
 
       {:error, :widget_not_found} ->
         send_resp(conn, 404, "Widget not found")
+
+      {:error, :source_inactive, reason} ->
+        send_resp(
+          conn,
+          error_status({:source_inactive, reason}),
+          widget_error_message({:source_inactive, reason})
+        )
 
       {:error, reason} ->
         send_resp(conn, error_status(reason), widget_error_message(reason))
@@ -468,6 +538,10 @@ defmodule TrifleApp.ExportController do
   defp dashboard_error_message(:no_data), do: "No data to export"
   defp dashboard_error_message(:source_not_configured), do: "Dashboard source is not configured"
   defp dashboard_error_message(:source_not_found), do: "Dashboard source could not be found"
+
+  defp dashboard_error_message({:source_inactive, _reason}),
+    do: "Dashboard source is inactive and cannot be used"
+
   defp dashboard_error_message(:chrome_not_found), do: "Chrome binary not found"
 
   defp dashboard_error_message({:error, reason}),
@@ -480,6 +554,10 @@ defmodule TrifleApp.ExportController do
   defp monitor_error_message(:no_data), do: "No data to export"
   defp monitor_error_message(:source_not_configured), do: "Monitor source is not configured"
   defp monitor_error_message(:source_not_found), do: "Monitor source could not be found"
+
+  defp monitor_error_message({:source_inactive, _reason}),
+    do: "Monitor source is inactive and cannot be used"
+
   defp monitor_error_message(:chrome_not_found), do: "Chrome binary not found"
   defp monitor_error_message({:error, reason}), do: "Monitor export failed: #{inspect(reason)}"
   defp monitor_error_message(reason), do: "Monitor export failed: #{inspect(reason)}"
@@ -488,11 +566,16 @@ defmodule TrifleApp.ExportController do
   defp widget_error_message(:no_widgets), do: "Widget not found"
   defp widget_error_message(:source_not_configured), do: "Dashboard source is not configured"
   defp widget_error_message(:source_not_found), do: "Dashboard source could not be found"
+
+  defp widget_error_message({:source_inactive, _reason}),
+    do: "Dashboard source is inactive and cannot be used"
+
   defp widget_error_message(:chrome_not_found), do: "Chrome binary not found"
   defp widget_error_message({:error, reason}), do: "Widget export failed: #{inspect(reason)}"
   defp widget_error_message(reason), do: "Widget export failed: #{inspect(reason)}"
 
   defp error_status({:error, _}), do: 500
+  defp error_status({:source_inactive, _reason}), do: 403
   defp error_status(:chrome_not_found), do: 500
   defp error_status(:source_not_found), do: 404
   defp error_status(:no_widgets), do: 400

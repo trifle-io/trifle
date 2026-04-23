@@ -52,16 +52,39 @@ config :trifle, :deployment_mode, deployment_mode
 projects_enabled =
   case System.get_env("TRIFLE_PROJECTS_ENABLED") do
     nil ->
-      Application.get_env(:trifle, :projects_enabled, true)
+      case Application.get_env(:trifle, :projects_enabled) do
+        value when is_boolean(value) ->
+          value
+
+        _ ->
+          deployment_mode != :self_hosted
+      end
 
     "" ->
-      Application.get_env(:trifle, :projects_enabled, true)
+      case Application.get_env(:trifle, :projects_enabled) do
+        value when is_boolean(value) ->
+          value
+
+        _ ->
+          deployment_mode != :self_hosted
+      end
 
     value ->
       case String.downcase(value) do
-        v when v in ["1", "true", "yes", "on", "enabled"] -> true
-        v when v in ["0", "false", "no", "off", "disabled"] -> false
-        _ -> Application.get_env(:trifle, :projects_enabled, true)
+        v when v in ["1", "true", "yes", "on", "enabled"] ->
+          true
+
+        v when v in ["0", "false", "no", "off", "disabled"] ->
+          false
+
+        _ ->
+          case Application.get_env(:trifle, :projects_enabled) do
+            existing when is_boolean(existing) ->
+              existing
+
+            _ ->
+              deployment_mode != :self_hosted
+          end
       end
   end
 
