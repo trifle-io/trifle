@@ -3193,6 +3193,15 @@ defmodule Trifle.Billing do
     }
   end
 
+  def subscription_reactivatable?(%Trifle.Billing.Subscription{} = subscription) do
+    case subscription_lock_state(subscription) do
+      {true, _reason} -> true
+      _ -> false
+    end
+  end
+
+  def subscription_reactivatable?(_), do: false
+
   def billing_locked_for_org?(organization_id) when :erlang.is_binary(organization_id) do
     case get_org_entitlement(organization_id) do
       %Trifle.Billing.Entitlement{billing_locked: locked} -> locked

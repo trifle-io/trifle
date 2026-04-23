@@ -79,6 +79,7 @@ defmodule TrifleApp.ProjectBillingLive do
           project={@state.project}
           tiers={@state.available_project_tiers}
           current_tier={current_project_tier(@state)}
+          current_subscription={@state.subscription}
         />
       <% end %>
     </div>
@@ -242,6 +243,7 @@ defmodule TrifleApp.ProjectBillingLive do
   attr :project, Project, required: true
   attr :tiers, :list, required: true
   attr :current_tier, :string, default: nil
+  attr :current_subscription, :any, default: nil
 
   defp project_plans_modal(assigns) do
     ~H"""
@@ -256,6 +258,8 @@ defmodule TrifleApp.ProjectBillingLive do
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-2">
           <%= for tier <- @tiers do %>
             <% is_current = @current_tier == tier.tier_key %>
+            <% current_plan_reactivatable =
+              is_current && Billing.subscription_reactivatable?(@current_subscription) %>
             <div class={[
               "rounded-lg border p-5 flex flex-col",
               if(is_current,
@@ -282,7 +286,10 @@ defmodule TrifleApp.ProjectBillingLive do
               </div>
 
               <%!-- Feature list --%>
-              <ul role="list" class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
+              <ul
+                role="list"
+                class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1"
+              >
                 <%= if limit = tier[:hard_limit] do %>
                   <li class="flex items-start gap-2">
                     <.check_icon />
@@ -304,7 +311,7 @@ defmodule TrifleApp.ProjectBillingLive do
               </ul>
 
               <div class="mt-5 space-y-2">
-                <%= if is_current do %>
+                <%= if is_current && !current_plan_reactivatable do %>
                   <button
                     disabled
                     class="w-full inline-flex justify-center rounded-md bg-gray-100 dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-400 dark:text-slate-500 cursor-not-allowed"
@@ -323,7 +330,7 @@ defmodule TrifleApp.ProjectBillingLive do
                     />
                     <input type="hidden" name="tier" value={tier.tier_key} />
                     <button class="w-full inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700">
-                      Choose Tier
+                      {if current_plan_reactivatable, do: "Resubscribe", else: "Choose Tier"}
                     </button>
                   </form>
                 <% end %>
@@ -437,5 +444,4 @@ defmodule TrifleApp.ProjectBillingLive do
   end
 
   defp usage_percentage(_, _), do: 0
-
 end

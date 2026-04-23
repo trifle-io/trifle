@@ -110,6 +110,7 @@ defmodule TrifleApp.OrganizationBillingLive do
             tiers={@billing_snapshot.available_app_tiers}
             current_tier={current_app_tier(@billing_snapshot)}
             current_interval={current_app_interval(@billing_snapshot)}
+            current_subscription={@billing_snapshot.app_subscription}
             selected_interval={@plans_interval}
           />
         <% else %>
@@ -263,6 +264,7 @@ defmodule TrifleApp.OrganizationBillingLive do
   attr :tiers, :list, required: true
   attr :current_tier, :string, default: nil
   attr :current_interval, :string, default: nil
+  attr :current_subscription, :any, default: nil
   attr :selected_interval, :string, required: true
 
   defp app_plans_modal(assigns) do
@@ -318,6 +320,8 @@ defmodule TrifleApp.OrganizationBillingLive do
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <%= for tier <- @filtered_tiers do %>
             <% is_current = @current_tier == tier.tier && @current_interval == tier.interval %>
+            <% current_plan_reactivatable =
+              is_current && Billing.subscription_reactivatable?(@current_subscription) %>
             <% founder_offer = tier[:founder_offer] %>
             <% founder_available = founder_offer_available?(founder_offer) %>
             <div class={[
@@ -353,7 +357,10 @@ defmodule TrifleApp.OrganizationBillingLive do
               </div>
 
               <%!-- Feature list --%>
-              <ul role="list" class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1">
+              <ul
+                role="list"
+                class="mt-4 space-y-2.5 text-sm text-gray-600 dark:text-slate-300 flex-1"
+              >
                 <li class="flex items-start gap-2">
                   <.check_icon />
                   <span>{tier_user_label(tier)}</span>
@@ -377,7 +384,7 @@ defmodule TrifleApp.OrganizationBillingLive do
               </ul>
 
               <div class="mt-5">
-                <%= if is_current do %>
+                <%= if is_current && !current_plan_reactivatable do %>
                   <button
                     disabled
                     class="w-full inline-flex justify-center rounded-md bg-gray-100 dark:bg-slate-700 px-3 py-2 text-sm font-medium text-gray-400 dark:text-slate-500 cursor-not-allowed"
@@ -394,7 +401,7 @@ defmodule TrifleApp.OrganizationBillingLive do
                     <input type="hidden" name="tier" value={tier.tier} />
                     <input type="hidden" name="interval" value={tier.interval} />
                     <button class="w-full inline-flex justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-                      Choose
+                      {if current_plan_reactivatable, do: "Resubscribe", else: "Choose"}
                     </button>
                   </form>
                 <% end %>
