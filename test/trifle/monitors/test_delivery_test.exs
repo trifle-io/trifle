@@ -1,6 +1,8 @@
 defmodule Trifle.Monitors.TestDeliveryTest do
   use Trifle.DataCase
 
+  import Trifle.BillingFixtures
+
   alias Trifle.AccountsFixtures
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
@@ -46,6 +48,8 @@ defmodule Trifle.Monitors.TestDeliveryTest do
 
     {:ok, organization, membership} =
       Organizations.create_organization_with_owner(%{name: "Acme Inc"}, user)
+
+    app_entitlement_fixture(organization)
 
     {:ok, database} =
       Organizations.create_database_for_org(organization, %{

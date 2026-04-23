@@ -3,6 +3,7 @@ defmodule TrifleApp.ErrorHTMLTest do
 
   # Bring render_to_string/4 for testing custom views
   import Phoenix.Template
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
   alias Trifle.AccountsFixtures
@@ -26,6 +27,7 @@ defmodule TrifleApp.ErrorHTMLTest do
     owner = AccountsFixtures.user_fixture()
     viewer = AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: owner})
+    app_entitlement_fixture(organization)
     {:ok, _membership} = Organizations.create_membership(organization, viewer, "member")
     owner_membership = Organizations.get_membership_for_user(owner)
     database = database_fixture(%{organization: organization})

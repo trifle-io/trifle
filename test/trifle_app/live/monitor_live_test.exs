@@ -2,6 +2,7 @@ defmodule TrifleApp.MonitorLiveTest do
   use TrifleApp.ConnCase
 
   import Phoenix.LiveViewTest
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
   alias Trifle.AccountsFixtures
@@ -11,6 +12,7 @@ defmodule TrifleApp.MonitorLiveTest do
   setup %{conn: conn} do
     user = AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})
+    app_entitlement_fixture(organization)
     membership = Organizations.get_membership_for_user(user)
     database = database_fixture(%{organization: organization})
 

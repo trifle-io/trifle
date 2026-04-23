@@ -1,6 +1,8 @@
 defmodule Trifle.OrganizationsTest do
   use Trifle.DataCase
 
+  import Trifle.BillingFixtures
+
   alias Trifle.Organizations
 
   describe "projects" do
@@ -138,7 +140,9 @@ defmodule Trifle.OrganizationsTest do
       organization: organization
     } do
       membership = Organizations.get_membership_for_user(user)
+      app_entitlement_fixture(organization)
       project = project_fixture(%{user: user, organization: organization})
+      subscription = project_subscription_fixture(project)
 
       {:ok, dashboard} =
         Organizations.create_dashboard_for_membership(user, membership, %{
@@ -165,6 +169,10 @@ defmodule Trifle.OrganizationsTest do
           "source_type" => "project",
           "source_id" => project.id
         })
+
+      subscription
+      |> change(status: "canceled")
+      |> Repo.update!()
 
       assert {:ok, %Project{}} = Organizations.delete_project(project)
 
@@ -484,6 +492,7 @@ defmodule Trifle.OrganizationsTest do
       user = user_fixture()
       organization = organization_fixture(%{user: user})
       membership = Organizations.get_membership_for_user(user)
+      app_entitlement_fixture(organization)
       database = database_fixture(%{organization: organization})
 
       {:ok, dashboard} =
