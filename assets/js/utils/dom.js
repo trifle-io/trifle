@@ -26,7 +26,7 @@ export const findDashboardGridHook = (el) => {
   const gridEl = el.closest('#dashboard-grid') || el.closest('.grid-stack');
   if (gridEl && gridEl.__dashboardGrid) return gridEl.__dashboardGrid;
   if (gridId) {
-    const fallback = document.querySelector(`#${gridId}`);
+    const fallback = document.getElementById(gridId);
     if (fallback && fallback.__dashboardGrid) return fallback.__dashboardGrid;
   }
   return null;

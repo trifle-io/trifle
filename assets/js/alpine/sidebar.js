@@ -467,6 +467,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   toggleChat() {
     this.chatOpen = !this.chatOpen;
     this.persistChatState();
+    scheduleSyntheticResize();
   },
 
   handleChatShortcut(event) {
@@ -501,6 +502,9 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
   destroy() {
     this.deactivateMobileFocusTrap({ restoreFocus: false });
+    if (document.body && document.body.classList) {
+      document.body.classList.remove(SIDEBAR_SCROLL_LOCK_CLASS);
+    }
 
     if (this._handleChatToggle) {
       window.removeEventListener("trifle:chat-shell:toggle", this._handleChatToggle);

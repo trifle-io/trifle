@@ -92,7 +92,13 @@ export class ThemeManager {
 }
 
 export const initializeThemeManager = () => {
-  document.addEventListener('DOMContentLoaded', () => {
+  const createThemeManager = () => {
     window.themeManager = new ThemeManager();
-  });
+  };
+
+  if (document.readyState !== 'loading') {
+    createThemeManager();
+  } else {
+    document.addEventListener('DOMContentLoaded', createThemeManager);
+  }
 };

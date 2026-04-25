@@ -1,11 +1,48 @@
 export const registerPhantomRowsHook = (Hooks, deps = {}) => {
 Hooks.PhantomRows = {
   mounted() {
+    this._phantomRowsTimer = null;
+    this.debounceAddPhantomRows = () => {
+      if (this._phantomRowsTimer) clearTimeout(this._phantomRowsTimer);
+      this._phantomRowsTimer = setTimeout(() => {
+        this._phantomRowsTimer = null;
+        this.addPhantomRows();
+      }, 80);
+    };
+
+    window.addEventListener('resize', this.debounceAddPhantomRows);
+    window.addEventListener('trifle:theme-changed', this.debounceAddPhantomRows);
+    window.addEventListener('trifle:sidebar-resize', this.debounceAddPhantomRows);
+
+    if (typeof MutationObserver !== 'undefined') {
+      this._themeObserver = new MutationObserver((mutations) => {
+        const hasThemeClassChange = mutations.some((mutation) => mutation.attributeName === 'class');
+        if (hasThemeClassChange) this.debounceAddPhantomRows();
+      });
+      this._themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
+
     this.addPhantomRows();
   },
   
   updated() {
     this.addPhantomRows();
+  },
+
+  destroyed() {
+    if (this.debounceAddPhantomRows) {
+      window.removeEventListener('resize', this.debounceAddPhantomRows);
+      window.removeEventListener('trifle:theme-changed', this.debounceAddPhantomRows);
+      window.removeEventListener('trifle:sidebar-resize', this.debounceAddPhantomRows);
+    }
+    if (this._themeObserver) {
+      this._themeObserver.disconnect();
+      this._themeObserver = null;
+    }
+    if (this._phantomRowsTimer) {
+      clearTimeout(this._phantomRowsTimer);
+      this._phantomRowsTimer = null;
+    }
   },
   
   addPhantomRows() {
@@ -26,9 +63,6 @@ Hooks.PhantomRows = {
     }
     
     // Get dimensions
-    const scrollRect = scrollContainer.getBoundingClientRect();
-    const table2Bottom = scrollContainer.scrollTop + table.offsetHeight;
-    const scrollHeight = scrollContainer.scrollHeight;
     const clientHeight = scrollContainer.clientHeight;
     
     // Calculate if we need phantom rows (table + borders is shorter than visible area)

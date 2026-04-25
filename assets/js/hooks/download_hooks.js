@@ -139,8 +139,8 @@ Hooks.DownloadMenu = {
     // Rebind iframe in case it was re-rendered
     const newIframe = document.querySelector('iframe[name="download_iframe"]');
     if (newIframe !== this.iframe) {
+      this.unbindIframe();
       this.iframe = newIframe;
-      this._iframeBound = false;
       this.bindIframe();
     }
     // If still loading, re-apply loading UI state after LV patch
@@ -168,6 +168,12 @@ Hooks.DownloadMenu = {
             url.searchParams.set(key, value);
           }
         });
+        const token = url.searchParams.get('download_token');
+        if (token) {
+          this._downloadToken = token;
+          try { window.__downloadToken = token; } catch (_) {}
+          this.startCookiePolling();
+        }
         url.searchParams.delete('download_token');
         a.setAttribute('href', url.toString());
       } catch (_) {
@@ -193,6 +199,15 @@ Hooks.DownloadMenu = {
       const btn = e.target.closest('button[data-export-trigger]');
       if (!this.el.contains(e.target)) return; // Only handle clicks within this menu
       if (a) {
+        try {
+          const url = new URL(a.getAttribute('href') || '', window.location.origin);
+          const token = url.searchParams.get('download_token');
+          if (token) {
+            this._downloadToken = token;
+            try { window.__downloadToken = token; } catch (_) {}
+            this.startCookiePolling();
+          }
+        } catch (_) {}
         this.startLoading();
         setTimeout(() => this.pushEvent('hide_export_dropdown', {}), 0);
         return;
@@ -215,11 +230,20 @@ Hooks.DownloadMenu = {
 
   bindIframe() {
     if (!this.iframe || this._iframeBound) return;
-    this._iframeBound = true;
-    this.iframe.addEventListener('load', () => {
+    this._onIframeLoad = () => {
       // Any load in the download iframe marks completion
       this.stopLoading();
-    });
+    };
+    this.iframe.addEventListener('load', this._onIframeLoad);
+    this._iframeBound = true;
+  },
+
+  unbindIframe() {
+    if (this.iframe && this._onIframeLoad) {
+      this.iframe.removeEventListener('load', this._onIframeLoad);
+    }
+    this._onIframeLoad = null;
+    this._iframeBound = false;
   },
 
   startLoading() {
@@ -305,6 +329,7 @@ Hooks.DownloadMenu = {
     if (this._onDownloadComplete) {
       window.removeEventListener('download:complete', this._onDownloadComplete);
     }
+    this.unbindIframe();
     this.stopCookiePolling();
   }
 }

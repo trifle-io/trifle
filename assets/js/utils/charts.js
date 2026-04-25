@@ -1,16 +1,19 @@
 export const ECHARTS_RENDERER = 'svg';
-export const ECHARTS_DEVICE_PIXEL_RATIO = Math.max(1, window.devicePixelRatio || 1);
+export const ECHARTS_DEVICE_PIXEL_RATIO = Math.max(1, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
 export const withChartOpts = (opts = {}) => Object.assign({ renderer: ECHARTS_RENDERER, devicePixelRatio: ECHARTS_DEVICE_PIXEL_RATIO }, opts);
 export const chartFontFamily =
   'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 export const extractTimestamp = (point) => {
-  if (Array.isArray(point) && point.length) return Number(point[0]);
-  if (point && typeof point === 'object') {
-    if (Array.isArray(point.value) && point.value.length) return Number(point.value[0]);
-    if (Array.isArray(point.coord) && point.coord.length) return Number(point.coord[0]);
+  let candidate = null;
+  if (Array.isArray(point) && point.length) {
+    candidate = point[0];
+  } else if (point && typeof point === 'object') {
+    if (Array.isArray(point.value) && point.value.length) candidate = point.value[0];
+    else if (Array.isArray(point.coord) && point.coord.length) candidate = point.coord[0];
   }
-  return null;
+  const result = Number(candidate);
+  return Number.isFinite(result) ? result : null;
 };
 
 export const detectOngoingSegment = (seriesList) => {

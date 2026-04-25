@@ -6,9 +6,8 @@ Hooks.Sortable = {
     const handle = this.el.dataset.handle;
     const eventName = this.el.dataset.event || "reorder_transponders";
     
-    const groupName = group || 'default';
-    // Restrict cross-type moves: only allow within same named group
-    const groupOpt = { name: groupName, pull: [groupName], put: [groupName] };
+    // Restrict cross-type moves only when a group is explicitly configured.
+    const groupOpt = group ? { name: group, pull: [group], put: [group] } : undefined;
 
     this.lastTo = null;
     this.lastHeader = null;
@@ -112,6 +111,9 @@ Hooks.HomeSparkline = {
   },
   disconnected() {
     this.dispose();
+  },
+  reconnected() {
+    this.renderSparkline(true);
   },
   renderSparkline(force) {
     let series;

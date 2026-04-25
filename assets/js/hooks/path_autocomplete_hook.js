@@ -246,7 +246,7 @@ Hooks.PathAutocomplete = {
       option.setAttribute('role', 'option');
       option.dataset.index = index;
       option.dataset.value = item.value;
-      option.innerHTML = item.label;
+      option.textContent = item.label;
 
       option.addEventListener('mousedown', (event) => {
         event.preventDefault();

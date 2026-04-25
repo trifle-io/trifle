@@ -57,14 +57,17 @@ Hooks.WidgetSeriesRows = {
       event.preventDefault();
 
       const rows = this.readRows();
-      const index = Number.parseInt(button.dataset.index || '-1', 10);
+      const rawIndex = button.dataset.index;
+      const index = Number.parseInt(rawIndex, 10);
+      const hasValidIndex = Number.isInteger(index) && index >= 0 && index < rows.length;
 
       if (action === 'add' || action === 'add_query') {
         rows.push(this.defaultRow('path'));
       } else if (action === 'add_formula') {
         rows.push(this.defaultRow('expression'));
       } else if (action === 'remove') {
-        if (!Number.isNaN(index)) rows.splice(index, 1);
+        if (!hasValidIndex) return;
+        rows.splice(index, 1);
         if (rows.length === 0) rows.push(this.defaultRow('path'));
       } else {
         return;
@@ -133,7 +136,9 @@ Hooks.WidgetSeriesRows = {
     this.widgetId = this.el.dataset.widgetId;
     this.eventName = this.el.dataset.eventName || 'widget_series_rows_update';
     this._eventTarget = this.el.closest('[data-phx-component]') || null;
-    this._lastRowsPayload = JSON.stringify(this.readRows());
+    if (!this._rowsInputTimer) {
+      this._lastRowsPayload = JSON.stringify(this.readRows());
+    }
   },
 
   destroyed() {

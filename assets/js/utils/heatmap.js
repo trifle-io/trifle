@@ -1,5 +1,4 @@
 import { formatCompactNumber } from "./formatting";
-import { chartFontFamily } from "./charts";
 
 export const normalizeHexColor = (color) => {
   if (typeof color !== 'string') return null;

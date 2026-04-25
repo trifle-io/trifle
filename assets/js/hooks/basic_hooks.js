@@ -42,6 +42,7 @@ Hooks.DocumentTitle = {
 Hooks.CopyFeedback = {
   mounted() {
     this._copyFeedbackTimeout = null;
+    const applyHidden = typeof setHidden === 'function' ? setHidden : () => {};
     this._handleCopyFeedbackClick = () => {
       const timeout = parseInt(this.el.dataset.copyTimeout || '2000', 10);
       const delay = Number.isFinite(timeout) ? timeout : 2000;
@@ -58,20 +59,20 @@ Hooks.CopyFeedback = {
         ? document.getElementById(this.el.dataset.copiedLabel)
         : null;
 
-      setHidden(copyIcon, true);
-      setHidden(copiedIcon, false);
-      setHidden(copyLabel, true);
-      setHidden(copiedLabel, false);
+      applyHidden(copyIcon, true);
+      applyHidden(copiedIcon, false);
+      applyHidden(copyLabel, true);
+      applyHidden(copiedLabel, false);
 
       if (this._copyFeedbackTimeout) {
         clearTimeout(this._copyFeedbackTimeout);
       }
 
       this._copyFeedbackTimeout = setTimeout(() => {
-        setHidden(copyIcon, false);
-        setHidden(copiedIcon, true);
-        setHidden(copyLabel, false);
-        setHidden(copiedLabel, true);
+        applyHidden(copyIcon, false);
+        applyHidden(copiedIcon, true);
+        applyHidden(copyLabel, false);
+        applyHidden(copiedLabel, true);
         this._copyFeedbackTimeout = null;
       }, delay);
     };
@@ -99,34 +100,45 @@ Hooks.SmartTimeframeInput = {
 
 Hooks.SmartTimeframeBlur = {
   mounted() {
-    this.el.addEventListener('keydown', (e) => {
+    this._onKeydown = (e) => {
       if (e.key === 'Enter') {
         // Blur the input after Enter to trigger value update
         setTimeout(() => this.el.blur(), 100);
       }
-    });
-    
+    };
+    this.el.addEventListener('keydown', this._onKeydown);
+
     // Auto-select text when input is focused
-    this.el.addEventListener('focus', () => {
+    this._onFocus = () => {
       // Use setTimeout to ensure selection happens after other focus events
       setTimeout(() => {
         this.el.select();
       }, 10);
-    });
-    
+    };
+    this.el.addEventListener('focus', this._onFocus);
+
     // Also handle click events in case focus doesn't work
-    this.el.addEventListener('click', () => {
+    this._onClick = () => {
       // Only select if the input wasn't already focused
       if (document.activeElement !== this.el) {
         setTimeout(() => {
           this.el.select();
         }, 10);
       }
-    });
-    
-    this.handleEvent("update_timeframe_input", ({value}) => {
+    };
+    this.el.addEventListener('click', this._onClick);
+
+    this._updateHandler = this.handleEvent("update_timeframe_input", ({value}) => {
       this.el.value = value;
     });
+  },
+  destroyed() {
+    if (this._onKeydown) this.el.removeEventListener('keydown', this._onKeydown);
+    if (this._onFocus) this.el.removeEventListener('focus', this._onFocus);
+    if (this._onClick) this.el.removeEventListener('click', this._onClick);
+    if (this._updateHandler && typeof this.removeHandleEvent === 'function') {
+      this.removeHandleEvent(this._updateHandler);
+    }
   }
 }
 
@@ -196,6 +208,8 @@ Hooks.ChatInput = {
 }
 
 Hooks.ExportTheme = {
+  // ExportTheme deliberately overlaps with ThemeManager: applyTheme forces document.documentElement
+  // and document.body classes, then emits the same 'trifle:theme-changed' CustomEvent for export pages.
   mounted() {
     this.applyTheme();
   },

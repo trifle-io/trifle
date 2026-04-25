@@ -177,11 +177,12 @@ Hooks.DatabaseExploreChart = {
     // Initialize ECharts instance
     const themeName = this._resolveTheme();
     const initTheme = themeName === 'dark' ? 'dark' : undefined;
-    const container = document.getElementById('timeline-chart');
-    if (container) {
-      container.style.height = '140px';
-      container.style.width = '100%';
-    }
+    const container =
+      (this.el && this.el.id === 'timeline-chart' ? this.el : null) ||
+      (this.el && this.el.querySelector ? this.el.querySelector('#timeline-chart') : null);
+    if (!container) return null;
+    container.style.height = '140px';
+    container.style.width = '100%';
 
     // Set theme based on dark mode
     this.chart = echarts.init(container, initTheme, withChartOpts({ height: 140 }));
@@ -205,11 +206,11 @@ Hooks.DatabaseExploreChart = {
   },
 
   mounted() {
-    let data = JSON.parse(this.el.dataset.events);
+    let data = this._parseJson(this.el.dataset.events, []);
     let key = this.el.dataset.key;
     let timezone = this.el.dataset.timezone;
     let chartType = this.el.dataset.chartType;
-    let colors = JSON.parse(this.el.dataset.colors);
+    let colors = this._parseJson(this.el.dataset.colors, []);
     let selectedKeyColor = this.el.dataset.selectedKeyColor;
 
     this.currentChartType = chartType;
@@ -217,11 +218,11 @@ Hooks.DatabaseExploreChart = {
   },
 
   updated() {
-    let data = JSON.parse(this.el.dataset.events);
+    let data = this._parseJson(this.el.dataset.events, []);
     let key = this.el.dataset.key;
     let timezone = this.el.dataset.timezone;
     let chartType = this.el.dataset.chartType;
-    let colors = JSON.parse(this.el.dataset.colors);
+    let colors = this._parseJson(this.el.dataset.colors, []);
     let selectedKeyColor = this.el.dataset.selectedKeyColor;
 
     // Check if chart type changed - if so, recreate the entire chart

@@ -7,15 +7,31 @@ Hooks.TableHover = {
   updated() {
     this.initHover();
   },
+
+  destroyed() {
+    this.teardownHover();
+  },
+
+  teardownHover() {
+    const table = this.el;
+    const dataCells = table.querySelectorAll('td[data-row][data-col]');
+    dataCells.forEach((cell) => {
+      if (!cell._hoverHandlers) return;
+      cell.removeEventListener('mouseenter', cell._hoverHandlers.enter);
+      cell.removeEventListener('mouseleave', cell._hoverHandlers.leave);
+      delete cell._hoverHandlers;
+    });
+  },
   
   initHover() {
     const table = this.el;
+    this.teardownHover();
     
     // Add hover listeners to data cells (not headers or row headers)
     const dataCells = table.querySelectorAll('td[data-row][data-col]');
     
     dataCells.forEach(cell => {
-      cell.addEventListener('mouseenter', (e) => {
+      const onCellMouseEnter = (e) => {
         const row = e.target.dataset.row;
         const col = e.target.dataset.col;
         
@@ -50,15 +66,19 @@ Hooks.TableHover = {
           rowCell.style.backgroundColor = highlightColor;
           rowCell.classList.add('table-highlight');
         });
-      });
-      
-      cell.addEventListener('mouseleave', (e) => {
+      };
+
+      const onCellMouseLeave = () => {
         // Remove all highlights
         table.querySelectorAll('.table-highlight').forEach(el => {
           el.style.backgroundColor = '';
           el.classList.remove('table-highlight');
         });
-      });
+      };
+
+      cell._hoverHandlers = { enter: onCellMouseEnter, leave: onCellMouseLeave };
+      cell.addEventListener('mouseenter', onCellMouseEnter);
+      cell.addEventListener('mouseleave', onCellMouseLeave);
     });
   }
 }

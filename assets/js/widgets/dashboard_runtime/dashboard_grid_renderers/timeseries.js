@@ -1,4 +1,4 @@
-import { ANNOTATION_POPOVER_Z_INDEX, TIMESERIES_TOOLTIP_Z_INDEX, annotationGroupsForItem, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam } from "../shared/timeseries_annotations";
+import { ANNOTATION_POPOVER_Z_INDEX, TIMESERIES_TOOLTIP_Z_INDEX, annotationGroupsForItem, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam, timestampMs } from "../shared/timeseries_annotations";
 
 export const createDashboardGridTimeseriesRendererMethods = ({
   echarts,

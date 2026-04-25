@@ -22,26 +22,51 @@ const ensureStylesheet = (id, href) => {
 };
 
 export const ensureAgGridCommunity = () => {
-  if (typeof window !== 'undefined' && window.agGrid && window.agGrid.Grid) {
+  if (typeof window !== 'undefined' && window.agGrid && (window.agGrid.Grid || window.agGrid.GridApi)) {
     return Promise.resolve(window.agGrid);
+  }
+  if (typeof document === 'undefined') {
+    return Promise.reject(new Error('Document not available'));
   }
   if (!aggridLoaderPromise) {
     aggridLoaderPromise = new Promise((resolve, reject) => {
-      if (typeof document === 'undefined') {
-        reject(new Error('Document not available'));
-        return;
-      }
       ensureStylesheet('ag-grid-base-css', AGGRID_BASE_STYLE_SRC);
       ensureStylesheet('ag-grid-alpine-css', AGGRID_THEME_LIGHT_STYLE_SRC);
       ensureStylesheet('ag-grid-alpine-dark-css', AGGRID_THEME_DARK_STYLE_SRC);
       const script = document.createElement('script');
-      script.src = AGGRID_SCRIPT_SRC;
-      script.async = true;
-      script.onload = () => resolve(window.agGrid);
-      script.onerror = (err) => {
-        console.error('[AGGrid] failed to load ag-grid-community script', err);
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(timeout);
+        script.onload = null;
+        script.onerror = null;
+        try { script.remove(); } catch (_) {}
+      };
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
         aggridLoaderPromise = null;
         reject(err);
+      };
+      const succeed = () => {
+        if (settled) return;
+        if (!window.agGrid || !(window.agGrid.Grid || window.agGrid.GridApi)) {
+          fail(new Error('AG Grid script loaded without expected API'));
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(window.agGrid);
+      };
+      const timeout = setTimeout(() => {
+        fail(new Error('Timed out loading ag-grid-community script'));
+      }, 15000);
+      script.src = AGGRID_SCRIPT_SRC;
+      script.async = true;
+      script.onload = succeed;
+      script.onerror = (err) => {
+        console.error('[AGGrid] failed to load ag-grid-community script', err);
+        fail(err instanceof Error ? err : new Error('Failed to load ag-grid-community script'));
       };
       document.head.appendChild(script);
     });
@@ -60,14 +85,8 @@ export const getAggridHeaderComponentClass = () => {
       } else {
         this.eGui.classList.add('aggrid-header-align-right');
       }
-      const lines =
-        (params &&
-          params.column &&
-          params.column.getColDef &&
-          params.column.getColDef() &&
-          params.column.getColDef().headerComponentParams &&
-          params.column.getColDef().headerComponentParams.lines) ||
-        [];
+      const colDef = params?.column?.getColDef ? params.column.getColDef() : null;
+      const lines = colDef?.headerComponentParams?.lines || [];
       const displayName = params && typeof params.displayName === 'string' ? params.displayName : '';
       const segments = Array.isArray(lines) && lines.length ? lines : [displayName];
       segments.forEach((segment, idx) => {
