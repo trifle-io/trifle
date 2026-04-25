@@ -1,0 +1,573 @@
+const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
+const CHAT_SHELL_STORAGE_KEY = "trifle:chat-shell-open";
+const CHAT_SHELL_MODE_STORAGE_KEY = "trifle:chat-shell-mode";
+const CHAT_SHELL_DEFAULT_MODE = "pinned";
+const CHAT_SHELL_MODES = new Set(["pinned", "panel", "fullscreen"]);
+const CHAT_SHELL_SET_MODE_EVENT = "trifle:chat-shell:set-mode";
+const CHAT_SHELL_MODE_CHANGED_EVENT = "trifle:chat-shell:mode-changed";
+const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
+  "trifle:client-sidebar": "trifleClientSidebar",
+  "trifle:admin-sidebar": "trifleAdminSidebar"
+});
+const SIDEBAR_SHELL_IDS = Object.freeze({
+  "trifle:client-sidebar": "client-sidebar-shell",
+  "trifle:admin-sidebar": "admin-sidebar-shell"
+});
+const MOBILE_SIDEBAR_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(", ");
+
+const syncSidebarRootState = (storageKey, desktopCollapsed) => {
+  const datasetKey = SIDEBAR_ROOT_DATASET_KEYS[storageKey];
+  if (!datasetKey || !document.documentElement) return;
+  document.documentElement.dataset[datasetKey] = desktopCollapsed ? "collapsed" : "expanded";
+};
+
+const dispatchSyntheticResize = () => {
+  try {
+    window.dispatchEvent(new Event("resize"));
+  } catch (_) {}
+};
+
+const scheduleSyntheticResize = () => {
+  dispatchSyntheticResize();
+
+  try {
+    window.requestAnimationFrame(() => dispatchSyntheticResize());
+  } catch (_) {}
+
+  [160, 340, 520].forEach((delay) => {
+    window.setTimeout(() => dispatchSyntheticResize(), delay);
+  });
+};
+
+const readChatShellMode = () => {
+  try {
+    const stored =
+      window.sessionStorage ? window.sessionStorage.getItem(CHAT_SHELL_MODE_STORAGE_KEY) : null;
+    return CHAT_SHELL_MODES.has(stored) ? stored : CHAT_SHELL_DEFAULT_MODE;
+  } catch (_) {
+    return CHAT_SHELL_DEFAULT_MODE;
+  }
+};
+
+const emitChatShellModeChanged = (mode) => {
+  window.dispatchEvent(
+    new CustomEvent(CHAT_SHELL_MODE_CHANGED_EVENT, {
+      detail: { mode }
+    })
+  );
+};
+
+const isEditableShortcutTarget = (target) => {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+
+  const tagName = String(target.tagName || "").toLowerCase();
+  return ["input", "textarea", "select"].includes(tagName);
+};
+
+const isApplePlatform = () => {
+  try {
+    const platform = navigator.userAgentData?.platform || navigator.platform || "";
+    const userAgent = navigator.userAgent || "";
+    return /Mac|iPhone|iPad|iPod/i.test(`${platform} ${userAgent}`);
+  } catch (_) {
+    return false;
+  }
+};
+
+const generateTabId = () =>
+  window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+export const getOrCreateTabId = (() => {
+  const storageKey = "trifle:tab-id";
+  let currentTabId = null;
+
+  const persistCurrentTabId = () => {
+    if (!currentTabId || !window.sessionStorage) return;
+    window.sessionStorage.setItem(storageKey, currentTabId);
+  };
+
+  const refreshCurrentTabId = () => {
+    currentTabId = generateTabId();
+    persistCurrentTabId();
+    return currentTabId;
+  };
+
+  const syncTabIdOnShow = () => {
+    if (document.visibilityState && document.visibilityState !== "visible") return;
+
+    try {
+      persistCurrentTabId();
+    } catch (_) {
+      // Ignore storage failures and keep using the in-memory tab id.
+    }
+  };
+
+  try {
+    const storedTabId = window.sessionStorage && window.sessionStorage.getItem(storageKey);
+
+    if (storedTabId) {
+      currentTabId = storedTabId;
+      persistCurrentTabId();
+    } else {
+      refreshCurrentTabId();
+    }
+  } catch (_) {
+    currentTabId = generateTabId();
+  }
+
+  window.addEventListener("pageshow", syncTabIdOnShow);
+  document.addEventListener("visibilitychange", syncTabIdOnShow);
+
+  return () => currentTabId || refreshCurrentTabId();
+})();
+
+export const registerSidebarAlpineComponents = () => {
+window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = false } = {}) => ({
+  storageKey,
+  defaultCollapsed,
+  mobileOpen: false,
+  desktopCollapsed: defaultCollapsed,
+  chatOpen: false,
+  chatMode: CHAT_SHELL_DEFAULT_MODE,
+  desktopViewport: false,
+  _mediaQuery: null,
+  _handleViewportChange: null,
+  _mobileFocusOrigin: null,
+  _handleMobileKeydown: null,
+  _handleChatToggle: null,
+  _handleChatSetOpen: null,
+  _handleChatSetMode: null,
+  _handleChatShortcut: null,
+  _handleStorageSync: null,
+
+  init() {
+    this.loadState();
+    this.loadChatState();
+    this.loadChatMode();
+    this.syncViewport();
+
+    this._mediaQuery = window.matchMedia("(min-width: 1024px)");
+    this._handleViewportChange = () => this.syncViewport(this._mediaQuery);
+
+    if (typeof this._mediaQuery.addEventListener === "function") {
+      this._mediaQuery.addEventListener("change", this._handleViewportChange);
+    } else if (typeof this._mediaQuery.addListener === "function") {
+      this._mediaQuery.addListener(this._handleViewportChange);
+    }
+
+    this.$watch("mobileOpen", (isOpen) => {
+      this.syncBodyScrollLock();
+      this.syncMobileFocus(isOpen);
+    });
+
+    this._handleChatToggle = () => this.toggleChat();
+    this._handleChatSetOpen = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      this.setChatOpen(detail.open !== false);
+    };
+    this._handleChatSetMode = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      this.setChatMode(detail.mode);
+    };
+    this._handleChatShortcut = (event) => this.handleChatShortcut(event);
+    this._handleStorageSync = (event) => this.syncStorageEvent(event);
+
+    window.addEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
+    window.addEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
+    window.addEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
+    window.addEventListener("keydown", this._handleChatShortcut);
+    window.addEventListener("storage", this._handleStorageSync);
+    emitChatShellModeChanged(this.chatMode);
+  },
+
+  get compact() {
+    return this.desktopViewport && this.desktopCollapsed;
+  },
+
+  chatShortcutLabel() {
+    return isApplePlatform() ? "⌘+/" : "Ctrl+/";
+  },
+
+  loadState() {
+    const preload = window.__TRIFLE_SIDEBAR_PRELOAD__ || {};
+    const preloadedState =
+      this.storageKey === "trifle:client-sidebar"
+        ? preload.client
+        : this.storageKey === "trifle:admin-sidebar"
+          ? preload.admin
+          : null;
+
+    try {
+      const stored = window.localStorage ? window.localStorage.getItem(this.storageKey) : null;
+
+      if (stored === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (stored === "expanded") {
+        this.desktopCollapsed = false;
+      } else if (preloadedState === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (preloadedState === "expanded") {
+        this.desktopCollapsed = false;
+      } else {
+        this.desktopCollapsed = !!this.defaultCollapsed;
+      }
+    } catch (_) {
+      if (preloadedState === "collapsed") {
+        this.desktopCollapsed = true;
+      } else if (preloadedState === "expanded") {
+        this.desktopCollapsed = false;
+      } else {
+        this.desktopCollapsed = !!this.defaultCollapsed;
+      }
+    }
+
+    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  loadChatState() {
+    try {
+      const stored = window.localStorage ? window.localStorage.getItem(CHAT_SHELL_STORAGE_KEY) : null;
+      this.chatOpen = stored === "open";
+    } catch (_) {
+      this.chatOpen = false;
+    }
+  },
+
+  loadChatMode() {
+    this.chatMode = readChatShellMode();
+  },
+
+  syncViewport(mediaQuery = null) {
+    const query = mediaQuery || window.matchMedia("(min-width: 1024px)");
+    this.desktopViewport = !!query.matches;
+
+    if (this.desktopViewport) {
+      this.mobileOpen = false;
+    }
+
+    this.syncBodyScrollLock();
+  },
+
+  effectiveChatMode() {
+    return this.desktopViewport ? this.chatMode : "fullscreen";
+  },
+
+  mainContentClasses() {
+    const base = this.compact ? "lg:pl-[6.25rem]" : "lg:pl-[18rem]";
+    const pinnedOpen =
+      this.chatOpen && this.desktopViewport && this.effectiveChatMode() === "pinned";
+
+    return pinnedOpen ? `${base} lg:pr-[34rem]` : base;
+  },
+
+  mainContentHidden() {
+    return (
+      (!this.desktopViewport && this.mobileOpen) ||
+      (this.chatOpen && this.effectiveChatMode() === "fullscreen")
+    );
+  },
+
+  chatShellViewportClasses() {
+    const widthClass =
+      this.desktopViewport && this.effectiveChatMode() !== "fullscreen" ? " lg:w-[34rem]" : "";
+
+    return `${widthClass}${this.chatOpen ? " translate-x-0" : " translate-x-full"}`;
+  },
+
+  syncBodyScrollLock() {
+    if (!document.body) return;
+    document.body.classList.toggle(SIDEBAR_SCROLL_LOCK_CLASS, this.mobileOpen && !this.desktopViewport);
+  },
+
+  getSidebarShell() {
+    const shellId = SIDEBAR_SHELL_IDS[this.storageKey];
+    return shellId ? document.getElementById(shellId) : null;
+  },
+
+  getMobileFocusableElements() {
+    const shell = this.getSidebarShell();
+    if (!shell) return [];
+
+    return Array.from(shell.querySelectorAll(MOBILE_SIDEBAR_FOCUSABLE_SELECTOR)).filter((element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      if (element.getAttribute("aria-hidden") === "true") return false;
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+  },
+
+  captureMobileFocusOrigin(focusOrigin = null) {
+    const shell = this.getSidebarShell();
+    const candidate =
+      focusOrigin instanceof HTMLElement
+        ? focusOrigin
+        : document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+
+    if (!candidate || candidate === document.body) return;
+    if (shell && shell.contains(candidate)) return;
+
+    this._mobileFocusOrigin = candidate;
+  },
+
+  syncMobileFocus(isOpen) {
+    if (isOpen && !this.desktopViewport) {
+      this.captureMobileFocusOrigin();
+      this.activateMobileFocusTrap();
+    } else {
+      this.deactivateMobileFocusTrap();
+    }
+  },
+
+  activateMobileFocusTrap() {
+    const shell = this.getSidebarShell();
+    if (!shell) return;
+
+    this.deactivateMobileFocusTrap({ restoreFocus: false });
+
+    this._handleMobileKeydown = (event) => {
+      if (!this.mobileOpen || this.desktopViewport) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeMobile();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusable = this.getMobileFocusableElements();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        if (!shell.hasAttribute("tabindex")) {
+          shell.setAttribute("tabindex", "-1");
+        }
+        shell.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!(active instanceof HTMLElement) || !shell.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", this._handleMobileKeydown);
+
+    window.requestAnimationFrame(() => {
+      if (!this.mobileOpen || this.desktopViewport) return;
+
+      const preferredTarget = shell.querySelector("[data-mobile-sidebar-close]");
+      const focusTarget =
+        preferredTarget instanceof HTMLElement
+          ? preferredTarget
+          : this.getMobileFocusableElements()[0] || shell;
+
+      if (focusTarget === shell && !shell.hasAttribute("tabindex")) {
+        shell.setAttribute("tabindex", "-1");
+      }
+
+      focusTarget.focus();
+    });
+  },
+
+  deactivateMobileFocusTrap({ restoreFocus = true } = {}) {
+    if (this._handleMobileKeydown) {
+      document.removeEventListener("keydown", this._handleMobileKeydown);
+      this._handleMobileKeydown = null;
+    }
+
+    if (!restoreFocus) return;
+
+    const focusOrigin = this._mobileFocusOrigin;
+    this._mobileFocusOrigin = null;
+
+    if (!(focusOrigin instanceof HTMLElement)) return;
+
+    window.requestAnimationFrame(() => {
+      if (focusOrigin.isConnected) {
+        focusOrigin.focus();
+      }
+    });
+  },
+
+  persistState() {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(
+          this.storageKey,
+          this.desktopCollapsed ? "collapsed" : "expanded"
+        );
+      }
+    } catch (_) {}
+
+    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+  },
+
+  persistChatState() {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(CHAT_SHELL_STORAGE_KEY, this.chatOpen ? "open" : "closed");
+      }
+    } catch (_) {}
+  },
+
+  persistChatMode() {
+    try {
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(CHAT_SHELL_MODE_STORAGE_KEY, this.chatMode);
+      }
+    } catch (_) {}
+  },
+
+  toggleDesktop() {
+    this.desktopCollapsed = !this.desktopCollapsed;
+    this.persistState();
+    scheduleSyntheticResize();
+  },
+
+  setChatOpen(open) {
+    this.chatOpen = !!open;
+    this.persistChatState();
+    scheduleSyntheticResize();
+  },
+
+  setChatMode(mode) {
+    if (!CHAT_SHELL_MODES.has(mode)) return;
+    this.chatMode = mode;
+    this.persistChatMode();
+    emitChatShellModeChanged(this.chatMode);
+    scheduleSyntheticResize();
+  },
+
+  toggleChat() {
+    this.chatOpen = !this.chatOpen;
+    this.persistChatState();
+  },
+
+  handleChatShortcut(event) {
+    if (this.storageKey !== "trifle:client-sidebar" || !event || event.defaultPrevented) return;
+    if (event.isComposing || event.repeat) return;
+    if (event.altKey || !(event.metaKey || event.ctrlKey)) return;
+    if (event.code !== "Slash") return;
+    if (isEditableShortcutTarget(event.target)) return;
+
+    event.preventDefault();
+    this.toggleChat();
+  },
+
+  syncStorageEvent(event) {
+    if (!event || event.key !== CHAT_SHELL_STORAGE_KEY) return;
+    this.chatOpen = event.newValue === "open";
+    scheduleSyntheticResize();
+  },
+
+  toggleMobile(focusOrigin = null) {
+    if (!this.mobileOpen) {
+      this.captureMobileFocusOrigin(focusOrigin);
+    }
+
+    this.mobileOpen = !this.mobileOpen;
+  },
+
+  closeMobile() {
+    this.mobileOpen = false;
+    this.syncBodyScrollLock();
+  },
+
+  destroy() {
+    this.deactivateMobileFocusTrap({ restoreFocus: false });
+
+    if (this._handleChatToggle) {
+      window.removeEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
+      this._handleChatToggle = null;
+    }
+
+    if (this._handleChatSetOpen) {
+      window.removeEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
+      this._handleChatSetOpen = null;
+    }
+
+    if (this._handleChatSetMode) {
+      window.removeEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
+      this._handleChatSetMode = null;
+    }
+
+    if (this._handleChatShortcut) {
+      window.removeEventListener("keydown", this._handleChatShortcut);
+      this._handleChatShortcut = null;
+    }
+
+    if (this._handleStorageSync) {
+      window.removeEventListener("storage", this._handleStorageSync);
+      this._handleStorageSync = null;
+    }
+
+    if (!this._mediaQuery || !this._handleViewportChange) return;
+
+    if (typeof this._mediaQuery.removeEventListener === "function") {
+      this._mediaQuery.removeEventListener("change", this._handleViewportChange);
+    } else if (typeof this._mediaQuery.removeListener === "function") {
+      this._mediaQuery.removeListener(this._handleViewportChange);
+    }
+  }
+});
+
+window.trifleChatShellHeader = () => ({
+  moreOpen: false,
+  chatMode: readChatShellMode(),
+  _handleChatModeChanged: null,
+
+  init() {
+    this._handleChatModeChanged = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      this.chatMode = CHAT_SHELL_MODES.has(detail.mode) ? detail.mode : readChatShellMode();
+    };
+
+    window.addEventListener(CHAT_SHELL_MODE_CHANGED_EVENT, this._handleChatModeChanged);
+    this.chatMode = readChatShellMode();
+  },
+
+  setMode(mode) {
+    if (!CHAT_SHELL_MODES.has(mode)) return;
+    this.chatMode = mode;
+    window.dispatchEvent(
+      new CustomEvent(CHAT_SHELL_SET_MODE_EVENT, {
+        detail: { mode }
+      })
+    );
+  },
+
+  destroy() {
+    if (this._handleChatModeChanged) {
+      window.removeEventListener(CHAT_SHELL_MODE_CHANGED_EVENT, this._handleChatModeChanged);
+      this._handleChatModeChanged = null;
+    }
+  }
+});
+
+};
