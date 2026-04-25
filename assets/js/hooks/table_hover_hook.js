@@ -17,6 +17,7 @@ Hooks.TableHover = {
     const dataCells = table.querySelectorAll('td[data-row][data-col]');
     dataCells.forEach((cell) => {
       if (!cell._hoverHandlers) return;
+      try { cell._hoverHandlers.leave({ target: cell }); } catch (_) {}
       cell.removeEventListener('mouseenter', cell._hoverHandlers.enter);
       cell.removeEventListener('mouseleave', cell._hoverHandlers.leave);
       delete cell._hoverHandlers;

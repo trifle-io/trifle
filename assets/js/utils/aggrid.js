@@ -30,13 +30,12 @@ export const ensureAgGridCommunity = () => {
   }
   if (!aggridLoaderPromise) {
     aggridLoaderPromise = new Promise((resolve, reject) => {
-      ensureStylesheet('ag-grid-base-css', AGGRID_BASE_STYLE_SRC);
-      ensureStylesheet('ag-grid-alpine-css', AGGRID_THEME_LIGHT_STYLE_SRC);
-      ensureStylesheet('ag-grid-alpine-dark-css', AGGRID_THEME_DARK_STYLE_SRC);
-      const script = document.createElement('script');
+      let script = null;
       let settled = false;
+      let timeout = null;
       const cleanup = () => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
+        if (!script) return;
         script.onload = null;
         script.onerror = null;
         try { script.remove(); } catch (_) {}
@@ -58,17 +57,25 @@ export const ensureAgGridCommunity = () => {
         cleanup();
         resolve(window.agGrid);
       };
-      const timeout = setTimeout(() => {
-        fail(new Error('Timed out loading ag-grid-community script'));
-      }, 15000);
-      script.src = AGGRID_SCRIPT_SRC;
-      script.async = true;
-      script.onload = succeed;
-      script.onerror = (err) => {
-        console.error('[AGGrid] failed to load ag-grid-community script', err);
-        fail(err instanceof Error ? err : new Error('Failed to load ag-grid-community script'));
-      };
-      document.head.appendChild(script);
+      try {
+        ensureStylesheet('ag-grid-base-css', AGGRID_BASE_STYLE_SRC);
+        ensureStylesheet('ag-grid-alpine-css', AGGRID_THEME_LIGHT_STYLE_SRC);
+        ensureStylesheet('ag-grid-alpine-dark-css', AGGRID_THEME_DARK_STYLE_SRC);
+        script = document.createElement('script');
+        timeout = setTimeout(() => {
+          fail(new Error('Timed out loading ag-grid-community script'));
+        }, 15000);
+        script.src = AGGRID_SCRIPT_SRC;
+        script.async = true;
+        script.onload = succeed;
+        script.onerror = (err) => {
+          console.error('[AGGrid] failed to load ag-grid-community script', err);
+          fail(err instanceof Error ? err : new Error('Failed to load ag-grid-community script'));
+        };
+        document.head.appendChild(script);
+      } catch (err) {
+        fail(err instanceof Error ? err : new Error('Failed to initialize ag-grid-community loader'));
+      }
     });
   }
   return aggridLoaderPromise;

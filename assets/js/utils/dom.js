@@ -19,15 +19,9 @@ export const setHidden = (el, hidden) => {
 export const findDashboardGridHook = (el) => {
   if (!el) return null;
   const gridId = el.dataset && el.dataset.gridId;
-  if (gridId) {
-    const direct = document.getElementById(gridId);
-    if (direct && direct.__dashboardGrid) return direct.__dashboardGrid;
-  }
+  const direct = gridId ? document.getElementById(gridId) : null;
+  if (direct && direct.__dashboardGrid) return direct.__dashboardGrid;
   const gridEl = el.closest('#dashboard-grid') || el.closest('.grid-stack');
   if (gridEl && gridEl.__dashboardGrid) return gridEl.__dashboardGrid;
-  if (gridId) {
-    const fallback = document.getElementById(gridId);
-    if (fallback && fallback.__dashboardGrid) return fallback.__dashboardGrid;
-  }
   return null;
 };

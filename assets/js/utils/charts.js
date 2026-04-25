@@ -12,6 +12,7 @@ export const extractTimestamp = (point) => {
     if (Array.isArray(point.value) && point.value.length) candidate = point.value[0];
     else if (Array.isArray(point.coord) && point.coord.length) candidate = point.coord[0];
   }
+  if (candidate == null || candidate === '') return null;
   const result = Number(candidate);
   return Number.isFinite(result) ? result : null;
 };

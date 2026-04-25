@@ -24,7 +24,8 @@ Hooks.DatabaseExploreChart = {
   _bindThemeListener() {
     if (this._themeListenerBound) return;
     this._themeListenerBound = true;
-    this.handleEvent('phx:theme-changed', () => this._handleThemeChanged());
+    this._onThemeChanged = () => this._handleThemeChanged();
+    window.addEventListener('trifle:theme-changed', this._onThemeChanged);
   },
 
   _handleThemeChanged() {
@@ -246,6 +247,11 @@ Hooks.DatabaseExploreChart = {
     // Remove resize handler
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
+    }
+    if (this._onThemeChanged) {
+      window.removeEventListener('trifle:theme-changed', this._onThemeChanged);
+      this._onThemeChanged = null;
+      this._themeListenerBound = false;
     }
 
     // Dispose chart

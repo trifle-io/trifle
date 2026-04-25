@@ -1,4 +1,8 @@
 export const registerDownloadHooks = (Hooks, deps = {}) => {
+const generateDownloadToken = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const dispatchDownloadComplete = (token = null, menuId = null) => {
+  window.dispatchEvent(new CustomEvent('download:complete', { detail: { token, menuId } }));
+};
 Hooks.FileDownload = {
   mounted() {
     this.handleEvent('file_download', ({ content, content_base64, base64, filename, type }) => {
@@ -21,8 +25,8 @@ Hooks.FileDownload = {
           URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 0);
-        // Notify any listeners that a download was initiated
-        window.dispatchEvent(new CustomEvent('download:complete'));
+        // Notify listeners for non-menu blob downloads without clearing active token-bound menus.
+        dispatchDownloadComplete();
       } catch (e) {
         console.error('File download failed', e);
       }
@@ -33,10 +37,12 @@ Hooks.FileDownload = {
         if (!url) throw new Error('Missing url');
         // Prefer hidden iframe to avoid interfering with LiveView navigation
         const iframe = document.createElement('iframe');
+        const token = generateDownloadToken();
         iframe.style.display = 'none';
+        iframe.dataset.downloadToken = token;
         iframe.src = url;
         iframe.addEventListener('load', () => {
-          window.dispatchEvent(new CustomEvent('download:complete'));
+          dispatchDownloadComplete(token);
         });
         document.body.appendChild(iframe);
         // Safety cleanup
@@ -98,6 +104,8 @@ Hooks.FileDownload = {
 Hooks.DownloadMenu = {
   mounted() {
     this.loading = false;
+    this._menuId = this.el.id || `download-menu-${generateDownloadToken()}`;
+    if (!this.el.id) this.el.id = this._menuId;
     this.setElements();
     const datasetLabel = (this.el.dataset && this.el.dataset.defaultLabel) || '';
     this.originalLabel = datasetLabel || (this.label ? this.label.textContent : '');
@@ -113,7 +121,9 @@ Hooks.DownloadMenu = {
     });
 
     // Global completion signal (for blob-based downloads or alternate flows)
-    this._onDownloadComplete = () => this.stopLoading();
+    this._onDownloadComplete = (event) => {
+      if (this.matchesCompletion(event?.detail || {})) this.stopLoading();
+    };
     window.addEventListener('download:complete', this._onDownloadComplete);
   },
 
@@ -170,9 +180,9 @@ Hooks.DownloadMenu = {
         });
         const token = url.searchParams.get('download_token');
         if (token) {
-          this._downloadToken = token;
-          try { window.__downloadToken = token; } catch (_) {}
-          this.startCookiePolling();
+          a.dataset.downloadToken = token;
+        } else {
+          delete a.dataset.downloadToken;
         }
         url.searchParams.delete('download_token');
         a.setAttribute('href', url.toString());
@@ -199,15 +209,17 @@ Hooks.DownloadMenu = {
       const btn = e.target.closest('button[data-export-trigger]');
       if (!this.el.contains(e.target)) return; // Only handle clicks within this menu
       if (a) {
-        try {
-          const url = new URL(a.getAttribute('href') || '', window.location.origin);
-          const token = url.searchParams.get('download_token');
-          if (token) {
-            this._downloadToken = token;
-            try { window.__downloadToken = token; } catch (_) {}
-            this.startCookiePolling();
+        const token = a.dataset.downloadToken;
+        if (token) {
+          this._downloadToken = token;
+          this._activeDownloadToken = token;
+          try { window.__downloadToken = token; } catch (_) {}
+          if (this.iframe) {
+            this.iframe.dataset.downloadToken = token;
+            this.iframe.dataset.downloadMenuId = this._menuId;
           }
-        } catch (_) {}
+          this.startCookiePolling();
+        }
         this.startLoading();
         setTimeout(() => this.pushEvent('hide_export_dropdown', {}), 0);
         return;
@@ -217,9 +229,14 @@ Hooks.DownloadMenu = {
       this.loading = true;
       this.applyLoadingState();
       // Generate token so iframe poller knows when to reset for button-trigger downloads
-      const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const token = generateDownloadToken();
       this._downloadToken = token;
+      this._activeDownloadToken = token;
       try { window.__downloadToken = token; } catch (_) {}
+      if (this.iframe) {
+        this.iframe.dataset.downloadToken = token;
+        this.iframe.dataset.downloadMenuId = this._menuId;
+      }
       this.pushEvent('hide_export_dropdown', {});
       // Start polling for the cookie to flip back UI when done
       this.startCookiePolling();
@@ -231,8 +248,11 @@ Hooks.DownloadMenu = {
   bindIframe() {
     if (!this.iframe || this._iframeBound) return;
     this._onIframeLoad = () => {
-      // Any load in the download iframe marks completion
-      this.stopLoading();
+      const token = this.iframe?.dataset?.downloadToken || null;
+      const menuId = this.iframe?.dataset?.downloadMenuId || null;
+      if (this.matchesCompletion({ token, menuId })) {
+        this.stopLoading();
+      }
     };
     this.iframe.addEventListener('load', this._onIframeLoad);
     this._iframeBound = true;
@@ -252,9 +272,18 @@ Hooks.DownloadMenu = {
     this.applyLoadingState();
   },
 
+  matchesCompletion(detail = {}) {
+    const token = detail && detail.token;
+    const menuId = detail && detail.menuId;
+    if (menuId && menuId !== this._menuId) return false;
+    if (token) return token === this._activeDownloadToken || token === this._downloadToken;
+    return !this._activeDownloadToken;
+  },
+
   stopLoading(force = false) {
     if (!this.loading && !force) return;
     this.loading = false;
+    this._activeDownloadToken = null;
     this.stopCookiePolling();
     if (this.button) {
       this.button.removeAttribute('data-loading');

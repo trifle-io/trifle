@@ -342,6 +342,15 @@ export const aggregateHeatmapBreakdown = (entries) => {
     .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
 };
 
+const escapeHeatmapHtml = (value) =>
+  String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[char]));
+
 export const formatHeatmapTooltip = ({
   params,
   labels,
@@ -349,6 +358,8 @@ export const formatHeatmapTooltip = ({
   breakdownByCell,
   escapeHtml
 }) => {
+  const safeLabels = Array.isArray(labels) ? labels : [];
+  const safeVerticalLabels = Array.isArray(verticalLabels) ? verticalLabels : [];
   const valueArr =
     Array.isArray(params?.value) && params.value.length >= 3
       ? params.value
@@ -361,8 +372,8 @@ export const formatHeatmapTooltip = ({
   const xIdx = Number.isFinite(valueArr[0]) ? valueArr[0] : null;
   const yIdx = Number.isFinite(valueArr[1]) ? valueArr[1] : null;
   const val = Number.isFinite(valueArr[2]) ? valueArr[2] : 0;
-  const xLabel = xIdx != null && labels[xIdx] ? labels[xIdx] : labels[0] || '';
-  const yLabel = yIdx != null && verticalLabels[yIdx] ? verticalLabels[yIdx] : verticalLabels[0] || '';
+  const xLabel = xIdx != null && safeLabels[xIdx] ? safeLabels[xIdx] : safeLabels[0] || '';
+  const yLabel = yIdx != null && safeVerticalLabels[yIdx] ? safeVerticalLabels[yIdx] : safeVerticalLabels[0] || '';
   if (!xLabel && !yLabel) return '';
 
   const key = `${xIdx}:${yIdx}`;
@@ -371,10 +382,7 @@ export const formatHeatmapTooltip = ({
       ? breakdownByCell.get(key)
       : [];
 
-  const safeEscape =
-    typeof escapeHtml === 'function'
-      ? escapeHtml
-      : (value) => String(value == null ? '' : value);
+  const safeEscape = typeof escapeHtml === 'function' ? escapeHtml : escapeHeatmapHtml;
 
   const marker = params?.marker || '';
   const primaryLabel = breakdown.length === 1 ? breakdown[0].name : 'Total';
@@ -409,7 +417,11 @@ export const buildHeatmapOptions = ({
   heatmapData,
   chartFontFamily,
   escapeHtml
-}) => ({
+}) => {
+  const safeLabels = Array.isArray(labels) ? labels : [];
+  const safeVerticalLabels = Array.isArray(verticalLabels) ? verticalLabels : [];
+
+  return {
   backgroundColor: 'transparent',
   legend: { show: false },
   tooltip: {
@@ -418,8 +430,8 @@ export const buildHeatmapOptions = ({
     formatter: (params) =>
       formatHeatmapTooltip({
         params,
-        labels,
-        verticalLabels,
+        labels: safeLabels,
+        verticalLabels: safeVerticalLabels,
         breakdownByCell,
         escapeHtml
       })
@@ -434,7 +446,7 @@ export const buildHeatmapOptions = ({
   grid: { top: 16, left: 64, right: 16, bottom: gridBottom },
   xAxis: {
     type: 'category',
-    data: labels,
+    data: safeLabels,
     splitLine: {
       show: true,
       lineStyle: {
@@ -443,11 +455,11 @@ export const buildHeatmapOptions = ({
         opacity: isDarkMode ? 0.4 : 0.9
       }
     },
-    axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: labels.length > 8 ? 30 : 0 }
+    axisLabel: { color: isDarkMode ? '#CBD5F5' : '#475569', interval: 0, rotate: safeLabels.length > 8 ? 30 : 0 }
   },
   yAxis: {
     type: 'category',
-    data: verticalLabels,
+    data: safeVerticalLabels,
     splitLine: {
       show: true,
       lineStyle: {
@@ -478,4 +490,5 @@ export const buildHeatmapOptions = ({
     emphasis: { itemStyle: heatmapFocusItemStyle(isDarkMode) },
     select: { itemStyle: heatmapFocusItemStyle(isDarkMode) }
   }]
-});
+  };
+};

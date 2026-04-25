@@ -75,7 +75,17 @@ Hooks.Sortable = {
     });
   },
   
+  clearDragHighlights() {
+    try {
+      if (this.lastTo) this.lastTo.style.backgroundColor = '';
+      if (this.lastHeader) this.lastHeader.style.backgroundColor = '';
+      this.lastTo = null;
+      this.lastHeader = null;
+    } catch (_) {}
+  },
+
   destroyed() {
+    this.clearDragHighlights();
     if (this.sortable) {
       this.sortable.destroy();
     }
@@ -91,11 +101,18 @@ Hooks.DashboardGroupsCollapse = {
     try { map = JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { map = {}; }
     const ids = Object.keys(map).filter(id => map[id]);
     try { this.pushEvent('set_collapsed_groups', { ids }); } catch (_) {}
-    this.handleEvent('save_collapsed_groups', ({ ids }) => {
+    this.saveCollapsedGroupsHandle = this.handleEvent('save_collapsed_groups', ({ ids }) => {
       const store = {};
       (ids || []).forEach(id => { store[id] = true; });
       try { localStorage.setItem(key, JSON.stringify(store)); } catch (_) {}
     });
+  },
+
+  destroyed() {
+    if (this.saveCollapsedGroupsHandle && typeof this.removeHandleEvent === 'function') {
+      this.removeHandleEvent(this.saveCollapsedGroupsHandle);
+    }
+    this.saveCollapsedGroupsHandle = null;
   }
 }
 

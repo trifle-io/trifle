@@ -6,10 +6,12 @@ const CHAT_SHELL_MODES = new Set(["pinned", "panel", "fullscreen"]);
 const CHAT_SHELL_SET_MODE_EVENT = "trifle:chat-shell:set-mode";
 const CHAT_SHELL_MODE_CHANGED_EVENT = "trifle:chat-shell:mode-changed";
 const SIDEBAR_ROOT_DATASET_KEYS = Object.freeze({
+  "trifle:sidebar": "trifleClientSidebar",
   "trifle:client-sidebar": "trifleClientSidebar",
   "trifle:admin-sidebar": "trifleAdminSidebar"
 });
 const SIDEBAR_SHELL_IDS = Object.freeze({
+  "trifle:sidebar": "client-sidebar-shell",
   "trifle:client-sidebar": "client-sidebar-shell",
   "trifle:admin-sidebar": "admin-sidebar-shell"
 });
@@ -106,9 +108,17 @@ export const getOrCreateTabId = (() => {
     if (document.visibilityState && document.visibilityState !== "visible") return;
 
     try {
+      const storedTabId = window.sessionStorage && window.sessionStorage.getItem(storageKey);
+      if (storedTabId && storedTabId === currentTabId) {
+        currentTabId = generateTabId();
+      }
       persistCurrentTabId();
     } catch (_) {
-      // Ignore storage failures and keep using the in-memory tab id.
+      try {
+        refreshCurrentTabId();
+      } catch (_) {
+        // Ignore storage failures and keep using the in-memory tab id.
+      }
     }
   };
 
