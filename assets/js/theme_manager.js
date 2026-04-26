@@ -49,6 +49,7 @@ export class ThemeManager {
   }
 
   applyTheme(themePreference = null) {
+    if (window.__trifleThemeLocked) return;
     const body = document.body;
     const preload = window.__TRIFLE_THEME_PRELOAD__ || {};
     const currentTheme = themePreference || preload.pref || body.getAttribute('data-theme') || 'system';

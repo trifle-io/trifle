@@ -4,6 +4,7 @@ defmodule TrifleApp.HomeLive do
   alias Decimal
   alias Trifle.Monitors
   alias Trifle.Organizations
+  alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.ExploreCore
   alias TrifleApp.HomeData
   alias Trifle.Stats.Source
@@ -302,6 +303,7 @@ defmodule TrifleApp.HomeLive do
                     class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
                     phx-hook="HomeSparkline"
                     data-series={Jason.encode!(sparkline_series(activity.timeline))}
+                    data-line-color={ChartColors.primary()}
                   >
                   </div>
                 <% end %>

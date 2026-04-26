@@ -41,7 +41,7 @@ Hooks.DatabaseExploreChart = {
     this._refreshChartFromDataset();
   },
 
-  _buildOption(data, key, chartType, colors, selectedKeyColor) {
+  _buildOption(data, key, chartType, colors, selectedKeyColor, timezone) {
     const themeName = this._resolveTheme();
     const isDarkMode = themeName === 'dark';
     const colorArray = this._normalizeColors(colors);
@@ -72,6 +72,40 @@ Hooks.DatabaseExploreChart = {
 
     const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
     const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
+    const fontFamily = chartFontFamily || undefined;
+    const formatDateTime = (value, options = {}) => {
+      try {
+        return new Intl.DateTimeFormat('en-CA', {
+          timeZone: timezone || undefined,
+          year: options.dateOnly ? undefined : 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: options.dateOnly ? undefined : '2-digit',
+          minute: options.dateOnly ? undefined : '2-digit',
+          second: options.withSeconds ? '2-digit' : undefined,
+          hour12: false
+        }).format(new Date(value));
+      } catch (_) {
+        return echarts.format.formatTime(options.dateOnly ? 'MM-dd' : options.withSeconds ? 'yyyy-MM-dd hh:mm:ss' : 'hh:mm', value, false);
+      }
+    };
+    const timeParts = (value) => {
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone || undefined,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).formatToParts(new Date(value));
+        return {
+          hours: Number(parts.find((part) => part.type === 'hour')?.value),
+          minutes: Number(parts.find((part) => part.type === 'minute')?.value)
+        };
+      } catch (_) {
+        const date = new Date(value);
+        return { hours: date.getHours(), minutes: date.getMinutes() };
+      }
+    };
 
     return {
       backgroundColor: 'transparent',
@@ -83,7 +117,8 @@ Hooks.DatabaseExploreChart = {
         containLabel: true
       },
       textStyle: {
-        color: textColor
+        color: textColor,
+        fontFamily
       },
       tooltip: {
         trigger: 'item',
@@ -93,13 +128,13 @@ Hooks.DatabaseExploreChart = {
         backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
         borderColor: isDarkMode ? '#374151' : '#E5E7EB',
         textStyle: {
-          color: isDarkMode ? '#F3F4F6' : '#1F2937'
+          color: isDarkMode ? '#F3F4F6' : '#1F2937',
+          fontFamily
         },
         appendToBody: true,
         extraCssText: 'z-index: 9999;',
         formatter: function(params) {
-          const date = new Date(params.value[0]);
-          const dateStr = echarts.format.formatTime('yyyy-MM-dd hh:mm:ss', date, false);
+          const dateStr = formatDateTime(params.value[0], { withSeconds: true });
           const value = formatCompactNumber(params.value[1]);
           return `${dateStr}<br/>${params.marker} ${params.seriesName}: ${value}`;
         }
@@ -115,14 +150,12 @@ Hooks.DatabaseExploreChart = {
           color: textColor,
           margin: 6,
           formatter: function(value) {
-            const date = new Date(value);
-            const hours = date.getHours();
-            const minutes = date.getMinutes();
+            const { hours, minutes } = timeParts(value);
 
             if (hours === 0 && minutes === 0) {
-              return echarts.format.formatTime('MM-dd', value, false);
+              return formatDateTime(value, { dateOnly: true });
             }
-            return echarts.format.formatTime('hh:mm', value, false);
+            return formatDateTime(value);
           }
         },
         splitLine: {
@@ -169,8 +202,9 @@ Hooks.DatabaseExploreChart = {
     const chartType = this.el.dataset.chartType;
     const colors = this._parseJson(this.el.dataset.colors, []);
     const selectedKeyColor = this.el.dataset.selectedKeyColor;
+    const timezone = this.el.dataset.timezone;
 
-    const option = this._buildOption(data, key, chartType, colors, selectedKeyColor);
+    const option = this._buildOption(data, key, chartType, colors, selectedKeyColor, timezone);
     this._applyOption(option);
   },
 
@@ -191,7 +225,7 @@ Hooks.DatabaseExploreChart = {
     this._bindThemeListener();
 
     // Build and apply the base option
-    const option = this._buildOption(data, key, chartType, colors, selectedKeyColor);
+    const option = this._buildOption(data, key, chartType, colors, selectedKeyColor, timezone);
     this._applyOption(option);
 
     // Handle window resize
@@ -238,7 +272,7 @@ Hooks.DatabaseExploreChart = {
 
     // Update existing chart with new data
     if (this.chart && !this.chart.isDisposed()) {
-      const option = this._buildOption(data, key, chartType, colors, selectedKeyColor);
+      const option = this._buildOption(data, key, chartType, colors, selectedKeyColor, timezone);
       this._applyOption(option);
     }
   },

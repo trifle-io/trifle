@@ -56,8 +56,12 @@ Hooks.FileDownload = {
     this.handleEvent('export_dashboard_pdf', ({ title, timeframe, granularity }) => {
       try {
         const root = document.documentElement;
-        const wasDark = root.classList.contains('dark');
-        if (wasDark) root.classList.remove('dark');
+        const body = document.body;
+        const wasRootDark = root.classList.contains('dark');
+        const wasBodyDark = body.classList.contains('dark');
+        window.__trifleThemeLocked = true;
+        root.classList.remove('dark');
+        body.classList.remove('dark');
 
         const header = document.createElement('div');
         header.id = 'dashboard-print-header';
@@ -78,7 +82,9 @@ Hooks.FileDownload = {
 
         const cleanup = () => {
           try { header.remove(); } catch (_) {}
-          if (wasDark) root.classList.add('dark');
+          if (wasRootDark) root.classList.add('dark');
+          if (wasBodyDark) body.classList.add('dark');
+          delete window.__trifleThemeLocked;
           window.removeEventListener('afterprint', cleanup);
         };
         window.addEventListener('afterprint', cleanup);
@@ -352,7 +358,6 @@ Hooks.DownloadMenu = {
 
   destroyed() {
     if (this._onClickCapture) {
-      document.removeEventListener('pointerdown', this._onClickCapture, true);
       document.removeEventListener('click', this._onClickCapture, true);
     }
     if (this._onDownloadComplete) {
@@ -367,6 +372,7 @@ Hooks.DownloadMenu = {
 window.TrifleDownloads = window.TrifleDownloads || {};
 (function (scope) {
   const HIDDEN_CLASS = 'hidden';
+  scope.generateDownloadToken = generateDownloadToken;
 
   const queryDropdown = (menu) => (menu ? menu.querySelector('[data-widget-dropdown]') : null);
   const queryButton = (menu) => (menu ? menu.querySelector('[data-role="download-button"]') : null);
@@ -428,7 +434,7 @@ window.TrifleDownloads = window.TrifleDownloads || {};
     try {
       const url = new URL(link.getAttribute('href') || '', window.location.origin);
       if (!url.searchParams.get('download_token')) {
-        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const token = scope.generateDownloadToken();
         window.__downloadToken = token;
         url.searchParams.set('download_token', token);
         link.href = url.toString();

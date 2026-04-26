@@ -22,7 +22,7 @@ const ensureStylesheet = (id, href) => {
 };
 
 export const ensureAgGridCommunity = () => {
-  if (typeof window !== 'undefined' && window.agGrid && (window.agGrid.Grid || window.agGrid.GridApi)) {
+  if (typeof window !== 'undefined' && window.agGrid && typeof window.agGrid.Grid === 'function') {
     return Promise.resolve(window.agGrid);
   }
   if (typeof document === 'undefined') {
@@ -49,7 +49,7 @@ export const ensureAgGridCommunity = () => {
       };
       const succeed = () => {
         if (settled) return;
-        if (!window.agGrid || !(window.agGrid.Grid || window.agGrid.GridApi)) {
+        if (!window.agGrid || typeof window.agGrid.Grid !== 'function') {
           fail(new Error('AG Grid script loaded without expected API'));
           return;
         }

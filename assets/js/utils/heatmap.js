@@ -420,6 +420,12 @@ export const buildHeatmapOptions = ({
 }) => {
   const safeLabels = Array.isArray(labels) ? labels : [];
   const safeVerticalLabels = Array.isArray(verticalLabels) ? verticalLabels : [];
+  const safeVisualSettings = visualSettings && typeof visualSettings === 'object' ? visualSettings : {};
+  const visualMapMin = Number.isFinite(Number(safeVisualSettings.min)) ? Number(safeVisualSettings.min) : 0;
+  const visualMapMax = Number.isFinite(Number(safeVisualSettings.max)) ? Number(safeVisualSettings.max) : visualMapMin;
+  const visualMapColors = Array.isArray(safeVisualSettings.colorScale) && safeVisualSettings.colorScale.length
+    ? safeVisualSettings.colorScale
+    : undefined;
 
   return {
   backgroundColor: 'transparent',
@@ -472,14 +478,14 @@ export const buildHeatmapOptions = ({
   },
   visualMap: showScale
     ? {
-        min: visualSettings.min,
-        max: visualSettings.max,
+        min: visualMapMin,
+        max: visualMapMax,
         calculable: false,
         orient: 'horizontal',
         left: 'center',
         bottom: visualMapBottom,
         textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-        inRange: { color: visualSettings.colorScale }
+        ...(visualMapColors ? { inRange: { color: visualMapColors } } : {})
       }
     : { show: false },
   series: [{

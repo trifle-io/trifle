@@ -88,6 +88,7 @@ Hooks.Sortable = {
     this.clearDragHighlights();
     if (this.sortable) {
       this.sortable.destroy();
+      this.sortable = null;
     }
   }
 }
@@ -148,7 +149,7 @@ Hooks.HomeSparkline = {
       this.chart = echarts.init(this.el, theme, withChartOpts({ height }));
     }
 
-    const lineColor = 'oklch(70.4% 0.14 182.503)';
+    const lineColor = this.el.dataset.lineColor || 'oklch(70.4% 0.14 182.503)';
 
     this.chart.setOption(
       {
@@ -191,7 +192,5 @@ Hooks.HomeSparkline = {
     }
   }
 }
-
-// Generic file download handler via pushEvent
 
 };

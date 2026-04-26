@@ -1,6 +1,15 @@
-export const registerTableHoverHook = (Hooks, deps = {}) => {
+export const registerTableHoverHook = (Hooks) => {
 Hooks.TableHover = {
   mounted() {
+    this._refreshHighlightColor = () => {
+      const value = getComputedStyle(document.documentElement)
+        .getPropertyValue('--table-highlight-bg')
+        .trim();
+      this.highlightColor = value || '#f9fafb';
+    };
+    this._onThemeChanged = () => this._refreshHighlightColor();
+    this._refreshHighlightColor();
+    window.addEventListener('trifle:theme-changed', this._onThemeChanged);
     this.initHover();
   },
   
@@ -10,6 +19,10 @@ Hooks.TableHover = {
 
   destroyed() {
     this.teardownHover();
+    if (this._onThemeChanged) {
+      window.removeEventListener('trifle:theme-changed', this._onThemeChanged);
+      this._onThemeChanged = null;
+    }
   },
 
   teardownHover() {
@@ -36,9 +49,7 @@ Hooks.TableHover = {
         const row = e.target.dataset.row;
         const col = e.target.dataset.col;
         
-        // Detect if we're in dark mode
-        const isDarkMode = document.documentElement.classList.contains('dark');
-        const highlightColor = isDarkMode ? '#334155' : '#f9fafb';
+        const highlightColor = this.highlightColor || '#f9fafb';
         
         // Highlight current cell's row header with important style
         const rowHeader = table.querySelector(`td[data-row="${row}"]:not([data-col])`);

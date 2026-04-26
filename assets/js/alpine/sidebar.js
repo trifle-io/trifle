@@ -109,8 +109,8 @@ export const getOrCreateTabId = (() => {
 
     try {
       const storedTabId = window.sessionStorage && window.sessionStorage.getItem(storageKey);
-      if (storedTabId && storedTabId === currentTabId) {
-        currentTabId = generateTabId();
+      if (storedTabId && storedTabId !== currentTabId) {
+        currentTabId = storedTabId;
       }
       persistCurrentTabId();
     } catch (_) {
@@ -210,10 +210,12 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
   loadState() {
     const preload = window.__TRIFLE_SIDEBAR_PRELOAD__ || {};
+    const sidebarStorageKey =
+      this.storageKey === "trifle:sidebar" ? "trifle:client-sidebar" : this.storageKey;
     const preloadedState =
-      this.storageKey === "trifle:client-sidebar"
+      sidebarStorageKey === "trifle:client-sidebar"
         ? preload.client
-        : this.storageKey === "trifle:admin-sidebar"
+        : sidebarStorageKey === "trifle:admin-sidebar"
           ? preload.admin
           : null;
 
@@ -481,7 +483,9 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   },
 
   handleChatShortcut(event) {
-    if (this.storageKey !== "trifle:client-sidebar" || !event || event.defaultPrevented) return;
+    const sidebarStorageKey =
+      this.storageKey === "trifle:sidebar" ? "trifle:client-sidebar" : this.storageKey;
+    if (sidebarStorageKey !== "trifle:client-sidebar" || !event || event.defaultPrevented) return;
     if (event.isComposing || event.repeat) return;
     if (event.altKey || !(event.metaKey || event.ctrlKey)) return;
     if (event.code !== "Slash") return;
