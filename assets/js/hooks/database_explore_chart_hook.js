@@ -236,7 +236,8 @@ Hooks.DatabaseExploreChart = {
     container.style.width = '100%';
 
     // Set theme based on dark mode
-    this.chart = echarts.init(container, initTheme, withChartOpts({ height: 140 }));
+    const chartInitOpts = withChartOpts ? withChartOpts({ height: 140 }) : undefined;
+    this.chart = echarts.init(container, initTheme, chartInitOpts);
     this._currentThemeName = themeName;
     this._bindThemeListener();
 

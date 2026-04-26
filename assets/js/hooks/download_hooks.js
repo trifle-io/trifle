@@ -100,7 +100,7 @@ Hooks.FileDownload = {
             window.print();
           } catch (error) {
             cleanup();
-            throw error;
+            console.error('PDF export print failed', error);
           }
         }, 50);
       } catch (e) {
@@ -460,19 +460,23 @@ window.TrifleDownloads = window.TrifleDownloads || {};
     }
   };
 
-  document.addEventListener('click', (event) => {
-    if (event.defaultPrevented) return;
-    const menu = event.target.closest('[data-widget-download-menu]');
-    if (!menu) {
-      scope.closeAllWidgetMenus();
-    }
-  });
+  if (!scope._downloadListenersRegistered) {
+    document.addEventListener('click', (event) => {
+      if (event.defaultPrevented) return;
+      const menu = event.target.closest('[data-widget-download-menu]');
+      if (!menu) {
+        scope.closeAllWidgetMenus();
+      }
+    });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      scope.closeAllWidgetMenus();
-    }
-  });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        scope.closeAllWidgetMenus();
+      }
+    });
+
+    scope._downloadListenersRegistered = true;
+  }
 })(window.TrifleDownloads);
 
 };
