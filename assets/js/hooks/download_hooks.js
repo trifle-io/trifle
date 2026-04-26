@@ -54,16 +54,29 @@ Hooks.FileDownload = {
     });
 
     this.handleEvent('export_dashboard_pdf', ({ title, timeframe, granularity }) => {
+      const root = document.documentElement;
+      const body = document.body;
+      const wasRootDark = root.classList.contains('dark');
+      const wasBodyDark = body.classList.contains('dark');
+      let header = null;
+      let cleanupRegistered = false;
+      const cleanup = () => {
+        try { if (header) header.remove(); } catch (_) {}
+        if (wasRootDark) root.classList.add('dark');
+        else root.classList.remove('dark');
+        if (wasBodyDark) body.classList.add('dark');
+        else body.classList.remove('dark');
+        delete window.__trifleThemeLocked;
+        if (cleanupRegistered) window.removeEventListener('afterprint', cleanup);
+        cleanupRegistered = false;
+      };
+
       try {
-        const root = document.documentElement;
-        const body = document.body;
-        const wasRootDark = root.classList.contains('dark');
-        const wasBodyDark = body.classList.contains('dark');
         window.__trifleThemeLocked = true;
         root.classList.remove('dark');
         body.classList.remove('dark');
 
-        const header = document.createElement('div');
+        header = document.createElement('div');
         header.id = 'dashboard-print-header';
         header.style.background = '#ffffff';
         header.style.color = '#0f172a';
@@ -80,16 +93,18 @@ Hooks.FileDownload = {
         `;
         document.body.prepend(header);
 
-        const cleanup = () => {
-          try { header.remove(); } catch (_) {}
-          if (wasRootDark) root.classList.add('dark');
-          if (wasBodyDark) body.classList.add('dark');
-          delete window.__trifleThemeLocked;
-          window.removeEventListener('afterprint', cleanup);
-        };
         window.addEventListener('afterprint', cleanup);
-        setTimeout(() => window.print(), 50);
+        cleanupRegistered = true;
+        setTimeout(() => {
+          try {
+            window.print();
+          } catch (error) {
+            cleanup();
+            throw error;
+          }
+        }, 50);
       } catch (e) {
+        cleanup();
         console.error('PDF export failed', e);
       }
     });
@@ -205,6 +220,19 @@ Hooks.DownloadMenu = {
       .join('|');
   },
 
+  seedDownloadToken(token = null) {
+    const nextToken = token || generateDownloadToken();
+    this._downloadToken = nextToken;
+    this._activeDownloadToken = nextToken;
+    try { window.__downloadToken = nextToken; } catch (_) {}
+    if (this.iframe) {
+      this.iframe.dataset.downloadToken = nextToken;
+      this.iframe.dataset.downloadMenuId = this._menuId;
+    }
+    return nextToken;
+  },
+
+
   bindAnchors() {
     if (this._bound) {
       return;
@@ -215,37 +243,25 @@ Hooks.DownloadMenu = {
       const btn = e.target.closest('button[data-export-trigger]');
       if (!this.el.contains(e.target)) return; // Only handle clicks within this menu
       if (a) {
-        const token = a.dataset.downloadToken;
-        if (token) {
-          this._downloadToken = token;
-          this._activeDownloadToken = token;
-          try { window.__downloadToken = token; } catch (_) {}
-          if (this.iframe) {
-            this.iframe.dataset.downloadToken = token;
-            this.iframe.dataset.downloadMenuId = this._menuId;
-          }
-          this.startCookiePolling();
-        }
+        const token = this.seedDownloadToken(a.dataset.downloadToken || null);
+        a.dataset.downloadToken = token;
+        try {
+          const url = new URL(a.getAttribute('href') || '', window.location.origin);
+          url.searchParams.set('download_token', token);
+          a.setAttribute('href', url.toString());
+        } catch (_) {}
+        this.startCookiePolling();
         this.startLoading();
         setTimeout(() => this.pushEvent('hide_export_dropdown', {}), 0);
         return;
       }
       if (!btn) return;
-      // Separate loading instance for button-triggered exports
-      this.loading = true;
-      this.applyLoadingState();
       // Generate token so iframe poller knows when to reset for button-trigger downloads
-      const token = generateDownloadToken();
-      this._downloadToken = token;
-      this._activeDownloadToken = token;
-      try { window.__downloadToken = token; } catch (_) {}
-      if (this.iframe) {
-        this.iframe.dataset.downloadToken = token;
-        this.iframe.dataset.downloadMenuId = this._menuId;
-      }
-      this.pushEvent('hide_export_dropdown', {});
-      // Start polling for the cookie to flip back UI when done
+      this.seedDownloadToken();
+      // Start polling before entering loading state so completion cannot race setup.
       this.startCookiePolling();
+      this.startLoading();
+      this.pushEvent('hide_export_dropdown', {});
     };
     // Use capture phase to run before LiveView's phx-click-away handler
     document.addEventListener('click', this._onClickCapture, true);

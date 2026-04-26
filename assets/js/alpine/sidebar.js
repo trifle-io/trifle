@@ -89,13 +89,30 @@ const generateTabId = () =>
     ? window.crypto.randomUUID()
     : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+const normalizeSidebarStorageKey = (storageKey) =>
+  storageKey === "trifle:sidebar" ? "trifle:client-sidebar" : storageKey;
+
 export const getOrCreateTabId = (() => {
   const storageKey = "trifle:tab-id";
+  const claimKeyPrefix = "trifle:tab-id-owner:";
+  const currentTabOwner = generateTabId();
   let currentTabId = null;
+
+  const claimCurrentTabId = () => {
+    if (!currentTabId || !window.localStorage) return;
+    window.localStorage.setItem(`${claimKeyPrefix}${currentTabId}`, currentTabOwner);
+  };
+
+  const hasDuplicateClaim = () => {
+    if (!currentTabId || !window.localStorage) return false;
+    const owner = window.localStorage.getItem(`${claimKeyPrefix}${currentTabId}`);
+    return !!owner && owner !== currentTabOwner;
+  };
 
   const persistCurrentTabId = () => {
     if (!currentTabId || !window.sessionStorage) return;
     window.sessionStorage.setItem(storageKey, currentTabId);
+    claimCurrentTabId();
   };
 
   const refreshCurrentTabId = () => {
@@ -112,6 +129,10 @@ export const getOrCreateTabId = (() => {
       if (storedTabId && storedTabId !== currentTabId) {
         currentTabId = storedTabId;
       }
+      if (storedTabId && storedTabId === currentTabId && hasDuplicateClaim()) {
+        refreshCurrentTabId();
+        return;
+      }
       persistCurrentTabId();
     } catch (_) {
       try {
@@ -127,7 +148,11 @@ export const getOrCreateTabId = (() => {
 
     if (storedTabId) {
       currentTabId = storedTabId;
-      persistCurrentTabId();
+      if (hasDuplicateClaim()) {
+        refreshCurrentTabId();
+      } else {
+        persistCurrentTabId();
+      }
     } else {
       refreshCurrentTabId();
     }
@@ -210,8 +235,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
   loadState() {
     const preload = window.__TRIFLE_SIDEBAR_PRELOAD__ || {};
-    const sidebarStorageKey =
-      this.storageKey === "trifle:sidebar" ? "trifle:client-sidebar" : this.storageKey;
+    const sidebarStorageKey = normalizeSidebarStorageKey(this.storageKey);
     const preloadedState =
       sidebarStorageKey === "trifle:client-sidebar"
         ? preload.client
@@ -220,7 +244,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
           : null;
 
     try {
-      const stored = window.localStorage ? window.localStorage.getItem(this.storageKey) : null;
+      const stored = window.localStorage ? window.localStorage.getItem(sidebarStorageKey) : null;
 
       if (stored === "collapsed") {
         this.desktopCollapsed = true;
@@ -243,7 +267,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       }
     }
 
-    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+    syncSidebarRootState(sidebarStorageKey, this.desktopCollapsed);
   },
 
   loadChatState() {
@@ -428,16 +452,17 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   },
 
   persistState() {
+    const sidebarStorageKey = normalizeSidebarStorageKey(this.storageKey);
     try {
       if (window.localStorage) {
         window.localStorage.setItem(
-          this.storageKey,
+          sidebarStorageKey,
           this.desktopCollapsed ? "collapsed" : "expanded"
         );
       }
     } catch (_) {}
 
-    syncSidebarRootState(this.storageKey, this.desktopCollapsed);
+    syncSidebarRootState(sidebarStorageKey, this.desktopCollapsed);
   },
 
   persistChatState() {
@@ -483,8 +508,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   },
 
   handleChatShortcut(event) {
-    const sidebarStorageKey =
-      this.storageKey === "trifle:sidebar" ? "trifle:client-sidebar" : this.storageKey;
+    const sidebarStorageKey = normalizeSidebarStorageKey(this.storageKey);
     if (sidebarStorageKey !== "trifle:client-sidebar" || !event || event.defaultPrevented) return;
     if (event.isComposing || event.repeat) return;
     if (event.altKey || !(event.metaKey || event.ctrlKey)) return;

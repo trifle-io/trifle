@@ -187,6 +187,20 @@ Hooks.DatabaseExploreChart = {
     };
   },
 
+  _removeResizeHandler() {
+    if (!this.resizeHandler) return;
+    window.removeEventListener('resize', this.resizeHandler);
+    this.resizeHandler = null;
+  },
+
+  _disposeChart() {
+    this._removeResizeHandler();
+    if (this.chart && !this.chart.isDisposed()) {
+      this.chart.dispose();
+    }
+    this.chart = null;
+  },
+
   _applyOption(option) {
     if (!this.chart || this.chart.isDisposed() || !option) return;
     try {
@@ -209,6 +223,8 @@ Hooks.DatabaseExploreChart = {
   },
 
   createChart(data, key, timezone, chartType, colors, selectedKeyColor) {
+    this._disposeChart();
+
     // Initialize ECharts instance
     const themeName = this._resolveTheme();
     const initTheme = themeName === 'dark' ? 'dark' : undefined;
@@ -262,9 +278,7 @@ Hooks.DatabaseExploreChart = {
 
     // Check if chart type changed - if so, recreate the entire chart
     if (this.currentChartType !== chartType) {
-      if (this.chart && !this.chart.isDisposed()) {
-        this.chart.dispose();
-      }
+      this._disposeChart();
       this.chart = this.createChart(data, key, timezone, chartType, colors, selectedKeyColor);
       this.currentChartType = chartType;
       return;
@@ -278,20 +292,14 @@ Hooks.DatabaseExploreChart = {
   },
 
   destroyed() {
-    // Remove resize handler
-    if (this.resizeHandler) {
-      window.removeEventListener('resize', this.resizeHandler);
-    }
+    this._removeResizeHandler();
     if (this._onThemeChanged) {
       window.removeEventListener('trifle:theme-changed', this._onThemeChanged);
       this._onThemeChanged = null;
       this._themeListenerBound = false;
     }
 
-    // Dispose chart
-    if (this.chart && !this.chart.isDisposed()) {
-      this.chart.dispose();
-    }
+    this._disposeChart();
   }
 }
 

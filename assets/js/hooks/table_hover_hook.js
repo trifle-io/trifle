@@ -7,7 +7,12 @@ Hooks.TableHover = {
         .trim();
       this.highlightColor = value || '#f9fafb';
     };
-    this._onThemeChanged = () => this._refreshHighlightColor();
+    this._onThemeChanged = () => {
+      this._refreshHighlightColor();
+      document.querySelectorAll('.table-highlight').forEach((element) => {
+        element.style.backgroundColor = this.highlightColor;
+      });
+    };
     this._refreshHighlightColor();
     window.addEventListener('trifle:theme-changed', this._onThemeChanged);
     this.initHover();

@@ -273,7 +273,7 @@ export const buildDistributionScatterSeries = ({
     const name = distributionSeriesName(seriesItem, idx);
 
     const points = Array.isArray(seriesItem && seriesItem.points) ? seriesItem.points : [];
-    const color = resolveColor(seriesItem, idx);
+    const color = typeof resolveColor === 'function' ? resolveColor(seriesItem, idx) : undefined;
 
     const data = points
       .map((point) => {
@@ -422,7 +422,10 @@ export const buildHeatmapOptions = ({
   const safeVerticalLabels = Array.isArray(verticalLabels) ? verticalLabels : [];
   const safeVisualSettings = visualSettings && typeof visualSettings === 'object' ? visualSettings : {};
   const visualMapMin = Number.isFinite(Number(safeVisualSettings.min)) ? Number(safeVisualSettings.min) : 0;
-  const visualMapMax = Number.isFinite(Number(safeVisualSettings.max)) ? Number(safeVisualSettings.max) : visualMapMin;
+  let visualMapMax = Number.isFinite(Number(safeVisualSettings.max)) ? Number(safeVisualSettings.max) : visualMapMin;
+  if (visualMapMax <= visualMapMin) {
+    visualMapMax = visualMapMin + Math.max(1, Math.abs(visualMapMin) * 0.1);
+  }
   const visualMapColors = Array.isArray(safeVisualSettings.colorScale) && safeVisualSettings.colorScale.length
     ? safeVisualSettings.colorScale
     : undefined;
