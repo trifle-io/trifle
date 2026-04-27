@@ -189,6 +189,8 @@ Hooks.DashboardGrid = {
     this._tsSyncPending = null;
     this._tsSyncRaf = null;
     this._tsSyncApplying = false;
+    this._tsLegendSelections = {};
+    this._tsLegendSyncApplying = false;
     this._tsHoveringId = null;
     this._tsHoveringGroup = null;
     this._tsLastValue = null;
@@ -1042,6 +1044,9 @@ Hooks.DashboardGrid = {
 
       if (target.dataset && target.dataset.viewportKind === 'timeseries' && (prevNear !== state.near || prevVisible !== state.visible)) {
         syncGroupsDirty = true;
+        if (prevVisible && !state.visible) {
+          this._hideTimeseriesTooltipForTarget(target);
+        }
       }
       if ((!prevNear && state.near) || (!prevVisible && state.visible)) {
         this._queueViewportActivation(target);
@@ -1066,6 +1071,9 @@ Hooks.DashboardGrid = {
       target.__dashboardVisible = state.visible;
       if (target.dataset && target.dataset.viewportKind === 'timeseries' && (prevVisible !== state.visible || prevNear !== state.near)) {
         syncGroupsDirty = true;
+        if (prevVisible && !state.visible) {
+          this._hideTimeseriesTooltipForTarget(target);
+        }
       }
       if ((!prevNear && state.near) || (!prevVisible && state.visible)) {
         this._queueViewportActivation(target);
@@ -1092,6 +1100,25 @@ Hooks.DashboardGrid = {
         this._activateViewportTarget(nextKind, nextWidgetId);
       });
     });
+  },
+
+  _hideTimeseriesTooltipForTarget(target) {
+    if (!target || !target.dataset || !this._tsCharts) return;
+    const widgetId = target.dataset.viewportWidgetId;
+    const chart = widgetId != null ? this._tsCharts[String(widgetId)] : null;
+    if (!chart || (chart.isDisposed && chart.isDisposed())) return;
+    chart.__tsForceFullTooltip = false;
+    try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) {}
+    try { chart.dispatchAction({ type: 'downplay', seriesIndex: 0 }); } catch (_) {}
+    if (this._tsHoveringId === String(widgetId)) {
+      const syncGroup = this._tsHoveringGroup;
+      this._tsHoveringId = null;
+      this._tsHoveringGroup = null;
+      this._tsLastValue = null;
+      if (syncGroup) {
+        this._queue_ts_sync({ type: 'hide', sourceId: String(widgetId), syncGroup });
+      }
+    }
   },
 
   _activateViewportTarget(kind, widgetId) {
@@ -1321,13 +1348,24 @@ Hooks.DashboardGrid = {
       activeGroups.set(syncGroup, bucket);
     });
 
-    activeGroups.forEach((charts, syncGroup) => {
-      if (charts.length > 1) {
-        this._registerTsSyncGroup(syncGroup);
-      }
-    });
+    // Hover tooltip sync is handled manually by _apply_ts_sync and is filtered to
+    // visible charts. Do not call echarts.connect(syncGroup) here: ECharts also
+    // propagates legend selection through connected groups, which means hidden
+    // charts miss selection changes while visible charts keep toggling each
+    // other. Legend state is synchronized separately across all charts in a
+    // group, regardless of viewport visibility.
 
     if (this._tsHoveringGroup && (Number.isFinite(this._tsLastValue) || typeof this._tsLastValue === 'string')) {
+      const hoveringChart = this._tsHoveringId && this._tsCharts ? this._tsCharts[String(this._tsHoveringId)] : null;
+      if (!hoveringChart || !this._isChartVisible(hoveringChart)) {
+        const staleGroup = this._tsHoveringGroup;
+        const staleId = this._tsHoveringId;
+        this._tsHoveringId = null;
+        this._tsHoveringGroup = null;
+        this._tsLastValue = null;
+        this._queue_ts_sync({ type: 'hide', sourceId: staleId, syncGroup: staleGroup });
+        return;
+      }
       const hoveringCharts = activeGroups.get(this._tsHoveringGroup) || [];
       if (hoveringCharts.length > 1) {
         this._queue_ts_sync({
