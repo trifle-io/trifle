@@ -1615,7 +1615,9 @@ Hooks.DashboardGrid = {
     if (!hint) return;
     const nested = this._groupGridElement(groupItem);
     const grid = (nested && nested.gridstack) || null;
-    const hasChildren = grid ? this._gridItems(grid).length > 0 : !!(nested && nested.querySelector('.grid-stack-item'));
+    const gridChildren = grid ? this._gridItems(grid).length > 0 : false;
+    const domChildren = !!(nested && nested.querySelector('.grid-stack-item'));
+    const hasChildren = gridChildren || domChildren;
     hint.classList.toggle('hidden', hasChildren);
   },
 
