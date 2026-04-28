@@ -670,7 +670,6 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       this._ensure_ts_pointer_listener();
     };
     const leave = () => this._schedule_ts_hide(id, resolveSyncGroup());
-    const out = () => this._schedule_ts_hide(id, resolveSyncGroup());
     const hover = (event) => {
       if (!event || !Number.isFinite(event.offsetX) || !Number.isFinite(event.offsetY)) return;
       if (chart.__tsTooltipHoveredOnly) {
@@ -721,8 +720,12 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     if (dom && dom.addEventListener) {
       dom.addEventListener('mouseleave', leave);
     }
-    chart.on('mouseout', out);
-    chart.__tsSyncHandlers = { pointer, leave, out, dom, zr, hover, globalout, legend };
+    // Do not bind ECharts `mouseout` here. It fires when the pointer leaves a
+    // series graphic for blank/no-data chart space while the cursor is still
+    // inside the chart, which incorrectly hides axis tooltips after the debounce.
+    // DOM `mouseleave` plus the global pointer boundary check are the real exit
+    // signals for synced tooltip state.
+    chart.__tsSyncHandlers = { pointer, leave, out: null, dom, zr, hover, globalout, legend };
   },
 
   _sync_ts_legend_selection(syncGroup, selected) {
