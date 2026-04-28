@@ -94,6 +94,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-add-group-btn-id={"dashboard-" <> @dashboard.id <> "-add-group"}
         data-colors={ChartColors.json_palette()}
         data-initial-grid={Jason.encode!(@grid_items)}
+        data-export-params={Jason.encode!(@export_params || %{})}
         data-dashboard-id={@dashboard.id}
         data-public-token={@public_token}
       >

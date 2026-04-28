@@ -590,6 +590,7 @@ Hooks.DashboardGrid = {
   },
 
   updated() {
+    this._syncWidgetExportLinksFromDataset();
     this._syncInitialGridFromServer();
     this._enableServerRenderedWidgetPreference();
     this._ensureGroupGrids();
@@ -598,6 +599,50 @@ Hooks.DashboardGrid = {
     this._scheduleServerRenderedWidgetPreferenceClear();
     this._observeLayoutResizeTargets();
     this._scheduleDeferredResize();
+  },
+
+  _syncWidgetExportLinksFromDataset() {
+    const params = parseJsonSafe(this.el && this.el.dataset ? this.el.dataset.exportParams : null) || {};
+    const managedKeys = ['timeframe', 'granularity', 'from', 'to', 'key'];
+    const managedNestedPrefixes = ['segments'];
+
+    const applyParam = (url, key, value) => {
+      if (value == null || value === '') {
+        url.searchParams.delete(key);
+      } else {
+        url.searchParams.set(key, String(value));
+      }
+    };
+
+    this.el.querySelectorAll('a[data-export-link]').forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+
+      try {
+        const url = new URL(href, window.location.origin);
+
+        managedKeys.forEach((key) => url.searchParams.delete(key));
+        Array.from(url.searchParams.keys()).forEach((key) => {
+          if (managedNestedPrefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}[`))) {
+            url.searchParams.delete(key);
+          }
+        });
+
+        Object.entries(params).forEach(([key, value]) => {
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            Object.entries(value).forEach(([nestedKey, nestedValue]) => {
+              applyParam(url, `${key}[${nestedKey}]`, nestedValue);
+            });
+          } else {
+            applyParam(url, key, value);
+          }
+        });
+
+        link.setAttribute('href', url.toString());
+      } catch (_) {
+        // Ignore malformed hrefs; server-rendered href remains as fallback.
+      }
+    });
   },
 
   destroyed() {

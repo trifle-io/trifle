@@ -467,6 +467,34 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert attrs["title"] == "keys.alpha"
   end
 
+  test "exposes current export params on ignored grid root for widget export link refresh", %{
+    assigns: assigns
+  } do
+    export_params = %{
+      "timeframe" => "7d",
+      "granularity" => "6h",
+      "from" => "2024-01-01T00:00",
+      "to" => "2024-01-08T00:00"
+    }
+
+    html =
+      render_component(
+        &WidgetView.grid/1,
+        Map.put(assigns, :export_params, export_params)
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+    [{"div", attrs, _}] = Floki.find(document, "#chat-grid-1")
+
+    payload =
+      attrs
+      |> Map.new()
+      |> Map.fetch!("data-export-params")
+      |> Jason.decode!()
+
+    assert payload == export_params
+  end
+
   test "namespaces visible widget DOM ids by grid", %{assigns: assigns} do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
