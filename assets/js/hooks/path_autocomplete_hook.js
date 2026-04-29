@@ -246,7 +246,10 @@ Hooks.PathAutocomplete = {
       option.setAttribute('role', 'option');
       option.dataset.index = index;
       option.dataset.value = item.value;
-      option.textContent = item.label;
+      // Labels are generated server-side by ExploreCore.format_nested_path with
+      // escaped path components and color span markup. Use HTML here so the
+      // annotated/colorized path suggestions render instead of showing raw tags.
+      option.innerHTML = item.label;
 
       option.addEventListener('mousedown', (event) => {
         event.preventDefault();
