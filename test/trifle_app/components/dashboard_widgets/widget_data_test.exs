@@ -390,6 +390,54 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert color == Helpers.resolve_series_color("warm.4", 0)
   end
 
+  test "kpi oldest function returns first value in the selected series", %{series: series} do
+    items = [
+      %{
+        "id" => "kpi-oldest",
+        "type" => "kpi",
+        "path" => "metrics.count",
+        "function" => "oldest"
+      }
+    ]
+
+    %{kpi_values: [%{id: "kpi-oldest", value: value}]} = WidgetData.datasets(series, items)
+
+    assert value == 5.0
+  end
+
+  test "kpi latest function returns last value in the selected series", %{series: series} do
+    items = [
+      %{
+        "id" => "kpi-latest",
+        "type" => "kpi",
+        "path" => "metrics.count",
+        "function" => "latest"
+      }
+    ]
+
+    %{kpi_values: [%{id: "kpi-latest", value: value}]} = WidgetData.datasets(series, items)
+
+    assert value == 7.0
+  end
+
+  test "kpi dataset includes configured unit", %{series: series} do
+    items = [
+      %{
+        "id" => "kpi-unit",
+        "type" => "kpi",
+        "path" => "metrics.count",
+        "function" => "latest",
+        "unit" => "minutes"
+      }
+    ]
+
+    %{kpi_values: [%{id: "kpi-unit", value: value, unit: unit}]} =
+      WidgetData.datasets(series, items)
+
+    assert value == 7.0
+    assert unit == "minutes"
+  end
+
   test "list wildcard selector with fixed index applies one color across entries", %{
     series: series
   } do

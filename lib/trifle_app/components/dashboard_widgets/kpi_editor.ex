@@ -29,6 +29,7 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
       |> assign(:subtype, subtype)
       |> assign(:function, function)
       |> assign(:size, Map.get(widget, "size", "m"))
+      |> assign(:unit, Map.get(widget, "unit", ""))
       |> assign(:diff_checked, !!Map.get(widget, "diff"))
       |> assign(:timeseries_checked, !!Map.get(widget, "timeseries"))
       |> assign(:goal_progress_checked, !!Map.get(widget, "goal_progress"))
@@ -129,6 +130,19 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
           </div>
         </div>
 
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+            Unit
+          </label>
+          <input
+            type="text"
+            name="kpi_unit"
+            value={@unit}
+            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            placeholder="e.g. minutes, requests, $"
+          />
+        </div>
+
         <%= if @subtype == "goal" do %>
           <div class="sm:col-span-2">
             <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
@@ -215,7 +229,9 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
       {"Mean", "mean", :first},
       {"Sum", "sum", :middle},
       {"Max", "max", :middle},
-      {"Min", "min", :last}
+      {"Min", "min", :middle},
+      {"Oldest", "oldest", :middle},
+      {"Latest", "latest", :last}
     ]
   end
 

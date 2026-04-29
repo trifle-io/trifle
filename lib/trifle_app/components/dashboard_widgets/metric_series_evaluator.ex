@@ -461,6 +461,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
       {"sum", list} -> Enum.sum(list)
       {"min", list} -> Enum.min(list)
       {"max", list} -> Enum.max(list)
+      {"oldest", [first | _rest]} -> first
+      {"latest", list} -> List.last(list)
       {_, list} -> Enum.sum(list) / max(length(list), 1)
     end
   end

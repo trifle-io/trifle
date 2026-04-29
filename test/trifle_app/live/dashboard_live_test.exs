@@ -310,6 +310,7 @@ defmodule TrifleApp.DashboardLiveTest do
       "kpi_subtype" => "number",
       "kpi_function" => "mean",
       "kpi_size" => "m",
+      "kpi_unit" => "minutes",
       "widget_series_kind" => %{"0" => "path", "1" => "path", "2" => "expression"},
       "widget_series_path" => %{
         "0" => "metrics.sum",
@@ -343,6 +344,7 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert widget["type"] == "kpi"
     assert widget["title"] == "Derived KPI"
+    assert widget["unit"] == "minutes"
     refute Map.has_key?(widget, "path")
     refute Map.has_key?(widget, "paths")
     refute Map.has_key?(widget, "path_inputs")

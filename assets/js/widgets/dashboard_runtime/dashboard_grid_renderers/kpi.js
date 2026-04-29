@@ -29,6 +29,13 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
       return n.toFixed(2).replace(/\.00$/, '');
     };
 
+    const formatWithUnit = (value, unit) => {
+      const label = formatNumber(value);
+      const suffix = String(unit == null ? '' : unit).trim();
+      if (!suffix || label === '—') return label;
+      return `${label} <span class="kpi-unit text-sm font-medium text-gray-500 dark:text-slate-400">${escapeHtml(suffix)}</span>`;
+    };
+
     const toNumber = (value) => {
       if (value === null || value === undefined || value === '') return null;
       const n = Number(value);
@@ -119,8 +126,8 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
       if (subtype === 'split') {
         const previous = toNumber(it.previous);
         const current = toNumber(it.current);
-        const prevLabel = formatNumber(it.previous);
-        const currLabel = formatNumber(it.current);
+        const prevLabel = formatWithUnit(it.previous, it.unit);
+        const currLabel = formatWithUnit(it.current, it.unit);
         const showDiff = !!it.show_diff && previous !== null && current !== null && previous !== 0;
         let diffHtml = '';
         if (showDiff) {
@@ -147,8 +154,8 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
           </div>`;
         if (meta) meta.style.display = 'none';
       } else if (subtype === 'goal') {
-        const valueLabel = formatNumber(it.value);
-        const targetLabel = formatNumber(it.target);
+        const valueLabel = formatWithUnit(it.value, it.unit);
+        const targetLabel = formatWithUnit(it.target, it.unit);
         const ratio = toNumber(it.progress_ratio != null ? it.progress_ratio : it.ratio);
         const invertGoal = !!it.invert;
         const showProgress = hasVisual && visualType === 'progress';
@@ -198,7 +205,7 @@ export const createDashboardGridKpiRendererMethods = ({ echarts, withChartOpts }
           }
         }
       } else {
-        const val = formatNumber(it.value);
+        const val = formatWithUnit(it.value, it.unit);
         top.innerHTML = `<div class="${sizeClass} font-bold text-gray-900 dark:text-white">${val}</div>`;
         if (meta) meta.style.display = 'none';
       }

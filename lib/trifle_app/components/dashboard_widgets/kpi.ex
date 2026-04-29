@@ -36,8 +36,14 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
 
   def dataset(series_struct, item) do
     id = to_string(item["id"])
-    func = String.downcase(to_string(item["function"] || "mean"))
+
+    func =
+      item
+      |> Map.get("function", "mean")
+      |> normalize_function()
+
     size = to_string(item["size"] || "m")
+    unit = normalize_unit(Map.get(item, "unit", ""))
     subtype = WidgetHelpers.normalize_kpi_subtype(item["subtype"], item)
     slices = if subtype == "split", do: 2, else: 1
 
@@ -62,8 +68,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
       visual_color =
         visible_row
         |> case do
-          nil -> WidgetHelpers.resolve_series_color(WidgetHelpers.default_series_color_selector(), 0)
-          row -> WidgetHelpers.resolve_series_color(MetricSeries.row_color_selector(row), 0)
+          nil ->
+            WidgetHelpers.resolve_series_color(WidgetHelpers.default_series_color_selector(), 0)
+
+          row ->
+            WidgetHelpers.resolve_series_color(MetricSeries.row_color_selector(row), 0)
         end
 
       timeline_data = timeline_samples_to_points(timeline_entry)
@@ -82,6 +91,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
               id: id,
               subtype: "split",
               size: size,
+              unit: unit,
               current: curr,
               previous: prev,
               show_diff: show_diff,
@@ -126,6 +136,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
               id: id,
               subtype: "goal",
               size: size,
+              unit: unit,
               value: value,
               target: target,
               progress_enabled: progress_enabled,
@@ -164,6 +175,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
               id: id,
               subtype: "number",
               size: size,
+              unit: unit,
               value: value,
               has_visual: has_visual,
               visual_type: if(has_visual, do: "sparkline", else: nil)
@@ -183,6 +195,21 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
           {value_map, visual_map}
       end
     end
+  end
+
+  defp normalize_function(value) do
+    case value |> to_string() |> String.downcase() do
+      "avg" -> "mean"
+      "average" -> "mean"
+      value when value in ["mean", "sum", "max", "min", "oldest", "latest"] -> value
+      _ -> "mean"
+    end
+  end
+
+  defp normalize_unit(value) do
+    value
+    |> to_string()
+    |> String.trim()
   end
 
   defp scalar_samples_to_values(%{samples: samples}) when is_map(samples) do
@@ -205,9 +232,14 @@ defmodule TrifleApp.Components.DashboardWidgets.Kpi do
     |> Enum.map(fn {at, value} ->
       timestamp =
         case at do
-          %DateTime{} = dt -> DateTime.to_unix(dt, :millisecond)
-          %NaiveDateTime{} = dt -> dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:millisecond)
-          _ -> 0
+          %DateTime{} = dt ->
+            DateTime.to_unix(dt, :millisecond)
+
+          %NaiveDateTime{} = dt ->
+            dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:millisecond)
+
+          _ ->
+            0
         end
 
       [timestamp, to_number(value) || 0.0]

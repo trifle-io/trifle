@@ -3225,9 +3225,15 @@ defmodule TrifleApp.DashboardLive do
           |> drop_series_display_options()
           |> Map.put(
             "function",
-            Map.get(params, "kpi_function", Map.get(widget, "function", "mean"))
+            params
+            |> Map.get("kpi_function", Map.get(widget, "function", "mean"))
+            |> normalize_kpi_function()
           )
           |> Map.put("size", Map.get(params, "kpi_size", Map.get(widget, "size", "m")))
+          |> Map.put(
+            "unit",
+            normalize_kpi_unit(Map.get(params, "kpi_unit", Map.get(widget, "unit", "")))
+          )
           |> Map.put("subtype", subtype)
 
         case subtype do
@@ -3708,8 +3714,9 @@ defmodule TrifleApp.DashboardLive do
           base
           |> put_metric_series(params, item)
           |> drop_series_display_options()
-          |> Map.put("function", Map.get(params, "kpi_function", "mean"))
+          |> Map.put("function", normalize_kpi_function(Map.get(params, "kpi_function", "mean")))
           |> Map.put("size", Map.get(params, "kpi_size", "m"))
+          |> Map.put("unit", normalize_kpi_unit(Map.get(params, "kpi_unit", "")))
           |> Map.put("subtype", subtype)
 
         case subtype do
@@ -4381,9 +4388,15 @@ defmodule TrifleApp.DashboardLive do
 
   defp normalize_kpi_function(value) do
     case value |> to_string() |> String.downcase() do
-      v when v in ["sum", "max", "min", "mean"] -> v
+      v when v in ["sum", "max", "min", "mean", "oldest", "latest"] -> v
       _ -> "mean"
     end
+  end
+
+  defp normalize_kpi_unit(value) do
+    value
+    |> to_string()
+    |> String.trim()
   end
 
   defp normalize_kpi_size(value) do
