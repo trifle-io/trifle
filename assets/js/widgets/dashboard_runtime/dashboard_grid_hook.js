@@ -1315,6 +1315,23 @@ Hooks.DashboardGrid = {
     }
   },
 
+  _gridItemNumber(item, attr, fallback = 0) {
+    const attrValue = item && item.getAttribute ? item.getAttribute(attr) : null;
+    const nodeKey = attr.replace(/^gs-/, '');
+    const nodeValue = item && item.gridstackNode ? item.gridstackNode[nodeKey] : null;
+    const value = parseInt(attrValue != null ? attrValue : nodeValue != null ? nodeValue : fallback, 10);
+    return Number.isFinite(value) ? value : fallback;
+  },
+
+  _orderedGridItems(grid) {
+    return this._gridItems(grid).slice().sort((a, b) => {
+      const ay = this._gridItemNumber(a, 'gs-y', 0);
+      const by = this._gridItemNumber(b, 'gs-y', 0);
+      if (ay !== by) return ay - by;
+      return this._gridItemNumber(a, 'gs-x', 0) - this._gridItemNumber(b, 'gs-x', 0);
+    });
+  },
+
   _isGroupItem(el) {
     if (!el || !el.getAttribute) return false;
     return this._dragItemKind(el) === 'group';
@@ -1454,8 +1471,11 @@ Hooks.DashboardGrid = {
     return Math.max(1, value || 1);
   },
 
-  _groupRowCount(groupItem) {
+  _groupBaseRowCount(groupItem) {
+    const storedMultiColumnH =
+      this._isOneCol && groupItem && groupItem.dataset ? groupItem.dataset.multiColumnH : null;
     const value = parseInt(
+      storedMultiColumnH ||
       (groupItem && groupItem.getAttribute && groupItem.getAttribute('gs-h')) ||
       (groupItem && groupItem.gridstackNode && groupItem.gridstackNode.h) ||
       '1',
@@ -1464,8 +1484,44 @@ Hooks.DashboardGrid = {
     return Math.max(1, value || 1);
   },
 
-  _groupGridMetrics(groupItem) {
-    const rows = this._groupRowCount(groupItem);
+  _groupStackedRowCount(groupItem, grid = null) {
+    const groupId = groupItem && groupItem.getAttribute ? groupItem.getAttribute('gs-id') : null;
+    const nestedGrid = grid || (groupId && this._childGrids[groupId]) || null;
+    const items = this._orderedGridItems(nestedGrid);
+    if (!items.length) return 1;
+
+    return Math.max(
+      1,
+      items.reduce((total, item) => {
+        const h = parseInt(
+          (item && item.getAttribute && item.getAttribute('gs-h')) ||
+          (item && item.gridstackNode && item.gridstackNode.h) ||
+          '1',
+          10
+        );
+        return total + Math.max(1, h || 1);
+      }, 0)
+    );
+  },
+
+  _groupRowCount(groupItem, grid = null) {
+    if (this._isOneCol) {
+      return Math.max(this._groupBaseRowCount(groupItem), this._groupStackedRowCount(groupItem, grid));
+    }
+    return this._groupBaseRowCount(groupItem);
+  },
+
+  _groupChromeRows(groupItem) {
+    const shell = this._groupGridShell(groupItem);
+    const content = groupItem && groupItem.querySelector ? groupItem.querySelector('.grid-stack-item-content') : null;
+    const shellHeight = shell && shell.clientHeight ? shell.clientHeight : 0;
+    const contentHeight = content && content.clientHeight ? content.clientHeight : 0;
+    const chromeHeight = Math.max(0, contentHeight - shellHeight);
+    return Math.max(0, Math.ceil(chromeHeight / Math.max(1, this._cellHeight || this._nestedCellHeight || 80)));
+  },
+
+  _groupGridMetrics(groupItem, grid = null) {
+    const rows = this._groupRowCount(groupItem, grid);
     const cols = this._groupColumnCount(groupItem);
     const shell = this._groupGridShell(groupItem);
     const availableHeight = Math.max(
@@ -1474,8 +1530,10 @@ Hooks.DashboardGrid = {
     );
     // GridStack's cellHeight defines the full row track height. Margins are applied
     // inside item content, not added between tracks, so subtracting row margins here
-    // creates increasing dead space at the bottom of taller groups.
-    const cellHeight = Math.max(24, availableHeight / rows);
+    // creates increasing dead space at the bottom of taller groups. In single-column
+    // mode, keep the normal nested cell height and expand the group instead of
+    // squeezing stacked children into the original group height.
+    const cellHeight = this._isOneCol ? this._nestedCellHeight : Math.max(24, availableHeight / rows);
     const height = rows * cellHeight;
 
     return { cols, rows, cellHeight, height };
@@ -1551,6 +1609,98 @@ Hooks.DashboardGrid = {
     }
   },
 
+  _updateGridItemGeometry(grid, item, target) {
+    if (!grid || !item || !target) return;
+    try {
+      grid.update(item, target);
+    } catch (_) {}
+    Object.entries(target).forEach(([key, value]) => {
+      item.setAttribute(`gs-${key}`, String(value));
+      if (item.gridstackNode) {
+        item.gridstackNode[key] = value;
+      }
+    });
+  },
+
+  _syncNestedResponsiveLayout(nestedGrid) {
+    if (!nestedGrid) return;
+    const items = this._orderedGridItems(nestedGrid);
+
+    if (this._isOneCol) {
+      let y = 0;
+      items.forEach((item) => {
+        if (!item || !item.dataset) return;
+        if (!item.dataset.multiColumnX) {
+          item.dataset.multiColumnX = String(this._gridItemNumber(item, 'gs-x', 0));
+          item.dataset.multiColumnY = String(this._gridItemNumber(item, 'gs-y', 0));
+          item.dataset.multiColumnW = String(this._gridItemNumber(item, 'gs-w', 1));
+        }
+        const h = Math.max(1, this._gridItemNumber(item, 'gs-h', 1));
+        const target = { x: 0, y, w: 1, h };
+        this._updateGridItemGeometry(nestedGrid, item, target);
+        y += h;
+      });
+      return;
+    }
+
+    items.forEach((item) => {
+      if (!item || !item.dataset || !item.dataset.multiColumnX) return;
+      const target = {
+        x: parseInt(item.dataset.multiColumnX || '0', 10),
+        y: parseInt(item.dataset.multiColumnY || '0', 10),
+        w: parseInt(item.dataset.multiColumnW || '1', 10),
+        h: Math.max(1, this._gridItemNumber(item, 'gs-h', 1))
+      };
+      delete item.dataset.multiColumnX;
+      delete item.dataset.multiColumnY;
+      delete item.dataset.multiColumnW;
+      this._updateGridItemGeometry(nestedGrid, item, target);
+    });
+  },
+
+  _updateRootGridItemHeight(rootGrid, groupItem, targetH) {
+    if (!rootGrid || !groupItem) return;
+    try {
+      rootGrid.update(groupItem, { h: targetH });
+    } catch (_) {}
+    groupItem.setAttribute('gs-h', String(targetH));
+    if (groupItem.gridstackNode) {
+      groupItem.gridstackNode.h = targetH;
+    }
+    if (typeof rootGrid._updateContainerHeight === 'function') {
+      try { rootGrid._updateContainerHeight(); } catch (_) {}
+    }
+  },
+
+  _syncResponsiveGroupItemHeight(groupItem, metrics) {
+    if (!groupItem || !metrics) return;
+    const rootGrid = (groupItem.parentElement && groupItem.parentElement.gridstack) || this.grid;
+    const node = groupItem.gridstackNode;
+    if (!rootGrid || !node) return;
+
+    if (this._isOneCol) {
+      if (!groupItem.dataset.multiColumnH) {
+        groupItem.dataset.multiColumnH = String(
+          (groupItem.getAttribute && groupItem.getAttribute('gs-h')) || node.h || 1
+        );
+      }
+      const targetH = metrics.rows + this._groupChromeRows(groupItem);
+      if (parseInt(groupItem.getAttribute('gs-h') || node.h || 1, 10) === targetH) return;
+      try {
+        this._updateRootGridItemHeight(rootGrid, groupItem, targetH);
+      } catch (_) {}
+      return;
+    }
+
+    const storedH = parseInt(groupItem.dataset.multiColumnH || '', 10);
+    if (!Number.isFinite(storedH) || storedH <= 0) return;
+    delete groupItem.dataset.multiColumnH;
+    if (parseInt(groupItem.getAttribute('gs-h') || node.h || 1, 10) === storedH) return;
+    try {
+      this._updateRootGridItemHeight(rootGrid, groupItem, storedH);
+    } catch (_) {}
+  },
+
   _syncGroupGridGeometry(groupItem, grid = null) {
     const groupId = groupItem && groupItem.getAttribute ? groupItem.getAttribute('gs-id') : null;
     const nestedGrid = grid || (groupId && this._childGrids[groupId]) || null;
@@ -1558,7 +1708,9 @@ Hooks.DashboardGrid = {
     if (!nestedGrid || !nestedEl) return;
     if (groupId && this._activeGroupResizeId === groupId) return;
 
-    const metrics = this._groupGridMetrics(groupItem);
+    this._syncNestedResponsiveLayout(nestedGrid);
+    const metrics = this._groupGridMetrics(groupItem, nestedGrid);
+    this._syncResponsiveGroupItemHeight(groupItem, metrics);
 
     if (typeof nestedGrid.column === 'function' && nestedGrid.getColumn && nestedGrid.getColumn() !== metrics.cols) {
       try { nestedGrid.column(metrics.cols, 'none'); } catch (_) {}
