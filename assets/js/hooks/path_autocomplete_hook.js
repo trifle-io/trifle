@@ -22,6 +22,26 @@ const escapePathPreviewHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const decodeHtmlEntities = (value) => {
+  if (typeof document === 'undefined') return String(value ?? '');
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = String(value ?? '');
+  return textarea.value;
+};
+
+const suggestionLabelHtml = (item) => {
+  const value = String(item?.value ?? '');
+  const label = typeof item?.label === 'string' ? item.label : value;
+
+  if (label === value) return escapePathPreviewHtml(value);
+
+  // Phoenix safely escapes JSON inside data-paths attributes. Most browsers
+  // expose decoded attributes through dataset, but decode once here too so a
+  // label that arrives as &lt;span ...&gt; still renders as the intended annotated
+  // markup instead of literal tags.
+  return decodeHtmlEntities(label);
+};
+
 const pathPreviewColorForIndex = (index) => {
   const safeIndex = Number.isFinite(index) && index >= 0 ? index : 0;
   return PATH_PREVIEW_COLORS[safeIndex % PATH_PREVIEW_COLORS.length] || PATH_PREVIEW_COLORS[0];
@@ -249,7 +269,7 @@ Hooks.PathAutocomplete = {
       // Labels are generated server-side by ExploreCore.format_nested_path with
       // escaped path components and color span markup. Use HTML here so the
       // annotated/colorized path suggestions render instead of showing raw tags.
-      option.innerHTML = item.label;
+      option.innerHTML = suggestionLabelHtml(item);
 
       option.addEventListener('mousedown', (event) => {
         event.preventDefault();

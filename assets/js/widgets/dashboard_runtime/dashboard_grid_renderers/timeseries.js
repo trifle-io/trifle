@@ -792,14 +792,11 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         if (type === 'show') {
           try {
             chart.__tsForceFullTooltip = chart.__tsTooltipHoveredOnly && chart.__tsWidgetId !== String(sourceId || '');
-            chart.dispatchAction({ type: 'updateAxisPointer', xAxisIndex: 0, value });
             const idx = this._nearest_ts_index(chart, value);
-            if (idx != null) {
-              chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx });
-              chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: idx });
-            } else {
-              chart.dispatchAction({ type: 'showTip', xAxisIndex: 0, value });
-            }
+            if (idx == null || !this._ts_index_has_value(chart, idx)) return;
+            chart.dispatchAction({ type: 'updateAxisPointer', xAxisIndex: 0, value });
+            chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx });
+            chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: idx });
           } catch (_) {}
         } else if (type === 'hide') {
           chart.__tsForceFullTooltip = false;
@@ -866,6 +863,26 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return true;
     }
     return false;
+  },
+
+  _ts_index_has_value(chart, index) {
+    if (!Number.isInteger(index) || index < 0) return false;
+    const id = Object.entries(this._tsCharts || {}).find(([, c]) => c === chart)?.[0];
+    if (!id) return false;
+    const seriesData = (this._tsSeriesData && this._tsSeriesData[id]) || [];
+    if (!Array.isArray(seriesData) || seriesData.length === 0) return false;
+    return seriesData.some((series) => {
+      if (!Array.isArray(series)) return false;
+      const point = series[index];
+      const raw = Array.isArray(point)
+        ? point[1]
+        : (point && typeof point === 'object' && Array.isArray(point.value)
+          ? point.value[1]
+          : (point && typeof point === 'object' && 'value' in point ? point.value : point));
+      if (raw == null || raw === '') return false;
+      const numeric = Number(raw);
+      return Number.isFinite(numeric);
+    });
   },
 
   _nearest_ts_index(chart, value) {
