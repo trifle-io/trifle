@@ -293,6 +293,7 @@ Hooks.DashboardGrid = {
         try {
           // Avoid persisting layout while switching responsive columns
           this._suppressSave = true;
+          this._clearTimeseriesHoverState();
           if (typeof this.grid.column === 'function') {
             this.grid.column(oneCol ? 1 : this.cols);
           }
@@ -1147,6 +1148,27 @@ Hooks.DashboardGrid = {
     });
   },
 
+  _clearTimeseriesHoverState() {
+    this._tsHoveringId = null;
+    this._tsHoveringGroup = null;
+    this._tsLastValue = null;
+    if (this._tsHideTimer) {
+      clearTimeout(this._tsHideTimer);
+      this._tsHideTimer = null;
+    }
+    if (this._tsSyncRaf) {
+      cancelAnimationFrame(this._tsSyncRaf);
+      this._tsSyncRaf = null;
+    }
+    this._tsSyncPending = null;
+    Object.values(this._tsCharts || {}).forEach((chart) => {
+      if (!chart || (chart.isDisposed && chart.isDisposed())) return;
+      chart.__tsForceFullTooltip = false;
+      try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) {}
+      try { chart.dispatchAction({ type: 'downplay', seriesIndex: 0 }); } catch (_) {}
+    });
+  },
+
   _hideTimeseriesTooltipForTarget(target) {
     if (!target || !target.dataset || !this._tsCharts) return;
     const widgetId = target.dataset.viewportWidgetId;
@@ -1626,35 +1648,52 @@ Hooks.DashboardGrid = {
     if (!nestedGrid) return;
     const items = this._orderedGridItems(nestedGrid);
 
-    if (this._isOneCol) {
-      let y = 0;
-      items.forEach((item) => {
-        if (!item || !item.dataset) return;
-        if (!item.dataset.multiColumnX) {
-          item.dataset.multiColumnX = String(this._gridItemNumber(item, 'gs-x', 0));
-          item.dataset.multiColumnY = String(this._gridItemNumber(item, 'gs-y', 0));
-          item.dataset.multiColumnW = String(this._gridItemNumber(item, 'gs-w', 1));
+    const withBatch = (callback) => {
+      if (typeof nestedGrid.batchUpdate === 'function') {
+        try { nestedGrid.batchUpdate(); } catch (_) {}
+      }
+      try {
+        callback();
+      } finally {
+        if (typeof nestedGrid.commit === 'function') {
+          try { nestedGrid.commit(); } catch (_) {}
         }
-        const h = Math.max(1, this._gridItemNumber(item, 'gs-h', 1));
-        const target = { x: 0, y, w: 1, h };
-        this._updateGridItemGeometry(nestedGrid, item, target);
-        y += h;
+      }
+    };
+
+    if (this._isOneCol) {
+      withBatch(() => {
+        let y = 0;
+        items.forEach((item) => {
+          if (!item || !item.dataset) return;
+          if (!item.dataset.multiColumnX) {
+            item.dataset.multiColumnX = String(this._gridItemNumber(item, 'gs-x', 0));
+            item.dataset.multiColumnY = String(this._gridItemNumber(item, 'gs-y', 0));
+            item.dataset.multiColumnW = String(this._gridItemNumber(item, 'gs-w', 1));
+          }
+          const h = Math.max(1, this._gridItemNumber(item, 'gs-h', 1));
+          const target = { x: 0, y, w: 1, h };
+          this._updateGridItemGeometry(nestedGrid, item, target);
+          y += h;
+        });
       });
       return;
     }
 
-    items.forEach((item) => {
-      if (!item || !item.dataset || !item.dataset.multiColumnX) return;
-      const target = {
-        x: parseInt(item.dataset.multiColumnX || '0', 10),
-        y: parseInt(item.dataset.multiColumnY || '0', 10),
-        w: parseInt(item.dataset.multiColumnW || '1', 10),
-        h: Math.max(1, this._gridItemNumber(item, 'gs-h', 1))
-      };
-      delete item.dataset.multiColumnX;
-      delete item.dataset.multiColumnY;
-      delete item.dataset.multiColumnW;
-      this._updateGridItemGeometry(nestedGrid, item, target);
+    withBatch(() => {
+      items.forEach((item) => {
+        if (!item || !item.dataset || !item.dataset.multiColumnX) return;
+        const target = {
+          x: parseInt(item.dataset.multiColumnX || '0', 10),
+          y: parseInt(item.dataset.multiColumnY || '0', 10),
+          w: parseInt(item.dataset.multiColumnW || '1', 10),
+          h: Math.max(1, this._gridItemNumber(item, 'gs-h', 1))
+        };
+        delete item.dataset.multiColumnX;
+        delete item.dataset.multiColumnY;
+        delete item.dataset.multiColumnW;
+        this._updateGridItemGeometry(nestedGrid, item, target);
+      });
     });
   },
 
@@ -1707,6 +1746,11 @@ Hooks.DashboardGrid = {
     const nestedEl = this._groupGridElement(groupItem);
     if (!nestedGrid || !nestedEl) return;
     if (groupId && this._activeGroupResizeId === groupId) return;
+
+    const desiredCols = this._groupColumnCount(groupItem);
+    if (typeof nestedGrid.column === 'function' && nestedGrid.getColumn && nestedGrid.getColumn() !== desiredCols) {
+      try { nestedGrid.column(desiredCols, 'none'); } catch (_) {}
+    }
 
     this._syncNestedResponsiveLayout(nestedGrid);
     const metrics = this._groupGridMetrics(groupItem, nestedGrid);

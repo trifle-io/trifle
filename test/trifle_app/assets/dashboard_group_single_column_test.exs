@@ -45,4 +45,32 @@ defmodule TrifleApp.Assets.DashboardGroupSingleColumnTest do
     assert source =~ "y += h"
     assert source =~ "this._updateGridItemGeometry(nestedGrid, item, target)"
   end
+
+  test "restores nested widgets after returning to multi-column before applying saved x and width" do
+    source = File.read!(@source_path)
+
+    assert source =~ "const desiredCols = this._groupColumnCount(groupItem);"
+    assert source =~ "nestedGrid.column(desiredCols, 'none')"
+
+    [_before, sync_group_geometry] =
+      String.split(source, "_syncGroupGridGeometry(groupItem, grid = null)", parts: 2)
+
+    column_position =
+      :binary.match(sync_group_geometry, "nestedGrid.column(desiredCols, 'none')") |> elem(0)
+
+    restore_position =
+      :binary.match(sync_group_geometry, "this._syncNestedResponsiveLayout(nestedGrid)")
+      |> elem(0)
+
+    assert column_position < restore_position
+  end
+
+  test "responsive transitions clear stale timeseries hover overlays before charts are resized" do
+    source = File.read!(@source_path)
+
+    assert source =~ "_clearTimeseriesHoverState()"
+    assert source =~ "chart.dispatchAction({ type: 'hideTip' })"
+    assert source =~ "chart.dispatchAction({ type: 'downplay', seriesIndex: 0 })"
+    assert source =~ "this._clearTimeseriesHoverState();"
+  end
 end
