@@ -21,12 +21,26 @@ defmodule TrifleApp.CommandPalette do
 
   @recent_limit 5
   @triggered_limit 5
+  @palette_resource_limit 300
 
   def items(%User{} = user, %OrganizationMembership{} = membership) do
+    recent_dashboard_visits = HomeData.recent_dashboard_visits(user, membership, @recent_limit)
+
+    dashboards =
+      Organizations.list_all_dashboards_for_membership(user, membership,
+        limit: @palette_resource_limit
+      )
+
+    dashboard_group_names =
+      Organizations.dashboard_group_name_lookup_for_membership(
+        membership,
+        dashboards ++ dashboards_from_visits(recent_dashboard_visits)
+      )
+
     action_items() ++
-      recent_dashboard_items(user, membership) ++
+      recent_dashboard_items(recent_dashboard_visits, dashboard_group_names) ++
       triggered_monitor_items(user, membership) ++
-      dashboard_items(user, membership) ++
+      dashboard_items(dashboards, dashboard_group_names) ++
       monitor_items(user, membership) ++
       database_items(membership) ++
       project_items(membership)
@@ -35,7 +49,7 @@ defmodule TrifleApp.CommandPalette do
   def items(_, _), do: []
 
   defp action_items do
-    [
+    base_items = [
       item(
         id: "action:home",
         title: "Home",
@@ -87,18 +101,28 @@ defmodule TrifleApp.CommandPalette do
         to: ~p"/explore",
         default_section: "Actions",
         search_section: "Actions"
-      ),
-      Trifle.Config.projects_enabled?() &&
-        item(
-          id: "action:projects",
-          title: "Projects",
-          subtitle: "Browse metric projects",
-          token: "P",
-          icon: "sidebar-projects",
-          to: ~p"/projects",
-          default_section: "Actions",
-          search_section: "Actions"
-        ),
+      )
+    ]
+
+    project_items =
+      if Trifle.Config.projects_enabled?() do
+        [
+          item(
+            id: "action:projects",
+            title: "Projects",
+            subtitle: "Browse metric projects",
+            token: "P",
+            icon: "sidebar-projects",
+            to: ~p"/projects",
+            default_section: "Actions",
+            search_section: "Actions"
+          )
+        ]
+      else
+        []
+      end
+
+    database_item =
       item(
         id: "action:databases",
         title: "Databases",
@@ -109,19 +133,24 @@ defmodule TrifleApp.CommandPalette do
         default_section: "Actions",
         search_section: "Actions"
       )
-    ]
-    |> Enum.filter(& &1)
+
+    base_items ++ project_items ++ [database_item]
   end
 
-  defp recent_dashboard_items(%User{} = user, %OrganizationMembership{} = membership) do
-    user
-    |> HomeData.recent_dashboard_visits(membership, @recent_limit)
-    |> Enum.map(fn visit ->
+  defp dashboards_from_visits(visits) do
+    Enum.flat_map(visits, fn
+      %{dashboard: %Dashboard{} = dashboard} -> [dashboard]
+      _ -> []
+    end)
+  end
+
+  defp recent_dashboard_items(visits, dashboard_group_names) do
+    Enum.map(visits, fn visit ->
       dashboard = visit.dashboard
 
       item(
         id: "recent:dashboard:#{dashboard.id}",
-        title: dashboard_title(dashboard),
+        title: dashboard_title(dashboard, dashboard_group_names),
         subtitle: "Recent dashboard",
         token: "D",
         icon: "sidebar-dashboards",
@@ -153,13 +182,11 @@ defmodule TrifleApp.CommandPalette do
     end)
   end
 
-  defp dashboard_items(%User{} = user, %OrganizationMembership{} = membership) do
-    user
-    |> Organizations.list_all_dashboards_for_membership(membership)
-    |> Enum.map(fn dashboard ->
+  defp dashboard_items(dashboards, dashboard_group_names) do
+    Enum.map(dashboards, fn dashboard ->
       item(
         id: "dashboard:#{dashboard.id}",
-        title: dashboard_title(dashboard),
+        title: dashboard_title(dashboard, dashboard_group_names),
         subtitle: "Dashboard",
         token: "D",
         icon: "sidebar-dashboards",
@@ -173,7 +200,7 @@ defmodule TrifleApp.CommandPalette do
 
   defp monitor_items(%User{} = user, %OrganizationMembership{} = membership) do
     user
-    |> Monitors.list_monitors_for_membership(membership)
+    |> Monitors.list_monitors_for_membership(membership, limit: @palette_resource_limit)
     |> Enum.map(fn monitor ->
       item(
         id: "monitor:#{monitor.id}",
@@ -251,10 +278,10 @@ defmodule TrifleApp.CommandPalette do
     }
   end
 
-  defp dashboard_title(%Dashboard{name: name, group_id: group_id}) do
+  defp dashboard_title(%Dashboard{name: name, group_id: group_id}, dashboard_group_names) do
     groups =
       group_id
-      |> dashboard_group_names()
+      |> dashboard_group_names(dashboard_group_names)
       |> Enum.reject(&blank?/1)
 
     name = present_text(name, "Untitled dashboard")
@@ -265,15 +292,10 @@ defmodule TrifleApp.CommandPalette do
     end
   end
 
-  defp dashboard_group_names(nil), do: []
+  defp dashboard_group_names(nil, _dashboard_group_names), do: []
 
-  defp dashboard_group_names(group_id) do
-    group_id
-    |> Organizations.get_dashboard_group_chain()
-    |> Enum.map(& &1.name)
-  rescue
-    Ecto.NoResultsError -> []
-  end
+  defp dashboard_group_names(group_id, dashboard_group_names),
+    do: Map.get(dashboard_group_names, group_id, [])
 
   defp monitor_title(%Monitor{name: name}), do: present_text(name, "Untitled monitor")
   defp database_title(%Database{display_name: name}), do: present_text(name, "Untitled database")

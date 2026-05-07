@@ -2901,10 +2901,45 @@ defmodule Trifle.Organizations do
 
   def list_all_dashboards_for_membership(
         %User{} = user,
-        %OrganizationMembership{} = membership
+        %OrganizationMembership{} = membership,
+        opts \\ []
       ) do
     dashboards_base_query(user, membership)
+    |> maybe_limit_query(Keyword.get(opts, :limit))
     |> Repo.all()
+  end
+
+  def dashboard_group_name_lookup_for_membership(
+        %OrganizationMembership{} = membership,
+        dashboards
+      )
+      when is_list(dashboards) do
+    group_ids =
+      dashboards
+      |> Enum.flat_map(fn
+        %Dashboard{group_id: group_id} when is_binary(group_id) -> [group_id]
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    if group_ids == [] do
+      %{}
+    else
+      groups_by_id =
+        DashboardGroup
+        |> where([g], g.organization_id == ^membership.organization_id)
+        |> Repo.all()
+        |> Map.new(&{&1.id, &1})
+
+      Map.new(group_ids, fn group_id ->
+        names =
+          group_id
+          |> dashboard_group_chain_from_lookup(groups_by_id)
+          |> Enum.map(& &1.name)
+
+        {group_id, names}
+      end)
+    end
   end
 
   def list_recent_dashboard_visits_for_membership(user, membership, limit \\ 5)
@@ -2976,6 +3011,38 @@ defmodule Trifle.Organizations do
           {:ok, _visit} -> :ok
           {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
         end
+    end
+  end
+
+  defp maybe_limit_query(query, value) when is_integer(value) and value > 0 do
+    limit(query, ^value)
+  end
+
+  defp maybe_limit_query(query, _value), do: query
+
+  defp dashboard_group_chain_from_lookup(group_id, groups_by_id) do
+    do_dashboard_group_chain_from_lookup(group_id, groups_by_id, MapSet.new())
+  end
+
+  defp do_dashboard_group_chain_from_lookup(nil, _groups_by_id, _visited), do: []
+
+  defp do_dashboard_group_chain_from_lookup(group_id, groups_by_id, visited) do
+    cond do
+      MapSet.member?(visited, group_id) ->
+        []
+
+      group = Map.get(groups_by_id, group_id) ->
+        [
+          group
+          | do_dashboard_group_chain_from_lookup(
+              group.parent_group_id,
+              groups_by_id,
+              MapSet.put(visited, group_id)
+            )
+        ]
+
+      true ->
+        []
     end
   end
 

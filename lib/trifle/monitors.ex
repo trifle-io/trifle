@@ -90,6 +90,7 @@ defmodule Trifle.Monitors do
         opts \\ []
       ) do
     scoped_monitors_query(membership)
+    |> maybe_limit_query(Keyword.get(opts, :limit))
     |> preload(^monitor_preloads(opts))
     |> Repo.all()
   end
@@ -1089,6 +1090,12 @@ defmodule Trifle.Monitors do
     [:alerts, :user | List.wrap(base)]
     |> Enum.uniq()
   end
+
+  defp maybe_limit_query(query, value) when is_integer(value) and value > 0 do
+    limit(query, ^value)
+  end
+
+  defp maybe_limit_query(query, _value), do: query
 
   defp cast_enum(attrs, key, valid) do
     case Map.fetch(attrs, key) do
