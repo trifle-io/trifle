@@ -1,7 +1,7 @@
 <div
   class="min-h-screen bg-slate-100 dark:bg-slate-900"
   x-data="trifleSidebar({ storageKey: 'trifle:client-sidebar' })"
-  x-on:keydown.escape.window="if (mobileOpen) { closeMobile() }"
+  x-on:keydown.escape.window="if (commandPaletteOpen) { closeCommandPalette() } else if (mobileOpen) { closeMobile() }"
 >
   <%= if @current_user do %>
     <% secondary_items = secondary_nav_items(@current_user, @current_membership) %>
@@ -47,7 +47,7 @@
               x-bind:class="compact ? 'flex-col items-center gap-3' : 'items-center gap-3'"
             >
               <div
-                class="flex shrink-0 items-center justify-center bg-[linear-gradient(160deg,#0f172a,#115e59)] text-teal-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_34px_-22px_rgba(13,148,136,0.55)] dark:bg-[linear-gradient(160deg,rgba(45,212,191,0.28),rgba(15,23,42,0.95))] dark:text-teal-100"
+                class="flex shrink-0 items-center justify-center border border-slate-200/80 bg-white/90 text-teal-700 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-white/[0.06] dark:text-teal-200 dark:shadow-none"
                 data-fast-tooltip
                 x-bind:data-tooltip={TrifleWeb.SidebarHelpers.compact_tooltip_expr("Trifle")}
                 x-bind:data-tooltip-placement={
@@ -113,12 +113,14 @@
           <div class="relative flex min-h-0 flex-1 flex-col px-3 py-4">
             <div class="min-h-0 flex-1 overflow-y-auto pr-1">
               <div x-bind:class="compact ? 'space-y-5' : 'space-y-4'">
+                <.command_palette_trigger />
+
                 <div
                   x-bind:class="compact ? 'space-y-2' : 'rounded-2xl border border-white/80 bg-white/72 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_35px_-34px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'"
                   x-on:click.capture="if ($event.target.closest('a')) closeMobile()"
                 >
                   <p
-                    class="px-3 pb-2 pt-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500"
+                    class="px-3 pb-2 pt-1 text-[0.72rem] font-semibold tracking-[0.08em] text-slate-500 dark:text-slate-400"
                     x-cloak
                     x-show="!compact"
                   >
@@ -135,7 +137,7 @@
                     x-on:click.capture="if ($event.target.closest('a')) closeMobile()"
                   >
                     <p
-                      class="px-3 pb-2 pt-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500"
+                      class="px-3 pb-2 pt-1 text-[0.72rem] font-semibold tracking-[0.08em] text-slate-500 dark:text-slate-400"
                       x-cloak
                       x-show="!compact"
                     >
@@ -261,6 +263,8 @@
           </div>
         </div>
       </aside>
+
+      <.command_palette_modal items={assigns[:command_palette_items] || []} />
 
       <div
         class="flex min-h-screen flex-col bg-slate-100 dark:bg-slate-900 transition-all duration-300 lg:pl-[18rem]"

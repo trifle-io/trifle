@@ -23,6 +23,9 @@ const MOBILE_SIDEBAR_FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   "[tabindex]:not([tabindex='-1'])"
 ].join(", ");
+const COMMAND_PALETTE_ITEM_SELECTOR = "[data-command-palette-item]";
+const COMMAND_PALETTE_SECTION_SELECTOR = "[data-command-palette-section]";
+const COMMAND_PALETTE_EMPTY_SELECTOR = "[data-command-palette-empty]";
 
 const syncSidebarRootState = (storageKey, desktopCollapsed) => {
   const datasetKey = SIDEBAR_ROOT_DATASET_KEYS[storageKey];
@@ -174,15 +177,21 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
   desktopCollapsed: defaultCollapsed,
   chatOpen: false,
   chatMode: CHAT_SHELL_DEFAULT_MODE,
+  commandPaletteOpen: false,
+  commandPaletteQuery: "",
+  commandPaletteActiveIndex: 0,
+  commandPaletteActiveItemId: null,
   desktopViewport: false,
   _mediaQuery: null,
   _handleViewportChange: null,
   _mobileFocusOrigin: null,
+  _commandPaletteFocusOrigin: null,
   _handleMobileKeydown: null,
   _handleChatToggle: null,
   _handleChatSetOpen: null,
   _handleChatSetMode: null,
   _handleChatShortcut: null,
+  _handleCommandPaletteShortcut: null,
   _handleStorageSync: null,
 
   init() {
@@ -215,14 +224,18 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
       this.setChatMode(detail.mode);
     };
     this._handleChatShortcut = (event) => this.handleChatShortcut(event);
+    this._handleCommandPaletteShortcut = (event) => this.handleCommandPaletteShortcut(event);
     this._handleStorageSync = (event) => this.syncStorageEvent(event);
 
     window.addEventListener("trifle:chat-shell:toggle", this._handleChatToggle);
     window.addEventListener("trifle:chat-shell:set-open", this._handleChatSetOpen);
     window.addEventListener(CHAT_SHELL_SET_MODE_EVENT, this._handleChatSetMode);
     window.addEventListener("keydown", this._handleChatShortcut);
+    window.addEventListener("keydown", this._handleCommandPaletteShortcut);
     window.addEventListener("storage", this._handleStorageSync);
     emitChatShellModeChanged(this.chatMode);
+
+    this.$watch("commandPaletteOpen", () => this.syncBodyScrollLock());
   },
 
   get compact() {
@@ -231,6 +244,10 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
   chatShortcutLabel() {
     return isApplePlatform() ? "⌘+/" : "Ctrl+/";
+  },
+
+  commandShortcutLabel() {
+    return isApplePlatform() ? "⌘+K" : "Ctrl+K";
   },
 
   loadState() {
@@ -322,7 +339,10 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
   syncBodyScrollLock() {
     if (!document.body) return;
-    document.body.classList.toggle(SIDEBAR_SCROLL_LOCK_CLASS, this.mobileOpen && !this.desktopViewport);
+    document.body.classList.toggle(
+      SIDEBAR_SCROLL_LOCK_CLASS,
+      (this.mobileOpen && !this.desktopViewport) || this.commandPaletteOpen
+    );
   },
 
   getSidebarShell() {
@@ -538,6 +558,307 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     this.syncBodyScrollLock();
   },
 
+  getCommandPaletteDialog() {
+    return document.getElementById("command-palette-dialog");
+  },
+
+  getCommandPaletteInput() {
+    return document.getElementById("command-palette-input");
+  },
+
+  getCommandPaletteItems() {
+    const dialog = this.getCommandPaletteDialog();
+    if (!dialog) return [];
+
+    return Array.from(dialog.querySelectorAll(COMMAND_PALETTE_ITEM_SELECTOR)).filter(
+      (element) => element instanceof HTMLElement
+    );
+  },
+
+  getCommandPaletteVisibleItems() {
+    return this.getCommandPaletteItems().filter((element) => !element.hidden);
+  },
+
+  setCommandPaletteElementVisible(element, visible) {
+    if (!(element instanceof HTMLElement)) return;
+
+    element.hidden = !visible;
+    element.style.display = visible ? "" : "none";
+  },
+
+  normalizeCommandPaletteText(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  },
+
+  commandPaletteMatchesQuery(searchText, query) {
+    const normalizedSearch = this.normalizeCommandPaletteText(searchText);
+    const terms = this.normalizeCommandPaletteText(query).split(" ").filter(Boolean);
+
+    if (terms.length === 0) return true;
+    return terms.every((term) => normalizedSearch.includes(term));
+  },
+
+  queueCommandPaletteRefresh() {
+    this.$nextTick(() => this.refreshCommandPaletteResults());
+  },
+
+  refreshCommandPaletteResults() {
+    const dialog = this.getCommandPaletteDialog();
+    if (!dialog) return;
+
+    const query = this.normalizeCommandPaletteText(this.commandPaletteQuery);
+    const sections = Array.from(dialog.querySelectorAll(COMMAND_PALETTE_SECTION_SELECTOR)).filter(
+      (element) => element instanceof HTMLElement
+    );
+    let visibleCount = 0;
+
+    sections.forEach((section) => {
+      let sectionVisibleCount = 0;
+      const items = Array.from(section.querySelectorAll(COMMAND_PALETTE_ITEM_SELECTOR)).filter(
+        (element) => element instanceof HTMLElement
+      );
+
+      items.forEach((item) => {
+        const defaultVisible = item.dataset.commandPaletteDefaultVisible === "true";
+        const searchable = item.dataset.commandPaletteSearchable === "true";
+        const visible = query
+          ? searchable && this.commandPaletteMatchesQuery(item.dataset.commandPaletteSearchText, query)
+          : defaultVisible;
+
+        this.setCommandPaletteElementVisible(item, visible);
+        if (visible) {
+          sectionVisibleCount += 1;
+          visibleCount += 1;
+        }
+      });
+
+      this.setCommandPaletteElementVisible(section, sectionVisibleCount > 0);
+    });
+
+    const empty = dialog.querySelector(COMMAND_PALETTE_EMPTY_SELECTOR);
+    if (empty instanceof HTMLElement) {
+      this.setCommandPaletteElementVisible(empty, visibleCount === 0);
+    }
+
+    const visibleItems = this.getCommandPaletteVisibleItems();
+
+    if (visibleItems.length === 0) {
+      this.commandPaletteActiveIndex = -1;
+    } else if (this.commandPaletteActiveIndex < 0) {
+      this.commandPaletteActiveIndex = 0;
+    } else if (this.commandPaletteActiveIndex >= visibleItems.length) {
+      this.commandPaletteActiveIndex = visibleItems.length - 1;
+    }
+
+    this.syncCommandPaletteActiveItem({ scroll: false });
+  },
+
+  captureCommandPaletteFocusOrigin(focusOrigin = null) {
+    const candidate =
+      focusOrigin instanceof HTMLElement
+        ? focusOrigin
+        : document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+
+    if (!candidate || candidate === document.body) return;
+    this._commandPaletteFocusOrigin = candidate;
+  },
+
+  openCommandPalette(focusOrigin = null) {
+    const sidebarStorageKey = normalizeSidebarStorageKey(this.storageKey);
+    if (sidebarStorageKey !== "trifle:client-sidebar") return;
+
+    this.captureCommandPaletteFocusOrigin(focusOrigin);
+    this.commandPaletteQuery = "";
+    this.commandPaletteActiveIndex = 0;
+    this.commandPaletteOpen = true;
+
+    this.$nextTick(() => {
+      this.refreshCommandPaletteResults();
+
+      const input = this.getCommandPaletteInput();
+      if (input instanceof HTMLElement) {
+        input.focus();
+      }
+    });
+  },
+
+  closeCommandPalette({ restoreFocus = true } = {}) {
+    if (!this.commandPaletteOpen) return;
+
+    this.commandPaletteOpen = false;
+    this.commandPaletteQuery = "";
+    this.commandPaletteActiveIndex = 0;
+    this.commandPaletteActiveItemId = null;
+    this.syncBodyScrollLock();
+
+    if (!restoreFocus) {
+      this._commandPaletteFocusOrigin = null;
+      return;
+    }
+
+    const focusOrigin = this._commandPaletteFocusOrigin;
+    this._commandPaletteFocusOrigin = null;
+
+    if (!(focusOrigin instanceof HTMLElement)) return;
+
+    window.requestAnimationFrame(() => {
+      if (focusOrigin.isConnected) {
+        focusOrigin.focus();
+      }
+    });
+  },
+
+  moveCommandPaletteActive(delta) {
+    const visibleItems = this.getCommandPaletteVisibleItems();
+    if (visibleItems.length === 0) return;
+
+    const currentIndex = this.commandPaletteActiveIndex < 0 ? 0 : this.commandPaletteActiveIndex;
+    this.commandPaletteActiveIndex =
+      (currentIndex + delta + visibleItems.length) % visibleItems.length;
+    this.syncCommandPaletteActiveItem({ scroll: true });
+  },
+
+  activateCommandPaletteElement(element) {
+    if (!(element instanceof HTMLElement) || element.hidden) return;
+
+    const visibleItems = this.getCommandPaletteVisibleItems();
+    const index = visibleItems.indexOf(element);
+    if (index < 0) return;
+
+    this.commandPaletteActiveIndex = index;
+    this.syncCommandPaletteActiveItem({ scroll: false });
+  },
+
+  commandPaletteItemActive(element) {
+    return (
+      element instanceof HTMLElement &&
+      this.commandPaletteActiveItemId &&
+      element.id === this.commandPaletteActiveItemId
+    );
+  },
+
+  syncCommandPaletteActiveItem({ scroll = false } = {}) {
+    const items = this.getCommandPaletteItems();
+    const visibleItems = items.filter((element) => !element.hidden);
+    const active = visibleItems[this.commandPaletteActiveIndex] || null;
+
+    this.commandPaletteActiveItemId = active ? active.id : null;
+
+    items.forEach((item) => {
+      item.setAttribute("aria-selected", item === active ? "true" : "false");
+    });
+
+    if (scroll && active) {
+      active.scrollIntoView({ block: "nearest" });
+    }
+  },
+
+  selectActiveCommandPaletteItem() {
+    const visibleItems = this.getCommandPaletteVisibleItems();
+    const active = visibleItems[this.commandPaletteActiveIndex] || visibleItems[0];
+    this.selectCommandPaletteElement(active);
+  },
+
+  selectCommandPaletteElement(element) {
+    if (!(element instanceof HTMLElement) || element.hidden) return;
+
+    const action = element.dataset.commandPaletteAction;
+    if (action === "chat") {
+      this.closeCommandPalette({ restoreFocus: false });
+      this.closeMobile();
+      this.setChatOpen(true);
+      return;
+    }
+
+    const to = element.dataset.commandPaletteTo;
+    if (!to) return;
+
+    this.navigateCommandPalette(to);
+  },
+
+  navigateCommandPalette(to) {
+    this.closeCommandPalette({ restoreFocus: false });
+    this.closeMobile();
+
+    if (window.liveSocket && typeof window.liveSocket.historyRedirect === "function") {
+      window.liveSocket.historyRedirect(
+        { isTrusted: false, type: "command-palette" },
+        to,
+        "push",
+        null
+      );
+    } else {
+      window.location.assign(to);
+    }
+  },
+
+  handleCommandPaletteShortcut(event) {
+    const sidebarStorageKey = normalizeSidebarStorageKey(this.storageKey);
+    if (sidebarStorageKey !== "trifle:client-sidebar" || !event || event.defaultPrevented) return;
+    if (event.isComposing || event.repeat) return;
+    if (event.altKey || event.shiftKey || !(event.metaKey || event.ctrlKey)) return;
+    if (event.code !== "KeyK") return;
+    if (isEditableShortcutTarget(event.target)) return;
+
+    event.preventDefault();
+    this.openCommandPalette();
+  },
+
+  getCommandPaletteFocusableElements() {
+    const dialog = this.getCommandPaletteDialog();
+    if (!dialog) return [];
+
+    return Array.from(dialog.querySelectorAll(MOBILE_SIDEBAR_FOCUSABLE_SELECTOR)).filter(
+      (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
+        const style = window.getComputedStyle(element);
+        return style.display !== "none" && style.visibility !== "hidden";
+      }
+    );
+  },
+
+  handleCommandPalettePanelKeydown(event) {
+    if (!this.commandPaletteOpen || !event) return;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.closeCommandPalette();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusable = this.getCommandPaletteFocusableElements();
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (!(active instanceof HTMLElement) || !this.getCommandPaletteDialog().contains(active)) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  },
+
   destroy() {
     this.deactivateMobileFocusTrap({ restoreFocus: false });
     if (document.body && document.body.classList) {
@@ -562,6 +883,11 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     if (this._handleChatShortcut) {
       window.removeEventListener("keydown", this._handleChatShortcut);
       this._handleChatShortcut = null;
+    }
+
+    if (this._handleCommandPaletteShortcut) {
+      window.removeEventListener("keydown", this._handleCommandPaletteShortcut);
+      this._handleCommandPaletteShortcut = null;
     }
 
     if (this._handleStorageSync) {

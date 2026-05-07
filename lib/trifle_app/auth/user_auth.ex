@@ -6,6 +6,7 @@ defmodule TrifleApp.UserAuth do
 
   alias Trifle.Accounts
   alias Trifle.Organizations
+  alias TrifleApp.CommandPalette
 
   # Make the remember me cookie valid for 60 days.
   # If you want bump or reduce this value, also change
@@ -221,6 +222,10 @@ defmodule TrifleApp.UserAuth do
     socket
     |> Phoenix.Component.assign(:current_membership, membership)
     |> Phoenix.Component.assign(:current_organization, organization)
+    |> Phoenix.Component.assign(
+      :command_palette_items,
+      CommandPalette.items(socket.assigns.current_user, membership)
+    )
   end
 
   @doc """
