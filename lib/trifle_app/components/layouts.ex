@@ -5,6 +5,230 @@ defmodule TrifleApp.Layouts do
 
   alias TrifleWeb.SidebarHelpers
 
+  @command_palette_section_order [
+    "Actions",
+    "Recent",
+    "Triggered",
+    "Dashboards",
+    "Monitors",
+    "Databases",
+    "Projects"
+  ]
+
+  def command_palette_trigger(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="command-palette-trigger"
+      data-command-palette-trigger
+      class="group relative flex w-full items-center rounded-[1.15rem] border border-slate-200/80 bg-white/90 text-left text-sm font-medium text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_16px_28px_-30px_rgba(15,23,42,0.55)] transition duration-200 ease-out hover:border-teal-300/80 hover:bg-white hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500/70 dark:border-slate-700/80 dark:bg-slate-900/75 dark:text-slate-300 dark:shadow-none dark:hover:border-teal-400/40 dark:hover:bg-slate-800 dark:hover:text-white"
+      data-fast-tooltip
+      x-bind:data-tooltip={SidebarHelpers.compact_tooltip_expr("Search and navigate")}
+      x-bind:data-tooltip-placement={SidebarHelpers.compact_tooltip_placement_expr()}
+      x-bind:class="compact ? 'mx-auto h-11 w-11 justify-center p-0' : 'px-3.5 py-3'"
+      x-on:click="openCommandPalette($event.currentTarget)"
+      aria-haspopup="dialog"
+      x-bind:aria-expanded="commandPaletteOpen.toString()"
+    >
+      <span
+        class="flex shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/80 text-slate-400 transition group-hover:text-teal-600 dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-400 dark:group-hover:border-teal-400/40 dark:group-hover:bg-teal-400/10 dark:group-hover:text-teal-200"
+        x-bind:class="compact ? 'h-9 w-9' : 'h-8 w-8'"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="1.7"
+          stroke="currentColor"
+          class="h-4 w-4"
+          aria-hidden="true"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="m21 21-4.35-4.35m1.35-5.4a6.75 6.75 0 1 1-13.5 0 6.75 6.75 0 0 1 13.5 0Z"
+          />
+        </svg>
+      </span>
+      <span class="ml-3 min-w-0 flex-1" x-cloak x-show="!compact" x-transition.opacity.duration.150ms>
+        <span class="block truncate">Search</span>
+      </span>
+      <span
+        class={shortcut_hint_classes()}
+        x-cloak
+        x-show="!compact"
+        x-transition.opacity.duration.150ms
+        x-text="commandShortcutLabel()"
+      />
+    </button>
+    """
+  end
+
+  def command_palette_modal(assigns) do
+    assigns = assign(assigns, :sections, command_palette_sections(assigns[:items] || []))
+
+    ~H"""
+    <div
+      id="command-palette-overlay"
+      class="fixed inset-0 z-[130] flex items-start justify-center bg-slate-900/40 px-3 py-[10vh] backdrop-blur-sm dark:bg-slate-900/75 sm:px-6"
+      role="presentation"
+      x-cloak
+      x-show="commandPaletteOpen"
+      x-transition.opacity.duration.150ms
+      x-on:click.self="closeCommandPalette()"
+      x-bind:aria-hidden="(!commandPaletteOpen).toString()"
+    >
+      <div
+        id="command-palette-dialog"
+        class="flex max-h-[min(42rem,80vh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/80 bg-white shadow-[0_34px_90px_-38px_rgba(15,23,42,0.62)] ring-1 ring-slate-900/5 dark:border-slate-700/80 dark:bg-slate-900 dark:shadow-none dark:ring-white/10 dark:[color-scheme:dark]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="command-palette-title"
+        x-on:keydown="handleCommandPalettePanelKeydown($event)"
+      >
+        <h2 id="command-palette-title" class="sr-only">Search and navigate</h2>
+        <div class="flex items-center gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.7"
+            stroke="currentColor"
+            class="h-5 w-5 shrink-0 text-slate-400 dark:text-slate-400"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m21 21-4.35-4.35m1.35-5.4a6.75 6.75 0 1 1-13.5 0 6.75 6.75 0 0 1 13.5 0Z"
+            />
+          </svg>
+          <input
+            id="command-palette-input"
+            type="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Search dashboards, monitors, databases..."
+            name="command_palette_search"
+            aria-label="Search workspace resources"
+            class="min-w-0 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 placeholder:text-slate-400 focus:ring-0 dark:text-white dark:placeholder:text-slate-500 dark:[color-scheme:dark]"
+            x-model="commandPaletteQuery"
+            x-on:input="queueCommandPaletteRefresh()"
+            x-on:keydown.arrow-down.prevent="moveCommandPaletteActive(1)"
+            x-on:keydown.arrow-up.prevent="moveCommandPaletteActive(-1)"
+            x-on:keydown.enter.prevent="selectActiveCommandPaletteItem()"
+            x-bind:aria-activedescendant="commandPaletteActiveItemId || null"
+            role="combobox"
+            aria-controls="command-palette-results"
+            aria-autocomplete="list"
+          />
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+            x-on:click="closeCommandPalette()"
+            aria-label="Close search"
+          >
+            <TrifleApp.SidebarIcons.icon name="hero-x-mark" class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div
+          id="command-palette-results"
+          class="min-h-0 flex-1 overflow-y-auto px-2 py-3"
+          role="listbox"
+        >
+          <%= for section <- @sections do %>
+            <section
+              data-command-palette-section={section.label}
+              hidden={section.default_hidden}
+              class="pb-2"
+            >
+              <p class="px-3 pb-1.5 pt-2 text-xs font-semibold tracking-[0.04em] text-slate-500 dark:text-slate-400">
+                {section.label}
+              </p>
+              <div class="space-y-1">
+                <%= for item <- section.items do %>
+                  <button
+                    type="button"
+                    id={item["dom_id"]}
+                    data-command-palette-item
+                    data-command-palette-search-text={item["search_text"]}
+                    data-command-palette-searchable={to_string(item["searchable"])}
+                    data-command-palette-default-visible={
+                      to_string(item["default_section"] == section.label)
+                    }
+                    data-command-palette-to={item["to"]}
+                    data-command-palette-action={item["action"]}
+                    hidden={item["default_section"] != section.label}
+                    role="option"
+                    aria-selected="false"
+                    class="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 dark:text-slate-200 dark:hover:bg-slate-800/80 dark:hover:text-white"
+                    x-bind:class="commandPaletteItemActive($el) ? 'bg-slate-900/5 text-slate-900 dark:bg-slate-800 dark:text-white' : ''"
+                    x-on:mousemove="activateCommandPaletteElement($event.currentTarget)"
+                    x-on:click="selectCommandPaletteElement($event.currentTarget)"
+                  >
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50 text-slate-500 transition group-hover:border-teal-200 group-hover:bg-teal-50 group-hover:text-teal-700 dark:border-slate-700/80 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:border-teal-400/40 dark:group-hover:bg-teal-400/10 dark:group-hover:text-teal-200">
+                      <TrifleApp.SidebarIcons.icon
+                        name={item["icon"] || "hero-arrow-uturn-left"}
+                        class={
+                          if item["icon"] == "chef-hat-alt-2",
+                            do: "h-5 w-5 stroke-[1.35]",
+                            else: "h-4 w-4"
+                        }
+                      />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate font-medium">{item["title"]}</span>
+                      <span
+                        :if={item["subtitle"]}
+                        class="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        {item["subtitle"]}
+                      </span>
+                    </span>
+                    <span class="text-xs text-slate-300 opacity-0 transition group-hover:opacity-100 dark:text-slate-500">
+                      ↵
+                    </span>
+                  </button>
+                <% end %>
+              </div>
+            </section>
+          <% end %>
+
+          <div
+            data-command-palette-empty
+            hidden
+            class="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400"
+          >
+            No matching resources.
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4 border-t border-slate-200/80 bg-slate-50/80 px-4 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
+          <span class="inline-flex items-center gap-1">
+            <kbd class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[0.68rem] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              ↑↓
+            </kbd>
+            to navigate
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <kbd class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[0.68rem] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              Enter
+            </kbd>
+            to open
+          </span>
+          <span class="ml-auto inline-flex items-center gap-1">
+            <kbd class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[0.68rem] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              Esc
+            </kbd>
+            to close
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   attr :socket, :any, required: true
   attr :item, :map, required: true
 
@@ -225,14 +449,35 @@ defmodule TrifleApp.Layouts do
   defp sidebar_tooltip_expr(%{label: label}), do: SidebarHelpers.compact_tooltip_expr(label)
 
   defp shortcut_hint_classes do
-    "inline-flex h-7 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/88 px-2.5 text-[0.68rem] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-slate-700/80 dark:bg-slate-950/75 dark:text-slate-300 dark:shadow-none"
+    "inline-flex h-7 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/90 px-2.5 text-[0.68rem] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-slate-700/80 dark:bg-slate-900/75 dark:text-slate-300 dark:shadow-none"
   end
 
-  defp sidebar_icon_size_style(%{icon: "chef-hat-alt-2"}), do: "height: 1.3rem; width: 1.3rem;"
+  defp command_palette_sections(items) do
+    items = List.wrap(items)
+
+    @command_palette_section_order
+    |> Enum.map(fn label ->
+      section_items =
+        Enum.filter(items, fn item ->
+          item["default_section"] == label || item["search_section"] == label
+        end)
+
+      %{
+        label: label,
+        items: section_items,
+        default_hidden: not Enum.any?(section_items, &(Map.get(&1, "default_section") == label))
+      }
+    end)
+    |> Enum.reject(&Enum.empty?(&1.items))
+  end
+
+  defp sidebar_icon_size_style(%{icon: "chef-hat-alt-2"}),
+    do: "height: 1.38rem; width: 1.38rem; stroke-width: 1.35;"
+
   defp sidebar_icon_size_style(_item), do: "height: 1.05rem; width: 1.05rem;"
 
   defp sidebar_compact_icon_size_style(%{icon: "chef-hat-alt-2"}),
-    do: "height: 1.45rem; width: 1.45rem;"
+    do: "height: 1.5rem; width: 1.5rem; stroke-width: 1.35;"
 
   defp sidebar_compact_icon_size_style(_item), do: "height: 1.2rem; width: 1.2rem;"
 
