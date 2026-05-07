@@ -272,7 +272,7 @@ defmodule TrifleApp.CommandPalette do
     |> Organizations.get_dashboard_group_chain()
     |> Enum.map(& &1.name)
   rescue
-    _ -> []
+    Ecto.NoResultsError -> []
   end
 
   defp monitor_title(%Monitor{name: name}), do: present_text(name, "Untitled monitor")
