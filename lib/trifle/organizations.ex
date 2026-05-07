@@ -2935,6 +2935,7 @@ defmodule Trifle.Organizations do
         names =
           group_id
           |> dashboard_group_chain_from_lookup(groups_by_id)
+          |> Enum.reverse()
           |> Enum.map(& &1.name)
 
         {group_id, names}

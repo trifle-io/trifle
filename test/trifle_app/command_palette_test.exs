@@ -37,9 +37,15 @@ defmodule TrifleApp.CommandPaletteTest do
         display_name: "Analytics Warehouse"
       })
 
-    {:ok, dashboard_group} =
+    {:ok, parent_group} =
       Organizations.create_dashboard_group_for_membership(membership, %{
         name: "Revenue Reports"
+      })
+
+    {:ok, dashboard_group} =
+      Organizations.create_dashboard_group_for_membership(membership, %{
+        name: "Quarterly",
+        parent_group_id: parent_group.id
       })
 
     {:ok, dashboard} =
@@ -103,13 +109,13 @@ defmodule TrifleApp.CommandPaletteTest do
     recent_dashboard_item = find_item(items, "recent:dashboard:#{dashboard.id}")
     assert recent_dashboard_item["default_section"] == "Recent"
     assert recent_dashboard_item["searchable"] == false
-    assert recent_dashboard_item["title"] == "Revenue Reports / Revenue Overview"
+    assert recent_dashboard_item["title"] == "Revenue Reports / Quarterly / Revenue Overview"
 
     assert find_item(items, "triggered:monitor:#{monitor.id}")["default_section"] == "Triggered"
     assert find_item(items, "triggered:monitor:#{monitor.id}")["to"] == "/monitors/#{monitor.id}"
 
     dashboard_item = find_item(items, "dashboard:#{dashboard.id}")
-    assert dashboard_item["title"] == "Revenue Reports / Revenue Overview"
+    assert dashboard_item["title"] == "Revenue Reports / Quarterly / Revenue Overview"
     assert dashboard_item["search_section"] == "Dashboards"
     assert dashboard_item["default_section"] == nil
     assert dashboard_item["to"] == "/dashboards/#{dashboard.id}"
