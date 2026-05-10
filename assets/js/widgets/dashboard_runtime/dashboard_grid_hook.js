@@ -840,8 +840,9 @@ Hooks.DashboardGrid = {
       return base;
     }
     base.maxRow = metrics.rows;
-    base.dragOut = !!this.editable;
-    if (!this.editable) {
+    const derivedGroup = this._isDerivedGroupItem(groupItem);
+    base.dragOut = !!this.editable && !derivedGroup;
+    if (!this.editable || derivedGroup) {
       base.acceptWidgets = false;
       return base;
     }
@@ -1359,6 +1360,16 @@ Hooks.DashboardGrid = {
     return this._dragItemKind(el) === 'group';
   },
 
+  _isDerivedGroupItem(el) {
+    if (!el || !el.dataset) return false;
+    return el.dataset.derivedGroup === '1' || el.dataset.derivedGroup === 'true';
+  },
+
+  _templateGroupId(el) {
+    if (!el || !el.dataset) return null;
+    return el.dataset.templateGroupId || null;
+  },
+
   _dragItemKind(el) {
     if (!el || !el.getAttribute) return 'widget';
     return el.getAttribute('data-item-kind') || 'widget';
@@ -1475,6 +1486,23 @@ Hooks.DashboardGrid = {
     if (!grid) return;
     const nested = !!(grid.el && grid.el.dataset && grid.el.dataset.groupGrid === '1');
     this._gridItems(grid).forEach((item) => this._syncItemHandleClass(item, nested));
+  },
+
+  _applyDerivedGroupLock(grid, item) {
+    if (!grid || !item || !this._isDerivedGroupItem(item)) return;
+    item.setAttribute('gs-no-move', 'true');
+    item.setAttribute('gs-no-resize', 'true');
+    item.setAttribute('gs-locked', 'true');
+    if (item.gridstackNode) {
+      item.gridstackNode.noMove = true;
+      item.gridstackNode.noResize = true;
+      item.gridstackNode.locked = true;
+    }
+    try {
+      if (typeof grid.update === 'function') {
+        grid.update(item, { noMove: true, noResize: true, locked: true });
+      }
+    } catch (_) {}
   },
 
   _groupGridShell(groupItem) {
@@ -1837,10 +1865,13 @@ Hooks.DashboardGrid = {
     let grid = nestedEl.gridstack || this._childGrids[groupId] || null;
     if (!grid) {
       grid = GridStack.init(this._gridOptions(true, groupItem), nestedEl);
-      if (!this.editable && grid && typeof grid.setStatic === 'function') {
+      if ((!this.editable || this._isDerivedGroupItem(groupItem)) && grid && typeof grid.setStatic === 'function') {
         grid.setStatic(true);
       }
       this._bindGridEvents(grid);
+    }
+    if (this._isDerivedGroupItem(groupItem) && grid && typeof grid.setStatic === 'function') {
+      try { grid.setStatic(true); } catch (_) {}
     }
     this._childGrids[groupId] = grid;
     this._syncGroupGridGeometry(groupItem, grid);
@@ -1932,6 +1963,7 @@ Hooks.DashboardGrid = {
       try {
         grid.update(gsNode, target);
       } catch (_) {}
+      this._applyDerivedGroupLock(grid, node);
     });
     if (typeof grid.commit === 'function') {
       try { grid.commit(); } catch (_) {}
@@ -1953,7 +1985,7 @@ Hooks.DashboardGrid = {
     this._appendWidgetElement(this.el, item);
   },
 
-  _appendWidgetElement(container, item) {
+  _appendWidgetElement(container, item, locked = false) {
     const nested = !!(container && container.dataset && container.dataset.groupGrid === '1');
     const el = document.createElement('div');
     el.className = 'grid-stack-item';
@@ -1963,11 +1995,12 @@ Hooks.DashboardGrid = {
     el.setAttribute('gs-y', item.y || 0);
     el.setAttribute('gs-id', item.id || (item.id = this.genId()));
     el.setAttribute('data-item-kind', 'widget');
-    el.innerHTML = this._newWidgetContent(item, nested);
+    el.innerHTML = this._newWidgetContent(item, nested, locked);
     container.appendChild(el);
   },
 
   _appendGroupElement(container, item) {
+    const derived = this._isDerivedGroupPayload(item);
     const el = document.createElement('div');
     el.className = 'grid-stack-item';
     el.setAttribute('gs-w', item.w || 6);
@@ -1976,28 +2009,60 @@ Hooks.DashboardGrid = {
     el.setAttribute('gs-y', item.y || 0);
     el.setAttribute('gs-id', item.id || (item.id = this.genId()));
     el.setAttribute('data-item-kind', 'group');
+    if (derived) {
+      el.setAttribute('data-derived-group', '1');
+      if (item._template_group_id) el.setAttribute('data-template-group-id', item._template_group_id);
+      el.setAttribute('gs-no-move', 'true');
+      el.setAttribute('gs-no-resize', 'true');
+      el.setAttribute('gs-locked', 'true');
+    }
     el.innerHTML = this._newGroupContent(item);
     container.appendChild(el);
     const nested = this._groupGridElement(el);
     const children = Array.isArray(item && item.children) ? item.children : [];
     if (nested) {
-      children.forEach((child) => this._appendWidgetElement(nested, child));
+      children.forEach((child) => this._appendWidgetElement(nested, child, derived));
     }
   },
 
-  _newWidgetContent(item, nested = false) {
+  _isDerivedGroupPayload(item) {
+    return !!(item && (item._derived_group === true || item._derived_group === 'true' || item._derived_group === '1'));
+  },
+
+  _groupHeaderStyle(item) {
+    const style = item && item._group_header_style;
+    if (!style || style.default === true || style.default === 'true' || style.default === '1') return null;
+    return style;
+  },
+
+  _groupHeaderStyleAttr(style) {
+    if (!style) return '';
+    const declarations = [];
+    if (style.background) declarations.push(`background-color: ${style.background}`);
+    if (style.text) declarations.push(`color: ${style.text}`);
+    if (style.border) declarations.push(`border-color: ${style.border}`);
+    if (!declarations.length) return '';
+    return ` style="${this.escapeHtml(`${declarations.join('; ')};`)}"`;
+  },
+
+  _groupHeaderTextStyleAttr(style) {
+    if (!style || !style.text) return '';
+    return ` style="${this.escapeHtml(`color: ${style.text};`)}"`;
+  },
+
+  _newWidgetContent(item, nested = false, locked = false) {
     const titleText = item.title || `Widget ${String(item.id || '').slice(0, 6)}`;
     const widgetId = item.id || '';
     const widgetType = (item && item.type ? String(item.type).toLowerCase() : 'kpi') || 'kpi';
     const handleClass = nested ? 'nested-grid-widget-handle' : 'root-grid-widget-handle';
     const safeWidgetId = this.escapeHtml(widgetId);
-    const duplicateBtn = this.editable ? `
+    const duplicateBtn = (this.editable && !locked) ? `
       <button type=\"button\" class=\"grid-widget-duplicate inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Duplicate widget\">
         <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75\" />
         </svg>
       </button>` : '';
-    const editBtn = this.editable ? `
+    const editBtn = (this.editable && !locked) ? `
       <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Edit widget\">
         <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
@@ -2028,17 +2093,25 @@ Hooks.DashboardGrid = {
     const titleText = item.title || 'Widget Group';
     const groupId = item.id || '';
     const safeGroupId = this.escapeHtml(groupId);
-    const editBtn = this.editable ? `
-      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeGroupId}\" title=\"Edit group\">
-        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-100\">
+    const derived = this._isDerivedGroupPayload(item);
+    const derivedAttrs = derived ? ` data-derived-group="1"` : '';
+    const headerStyle = this._groupHeaderStyle(item);
+    const headerStyleAttr = this._groupHeaderStyleAttr(headerStyle);
+    const titleClass = headerStyle
+      ? 'grid-widget-title font-semibold truncate text-current'
+      : 'grid-widget-title font-semibold truncate text-slate-800 dark:text-slate-100';
+    const headerTextStyleAttr = this._groupHeaderTextStyleAttr(headerStyle);
+    const editBtn = (this.editable && !derived) ? `
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeGroupId}\" title=\"Edit group\"${headerTextStyleAttr}>
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-100\"${headerTextStyleAttr}>
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
         </svg>
       </button>` : '';
     return `
-      <div class=\"grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group\" data-widget-id=\"${safeGroupId}\" data-widget-type=\"group\" data-item-kind=\"group\" data-widget-title=\"${this.escapeHtml(titleText)}\">
-        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80\">
-          <div class=\"grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-slate-800 dark:text-slate-100\" data-original-title=\"${this.escapeHtml(titleText)}\">${this.escapeHtml(titleText)}</div></div>
+      <div class=\"grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group\" data-widget-id=\"${safeGroupId}\" data-widget-type=\"group\" data-item-kind=\"group\" data-widget-title=\"${this.escapeHtml(titleText)}\"${derivedAttrs}>
+        <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80\"${headerStyleAttr}>
+          <div class=\"grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"${titleClass}\" data-original-title=\"${this.escapeHtml(titleText)}\"${headerTextStyleAttr}>${this.escapeHtml(titleText)}</div></div>
           <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
             ${editBtn}
           </div>
@@ -2117,14 +2190,17 @@ Hooks.DashboardGrid = {
   },
 
   _serializeGrid(grid) {
-    return this._gridItems(grid).map((el) => this._serializeGridItem(el));
+    return this._gridItems(grid)
+      .filter((el) => !this._isDerivedGroupItem(el))
+      .map((el) => this._serializeGridItem(el, grid));
   },
 
-  _serializeGridItem(el) {
+  _serializeGridItem(el, grid = null) {
     const content = el.querySelector('.grid-stack-item-content');
+    const renderY = parseInt(el.getAttribute('gs-y') || '0', 10);
     const item = {
       x: parseInt(el.getAttribute('gs-x') || '0', 10),
-      y: parseInt(el.getAttribute('gs-y') || '0', 10),
+      y: this._logicalYForItem(el, renderY, grid),
       w: parseInt(el.getAttribute('gs-w') || '1', 10),
       h: parseInt(el.getAttribute('gs-h') || '1', 10),
       id: el.getAttribute('gs-id') || this.genId(),
@@ -2140,6 +2216,21 @@ Hooks.DashboardGrid = {
       item.children = nested ? this._serializeGrid(nested) : [];
     }
     return item;
+  },
+
+  _logicalYForItem(el, renderY, grid = null) {
+    const gridEl = grid && grid.el ? grid.el : (el && el.closest ? el.closest('.grid-stack') : null);
+    if (!gridEl || (gridEl.dataset && gridEl.dataset.groupGrid === '1')) return renderY;
+    const itemId = el && el.getAttribute ? el.getAttribute('gs-id') : null;
+    const offset = this._gridItems(this.grid).reduce((total, candidate) => {
+      if (!this._isDerivedGroupItem(candidate)) return total;
+      if (this._templateGroupId(candidate) === itemId) return total;
+      const candidateY = parseInt(candidate.getAttribute('gs-y') || '0', 10);
+      if (candidateY >= renderY) return total;
+      const candidateH = Math.max(1, parseInt(candidate.getAttribute('gs-h') || '1', 10) || 1);
+      return total + candidateH;
+    }, 0);
+    return Math.max(0, renderY - offset);
   },
 
   saveLayout() {
@@ -2172,9 +2263,70 @@ Hooks.DashboardGrid = {
     this._initialItemsPayload = payload;
     this.initialItems = Array.isArray(items) ? items : [];
 
-    if (!this.grid || this.editable) return;
+    if (!this.grid) return;
+
+    if (this.editable) {
+      this._syncEditableExpandedItems(this.initialItems);
+      return;
+    }
 
     this._replaceReadOnlyGridItems(this.initialItems);
+  },
+
+  _syncEditableExpandedItems(items) {
+    if (!this.grid) return;
+    const serverItems = Array.isArray(items) ? items : [];
+
+    this._suppressSave = true;
+
+    try {
+      this._gridItems(this.grid).forEach((item) => {
+        if (this._isDerivedGroupItem(item)) {
+          this._removeGridItem(item);
+        }
+      });
+      this._pruneStaleGroupGrids();
+
+      serverItems.forEach((item) => {
+        if (this._isDerivedGroupPayload(item)) return;
+        const id = item && item.id;
+        if (!id) return;
+        const existing = this.el.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+        if (!existing) return;
+        ['x', 'y', 'w', 'h'].forEach((key) => {
+          if (item[key] === undefined || item[key] === null) return;
+          existing.setAttribute(`gs-${key}`, String(item[key]));
+        });
+        this._syncServerItemTitle(existing, item.title || '');
+      });
+
+      serverItems
+        .filter((item) => this._isDerivedGroupPayload(item))
+        .forEach((item) => this._appendGroupElement(this.el, item));
+
+      this._syncGridWidgets(this.grid);
+      this._ensureGroupGrids();
+      this._rerenderRegisteredWidgets();
+      this._markServerRenderedWidgetsReady();
+    } finally {
+      this._suppressSave = false;
+    }
+  },
+
+  _syncServerItemTitle(el, title) {
+    if (!el) return;
+    const content = el.querySelector('.grid-stack-item-content');
+    const titleEl = el.querySelector('.grid-widget-title');
+    const safeTitle = title || '';
+    const widgetType = content && content.dataset ? (content.dataset.widgetType || '') : '';
+    if (widgetType === 'text') return;
+    if (content && content.dataset) {
+      content.dataset.widgetTitle = safeTitle;
+    }
+    if (titleEl) {
+      titleEl.dataset.originalTitle = safeTitle;
+      titleEl.textContent = safeTitle;
+    }
   },
 
   _replaceReadOnlyGridItems(items) {

@@ -67,6 +67,33 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     assert custom_surface.text == "#0F172A"
   end
 
+  test "resolves rotating surface styles by cycling through the selected palette" do
+    first_surface =
+      Helpers.resolve_surface_style("warm.*",
+        default_background: "#FFFFFF",
+        allow_palette_rotate: true,
+        palette_index: 0
+      )
+
+    eighth_surface =
+      Helpers.resolve_surface_style("warm.*",
+        default_background: "#FFFFFF",
+        allow_palette_rotate: true,
+        palette_index: 7
+      )
+
+    ninth_surface =
+      Helpers.resolve_surface_style("warm.*",
+        default_background: "#FFFFFF",
+        allow_palette_rotate: true,
+        palette_index: 8
+      )
+
+    assert first_surface.background == "#FDE68A"
+    assert eighth_surface.background == "#FDE68A"
+    assert ninth_surface.background == "#FCD34D"
+  end
+
   test "builds selector map from typed paths and selector list" do
     path_inputs = ["metrics.a.*", "metrics.b", ""]
     selector_values = ["default.*", "default.3", "default.1"]

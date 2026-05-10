@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   use TrifleApp, :html
 
   alias TrifleApp.Components.DashboardWidgets.Helpers, as: WidgetHelpers
+  alias TrifleApp.Components.DashboardWidgets.GroupExpansion
   alias TrifleApp.Components.DashboardWidgets.LayoutTree
   alias TrifleApp.Components.DashboardWidgets.Registry
   alias TrifleApp.Components.DashboardWidgets.Text, as: TextWidgets
@@ -44,8 +45,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     root_items =
       case assigns.grid_items do
         items when is_list(items) -> LayoutTree.normalize_root_items(items)
-        _ -> root_grid_items(assigns.dashboard)
+        _ -> LayoutTree.root_items_from_dashboard(assigns.dashboard)
       end
+      |> GroupExpansion.expand_root_items(assigns.stats)
 
     widget_items = LayoutTree.flatten_widgets(root_items)
 
@@ -1442,6 +1444,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     group_id = widget_id(assigns.group)
     children = LayoutTree.group_children(assigns.group)
     header_surface = WidgetHelpers.group_header_surface_colors(assigns.group)
+    derived? = GroupExpansion.derived?(assigns.group)
+    editable? = Map.get(assigns, :editable, false) and not derived?
 
     assigns =
       assigns
@@ -1451,6 +1455,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       |> assign(:title, widget_title(assigns.group))
       |> assign(:children, children)
       |> assign(:group_header_surface, header_surface)
+      |> assign(:derived_group?, derived?)
+      |> assign(:editable_group?, editable?)
+      |> assign(
+        :template_group_id,
+        Map.get(assigns.group, GroupExpansion.template_group_id_key())
+      )
       |> assign(:grid_dom_id, Map.get(assigns, :grid_dom_id) || "dashboard-grid")
 
     ~H"""
@@ -1464,6 +1474,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       gs-min-w={@min_grid.w}
       gs-min-h={@min_grid.h}
       data-item-kind="group"
+      data-derived-group={if @derived_group?, do: "1", else: nil}
+      data-template-group-id={@template_group_id}
+      gs-no-move={if @derived_group?, do: "true", else: nil}
+      gs-no-resize={if @derived_group?, do: "true", else: nil}
+      gs-locked={if @derived_group?, do: "true", else: nil}
     >
       <div
         id={widget_dom_id(@grid_dom_id, "grid-widget-content", @group_id)}
@@ -1472,6 +1487,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-widget-type="group"
         data-item-kind="group"
         data-widget-title={@title}
+        data-derived-group={if @derived_group?, do: "1", else: nil}
       >
         <div
           class="grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80"
@@ -1483,7 +1499,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             </div>
           </div>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-            <%= if @editable do %>
+            <%= if @editable_group? do %>
               <button
                 type="button"
                 class={group_edit_button_classnames(@group_header_surface)}
@@ -1527,7 +1543,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   widget={child}
                   nested={true}
                   grid_dom_id={@grid_dom_id}
-                  editable={@editable}
+                  editable={@editable_group?}
                   kpi_values={@kpi_values}
                   kpi_visuals={@kpi_visuals}
                   timeseries={@timeseries}
@@ -1785,10 +1801,23 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   def root_grid_items(_dashboard), do: []
 
+  def root_grid_items(dashboard, stats) when is_map(dashboard) do
+    dashboard
+    |> root_grid_items()
+    |> GroupExpansion.expand_root_items(stats)
+  end
+
+  def root_grid_items(_dashboard, _stats), do: []
+
   def grid_items(dashboard) when is_map(dashboard),
     do: dashboard |> root_grid_items() |> LayoutTree.flatten_widgets()
 
   def grid_items(_dashboard), do: []
+
+  def grid_items(dashboard, stats) when is_map(dashboard),
+    do: dashboard |> root_grid_items(stats) |> LayoutTree.flatten_widgets()
+
+  def grid_items(_dashboard, _stats), do: []
 
   def text_items(grid_items), do: TextWidgets.widgets(grid_items)
 end
