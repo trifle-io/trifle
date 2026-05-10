@@ -42,7 +42,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetData do
 
   @spec datasets_from_dashboard(Trifle.Stats.Series.t() | nil, map()) :: dataset_group()
   def datasets_from_dashboard(stats, dashboard) do
-    grid_items = WidgetView.grid_items(dashboard)
+    grid_items = WidgetView.grid_items(dashboard, stats)
     datasets(stats, grid_items)
   end
 

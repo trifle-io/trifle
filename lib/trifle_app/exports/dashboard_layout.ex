@@ -136,7 +136,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
 
     datasets_raw = WidgetData.datasets_from_dashboard(stats_struct, dashboard)
     dataset_maps = WidgetData.dataset_maps(datasets_raw)
-    root_items_all = WidgetView.root_grid_items(dashboard)
+    root_items_all = WidgetView.root_grid_items(dashboard, stats_struct)
     filtered_grid = maybe_filter_widgets(root_items_all, selected_widget_id)
     widget_items = LayoutTree.flatten_widgets(filtered_grid)
 

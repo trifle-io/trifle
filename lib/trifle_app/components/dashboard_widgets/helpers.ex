@@ -111,10 +111,17 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def group_header_color_selector_for_form(widget) when is_map(widget) do
     widget
     |> Map.get("header_color_selector", Map.get(widget, :header_color_selector))
-    |> normalize_surface_color_selector()
+    |> normalize_group_header_color_selector()
   end
 
   def group_header_color_selector_for_form(_), do: nil
+
+  def normalize_group_header_color_selector(selector) do
+    case selector |> to_string() |> String.trim() do
+      "" -> nil
+      value -> normalize_series_color_selector(value)
+    end
+  end
 
   def normalize_surface_color_selector(selector) do
     case selector |> to_string() |> String.trim() do
@@ -145,7 +152,15 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
       |> normalize_hex_color()
       |> Kernel.||(@default_text_widget_background)
 
-    normalized_selector = normalize_surface_color_selector(selector)
+    allow_palette_rotate? = Keyword.get(opts, :allow_palette_rotate, false)
+    palette_index = opts |> Keyword.get(:palette_index, 0) |> normalize_palette_index()
+
+    normalized_selector =
+      if allow_palette_rotate? do
+        normalize_group_header_color_selector(selector)
+      else
+        normalize_surface_color_selector(selector)
+      end
 
     background =
       case normalized_selector do
@@ -153,7 +168,9 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
           fallback_background
 
         value ->
-          resolve_series_color(value, 0)
+          value
+          |> surface_color_selector_for_index(allow_palette_rotate?, palette_index)
+          |> resolve_series_color(palette_index)
           |> normalize_hex_color()
           |> Kernel.||(fallback_background)
       end
@@ -178,9 +195,18 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   def text_widget_surface_colors(_), do: resolve_surface_style(nil)
 
   def group_header_surface_colors(widget) when is_map(widget) do
+    palette_index =
+      widget
+      |> Map.get("_group_expansion_index", Map.get(widget, :group_expansion_index, 0))
+      |> normalize_palette_index()
+
     widget
     |> Map.get("header_color_selector", Map.get(widget, :header_color_selector))
-    |> resolve_surface_style(default_background: @default_group_header_background)
+    |> resolve_surface_style(
+      default_background: @default_group_header_background,
+      allow_palette_rotate: true,
+      palette_index: palette_index
+    )
   end
 
   def group_header_surface_colors(_),
@@ -766,6 +792,31 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   end
 
   def selector_for_path(_selectors, _path_input), do: @default_series_color_selector
+
+  defp surface_color_selector_for_index(selector, true, index) do
+    case parse_series_color_selector(selector) do
+      %{type: :palette_rotate, palette_id: palette_id} ->
+        palette_count = ChartColors.count(palette_id)
+        color_index = if palette_count > 0, do: rem(index, palette_count), else: 0
+        "#{palette_id}.#{color_index}"
+
+      _ ->
+        selector
+    end
+  end
+
+  defp surface_color_selector_for_index(selector, _allow_palette_rotate?, _index), do: selector
+
+  defp normalize_palette_index(value) when is_integer(value), do: max(value, 0)
+
+  defp normalize_palette_index(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> max(int, 0)
+      _ -> 0
+    end
+  end
+
+  defp normalize_palette_index(_value), do: 0
 
   defp normalize_chart_type(type) do
     type

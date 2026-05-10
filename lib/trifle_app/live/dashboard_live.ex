@@ -19,6 +19,7 @@ defmodule TrifleApp.DashboardLive do
   alias TrifleApp.Components.DashboardWidgets.{
     Category,
     Distribution,
+    GroupExpansion,
     Kpi,
     LayoutTree,
     MetricSeries,
@@ -27,7 +28,8 @@ defmodule TrifleApp.DashboardLive do
     Table,
     Text,
     Timeseries,
-    WidgetData
+    WidgetData,
+    WidgetView
   }
 
   alias TrifleApp.Components.DashboardWidgets.List, as: WidgetList
@@ -522,7 +524,7 @@ defmodule TrifleApp.DashboardLive do
       true ->
         dashboard = socket.assigns.dashboard
         existing = dashboard_grid_root_items(dashboard)
-        merged = merge_dashboard_layout_tree(items, existing)
+        merged = merge_dashboard_layout_tree(GroupExpansion.persisted_items(items), existing)
 
         payload = Map.put(dashboard.payload || %{}, "grid", merged)
 
@@ -557,6 +559,9 @@ defmodule TrifleApp.DashboardLive do
         {:noreply, socket}
 
       !socket.assigns.can_edit_dashboard ->
+        {:noreply, socket}
+
+      GroupExpansion.synthetic_id?(id) ->
         {:noreply, socket}
 
       true ->
@@ -3207,10 +3212,16 @@ defmodule TrifleApp.DashboardLive do
         header_color_selector =
           params
           |> Map.get("group_header_color_selector", Map.get(widget, "header_color_selector"))
-          |> DashboardWidgetHelpers.normalize_surface_color_selector()
+          |> DashboardWidgetHelpers.normalize_group_header_color_selector()
+
+        group_path =
+          params
+          |> Map.get("group_path", Map.get(widget, "group_path"))
+          |> GroupExpansion.normalize_group_path()
 
         widget
         |> put_optional_widget_field("header_color_selector", header_color_selector)
+        |> put_optional_widget_field("group_path", group_path)
         |> LayoutTree.normalize_group_item()
 
       "kpi" ->
@@ -3697,10 +3708,16 @@ defmodule TrifleApp.DashboardLive do
       "group" ->
         header_color_selector =
           Map.get(params, "group_header_color_selector", item["header_color_selector"])
-          |> DashboardWidgetHelpers.normalize_surface_color_selector()
+          |> DashboardWidgetHelpers.normalize_group_header_color_selector()
+
+        group_path =
+          params
+          |> Map.get("group_path", item["group_path"])
+          |> GroupExpansion.normalize_group_path()
 
         base
         |> put_optional_widget_field("header_color_selector", header_color_selector)
+        |> put_optional_widget_field("group_path", group_path)
         |> LayoutTree.normalize_group_item()
 
       "kpi" ->
@@ -3916,7 +3933,9 @@ defmodule TrifleApp.DashboardLive do
        when is_list(layout_items) do
     resolved_index = if is_map(index), do: index, else: %{}
 
-    Enum.map(layout_items, fn item ->
+    layout_items
+    |> GroupExpansion.persisted_items()
+    |> Enum.map(fn item ->
       merge_dashboard_layout_node(item, resolved_index)
     end)
   end
@@ -4183,9 +4202,10 @@ defmodule TrifleApp.DashboardLive do
 
   defp open_widget_workspace(socket, id, requested_tab) do
     editable? =
-      !socket.assigns.is_public_access &&
-        !is_nil(socket.assigns[:current_user]) &&
-        socket.assigns.can_edit_dashboard
+      !socket.assigns.is_public_access and
+        !is_nil(socket.assigns[:current_user]) and
+        socket.assigns.can_edit_dashboard and
+        not GroupExpansion.synthetic_id?(id)
 
     socket =
       if editable? do
@@ -4194,7 +4214,12 @@ defmodule TrifleApp.DashboardLive do
         socket
       end
 
-    items = dashboard_grid_root_items(socket.assigns.dashboard)
+    items =
+      case requested_tab do
+        "summary" -> WidgetView.root_grid_items(socket.assigns.dashboard, socket.assigns[:stats])
+        _ -> dashboard_grid_root_items(socket.assigns.dashboard)
+      end
+
     path_options = socket.assigns[:widget_path_options] || []
 
     widget =

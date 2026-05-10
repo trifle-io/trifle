@@ -73,4 +73,26 @@ defmodule TrifleApp.Assets.DashboardGroupSingleColumnTest do
     assert source =~ "chart.dispatchAction({ type: 'downplay', seriesIndex: 0 })"
     assert source =~ "this._clearTimeseriesHoverState();"
   end
+
+  test "derived wildcard groups are locked and excluded from saved layouts" do
+    source = File.read!(@source_path)
+
+    assert source =~ "_isDerivedGroupItem(el)"
+    assert source =~ "base.acceptWidgets = false"
+    assert source =~ "item.gridstackNode.noMove = true"
+    assert source =~ ".filter((el) => !this._isDerivedGroupItem(el))"
+    assert source =~ "_logicalYForItem(el, renderY, grid)"
+    assert source =~ "_syncEditableExpandedItems(this.initialItems)"
+  end
+
+  test "client-created wildcard group copies keep server-computed header colors" do
+    source = File.read!(@source_path)
+
+    assert source =~ "_groupHeaderStyle(item)"
+    assert source =~ "item._group_header_style"
+    assert source =~ "background-color: ${style.background}"
+    assert source =~ "const headerStyle = this._groupHeaderStyle(item);"
+    assert source =~ "const headerStyleAttr = this._groupHeaderStyleAttr(headerStyle);"
+    assert source =~ "grid-widget-title font-semibold truncate text-current"
+  end
 end
