@@ -48,14 +48,27 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
 
   def valid_group_path?(path) when is_binary(path) do
     cond do
-      path == "" -> false
-      terminal_wildcard?(path) -> true
-      String.contains?(path, "*") -> false
-      true -> true
+      path == "" ->
+        false
+
+      terminal_wildcard?(path) ->
+        valid_path_segments?(path)
+
+      String.contains?(path, "*") ->
+        false
+
+      true ->
+        valid_path_segments?(path)
     end
   end
 
   def valid_group_path?(_path), do: false
+
+  defp valid_path_segments?(path) do
+    path
+    |> String.split(".")
+    |> Enum.all?(&(&1 != ""))
+  end
 
   def expand_root_items(items, stats \\ nil)
 
@@ -271,11 +284,20 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
     path = to_string(path) |> String.trim()
 
     cond do
-      path == "" -> prefix
-      String.starts_with?(path, "$.") -> String.replace_prefix(path, "$.", "")
-      path == "$" -> ""
-      prefix in [nil, ""] -> path
-      true -> prefix <> "." <> path
+      path == "" ->
+        prefix
+
+      path == "$" ->
+        prefix
+
+      String.starts_with?(path, "$.") ->
+        prefixed_path(prefix, String.replace_prefix(path, "$.", ""))
+
+      prefix in [nil, ""] ->
+        path
+
+      true ->
+        prefix <> "." <> path
     end
   end
 

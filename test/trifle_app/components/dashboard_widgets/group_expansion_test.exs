@@ -31,7 +31,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
     }
   end
 
-  test "regular group path prefixes child path rows and respects absolute paths" do
+  test "regular group path prefixes child path rows and dollar-relative paths" do
     [group] =
       [
         %{
@@ -45,6 +45,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
               "type" => "timeseries",
               "series" => [
                 %{"kind" => "path", "path" => "count", "visible" => true},
+                %{"kind" => "path", "path" => "$", "visible" => true},
                 %{"kind" => "path", "path" => "$.system.count", "visible" => true}
               ]
             }
@@ -57,8 +58,16 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
 
     assert [
              %{"path" => "jobs.email.count"},
-             %{"path" => "system.count"}
+             %{"path" => "jobs.email"},
+             %{"path" => "jobs.email.system.count"}
            ] = Enum.map(child["series"], &Map.take(&1, ["path"]))
+  end
+
+  test "group path validation rejects empty path segments" do
+    refute GroupExpansion.valid_group_path?("jobs..count")
+    refute GroupExpansion.valid_group_path?("jobs..*")
+    assert GroupExpansion.valid_group_path?("jobs.count")
+    assert GroupExpansion.valid_group_path?("jobs.*")
   end
 
   test "terminal wildcard group path expands into concrete groups with synthetic copies" do
