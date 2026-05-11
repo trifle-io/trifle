@@ -11,4 +11,17 @@ defmodule TrifleApp.Components.PathAutocompleteHookTest do
     assert source =~ "decodeHtmlEntities(label)"
     assert source =~ "if (label === value) return escapePathPreviewHtml(value);"
   end
+
+  test "annotated preview synchronizes text metrics with the real input caret" do
+    source = File.read!(@hook_path)
+
+    assert source =~ "syncPathPreviewMetrics()"
+    assert source =~ "window.getComputedStyle(this.input)"
+    assert source =~ "PATH_PREVIEW_FONT_PROPERTIES"
+    assert source =~ "PATH_PREVIEW_LAYOUT_PROPERTIES"
+    refute source =~ "this.input.style[property] = value"
+    assert source =~ "this.pathPreview.style[property] = value"
+    assert source =~ "this.pathPreview.style.borderColor = 'transparent'"
+    assert source =~ "this.pathPreview.style.whiteSpace = 'pre'"
+  end
 end

@@ -14,6 +14,43 @@ const PATH_PREVIEW_COLORS = [
   '#6366f1'
 ];
 
+const PATH_PREVIEW_FONT_PROPERTIES = [
+  'fontFamily',
+  'fontFeatureSettings',
+  'fontKerning',
+  'fontOpticalSizing',
+  'fontSize',
+  'fontStretch',
+  'fontStyle',
+  'fontVariant',
+  'fontVariantNumeric',
+  'fontWeight',
+  'letterSpacing',
+  'lineHeight',
+  'tabSize',
+  'textRendering',
+  'textTransform',
+  'wordSpacing'
+];
+
+const PATH_PREVIEW_LAYOUT_PROPERTIES = [
+  'boxSizing',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'borderTopStyle',
+  'borderRightStyle',
+  'borderBottomStyle',
+  'borderLeftStyle',
+  'borderTopWidth',
+  'borderRightWidth',
+  'borderBottomWidth',
+  'borderLeftWidth',
+  'textAlign',
+  'textIndent'
+];
+
 const escapePathPreviewHtml = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -141,6 +178,7 @@ Hooks.PathAutocomplete = {
 
   destroyed() {
     this.detachInputListeners();
+    this.clearPathPreviewMetrics();
     if (this.input) {
       this.input.style.removeProperty('color');
       this.input.style.removeProperty('caret-color');
@@ -164,6 +202,7 @@ Hooks.PathAutocomplete = {
     }
 
     this.detachInputListeners();
+    this.clearPathPreviewMetrics();
     this.input = nextInput;
     this.pathPreview = nextPathPreview;
     this.suggestionBox = nextSuggestionBox;
@@ -376,11 +415,13 @@ Hooks.PathAutocomplete = {
     const value = this.input.value || '';
 
     if (!this.pathPreview) {
+      this.clearPathPreviewMetrics();
       this.input.style.removeProperty('color');
       this.input.style.removeProperty('caret-color');
       return;
     }
 
+    this.syncPathPreviewMetrics();
     this.input.style.setProperty('color', 'transparent');
     this.input.style.setProperty(
       'caret-color',
@@ -395,6 +436,43 @@ Hooks.PathAutocomplete = {
 
     this.pathPreview.innerHTML = formatAnnotatedPathPreview(value, this.optionValues || []);
     this.pathPreview.classList.remove('hidden');
+  },
+
+  syncPathPreviewMetrics() {
+    if (!this.input || !this.pathPreview || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+      return;
+    }
+
+    const inputStyle = window.getComputedStyle(this.input);
+
+    PATH_PREVIEW_FONT_PROPERTIES.forEach((property) => {
+      const value = inputStyle[property];
+      if (!value) return;
+      this.pathPreview.style[property] = value;
+    });
+
+    PATH_PREVIEW_LAYOUT_PROPERTIES.forEach((property) => {
+      const value = inputStyle[property];
+      if (!value) return;
+      this.pathPreview.style[property] = value;
+    });
+
+    this.pathPreview.style.borderColor = 'transparent';
+    this.pathPreview.style.backgroundColor = 'transparent';
+    this.pathPreview.style.overflow = 'hidden';
+    this.pathPreview.style.whiteSpace = 'pre';
+  },
+
+  clearPathPreviewMetrics() {
+    if (this.pathPreview) {
+      PATH_PREVIEW_FONT_PROPERTIES.concat(PATH_PREVIEW_LAYOUT_PROPERTIES).forEach((property) => {
+        this.pathPreview.style.removeProperty(property.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`));
+      });
+      this.pathPreview.style.removeProperty('border-color');
+      this.pathPreview.style.removeProperty('background-color');
+      this.pathPreview.style.removeProperty('overflow');
+      this.pathPreview.style.removeProperty('white-space');
+    }
   }
 }
 
