@@ -58,6 +58,8 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
   test "resolves widget surface styles with readable foreground colors" do
     default_surface = Helpers.resolve_surface_style(nil, default_background: "#FFFFFF")
     custom_surface = Helpers.resolve_surface_style("cool.4", default_background: "#FFFFFF")
+    red_surface = Helpers.resolve_surface_style("default.2", default_background: "#FFFFFF")
+    dark_surface = Helpers.resolve_surface_style("purple.6", default_background: "#FFFFFF")
 
     assert default_surface.default?
     assert default_surface.background == "#FFFFFF"
@@ -65,6 +67,10 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     refute custom_surface.default?
     assert custom_surface.background == "#0EA5E9"
     assert custom_surface.text == "#0F172A"
+    assert red_surface.background == "#EF4444"
+    assert red_surface.text == "#0F172A"
+    assert dark_surface.background == "#4C1D95"
+    assert dark_surface.text == "#F8FAFC"
   end
 
   test "resolves rotating surface styles by cycling through the selected palette" do

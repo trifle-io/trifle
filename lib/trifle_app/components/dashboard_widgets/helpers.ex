@@ -175,14 +175,15 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
           |> Kernel.||(fallback_background)
       end
 
-    dark? = dark_hex_color?(background)
+    text_color = surface_text_color(background)
+    dark_surface? = text_color == @dark_surface_text_color
 
     %{
       selector: normalized_selector,
       default?: is_nil(normalized_selector),
       background: background,
-      text: if(dark?, do: @dark_surface_text_color, else: @light_surface_text_color),
-      border: if(dark?, do: @dark_surface_border_color, else: @light_surface_border_color)
+      text: text_color,
+      border: if(dark_surface?, do: @dark_surface_border_color, else: @light_surface_border_color)
     }
   end
 
@@ -1483,21 +1484,56 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
 
   defp normalize_hex_color(_), do: nil
 
-  defp dark_hex_color?(value) do
+  defp surface_text_color(value) do
+    with {:ok, background_luminance} <- relative_luminance(value),
+         {:ok, light_text_luminance} <- relative_luminance(@light_surface_text_color),
+         {:ok, dark_text_luminance} <- relative_luminance(@dark_surface_text_color) do
+      light_text_contrast = contrast_ratio(background_luminance, light_text_luminance)
+      dark_text_contrast = contrast_ratio(background_luminance, dark_text_luminance)
+
+      if light_text_contrast >= dark_text_contrast do
+        @light_surface_text_color
+      else
+        @dark_surface_text_color
+      end
+    else
+      _ -> @light_surface_text_color
+    end
+  end
+
+  defp relative_luminance(value) do
     case normalize_hex_color(value) do
       <<"#", r::binary-size(2), g::binary-size(2), b::binary-size(2)>> ->
         with {red, ""} <- Integer.parse(r, 16),
              {green, ""} <- Integer.parse(g, 16),
              {blue, ""} <- Integer.parse(b, 16) do
-          luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255
-          luminance < 0.5
+          {:ok,
+           0.2126 * linear_rgb_channel(red) + 0.7152 * linear_rgb_channel(green) +
+             0.0722 * linear_rgb_channel(blue)}
         else
-          _ -> false
+          _ -> :error
         end
 
       _ ->
-        false
+        :error
     end
+  end
+
+  defp linear_rgb_channel(value) do
+    channel = value / 255
+
+    if channel <= 0.03928 do
+      channel / 12.92
+    else
+      :math.pow((channel + 0.055) / 1.055, 2.4)
+    end
+  end
+
+  defp contrast_ratio(first_luminance, second_luminance) do
+    lighter = max(first_luminance, second_luminance)
+    darker = min(first_luminance, second_luminance)
+
+    (lighter + 0.05) / (darker + 0.05)
   end
 
   defp normalize_palette_id(value) do
