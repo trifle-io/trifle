@@ -47,12 +47,14 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert html =~ ~s(data-scope-kind="source")
     assert html =~ ~s(data-scope-icon="sidebar-databases")
     assert html =~ ~s(data-context-slot="chat-context")
-    assert html =~ ~s(data-context-slot="detected-context")
-    assert html =~ "Current Context"
-    assert html =~ "Detected Context"
-    assert html =~ "No page detected"
+    assert html =~ "Context"
+    refute html =~ "Current Context"
+    refute html =~ "Detected Context"
+    refute html =~ "No page detected"
+    refute html =~ ~s(data-context-slot="detected-context")
+    refute html =~ ~s(data-detected-context-selected=)
     refute html =~ "Next message uses selected source only."
-    assert html =~ ~s(class="flex h-10 w-10 shrink-0 items-center justify-center)
+    assert html =~ "h-10 w-10"
     assert html =~ ~s(class="h-5 w-5 shrink-0")
     refute html =~ "Fallback database source"
     assert html =~ ~s(data-chat-shell-mode-group)
@@ -73,15 +75,30 @@ defmodule TrifleApp.ChatShellLiveTest do
 
     html = render(view)
     assert html =~ "Competitors"
+    assert html =~ ~s(data-context-slot="detected-context")
+    assert html =~ ~s(data-context-compact="true")
+    assert html =~ ~s(data-detected-context-selected="false")
+    assert html =~ "Switch"
+    refute html =~ ">Detected Context<"
     refute html =~ "Next message will switch to this page."
     assert html =~ ~s(data-scope-kind="context")
     assert html =~ ~s(data-scope-icon="sidebar-dashboards")
+
+    html = render_click(view, "toggle_detected_context")
+    assert html =~ ~s(data-detected-context-selected="true")
+    assert html =~ ~s(data-context-expanded="true")
+    assert html =~ ~s(data-context-compact="false")
+    assert html =~ "Detected Context"
+    refute html =~ "Switch"
+    assert html =~ "metrics key sales"
 
     render_hook(view, "refresh_page_context", %{"path" => "/monitors/baker-agent"})
 
     html = render(view)
     refute html =~ "Competitors"
-    assert html =~ "No page detected"
+    refute html =~ "No page detected"
+    refute html =~ ~s(data-context-slot="detected-context")
+    refute html =~ ~s(data-detected-context-selected=)
     refute html =~ "Next message uses selected source only."
     assert html =~ "Sales Mongo"
     assert html =~ ~s(data-scope-kind="source")
@@ -131,24 +148,35 @@ defmodule TrifleApp.ChatShellLiveTest do
         content: ChatPageContext.system_message(dashboard_context)
       })
 
-    assert_eventually_renders(view, "Current Context")
+    assert_eventually_renders(view, "Context")
     html = render(view)
     assert html =~ ~s(data-context-slot="chat-context")
     assert html =~ "Competitors"
+    refute html =~ "Current Context"
     refute html =~ "Currently attached to this conversation."
 
-    send(view.pid, {:chat_context_updated, dashboard_context})
+    same_dashboard_different_query =
+      chat_context(:dashboard, "/dashboards/competitors", "Competitors", source, %{
+        timeframe: %{value: "7d"},
+        granularity: "1d",
+        metrics_key: "revenue"
+      })
+
+    send(view.pid, {:chat_context_updated, same_dashboard_different_query})
 
     html = render(view)
-    assert html =~ ~s(data-context-slot="detected-context")
-    assert html =~ "Detected Context"
+    refute html =~ ~s(data-context-slot="detected-context")
+    refute html =~ ~s(data-detected-context-selected=)
+    refute html =~ "Switch"
+    refute html =~ ">Detected Context<"
     refute html =~ "Next message uses this page."
 
     render_hook(view, "refresh_page_context", %{"path" => "/monitors/baker-agent"})
 
     html = render(view)
     assert html =~ "Competitors"
-    assert html =~ "No page detected"
+    refute html =~ "No page detected"
+    refute html =~ ~s(data-context-slot="detected-context")
     refute html =~ "Next message uses selected source only."
 
     monitor_context =
@@ -159,6 +187,8 @@ defmodule TrifleApp.ChatShellLiveTest do
     html = render(view)
     assert html =~ "Competitors"
     assert html =~ "Baker Agent Monitor"
+    assert html =~ ~s(data-context-slot="detected-context")
+    assert html =~ "Switch"
     refute html =~ "Next message will switch to this page."
   end
 
@@ -267,19 +297,113 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert_eventually_renders(view, "Persist this prompt for every tab")
   end
 
-  defp chat_context(page_type, route, title, source) do
+  test "submitting a message keeps the existing context by default", %{
+    conn: conn,
+    user: user,
+    membership: membership,
+    database: database
+  } do
+    {:ok, view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        },
+        connect_params: %{"tab_id" => "chat-context-send-default"}
+      )
+
+    source = Source.from_database(database)
+    dashboard_context = chat_context(:dashboard, "/dashboards/competitors", "Competitors", source)
+
+    monitor_context =
+      chat_context(:monitor, "/monitors/baker-agent", "Baker Agent Monitor", source)
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+
+    {:ok, _session} =
+      SessionStore.append_message(session, %{
+        role: "system",
+        content: ChatPageContext.system_message(dashboard_context)
+      })
+
+    assert_eventually_renders(view, "Competitors")
+    send(view.pid, {:chat_context_updated, monitor_context})
+
+    html = assert_eventually_renders(view, "Baker Agent Monitor")
+    assert html =~ ~s(data-detected-context-selected="false")
+
+    render_submit(view, "send_message", %{
+      "chat" => %{"message" => "Keep dashboard context"}
+    })
+
+    assert_eventually_session_message(session.id, "Keep dashboard context")
+    {:ok, updated_session} = SessionStore.get(session.id)
+
+    assert latest_context_title(updated_session) == "Competitors"
+    refute "Baker Agent Monitor" in system_context_titles(updated_session)
+  end
+
+  test "submitting a message switches to detected context when selected", %{
+    conn: conn,
+    user: user,
+    membership: membership,
+    database: database
+  } do
+    {:ok, view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        },
+        connect_params: %{"tab_id" => "chat-context-send-detected"}
+      )
+
+    source = Source.from_database(database)
+    dashboard_context = chat_context(:dashboard, "/dashboards/competitors", "Competitors", source)
+
+    monitor_context =
+      chat_context(:monitor, "/monitors/baker-agent", "Baker Agent Monitor", source)
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+
+    {:ok, _session} =
+      SessionStore.append_message(session, %{
+        role: "system",
+        content: ChatPageContext.system_message(dashboard_context)
+      })
+
+    assert_eventually_renders(view, "Competitors")
+    send(view.pid, {:chat_context_updated, monitor_context})
+    assert_eventually_renders(view, "Baker Agent Monitor")
+
+    html = render_click(view, "toggle_detected_context")
+    assert html =~ ~s(data-detected-context-selected="true")
+
+    render_submit(view, "send_message", %{
+      "chat" => %{"message" => "Use monitor context"}
+    })
+
+    assert_eventually_session_message(session.id, "Use monitor context")
+    assert_eventually_session_context(session.id, "Baker Agent Monitor")
+  end
+
+  defp chat_context(page_type, route, title, source, query_overrides \\ %{}) do
+    query =
+      %{
+        source_ref: ChatPageContext.source_ref(source),
+        timeframe: %{value: "24h"},
+        granularity: "1h",
+        metrics_key: "sales"
+      }
+      |> Map.merge(query_overrides)
+
     ChatPageContext.build(page_type,
       entity: %{
         id: "#{page_type}-scope",
         title: title,
         route: route
       },
-      query: %{
-        source_ref: ChatPageContext.source_ref(source),
-        timeframe: %{value: "24h"},
-        granularity: "1h",
-        metrics_key: "sales"
-      }
+      query: query
     )
   end
 
@@ -297,11 +421,12 @@ defmodule TrifleApp.ChatShellLiveTest do
       end)
 
     assert is_binary(html) and html =~ text
+    html
   end
 
   defp assert_eventually_session_message(session_id, text) do
     messages =
-      Enum.reduce_while(1..25, [], fn _, _last_messages ->
+      Enum.reduce_while(1..60, [], fn _, _last_messages ->
         messages =
           case SessionStore.get(session_id) do
             {:ok, session} -> session.messages
@@ -317,5 +442,51 @@ defmodule TrifleApp.ChatShellLiveTest do
       end)
 
     assert Enum.any?(messages, &(Map.get(&1, :content) == text))
+  end
+
+  defp assert_eventually_session_context(session_id, title) do
+    context_title =
+      Enum.reduce_while(1..40, nil, fn _, _last_title ->
+        context_title =
+          case SessionStore.get(session_id) do
+            {:ok, session} -> latest_context_title(session)
+            _ -> nil
+          end
+
+        if context_title == title do
+          {:halt, context_title}
+        else
+          Process.sleep(10)
+          {:cont, context_title}
+        end
+      end)
+
+    assert context_title == title
+  end
+
+  defp latest_context_title(session) do
+    session
+    |> system_context_titles()
+    |> List.last()
+  end
+
+  defp system_context_titles(session) do
+    session.messages
+    |> Enum.filter(&(Map.get(&1, :role, Map.get(&1, "role")) == "system"))
+    |> Enum.map(fn message ->
+      message
+      |> Map.get(:content, Map.get(message, "content"))
+      |> ChatPageContext.parse_system_message()
+      |> context_title()
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp context_title(nil), do: nil
+
+  defp context_title(context) do
+    context
+    |> Map.get(:entity, %{})
+    |> Map.get("title")
   end
 end

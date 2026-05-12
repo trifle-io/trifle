@@ -105,6 +105,14 @@ defmodule TrifleApp.ChatShellLive do
     submit_message(socket, message)
   end
 
+  def handle_event("toggle_detected_context", _params, socket) do
+    selected? =
+      is_map(socket.assigns[:current_page_context]) and
+        not socket.assigns[:use_detected_context]
+
+    {:noreply, assign(socket, :use_detected_context, selected?)}
+  end
+
   def handle_event("cancel_message", _params, socket) do
     chat_run_owner? = socket.assigns[:chat_run_owner]
 
@@ -132,6 +140,7 @@ defmodule TrifleApp.ChatShellLive do
       |> assign(:session_snapshot, nil)
       |> assign(:pending_context_request_id, nil)
       |> assign(:pending_page_context_override, nil)
+      |> assign(:use_detected_context, false)
 
     {:noreply, socket}
   end
@@ -157,6 +166,7 @@ defmodule TrifleApp.ChatShellLive do
           |> assign(:pending_user_message, nil)
           |> assign(:pending_context_request_id, nil)
           |> assign(:pending_page_context_override, nil)
+          |> assign(:use_detected_context, false)
           |> assign(:form, to_form(%{"message" => ""}))
 
         {:noreply, socket}
@@ -472,7 +482,7 @@ defmodule TrifleApp.ChatShellLive do
        |> cancel_initial_context_request()
        |> cancel_navigation_context_request()
        |> track_page_context_path(context)
-       |> assign(:current_page_context, context)
+       |> assign_current_page_context(context)
        |> maybe_resume_pending()}
     else
       {:noreply, socket}
@@ -483,14 +493,18 @@ defmodule TrifleApp.ChatShellLive do
     cond do
       request_id == socket.assigns[:pending_context_request_id] and
           accept_page_context?(socket, context) ->
+        use_detected_context? = socket.assigns[:use_detected_context]
+
         socket =
           socket
           |> cancel_context_request()
           |> track_page_context_path(context)
-          |> assign(:current_page_context, context)
-          |> assign(:pending_page_context_override, context)
+          |> assign_current_page_context(context)
 
-        {:noreply, start_chat_response(socket, context)}
+        selected_context = selected_message_context(socket, context, use_detected_context?)
+        socket = assign(socket, :pending_page_context_override, selected_context)
+
+        {:noreply, start_chat_response(socket, selected_context)}
 
       request_id == socket.assigns[:initial_context_request_id] and
           accept_page_context?(socket, context) ->
@@ -498,7 +512,7 @@ defmodule TrifleApp.ChatShellLive do
           socket
           |> cancel_initial_context_request()
           |> track_page_context_path(context)
-          |> assign(:current_page_context, context)
+          |> assign_current_page_context(context)
 
         {:noreply, maybe_resume_pending(socket)}
 
@@ -508,7 +522,7 @@ defmodule TrifleApp.ChatShellLive do
          socket
          |> cancel_navigation_context_request()
          |> track_page_context_path(context)
-         |> assign(:current_page_context, context)}
+         |> assign_current_page_context(context)}
 
       true ->
         {:noreply, socket}
@@ -548,7 +562,7 @@ defmodule TrifleApp.ChatShellLive do
         |> assign(:pending_context_request_id, nil)
         |> assign(:pending_context_timer_ref, nil)
 
-      {:noreply, start_chat_response(socket, nil)}
+      {:noreply, start_chat_response(socket, selected_message_context(socket, nil))}
     else
       {:noreply, socket}
     end
@@ -883,7 +897,8 @@ defmodule TrifleApp.ChatShellLive do
             detected_context_scope(
               @current_page_context,
               displayed_source(@selected_source),
-              @session_page_context
+              @session_page_context,
+              @use_detected_context
             ) %>
           <.context_scope_card :if={detected_scope} scope={detected_scope} class="mb-3" />
           <.form for={@form} phx-submit="send_message" class="mt-auto">
@@ -1070,7 +1085,6 @@ defmodule TrifleApp.ChatShellLive do
     base_session = socket.assigns[:session_snapshot] || socket.assigns[:session]
     parent = self()
     notify = fn event -> send(parent, {:chat_progress, event}) end
-    page_context = page_context || socket.assigns[:current_page_context]
 
     with %Session{} = session <- base_session do
       case claim_chat_run(session) do
@@ -1101,13 +1115,13 @@ defmodule TrifleApp.ChatShellLive do
           case persist_pending_user_message(session, context_messages, message) do
             {:ok, pending_session, started_at} ->
               socket
-              |> assign(:current_page_context, page_context)
               |> assign(:selected_source, active_source || socket.assigns[:selected_source])
               |> assign(:session, pending_session)
               |> assign_messages(pending_session)
               |> assign_session_context(pending_session)
               |> assign(:session_snapshot, nil)
               |> assign(:pending_user_message, nil)
+              |> assign(:use_detected_context, false)
               |> assign(
                 :progress_events,
                 ensure_pending_progress_visible(
@@ -1395,40 +1409,242 @@ defmodule TrifleApp.ChatShellLive do
   defp context_scope_card(assigns) do
     ~H"""
     <div
-      class={[
-        "rounded-2xl border border-slate-200/80 bg-slate-50/85 px-3 py-3 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/45",
-        @class
-      ]}
+      class={context_scope_card_classes(@scope, @class)}
       data-context-slot={Map.get(@scope, :slot)}
       data-scope-kind={Map.get(@scope, :kind)}
       data-scope-icon={@scope.icon}
+      data-context-expanded={to_string(context_scope_expanded?(@scope))}
+      data-context-compact={to_string(context_scope_compact?(@scope))}
+      data-detected-context-selected={context_scope_detected_selected_attr(@scope)}
     >
-      <div class="flex items-start gap-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700/80">
-          <TrifleApp.SidebarIcons.icon name={@scope.icon} class="h-5 w-5 shrink-0" />
+      <div class={context_scope_row_classes(@scope)}>
+        <div class={context_scope_icon_classes(@scope)}>
+          <TrifleApp.SidebarIcons.icon
+            name={@scope.icon}
+            class={context_scope_icon_glyph_classes(@scope)}
+          />
         </div>
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-3">
-            <p class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <p class={context_scope_title_classes(@scope)}>
               {@scope.title}
             </p>
-            <p
-              :if={Map.get(@scope, :label)}
-              class="shrink-0 text-right text-xs font-medium text-slate-400 dark:text-slate-500"
-            >
-              {@scope.label}
-            </p>
+            <div class="flex shrink-0 items-center gap-2">
+              <p
+                :if={Map.get(@scope, :label) && Map.get(@scope, :checkbox) != true}
+                class={context_scope_label_classes(@scope)}
+              >
+                {@scope.label}
+              </p>
+              <button
+                :if={Map.get(@scope, :checkbox)}
+                type="button"
+                phx-click="toggle_detected_context"
+                class={context_scope_toggle_classes(@scope)}
+                disabled={not context_scope_selectable?(@scope)}
+                role="checkbox"
+                aria-checked={to_string(context_scope_selected?(@scope))}
+                aria-label={context_scope_toggle_label(@scope)}
+              >
+                <span :if={Map.get(@scope, :label)} class={context_scope_label_classes(@scope)}>
+                  {@scope.label}
+                </span>
+                <span class={context_scope_checkbox_classes(@scope)}>
+                  <.icon :if={context_scope_selected?(@scope)} name="hero-check" class="h-3.5 w-3.5" />
+                </span>
+              </button>
+            </div>
           </div>
-          <p
+          <div
             :if={Map.get(@scope, :details)}
-            class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400"
+            class="chat-context-details"
+            data-expanded={to_string(context_scope_expanded?(@scope))}
+            aria-hidden={to_string(not context_scope_expanded?(@scope))}
           >
-            {@scope.details}
-          </p>
+            <div>
+              <p class={context_scope_details_classes(@scope)}>
+                {@scope.details}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
     """
+  end
+
+  defp context_scope_card_classes(scope, extra_class) do
+    base = "border transition-colors duration-200 dark:shadow-none"
+
+    size =
+      if context_scope_compact?(scope) do
+        "rounded-xl py-1.5 pl-1.5 pr-2.5 shadow-none"
+      else
+        "rounded-2xl px-3 py-3 shadow-sm"
+      end
+
+    tone =
+      cond do
+        context_scope_selected?(scope) ->
+          "border-teal-300/80 bg-teal-50/75 dark:border-teal-500/45 dark:bg-teal-500/10"
+
+        context_scope_muted?(scope) ->
+          "border-slate-200/70 bg-slate-50/55 shadow-none dark:border-slate-800/80 dark:bg-slate-900/25"
+
+        true ->
+          "border-slate-200/80 bg-slate-50/85 dark:border-slate-700/80 dark:bg-slate-900/45"
+      end
+
+    [base, size, tone, extra_class]
+  end
+
+  defp context_scope_row_classes(scope) do
+    if context_scope_compact?(scope) do
+      "flex items-center gap-2"
+    else
+      "flex items-start gap-3"
+    end
+  end
+
+  defp context_scope_icon_classes(scope) do
+    base = "flex shrink-0 items-center justify-center ring-1 transition-all duration-200"
+
+    size =
+      if context_scope_compact?(scope) do
+        "h-7 w-7 rounded-lg"
+      else
+        "h-10 w-10 rounded-xl"
+      end
+
+    tone =
+      cond do
+        context_scope_selected?(scope) ->
+          "bg-white text-teal-700 ring-teal-200/90 dark:bg-slate-900 dark:text-teal-300 dark:ring-teal-500/35"
+
+        context_scope_muted?(scope) ->
+          "bg-white/70 text-slate-400 ring-slate-200/70 dark:bg-slate-900/70 dark:text-slate-500 dark:ring-slate-800"
+
+        true ->
+          "bg-white text-slate-500 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700/80"
+      end
+
+    [base, size, tone]
+  end
+
+  defp context_scope_icon_glyph_classes(scope) do
+    if context_scope_compact?(scope) do
+      "h-4 w-4 shrink-0"
+    else
+      "h-5 w-5 shrink-0"
+    end
+  end
+
+  defp context_scope_title_classes(scope) do
+    base = "min-w-0 flex-1 truncate text-sm font-semibold transition-colors duration-200"
+
+    tone =
+      if context_scope_muted?(scope) do
+        "text-slate-500 dark:text-slate-400"
+      else
+        "text-slate-900 dark:text-slate-100"
+      end
+
+    [base, tone]
+  end
+
+  defp context_scope_label_classes(scope) do
+    base = "shrink-0 text-right text-xs font-medium transition-colors duration-200"
+
+    tone =
+      if context_scope_selected?(scope) do
+        "text-teal-700 dark:text-teal-300"
+      else
+        "text-slate-400 dark:text-slate-500"
+      end
+
+    [base, tone]
+  end
+
+  defp context_scope_details_classes(scope) do
+    base = "text-xs leading-5 transition-colors duration-200"
+
+    tone =
+      if context_scope_selected?(scope) do
+        "text-teal-900/70 dark:text-teal-100/70"
+      else
+        "text-slate-500 dark:text-slate-400"
+      end
+
+    [base, tone]
+  end
+
+  defp context_scope_toggle_classes(scope) do
+    base =
+      "inline-flex items-center justify-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900"
+
+    size =
+      if context_scope_compact?(scope) do
+        "h-6 gap-1.5 px-1"
+      else
+        "h-7 gap-2 px-1"
+      end
+
+    state =
+      cond do
+        context_scope_selectable?(scope) ->
+          "text-slate-500 hover:bg-white hover:text-teal-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-teal-300"
+
+        true ->
+          "cursor-not-allowed text-slate-300 dark:text-slate-700"
+      end
+
+    [base, size, state]
+  end
+
+  defp context_scope_checkbox_classes(scope) do
+    base = "inline-flex items-center justify-center rounded-md border transition-all duration-200"
+
+    size =
+      if context_scope_compact?(scope) do
+        "h-[1.125rem] w-[1.125rem]"
+      else
+        "h-5 w-5"
+      end
+
+    state =
+      cond do
+        context_scope_selected?(scope) ->
+          "border-teal-600 bg-teal-600 text-white shadow-sm shadow-teal-900/10 dark:border-teal-400 dark:bg-teal-500"
+
+        context_scope_selectable?(scope) ->
+          "border-slate-300 bg-white text-transparent dark:border-slate-600 dark:bg-slate-900"
+
+        true ->
+          "border-slate-200 bg-slate-100 text-transparent dark:border-slate-800 dark:bg-slate-900"
+      end
+
+    [base, size, state]
+  end
+
+  defp context_scope_toggle_label(scope) do
+    if context_scope_selected?(scope), do: "Keep existing context", else: "Use detected context"
+  end
+
+  defp context_scope_detected_selected_attr(%{slot: "detected-context"} = scope) do
+    to_string(context_scope_selected?(scope))
+  end
+
+  defp context_scope_detected_selected_attr(_scope), do: nil
+
+  defp context_scope_expanded?(scope), do: Map.get(scope, :expanded, true)
+  defp context_scope_compact?(scope), do: Map.get(scope, :compact, false)
+  defp context_scope_selected?(scope), do: Map.get(scope, :selected, false)
+
+  defp context_scope_muted?(scope),
+    do: Map.get(scope, :muted, false) and not context_scope_selected?(scope)
+
+  defp context_scope_selectable?(scope) do
+    Map.get(scope, :selectable, false) and not Map.get(scope, :disabled, false)
   end
 
   defp chat_header_icon_button_base_classes do
@@ -1454,7 +1670,7 @@ defmodule TrifleApp.ChatShellLive do
   defp chat_context_scope(%{} = page_context, selected_source) do
     %{
       slot: "chat-context",
-      label: "Current Context",
+      label: "Context",
       kind: "context",
       icon: context_scope_icon(page_context),
       title: context_scope_title(page_context),
@@ -1465,7 +1681,7 @@ defmodule TrifleApp.ChatShellLive do
   defp chat_context_scope(nil, %Source{} = source) do
     %{
       slot: "chat-context",
-      label: "Current Context",
+      label: "Context",
       kind: "source",
       icon: source_scope_icon(source),
       title: Source.display_name(source),
@@ -1475,29 +1691,84 @@ defmodule TrifleApp.ChatShellLive do
 
   defp chat_context_scope(_, _), do: nil
 
-  defp detected_context_scope(%{} = page_context, selected_source, _chat_context) do
-    %{
-      slot: "detected-context",
-      label: "Detected Context",
-      kind: "context",
-      icon: context_scope_icon(page_context),
-      title: context_scope_title(page_context),
-      details: context_scope_details(page_context, selected_source)
-    }
+  defp detected_context_scope(%{} = page_context, selected_source, chat_context, selected?) do
+    unless same_page_context?(page_context, chat_context) do
+      %{
+        slot: "detected-context",
+        label: detected_context_label(selected?),
+        kind: "context",
+        icon: context_scope_icon(page_context),
+        title: context_scope_title(page_context),
+        details: context_scope_details(page_context, selected_source),
+        checkbox: true,
+        selectable: true,
+        selected: selected?,
+        expanded: selected?,
+        compact: not selected?,
+        muted: not selected?
+      }
+    end
   end
 
-  defp detected_context_scope(nil, %Source{} = source, _chat_context) do
-    %{
-      slot: "detected-context",
-      label: "Detected Context",
-      kind: "source",
-      icon: source_scope_icon(source),
-      title: "No page detected",
-      details: "Using selected source: #{Source.display_name(source)}"
-    }
+  defp detected_context_scope(_, _, _, _), do: nil
+
+  defp detected_context_label(true), do: "Detected Context"
+  defp detected_context_label(_), do: "Switch"
+
+  defp same_page_context?(%{} = page_context, %{} = chat_context) do
+    page_fingerprint = ChatPageContext.fingerprint(page_context)
+    chat_fingerprint = ChatPageContext.fingerprint(chat_context)
+
+    same_context_entity?(page_context, chat_context) or
+      (is_binary(page_fingerprint) and page_fingerprint == chat_fingerprint)
   end
 
-  defp detected_context_scope(_, _, _), do: nil
+  defp same_page_context?(_, _), do: false
+
+  defp same_context_entity?(%{} = page_context, %{} = chat_context) do
+    same_context_type?(page_context, chat_context) and
+      same_present_value?(context_entity_id(page_context), context_entity_id(chat_context))
+  end
+
+  defp same_context_entity?(_, _), do: false
+
+  defp same_context_type?(left, right) do
+    context_type_family(left) == context_type_family(right)
+  end
+
+  defp context_type_family(context) do
+    case normalized_page_type(context) do
+      type when type in [:dashboard, :dashboards] -> :dashboard
+      type when type in [:monitor, :monitors] -> :monitor
+      type when type in [:project, :projects] -> :project
+      type when type in [:database, :databases] -> :database
+      other -> other
+    end
+  end
+
+  defp context_entity_id(%{} = context) do
+    context
+    |> map_get("entity")
+    |> case do
+      %{} = entity -> present_string(map_get(entity, "id"))
+      _ -> nil
+    end
+  end
+
+  defp context_entity_id(_), do: nil
+
+  defp same_present_value?(value, value) when is_binary(value), do: true
+  defp same_present_value?(_, _), do: false
+
+  defp present_string(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp present_string(value) when not is_nil(value), do: value |> to_string() |> present_string()
+  defp present_string(_), do: nil
 
   defp context_scope_icon(%{} = page_context) do
     case normalized_page_type(page_context) do
@@ -1649,6 +1920,7 @@ defmodule TrifleApp.ChatShellLive do
     |> assign(:selected_visualization, nil)
     |> assign(:current_page_context, nil)
     |> assign(:session_page_context, nil)
+    |> assign(:use_detected_context, false)
     |> assign(:pending_context_request_id, nil)
     |> assign(:pending_context_timer_ref, nil)
     |> assign(:initial_context_request_id, nil)
@@ -2977,8 +3249,38 @@ defmodule TrifleApp.ChatShellLive do
   defp map_get_existing_atom(_map, _key), do: nil
 
   defp clear_current_page_context(socket) do
-    assign(socket, :current_page_context, nil)
+    socket
+    |> assign(:current_page_context, nil)
+    |> assign(:use_detected_context, false)
   end
+
+  defp assign_current_page_context(socket, %{} = context) do
+    previous = socket.assigns[:current_page_context]
+
+    socket = assign(socket, :current_page_context, context)
+
+    if context_fingerprint(previous) == context_fingerprint(context) do
+      socket
+    else
+      assign(socket, :use_detected_context, false)
+    end
+  end
+
+  defp selected_message_context(socket, detected_context) do
+    selected_message_context(socket, detected_context, socket.assigns[:use_detected_context])
+  end
+
+  defp selected_message_context(socket, detected_context, use_detected_context?) do
+    if use_detected_context? do
+      detected_context || socket.assigns[:current_page_context] ||
+        socket.assigns[:session_page_context]
+    else
+      socket.assigns[:session_page_context]
+    end
+  end
+
+  defp context_fingerprint(%{} = context), do: ChatPageContext.fingerprint(context)
+  defp context_fingerprint(_), do: nil
 
   defp accept_page_context?(socket, %{} = context) do
     ChatPageContext.matches_path?(context, socket.assigns[:page_context_target_path])
