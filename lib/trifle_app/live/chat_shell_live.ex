@@ -700,7 +700,7 @@ defmodule TrifleApp.ChatShellLive do
                   data-chat-shell-mode-button="pinned"
                   aria-label="Pinned mode"
                 >
-                  <TrifleApp.SidebarIcons.icon name="chat-mode-pinned" class="h-4 w-4 shrink-0" />
+                  <TrifleApp.SidebarIcons.icon name="chat-mode-pinned" class="h-5 w-5 shrink-0" />
                 </button>
                 <button
                   type="button"
@@ -714,7 +714,7 @@ defmodule TrifleApp.ChatShellLive do
                   data-chat-shell-mode-button="panel"
                   aria-label="Panel mode"
                 >
-                  <TrifleApp.SidebarIcons.icon name="chat-mode-panel" class="h-4 w-4 shrink-0" />
+                  <TrifleApp.SidebarIcons.icon name="chat-mode-panel" class="h-5 w-5 shrink-0" />
                 </button>
                 <button
                   type="button"
@@ -728,7 +728,7 @@ defmodule TrifleApp.ChatShellLive do
                   data-chat-shell-mode-button="fullscreen"
                   aria-label="Fullscreen mode"
                 >
-                  <TrifleApp.SidebarIcons.icon name="chat-mode-fullscreen" class="h-4 w-4 shrink-0" />
+                  <TrifleApp.SidebarIcons.icon name="chat-mode-fullscreen" class="h-5 w-5 shrink-0" />
                 </button>
               </div>
 
@@ -1820,6 +1820,9 @@ defmodule TrifleApp.ChatShellLive do
 
     if match?(%Session{}, session) and Chat.pending?(session) do
       cond do
+        owns_chat_run?(socket, session) ->
+          socket
+
         is_nil(page_context) and socket.assigns[:initial_context_request_id] ->
           socket
 
@@ -2143,6 +2146,12 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   defp claim_chat_run(_), do: {:error, :chat_run_in_progress}
+
+  defp owns_chat_run?(socket, %Session{id: session_id}) do
+    socket.assigns[:chat_run_owner] and socket.assigns[:chat_run_session_id] == session_id
+  end
+
+  defp owns_chat_run?(_socket, _session), do: false
 
   defp release_chat_run(socket) do
     if socket.assigns[:chat_run_owner] and is_binary(socket.assigns[:chat_run_session_id]) do

@@ -175,6 +175,20 @@ defmodule Trifle.Chat.SessionStore do
   end
 
   @doc """
+  Appends a message and clears the pending marker in one persisted update.
+  """
+  @spec append_message_and_clear_pending(Session.t(), Session.message()) ::
+          {:ok, Session.t()} | {:error, term()}
+  def append_message_and_clear_pending(%Session{id: id}, message) do
+    transaction(id, fn record, session ->
+      session
+      |> Session.append_message(message)
+      |> Session.set_pending_started_at(nil)
+      |> then(&persist_session(record, &1))
+    end)
+  end
+
+  @doc """
   Clears any pending marker from the session.
   """
   @spec clear_pending(Session.t()) :: {:ok, Session.t()} | {:error, term()}

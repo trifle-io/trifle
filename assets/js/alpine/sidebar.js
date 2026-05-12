@@ -1,7 +1,7 @@
 const SIDEBAR_SCROLL_LOCK_CLASS = "trifle-sidebar-open";
 const CHAT_SHELL_STORAGE_KEY = "trifle:chat-shell-open";
 const CHAT_SHELL_MODE_STORAGE_KEY = "trifle:chat-shell-mode";
-const CHAT_SHELL_DEFAULT_MODE = "pinned";
+const CHAT_SHELL_DEFAULT_MODE = "panel";
 const CHAT_SHELL_MODES = new Set(["pinned", "panel", "fullscreen"]);
 const CHAT_SHELL_SET_MODE_EVENT = "trifle:chat-shell:set-mode";
 const CHAT_SHELL_MODE_CHANGED_EVENT = "trifle:chat-shell:mode-changed";
@@ -320,7 +320,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     const pinnedOpen =
       this.chatOpen && this.desktopViewport && this.effectiveChatMode() === "pinned";
 
-    return pinnedOpen ? `${base} lg:pr-[34rem]` : base;
+    return pinnedOpen ? `${base} lg:pr-[51rem]` : base;
   },
 
   mainContentHidden() {
@@ -332,7 +332,7 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
   chatShellViewportClasses() {
     const widthClass =
-      this.desktopViewport && this.effectiveChatMode() !== "fullscreen" ? " lg:w-[34rem]" : "";
+      this.desktopViewport && this.effectiveChatMode() !== "fullscreen" ? " lg:w-[51rem]" : "";
 
     return `${widthClass}${this.chatOpen ? " translate-x-0" : " translate-x-full"}`;
   },

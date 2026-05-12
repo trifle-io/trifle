@@ -18,9 +18,6 @@ defmodule Trifle.Chat.RunnerRegistry do
       {:ok, _} ->
         :ok
 
-      {:error, {:already_registered, pid}} when pid == self() ->
-        :ok
-
       {:error, {:already_registered, pid}} ->
         {:error, pid}
     end

@@ -133,10 +133,9 @@ defmodule Trifle.Chat.Agent do
 
     Notifier.notify(context, {:progress, :responding})
 
-    case SessionStore.append_message(session, entry) do
+    case SessionStore.append_message_and_clear_pending(session, entry) do
       {:ok, updated_session} ->
-        cleared = clear_pending_session(updated_session)
-        {:ok, cleared, entry}
+        {:ok, updated_session, entry}
 
       error ->
         clear_pending_session(session)

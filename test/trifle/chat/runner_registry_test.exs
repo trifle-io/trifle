@@ -8,6 +8,7 @@ defmodule Trifle.Chat.RunnerRegistryTest do
     owner = self()
 
     assert :ok == RunnerRegistry.claim(session_id)
+    assert {:error, ^owner} = RunnerRegistry.claim(session_id)
 
     spawn(fn ->
       send(owner, {:claim_result, RunnerRegistry.claim(session_id)})
