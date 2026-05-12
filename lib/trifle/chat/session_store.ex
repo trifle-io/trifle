@@ -153,6 +153,28 @@ defmodule Trifle.Chat.SessionStore do
   end
 
   @doc """
+  Appends messages and marks the session as pending in a single persisted update.
+  """
+  @spec append_messages_and_reset_progress(Session.t(), [Session.message()], DateTime.t()) ::
+          {:ok, Session.t()} | {:error, term()}
+  def append_messages_and_reset_progress(%Session{id: id}, messages, %DateTime{} = timestamp)
+      when is_list(messages) do
+    truncated = DateTime.truncate(timestamp, :second)
+
+    transaction(id, fn record, session ->
+      updated =
+        messages
+        |> Enum.reduce(session, fn message, acc ->
+          Session.append_message(acc, message)
+        end)
+        |> Session.set_pending_started_at(truncated)
+        |> Session.set_progress_events([])
+
+      persist_session(record, updated)
+    end)
+  end
+
+  @doc """
   Clears any pending marker from the session.
   """
   @spec clear_pending(Session.t()) :: {:ok, Session.t()} | {:error, term()}
@@ -160,6 +182,19 @@ defmodule Trifle.Chat.SessionStore do
     transaction(id, fn record, session ->
       session
       |> Session.set_pending_started_at(nil)
+      |> then(&persist_session(record, &1))
+    end)
+  end
+
+  @doc """
+  Clears pending response state and stored progress events from the session.
+  """
+  @spec clear_pending_progress(Session.t()) :: {:ok, Session.t()} | {:error, term()}
+  def clear_pending_progress(%Session{id: id}) do
+    transaction(id, fn record, session ->
+      session
+      |> Session.set_pending_started_at(nil)
+      |> Session.set_progress_events([])
       |> then(&persist_session(record, &1))
     end)
   end

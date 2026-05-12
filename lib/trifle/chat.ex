@@ -61,6 +61,15 @@ defmodule Trifle.Chat do
   end
 
   @doc """
+  Continues a pending conversation that was just prepared by the current caller.
+  """
+  @spec continue_pending(Session.t(), context()) ::
+          {:ok, Session.t(), map()} | {:error, term()}
+  def continue_pending(session, context) do
+    Agent.continue_pending(session, context)
+  end
+
+  @doc """
   Returns true when the session appears to have an in-flight assistant response.
   """
   @spec pending?(Session.t() | nil) :: boolean()

@@ -6,6 +6,8 @@ defmodule TrifleApp.ChatShellLiveTest do
   import Trifle.OrganizationsFixtures
 
   alias Trifle.AccountsFixtures
+  alias Trifle.Chat
+  alias Trifle.Chat.SessionStore
   alias Trifle.Organizations
   alias Trifle.Stats.Source
   alias TrifleApp.ChatPageContext
@@ -92,6 +94,111 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert html =~ ~s(data-scope-icon="sidebar-monitors")
   end
 
+  test "session messages and progress synchronize across open chat shells", %{
+    conn: conn,
+    user: user,
+    membership: membership
+  } do
+    {:ok, first_view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        },
+        connect_params: %{"tab_id" => "chat-sync-first"}
+      )
+
+    {:ok, second_view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        },
+        connect_params: %{"tab_id" => "chat-sync-second"}
+      )
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+
+    {:ok, session} =
+      SessionStore.append_message(session, %{
+        role: "user",
+        content: "Can both tabs see this?"
+      })
+
+    assert_eventually_renders(first_view, "Can both tabs see this?")
+    assert_eventually_renders(second_view, "Can both tabs see this?")
+
+    {:ok, pending_session} = SessionStore.reset_progress(session, DateTime.utc_now())
+
+    assert_eventually_renders(first_view, "Waiting for AI response.")
+    assert_eventually_renders(second_view, "Waiting for AI response.")
+
+    {:ok, assistant_session} =
+      SessionStore.append_message(pending_session, %{
+        role: "assistant",
+        content: "Yes, both tabs are synced."
+      })
+
+    {:ok, _session} = SessionStore.clear_pending(assistant_session)
+
+    assert_eventually_renders(first_view, "Yes, both tabs are synced.")
+    assert_eventually_renders(second_view, "Yes, both tabs are synced.")
+  end
+
+  test "session updates for another chat id are ignored", %{
+    conn: conn,
+    user: user,
+    membership: membership
+  } do
+    {:ok, view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        },
+        connect_params: %{"tab_id" => "chat-sync-ignored"}
+      )
+
+    {:ok, _active_session} = Chat.ensure_workspace_session(user, membership)
+
+    {:ok, other_session} =
+      SessionStore.create(to_string(user.id), to_string(membership.organization_id), %{
+        type: "workspace",
+        id: Ecto.UUID.generate()
+      })
+
+    {:ok, _other_session} =
+      SessionStore.append_message(other_session, %{
+        role: "user",
+        content: "This belongs to another chat."
+      })
+
+    refute render(view) =~ "This belongs to another chat."
+  end
+
+  test "submitting a message persists it to the shared session before completion", %{
+    conn: conn,
+    user: user,
+    membership: membership
+  } do
+    {:ok, view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        }
+      )
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+
+    render_submit(view, "send_message", %{
+      "chat" => %{"message" => "Persist this prompt for every tab"}
+    })
+
+    assert_eventually_session_message(session.id, "Persist this prompt for every tab")
+    assert_eventually_renders(view, "Persist this prompt for every tab")
+  end
+
   defp chat_context(page_type, route, title, source) do
     ChatPageContext.build(page_type,
       entity: %{
@@ -106,5 +213,41 @@ defmodule TrifleApp.ChatShellLiveTest do
         metrics_key: "sales"
       }
     )
+  end
+
+  defp assert_eventually_renders(view, text) do
+    html =
+      Enum.reduce_while(1..25, nil, fn _, _last_html ->
+        html = render(view)
+
+        if html =~ text do
+          {:halt, html}
+        else
+          Process.sleep(10)
+          {:cont, html}
+        end
+      end)
+
+    assert is_binary(html) and html =~ text
+  end
+
+  defp assert_eventually_session_message(session_id, text) do
+    messages =
+      Enum.reduce_while(1..25, [], fn _, _last_messages ->
+        messages =
+          case SessionStore.get(session_id) do
+            {:ok, session} -> session.messages
+            _ -> []
+          end
+
+        if Enum.any?(messages, &(Map.get(&1, :content) == text)) do
+          {:halt, messages}
+        else
+          Process.sleep(10)
+          {:cont, messages}
+        end
+      end)
+
+    assert Enum.any?(messages, &(Map.get(&1, :content) == text))
   end
 end

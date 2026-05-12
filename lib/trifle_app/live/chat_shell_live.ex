@@ -106,18 +106,20 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   def handle_event("cancel_message", _params, socket) do
+    chat_run_owner? = socket.assigns[:chat_run_owner]
+
     socket =
       socket
-      |> release_chat_run()
       |> cancel_async(:chat_response, @chat_cancel_reason)
       |> cancel_progress_timer()
       |> cancel_context_request()
 
-    {socket, session} = restore_session_snapshot(socket)
+    {socket, session} = cancel_current_chat_response(socket, chat_run_owner?)
     message = socket.assigns[:pending_user_message] || ""
 
     socket =
       socket
+      |> release_chat_run()
       |> assign(:sending, false)
       |> assign_messages(session)
       |> assign(:progress_events, [])
@@ -602,13 +604,19 @@ defmodule TrifleApp.ChatShellLive do
 
   def handle_info({:chat_session_updated, session_id, %Session{} = session}, socket) do
     if session_id == socket.assigns[:chat_session_id] do
+      scroll? = session_update_needs_scroll?(socket, session)
+
       socket =
         socket
         |> assign(:session, session)
         |> assign_messages(session)
         |> sync_progress_from_session(session)
 
-      {:noreply, socket}
+      if scroll? do
+        {:noreply, push_event(socket, "chat_scroll_bottom", %{})}
+      else
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
@@ -1057,43 +1065,58 @@ defmodule TrifleApp.ChatShellLive do
             |> assign(:chat_run_owner, true)
             |> assign(:chat_run_session_id, session.id)
 
-          case maybe_append_context_message(session, page_context) do
-            {:ok, session_with_context} ->
-              active_source =
-                resolve_active_source(
-                  page_context,
-                  socket.assigns[:selected_source],
-                  socket.assigns[:sources]
-                )
+          active_source =
+            resolve_active_source(
+              page_context,
+              socket.assigns[:selected_source],
+              socket.assigns[:sources]
+            )
 
-              started_at = DateTime.utc_now()
+          context =
+            Chat.build_context(
+              active_source,
+              socket.assigns[:sources] || [],
+              socket.assigns
+              |> Map.put(:notify, notify)
+              |> Map.put(:page_context, page_context)
+            )
 
-              context =
-                Chat.build_context(
-                  active_source,
-                  socket.assigns[:sources] || [],
-                  socket.assigns
-                  |> Map.put(:notify, notify)
-                  |> Map.put(:page_context, page_context)
-                )
+          context_messages = context_messages_for(session, page_context)
 
-              optimistic_session =
-                Session.append_message(session_with_context, %{role: "user", content: message})
-
+          case persist_pending_user_message(session, context_messages, message) do
+            {:ok, pending_session, started_at} ->
               socket
               |> assign(:current_page_context, page_context)
               |> assign(:selected_source, active_source || socket.assigns[:selected_source])
-              |> assign(:session, optimistic_session)
-              |> assign_messages(optimistic_session)
-              |> assign(:progress_started_at, started_at)
-              |> assign(:progress_stage_started_at, started_at)
+              |> assign(:session, pending_session)
+              |> assign_messages(pending_session)
+              |> assign(:session_snapshot, nil)
+              |> assign(:pending_user_message, nil)
+              |> assign(
+                :progress_events,
+                ensure_pending_progress_visible(
+                  [],
+                  pending_session.pending_started_at || started_at
+                )
+              )
+              |> assign(
+                :progress_started_at,
+                pending_session.pending_started_at || started_at
+              )
+              |> assign(
+                :progress_stage_started_at,
+                pending_session.pending_started_at || started_at
+              )
               |> assign(:progress_tick_at, started_at)
               |> ensure_progress_timer()
+              |> push_event("chat_scroll_bottom", %{})
               |> start_async(:chat_response, fn ->
-                Chat.handle_user_message(session_with_context, message, context)
+                Chat.continue_pending(pending_session, context)
               end)
 
             {:error, _reason} ->
+              {socket, _session} = restore_session_snapshot(socket)
+
               socket
               |> release_chat_run()
               |> assign(:sending, false)
@@ -1135,30 +1158,35 @@ defmodule TrifleApp.ChatShellLive do
     end
   end
 
-  defp maybe_append_context_message(%Session{} = session, nil) do
-    case last_context_fingerprint(session) do
-      previous when is_binary(previous) and previous != "none" ->
-        SessionStore.append_message(session, %{
-          role: "system",
-          content: ChatPageContext.cleared_system_message()
-        })
+  defp persist_pending_user_message(%Session{} = session, context_messages, message)
+       when is_list(context_messages) and is_binary(message) do
+    started_at = DateTime.utc_now()
+    messages = context_messages ++ [%{role: "user", content: message}]
 
-      _ ->
-        {:ok, session}
+    with {:ok, pending_session} <-
+           SessionStore.append_messages_and_reset_progress(session, messages, started_at) do
+      {:ok, pending_session, started_at}
     end
   end
 
-  defp maybe_append_context_message(%Session{} = session, %{} = page_context) do
+  defp context_messages_for(%Session{} = session, nil) do
+    case last_context_fingerprint(session) do
+      previous when is_binary(previous) and previous != "none" ->
+        [%{role: "system", content: ChatPageContext.cleared_system_message()}]
+
+      _ ->
+        []
+    end
+  end
+
+  defp context_messages_for(%Session{} = session, %{} = page_context) do
     new_fingerprint = ChatPageContext.fingerprint(page_context)
     previous_fingerprint = last_context_fingerprint(session)
 
     if is_binary(new_fingerprint) and new_fingerprint != previous_fingerprint do
-      SessionStore.append_message(session, %{
-        role: "system",
-        content: ChatPageContext.system_message(page_context)
-      })
+      [%{role: "system", content: ChatPageContext.system_message(page_context)}]
     else
-      {:ok, session}
+      []
     end
   end
 
@@ -1322,9 +1350,6 @@ defmodule TrifleApp.ChatShellLive do
             @context_request_timeout_ms
           )
 
-        in_memory_session =
-          Session.append_message(socket.assigns.session, %{role: "user", content: message})
-
         socket =
           socket
           |> assign(:session_snapshot, socket.assigns.session)
@@ -1333,8 +1358,6 @@ defmodule TrifleApp.ChatShellLive do
           |> assign(:pending_context_timer_ref, timer_ref)
           |> assign(:pending_page_context_override, nil)
           |> cancel_progress_timer()
-          |> assign(:session, in_memory_session)
-          |> assign_messages(in_memory_session)
           |> assign(:form, to_form(%{"message" => ""}))
           |> assign(:sending, true)
           |> assign(:progress_events, [])
@@ -1985,6 +2008,56 @@ defmodule TrifleApp.ChatShellLive do
     end
   end
 
+  defp session_update_needs_scroll?(socket, %Session{} = session) do
+    current_session = socket.assigns[:session]
+
+    renderable_message_signature(current_session) != renderable_message_signature(session) or
+      progress_signature(current_session) != progress_signature(session)
+  end
+
+  defp renderable_message_signature(%Session{} = session) do
+    session
+    |> Chat.renderable_messages()
+    |> Enum.map(fn message ->
+      {
+        Map.get(message, :role),
+        Map.get(message, :content),
+        message
+        |> Map.get(:visualizations, [])
+        |> Enum.map(&visualization_signature/1)
+      }
+    end)
+  end
+
+  defp renderable_message_signature(_), do: []
+
+  defp visualization_signature(visualization) when is_map(visualization) do
+    {
+      Map.get(visualization, :id, Map.get(visualization, "id")),
+      Map.get(visualization, :type, Map.get(visualization, "type"))
+    }
+  end
+
+  defp visualization_signature(other), do: other
+
+  defp progress_signature(%Session{} = session) do
+    {
+      Chat.pending?(session),
+      session.pending_started_at,
+      Enum.map(session.progress_events || [], fn event ->
+        {
+          Map.get(event, :id, Map.get(event, "id")),
+          Map.get(event, :type, Map.get(event, "type")),
+          Map.get(event, :text, Map.get(event, "text")),
+          Map.get(event, :started_at, Map.get(event, "started_at")),
+          Map.get(event, :finished_at, Map.get(event, "finished_at"))
+        }
+      end)
+    }
+  end
+
+  defp progress_signature(_), do: {false, nil, []}
+
   defp latest_message_created_at(%Session{messages: messages}) do
     messages
     |> List.last()
@@ -2261,6 +2334,31 @@ defmodule TrifleApp.ChatShellLive do
 
           {:error, _reason} ->
             case SessionStore.get(id) do
+              {:ok, reloaded} -> {assign(socket, :session, reloaded), reloaded}
+              _ -> {socket, current}
+            end
+        end
+
+      {%Session{} = current, _} ->
+        {socket, current}
+
+      _ ->
+        {socket, nil}
+    end
+  end
+
+  defp cancel_current_chat_response(socket, chat_run_owner?) do
+    case {socket.assigns[:session], socket.assigns[:session_snapshot]} do
+      {%Session{id: id}, %Session{id: id}} ->
+        restore_session_snapshot(socket)
+
+      {%Session{} = current, _} when chat_run_owner? ->
+        case SessionStore.clear_pending_progress(current) do
+          {:ok, cleared} ->
+            {assign(socket, :session, cleared), cleared}
+
+          {:error, _reason} ->
+            case SessionStore.get(current.id) do
               {:ok, reloaded} -> {assign(socket, :session, reloaded), reloaded}
               _ -> {socket, current}
             end

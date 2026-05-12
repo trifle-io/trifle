@@ -48,6 +48,16 @@ defmodule Trifle.Chat.Agent do
     run_loop(session, context, 1)
   end
 
+  @doc """
+  Continues processing for a session that has already been prepared by the
+  caller without emitting the interrupted-conversation progress state.
+  """
+  @spec continue_pending(Session.t(), context()) ::
+          {:ok, Session.t(), map()} | {:error, term()}
+  def continue_pending(%Session{} = session, context) do
+    run_loop(session, context, 1)
+  end
+
   defp run_loop(session, _context, iteration) when iteration > @max_iterations do
     clear_pending_session(session)
     {:error, too_many_iterations_error()}
