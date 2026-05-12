@@ -122,6 +122,7 @@ defmodule TrifleApp.ChatShellLive do
       |> release_chat_run()
       |> assign(:sending, false)
       |> assign_messages(session)
+      |> assign_session_context(session)
       |> assign(:progress_events, [])
       |> assign(:progress_started_at, nil)
       |> assign(:progress_stage_started_at, nil)
@@ -146,6 +147,7 @@ defmodule TrifleApp.ChatShellLive do
           |> cancel_context_request()
           |> assign(:session, reset_session)
           |> assign_messages(reset_session)
+          |> assign_session_context(reset_session)
           |> assign(:sending, false)
           |> assign(:progress_events, [])
           |> assign(:progress_started_at, nil)
@@ -381,6 +383,7 @@ defmodule TrifleApp.ChatShellLive do
       |> release_chat_run()
       |> assign(:session, session)
       |> assign_messages(session)
+      |> assign_session_context(session)
       |> assign(:sending, false)
       |> assign(:session_snapshot, nil)
       |> assign(:pending_user_message, nil)
@@ -399,6 +402,7 @@ defmodule TrifleApp.ChatShellLive do
       |> release_chat_run()
       |> assign(:sending, false)
       |> assign(:session, reload_session(socket.assigns.session))
+      |> sync_session_context()
       |> assign(:session_snapshot, nil)
       |> assign(:pending_user_message, nil)
       |> assign(:pending_context_request_id, nil)
@@ -415,6 +419,7 @@ defmodule TrifleApp.ChatShellLive do
       |> release_chat_run()
       |> assign(:sending, false)
       |> assign(:session, reload_session(socket.assigns.session))
+      |> sync_session_context()
       |> assign(:session_snapshot, nil)
       |> assign(:pending_user_message, nil)
       |> assign(:pending_context_request_id, nil)
@@ -610,6 +615,7 @@ defmodule TrifleApp.ChatShellLive do
         socket
         |> assign(:session, session)
         |> assign_messages(session)
+        |> assign_session_context(session)
         |> sync_progress_from_session(session)
 
       if scroll? do
@@ -795,6 +801,10 @@ defmodule TrifleApp.ChatShellLive do
             </div>
           </div>
 
+          <% chat_scope =
+            chat_context_scope(@session_page_context, displayed_source(@selected_source)) %>
+          <.context_scope_card :if={chat_scope} scope={chat_scope} class="mt-3" />
+
           <p :if={@show_unavailable_notice} class="mt-3 text-xs text-slate-500 dark:text-slate-400">
             Join or create an organization to use the persistent chat shell.
           </p>
@@ -869,8 +879,13 @@ defmodule TrifleApp.ChatShellLive do
         </div>
 
         <div class="border-t border-slate-200/80 px-5 pb-5 pt-4 dark:border-slate-800/80">
-          <% active_scope = composer_scope(@current_page_context, displayed_source(@selected_source)) %>
-          <.composer_scope_card :if={active_scope} scope={active_scope} class="mb-3" />
+          <% detected_scope =
+            detected_context_scope(
+              @current_page_context,
+              displayed_source(@selected_source),
+              @session_page_context
+            ) %>
+          <.context_scope_card :if={detected_scope} scope={detected_scope} class="mb-3" />
           <.form for={@form} phx-submit="send_message" class="mt-auto">
             <div class="relative overflow-hidden rounded-2xl border border-transparent bg-white/70 shadow-lg backdrop-blur-xl focus-within:border-teal-500/60 dark:border-slate-700 dark:bg-slate-900/50 dark:shadow-none dark:focus-within:border-teal-400">
               <div class="flex items-end">
@@ -1090,6 +1105,7 @@ defmodule TrifleApp.ChatShellLive do
               |> assign(:selected_source, active_source || socket.assigns[:selected_source])
               |> assign(:session, pending_session)
               |> assign_messages(pending_session)
+              |> assign_session_context(pending_session)
               |> assign(:session_snapshot, nil)
               |> assign(:pending_user_message, nil)
               |> assign(
@@ -1133,6 +1149,7 @@ defmodule TrifleApp.ChatShellLive do
           |> assign(:sending, false)
           |> assign(:session, session)
           |> assign_messages(session)
+          |> assign_session_context(session)
           |> assign(:form, to_form(%{"message" => message}))
           |> assign(:pending_user_message, nil)
           |> assign(:session_snapshot, nil)
@@ -1375,13 +1392,14 @@ defmodule TrifleApp.ChatShellLive do
   attr :scope, :map, required: true
   attr :class, :string, default: nil
 
-  defp composer_scope_card(assigns) do
+  defp context_scope_card(assigns) do
     ~H"""
     <div
       class={[
         "rounded-2xl border border-slate-200/80 bg-slate-50/85 px-3 py-3 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/45",
         @class
       ]}
+      data-context-slot={Map.get(@scope, :slot)}
       data-scope-kind={Map.get(@scope, :kind)}
       data-scope-icon={@scope.icon}
     >
@@ -1390,10 +1408,21 @@ defmodule TrifleApp.ChatShellLive do
           <TrifleApp.SidebarIcons.icon name={@scope.icon} class="h-5 w-5 shrink-0" />
         </div>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {@scope.title}
-          </p>
-          <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+          <div class="flex min-w-0 items-center gap-3">
+            <p class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {@scope.title}
+            </p>
+            <p
+              :if={Map.get(@scope, :label)}
+              class="shrink-0 text-right text-xs font-medium text-slate-400 dark:text-slate-500"
+            >
+              {@scope.label}
+            </p>
+          </div>
+          <p
+            :if={Map.get(@scope, :details)}
+            class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400"
+          >
             {@scope.details}
           </p>
         </div>
@@ -1422,8 +1451,10 @@ defmodule TrifleApp.ChatShellLive do
     "chatMode === '#{mode}' ? '#{active}' : '#{inactive}'"
   end
 
-  defp composer_scope(%{} = page_context, selected_source) do
+  defp chat_context_scope(%{} = page_context, selected_source) do
     %{
+      slot: "chat-context",
+      label: "Current Context",
       kind: "context",
       icon: context_scope_icon(page_context),
       title: context_scope_title(page_context),
@@ -1431,8 +1462,10 @@ defmodule TrifleApp.ChatShellLive do
     }
   end
 
-  defp composer_scope(nil, %Source{} = source) do
+  defp chat_context_scope(nil, %Source{} = source) do
     %{
+      slot: "chat-context",
+      label: "Current Context",
       kind: "source",
       icon: source_scope_icon(source),
       title: Source.display_name(source),
@@ -1440,7 +1473,31 @@ defmodule TrifleApp.ChatShellLive do
     }
   end
 
-  defp composer_scope(_, _), do: nil
+  defp chat_context_scope(_, _), do: nil
+
+  defp detected_context_scope(%{} = page_context, selected_source, _chat_context) do
+    %{
+      slot: "detected-context",
+      label: "Detected Context",
+      kind: "context",
+      icon: context_scope_icon(page_context),
+      title: context_scope_title(page_context),
+      details: context_scope_details(page_context, selected_source)
+    }
+  end
+
+  defp detected_context_scope(nil, %Source{} = source, _chat_context) do
+    %{
+      slot: "detected-context",
+      label: "Detected Context",
+      kind: "source",
+      icon: source_scope_icon(source),
+      title: "No page detected",
+      details: "Using selected source: #{Source.display_name(source)}"
+    }
+  end
+
+  defp detected_context_scope(_, _, _), do: nil
 
   defp context_scope_icon(%{} = page_context) do
     case normalized_page_type(page_context) do
@@ -1482,9 +1539,10 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   defp source_scope_details(%Source{} = source) do
-    [Source.time_zone(source)]
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.join(" · ")
+    case Source.time_zone(source) do
+      timezone when is_binary(timezone) and timezone != "" -> "Time zone #{timezone}"
+      _ -> nil
+    end
   end
 
   defp source_scope_icon(%Source{} = source) do
@@ -2386,6 +2444,16 @@ defmodule TrifleApp.ChatShellLive do
   end
 
   defp assign_messages(socket, _), do: assign(socket, :messages, [])
+
+  defp assign_session_context(socket, %Session{} = session) do
+    assign(socket, :session_page_context, session_page_context(session))
+  end
+
+  defp assign_session_context(socket, _), do: assign(socket, :session_page_context, nil)
+
+  defp sync_session_context(socket) do
+    assign_session_context(socket, socket.assigns[:session])
+  end
 
   defp session_page_context(%Session{messages: messages}) do
     messages

@@ -46,6 +46,12 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert html =~ "Sales Mongo"
     assert html =~ ~s(data-scope-kind="source")
     assert html =~ ~s(data-scope-icon="sidebar-databases")
+    assert html =~ ~s(data-context-slot="chat-context")
+    assert html =~ ~s(data-context-slot="detected-context")
+    assert html =~ "Current Context"
+    assert html =~ "Detected Context"
+    assert html =~ "No page detected"
+    refute html =~ "Next message uses selected source only."
     assert html =~ ~s(class="flex h-10 w-10 shrink-0 items-center justify-center)
     assert html =~ ~s(class="h-5 w-5 shrink-0")
     refute html =~ "Fallback database source"
@@ -67,6 +73,7 @@ defmodule TrifleApp.ChatShellLiveTest do
 
     html = render(view)
     assert html =~ "Competitors"
+    refute html =~ "Next message will switch to this page."
     assert html =~ ~s(data-scope-kind="context")
     assert html =~ ~s(data-scope-icon="sidebar-dashboards")
 
@@ -74,6 +81,8 @@ defmodule TrifleApp.ChatShellLiveTest do
 
     html = render(view)
     refute html =~ "Competitors"
+    assert html =~ "No page detected"
+    refute html =~ "Next message uses selected source only."
     assert html =~ "Sales Mongo"
     assert html =~ ~s(data-scope-kind="source")
     assert html =~ ~s(data-scope-icon="sidebar-databases")
@@ -92,6 +101,65 @@ defmodule TrifleApp.ChatShellLiveTest do
     assert html =~ "Baker Agent Monitor"
     assert html =~ ~s(data-scope-kind="context")
     assert html =~ ~s(data-scope-icon="sidebar-monitors")
+  end
+
+  test "current chat context stays visible separately from detected page context", %{
+    conn: conn,
+    user: user,
+    membership: membership,
+    database: database
+  } do
+    {:ok, view, _html} =
+      live_isolated(conn, ChatShellLive,
+        session: %{
+          "current_user_id" => to_string(user.id),
+          "current_membership_id" => to_string(membership.id)
+        },
+        connect_params: %{"tab_id" => "chat-shell-current-detected-context-test"}
+      )
+
+    source = Source.from_database(database)
+
+    dashboard_context =
+      chat_context(:dashboard, "/dashboards/competitors", "Competitors", source)
+
+    {:ok, session} = Chat.ensure_workspace_session(user, membership)
+
+    {:ok, _session} =
+      SessionStore.append_message(session, %{
+        role: "system",
+        content: ChatPageContext.system_message(dashboard_context)
+      })
+
+    assert_eventually_renders(view, "Current Context")
+    html = render(view)
+    assert html =~ ~s(data-context-slot="chat-context")
+    assert html =~ "Competitors"
+    refute html =~ "Currently attached to this conversation."
+
+    send(view.pid, {:chat_context_updated, dashboard_context})
+
+    html = render(view)
+    assert html =~ ~s(data-context-slot="detected-context")
+    assert html =~ "Detected Context"
+    refute html =~ "Next message uses this page."
+
+    render_hook(view, "refresh_page_context", %{"path" => "/monitors/baker-agent"})
+
+    html = render(view)
+    assert html =~ "Competitors"
+    assert html =~ "No page detected"
+    refute html =~ "Next message uses selected source only."
+
+    monitor_context =
+      chat_context(:monitor, "/monitors/baker-agent", "Baker Agent Monitor", source)
+
+    send(view.pid, {:chat_context_updated, monitor_context})
+
+    html = render(view)
+    assert html =~ "Competitors"
+    assert html =~ "Baker Agent Monitor"
+    refute html =~ "Next message will switch to this page."
   end
 
   test "session messages and progress synchronize across open chat shells", %{
