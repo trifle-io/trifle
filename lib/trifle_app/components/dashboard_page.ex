@@ -108,7 +108,7 @@ defmodule TrifleApp.Components.DashboardPage do
             <!-- Left: Title only -->
             <div class="min-w-0">
               <h1 class="truncate text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                {@dashboard.name}
+                {assigns[:page_title] || @dashboard.name}
               </h1>
             </div>
 

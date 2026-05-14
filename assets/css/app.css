@@ -15,6 +15,12 @@ body.trifle-sidebar-open {
   overflow: hidden;
 }
 
+@media (max-width: 1023.98px) {
+  [data-dashboard-footer][data-expanded="false"] [data-dashboard-footer-details] {
+    display: none;
+  }
+}
+
 @media (min-width: 1024px) {
   html[data-trifle-client-sidebar="expanded"] [data-sidebar-shell="client"] {
     width: 18rem;

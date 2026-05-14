@@ -283,7 +283,7 @@
             >
               <TrifleApp.SidebarIcons.icon name="hero-bars-3" class="h-5 w-5" />
             </button>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <p class="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">
                 Workspace
               </p>
@@ -291,6 +291,31 @@
                 {assigns[:page_title] || current_nav_label(@socket)}
               </p>
             </div>
+            <button
+              type="button"
+              id="mobile-command-palette-trigger"
+              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-white"
+              x-on:click="openCommandPalette($event.currentTarget)"
+              aria-label="Search workspace"
+              aria-haspopup="dialog"
+              x-bind:aria-expanded="commandPaletteOpen.toString()"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.7"
+                stroke="currentColor"
+                class="h-5 w-5"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="m21 21-4.35-4.35m1.35-5.4a6.75 6.75 0 1 1-13.5 0 6.75 6.75 0 0 1 13.5 0Z"
+                />
+              </svg>
+            </button>
           </div>
         </header>
 

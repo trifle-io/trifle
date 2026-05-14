@@ -78,6 +78,50 @@ defmodule TrifleApp.DashboardLiveTest do
     refute html =~ "top: 33%;"
   end
 
+  test "renders the full dashboard path in the page heading", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, parent_group} =
+      Organizations.create_dashboard_group_for_membership(membership, %{name: "Revenue"})
+
+    {:ok, child_group} =
+      Organizations.create_dashboard_group_for_membership(membership, %{
+        name: "Quarterly",
+        parent_group_id: parent_group.id
+      })
+
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        group_id: child_group.id
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+    separator = <<194, 183>>
+
+    assert has_element?(
+             view,
+             "h1",
+             "Dashboards #{separator} Quarterly #{separator} Revenue #{separator} Widget Workspace Test"
+           )
+  end
+
+  test "renders the dashboard footer with mobile collapse controls", %{
+    conn: conn,
+    dashboard: dashboard
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert has_element?(view, "[data-dashboard-footer][data-expanded=\"false\"]")
+    assert has_element?(view, "button[aria-controls=\"dashboard-download-menu-summary-details\"]")
+
+    assert has_element?(
+             view,
+             "#dashboard-download-menu-summary-details[data-dashboard-footer-details]"
+           )
+  end
+
   test "authenticated dashboards expose annotation payloads and handle CRUD events", %{
     conn: conn,
     dashboard: dashboard,

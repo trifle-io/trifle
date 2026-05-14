@@ -16,6 +16,8 @@ defmodule TrifleApp.CommandPaletteLayoutTest do
       |> live(~p"/users/settings")
 
     assert html =~ ~s(id="command-palette-trigger")
+    assert html =~ ~s(id="mobile-command-palette-trigger")
+    assert html =~ ~s(aria-label="Search workspace")
     assert html =~ "Search"
     assert html =~ "Mr. Baker"
 

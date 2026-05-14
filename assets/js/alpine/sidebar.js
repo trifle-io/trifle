@@ -566,6 +566,19 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     return document.getElementById("command-palette-input");
   },
 
+  focusCommandPaletteInput() {
+    if (!this.commandPaletteOpen) return;
+
+    const input = this.getCommandPaletteInput();
+    if (!(input instanceof HTMLElement)) return;
+
+    try {
+      input.focus({ preventScroll: true });
+    } catch (_) {
+      input.focus();
+    }
+  },
+
   getCommandPaletteItems() {
     const dialog = this.getCommandPaletteDialog();
     if (!dialog) return [];
@@ -679,11 +692,15 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
 
     this.$nextTick(() => {
       this.refreshCommandPaletteResults();
+      this.focusCommandPaletteInput();
 
-      const input = this.getCommandPaletteInput();
-      if (input instanceof HTMLElement) {
-        input.focus();
-      }
+      try {
+        window.requestAnimationFrame(() => this.focusCommandPaletteInput());
+      } catch (_) {}
+
+      [80, 180].forEach((delay) => {
+        window.setTimeout(() => this.focusCommandPaletteInput(), delay);
+      });
     });
   },
 
