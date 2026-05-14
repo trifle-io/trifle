@@ -289,15 +289,29 @@ Hooks.DashboardGrid = {
       if (!this.grid) return;
       const oneCol = window.innerWidth < 1024; // MD and below
       if (oneCol !== this._isOneCol) {
-        this._isOneCol = oneCol;
         try {
           // Avoid persisting layout while switching responsive columns
           this._suppressSave = true;
           this._clearTimeseriesHoverState();
-          if (typeof this.grid.column === 'function') {
-            this.grid.column(oneCol ? 1 : this.cols);
+
+          if (oneCol) {
+            this._captureRootResponsiveLayout();
+            this._isOneCol = true;
+            if (typeof this.grid.column === 'function') {
+              this.grid.column(1, 'none');
+            }
+            this._ensureGroupGrids();
+            this._syncRootResponsiveLayout();
+          } else {
+            this._isOneCol = false;
+            this._restoreResponsiveRootGroupHeights();
+            if (typeof this.grid.column === 'function') {
+              this.grid.column(this.cols, 'none');
+            }
+            this._syncRootResponsiveLayout();
+            this._ensureGroupGrids();
           }
-          this._ensureGroupGrids();
+
           // Disable reordering/resizing when only 1 column to avoid breaking 12-col layout
           if (this.editable) {
             if (typeof this.grid.enableMove === 'function') {
@@ -324,6 +338,7 @@ Hooks.DashboardGrid = {
         } catch (_) {
           // noop
         } finally {
+          this._isOneCol = oneCol;
           this._observeLayoutResizeTargets();
           this._scheduleDeferredResize();
           this._suppressSave = false;
@@ -897,13 +912,13 @@ Hooks.DashboardGrid = {
     });
     grid.on('added', () => {
       syncGroupState();
-      if (!this._isOneCol) save();
+      if (!this._suppressSave && !this._isOneCol && document.visibilityState !== 'hidden') save();
       resize();
     });
     grid.on('removed', () => {
       this._pruneStaleGroupGrids();
       syncGroupState();
-      if (!this._isOneCol) save();
+      if (!this._suppressSave && !this._isOneCol && document.visibilityState !== 'hidden') save();
       resize();
     });
     grid.__dashboardGridBound = true;
@@ -1659,6 +1674,33 @@ Hooks.DashboardGrid = {
     }
   },
 
+  _withIgnoredGridLayoutCache(grid, callback) {
+    if (!grid || typeof callback !== 'function') return undefined;
+    const hadFlag = Object.prototype.hasOwnProperty.call(grid, '_ignoreLayoutsNodeChange');
+    const previous = grid._ignoreLayoutsNodeChange;
+    grid._ignoreLayoutsNodeChange = true;
+    try {
+      return callback();
+    } finally {
+      if (hadFlag) {
+        grid._ignoreLayoutsNodeChange = previous;
+      } else {
+        delete grid._ignoreLayoutsNodeChange;
+      }
+    }
+  },
+
+  _withSuppressedLayoutSave(callback) {
+    if (typeof callback !== 'function') return undefined;
+    const previous = this._suppressSave;
+    this._suppressSave = true;
+    try {
+      return callback();
+    } finally {
+      this._suppressSave = previous;
+    }
+  },
+
   _updateGridItemGeometry(grid, item, target) {
     if (!grid || !item || !target) return;
     try {
@@ -1670,6 +1712,23 @@ Hooks.DashboardGrid = {
         item.gridstackNode[key] = value;
       }
     });
+  },
+
+  _captureResponsiveItemLayout(item, force = false) {
+    if (!item || !item.dataset) return;
+    if (!force && item.dataset.multiColumnX) return;
+    item.dataset.multiColumnX = String(this._gridItemNumber(item, 'gs-x', 0));
+    item.dataset.multiColumnY = String(this._gridItemNumber(item, 'gs-y', 0));
+    item.dataset.multiColumnW = String(this._gridItemNumber(item, 'gs-w', 1));
+  },
+
+  _captureRootResponsiveLayout() {
+    if (!this.grid) return;
+    this._gridItems(this.grid).forEach((item) => this._captureResponsiveItemLayout(item, true));
+  },
+
+  _captureNestedResponsiveLayout(nestedGrid) {
+    this._gridItems(nestedGrid).forEach((item) => this._captureResponsiveItemLayout(item, true));
   },
 
   _syncNestedResponsiveLayout(nestedGrid) {
@@ -1694,11 +1753,7 @@ Hooks.DashboardGrid = {
         let y = 0;
         items.forEach((item) => {
           if (!item || !item.dataset) return;
-          if (!item.dataset.multiColumnX) {
-            item.dataset.multiColumnX = String(this._gridItemNumber(item, 'gs-x', 0));
-            item.dataset.multiColumnY = String(this._gridItemNumber(item, 'gs-y', 0));
-            item.dataset.multiColumnW = String(this._gridItemNumber(item, 'gs-w', 1));
-          }
+          this._captureResponsiveItemLayout(item);
           const h = Math.max(1, this._gridItemNumber(item, 'gs-h', 1));
           const target = { x: 0, y, w: 1, h };
           this._updateGridItemGeometry(nestedGrid, item, target);
@@ -1725,18 +1780,109 @@ Hooks.DashboardGrid = {
     });
   },
 
+  _rootResponsiveSortKey(item, attr, fallback = 0) {
+    if (!item) return fallback;
+    const datasetKey = attr === 'gs-y' ? 'multiColumnY' : attr === 'gs-x' ? 'multiColumnX' : null;
+    if (item.dataset && datasetKey && item.dataset[datasetKey] != null) {
+      const stored = parseInt(item.dataset[datasetKey] || '', 10);
+      if (Number.isFinite(stored)) return stored;
+    }
+    return this._gridItemNumber(item, attr, fallback);
+  },
+
+  _orderedRootResponsiveItems() {
+    return this._gridItems(this.grid).slice().sort((a, b) => {
+      const ay = this._rootResponsiveSortKey(a, 'gs-y', 0);
+      const by = this._rootResponsiveSortKey(b, 'gs-y', 0);
+      if (ay !== by) return ay - by;
+      return this._rootResponsiveSortKey(a, 'gs-x', 0) - this._rootResponsiveSortKey(b, 'gs-x', 0);
+    });
+  },
+
+  _syncRootResponsiveLayout() {
+    if (!this.grid) return;
+    const items = this._orderedRootResponsiveItems();
+
+    this._withIgnoredGridLayoutCache(this.grid, () => {
+      this._withSuppressedLayoutSave(() => {
+        if (typeof this.grid.batchUpdate === 'function') {
+          try { this.grid.batchUpdate(); } catch (_) {}
+        }
+
+        try {
+          if (this._isOneCol) {
+            let y = 0;
+            items.forEach((item) => {
+              if (!item || !item.dataset) return;
+              this._captureResponsiveItemLayout(item);
+              const h = Math.max(1, this._gridItemNumber(item, 'gs-h', 1));
+              this._updateGridItemGeometry(this.grid, item, { x: 0, y, w: 1, h });
+              y += h;
+            });
+            return;
+          }
+
+          items.forEach((item) => {
+            if (!item || !item.dataset || !item.dataset.multiColumnX) return;
+            const target = {
+              x: parseInt(item.dataset.multiColumnX || '0', 10),
+              y: parseInt(item.dataset.multiColumnY || '0', 10),
+              w: parseInt(item.dataset.multiColumnW || '1', 10),
+              h: Math.max(1, this._gridItemNumber(item, 'gs-h', 1))
+            };
+            delete item.dataset.multiColumnX;
+            delete item.dataset.multiColumnY;
+            delete item.dataset.multiColumnW;
+            this._updateGridItemGeometry(this.grid, item, target);
+          });
+        } finally {
+          if (typeof this.grid.commit === 'function') {
+            try { this.grid.commit(); } catch (_) {}
+          }
+          if (typeof this.grid._updateContainerHeight === 'function') {
+            try { this.grid._updateContainerHeight(); } catch (_) {}
+          }
+        }
+      });
+    });
+  },
+
   _updateRootGridItemHeight(rootGrid, groupItem, targetH) {
     if (!rootGrid || !groupItem) return;
     try {
       rootGrid.update(groupItem, { h: targetH });
     } catch (_) {}
+    this._setRootGridItemHeight(groupItem, targetH);
+    if (typeof rootGrid._updateContainerHeight === 'function') {
+      try { rootGrid._updateContainerHeight(); } catch (_) {}
+    }
+  },
+
+  _setRootGridItemHeight(groupItem, targetH) {
+    if (!groupItem) return;
     groupItem.setAttribute('gs-h', String(targetH));
     if (groupItem.gridstackNode) {
       groupItem.gridstackNode.h = targetH;
     }
-    if (typeof rootGrid._updateContainerHeight === 'function') {
-      try { rootGrid._updateContainerHeight(); } catch (_) {}
-    }
+  },
+
+  _restoreResponsiveRootGroupHeights() {
+    if (!this.grid) return;
+    this._withIgnoredGridLayoutCache(this.grid, () => {
+      this._withSuppressedLayoutSave(() => {
+        this._gridItems(this.grid).forEach((groupItem) => {
+          if (!this._isGroupItem(groupItem) || !groupItem.dataset) return;
+          const storedH = parseInt(groupItem.dataset.multiColumnH || '', 10);
+          delete groupItem.dataset.multiColumnH;
+          if (!Number.isFinite(storedH) || storedH <= 0) return;
+          if (parseInt(groupItem.getAttribute('gs-h') || (groupItem.gridstackNode && groupItem.gridstackNode.h) || 1, 10) === storedH) return;
+          this._setRootGridItemHeight(groupItem, storedH);
+        });
+        if (typeof this.grid._updateContainerHeight === 'function') {
+          try { this.grid._updateContainerHeight(); } catch (_) {}
+        }
+      });
+    });
   },
 
   _syncResponsiveGroupItemHeight(groupItem, metrics) {
@@ -1753,9 +1899,13 @@ Hooks.DashboardGrid = {
       }
       const targetH = metrics.rows + this._groupChromeRows(groupItem);
       if (parseInt(groupItem.getAttribute('gs-h') || node.h || 1, 10) === targetH) return;
-      try {
-        this._updateRootGridItemHeight(rootGrid, groupItem, targetH);
-      } catch (_) {}
+      this._withIgnoredGridLayoutCache(rootGrid, () => {
+        this._withSuppressedLayoutSave(() => {
+          try {
+            this._updateRootGridItemHeight(rootGrid, groupItem, targetH);
+          } catch (_) {}
+        });
+      });
       return;
     }
 
@@ -1763,9 +1913,13 @@ Hooks.DashboardGrid = {
     if (!Number.isFinite(storedH) || storedH <= 0) return;
     delete groupItem.dataset.multiColumnH;
     if (parseInt(groupItem.getAttribute('gs-h') || node.h || 1, 10) === storedH) return;
-    try {
-      this._updateRootGridItemHeight(rootGrid, groupItem, storedH);
-    } catch (_) {}
+    this._withIgnoredGridLayoutCache(rootGrid, () => {
+      this._withSuppressedLayoutSave(() => {
+        try {
+          this._updateRootGridItemHeight(rootGrid, groupItem, storedH);
+        } catch (_) {}
+      });
+    });
   },
 
   _syncGroupGridGeometry(groupItem, grid = null) {
@@ -1775,8 +1929,16 @@ Hooks.DashboardGrid = {
     if (!nestedGrid || !nestedEl) return;
     if (groupId && this._activeGroupResizeId === groupId) return;
 
+    if (!this._isOneCol) {
+      nestedEl.style.removeProperty('height');
+      nestedEl.style.removeProperty('min-height');
+    }
+
     const desiredCols = this._groupColumnCount(groupItem);
     if (typeof nestedGrid.column === 'function' && nestedGrid.getColumn && nestedGrid.getColumn() !== desiredCols) {
+      if (this._isOneCol) {
+        this._captureNestedResponsiveLayout(nestedGrid);
+      }
       try { nestedGrid.column(desiredCols, 'none'); } catch (_) {}
     }
 
@@ -1817,6 +1979,7 @@ Hooks.DashboardGrid = {
         this._syncGroupGridGeometry(item);
       }
     });
+    this._syncRootResponsiveLayout();
   },
 
   _ensureGroupGrids() {
@@ -2235,6 +2398,7 @@ Hooks.DashboardGrid = {
 
   saveLayout() {
     if (!this.editable) return;
+    if (this._suppressSave || this._isOneCol) return;
     this._ensureGroupGrids();
     this._refreshAllGroupHints();
     const items = this._serializeGrid(this.grid);
