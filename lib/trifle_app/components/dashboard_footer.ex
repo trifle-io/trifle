@@ -40,7 +40,7 @@ defmodule TrifleApp.Components.DashboardFooter do
       <div class="flex flex-wrap items-center gap-3 text-xs tabular-nums">
         <button
           type="button"
-          class="order-1 inline-flex h-9 items-center gap-1.5 rounded-md bg-white px-2.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600 lg:hidden"
+          class="order-1 inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600 lg:hidden"
           aria-controls={details_id}
           x-on:click="footerExpanded = !footerExpanded"
           x-bind:aria-expanded="footerExpanded.toString()"
@@ -52,7 +52,7 @@ defmodule TrifleApp.Components.DashboardFooter do
             fill="currentColor"
             class="h-4 w-4"
             aria-hidden="true"
-            x-show="!footerExpanded"
+            x-show="footerExpanded"
           >
             <path
               fill-rule="evenodd"
@@ -67,7 +67,7 @@ defmodule TrifleApp.Components.DashboardFooter do
             class="h-4 w-4"
             aria-hidden="true"
             x-cloak
-            x-show="footerExpanded"
+            x-show="!footerExpanded"
           >
             <path
               fill-rule="evenodd"
