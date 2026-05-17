@@ -41,6 +41,7 @@ import { registerPathAutocompleteHook } from "./hooks/path_autocomplete_hook";
 import { registerWidgetSeriesRowsHook } from "./hooks/widget_series_rows_hook";
 import { registerPhantomRowsHook } from "./hooks/phantom_rows_hook";
 import { registerStatusHooks } from "./hooks/status_hooks";
+import { registerFilterBarShortcutsHook } from "./hooks/filter_bar_shortcuts_hook";
 import { getOrCreateTabId, registerSidebarAlpineComponents } from "./alpine/sidebar";
 import { initializeThemeManager } from "./theme_manager";
 
@@ -83,6 +84,7 @@ registerPathAutocompleteHook(Hooks);
 registerWidgetSeriesRowsHook(Hooks);
 registerPhantomRowsHook(Hooks);
 registerStatusHooks(Hooks);
+registerFilterBarShortcutsHook(Hooks);
 registerSidebarAlpineComponents();
 
 

@@ -100,10 +100,23 @@ Hooks.SmartTimeframeInput = {
 
 Hooks.SmartTimeframeBlur = {
   mounted() {
+    this._eventTarget = this.el.closest('[data-phx-component]') || null;
+
     this._onKeydown = (e) => {
       if (e.key === 'Enter') {
         // Blur the input after Enter to trigger value update
         setTimeout(() => this.el.blur(), 100);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (this._eventTarget && typeof this.pushEventTo === 'function') {
+          this.pushEventTo(this._eventTarget, 'hide_timeframe_dropdown', {});
+        } else {
+          this.pushEvent('hide_timeframe_dropdown', {});
+        }
+
+        this.el.blur();
       }
     };
     this.el.addEventListener('keydown', this._onKeydown);
@@ -131,6 +144,9 @@ Hooks.SmartTimeframeBlur = {
     this._updateHandler = this.handleEvent("update_timeframe_input", ({value}) => {
       this.el.value = value;
     });
+  },
+  updated() {
+    this._eventTarget = this.el.closest('[data-phx-component]') || null;
   },
   destroyed() {
     if (this._onKeydown) this.el.removeEventListener('keydown', this._onKeydown);

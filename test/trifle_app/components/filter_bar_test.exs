@@ -142,6 +142,158 @@ defmodule TrifleApp.Components.FilterBarTest do
     refute html =~ "overflow-hidden rounded-2xl"
   end
 
+  test "escape keydown closes the timeframe dropdown", %{conn: conn} do
+    {:ok, view, html} =
+      live_isolated(conn, HarnessLive,
+        session:
+          session(%{
+            id: "filter-bar-escape",
+            config: %{time_zone: "UTC"},
+            from: ~U[2024-01-01 00:00:00Z],
+            to: ~U[2024-01-01 01:00:00Z],
+            granularity: "1m",
+            smart_timeframe_input: "1h",
+            use_fixed_display: false,
+            available_granularities: ["1m", "5m", "1h"],
+            show_controls: true,
+            show_timeframe_dropdown: true,
+            show_granularity_dropdown: false,
+            sources: [],
+            selected_source: nil,
+            source_locked: true,
+            loading: false,
+            loading_chunks: false,
+            loading_progress: nil,
+            transponding: false
+          })
+      )
+
+    assert html =~ "Quick Timeframes"
+
+    html =
+      view
+      |> element("#smart_timeframe")
+      |> render_keydown(%{"key" => "Escape", "value" => "1h"})
+
+    refute html =~ "Quick Timeframes"
+  end
+
+  test "renders shortcut hook metadata for active controls", %{conn: conn} do
+    {:ok, _view, html} =
+      live_isolated(conn, HarnessLive,
+        session:
+          session(%{
+            id: "filter-bar-shortcuts",
+            config: %{time_zone: "UTC"},
+            from: ~U[2024-01-01 00:00:00Z],
+            to: ~U[2024-01-01 01:00:00Z],
+            granularity: "1h",
+            smart_timeframe_input: "1h",
+            use_fixed_display: false,
+            available_granularities: ["1m", "1h", "1d"],
+            show_controls: true,
+            show_timeframe_dropdown: false,
+            show_granularity_dropdown: false,
+            sources: [],
+            selected_source: nil,
+            source_locked: true,
+            loading: false,
+            loading_chunks: false,
+            loading_progress: nil,
+            transponding: false
+          })
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    assert Floki.attribute(document, "#filter-bar-shortcuts-shortcuts", "phx-hook") == [
+             "FilterBarShortcuts"
+           ]
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-shortcuts-shortcuts",
+             "data-filter-bar-shortcuts"
+           ) == ["true"]
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-shortcuts-shortcuts",
+             "data-filter-bar-controls-enabled"
+           ) == ["true"]
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-shortcuts-shortcuts",
+             "data-filter-bar-current-granularity"
+           ) == ["1h"]
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-shortcuts-shortcuts",
+             "data-filter-bar-granularities"
+           ) == [~s(["1m","1h","1d"])]
+
+    assert html =~ "Move timeframe backward in time (H)"
+    assert html =~ "Refresh data for current timeframe (R)"
+    assert html =~ "Pause (freeze range) (P)"
+    assert html =~ "Move timeframe forward in time (L)"
+  end
+
+  test "keeps timeframe and granularity shortcut metadata when controls are hidden", %{conn: conn} do
+    {:ok, _view, html} =
+      live_isolated(conn, HarnessLive,
+        session:
+          session(%{
+            id: "filter-bar-hidden-controls",
+            config: %{time_zone: "UTC"},
+            from: ~U[2024-01-01 00:00:00Z],
+            to: ~U[2024-01-01 01:00:00Z],
+            granularity: "1h",
+            smart_timeframe_input: "1h",
+            use_fixed_display: false,
+            available_granularities: ["1m", "1h", "1d"],
+            show_controls: false,
+            show_timeframe_dropdown: false,
+            show_granularity_dropdown: false,
+            sources: [],
+            selected_source: nil,
+            source_locked: true,
+            loading: false,
+            loading_chunks: false,
+            loading_progress: nil,
+            transponding: false
+          })
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-hidden-controls-shortcuts",
+             "data-filter-bar-controls-enabled"
+           ) == ["false"]
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-hidden-controls-shortcuts",
+             "data-filter-bar-current-granularity"
+           ) == ["1h"]
+
+    assert Floki.attribute(
+             document,
+             "#filter-bar-hidden-controls-shortcuts",
+             "data-filter-bar-granularities"
+           ) == [~s(["1m","1h","1d"])]
+
+    assert Floki.find(
+             document,
+             ~s(#filter-bar-hidden-controls-shortcuts input[name="smart_timeframe"])
+           ) != []
+
+    assert Floki.find(document, "#controls-container") == []
+  end
+
   defp session(assigns) do
     Map.new(assigns, fn {key, value} -> {Atom.to_string(key), value} end)
   end

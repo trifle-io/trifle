@@ -12,7 +12,15 @@ defmodule TrifleApp.Components.FilterBar do
 
   def render(assigns) do
     ~H"""
-    <div class="sticky top-0 z-50 mb-6">
+    <div
+      id={"#{@id}-shortcuts"}
+      class="sticky top-0 z-50 mb-6"
+      phx-hook="FilterBarShortcuts"
+      data-filter-bar-shortcuts="true"
+      data-filter-bar-controls-enabled={html_bool(@show_controls)}
+      data-filter-bar-current-granularity={current_granularity(@granularity)}
+      data-filter-bar-granularities={encoded_granularities(@available_granularities)}
+    >
       <div
         class="relative rounded-2xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 p-4 shadow-lg dark:shadow-none backdrop-blur-xl transition-colors"
         aria-busy={if show_loading_status?(assigns), do: "true", else: "false"}
@@ -209,7 +217,7 @@ defmodule TrifleApp.Components.FilterBar do
                   <:button
                     phx-target={@myself}
                     phx-click="navigate_timeframe_backward"
-                    data-tooltip="Move timeframe backward in time"
+                    data-tooltip="Move timeframe backward in time (H)"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -229,7 +237,7 @@ defmodule TrifleApp.Components.FilterBar do
                   <:button
                     phx-target={@myself}
                     phx-click="reload_data"
-                    data-tooltip="Refresh data for current timeframe"
+                    data-tooltip="Refresh data for current timeframe (R)"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -251,7 +259,9 @@ defmodule TrifleApp.Components.FilterBar do
                     phx-click="toggle_play_pause"
                     selected={!@use_fixed_display}
                     data-tooltip={
-                      if @use_fixed_display, do: "Play (auto-update)", else: "Pause (freeze range)"
+                      if @use_fixed_display,
+                        do: "Play (auto-update) (P)",
+                        else: "Pause (freeze range) (P)"
                     }
                   >
                     <%= if @use_fixed_display do %>
@@ -291,7 +301,7 @@ defmodule TrifleApp.Components.FilterBar do
                   <:button
                     phx-target={@myself}
                     phx-click="navigate_timeframe_forward"
-                    data-tooltip="Move timeframe forward in time"
+                    data-tooltip="Move timeframe forward in time (L)"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -555,6 +565,10 @@ defmodule TrifleApp.Components.FilterBar do
     end
   end
 
+  def handle_event("smart_timeframe_keydown", %{"key" => "Escape"}, socket) do
+    {:noreply, assign(socket, show_timeframe_dropdown: false)}
+  end
+
   def handle_event("smart_timeframe_keydown", %{"key" => _other_key, "value" => _input}, socket) do
     # Handle other keys (Arrow keys, etc.) without action
     {:noreply, socket}
@@ -722,6 +736,18 @@ defmodule TrifleApp.Components.FilterBar do
 
   defp notify_parent(message) do
     send(self(), {:filter_bar, message})
+  end
+
+  defp html_bool(value), do: if(value, do: "true", else: "false")
+
+  defp current_granularity(nil), do: ""
+  defp current_granularity(granularity), do: to_string(granularity)
+
+  defp encoded_granularities(granularities) do
+    granularities
+    |> List.wrap()
+    |> Enum.map(&to_string/1)
+    |> Jason.encode!()
   end
 
   defp show_loading_status?(assigns) do
