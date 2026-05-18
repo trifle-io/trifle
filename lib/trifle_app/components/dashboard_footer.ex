@@ -24,221 +24,65 @@ defmodule TrifleApp.Components.DashboardFooter do
 
   def dashboard_footer(assigns) do
     ~H"""
-    <div
-      class={[
-        "sticky bottom-0 z-30 w-full rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/70 dark:shadow-none",
-        @class
-      ]}
-      data-dashboard-footer
-      data-expanded="false"
-      x-data="{ footerExpanded: false }"
-      x-bind:data-expanded="footerExpanded.toString()"
-      {@rest}
-    >
-      <% summary = @summary %>
-      <% details_id = @download_menu_id <> "-summary-details" %>
-      <div class="flex flex-wrap items-center gap-3 text-xs tabular-nums">
-        <button
-          type="button"
-          class="order-1 inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600 lg:hidden"
-          aria-controls={details_id}
-          x-on:click="footerExpanded = !footerExpanded"
-          x-bind:aria-expanded="footerExpanded.toString()"
-          x-bind:aria-label="footerExpanded ? 'Collapse footer details' : 'Expand footer details'"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="h-4 w-4"
-            aria-hidden="true"
-            x-show="footerExpanded"
+    <div class="contents" x-data="{ footerExpanded: false, shortcutsOpen: false }">
+      <div
+        class={[
+          "sticky bottom-0 z-30 w-full rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/70 dark:shadow-none",
+          @class
+        ]}
+        data-dashboard-footer
+        data-expanded="false"
+        x-bind:data-expanded="footerExpanded.toString()"
+        {@rest}
+      >
+        <% summary = @summary %>
+        <% details_id = @download_menu_id <> "-summary-details" %>
+        <div class="flex flex-wrap items-center gap-3 text-xs tabular-nums">
+          <button
+            type="button"
+            class="order-1 inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600 lg:hidden"
+            aria-controls={details_id}
+            x-on:click="footerExpanded = !footerExpanded"
+            x-bind:aria-expanded="footerExpanded.toString()"
+            x-bind:aria-label="footerExpanded ? 'Collapse footer details' : 'Expand footer details'"
           >
-            <path
-              fill-rule="evenodd"
-              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="h-4 w-4"
-            aria-hidden="true"
-            x-cloak
-            x-show="!footerExpanded"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M14.77 12.79a.75.75 0 0 1-1.06-.02L10 9.06l-3.71 3.71a.75.75 0 1 1-1.06-1.06l4.24-4.24a.75.75 0 0 1 1.06 0l4.24 4.24a.75.75 0 0 1 0 1.08Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <span>Details</span>
-        </button>
-
-        <div
-          id={details_id}
-          data-dashboard-footer-details
-          class="order-last flex basis-full flex-wrap items-center gap-4 pt-1 lg:order-none lg:basis-auto lg:flex-1 lg:pt-0"
-        >
-          <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
             <svg
-              class="h-4 w-4 text-teal-500"
               xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class="h-4 w-4"
+              aria-hidden="true"
+              x-show="footerExpanded"
             >
               <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
+                fill-rule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08Z"
+                clip-rule="evenodd"
               />
             </svg>
-            <span class="font-medium">Key:</span>
-            <span class="truncate max-w-32" title={summary.key}>{summary.key}</span>
-          </div>
-
-          <%= if summary.column_count > 0 do %>
-            <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-              <svg
-                class="h-4 w-4 text-teal-500"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
-                />
-              </svg>
-              <span class="font-medium">Points:</span>
-              <span>{summary.column_count}</span>
-            </div>
-          <% end %>
-
-          <%= if summary.path_count > 0 do %>
-            <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
-              <svg
-                class="h-4 w-4 text-teal-500"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                />
-              </svg>
-              <span class="font-medium">Paths:</span>
-              <span>{summary.path_count}</span>
-            </div>
-          <% end %>
-
-          <div class="flex items-center gap-1">
             <svg
-              class="h-4 w-4 text-teal-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class="h-4 w-4"
+              aria-hidden="true"
+              x-cloak
+              x-show="!footerExpanded"
             >
               <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
+                fill-rule="evenodd"
+                d="M14.77 12.79a.75.75 0 0 1-1.06-.02L10 9.06l-3.71 3.71a.75.75 0 1 1-1.06-1.06l4.24-4.24a.75.75 0 0 1 1.06 0l4.24 4.24a.75.75 0 0 1 0 1.08Z"
+                clip-rule="evenodd"
               />
             </svg>
-            <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
-            <div class="flex items-center gap-1">
-              <svg
-                class="h-3 w-3 text-green-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-                />
-              </svg>
-              <span class="text-gray-900 dark:text-white">{summary.successful_transponders}</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <svg
-                class="h-3 w-3 text-red-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-                />
-              </svg>
-              <%= if summary.failed_transponders > 0 do %>
-                <button
-                  phx-click="show_transponder_errors"
-                  class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
-                >
-                  {summary.failed_transponders}
-                </button>
-              <% else %>
-                <span class="text-gray-900 dark:text-white">0</span>
-              <% end %>
-            </div>
-          </div>
+            <span>Details</span>
+          </button>
 
           <div
-            id="dashboard-annotation-toggle"
-            class="flex items-center gap-2 text-gray-600 dark:text-slate-300"
-            phx-hook="DashboardAnnotationToggle"
+            id={details_id}
+            data-dashboard-footer-details
+            class="order-last flex basis-full flex-wrap items-center gap-4 pt-1 lg:order-none lg:basis-auto lg:flex-1 lg:pt-0"
           >
-            <svg
-              class="h-4 w-4 text-teal-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25h12A2.25 2.25 0 0 0 20.25 18v-1.5M7.5 3.75h9M7.5 3.75v16.5M16.5 3.75h1.5A2.25 2.25 0 0 1 20.25 6v10.5M16.5 3.75v16.5"
-              />
-            </svg>
-            <span class="text-xs font-medium">Annotations:</span>
-            <span class="text-xs text-slate-500 dark:text-slate-400">{@annotation_count}</span>
-            <button
-              type="button"
-              data-role="annotation-toggle"
-              aria-pressed="true"
-              aria-label="Toggle annotations"
-              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-teal-600 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
-            >
-              <span
-                data-role="annotation-toggle-knob"
-                class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-              >
-              </span>
-            </button>
-          </div>
-
-          <%= if @load_duration_microseconds do %>
             <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
               <svg
                 class="h-4 w-4 text-teal-500"
@@ -251,33 +95,18 @@ defmodule TrifleApp.Components.DashboardFooter do
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                  d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"
+                  d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
                 />
               </svg>
-              <span class="font-medium">Load:</span>
-              <span>{DashboardLive.format_duration(@load_duration_microseconds)}</span>
+              <span class="font-medium">Key:</span>
+              <span class="truncate max-w-32" title={summary.key}>{summary.key}</span>
             </div>
-          <% end %>
-        </div>
 
-        <%= if @export_menu? do %>
-          <div
-            id={@download_menu_id}
-            class="order-2 ml-auto relative lg:order-none"
-            data-default-label="Export"
-            data-download-menu="true"
-            phx-hook="DownloadMenu"
-          >
-            <button
-              type="button"
-              phx-click="toggle_export_dropdown"
-              data-role="download-button"
-              class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-            >
-              <span class="mr-1 inline-flex items-center" data-role="download-icon">
+            <%= if summary.column_count > 0 do %>
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
                 <svg
+                  class="h-4 w-4 text-teal-500"
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 text-teal-600 dark:text-teal-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke-width="1.5"
@@ -286,190 +115,568 @@ defmodule TrifleApp.Components.DashboardFooter do
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                    d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
                   />
                 </svg>
-              </span>
-              <span class="mr-1 hidden" data-role="download-spinner">
-                <span class="inline-flex h-4 w-4 items-center justify-center">
-                  <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin">
-                  </span>
-                </span>
-              </span>
-              <span class="inline" data-role="download-text">Export</span>
+                <span class="font-medium">Points:</span>
+                <span>{summary.column_count}</span>
+              </div>
+            <% end %>
+
+            <%= if summary.path_count > 0 do %>
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                <svg
+                  class="h-4 w-4 text-teal-500"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                  />
+                </svg>
+                <span class="font-medium">Paths:</span>
+                <span>{summary.path_count}</span>
+              </div>
+            <% end %>
+
+            <div class="flex items-center gap-1">
               <svg
-                class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
+                class="h-4 w-4 text-teal-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
               >
                 <path
-                  fill-rule="evenodd"
-                  d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 0 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z"
-                  clip-rule="evenodd"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="m21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75 2.25-1.313M12 21.75V19.5m0 2.25-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25"
                 />
               </svg>
+              <span class="font-medium text-gray-700 dark:text-slate-300">Transponders:</span>
+              <div class="flex items-center gap-1">
+                <svg
+                  class="h-3 w-3 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                  />
+                </svg>
+                <span class="text-gray-900 dark:text-white">{summary.successful_transponders}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <svg
+                  class="h-3 w-3 text-red-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+                  />
+                </svg>
+                <%= if summary.failed_transponders > 0 do %>
+                  <button
+                    phx-click="show_transponder_errors"
+                    class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
+                  >
+                    {summary.failed_transponders}
+                  </button>
+                <% else %>
+                  <span class="text-gray-900 dark:text-white">0</span>
+                <% end %>
+              </div>
+            </div>
+
+            <div
+              id="dashboard-annotation-toggle"
+              class="flex items-center gap-2 text-gray-600 dark:text-slate-300"
+              phx-hook="DashboardAnnotationToggle"
+            >
+              <svg
+                class="h-4 w-4 text-teal-500"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25h12A2.25 2.25 0 0 0 20.25 18v-1.5M7.5 3.75h9M7.5 3.75v16.5M16.5 3.75h1.5A2.25 2.25 0 0 1 20.25 6v10.5M16.5 3.75v16.5"
+                />
+              </svg>
+              <span class="text-xs font-medium">Annotations:</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400">{@annotation_count}</span>
+              <button
+                type="button"
+                data-role="annotation-toggle"
+                aria-pressed="true"
+                aria-label="Toggle annotations"
+                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-teal-600 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+              >
+                <span
+                  data-role="annotation-toggle-knob"
+                  class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                >
+                </span>
+              </button>
+            </div>
+
+            <%= if @load_duration_microseconds do %>
+              <div class="flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                <svg
+                  class="h-4 w-4 text-teal-500"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"
+                  />
+                </svg>
+                <span class="font-medium">Load:</span>
+                <span>{DashboardLive.format_duration(@load_duration_microseconds)}</span>
+              </div>
+            <% end %>
+          </div>
+
+          <div class="order-2 ml-auto flex items-center gap-2 lg:order-none">
+            <button
+              type="button"
+              data-dashboard-footer-shortcuts-trigger
+              class="relative inline-flex items-center rounded-md bg-white px-2 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-600"
+              aria-label="Keyboard shortcuts"
+              aria-haspopup="dialog"
+              x-on:click="shortcutsOpen = true"
+            >
+              <span
+                class="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 pointer-fine:hidden"
+                aria-hidden="true"
+              >
+              </span>
+              <.keyboard_icon class="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
             </button>
 
-            <%= if @show_export_dropdown do %>
-              <% export_params = @export_params %>
+            <%= if @export_menu? do %>
               <div
-                data-role="download-dropdown"
-                class="absolute bottom-9 right-0 z-40 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10"
-                phx-click-away="hide_export_dropdown"
+                id={@download_menu_id}
+                class="relative"
+                data-default-label="Export"
+                data-download-menu="true"
+                phx-hook="DownloadMenu"
               >
-                <%= if @export_menu != [] do %>
-                  {render_slot(@export_menu,
-                    download_menu_id: @download_menu_id,
-                    export_params: export_params
-                  )}
-                <% else %>
-                  <a
-                    data-export-link
-                    onclick={
+                <button
+                  type="button"
+                  phx-click="toggle_export_dropdown"
+                  data-role="download-button"
+                  class="inline-flex items-center rounded-md bg-white dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
+                >
+                  <span class="mr-1 inline-flex items-center" data-role="download-icon">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4 text-teal-600 dark:text-teal-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                  </span>
+                  <span class="mr-1 hidden" data-role="download-spinner">
+                    <span class="inline-flex h-4 w-4 items-center justify-center">
+                      <span class="h-4 w-4 rounded-full border-2 border-teal-500 border-t-transparent dark:border-slate-300 dark:border-t-transparent animate-spin">
+                      </span>
+                    </span>
+                  </span>
+                  <span class="inline" data-role="download-text">Export</span>
+                  <svg
+                    class="ml-1 h-3 w-3 text-gray-500 dark:text-slate-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 0 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                </button>
+
+                <%= if @show_export_dropdown do %>
+                  <% export_params = @export_params %>
+                  <div
+                    data-role="download-dropdown"
+                    class="absolute bottom-9 right-0 z-40 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/10"
+                    phx-click-away="hide_export_dropdown"
+                  >
+                    <%= if @export_menu != [] do %>
+                      {render_slot(@export_menu,
+                        download_menu_id: @download_menu_id,
+                        export_params: export_params
+                      )}
+                    <% else %>
+                      <a
+                        data-export-link
+                        onclick={
                       "(function(el){var m=el.closest('##{@download_menu_id}');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                     }
-                    href={~p"/export/dashboards/#{@dashboard.id}/csv?#{export_params}"}
-                    target="download_iframe"
-                    class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
-                  >
-                    <span class="flex items-center">
-                      <svg
-                        class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                        href={~p"/export/dashboards/#{@dashboard.id}/csv?#{export_params}"}
+                        target="download_iframe"
+                        class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                        />
-                      </svg>
-                      CSV (table)
-                    </span>
-                  </a>
-                  <a
-                    data-export-link
-                    onclick={
+                        <span class="flex items-center">
+                          <svg
+                            class="h-4 w-4 mr-2 text-teal-600 dark:text-teal-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                            />
+                          </svg>
+                          CSV (table)
+                        </span>
+                      </a>
+                      <a
+                        data-export-link
+                        onclick={
                       "(function(el){var m=el.closest('##{@download_menu_id}');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                     }
-                    href={~p"/export/dashboards/#{@dashboard.id}/json?#{export_params}"}
-                    target="download_iframe"
-                    class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
-                  >
-                    <span class="flex items-center">
-                      <svg
-                        class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                        href={~p"/export/dashboards/#{@dashboard.id}/json?#{export_params}"}
+                        target="download_iframe"
+                        class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                        />
-                      </svg>
-                      JSON (raw)
-                    </span>
-                  </a>
-                  <a
-                    data-export-link
-                    onclick={
+                        <span class="flex items-center">
+                          <svg
+                            class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                            />
+                          </svg>
+                          JSON (raw)
+                        </span>
+                      </a>
+                      <a
+                        data-export-link
+                        onclick={
                       "(function(el){var m=el.closest('##{@download_menu_id}');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                     }
-                    href={~p"/export/dashboards/#{@dashboard.id}/pdf?#{export_params}"}
-                    target="download_iframe"
-                    class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
-                  >
-                    <span class="flex items-center">
-                      <svg
-                        class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                        href={~p"/export/dashboards/#{@dashboard.id}/pdf?#{export_params}"}
+                        target="download_iframe"
+                        class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                        />
-                      </svg>
-                      PDF (print)
-                    </span>
-                  </a>
-                  <a
-                    data-export-link
-                    onclick={
+                        <span class="flex items-center">
+                          <svg
+                            class="h-4 w-4 mr-2 text-rose-600 dark:text-rose-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                            />
+                          </svg>
+                          PDF (print)
+                        </span>
+                      </a>
+                      <a
+                        data-export-link
+                        onclick={
                       "(function(el){var m=el.closest('##{@download_menu_id}');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                     }
-                    href={
-                      ~p"/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "light")}"
-                    }
-                    target="download_iframe"
-                    class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
-                  >
-                    <span class="flex items-center">
-                      <svg
-                        class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                        href={
+                          ~p"/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "light")}"
+                        }
+                        target="download_iframe"
+                        class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                        />
-                      </svg>
-                      PNG (light)
-                    </span>
-                  </a>
-                  <a
-                    data-export-link
-                    onclick={
+                        <span class="flex items-center">
+                          <svg
+                            class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                            />
+                          </svg>
+                          PNG (light)
+                        </span>
+                      </a>
+                      <a
+                        data-export-link
+                        onclick={
                       "(function(el){var m=el.closest('##{@download_menu_id}');if(!m)return;var d=m.querySelector('[data-role=download-dropdown]');if(d)d.style.display='none';var b=m.querySelector('[data-role=download-button]');var t=m.querySelector('[data-role=download-text]');if(b){b.disabled=true;b.classList.add('opacity-70','cursor-wait');}if(t){t.textContent='Generating...';}try{var u=new URL(el.href, window.location.origin);if(!u.searchParams.get('download_token')){var token=Date.now()+'-'+Math.random().toString(36).slice(2);window.__downloadToken=token;u.searchParams.set('download_token', token);el.href=u.toString();}}catch(_){} })(this)"
                     }
-                    href={
-                      ~p"/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "dark")}"
-                    }
-                    target="download_iframe"
-                    class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
-                  >
-                    <span class="flex items-center">
-                      <svg
-                        class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                        href={
+                          ~p"/export/dashboards/#{@dashboard.id}/png?#{Map.put(export_params, "theme", "dark")}"
+                        }
+                        target="download_iframe"
+                        class="w-full block px-3 py-2 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                        />
-                      </svg>
-                      PNG (dark)
-                    </span>
-                  </a>
+                        <span class="flex items-center">
+                          <svg
+                            class="h-4 w-4 mr-2 text-amber-600 dark:text-amber-400"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                            />
+                          </svg>
+                          PNG (dark)
+                        </span>
+                      </a>
+                    <% end %>
+                  </div>
                 <% end %>
               </div>
             <% end %>
           </div>
-        <% end %>
+        </div>
+      </div>
+      <.keyboard_shortcuts_modal />
+    </div>
+    """
+  end
+
+  defp keyboard_shortcuts_modal(assigns) do
+    ~H"""
+    <div
+      x-cloak
+      x-show="shortcutsOpen"
+      x-on:keydown.escape.window="shortcutsOpen = false"
+      class="fixed inset-0 z-[11000] overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="keyboard-shortcuts-title"
+    >
+      <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+        <div
+          class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-slate-900/80"
+          x-on:click="shortcutsOpen = false"
+        >
+        </div>
+
+        <div
+          class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all dark:bg-slate-800 sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
+          x-on:click.stop
+        >
+          <div class="absolute right-0 top-0 pr-4 pt-4">
+            <button
+              type="button"
+              class="rounded-md bg-white text-gray-400 hover:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-400 dark:focus-visible:ring-offset-slate-800"
+              aria-label="Close keyboard shortcuts"
+              x-on:click="shortcutsOpen = false"
+            >
+              <svg
+                class="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <.keyboard_icon class="h-6 w-6 shrink-0 text-teal-600 dark:text-teal-400" />
+            <div>
+              <h3
+                id="keyboard-shortcuts-title"
+                class="text-base font-semibold text-gray-900 dark:text-white"
+              >
+                Keyboard shortcuts
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                Available when you are not typing in a field.
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 space-y-5">
+            <.shortcut_section title="Global">
+              <.shortcut_row label="Open AI agent">
+                <:keys>
+                  <.shortcut_key>Cmd/Ctrl</.shortcut_key>
+                  <.shortcut_key>/</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Open quick search">
+                <:keys>
+                  <.shortcut_key>Cmd/Ctrl</.shortcut_key>
+                  <.shortcut_key>K</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+            </.shortcut_section>
+
+            <.shortcut_section title="Filter bar">
+              <.shortcut_row label="Focus timeframe">
+                <:keys>
+                  <.shortcut_key>T</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Refresh data">
+                <:keys>
+                  <.shortcut_key>R</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Pause/play">
+                <:keys>
+                  <.shortcut_key>P</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Move timeframe backward">
+                <:keys>
+                  <.shortcut_key>H</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Move timeframe forward">
+                <:keys>
+                  <.shortcut_key>L</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Smaller granularity">
+                <:keys>
+                  <.shortcut_key>J</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Larger granularity">
+                <:keys>
+                  <.shortcut_key>K</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+              <.shortcut_row label="Close timeframe input">
+                <:keys>
+                  <.shortcut_key>Esc</.shortcut_key>
+                </:keys>
+              </.shortcut_row>
+            </.shortcut_section>
+          </div>
+        </div>
       </div>
     </div>
+    """
+  end
+
+  attr :title, :string, required: true
+  slot :inner_block, required: true
+
+  defp shortcut_section(assigns) do
+    ~H"""
+    <section>
+      <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+        {@title}
+      </h4>
+      <div class="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200 dark:divide-slate-700 dark:border-slate-700">
+        {render_slot(@inner_block)}
+      </div>
+    </section>
+    """
+  end
+
+  attr :label, :string, required: true
+  slot :keys, required: true
+
+  defp shortcut_row(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between gap-4 px-3 py-2">
+      <span class="text-sm text-gray-700 dark:text-slate-200">{@label}</span>
+      <span class="flex shrink-0 items-center gap-1">{render_slot(@keys)}</span>
+    </div>
+    """
+  end
+
+  slot :inner_block, required: true
+
+  defp shortcut_key(assigns) do
+    ~H"""
+    <kbd class="inline-flex min-w-6 items-center justify-center rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 text-xs font-semibold leading-4 text-gray-700 shadow-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
+      {render_slot(@inner_block)}
+    </kbd>
+    """
+  end
+
+  attr :class, :string, default: "h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400"
+
+  defp keyboard_icon(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke-width="1.5"
+      stroke="currentColor"
+      class={@class}
+      aria-hidden="true"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M5.25 6.75h13.5A2.25 2.25 0 0 1 21 9v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V9a2.25 2.25 0 0 1 2.25-2.25Z"
+      />
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M7.5 10.5h.01M10.5 10.5h.01M13.5 10.5h.01M16.5 10.5h.01M7.5 13.5h9"
+      />
+    </svg>
     """
   end
 

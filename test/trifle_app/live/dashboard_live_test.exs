@@ -120,6 +120,11 @@ defmodule TrifleApp.DashboardLiveTest do
              view,
              "#dashboard-download-menu-summary-details[data-dashboard-footer-details]"
            )
+
+    assert has_element?(view, "[data-dashboard-footer-shortcuts-trigger]")
+    assert has_element?(view, "#keyboard-shortcuts-title", "Keyboard shortcuts")
+    assert has_element?(view, "kbd", "Cmd/Ctrl")
+    assert has_element?(view, "kbd", "Esc")
   end
 
   test "authenticated dashboards expose annotation payloads and handle CRUD events", %{
