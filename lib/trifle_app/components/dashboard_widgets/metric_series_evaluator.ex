@@ -831,7 +831,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
 
     entry
     |> Map.put(:name, name)
-    |> Map.put(:__series_aliases_active__, false)
+    |> Map.put(:__series_aliases_active__, aliases_active?)
   end
 
   defp prefixed_binding_name(row, binding_name) do

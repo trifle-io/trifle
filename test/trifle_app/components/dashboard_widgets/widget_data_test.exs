@@ -722,6 +722,50 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
     assert Enum.map(series, & &1.name) == ["EMEA one", "us / seller2"]
   end
 
+  test "timeseries regular aliases do not collapse distinct source paths with the same alias" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{"metrics" => %{"one" => 10, "two" => 20}}
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    items = [
+      %{
+        "id" => "regular-aliases",
+        "type" => "timeseries",
+        "chart_type" => "line",
+        "series_aliases" => %{"one" => "Total", "two" => "Total"},
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "metrics.one",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          },
+          %{
+            "kind" => "path",
+            "path" => "metrics.two",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          }
+        ]
+      }
+    ]
+
+    %{timeseries: [%{series: series}]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(series, & &1.name) == ["Total", "Total"]
+    assert Enum.map(series, & &1.source_path) == ["metrics.one", "metrics.two"]
+  end
+
   test "category wildcard aliases target wildcard captures" do
     timestamps = [
       DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC")
