@@ -5,7 +5,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
 
   @endpoint TrifleWeb.Endpoint
 
-  alias TrifleApp.Components.DashboardWidgets.{MetricSeries, TableEditor, TimeseriesEditor}
+  alias TrifleApp.Components.DashboardWidgets.{
+    MetricSeries,
+    SeriesAliases,
+    TableEditor,
+    TimeseriesEditor
+  }
 
   test "normalize_widget drops synthetic blank rows for persisted widgets" do
     widget = %{
@@ -182,10 +187,76 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
 
     assert Regex.match?(~r/name="widget_series_label\[0\]".*dark:bg-slate-800/s, html)
     assert Regex.match?(~r/name="series_priority".*dark:bg-slate-800/s, html)
+    assert Regex.match?(~r/name="series_priority_last".*dark:bg-slate-800/s, html)
     assert Regex.match?(~r/name="series_aliases".*dark:bg-slate-800/s, html)
     assert Regex.match?(~r/name="ts_y_label".*dark:bg-slate-800/s, html)
 
     assert html =~
-             "rounded-xl border border-gray-200 bg-white/40 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/20"
+             "rounded-xl border border-gray-200 bg-white/40 dark:border-slate-700 dark:bg-slate-900/20"
+  end
+
+  test "timeseries editor renders visual series display rows by default while preserving raw fields" do
+    html =
+      render_component(&TimeseriesEditor.editor/1,
+        widget: %{
+          "id" => "timeseries-1",
+          "type" => "timeseries",
+          "series" => [],
+          "series_aliases" => %{"seller1" => "me"},
+          "series_priority" => ["me"],
+          "series_priority_last" => ["other"]
+        },
+        path_options: []
+      )
+
+    assert html =~ ~s(phx-hook="SeriesDisplayEditor")
+    assert html =~ "Advanced"
+    refute Regex.match?(~r/<details[^>]+id="series-display-editor-timeseries-1"[^>]+open/, html)
+    assert html =~ ~s(name="series_display_mode" value="visual")
+    assert html =~ ~s(data-series-display-mode-panel="visual")
+    assert html =~ ~s(name="series_alias_key[0]" value="seller1")
+    assert html =~ ~s(name="series_alias_value[0]" value="me")
+    assert html =~ ~s(name="series_priority_item[0]" value="me")
+    assert html =~ ~s(name="series_priority_group[0]" value="first")
+    assert html =~ "All other series"
+    assert html =~ ~s(name="series_priority_item[2]" value="other")
+    assert html =~ ~s(name="series_priority_group[2]" value="last")
+    assert html =~ ~s(name="series_aliases")
+    assert html =~ ~s(name="series_priority")
+    assert html =~ ~s(name="series_priority_last")
+  end
+
+  test "timeseries editor opens raw mode when aliases JSON has an error" do
+    html =
+      render_component(&TimeseriesEditor.editor/1,
+        widget: %{
+          "id" => "timeseries-1",
+          "type" => "timeseries",
+          "series" => [],
+          SeriesAliases.raw_text_key() => "{",
+          SeriesAliases.error_key() => "Aliases must be valid JSON."
+        },
+        path_options: []
+      )
+
+    assert html =~ ~s(name="series_display_mode" value="raw")
+    assert Regex.match?(~r/<details[^>]+id="series-display-editor-timeseries-1"[^>]+open/, html)
+    assert html =~ "Aliases must be valid JSON."
+    assert html =~ ~s(data-series-display-mode-panel="visual" hidden)
+  end
+
+  test "timeseries editor preserves draft raw mode without an aliases error" do
+    html =
+      render_component(&TimeseriesEditor.editor/1,
+        widget: %{
+          "id" => "timeseries-1",
+          "type" => "timeseries",
+          "series" => [],
+          SeriesAliases.display_mode_key() => "raw"
+        },
+        path_options: []
+      )
+
+    assert html =~ ~s(name="series_display_mode" value="raw")
   end
 end

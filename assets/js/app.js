@@ -39,6 +39,7 @@ import { registerSortableDashboardHooks } from "./hooks/sortable_dashboard_hooks
 import { registerDownloadHooks } from "./hooks/download_hooks";
 import { registerPathAutocompleteHook } from "./hooks/path_autocomplete_hook";
 import { registerWidgetSeriesRowsHook } from "./hooks/widget_series_rows_hook";
+import { registerSeriesDisplayEditorHook } from "./hooks/series_display_editor_hook";
 import { registerPhantomRowsHook } from "./hooks/phantom_rows_hook";
 import { registerStatusHooks } from "./hooks/status_hooks";
 import { registerFilterBarShortcutsHook } from "./hooks/filter_bar_shortcuts_hook";
@@ -82,6 +83,7 @@ registerSortableDashboardHooks(Hooks, { Sortable, echarts, withChartOpts });
 registerDownloadHooks(Hooks);
 registerPathAutocompleteHook(Hooks);
 registerWidgetSeriesRowsHook(Hooks);
+registerSeriesDisplayEditorHook(Hooks, { Sortable });
 registerPhantomRowsHook(Hooks);
 registerStatusHooks(Hooks);
 registerFilterBarShortcutsHook(Hooks);

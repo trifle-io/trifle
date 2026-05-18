@@ -1196,6 +1196,115 @@ defmodule TrifleApp.DashboardLiveTest do
     assert widget["series_aliases"] == %{"2" => "Two", "10" => "Ten"}
   end
 
+  test "timeseries save accepts visual aliases and priority rows", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Visual Ordered Series",
+      "ts_chart_type" => "line",
+      "series_display_mode" => "visual",
+      "series_sort" => "natural",
+      "series_alias_key" => %{
+        "0" => " seller1 ",
+        "1" => "",
+        "2" => "seller2"
+      },
+      "series_alias_value" => %{
+        "0" => " me ",
+        "1" => "ignored",
+        "2" => " test "
+      },
+      "series_priority_item" => %{"0" => " test ", "1" => "me", "2" => " other ", "3" => ""},
+      "series_priority_group" => %{"0" => "first", "1" => "first", "2" => "last", "3" => "last"},
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "metrics.distribution.*"},
+      "widget_series_expression" => %{"0" => ""},
+      "widget_series_label" => %{"0" => ""},
+      "widget_series_visible" => %{"0" => "true"},
+      "widget_series_color_selector" => %{"0" => "default.*"}
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["type"] == "timeseries"
+    assert widget["title"] == "Visual Ordered Series"
+    assert widget["series_sort"] == "natural"
+    assert widget["series_priority"] == ["test", "me"]
+    assert widget["series_priority_last"] == ["other"]
+    assert widget["series_aliases"] == %{"seller1" => "me", "seller2" => "test"}
+  end
+
+  test "timeseries save uses raw fields when raw mode is selected", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Raw Ordered Series",
+      "ts_chart_type" => "line",
+      "series_display_mode" => "raw",
+      "series_sort" => "natural",
+      "series_aliases" => ~s({"raw": "Raw Alias"}),
+      "series_priority" => "raw",
+      "series_priority_last" => "raw-last",
+      "series_alias_key" => %{"0" => "visual"},
+      "series_alias_value" => %{"0" => "Visual Alias"},
+      "series_priority_item" => %{"0" => "visual"},
+      "series_priority_group" => %{"0" => "last"},
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "metrics.distribution.*"},
+      "widget_series_expression" => %{"0" => ""},
+      "widget_series_label" => %{"0" => ""},
+      "widget_series_visible" => %{"0" => "true"},
+      "widget_series_color_selector" => %{"0" => "default.*"}
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert widget["series_priority"] == ["raw"]
+    assert widget["series_priority_last"] == ["raw-last"]
+    assert widget["series_aliases"] == %{"raw" => "Raw Alias"}
+  end
+
+  test "timeseries draft keeps raw editor mode after form changes", %{
+    conn: conn,
+    dashboard: dashboard
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    html =
+      render_change(view, "widget_editor_change", %{
+        "widget_id" => "widget-1",
+        "widget_type" => "timeseries",
+        "widget_title" => "Raw Draft",
+        "ts_chart_type" => "line",
+        "series_display_mode" => "raw",
+        "series_aliases" => ~s({"raw": "Raw Alias"}),
+        "series_priority" => "raw"
+      })
+
+    assert html =~ ~s(name="series_display_mode" value="raw")
+    assert html =~ ~s(data-series-display-mode-panel="raw")
+  end
+
   test "timeseries save rejects invalid series aliases JSON", %{
     conn: conn,
     dashboard: dashboard,

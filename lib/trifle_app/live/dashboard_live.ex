@@ -3220,194 +3220,197 @@ defmodule TrifleApp.DashboardLive do
       |> Map.put("type", type)
       |> Map.put("title", title)
 
-    case type do
-      "group" ->
-        header_color_selector =
-          params
-          |> Map.get("group_header_color_selector", Map.get(widget, "header_color_selector"))
-          |> DashboardWidgetHelpers.normalize_group_header_color_selector()
+    widget =
+      case type do
+        "group" ->
+          header_color_selector =
+            params
+            |> Map.get("group_header_color_selector", Map.get(widget, "header_color_selector"))
+            |> DashboardWidgetHelpers.normalize_group_header_color_selector()
 
-        group_path =
-          params
-          |> Map.get("group_path", Map.get(widget, "group_path"))
-          |> GroupExpansion.normalize_group_path()
+          group_path =
+            params
+            |> Map.get("group_path", Map.get(widget, "group_path"))
+            |> GroupExpansion.normalize_group_path()
 
-        widget
-        |> put_optional_widget_field("header_color_selector", header_color_selector)
-        |> put_optional_widget_field("group_path", group_path)
-        |> LayoutTree.normalize_group_item()
+          widget
+          |> put_optional_widget_field("header_color_selector", header_color_selector)
+          |> put_optional_widget_field("group_path", group_path)
+          |> LayoutTree.normalize_group_item()
 
-      "kpi" ->
-        subtype =
-          params
-          |> Map.get("kpi_subtype", Map.get(widget, "subtype"))
-          |> DashboardWidgetHelpers.normalize_kpi_subtype(widget)
+        "kpi" ->
+          subtype =
+            params
+            |> Map.get("kpi_subtype", Map.get(widget, "subtype"))
+            |> DashboardWidgetHelpers.normalize_kpi_subtype(widget)
 
-        widget =
+          widget =
+            widget
+            |> put_metric_series(params, widget, preserve_empty: true)
+            |> drop_series_display_options()
+            |> Map.put(
+              "function",
+              params
+              |> Map.get("kpi_function", Map.get(widget, "function", "mean"))
+              |> normalize_kpi_function()
+            )
+            |> Map.put("size", Map.get(params, "kpi_size", Map.get(widget, "size", "m")))
+            |> Map.put(
+              "unit",
+              normalize_kpi_unit(Map.get(params, "kpi_unit", Map.get(widget, "unit", "")))
+            )
+            |> Map.put("subtype", subtype)
+
+          case subtype do
+            "split" ->
+              widget
+              |> Map.put("split", true)
+              |> Map.put("diff", Map.has_key?(params, "kpi_diff"))
+              |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+
+            "goal" ->
+              widget
+              |> Map.put("split", false)
+              |> Map.put(
+                "goal_target",
+                params
+                |> Map.get("kpi_goal_target", Map.get(widget, "goal_target", ""))
+                |> to_string()
+                |> String.trim()
+              )
+              |> Map.put("goal_progress", Map.has_key?(params, "kpi_goal_progress"))
+              |> Map.put("goal_invert", Map.has_key?(params, "kpi_goal_invert"))
+
+            _ ->
+              widget
+              |> Map.put("split", false)
+              |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+          end
+
+        "timeseries" ->
+          widget
+          |> put_metric_series(params, widget, preserve_empty: true)
+          |> Map.put(
+            "chart_type",
+            Map.get(params, "ts_chart_type", Map.get(widget, "chart_type") || "line")
+          )
+          |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
+          |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
+          |> Map.put("legend", Map.has_key?(params, "ts_legend"))
+          |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
+          |> Map.put(
+            "annotations_enabled",
+            params
+            |> Map.get("ts_annotations_enabled", Map.get(widget, "annotations_enabled", true))
+            |> normalize_widget_checkbox(true)
+          )
+          |> put_series_display_options(params, widget, hovered_key: "ts_hovered_only")
+
+        "category" ->
+          widget
+          |> put_metric_series(params, widget, preserve_empty: true)
+          |> Map.put(
+            "chart_type",
+            Map.get(params, "cat_chart_type", Map.get(widget, "chart_type") || "bar")
+          )
+          |> put_series_display_options(params, widget)
+
+        "table" ->
           widget
           |> put_metric_series(params, widget, preserve_empty: true)
           |> drop_series_display_options()
-          |> Map.put(
-            "function",
+
+        widget_type when widget_type in ["distribution", "heatmap"] ->
+          build_distribution_widget(widget, widget_type, params, widget, path_options,
+            series_rows: metric_series_rows_from_params(params, widget, preserve_empty: true)
+          )
+
+        "list" ->
+          limit =
             params
-            |> Map.get("kpi_function", Map.get(widget, "function", "mean"))
-            |> normalize_kpi_function()
-          )
-          |> Map.put("size", Map.get(params, "kpi_size", Map.get(widget, "size", "m")))
-          |> Map.put(
-            "unit",
-            normalize_kpi_unit(Map.get(params, "kpi_unit", Map.get(widget, "unit", "")))
-          )
-          |> Map.put("subtype", subtype)
+            |> Map.get("list_limit", Map.get(widget, "limit"))
+            |> normalize_optional_positive_integer()
 
-        case subtype do
-          "split" ->
-            widget
-            |> Map.put("split", true)
-            |> Map.put("diff", Map.has_key?(params, "kpi_diff"))
-            |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
+          sort =
+            params
+            |> Map.get("list_sort", Map.get(widget, "sort") || "desc")
+            |> normalize_list_sort()
 
-          "goal" ->
-            widget
-            |> Map.put("split", false)
-            |> Map.put(
-              "goal_target",
-              params
-              |> Map.get("kpi_goal_target", Map.get(widget, "goal_target", ""))
-              |> to_string()
-              |> String.trim()
-            )
-            |> Map.put("goal_progress", Map.has_key?(params, "kpi_goal_progress"))
-            |> Map.put("goal_invert", Map.has_key?(params, "kpi_goal_invert"))
+          label_strategy =
+            params
+            |> Map.get("list_label_strategy", Map.get(widget, "label_strategy") || "short")
+            |> normalize_list_label_strategy()
 
-          _ ->
-            widget
-            |> Map.put("split", false)
-            |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
-        end
-
-      "timeseries" ->
-        widget
-        |> put_metric_series(params, widget, preserve_empty: true)
-        |> Map.put(
-          "chart_type",
-          Map.get(params, "ts_chart_type", Map.get(widget, "chart_type") || "line")
-        )
-        |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
-        |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
-        |> Map.put("legend", Map.has_key?(params, "ts_legend"))
-        |> Map.put("y_label", Map.get(params, "ts_y_label", Map.get(widget, "y_label", "")))
-        |> Map.put(
-          "annotations_enabled",
-          params
-          |> Map.get("ts_annotations_enabled", Map.get(widget, "annotations_enabled", true))
-          |> normalize_widget_checkbox(true)
-        )
-        |> put_series_display_options(params, widget, hovered_key: "ts_hovered_only")
-
-      "category" ->
-        widget
-        |> put_metric_series(params, widget, preserve_empty: true)
-        |> Map.put(
-          "chart_type",
-          Map.get(params, "cat_chart_type", Map.get(widget, "chart_type") || "bar")
-        )
-        |> put_series_display_options(params, widget)
-
-      "table" ->
-        widget
-        |> put_metric_series(params, widget, preserve_empty: true)
-        |> drop_series_display_options()
-
-      widget_type when widget_type in ["distribution", "heatmap"] ->
-        build_distribution_widget(widget, widget_type, params, widget, path_options,
-          series_rows: metric_series_rows_from_params(params, widget, preserve_empty: true)
-        )
-
-      "list" ->
-        limit =
-          params
-          |> Map.get("list_limit", Map.get(widget, "limit"))
-          |> normalize_optional_positive_integer()
-
-        sort =
-          params
-          |> Map.get("list_sort", Map.get(widget, "sort") || "desc")
-          |> normalize_list_sort()
-
-        label_strategy =
-          params
-          |> Map.get("list_label_strategy", Map.get(widget, "label_strategy") || "short")
-          |> normalize_list_label_strategy()
-
-        widget
-        |> put_metric_series(params, widget, preserve_empty: true)
-        |> Map.put("limit", limit)
-        |> Map.put("sort", sort)
-        |> Map.put("label_strategy", label_strategy)
-        |> drop_series_display_options()
-
-      "text" ->
-        subtype =
-          params
-          |> Map.get("text_subtype", Map.get(widget, "subtype") || "header")
-          |> DashboardWidgetHelpers.normalize_text_subtype()
-
-        background_color_selector =
-          params
-          |> Map.get(
-            "text_background_color_selector",
-            Map.get(widget, "background_color_selector")
-          )
-          |> DashboardWidgetHelpers.normalize_surface_color_selector()
-
-        widget =
           widget
-          |> Map.put("type", "text")
-          |> Map.put("subtype", subtype)
-          |> put_optional_widget_field("background_color_selector", background_color_selector)
+          |> put_metric_series(params, widget, preserve_empty: true)
+          |> Map.put("limit", limit)
+          |> Map.put("sort", sort)
+          |> Map.put("label_strategy", label_strategy)
           |> drop_series_display_options()
-          |> Map.delete("path_inputs")
-          |> Map.delete("series")
-          |> Map.delete("series_color_selectors")
-          |> Map.delete("color")
 
-        widget =
-          if Map.has_key?(params, "text_payload") do
-            payload =
-              params
-              |> Map.get("text_payload", "")
-              |> DashboardWidgetHelpers.sanitize_text_widget_html()
+        "text" ->
+          subtype =
+            params
+            |> Map.get("text_subtype", Map.get(widget, "subtype") || "header")
+            |> DashboardWidgetHelpers.normalize_text_subtype()
 
-            Map.put(widget, "payload", payload)
-          else
+          background_color_selector =
+            params
+            |> Map.get(
+              "text_background_color_selector",
+              Map.get(widget, "background_color_selector")
+            )
+            |> DashboardWidgetHelpers.normalize_surface_color_selector()
+
+          widget =
             widget
-          end
+            |> Map.put("type", "text")
+            |> Map.put("subtype", subtype)
+            |> put_optional_widget_field("background_color_selector", background_color_selector)
+            |> drop_series_display_options()
+            |> Map.delete("path_inputs")
+            |> Map.delete("series")
+            |> Map.delete("series_color_selectors")
+            |> Map.delete("color")
 
-        widget
-        |> Map.put(
-          "title_size",
-          params
-          |> Map.get("text_title_size", Map.get(widget, "title_size", "large"))
-          |> DashboardWidgetHelpers.normalize_text_title_size()
-        )
-        |> Map.put(
-          "alignment",
-          params
-          |> Map.get("text_alignment", Map.get(widget, "alignment", "center"))
-          |> DashboardWidgetHelpers.normalize_text_alignment()
-        )
-        |> Map.put(
-          "subtitle",
-          params
-          |> Map.get("text_subtitle", Map.get(widget, "subtitle", ""))
-          |> to_string()
-          |> String.trim()
-        )
+          widget =
+            if Map.has_key?(params, "text_payload") do
+              payload =
+                params
+                |> Map.get("text_payload", "")
+                |> DashboardWidgetHelpers.sanitize_text_widget_html()
 
-      _ ->
-        widget
-    end
+              Map.put(widget, "payload", payload)
+            else
+              widget
+            end
+
+          widget
+          |> Map.put(
+            "title_size",
+            params
+            |> Map.get("text_title_size", Map.get(widget, "title_size", "large"))
+            |> DashboardWidgetHelpers.normalize_text_title_size()
+          )
+          |> Map.put(
+            "alignment",
+            params
+            |> Map.get("text_alignment", Map.get(widget, "alignment", "center"))
+            |> DashboardWidgetHelpers.normalize_text_alignment()
+          )
+          |> Map.put(
+            "subtitle",
+            params
+            |> Map.get("text_subtitle", Map.get(widget, "subtitle", ""))
+            |> to_string()
+            |> String.trim()
+          )
+
+        _ ->
+          widget
+      end
+
+    remember_series_display_mode(widget, params, type)
   end
 
   defp build_distribution_widget(
@@ -3565,10 +3568,9 @@ defmodule TrifleApp.DashboardLive do
     )
     |> Map.put(
       "series_priority",
-      params
-      |> Map.get("series_priority", Map.get(source_widget, "series_priority", []))
-      |> normalize_series_priority_param()
+      series_priority_param(params, source_widget)
     )
+    |> put_series_priority_last(series_priority_last_param(params, source_widget))
     |> SeriesAliases.put_aliases_from_param(params, source_widget)
     |> maybe_put_hovered_only(params, source_widget, hovered_key)
   end
@@ -3581,6 +3583,9 @@ defmodule TrifleApp.DashboardLive do
         :ok
 
       not is_map(params) ->
+        :ok
+
+      series_visual_params_active?(params) and SeriesAliases.visual_params_present?(params) ->
         :ok
 
       Map.has_key?(params, "series_aliases") ->
@@ -3604,6 +3609,74 @@ defmodule TrifleApp.DashboardLive do
     |> then(&(&1 in ["timeseries", "category", "distribution", "heatmap"]))
   end
 
+  defp series_priority_param(params, source_widget) when is_map(params) do
+    if series_visual_params_active?(params) and SeriesOrder.visual_params_present?(params) do
+      SeriesOrder.normalize_priority_rows(
+        Map.get(params, "series_priority_item", Map.get(params, "series_priority_item[]", [])),
+        Map.get(params, "series_priority_group", Map.get(params, "series_priority_group[]", [])),
+        "first"
+      )
+    else
+      params
+      |> Map.get("series_priority", Map.get(source_widget, "series_priority", []))
+      |> normalize_series_priority_param()
+    end
+  end
+
+  defp series_priority_param(_params, source_widget) do
+    source_widget
+    |> Map.get("series_priority", [])
+    |> normalize_series_priority_param()
+  end
+
+  defp series_priority_last_param(params, source_widget) when is_map(params) do
+    if series_visual_params_active?(params) and SeriesOrder.visual_params_present?(params) do
+      SeriesOrder.normalize_priority_rows(
+        Map.get(params, "series_priority_item", Map.get(params, "series_priority_item[]", [])),
+        Map.get(params, "series_priority_group", Map.get(params, "series_priority_group[]", [])),
+        "last"
+      )
+    else
+      params
+      |> Map.get("series_priority_last", Map.get(source_widget, "series_priority_last", []))
+      |> normalize_series_priority_param()
+    end
+  end
+
+  defp series_priority_last_param(_params, source_widget) do
+    source_widget
+    |> Map.get("series_priority_last", [])
+    |> normalize_series_priority_param()
+  end
+
+  defp put_series_priority_last(widget, []), do: Map.delete(widget, "series_priority_last")
+
+  defp put_series_priority_last(widget, priority),
+    do: Map.put(widget, "series_priority_last", priority)
+
+  defp series_visual_params_active?(params) when is_map(params) do
+    Map.get(params, "series_display_mode") != "raw"
+  end
+
+  defp series_visual_params_active?(_params), do: false
+
+  defp remember_series_display_mode(widget, params, type)
+       when is_map(widget) and is_map(params) do
+    if series_display_widget_type?(type) do
+      case Map.get(params, "series_display_mode") do
+        mode when mode in ["raw", "visual"] ->
+          Map.put(widget, SeriesAliases.display_mode_key(), mode)
+
+        _ ->
+          widget
+      end
+    else
+      widget
+    end
+  end
+
+  defp remember_series_display_mode(widget, _params, _type), do: widget
+
   defp maybe_put_hovered_only(widget, _params, _source_widget, nil) do
     Map.delete(widget, "hovered_only")
   end
@@ -3622,6 +3695,7 @@ defmodule TrifleApp.DashboardLive do
     widget
     |> Map.delete("series_sort")
     |> Map.delete("series_priority")
+    |> Map.delete("series_priority_last")
     |> Map.delete("series_aliases")
     |> SeriesAliases.drop_internal_fields()
     |> Map.delete("hovered_only")

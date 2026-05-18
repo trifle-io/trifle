@@ -55,6 +55,12 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
     |> Enum.join("\n")
   end
 
+  def priority_last_text(widget_or_value) do
+    widget_or_value
+    |> priority_last_list()
+    |> Enum.join("\n")
+  end
+
   def priority_list(widget_or_value) when is_map(widget_or_value) do
     widget_or_value
     |> Map.get("series_priority", Map.get(widget_or_value, :series_priority, []))
@@ -62,6 +68,68 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
   end
 
   def priority_list(widget_or_value), do: normalize_priority(widget_or_value)
+
+  def priority_last_list(widget_or_value) when is_map(widget_or_value) do
+    widget_or_value
+    |> Map.get("series_priority_last", Map.get(widget_or_value, :series_priority_last, []))
+    |> normalize_priority()
+  end
+
+  def priority_last_list(_widget_or_value), do: []
+
+  def priority_rows(widget_or_value) do
+    widget_or_value
+    |> priority_list()
+    |> Enum.with_index()
+    |> Enum.map(fn {value, index} -> %{"index" => index, "value" => value} end)
+    |> append_blank_row()
+  end
+
+  def priority_visual_rows(widget_or_value) do
+    {first_rows, next_index} =
+      widget_or_value
+      |> priority_list()
+      |> priority_group_rows(0, "first")
+
+    {last_rows, _next_index} =
+      widget_or_value
+      |> priority_last_list()
+      |> priority_group_rows(next_index, "last")
+
+    %{first: first_rows, last: last_rows}
+  end
+
+  def visual_params_present?(params) when is_map(params) do
+    Map.has_key?(params, "series_priority_item") or Map.has_key?(params, "series_priority_item[]")
+  end
+
+  def visual_params_present?(_params), do: false
+
+  def normalize_priority_rows(value) when is_map(value) do
+    value
+    |> Enum.sort_by(fn {index, _value} -> index_sort_key(index) end)
+    |> Enum.map(fn {_index, item} -> item end)
+    |> normalize_priority()
+  end
+
+  def normalize_priority_rows(value), do: normalize_priority(value)
+
+  def normalize_priority_rows(items, groups, target_group) do
+    item_values = indexed_values(items)
+    group_values = indexed_values(groups)
+    normalized_target = normalize_group(target_group)
+
+    item_values
+    |> Enum.sort_by(fn {index, _value} -> index_sort_key(index) end)
+    |> Enum.filter(fn {index, _value} ->
+      group_values
+      |> Map.get(index, "first")
+      |> normalize_group()
+      |> Kernel.==(normalized_target)
+    end)
+    |> Enum.map(fn {_index, item} -> item end)
+    |> normalize_priority()
+  end
 
   def sort_named_items(items, widget, opts \\ [])
 
@@ -104,7 +172,8 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
 
     %{
       mode: series_sort(widget, default_mode),
-      priority: priority_list(widget)
+      priority: priority_list(widget),
+      priority_last: priority_last_list(widget)
     }
   end
 
@@ -116,26 +185,61 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
 
   defp series_sort(_widget, default_mode), do: normalize_mode(default_mode, @default_mode)
 
-  defp sort_key(name, %{mode: "alpha", priority: priority}) do
+  defp sort_key(name, %{mode: "alpha", priority: priority, priority_last: priority_last}) do
     normalized = normalize_name(name)
-    {priority_rank(normalized, priority), normalized, natural_sort_key(normalized)}
+
+    case priority_position(normalized, priority, priority_last) do
+      {:first, rank} -> {0, rank, normalized, natural_sort_key(normalized)}
+      {:last, rank} -> {2, rank, normalized, natural_sort_key(normalized)}
+      :middle -> {1, @priority_fallback_rank, normalized, natural_sort_key(normalized)}
+    end
   end
 
-  defp sort_key(name, %{priority: priority}) do
+  defp sort_key(name, %{priority: priority, priority_last: priority_last}) do
     normalized = normalize_name(name)
-    {priority_rank(normalized, priority), natural_sort_key(normalized), normalized}
+
+    case priority_position(normalized, priority, priority_last) do
+      {:first, rank} -> {0, rank, natural_sort_key(normalized), normalized}
+      {:last, rank} -> {2, rank, natural_sort_key(normalized), normalized}
+      :middle -> {1, @priority_fallback_rank, natural_sort_key(normalized), normalized}
+    end
   end
 
-  defp priority_rank(name, priority) when is_binary(name) and is_list(priority) do
+  defp priority_position(name, priority, priority_last) do
+    case priority_index(name, priority) do
+      first_rank when is_integer(first_rank) ->
+        {:first, first_rank}
+
+      nil ->
+        case priority_index(name, priority_last) do
+          last_rank when is_integer(last_rank) -> {:last, last_rank}
+          nil -> :middle
+        end
+    end
+  end
+
+  defp priority_index(name, priority) when is_binary(name) and is_list(priority) do
     leaf = leaf_name(name)
 
     Enum.find_index(priority, fn candidate ->
       normalized_candidate = normalize_name(candidate)
       normalized_candidate == name or normalized_candidate == leaf
-    end) || @priority_fallback_rank
+    end)
   end
 
-  defp priority_rank(_name, _priority), do: @priority_fallback_rank
+  defp priority_index(_name, _priority), do: nil
+
+  defp priority_group_rows(values, start_index, group) do
+    rows =
+      values
+      |> Enum.with_index(start_index)
+      |> Enum.map(fn {value, index} ->
+        %{"index" => index, "value" => value, "group" => group}
+      end)
+
+    blank_index = start_index + length(rows)
+    {rows ++ [%{"index" => blank_index, "value" => "", "group" => group}], blank_index + 1}
+  end
 
   defp normalize_name(value), do: value |> to_string() |> String.trim()
 
@@ -154,6 +258,17 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
   end
 
   defp default_name(item), do: to_string(item)
+
+  defp append_blank_row(rows) do
+    rows ++ [%{"index" => length(rows), "value" => ""}]
+  end
+
+  defp index_sort_key(index) do
+    case Integer.parse(to_string(index)) do
+      {parsed, ""} -> {0, parsed}
+      _ -> {1, to_string(index)}
+    end
+  end
 
   defp natural_sort_key(nil), do: [{:str, ""}]
 
@@ -187,6 +302,26 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
               _ -> {:str, String.downcase(segment)}
             end
         end
+    end
+  end
+
+  defp indexed_values(value) when is_map(value) do
+    Map.new(value, fn {index, field_value} -> {to_string(index), field_value} end)
+  end
+
+  defp indexed_values(value) when is_list(value) do
+    value
+    |> Enum.with_index()
+    |> Map.new(fn {field_value, index} -> {Integer.to_string(index), field_value} end)
+  end
+
+  defp indexed_values(nil), do: %{}
+  defp indexed_values(value), do: %{"0" => value}
+
+  defp normalize_group(value) do
+    case value |> to_string() |> String.trim() |> String.downcase() do
+      "last" -> "last"
+      _ -> "first"
     end
   end
 end

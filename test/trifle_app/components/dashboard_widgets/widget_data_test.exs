@@ -586,7 +586,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
       base_item
       |> Map.put("id", "ts-priority")
       |> Map.put("series_sort", "alpha")
-      |> Map.put("series_priority", ["2", "10"])
+      |> Map.put("series_priority", ["2"])
+      |> Map.put("series_priority_last", ["1"])
     ]
 
     %{timeseries: [natural, priority]} = WidgetData.datasets(stats, items)
