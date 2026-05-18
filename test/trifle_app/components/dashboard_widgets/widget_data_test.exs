@@ -603,4 +603,202 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
              "metrics.distribution.1"
            ]
   end
+
+  test "timeseries wildcard aliases target wildcard captures before priority sorting" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC"),
+      DateTime.from_naive!(~N[2024-02-02 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{"sellers" => %{"seller1" => %{"price" => 10}, "seller2" => %{"price" => 20}}},
+      %{"sellers" => %{"seller1" => %{"price" => 15}, "seller2" => %{"price" => 30}}}
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    items = [
+      %{
+        "id" => "seller-prices",
+        "type" => "timeseries",
+        "chart_type" => "line",
+        "series_aliases" => %{"seller1" => "me", "seller2" => "test"},
+        "series_priority" => ["test", "me"],
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "sellers.*.price",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          }
+        ]
+      }
+    ]
+
+    %{timeseries: [%{series: series}]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(series, & &1.name) == ["test", "me"]
+
+    assert Enum.map(series, & &1.source_path) == [
+             "sellers.seller2.price",
+             "sellers.seller1.price"
+           ]
+  end
+
+  test "timeseries wildcard aliases preserve labels and show raw capture when unmatched" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{"sellers" => %{"seller1" => %{"price" => 10}, "seller2" => %{"price" => 20}}}
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    items = [
+      %{
+        "id" => "seller-revenue",
+        "type" => "timeseries",
+        "chart_type" => "line",
+        "series_aliases" => %{"seller1" => "me"},
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "sellers.*.price",
+            "expression" => "",
+            "label" => "Revenue",
+            "visible" => true,
+            "color_selector" => "default.*"
+          }
+        ]
+      }
+    ]
+
+    %{timeseries: [%{series: series}]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(series, & &1.name) == ["Revenue: me", "Revenue: seller2"]
+  end
+
+  test "timeseries wildcard aliases support joined multi-wildcard captures" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{
+        "region" => %{
+          "eu" => %{"seller" => %{"seller1" => %{"price" => 10}}},
+          "us" => %{"seller" => %{"seller2" => %{"price" => 20}}}
+        }
+      }
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    items = [
+      %{
+        "id" => "regional-sellers",
+        "type" => "timeseries",
+        "chart_type" => "line",
+        "series_aliases" => %{"eu / seller1" => "EMEA one"},
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "region.*.seller.*.price",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          }
+        ]
+      }
+    ]
+
+    %{timeseries: [%{series: series}]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(series, & &1.name) == ["EMEA one", "us / seller2"]
+  end
+
+  test "timeseries regular aliases do not collapse distinct source paths with the same alias" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{"metrics" => %{"one" => 10, "two" => 20}}
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    items = [
+      %{
+        "id" => "regular-aliases",
+        "type" => "timeseries",
+        "chart_type" => "line",
+        "series_aliases" => %{"one" => "Total", "two" => "Total"},
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "metrics.one",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          },
+          %{
+            "kind" => "path",
+            "path" => "metrics.two",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          }
+        ]
+      }
+    ]
+
+    %{timeseries: [%{series: series}]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(series, & &1.name) == ["Total", "Total"]
+    assert Enum.map(series, & &1.source_path) == ["metrics.one", "metrics.two"]
+  end
+
+  test "category wildcard aliases target wildcard captures" do
+    timestamps = [
+      DateTime.from_naive!(~N[2024-02-01 00:00:00], "Etc/UTC")
+    ]
+
+    values = [
+      %{"sellers" => %{"seller1" => %{"price" => 10}, "seller2" => %{"price" => 20}}}
+    ]
+
+    stats = %Trifle.Stats.Series{series: %{at: timestamps, values: values}}
+
+    items = [
+      %{
+        "id" => "seller-category",
+        "type" => "category",
+        "chart_type" => "bar",
+        "series_aliases" => %{"seller1" => "me", "seller2" => "test"},
+        "series_priority" => ["test", "me"],
+        "series" => [
+          %{
+            "kind" => "path",
+            "path" => "sellers.*.price",
+            "expression" => "",
+            "label" => "",
+            "visible" => true,
+            "color_selector" => "default.*"
+          }
+        ]
+      }
+    ]
+
+    %{category: [%{data: data}]} = WidgetData.datasets(stats, items)
+
+    assert Enum.map(data, & &1.name) == ["test", "me"]
+  end
 end

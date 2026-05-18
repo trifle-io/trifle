@@ -5,6 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   alias Trifle.Stats.Series
   alias Trifle.Stats.Transponder.ExpressionEngine
   alias TrifleApp.Components.DashboardWidgets.MetricSeries
+  alias TrifleApp.Components.DashboardWidgets.SeriesAliases
   alias TrifleApp.Components.DashboardWidgets.SeriesOrder
   alias TrifleApp.Components.DashboardWidgets.Timeseries
 
@@ -329,8 +330,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   end
 
   defp timeline_entries_to_series(resolved, widget) do
-    resolved.entries
-    |> sorted_entries(widget)
+    resolved
+    |> display_entries(widget)
     |> Enum.with_index()
     |> Enum.map(fn {{_binding_key, entry}, emitted_index} ->
       %{
@@ -354,14 +355,15 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
             [timestamp || 0, value]
           end),
         color: color_for_row(resolved.row, emitted_index),
-        source_path: entry.source_path
+        source_path: entry.source_path,
+        __series_aliases_active__: Map.get(entry, :__series_aliases_active__, false)
       }
     end)
   end
 
   defp category_entries_for_row(resolved, widget) do
-    resolved.entries
-    |> sorted_entries(widget)
+    resolved
+    |> display_entries(widget)
     |> Enum.with_index()
     |> Enum.map(fn {{_binding_key, entry}, emitted_index} ->
       %{
@@ -374,8 +376,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   end
 
   defp distribution_entries_for_row(resolved, mode, widget) do
-    resolved.entries
-    |> sorted_entries(widget)
+    resolved
+    |> display_entries(widget)
     |> Enum.with_index()
     |> Enum.map(fn {{_binding_key, entry}, emitted_index} ->
       base = %{
@@ -782,6 +784,62 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
 
   defp sorted_entries(entries, widget, opts \\ []),
     do: SeriesOrder.sort_entry_pairs(entries, widget, opts)
+
+  defp display_entries(%{entries: entries, row: row}, widget) do
+    aliases = SeriesAliases.aliases_map(widget)
+    aliases_active? = map_size(aliases) > 0
+
+    entries
+    |> Enum.map(fn {binding_key, entry} ->
+      {binding_key, apply_series_alias(entry, row, binding_key, aliases, aliases_active?)}
+    end)
+    |> sorted_entries(widget)
+  end
+
+  defp apply_series_alias(entry, row, {:captures, _captures} = binding_key, aliases, true) do
+    capture_label =
+      binding_label(binding_key, Map.get(entry, :source_path, Map.get(entry, :name, "")))
+
+    entry_name = Map.get(entry, :name, "")
+
+    name =
+      cond do
+        resolved_alias = SeriesAliases.lookup(aliases, [capture_label]) ->
+          prefixed_binding_name(row, resolved_alias)
+
+        resolved_alias = SeriesAliases.lookup(aliases, [entry_name]) ->
+          resolved_alias
+
+        true ->
+          prefixed_binding_name(row, capture_label)
+      end
+
+    entry
+    |> Map.put(:name, name)
+    |> Map.put(:__series_aliases_active__, true)
+  end
+
+  defp apply_series_alias(entry, _row, _binding_key, aliases, aliases_active?) do
+    entry_name = Map.get(entry, :name, "")
+
+    name =
+      if aliases_active? do
+        SeriesAliases.lookup(aliases, [entry_name]) || entry_name
+      else
+        entry_name
+      end
+
+    entry
+    |> Map.put(:name, name)
+    |> Map.put(:__series_aliases_active__, aliases_active?)
+  end
+
+  defp prefixed_binding_name(row, binding_name) do
+    case MetricSeries.row_label(row) do
+      "" -> binding_name
+      label -> "#{label}: #{binding_name}"
+    end
+  end
 
   defp sample_sort_key(%DateTime{} = dt), do: {:datetime, DateTime.to_unix(dt, :microsecond)}
   defp sample_sort_key(%NaiveDateTime{} = dt), do: {:naive_datetime, NaiveDateTime.to_iso8601(dt)}

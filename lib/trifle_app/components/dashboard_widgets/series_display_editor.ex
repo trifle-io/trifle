@@ -3,7 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
 
   use Phoenix.Component
 
-  alias TrifleApp.Components.DashboardWidgets.SeriesOrder
+  alias TrifleApp.Components.DashboardWidgets.{SeriesAliases, SeriesOrder}
 
   attr :widget, :map, required: true
 
@@ -18,6 +18,8 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
         SeriesOrder.normalize_mode(Map.get(widget, "series_sort"), "natural")
       )
       |> assign(:series_priority_text, SeriesOrder.priority_text(widget))
+      |> assign(:series_aliases_text, SeriesAliases.aliases_text(widget))
+      |> assign(:series_aliases_error, SeriesAliases.aliases_error(widget))
 
     ~H"""
     <div class="space-y-4 rounded-xl border border-gray-200 bg-white/40 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/20">
@@ -45,19 +47,45 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
           </p>
         </div>
 
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-            Priority
-          </label>
-          <textarea
-            name="series_priority"
-            rows="2"
-            class="mt-2 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            placeholder="state.success,state.failure,state.warning"
-          >{@series_priority_text}</textarea>
-          <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-            Matching series render first in this order. You can use exact series names or leaf keys, one per line or comma-separated.
-          </p>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+              Priority
+            </label>
+            <textarea
+              name="series_priority"
+              rows="2"
+              class="mt-2 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              placeholder="state.success,state.failure,state.warning"
+            >{@series_priority_text}</textarea>
+            <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              Matching series render first in this order. Aliases below are applied before priority sorting.
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+              Aliases
+            </label>
+            <textarea
+              name="series_aliases"
+              rows="4"
+              class={[
+                "mt-2 block w-full rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-teal-500 dark:bg-slate-800 dark:text-white",
+                if(@series_aliases_error,
+                  do: "border-rose-300 focus:border-rose-500 dark:border-rose-500",
+                  else: "border-gray-300 focus:border-teal-500 dark:border-slate-600"
+                )
+              ]}
+              placeholder={~s({"seller1": "me", "seller2": "test"})}
+            >{@series_aliases_text}</textarea>
+            <p :if={@series_aliases_error} class="mt-1 text-xs text-rose-600 dark:text-rose-300">
+              {@series_aliases_error}
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              JSON object for wildcard values. For sellers.*.price, map seller1 to the display name you want.
+            </p>
+          </div>
         </div>
       </div>
     </div>
