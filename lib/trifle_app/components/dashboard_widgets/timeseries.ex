@@ -50,11 +50,15 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
       |> MetricSeriesEvaluator.resolve_timeline_rows(item)
       |> MetricSeriesEvaluator.timeline_series(item)
       |> Enum.reduce([], fn series_entry, acc ->
-        case Enum.find_index(acc, &(&1.name == series_entry.name)) do
+        case Enum.find_index(
+               acc,
+               &(timeseries_dedupe_key(&1) == timeseries_dedupe_key(series_entry))
+             ) do
           nil -> acc ++ [series_entry]
           idx -> List.update_at(acc, idx, fn _ -> series_entry end)
         end
       end)
+      |> Enum.map(&Map.delete(&1, :__series_aliases_active__))
 
     series =
       if normalized and length(per_path) > 0 do
@@ -149,4 +153,10 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
   defp truthy?(0), do: false
   defp truthy?(nil), do: false
   defp truthy?(_value), do: true
+
+  defp timeseries_dedupe_key(%{__series_aliases_active__: true} = series_entry) do
+    {Map.get(series_entry, :name), Map.get(series_entry, :source_path)}
+  end
+
+  defp timeseries_dedupe_key(series_entry), do: Map.get(series_entry, :name)
 end

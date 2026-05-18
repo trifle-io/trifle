@@ -1173,6 +1173,7 @@ defmodule TrifleApp.DashboardLiveTest do
       "ts_hovered_only" => "true",
       "series_sort" => "alpha",
       "series_priority" => "2\n10",
+      "series_aliases" => ~s({"2": "Two", "10": "Ten"}),
       "widget_series_kind" => %{"0" => "path"},
       "widget_series_path" => %{"0" => "metrics.distribution.*"},
       "widget_series_expression" => %{"0" => ""},
@@ -1190,5 +1191,38 @@ defmodule TrifleApp.DashboardLiveTest do
     refute Map.has_key?(widget, "tooltip_split")
     assert widget["series_sort"] == "alpha"
     assert widget["series_priority"] == ["2", "10"]
+    assert widget["series_aliases"] == %{"2" => "Two", "10" => "Ten"}
+  end
+
+  test "timeseries save rejects invalid series aliases JSON", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    html =
+      render_submit(view, "save_widget", %{
+        "widget_id" => "widget-1",
+        "widget_type" => "timeseries",
+        "widget_title" => "Invalid Aliases",
+        "ts_chart_type" => "line",
+        "series_aliases" => "{",
+        "widget_series_kind" => %{"0" => "path"},
+        "widget_series_path" => %{"0" => "metrics.distribution.*"},
+        "widget_series_expression" => %{"0" => ""},
+        "widget_series_label" => %{"0" => ""},
+        "widget_series_visible" => %{"0" => "true"},
+        "widget_series_color_selector" => %{"0" => "default.*"}
+      })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [widget] = updated.payload["grid"]
+
+    assert html =~ "Aliases must be valid JSON."
+    assert widget["type"] == "text"
+    refute Map.has_key?(widget, "series_aliases")
   end
 end

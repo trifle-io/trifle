@@ -182,6 +182,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
 
     assert Regex.match?(~r/name="widget_series_label\[0\]".*dark:bg-slate-800/s, html)
     assert Regex.match?(~r/name="series_priority".*dark:bg-slate-800/s, html)
+    assert Regex.match?(~r/name="series_aliases".*dark:bg-slate-800/s, html)
     assert Regex.match?(~r/name="ts_y_label".*dark:bg-slate-800/s, html)
 
     assert html =~

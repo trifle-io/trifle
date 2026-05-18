@@ -24,6 +24,7 @@ defmodule TrifleApp.DashboardLive do
     LayoutTree,
     MetricSeries,
     Registry,
+    SeriesAliases,
     SeriesOrder,
     Table,
     Text,
@@ -644,47 +645,59 @@ defmodule TrifleApp.DashboardLive do
         existing_item = LayoutTree.find_node(items, id) || %{"id" => id}
         resolved_type = resolve_saved_widget_type(existing_item, type)
 
-        updated =
-          update_dashboard_grid_node(items, id, fn item ->
-            build_saved_dashboard_widget(
-              socket,
-              item,
-              id,
-              resolved_type,
-              title,
-              params,
-              path_options
-            )
-          end)
+        case validate_series_aliases_for_save(resolved_type, params) do
+          :ok ->
+            updated =
+              update_dashboard_grid_node(items, id, fn item ->
+                build_saved_dashboard_widget(
+                  socket,
+                  item,
+                  id,
+                  resolved_type,
+                  title,
+                  params,
+                  path_options
+                )
+              end)
 
-        payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
+            payload = Map.put(socket.assigns.dashboard.payload || %{}, "grid", updated)
 
-        membership = socket.assigns.current_membership
+            membership = socket.assigns.current_membership
 
-        case Organizations.update_dashboard_for_membership(
-               socket.assigns.dashboard,
-               membership,
-               %{payload: payload}
-             ) do
-          {:ok, dashboard} ->
-            saved_item = LayoutTree.find_node(updated, id) || %{}
+            case Organizations.update_dashboard_for_membership(
+                   socket.assigns.dashboard,
+                   membership,
+                   %{payload: payload}
+                 ) do
+              {:ok, dashboard} ->
+                saved_item = LayoutTree.find_node(updated, id) || %{}
 
-            # After saving, recompute KPI values if stats already loaded
-            socket =
-              socket
-              |> assign_dashboard(dashboard)
-              |> refresh_widget_datasets()
-              |> clear_widget_workspace()
+                # After saving, recompute KPI values if stats already loaded
+                socket =
+                  socket
+                  |> assign_dashboard(dashboard)
+                  |> refresh_widget_datasets()
+                  |> clear_widget_workspace()
+
+                {:noreply,
+                 socket
+                 |> push_event(
+                   "dashboard_grid_widget_updated",
+                   widget_update_event_payload(id, title, resolved_type, saved_item)
+                 )}
+
+              {:error, _} ->
+                {:noreply, socket}
+            end
+
+          {:error, message} ->
+            draft_source = socket.assigns[:editing_widget] || existing_item
+            draft = apply_widget_params_for_edit(draft_source, params, path_options)
 
             {:noreply,
              socket
-             |> push_event(
-               "dashboard_grid_widget_updated",
-               widget_update_event_payload(id, title, resolved_type, saved_item)
-             )}
-
-          {:error, _} ->
-            {:noreply, socket}
+             |> assign_editing_widget(draft)
+             |> put_flash(:error, message)}
         end
     end
   end
@@ -3543,6 +3556,7 @@ defmodule TrifleApp.DashboardLive do
 
     widget
     |> Map.delete("tooltip_split")
+    |> SeriesAliases.drop_internal_fields()
     |> Map.put(
       "series_sort",
       params
@@ -3555,10 +3569,40 @@ defmodule TrifleApp.DashboardLive do
       |> Map.get("series_priority", Map.get(source_widget, "series_priority", []))
       |> normalize_series_priority_param()
     )
+    |> SeriesAliases.put_aliases_from_param(params, source_widget)
     |> maybe_put_hovered_only(params, source_widget, hovered_key)
   end
 
   defp put_series_display_options(widget, _params, _source_widget, _opts), do: widget
+
+  defp validate_series_aliases_for_save(type, params) do
+    cond do
+      not series_display_widget_type?(type) ->
+        :ok
+
+      not is_map(params) ->
+        :ok
+
+      Map.has_key?(params, "series_aliases") ->
+        params
+        |> Map.get("series_aliases")
+        |> SeriesAliases.parse_text()
+        |> case do
+          {:ok, _aliases} -> :ok
+          {:error, message} -> {:error, message}
+        end
+
+      true ->
+        :ok
+    end
+  end
+
+  defp series_display_widget_type?(type) do
+    type
+    |> to_string()
+    |> String.downcase()
+    |> then(&(&1 in ["timeseries", "category", "distribution", "heatmap"]))
+  end
 
   defp maybe_put_hovered_only(widget, _params, _source_widget, nil) do
     Map.delete(widget, "hovered_only")
@@ -3578,6 +3622,8 @@ defmodule TrifleApp.DashboardLive do
     widget
     |> Map.delete("series_sort")
     |> Map.delete("series_priority")
+    |> Map.delete("series_aliases")
+    |> SeriesAliases.drop_internal_fields()
     |> Map.delete("hovered_only")
     |> Map.delete("tooltip_split")
   end
