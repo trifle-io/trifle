@@ -240,9 +240,11 @@ defmodule TrifleApp.DashboardLiveTest do
 
     refute has_element?(view, "#widget-workspace-modal")
 
-    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+    html = render_click(view, "open_widget_editor", %{"id" => "widget-1"})
     assert has_element?(view, "#widget-workspace-modal")
     assert has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"edit\"]")
+    assert html =~ ~s(phx-hook="DeferredFormInputs")
+    assert html =~ ~s(data-deferred-input-debounce="600")
 
     render_click(view, "set_widget_workspace_tab", %{"tab" => "summary"})
     assert has_element?(view, "#widget-workspace-modal button[phx-value-tab=\"summary\"]")

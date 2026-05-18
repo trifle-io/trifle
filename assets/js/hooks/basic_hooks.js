@@ -271,4 +271,34 @@ Hooks.ExportTheme = {
   }
 }
 
+Hooks.DeferredFormInputs = {
+  mounted() {
+    this.applyDeferredInputs();
+  },
+  updated() {
+    this.applyDeferredInputs();
+  },
+  applyDeferredInputs() {
+    const debounce = this.el.dataset.deferredInputDebounce || '600';
+    const selector = [
+      'textarea',
+      'input:not([type])',
+      'input[type="text"]',
+      'input[type="number"]',
+      'input[type="search"]',
+      'input[type="email"]',
+      'input[type="tel"]',
+      'input[type="url"]'
+    ].join(',');
+
+    this.el.querySelectorAll(selector).forEach((input) => {
+      if (input.hasAttribute('phx-debounce') || input.hasAttribute('data-immediate-change')) {
+        return;
+      }
+
+      input.setAttribute('phx-debounce', input.dataset.deferredInputDebounce || debounce);
+    });
+  }
+}
+
 };

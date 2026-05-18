@@ -1866,6 +1866,8 @@ defmodule TrifleApp.Components.DashboardPage do
       id="widget-workspace-form"
       phx-change="widget_editor_change"
       phx-submit="save_widget"
+      phx-hook="DeferredFormInputs"
+      data-deferred-input-debounce="600"
       class="space-y-4"
     >
       <input type="hidden" name="widget_id" value={@draft_widget["id"]} />
