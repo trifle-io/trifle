@@ -1,6 +1,8 @@
 const FILTER_BAR_SELECTOR = '[data-filter-bar-shortcuts="true"]';
 const EDITABLE_SELECTOR = "input, textarea, select";
 const BLOCKING_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]';
+const PRESS_FEEDBACK_MS = 160;
+const pressedTimeouts = new WeakMap();
 
 const isVisible = (element) => {
   if (!(element instanceof HTMLElement)) return false;
@@ -53,6 +55,24 @@ const parseGranularities = (value) => {
   }
 };
 
+const flashPressed = (element) => {
+  if (!(element instanceof HTMLElement)) return false;
+  if (!isVisible(element) || element.disabled) return false;
+
+  const existingTimeout = pressedTimeouts.get(element);
+  if (existingTimeout) window.clearTimeout(existingTimeout);
+
+  element.dataset.filterBarPressed = "true";
+
+  const timeout = window.setTimeout(() => {
+    delete element.dataset.filterBarPressed;
+    pressedTimeouts.delete(element);
+  }, PRESS_FEEDBACK_MS);
+
+  pressedTimeouts.set(element, timeout);
+  return true;
+};
+
 export const registerFilterBarShortcutsHook = (Hooks) => {
   Hooks.FilterBarShortcuts = {
     mounted() {
@@ -81,15 +101,29 @@ export const registerFilterBarShortcutsHook = (Hooks) => {
       if (["h", "l", "p", "r"].includes(key)) {
         if (this.el.dataset.filterBarControlsEnabled !== "true") return;
 
-        const controlEvents = {
-          h: "navigate_timeframe_backward",
-          l: "navigate_timeframe_forward",
-          p: "toggle_play_pause",
-          r: "reload_data"
+        const controlShortcuts = {
+          h: {
+            action: "timeframe-backward",
+            eventName: "navigate_timeframe_backward"
+          },
+          l: {
+            action: "timeframe-forward",
+            eventName: "navigate_timeframe_forward"
+          },
+          p: {
+            action: "play-pause",
+            eventName: "toggle_play_pause"
+          },
+          r: {
+            action: "refresh",
+            eventName: "reload_data"
+          }
         };
 
+        const shortcut = controlShortcuts[key];
         event.preventDefault();
-        this.pushFilterEvent(controlEvents[key]);
+        this.flashAction(shortcut.action);
+        this.pushFilterEvent(shortcut.eventName);
         return;
       }
 
@@ -145,8 +179,29 @@ export const registerFilterBarShortcutsHook = (Hooks) => {
       const next = granularities[currentIndex + offset];
       if (!next) return false;
 
+      this.flashGranularity(next);
       this.pushFilterEvent("select_granularity", { granularity: next });
       return true;
+    },
+
+    flashAction(action) {
+      const target = Array.from(this.el.querySelectorAll("[data-filter-bar-action]")).find(
+        (element) => element.dataset.filterBarAction === action && isVisible(element)
+      );
+
+      return flashPressed(target);
+    },
+
+    flashGranularity(granularity) {
+      const granularityTarget = Array.from(
+        this.el.querySelectorAll("[data-filter-bar-granularity]")
+      ).find(
+        (element) => element.dataset.filterBarGranularity === granularity && isVisible(element)
+      );
+
+      if (flashPressed(granularityTarget)) return true;
+
+      return this.flashAction("granularity");
     },
 
     pushFilterEvent(eventName, payload = {}) {

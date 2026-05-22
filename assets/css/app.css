@@ -193,6 +193,27 @@ input[type="checkbox"] {
   );
 }
 
+.filter-bar-pressable {
+  transition-duration: 80ms;
+  transition-property: transform;
+  transition-timing-function: ease-out;
+}
+
+.filter-bar-pressable:not(:disabled):active,
+.filter-bar-pressable[data-filter-bar-pressed="true"] {
+  transform: translateY(1px);
+  background-color: rgb(240, 253, 250);
+  color: rgb(13, 148, 136);
+  box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.28);
+}
+
+.dark .filter-bar-pressable:not(:disabled):active,
+.dark .filter-bar-pressable[data-filter-bar-pressed="true"] {
+  background-color: rgba(20, 184, 166, 0.18);
+  color: rgb(94, 234, 212);
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.28);
+}
+
 .list-widget-row {
   transition: background-color 120ms ease;
 }

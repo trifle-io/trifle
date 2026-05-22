@@ -36,7 +36,9 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
     attr :phx_value_widget_id, :string
     attr :phx_value_granularity, :string
     attr :title, :string
+    attr :class, :string
     attr :"data-tooltip", :string
+    attr :"data-filter-bar-action", :string
     attr :selected, :boolean
     attr :disabled, :boolean
   end
@@ -84,6 +86,7 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
     |> add_attr_if_present("phx-value-option", button[:phx_value_option])
     |> add_attr_if_present("phx-value-widget-id", button[:phx_value_widget_id])
     |> add_attr_if_present("phx-value-granularity", button[:phx_value_granularity])
+    |> add_attr_if_present("data-filter-bar-action", button[:"data-filter-bar-action"])
     |> add_attr_if_present("disabled", button[:disabled])
   end
 
@@ -124,6 +127,8 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
         ""
       end
 
-    "#{base_classes} #{position_classes} #{state_classes} #{separator_classes} #{disabled_classes}"
+    custom_classes = button[:class] || ""
+
+    "#{base_classes} #{position_classes} #{state_classes} #{separator_classes} #{disabled_classes} #{custom_classes}"
   end
 end

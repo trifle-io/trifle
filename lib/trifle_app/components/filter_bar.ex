@@ -217,6 +217,8 @@ defmodule TrifleApp.Components.FilterBar do
                   <:button
                     phx-target={@myself}
                     phx-click="navigate_timeframe_backward"
+                    class="filter-bar-pressable"
+                    data-filter-bar-action="timeframe-backward"
                     data-tooltip="Move timeframe backward in time (H)"
                   >
                     <svg
@@ -237,6 +239,8 @@ defmodule TrifleApp.Components.FilterBar do
                   <:button
                     phx-target={@myself}
                     phx-click="reload_data"
+                    class="filter-bar-pressable"
+                    data-filter-bar-action="refresh"
                     data-tooltip="Refresh data for current timeframe (R)"
                   >
                     <svg
@@ -258,6 +262,8 @@ defmodule TrifleApp.Components.FilterBar do
                     phx-target={@myself}
                     phx-click="toggle_play_pause"
                     selected={!@use_fixed_display}
+                    class="filter-bar-pressable"
+                    data-filter-bar-action="play-pause"
                     data-tooltip={
                       if @use_fixed_display,
                         do: "Play (auto-update) (P)",
@@ -301,6 +307,8 @@ defmodule TrifleApp.Components.FilterBar do
                   <:button
                     phx-target={@myself}
                     phx-click="navigate_timeframe_forward"
+                    class="filter-bar-pressable"
+                    data-filter-bar-action="timeframe-forward"
                     data-tooltip="Move timeframe forward in time (L)"
                   >
                     <svg
@@ -343,7 +351,8 @@ defmodule TrifleApp.Components.FilterBar do
                   type="button"
                   phx-target={@myself}
                   phx-click="toggle_granularity_dropdown"
-                  class="relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus-visible:border-teal-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500 dark:hover:bg-slate-700"
+                  data-filter-bar-action="granularity"
+                  class="filter-bar-pressable relative w-40 h-10 cursor-default rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800/80 py-2 pl-3 pr-10 text-left text-sm font-medium text-gray-900 dark:text-white shadow-sm focus-visible:border-teal-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500 dark:hover:bg-slate-700"
                 >
                   <div class="flex items-center justify-between">
                     <span>{Granularity.display_name(@granularity)}</span>
@@ -819,9 +828,10 @@ defmodule TrifleApp.Components.FilterBar do
             phx-target={@myself}
             phx-click="select_granularity"
             phx-value-granularity={granularity}
+            data-filter-bar-granularity={to_string(granularity)}
             data-tooltip={Granularity.display_name(granularity)}
             class={[
-              "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800",
+              "filter-bar-pressable relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800",
               case position do
                 :only -> "rounded-md"
                 :first -> "rounded-l-md"

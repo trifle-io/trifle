@@ -238,6 +238,28 @@ defmodule TrifleApp.Components.FilterBarTest do
     assert html =~ "Refresh data for current timeframe (R)"
     assert html =~ "Pause (freeze range) (P)"
     assert html =~ "Move timeframe forward in time (L)"
+
+    for action <- ["timeframe-backward", "refresh", "play-pause", "timeframe-forward"] do
+      selector = ~s(button[data-filter-bar-action="#{action}"])
+
+      assert Floki.find(document, selector) != []
+
+      assert document
+             |> Floki.attribute(selector, "class")
+             |> Enum.any?(&String.contains?(&1, "filter-bar-pressable"))
+    end
+
+    for granularity <- ["1m", "1h", "1d"] do
+      selector = ~s(button[data-filter-bar-granularity="#{granularity}"])
+
+      assert Floki.find(document, selector) != []
+
+      assert document
+             |> Floki.attribute(selector, "class")
+             |> Enum.any?(&String.contains?(&1, "filter-bar-pressable"))
+    end
+
+    assert Floki.find(document, ~s(button[data-filter-bar-action="granularity"])) != []
   end
 
   test "keeps timeframe and granularity shortcut metadata when controls are hidden", %{conn: conn} do
@@ -292,6 +314,13 @@ defmodule TrifleApp.Components.FilterBarTest do
            ) != []
 
     assert Floki.find(document, "#controls-container") == []
+
+    assert Floki.find(document, ~s([data-filter-bar-action="timeframe-backward"])) == []
+    assert Floki.find(document, ~s([data-filter-bar-action="refresh"])) == []
+    assert Floki.find(document, ~s([data-filter-bar-action="play-pause"])) == []
+    assert Floki.find(document, ~s([data-filter-bar-action="timeframe-forward"])) == []
+
+    assert Floki.find(document, ~s(button[data-filter-bar-action="granularity"])) != []
   end
 
   defp session(assigns) do
