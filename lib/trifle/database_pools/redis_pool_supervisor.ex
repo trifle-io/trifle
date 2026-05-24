@@ -129,19 +129,19 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
   end
 
   defp start_new_redis_pool(database, pool_name, supervisor_name, expected_version) do
-    child_spec = redis_pool_spec(database, pool_name, supervisor_name)
+    with {:ok, child_spec} <- redis_pool_spec(database, pool_name, supervisor_name) do
+      case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+        {:ok, _pid} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:redis, database.id, expected_version)
+          {:ok, pool_name}
 
-    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-      {:ok, _pid} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:redis, database.id, expected_version)
-        {:ok, pool_name}
+        {:error, {:already_started, _pid}} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:redis, database.id, expected_version)
+          {:ok, pool_name}
 
-      {:error, {:already_started, _pid}} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:redis, database.id, expected_version)
-        {:ok, pool_name}
-
-      error ->
-        error
+        error ->
+          error
+      end
     end
   end
 
@@ -157,38 +157,41 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
   end
 
   defp redis_pool_spec(database, pool_name, supervisor_name) do
-    # Create multiple Redix connections for load distribution
-    children =
-      for index <- 0..(@connections_per_pool - 1) do
-        connection_name = :"#{pool_name}_#{index}"
+    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
+      # Create multiple Redix connections for load distribution
+      children =
+        for index <- 0..(@connections_per_pool - 1) do
+          connection_name = :"#{pool_name}_#{index}"
 
-        %{
-          id: connection_name,
-          start:
-            {Redix, :start_link,
-             [
+          %{
+            id: connection_name,
+            start:
+              {Redix, :start_link,
                [
-                 name: connection_name,
-                 host: database.host,
-                 port: database.port || 6379,
-                 password: database.password,
-                 database: database.database_name || 0,
-                 socket_opts: socket_options(),
-                 # Additional Redix options for reliability
-                 sync_connect: true,
-                 exit_on_disconnection: true
-               ]
-             ]}
-        }
-      end
+                 [
+                   name: connection_name,
+                   host: endpoint.host,
+                   port: endpoint.port || 6379,
+                   password: database.password,
+                   database: database.database_name || 0,
+                   socket_opts: socket_options(),
+                   # Additional Redix options for reliability
+                   sync_connect: true,
+                   exit_on_disconnection: true
+                 ]
+               ]}
+          }
+        end
 
-    # Return supervisor spec for the pool
-    %{
-      id: supervisor_name,
-      type: :supervisor,
-      start:
-        {Supervisor, :start_link, [children, [strategy: :one_for_one, name: supervisor_name]]}
-    }
+      # Return supervisor spec for the pool
+      {:ok,
+       %{
+         id: supervisor_name,
+         type: :supervisor,
+         start:
+           {Supervisor, :start_link, [children, [strategy: :one_for_one, name: supervisor_name]]}
+       }}
+    end
   end
 
   defp random_index do

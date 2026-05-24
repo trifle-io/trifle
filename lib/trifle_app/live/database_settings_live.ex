@@ -208,6 +208,20 @@ defmodule TrifleApp.DatabaseSettingsLive do
               <.detail_row label="Driver">
                 <.database_label driver={@database.driver} />
               </.detail_row>
+              <.detail_row label="Connection method">
+                {connection_method_label(@database.connection_method)}
+              </.detail_row>
+
+              <%= if @database.connection_method == "ssh_tunnel" do %>
+                <.detail_row label="Bastion">
+                  <span class="font-mono text-sm text-gray-700 dark:text-slate-200">
+                    {@database.ssh_host}{if @database.ssh_port, do: ":#{@database.ssh_port}"}
+                  </span>
+                </.detail_row>
+                <.detail_row label="SSH username">
+                  {@database.ssh_username}
+                </.detail_row>
+              <% end %>
 
               <%= if @database.host do %>
                 <.detail_row label="Host">
@@ -461,6 +475,10 @@ defmodule TrifleApp.DatabaseSettingsLive do
   defp status_text("error"), do: "Error"
   defp status_text("pending"), do: "Pending"
   defp status_text(_), do: "Unknown"
+
+  defp connection_method_label("ssh_tunnel"), do: "SSH tunnel"
+  defp connection_method_label("agent"), do: "Trifle agent"
+  defp connection_method_label(_), do: "Direct"
 
   defp database_identifier_label(%Database{driver: "sqlite"}), do: "Database file"
   defp database_identifier_label(%Database{driver: "redis"}), do: "Database"

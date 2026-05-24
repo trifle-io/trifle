@@ -31,9 +31,14 @@ defmodule Trifle.Organizations.DatabaseTest do
                "pool_size" => 10,
                "pool_timeout" => 15_000,
                "timeout" => 15_000,
+               "ssl" => false,
                "table_name" => "trifle_stats",
                "joined_identifiers" => "full"
              }
+    end
+
+    test "includes secure connection methods" do
+      assert Database.connection_methods() == ["direct", "ssh_tunnel", "agent"]
     end
   end
 
@@ -101,6 +106,61 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert changeset.valid?
       assert get_field(changeset, :beginning_of_week) == 1
     end
+
+    test "requires ssh tunnel fields when selected" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          mysql_attrs(%{connection_method: "ssh_tunnel"})
+        )
+
+      refute changeset.valid?
+      assert {"can't be blank", _} = changeset.errors[:ssh_host]
+      assert {"can't be blank", _} = changeset.errors[:ssh_username]
+      assert {"can't be blank", _} = changeset.errors[:ssh_private_key]
+      assert {"can't be blank", _} = changeset.errors[:ssh_public_key]
+      assert {"can't be blank", _} = changeset.errors[:ssh_host_key_fingerprint]
+      assert get_field(changeset, :ssh_port) == 22
+    end
+
+    test "accepts complete ssh tunnel configuration" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          mysql_attrs(ssh_tunnel_attrs())
+        )
+
+      assert changeset.valid?
+      assert get_field(changeset, :connection_method) == "ssh_tunnel"
+      assert get_field(changeset, :ssh_port) == 22
+    end
+
+    test "keeps agent connection method reserved" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          mysql_attrs(%{connection_method: "agent"})
+        )
+
+      refute changeset.valid?
+
+      assert {"is reserved for the Trifle agent data plane", _} =
+               changeset.errors[:connection_method]
+    end
+
+    test "requires sqlite databases to use direct connection method" do
+      changeset =
+        Database.changeset(%Database{}, %{
+          display_name: "SQLite",
+          driver: "sqlite",
+          file_path: "/tmp/trifle.sqlite",
+          connection_method: "ssh_tunnel",
+          organization_id: Ecto.UUID.generate()
+        })
+
+      refute changeset.valid?
+      assert {"must be direct for SQLite databases", _} = changeset.errors[:connection_method]
+    end
   end
 
   describe "create_database_for_org/2" do
@@ -156,6 +216,22 @@ defmodule Trifle.Organizations.DatabaseTest do
 
       assert updated_database.pool_version == database.pool_version
       assert updated_database.display_name == "Renamed database"
+    end
+
+    test "increments pool_version when ssh tunnel config changes" do
+      organization = organization_fixture()
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(
+                 organization,
+                 mysql_attrs(ssh_tunnel_attrs()) |> Map.delete(:organization_id)
+               )
+
+      assert {:ok, updated_database} =
+               Organizations.update_database(database, %{ssh_host: "new-bastion.example.com"})
+
+      assert updated_database.pool_version == database.pool_version + 1
+      assert updated_database.ssh_host == "new-bastion.example.com"
     end
 
     test "preserves sqlite storage metadata when updating sqlite config without re-upload" do
@@ -269,5 +345,17 @@ defmodule Trifle.Organizations.DatabaseTest do
       },
       overrides
     )
+  end
+
+  defp ssh_tunnel_attrs do
+    %{
+      connection_method: "ssh_tunnel",
+      ssh_host: "bastion.example.com",
+      ssh_port: 22,
+      ssh_username: "trifle",
+      ssh_private_key: "-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----\n",
+      ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC",
+      ssh_host_key_fingerprint: "SHA256:abc123"
+    }
   end
 end

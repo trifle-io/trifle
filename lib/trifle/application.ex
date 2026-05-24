@@ -24,6 +24,7 @@ defmodule Trifle.Application do
         Trifle.DatabasePools.RedisPoolSupervisor,
         Trifle.DatabasePools.SqlitePoolSupervisor,
         Trifle.DatabasePools.MySQLPoolSupervisor,
+        Trifle.Networking.SSHTunnelSupervisor,
         # Start the PubSub system
         {Phoenix.PubSub, name: Trifle.PubSub},
         Trifle.Chat.RunnerRegistry,

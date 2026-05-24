@@ -25,6 +25,35 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "MySQL"
   end
 
+  test "new database form exposes secure connection methods for network drivers", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{"database" => %{"driver" => "mysql"}})
+
+    assert html =~ "Connection Method"
+    assert html =~ "Direct + IP allowlist"
+    assert html =~ "Allowlist Trifle Cloud egress"
+  end
+
+  test "ssh tunnel method shows bastion fields and generated public key", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{"driver" => "mysql", "connection_method" => "ssh_tunnel"}
+      })
+
+    assert html =~ "Bastion Host"
+    assert html =~ "Host Key Fingerprint"
+    assert html =~ "Trifle Public Key"
+    assert html =~ "ssh-rsa"
+  end
+
   test "new database form shows sqlite upload field when sqlite driver selected", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/dbs/new")
 
@@ -60,6 +89,7 @@ defmodule TrifleApp.DatabasesLiveTest do
     {:ok, _lv, html} = live(conn, ~p"/dbs/#{database.id}/settings")
 
     assert html =~ "MySQL database connection"
+    assert html =~ "Direct"
     assert html =~ "Beginning of week"
     assert html =~ "Monday"
   end

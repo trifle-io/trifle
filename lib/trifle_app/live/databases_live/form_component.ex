@@ -6,6 +6,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   alias Ecto.Changeset
   alias Trifle.Billing
+  alias Trifle.Networking.SSHKey
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.SqliteUploads
@@ -36,6 +37,73 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
           prompt="Choose a driver..."
           disabled={@action == :edit}
         />
+
+        <%= if @selected_driver && @selected_driver != "sqlite" do %>
+          <div class="border-t pt-6 mt-6">
+            <.form_field
+              field={@form[:connection_method]}
+              type="select"
+              label="Connection Method"
+              options={connection_method_options()}
+            />
+
+            <%= if @selected_connection_method == "direct" do %>
+              <div class="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                <div class="font-medium text-slate-900 dark:text-slate-100">
+                  Allowlist Trifle Cloud egress
+                </div>
+                <%= if Enum.empty?(@cloud_egress_ips) do %>
+                  <div class="mt-1">
+                    Static egress IPs are not configured for this deployment.
+                  </div>
+                <% else %>
+                  <div class="mt-1 flex flex-wrap gap-2">
+                    <%= for ip <- @cloud_egress_ips do %>
+                      <code class="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600">
+                        {ip}
+                      </code>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+
+            <%= if @selected_connection_method == "ssh_tunnel" do %>
+              <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <.form_field field={@form[:ssh_host]} label="Bastion Host" />
+                <.form_field
+                  field={@form[:ssh_port]}
+                  type="number"
+                  label="Bastion Port"
+                  placeholder="22"
+                />
+                <.form_field field={@form[:ssh_username]} label="SSH Username" />
+                <.form_field
+                  field={@form[:ssh_host_key_fingerprint]}
+                  label="Host Key Fingerprint"
+                  placeholder="SHA256:..."
+                />
+              </div>
+
+              <% public_key = ssh_public_key(@database, @generated_ssh_key) %>
+              <%= if public_key do %>
+                <div class="mt-4">
+                  <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                    Trifle Public Key
+                  </label>
+                  <textarea
+                    readonly
+                    rows="4"
+                    class="mt-2 block w-full rounded-md border border-gray-300 bg-slate-50 font-mono text-xs text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                  >{public_key}</textarea>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    Add this key to the bastion user's authorized_keys file before testing the connection.
+                  </p>
+                </div>
+              <% end %>
+            <% end %>
+          </div>
+        <% end %>
 
         <%= if @selected_driver && Database.requires_host?(@selected_driver) do %>
           <.form_field field={@form[:host]} label="Host" />
@@ -268,44 +336,76 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   @impl true
   def update(%{database: database} = assigns, socket) do
-    changeset = Organizations.change_database(database)
     selected_driver = database.driver
+    selected_connection_method = database.connection_method || "direct"
 
     config_options =
       if selected_driver, do: Database.default_config_options(selected_driver), else: %{}
 
-    {:ok,
-     socket
-     |> ensure_sqlite_upload()
-     |> assign(assigns)
-     |> assign(:selected_driver, selected_driver)
-     |> assign(:config_options, config_options)
-     |> assign(:week_options, @week_options)
-     |> assign(:time_zones, time_zones())
-     |> assign_form(changeset)}
+    socket =
+      socket
+      |> ensure_sqlite_upload()
+      |> assign(assigns)
+      |> assign(:generated_ssh_key, nil)
+      |> assign(:selected_driver, selected_driver)
+      |> assign(:selected_connection_method, selected_connection_method)
+      |> assign(:config_options, config_options)
+      |> assign(:cloud_egress_ips, cloud_egress_ips())
+      |> assign(:week_options, @week_options)
+      |> assign(:time_zones, time_zones())
+      |> maybe_ensure_generated_ssh_key(selected_connection_method)
+
+    changeset =
+      database
+      |> Organizations.change_database(params_with_generated_ssh_key(socket, %{}))
+
+    {:ok, assign_form(socket, changeset)}
   end
 
   @impl true
   def handle_event("validate", %{"database" => database_params}, socket) do
     selected_driver = selected_driver(socket, database_params)
 
+    selected_connection_method =
+      selected_connection_method(socket, database_params, selected_driver)
+
     config_options =
       if selected_driver, do: Database.default_config_options(selected_driver), else: %{}
 
+    socket =
+      socket
+      |> maybe_cancel_sqlite_upload(selected_driver)
+      |> assign(:selected_driver, selected_driver)
+      |> assign(:selected_connection_method, selected_connection_method)
+      |> assign(:config_options, config_options)
+      |> maybe_ensure_generated_ssh_key(selected_connection_method)
+
     changeset =
       socket.assigns.database
-      |> Organizations.change_database(database_params)
+      |> Organizations.change_database(params_with_generated_ssh_key(socket, database_params))
       |> Map.put(:action, :validate)
 
-    {:noreply,
-     socket
-     |> maybe_cancel_sqlite_upload(selected_driver)
-     |> assign(:selected_driver, selected_driver)
-     |> assign(:config_options, config_options)
-     |> assign_form(changeset)}
+    {:noreply, assign_form(socket, changeset)}
   end
 
   def handle_event("save", %{"database" => database_params}, socket) do
+    selected_driver = selected_driver(socket, database_params)
+
+    selected_connection_method =
+      selected_connection_method(socket, database_params, selected_driver)
+
+    config_options =
+      if selected_driver, do: Database.default_config_options(selected_driver), else: %{}
+
+    socket =
+      socket
+      |> assign(:selected_driver, selected_driver)
+      |> assign(:selected_connection_method, selected_connection_method)
+      |> assign(:config_options, config_options)
+      |> maybe_ensure_generated_ssh_key(selected_connection_method)
+
+    database_params = params_with_generated_ssh_key(socket, database_params)
+
     case maybe_attach_sqlite_upload(socket, database_params) do
       {:ok, database_params, uploaded_upload} ->
         save_database(socket, socket.assigns.action, database_params, uploaded_upload)
@@ -421,7 +521,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
-  defp config_field_type("ssl", "postgres"), do: :boolean
+  defp config_field_type("ssl", driver) when driver in ["postgres", "mysql"], do: :boolean
   defp config_field_type("joined_identifiers", _), do: :joined_identifiers
   defp config_field_type("pool_size", _), do: :integer
   defp config_field_type("pool_timeout", _), do: :integer
@@ -618,6 +718,74 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
       "" -> nil
       driver -> driver
     end
+  end
+
+  defp selected_connection_method(_socket, _params, "sqlite"), do: "direct"
+
+  defp selected_connection_method(socket, params, _selected_driver) do
+    case Map.get(params, "connection_method") do
+      value when value in ["direct", "ssh_tunnel"] ->
+        value
+
+      _ ->
+        socket.assigns[:selected_connection_method] ||
+          socket.assigns.database.connection_method ||
+          "direct"
+    end
+  end
+
+  defp connection_method_options do
+    [
+      {"Direct + IP allowlist", "direct"},
+      {"SSH tunnel", "ssh_tunnel"}
+    ]
+  end
+
+  defp maybe_ensure_generated_ssh_key(socket, "ssh_tunnel") do
+    cond do
+      socket.assigns.database.ssh_private_key ->
+        socket
+
+      socket.assigns.generated_ssh_key ->
+        socket
+
+      true ->
+        organization_id = socket.assigns.database.organization_id || "database"
+        key = SSHKey.generate_key_pair("trifle-#{organization_id}")
+        assign(socket, :generated_ssh_key, key)
+    end
+  end
+
+  defp maybe_ensure_generated_ssh_key(socket, _connection_method), do: socket
+
+  defp params_with_generated_ssh_key(socket, params) do
+    connection_method =
+      Map.get(params, "connection_method") ||
+        socket.assigns[:selected_connection_method] ||
+        socket.assigns.database.connection_method ||
+        "direct"
+
+    if connection_method == "ssh_tunnel" && socket.assigns[:generated_ssh_key] do
+      key = socket.assigns.generated_ssh_key
+
+      params
+      |> Map.put_new("ssh_private_key", key.private_key)
+      |> Map.put_new("ssh_public_key", key.public_key)
+    else
+      params
+    end
+  end
+
+  defp ssh_public_key(%Database{ssh_public_key: public_key}, _generated_key)
+       when is_binary(public_key) and public_key != "" do
+    public_key
+  end
+
+  defp ssh_public_key(_database, %{public_key: public_key}), do: public_key
+  defp ssh_public_key(_database, _generated_key), do: nil
+
+  defp cloud_egress_ips do
+    Application.get_env(:trifle, :cloud_egress_ips, [])
   end
 
   defp maybe_cancel_sqlite_upload(socket, "sqlite"), do: socket
