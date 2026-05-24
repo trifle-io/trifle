@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,6 +38,33 @@ func TestLoadConfigAllowsHealthOnlyModeWithoutToken(t *testing.T) {
 	}
 	if len(cfg.AllowedHosts) != 2 {
 		t.Fatalf("expected allowed hosts to parse, got %#v", cfg.AllowedHosts)
+	}
+}
+
+func TestLoadConfigUsesSharedTokenFallback(t *testing.T) {
+	clearAgentEnv(t)
+	t.Setenv("TRIFLE_TOKEN", "shared-token")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("expected config to load: %v", err)
+	}
+	if cfg.Token != "shared-token" {
+		t.Fatalf("expected shared token fallback, got %q", cfg.Token)
+	}
+}
+
+func TestLoadConfigRejectsInvalidDuration(t *testing.T) {
+	clearAgentEnv(t)
+	t.Setenv("TRIFLE_AGENT_CONTROL_PLANE_DISABLED", "true")
+	t.Setenv("TRIFLE_AGENT_POLL_INTERVAL", "30sec")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("expected invalid duration error")
+	}
+	if !strings.Contains(err.Error(), "TRIFLE_AGENT_POLL_INTERVAL") {
+		t.Fatalf("expected env key in error, got %q", err.Error())
 	}
 }
 

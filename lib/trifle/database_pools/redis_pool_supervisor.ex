@@ -157,7 +157,8 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
   end
 
   defp redis_pool_spec(database, pool_name, supervisor_name) do
-    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
+    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database),
+         {:ok, redis_database} <- redis_database_number(database.database_name) do
       # Create multiple Redix connections for load distribution
       children =
         for index <- 0..(@connections_per_pool - 1) do
@@ -173,7 +174,7 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
                    host: endpoint.host,
                    port: endpoint.port || 6379,
                    password: database.password,
-                   database: database.database_name || 0,
+                   database: redis_database,
                    socket_opts: socket_options(),
                    # Additional Redix options for reliability
                    sync_connect: true,
@@ -193,6 +194,21 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
        }}
     end
   end
+
+  defp redis_database_number(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  defp redis_database_number(value) when is_binary(value) do
+    value = String.trim(value)
+
+    with false <- value == "",
+         {database, ""} when database >= 0 <- Integer.parse(value) do
+      {:ok, database}
+    else
+      _ -> {:error, :invalid_redis_database}
+    end
+  end
+
+  defp redis_database_number(_value), do: {:error, :invalid_redis_database}
 
   defp random_index do
     Enum.random(0..(@connections_per_pool - 1))

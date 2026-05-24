@@ -6,8 +6,12 @@ defmodule Trifle.Networking.SSHKeyTest do
   test "generates OpenSSH-compatible key material" do
     key = SSHKey.generate_key_pair("trifle-test")
 
-    assert key.private_key =~ "BEGIN RSA PRIVATE KEY"
-    assert key.public_key =~ "ssh-rsa "
-    assert key.public_key =~ " trifle-test"
+    [private_entry] = :public_key.pem_decode(key.private_key)
+
+    assert {:RSAPrivateKey, _, _, _, _, _, _, _, _, _, _} =
+             :public_key.pem_entry_decode(private_entry)
+
+    public_entries = :ssh_file.decode(key.public_key, :public_key)
+    assert [{{:RSAPublicKey, _, _}, _attributes} | _] = public_entries
   end
 end

@@ -197,11 +197,12 @@ defmodule Trifle.Organizations.Database do
     |> put_default_connection_method()
     |> validate_inclusion(:connection_method, @connection_methods)
     |> validate_conditional_fields()
+    |> validate_redis_database_name()
     |> validate_connection_method_fields()
     |> validate_length(:display_name, min: 1, max: 255)
     |> validate_number(:port, greater_than: 0, less_than: 65536)
     |> validate_number(:ssh_port, greater_than: 0, less_than: 65536)
-    |> parse_granularities(attrs)
+    |> parse_granularities(sanitize_granularity_attrs(attrs))
     |> validate_timeframe_field(:default_timeframe)
     |> put_default_config()
   end
@@ -222,9 +223,39 @@ defmodule Trifle.Organizations.Database do
     |> maybe_validate_required_field(:port, requires_port?(driver))
     |> maybe_validate_required_field(:username, requires_username_for_validation?(driver))
     |> maybe_validate_required_field(:password, requires_password_for_validation?(driver))
-    |> maybe_validate_required_field(:database_name, driver != "redis" && driver != "sqlite")
+    |> maybe_validate_required_field(:database_name, driver != "sqlite")
     |> maybe_validate_required_field(:file_path, driver == "sqlite")
   end
+
+  defp validate_redis_database_name(changeset) do
+    case get_field(changeset, :driver) do
+      "redis" ->
+        validate_change(changeset, :database_name, fn :database_name, value ->
+          case redis_database_number(value) do
+            {:ok, _database} -> []
+            :error -> [database_name: "must be a non-negative integer"]
+          end
+        end)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp redis_database_number(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  defp redis_database_number(value) when is_binary(value) do
+    value = String.trim(value)
+
+    with false <- value == "",
+         {database, ""} when database >= 0 <- Integer.parse(value) do
+      {:ok, database}
+    else
+      _ -> :error
+    end
+  end
+
+  defp redis_database_number(_value), do: :error
 
   defp requires_username_for_validation?("sqlite"), do: false
   defp requires_username_for_validation?("redis"), do: false
@@ -247,7 +278,9 @@ defmodule Trifle.Organizations.Database do
 
     case {driver, get_field(changeset, :connection_method)} do
       {"sqlite", method} when method != "direct" ->
-        add_error(changeset, :connection_method, "must be direct for SQLite databases")
+        changeset
+        |> clear_ssh_fields()
+        |> add_error(:connection_method, "must be direct for SQLite databases")
 
       {_, "ssh_tunnel"} ->
         changeset
@@ -262,11 +295,29 @@ defmodule Trifle.Organizations.Database do
         ])
 
       {_, "agent"} ->
-        add_error(changeset, :connection_method, "is reserved for the Trifle agent data plane")
+        changeset
+        |> clear_ssh_fields()
+        |> add_error(:connection_method, "is reserved for the Trifle agent data plane")
 
       _ ->
-        changeset
+        clear_ssh_fields(changeset)
     end
+  end
+
+  defp clear_ssh_fields(changeset) do
+    Enum.reduce(
+      [
+        :ssh_host,
+        :ssh_port,
+        :ssh_username,
+        :ssh_private_key,
+        :ssh_public_key,
+        :ssh_passphrase,
+        :ssh_host_key_fingerprint
+      ],
+      changeset,
+      &put_change(&2, &1, nil)
+    )
   end
 
   defp maybe_put_default_ssh_port(changeset) do
@@ -376,6 +427,16 @@ defmodule Trifle.Organizations.Database do
       end
     end)
   end
+
+  defp sanitize_granularity_attrs(attrs) when is_map(attrs) do
+    attrs
+    |> Map.delete(:ssh_private_key)
+    |> Map.delete("ssh_private_key")
+    |> Map.delete(:ssh_passphrase)
+    |> Map.delete("ssh_passphrase")
+  end
+
+  defp sanitize_granularity_attrs(attrs), do: attrs
 
   # Parse comma-separated granularities string into array
   defp parse_granularities(changeset, attrs) do

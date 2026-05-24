@@ -71,7 +71,7 @@ You can manually trigger the workflow from the GitHub Actions tab.
 git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
-This creates `trifle/app:1.0.0` images.
+This creates `trifle/app:1.0.0` and `trifle/agent:1.0.0` images.
 
 ### Using in Kubernetes
 Your Helm charts will automatically pull the latest multi-platform images:

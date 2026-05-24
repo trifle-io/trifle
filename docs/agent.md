@@ -7,7 +7,7 @@ This is the phase-2 container and runtime contract. The cloud-side control plane
 ## Security Model
 
 - Outbound-only: the agent does not require inbound access from Trifle Cloud.
-- Token-authenticated: every control-plane request uses `TRIFLE_AGENT_TOKEN` as a bearer token.
+- Token-authenticated: every control-plane request uses `TRIFLE_AGENT_TOKEN` or shared `TRIFLE_TOKEN` as a bearer token.
 - Least-reachability: network jobs are constrained by `TRIFLE_AGENT_ALLOWED_HOSTS`.
 - No database credentials in the image: credentials are created in Trifle and delivered through the control-plane job contract in later phases.
 - Private CA support: set `TRIFLE_AGENT_CA_FILE` when Trifle Cloud is served behind a private CA.
@@ -40,7 +40,7 @@ docker run -d --name trifle-agent \
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `TRIFLE_AGENT_TOKEN` | Yes | | Bearer token issued by Trifle Cloud. Not required when health-only mode is enabled. |
+| `TRIFLE_AGENT_TOKEN` | Yes | | Bearer token issued by Trifle Cloud. Falls back to `TRIFLE_TOKEN`. Not required when health-only mode is enabled. |
 | `TRIFLE_CLOUD_URL` | No | `https://app.trifle.io` | Trifle Cloud base URL. |
 | `TRIFLE_AGENT_ID` | No | container hostname | Stable agent identifier shown in Trifle. |
 | `TRIFLE_AGENT_NAME` | No | | Human-readable name for the agent. |

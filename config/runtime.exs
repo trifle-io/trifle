@@ -58,10 +58,16 @@ cloud_egress_ips =
       Application.get_env(:trifle, :cloud_egress_ips, [])
 
     value ->
-      value
-      |> String.split([",", "\n"], trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+      trimmed = String.trim(value)
+
+      if trimmed == "" do
+        Application.get_env(:trifle, :cloud_egress_ips, [])
+      else
+        trimmed
+        |> String.split([",", "\n"], trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+      end
   end
 
 config :trifle, :cloud_egress_ips, cloud_egress_ips

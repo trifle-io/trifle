@@ -35,7 +35,16 @@ defmodule Trifle.Networking.SSHTunnel do
     GenServer.start_link(__MODULE__, database, name: name(database.id))
   end
 
-  def name(database_id) when is_binary(database_id), do: :"trifle_ssh_tunnel_#{database_id}"
+  def name(database_id) when is_binary(database_id) do
+    {:via, Registry, {Trifle.Networking.SSHTunnelRegistry, database_id}}
+  end
+
+  def whereis(database_id) when is_binary(database_id) do
+    case Registry.lookup(Trifle.Networking.SSHTunnelRegistry, database_id) do
+      [{pid, _value}] -> pid
+      [] -> nil
+    end
+  end
 
   def endpoint(pid_or_name) do
     GenServer.call(pid_or_name, :endpoint)

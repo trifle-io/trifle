@@ -18,16 +18,15 @@ defmodule Trifle.Networking.SSHTunnelSupervisor do
 
   def start_tunnel(%{id: database_id} = database) when is_binary(database_id) do
     expected_version = pool_version(database)
-    tunnel_name = SSHTunnel.name(database_id)
 
-    case Process.whereis(tunnel_name) do
+    case SSHTunnel.whereis(database_id) do
       nil ->
         start_new_tunnel(database, expected_version)
 
       pid ->
         case Trifle.DatabasePools.VersionRegistry.get(:ssh_tunnel, database_id) do
           {:ok, ^expected_version} ->
-            SSHTunnel.endpoint(pid)
+            endpoint_or_restart(pid, database, expected_version)
 
           _ ->
             _ = stop_tunnel(database_id)
@@ -37,10 +36,8 @@ defmodule Trifle.Networking.SSHTunnelSupervisor do
   end
 
   def stop_tunnel(database_id) when is_binary(database_id) do
-    tunnel_name = SSHTunnel.name(database_id)
-
     result =
-      case Process.whereis(tunnel_name) do
+      case SSHTunnel.whereis(database_id) do
         nil -> :ok
         pid -> DynamicSupervisor.terminate_child(__MODULE__, pid)
       end
@@ -61,6 +58,16 @@ defmodule Trifle.Networking.SSHTunnelSupervisor do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp endpoint_or_restart(pid, database, expected_version) do
+    try do
+      SSHTunnel.endpoint(pid)
+    catch
+      :exit, _reason ->
+        _ = stop_tunnel(database.id)
+        start_new_tunnel(database, expected_version)
     end
   end
 

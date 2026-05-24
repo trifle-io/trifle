@@ -40,7 +40,7 @@ defmodule Trifle.DatabasePools.PoolManager do
       sqlite: Trifle.DatabasePools.SqlitePoolSupervisor.get_sqlite_connection(database_id),
       mysql: Trifle.DatabasePools.MySQLPoolSupervisor.get_mysql_connection(database_id),
       ssh_tunnel:
-        case Process.whereis(Trifle.Networking.SSHTunnel.name(database_id)) do
+        case Trifle.Networking.SSHTunnel.whereis(database_id) do
           nil -> {:error, :not_started}
           pid -> {:ok, pid}
         end

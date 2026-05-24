@@ -35,6 +35,8 @@ const (
 	defaultPollInterval      = 5 * time.Second
 	defaultHeartbeatInterval = 30 * time.Second
 	defaultRequestTimeout    = 15 * time.Second
+	defaultJobWorkers        = 4
+	defaultJobQueueSize      = 64
 )
 
 type config struct {
@@ -63,12 +65,23 @@ type runtimeStatus struct {
 	LastError           string    `json:"last_error,omitempty"`
 }
 
+type runtimeStatusView struct {
+	StartedAt           time.Time `json:"started_at"`
+	LastHeartbeatAt     time.Time `json:"last_heartbeat_at,omitempty"`
+	LastPollAt          time.Time `json:"last_poll_at,omitempty"`
+	LastSuccessfulJobAt time.Time `json:"last_successful_job_at,omitempty"`
+	CloudReachable      bool      `json:"cloud_reachable"`
+	LastError           string    `json:"last_error,omitempty"`
+}
+
 type agent struct {
 	cfg        config
 	httpClient *http.Client
 	status     *runtimeStatus
 	logger     *log.Logger
 	hostname   string
+	jobQueue   chan job
+	pollSem    chan struct{}
 }
 
 type heartbeatRequest struct {
@@ -159,12 +172,18 @@ func main() {
 		status:     status,
 		logger:     logger,
 		hostname:   hostname,
+		jobQueue:   make(chan job, defaultJobQueueSize),
+		pollSem:    make(chan struct{}, 1),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	healthServer := startHealthServer(ctx, cfg.HealthAddr, status, logger)
+	healthServer, err := startHealthServer(ctx, cfg.HealthAddr, status, logger)
+	if err != nil {
+		logger.Printf("level=error msg=%q error=%q", "failed to bind health server", err)
+		os.Exit(2)
+	}
 
 	if cfg.ControlPlaneDisabled {
 		logger.Printf("level=info msg=%q health_addr=%q", "control plane disabled; serving health only", cfg.HealthAddr)
@@ -192,7 +211,12 @@ func (a *agent) run(ctx context.Context) {
 	defer heartbeatTicker.Stop()
 	defer pollTicker.Stop()
 
+	for workerID := 0; workerID < defaultJobWorkers; workerID++ {
+		go a.runJobWorker(ctx, workerID)
+	}
+
 	a.sendHeartbeat(ctx)
+	a.dispatchPoll(ctx)
 
 	for {
 		select {
@@ -202,8 +226,20 @@ func (a *agent) run(ctx context.Context) {
 		case <-heartbeatTicker.C:
 			a.sendHeartbeat(ctx)
 		case <-pollTicker.C:
-			a.pollJobs(ctx)
+			a.dispatchPoll(ctx)
 		}
+	}
+}
+
+func (a *agent) dispatchPoll(ctx context.Context) {
+	select {
+	case a.pollSem <- struct{}{}:
+		go func() {
+			defer func() { <-a.pollSem }()
+			a.pollJobs(ctx)
+		}()
+	default:
+		a.logger.Printf("level=debug msg=%q", "previous job poll still running")
 	}
 }
 
@@ -265,7 +301,34 @@ func (a *agent) pollJobs(ctx context.Context) {
 	a.status.mu.Unlock()
 
 	for _, j := range response.Data.Jobs {
-		a.handleJob(ctx, j)
+		a.enqueueJob(ctx, j)
+	}
+}
+
+func (a *agent) enqueueJob(ctx context.Context, j job) {
+	select {
+	case a.jobQueue <- j:
+	case <-ctx.Done():
+	default:
+		a.logger.Printf("level=warn msg=%q job_id=%q type=%q", "job queue is full", j.ID, j.Type)
+		if j.ID != "" {
+			a.completeJob(ctx, j.ID, jobCompletionRequest{
+				Status: "error",
+				Error:  "agent job queue is full",
+			})
+		}
+	}
+}
+
+func (a *agent) runJobWorker(ctx context.Context, workerID int) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case j := <-a.jobQueue:
+			a.logger.Printf("level=debug msg=%q worker=%d job_id=%q type=%q", "handling job", workerID, j.ID, j.Type)
+			a.handleJob(ctx, j)
+		}
 	}
 }
 
@@ -446,16 +509,28 @@ func (a *agent) markControlPlanePending() {
 	a.status.LastError = ""
 }
 
-func startHealthServer(ctx context.Context, addr string, status *runtimeStatus, logger *log.Logger) *http.Server {
+func (status *runtimeStatus) Snapshot() runtimeStatusView {
+	status.mu.RLock()
+	defer status.mu.RUnlock()
+
+	return runtimeStatusView{
+		StartedAt:           status.StartedAt,
+		LastHeartbeatAt:     status.LastHeartbeatAt,
+		LastPollAt:          status.LastPollAt,
+		LastSuccessfulJobAt: status.LastSuccessfulJobAt,
+		CloudReachable:      status.CloudReachable,
+		LastError:           status.LastError,
+	}
+}
+
+func startHealthServer(ctx context.Context, addr string, status *runtimeStatus, logger *log.Logger) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		status.mu.RLock()
-		snapshot := *status
-		status.mu.RUnlock()
+		snapshot := status.Snapshot()
 
 		w.Header().Set("Content-Type", "application/json")
 		if !snapshot.CloudReachable && snapshot.LastError != "" {
@@ -470,8 +545,13 @@ func startHealthServer(ctx context.Context, addr string, status *runtimeStatus, 
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
 	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Printf("level=error msg=%q error=%q", "health server failed", err)
 		}
 	}()
@@ -483,7 +563,7 @@ func startHealthServer(ctx context.Context, addr string, status *runtimeStatus, 
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	return server
+	return server, nil
 }
 
 func loadConfig() (config, error) {
@@ -491,11 +571,8 @@ func loadConfig() (config, error) {
 		CloudURL:           getEnv("TRIFLE_CLOUD_URL", defaultCloudURL),
 		AgentID:            strings.TrimSpace(os.Getenv("TRIFLE_AGENT_ID")),
 		AgentName:          strings.TrimSpace(os.Getenv("TRIFLE_AGENT_NAME")),
-		Token:              strings.TrimSpace(os.Getenv("TRIFLE_AGENT_TOKEN")),
+		Token:              getTokenEnv(),
 		HealthAddr:         getEnv("TRIFLE_AGENT_HEALTH_ADDR", defaultHealthAddr),
-		PollInterval:       getDurationEnv("TRIFLE_AGENT_POLL_INTERVAL", defaultPollInterval),
-		HeartbeatInterval:  getDurationEnv("TRIFLE_AGENT_HEARTBEAT_INTERVAL", defaultHeartbeatInterval),
-		RequestTimeout:     getDurationEnv("TRIFLE_AGENT_REQUEST_TIMEOUT", defaultRequestTimeout),
 		Capabilities:       splitCSV(getEnv("TRIFLE_AGENT_CAPABILITIES", "postgres,mysql,mongo,redis")),
 		AllowedHosts:       splitCSV(os.Getenv("TRIFLE_AGENT_ALLOWED_HOSTS")),
 		CAFile:             strings.TrimSpace(os.Getenv("TRIFLE_AGENT_CA_FILE")),
@@ -506,8 +583,19 @@ func loadConfig() (config, error) {
 		cfg.ControlPlaneDisabled = true
 	}
 
+	var err error
+	if cfg.PollInterval, err = getDurationEnv("TRIFLE_AGENT_POLL_INTERVAL", defaultPollInterval); err != nil {
+		return cfg, err
+	}
+	if cfg.HeartbeatInterval, err = getDurationEnv("TRIFLE_AGENT_HEARTBEAT_INTERVAL", defaultHeartbeatInterval); err != nil {
+		return cfg, err
+	}
+	if cfg.RequestTimeout, err = getDurationEnv("TRIFLE_AGENT_REQUEST_TIMEOUT", defaultRequestTimeout); err != nil {
+		return cfg, err
+	}
+
 	if cfg.Token == "" && !cfg.ControlPlaneDisabled {
-		return cfg, errors.New("TRIFLE_AGENT_TOKEN is required")
+		return cfg, errors.New("TRIFLE_AGENT_TOKEN or TRIFLE_TOKEN is required")
 	}
 	if err := validateCloudURL(cfg.CloudURL); err != nil {
 		return cfg, fmt.Errorf("TRIFLE_CLOUD_URL is invalid: %w", err)
@@ -734,19 +822,26 @@ func getEnv(key, fallback string) string {
 	return value
 }
 
-func getDurationEnv(key string, fallback time.Duration) time.Duration {
+func getTokenEnv() string {
+	if token := strings.TrimSpace(os.Getenv("TRIFLE_AGENT_TOKEN")); token != "" {
+		return token
+	}
+	return strings.TrimSpace(os.Getenv("TRIFLE_TOKEN"))
+}
+
+func getDurationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
 	if onlyDigits(value) {
 		value += "s"
 	}
 	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("%s has invalid duration %q: %w", key, value, err)
 	}
-	return parsed
+	return parsed, nil
 }
 
 func onlyDigits(value string) bool {

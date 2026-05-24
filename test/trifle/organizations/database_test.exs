@@ -148,6 +148,40 @@ defmodule Trifle.Organizations.DatabaseTest do
                changeset.errors[:connection_method]
     end
 
+    test "clears ssh fields when connection method is not ssh tunnel" do
+      database = struct(Database, ssh_tunnel_attrs())
+
+      changeset =
+        Database.changeset(
+          database,
+          mysql_attrs(%{connection_method: "direct"})
+        )
+
+      assert get_change(changeset, :ssh_host) == nil
+      assert get_change(changeset, :ssh_port) == nil
+      assert get_change(changeset, :ssh_private_key) == nil
+      assert get_change(changeset, :ssh_passphrase) == nil
+    end
+
+    test "requires redis database name to be a non-negative integer" do
+      valid_changeset =
+        Database.changeset(
+          %Database{},
+          redis_attrs(%{database_name: "0"})
+        )
+
+      assert valid_changeset.valid?
+
+      invalid_changeset =
+        Database.changeset(
+          %Database{},
+          redis_attrs(%{database_name: "-1"})
+        )
+
+      refute invalid_changeset.valid?
+      assert {"must be a non-negative integer", _} = invalid_changeset.errors[:database_name]
+    end
+
     test "requires sqlite databases to use direct connection method" do
       changeset =
         Database.changeset(%Database{}, %{
@@ -341,6 +375,20 @@ defmodule Trifle.Organizations.DatabaseTest do
         database_name: "trifle_stats",
         username: "trifle",
         password: "secret",
+        organization_id: Ecto.UUID.generate()
+      },
+      overrides
+    )
+  end
+
+  defp redis_attrs(overrides) do
+    Map.merge(
+      %{
+        display_name: "Primary Redis",
+        driver: "redis",
+        host: "127.0.0.1",
+        port: 6379,
+        database_name: "0",
         organization_id: Ecto.UUID.generate()
       },
       overrides

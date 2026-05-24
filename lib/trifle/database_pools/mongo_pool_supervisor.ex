@@ -164,25 +164,27 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
     # Handle authentication
     auth_part =
       if database.username && database.password do
-        "#{database.username}:#{database.password}@"
+        "#{encode_uri_component(database.username)}:#{encode_uri_component(database.password)}@"
       else
         ""
       end
 
     # Build full URL
     port = database.port || 27017
-    db_name = database.database_name || "admin"
+    db_name = encode_uri_component(database.database_name || "admin")
 
     # Add authSource parameter if auth_database is specified
     auth_source_param =
       if database.auth_database && database.auth_database != "" do
-        "?authSource=#{database.auth_database}"
+        "?authSource=#{encode_uri_component(database.auth_database)}"
       else
         ""
       end
 
     "mongodb://#{auth_part}#{endpoint.host}:#{endpoint.port || port}/#{db_name}#{auth_source_param}"
   end
+
+  defp encode_uri_component(value), do: value |> to_string() |> URI.encode_www_form()
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do
     pool_name

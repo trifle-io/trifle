@@ -486,7 +486,8 @@ defmodule TrifleApp.DatabaseSettingsLive do
 
   defp database_identifier_value(%Database{driver: "sqlite", file_path: nil}), do: "—"
   defp database_identifier_value(%Database{driver: "sqlite", file_path: path}), do: path
-  defp database_identifier_value(%Database{driver: "redis"}), do: "Default (0)"
+  defp database_identifier_value(%Database{driver: "redis", database_name: nil}), do: "—"
+  defp database_identifier_value(%Database{driver: "redis", database_name: name}), do: name
   defp database_identifier_value(%Database{database_name: nil}), do: "—"
   defp database_identifier_value(%Database{database_name: name}), do: name
 
