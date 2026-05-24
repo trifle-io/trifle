@@ -597,8 +597,10 @@ func loadConfig() (config, error) {
 	if cfg.Token == "" && !cfg.ControlPlaneDisabled {
 		return cfg, errors.New("TRIFLE_AGENT_TOKEN or TRIFLE_TOKEN is required")
 	}
-	if err := validateCloudURL(cfg.CloudURL); err != nil {
-		return cfg, fmt.Errorf("TRIFLE_CLOUD_URL is invalid: %w", err)
+	if !cfg.ControlPlaneDisabled {
+		if err := validateCloudURL(cfg.CloudURL); err != nil {
+			return cfg, fmt.Errorf("TRIFLE_CLOUD_URL is invalid: %w", err)
+		}
 	}
 	if cfg.PollInterval < time.Second {
 		return cfg, errors.New("TRIFLE_AGENT_POLL_INTERVAL must be at least 1s")

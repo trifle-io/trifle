@@ -40,6 +40,9 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
         <%= if @selected_driver && @selected_driver != "sqlite" do %>
           <.form_field
             field={@form[:database_name]}
+            type={if @selected_driver == "redis", do: "number", else: "text"}
+            min={if @selected_driver == "redis", do: "0", else: nil}
+            step={if @selected_driver == "redis", do: "1", else: nil}
             label={if @selected_driver == "redis", do: "Redis Database Number", else: "Database Name"}
           />
         <% end %>

@@ -68,6 +68,16 @@ func TestLoadConfigRejectsInvalidDuration(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSkipsCloudURLValidationInHealthOnlyMode(t *testing.T) {
+	clearAgentEnv(t)
+	t.Setenv("TRIFLE_AGENT_CONTROL_PLANE_DISABLED", "true")
+	t.Setenv("TRIFLE_CLOUD_URL", "not a url")
+
+	if _, err := loadConfig(); err != nil {
+		t.Fatalf("expected health-only config to skip cloud URL validation: %v", err)
+	}
+}
+
 func TestResolveTCPCheckTarget(t *testing.T) {
 	host, port, err := resolveTCPCheckTarget(tcpCheckPayload{Address: "db.internal:5432"})
 	if err != nil {
@@ -137,6 +147,7 @@ func clearAgentEnv(t *testing.T) {
 		"TRIFLE_AGENT_ID",
 		"TRIFLE_AGENT_NAME",
 		"TRIFLE_AGENT_TOKEN",
+		"TRIFLE_TOKEN",
 		"TRIFLE_AGENT_HEALTH_ADDR",
 		"TRIFLE_AGENT_POLL_INTERVAL",
 		"TRIFLE_AGENT_HEARTBEAT_INTERVAL",

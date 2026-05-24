@@ -230,12 +230,10 @@ defmodule Trifle.Organizations.Database do
   defp validate_redis_database_name(changeset) do
     case get_field(changeset, :driver) do
       "redis" ->
-        validate_change(changeset, :database_name, fn :database_name, value ->
-          case redis_database_number(value) do
-            {:ok, _database} -> []
-            :error -> [database_name: "must be a non-negative integer"]
-          end
-        end)
+        case changeset |> get_field(:database_name) |> redis_database_number() do
+          {:ok, _database} -> changeset
+          :error -> add_error(changeset, :database_name, "must be a non-negative integer")
+        end
 
       _ ->
         changeset
@@ -434,6 +432,8 @@ defmodule Trifle.Organizations.Database do
     |> Map.delete("ssh_private_key")
     |> Map.delete(:ssh_passphrase)
     |> Map.delete("ssh_passphrase")
+    |> Map.delete(:password)
+    |> Map.delete("password")
   end
 
   defp sanitize_granularity_attrs(attrs), do: attrs

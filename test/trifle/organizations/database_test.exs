@@ -182,6 +182,15 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert {"must be a non-negative integer", _} = invalid_changeset.errors[:database_name]
     end
 
+    test "validates existing redis database name when it is not changed" do
+      database = struct(Database, redis_attrs(%{database_name: "abc"}))
+
+      changeset = Database.changeset(database, %{display_name: "Renamed Redis"})
+
+      refute changeset.valid?
+      assert {"must be a non-negative integer", _} = changeset.errors[:database_name]
+    end
+
     test "requires sqlite databases to use direct connection method" do
       changeset =
         Database.changeset(%Database{}, %{

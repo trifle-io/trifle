@@ -195,6 +195,8 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
     end
   end
 
+  defp redis_database_number(nil), do: {:ok, 0}
+
   defp redis_database_number(value) when is_integer(value) and value >= 0, do: {:ok, value}
 
   defp redis_database_number(value) when is_binary(value) do
