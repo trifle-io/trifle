@@ -105,19 +105,19 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
   end
 
   defp start_new_mysql_pool(database, connection_name, expected_version) do
-    child_spec = mysql_pool_spec(database, connection_name)
+    with {:ok, child_spec} <- mysql_pool_spec(database, connection_name) do
+      case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+        {:ok, _pid} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:mysql, database.id, expected_version)
+          {:ok, connection_name}
 
-    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-      {:ok, _pid} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:mysql, database.id, expected_version)
-        {:ok, connection_name}
+        {:error, {:already_started, _pid}} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:mysql, database.id, expected_version)
+          {:ok, connection_name}
 
-      {:error, {:already_started, _pid}} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:mysql, database.id, expected_version)
-        {:ok, connection_name}
-
-      error ->
-        error
+        error ->
+          error
+      end
     end
   end
 
@@ -139,36 +139,41 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
         val when is_binary(val) -> String.to_integer(val)
       end
 
-    # Build connection config from database record
-    config = [
-      name: connection_name,
-      hostname: database.host,
-      port: database.port || 3306,
-      username: database.username,
-      password: database.password,
-      database: database.database_name,
-      pool_size: pool_size,
-      timeout: 5000,
-      pool_timeout: 5000,
-      # MySQL-specific options for better reliability and performance
-      socket_options: socket_options(),
-      # Enable SSL if needed
-      ssl: false,
-      ssl_opts: [],
-      charset: "utf8mb4",
-      collation: "utf8mb4_unicode_ci",
-      # Connection behavior
-      connect_timeout: 5000,
-      handshake_timeout: 5000,
-      # Use named prepared statements
-      prepare: :named,
-      # Connection pool configuration
-      queue_target: 5000,
-      queue_interval: 5000
-    ]
+    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
+      config = [
+        name: connection_name,
+        hostname: endpoint.host,
+        port: endpoint.port || 3306,
+        username: database.username,
+        password: database.password,
+        database: database.database_name,
+        pool_size: pool_size,
+        timeout: 5000,
+        pool_timeout: 5000,
+        # MySQL-specific options for better reliability and performance
+        socket_options: socket_options(),
+        # Enable SSL if needed
+        ssl: ssl_enabled?(db_config),
+        ssl_opts: [],
+        charset: "utf8mb4",
+        collation: "utf8mb4_unicode_ci",
+        # Connection behavior
+        connect_timeout: 5000,
+        handshake_timeout: 5000,
+        # Use named prepared statements
+        prepare: :named,
+        # Connection pool configuration
+        queue_target: 5000,
+        queue_interval: 5000
+      ]
 
-    {MyXQL, config}
+      {:ok, {MyXQL, config}}
+    end
   end
+
+  defp ssl_enabled?(%{"ssl" => true}), do: true
+  defp ssl_enabled?(%{"ssl" => "true"}), do: true
+  defp ssl_enabled?(_db_config), do: false
 
   defp socket_options do
     if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [:inet]

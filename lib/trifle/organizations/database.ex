@@ -8,8 +8,10 @@ defmodule Trifle.Organizations.Database do
   @foreign_key_type :binary_id
 
   @drivers ["redis", "postgres", "mongo", "sqlite", "mysql"]
+  @connection_methods ["direct", "ssh_tunnel", "agent"]
   @pool_relevant_fields [
     :driver,
+    :connection_method,
     :host,
     :port,
     :database_name,
@@ -17,12 +19,20 @@ defmodule Trifle.Organizations.Database do
     :username,
     :password,
     :auth_database,
+    :ssh_host,
+    :ssh_port,
+    :ssh_username,
+    :ssh_private_key,
+    :ssh_public_key,
+    :ssh_passphrase,
+    :ssh_host_key_fingerprint,
     :config
   ]
 
   schema "databases" do
     field :display_name, :string
     field :driver, :string
+    field :connection_method, :string, default: "direct"
     field :host, :string
     field :port, :integer
     field :database_name, Trifle.Encrypted.Binary
@@ -30,6 +40,13 @@ defmodule Trifle.Organizations.Database do
     field :username, Trifle.Encrypted.Binary
     field :password, Trifle.Encrypted.Binary
     field :auth_database, Trifle.Encrypted.Binary
+    field :ssh_host, Trifle.Encrypted.Binary
+    field :ssh_port, :integer
+    field :ssh_username, Trifle.Encrypted.Binary
+    field :ssh_private_key, Trifle.Encrypted.Binary
+    field :ssh_public_key, :string
+    field :ssh_passphrase, Trifle.Encrypted.Binary
+    field :ssh_host_key_fingerprint, Trifle.Encrypted.Binary
     field :config, :map, default: %{}
     field :granularities, {:array, :string}, default: []
     field :time_zone, :string, default: "UTC"
@@ -48,6 +65,7 @@ defmodule Trifle.Organizations.Database do
   end
 
   def drivers, do: @drivers
+  def connection_methods, do: @connection_methods
   def pool_relevant_fields, do: @pool_relevant_fields
 
   def default_port("redis"), do: 6379
@@ -120,6 +138,7 @@ defmodule Trifle.Organizations.Database do
       "pool_size" => 10,
       "pool_timeout" => 15000,
       "timeout" => 15000,
+      "ssl" => false,
       "table_name" => "trifle_stats",
       "joined_identifiers" => "full"
     }
@@ -148,6 +167,7 @@ defmodule Trifle.Organizations.Database do
     |> cast(attrs, [
       :display_name,
       :driver,
+      :connection_method,
       :host,
       :port,
       :database_name,
@@ -155,6 +175,13 @@ defmodule Trifle.Organizations.Database do
       :username,
       :password,
       :auth_database,
+      :ssh_host,
+      :ssh_port,
+      :ssh_username,
+      :ssh_private_key,
+      :ssh_public_key,
+      :ssh_passphrase,
+      :ssh_host_key_fingerprint,
       :config,
       :time_zone,
       :beginning_of_week,
@@ -167,12 +194,25 @@ defmodule Trifle.Organizations.Database do
     ])
     |> validate_required([:display_name, :driver, :beginning_of_week, :organization_id])
     |> validate_inclusion(:driver, @drivers)
+    |> put_default_connection_method()
+    |> validate_inclusion(:connection_method, @connection_methods)
     |> validate_conditional_fields()
+    |> validate_redis_database_name()
+    |> validate_connection_method_fields()
     |> validate_length(:display_name, min: 1, max: 255)
     |> validate_number(:port, greater_than: 0, less_than: 65536)
-    |> parse_granularities(attrs)
+    |> validate_number(:ssh_port, greater_than: 0, less_than: 65536)
+    |> parse_granularities(sanitize_granularity_attrs(attrs))
     |> validate_timeframe_field(:default_timeframe)
     |> put_default_config()
+  end
+
+  defp put_default_connection_method(changeset) do
+    case get_field(changeset, :connection_method) do
+      nil -> put_change(changeset, :connection_method, "direct")
+      "" -> put_change(changeset, :connection_method, "direct")
+      _ -> changeset
+    end
   end
 
   defp validate_conditional_fields(changeset) do
@@ -183,9 +223,37 @@ defmodule Trifle.Organizations.Database do
     |> maybe_validate_required_field(:port, requires_port?(driver))
     |> maybe_validate_required_field(:username, requires_username_for_validation?(driver))
     |> maybe_validate_required_field(:password, requires_password_for_validation?(driver))
-    |> maybe_validate_required_field(:database_name, driver != "redis" && driver != "sqlite")
+    |> maybe_validate_required_field(:database_name, driver != "sqlite")
     |> maybe_validate_required_field(:file_path, driver == "sqlite")
   end
+
+  defp validate_redis_database_name(changeset) do
+    case get_field(changeset, :driver) do
+      "redis" ->
+        case changeset |> get_field(:database_name) |> redis_database_number() do
+          {:ok, _database} -> changeset
+          :error -> add_error(changeset, :database_name, "must be a non-negative integer")
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp redis_database_number(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  defp redis_database_number(value) when is_binary(value) do
+    value = String.trim(value)
+
+    with false <- value == "",
+         {database, ""} when database >= 0 <- Integer.parse(value) do
+      {:ok, database}
+    else
+      _ -> :error
+    end
+  end
+
+  defp redis_database_number(_value), do: :error
 
   defp requires_username_for_validation?("sqlite"), do: false
   defp requires_username_for_validation?("redis"), do: false
@@ -202,6 +270,60 @@ defmodule Trifle.Organizations.Database do
   end
 
   defp maybe_validate_required_field(changeset, _field, false), do: changeset
+
+  defp validate_connection_method_fields(changeset) do
+    driver = get_field(changeset, :driver)
+
+    case {driver, get_field(changeset, :connection_method)} do
+      {"sqlite", method} when method != "direct" ->
+        changeset
+        |> clear_ssh_fields()
+        |> add_error(:connection_method, "must be direct for SQLite databases")
+
+      {_, "ssh_tunnel"} ->
+        changeset
+        |> maybe_put_default_ssh_port()
+        |> validate_required([
+          :ssh_host,
+          :ssh_port,
+          :ssh_username,
+          :ssh_private_key,
+          :ssh_public_key,
+          :ssh_host_key_fingerprint
+        ])
+
+      {_, "agent"} ->
+        changeset
+        |> clear_ssh_fields()
+        |> add_error(:connection_method, "is reserved for the Trifle agent data plane")
+
+      _ ->
+        clear_ssh_fields(changeset)
+    end
+  end
+
+  defp clear_ssh_fields(changeset) do
+    Enum.reduce(
+      [
+        :ssh_host,
+        :ssh_port,
+        :ssh_username,
+        :ssh_private_key,
+        :ssh_public_key,
+        :ssh_passphrase,
+        :ssh_host_key_fingerprint
+      ],
+      changeset,
+      &put_change(&2, &1, nil)
+    )
+  end
+
+  defp maybe_put_default_ssh_port(changeset) do
+    case get_field(changeset, :ssh_port) do
+      nil -> put_change(changeset, :ssh_port, 22)
+      _ -> changeset
+    end
+  end
 
   defp put_default_config(changeset) do
     case get_field(changeset, :driver) do
@@ -303,6 +425,18 @@ defmodule Trifle.Organizations.Database do
       end
     end)
   end
+
+  defp sanitize_granularity_attrs(attrs) when is_map(attrs) do
+    attrs
+    |> Map.delete(:ssh_private_key)
+    |> Map.delete("ssh_private_key")
+    |> Map.delete(:ssh_passphrase)
+    |> Map.delete("ssh_passphrase")
+    |> Map.delete(:password)
+    |> Map.delete("password")
+  end
+
+  defp sanitize_granularity_attrs(attrs), do: attrs
 
   # Parse comma-separated granularities string into array
   defp parse_granularities(changeset, attrs) do
@@ -477,13 +611,15 @@ defmodule Trifle.Organizations.Database do
 
   # Helper functions for URL building (still used in setup/check functions)
   defp build_redis_url(database) do
+    endpoint = database_endpoint!(database)
     url = "redis://"
     url = if database.password, do: "#{url}:#{database.password}@", else: url
-    url = "#{url}#{database.host}:#{database.port}"
+    url = "#{url}#{endpoint.host}:#{endpoint.port || default_port("redis")}"
     url
   end
 
   defp build_mongo_url(database) do
+    endpoint = database_endpoint!(database)
     url = "mongodb://"
 
     url =
@@ -493,7 +629,8 @@ defmodule Trifle.Organizations.Database do
         url
       end
 
-    url = "#{url}#{database.host}:#{database.port}/#{database.database_name}"
+    url =
+      "#{url}#{endpoint.host}:#{endpoint.port || default_port("mongo")}/#{database.database_name}"
 
     # Add authSource parameter if auth_database is specified
     url =
@@ -505,6 +642,57 @@ defmodule Trifle.Organizations.Database do
 
     url
   end
+
+  defp database_endpoint!(database) do
+    case Trifle.Networking.DatabaseEndpoint.resolve(database) do
+      {:ok, endpoint} ->
+        endpoint
+
+      {:error, reason} ->
+        raise "Unable to establish database network path: #{inspect(reason)}"
+    end
+  end
+
+  defp postgres_connection_options(database, endpoint, config) do
+    [
+      hostname: endpoint.host,
+      port: endpoint.port || default_port("postgres"),
+      username: database.username,
+      password: database.password,
+      database: database.database_name,
+      pool_size: 1,
+      pool_timeout: 5000,
+      timeout: 5000
+    ]
+    |> maybe_put_postgres_ssl_options(config)
+  end
+
+  defp maybe_put_postgres_ssl_options(options, %{"ssl" => true}),
+    do: Keyword.put(options, :ssl, true)
+
+  defp maybe_put_postgres_ssl_options(options, %{"ssl" => "true"}),
+    do: Keyword.put(options, :ssl, true)
+
+  defp maybe_put_postgres_ssl_options(options, _config), do: options
+
+  defp mysql_connection_options(database, endpoint, config) do
+    [
+      hostname: endpoint.host,
+      port: endpoint.port || default_port("mysql"),
+      username: database.username,
+      password: database.password,
+      database: database.database_name,
+      pool_size: 1,
+      pool_timeout: 5000,
+      timeout: 5000,
+      ssl: mysql_ssl_enabled?(config),
+      ssl_opts: []
+    ]
+  end
+
+  defp mysql_ssl_enabled?(%{"ssl" => true}), do: true
+  defp mysql_ssl_enabled?(%{"ssl" => "true"}), do: true
+  defp mysql_ssl_enabled?(_config), do: false
 
   def is_setup?(database) do
     case database.last_check_status do
@@ -726,17 +914,10 @@ defmodule Trifle.Organizations.Database do
           end
 
         "postgres" ->
+          endpoint = database_endpoint!(database)
+
           # Build PostgreSQL connection
-          case Postgrex.start_link(
-                 hostname: database.host,
-                 port: database.port,
-                 username: database.username,
-                 password: database.password,
-                 database: database.database_name,
-                 pool_size: 1,
-                 pool_timeout: 5000,
-                 timeout: 5000
-               ) do
+          case Postgrex.start_link(postgres_connection_options(database, endpoint, config)) do
             {:ok, conn} ->
               table_name = config["table_name"] || "trifle_stats"
 
@@ -775,16 +956,9 @@ defmodule Trifle.Organizations.Database do
           end
 
         "mysql" ->
-          case MyXQL.start_link(
-                 hostname: database.host,
-                 port: database.port,
-                 username: database.username,
-                 password: database.password,
-                 database: database.database_name,
-                 pool_size: 1,
-                 pool_timeout: 5000,
-                 timeout: 5000
-               ) do
+          endpoint = database_endpoint!(database)
+
+          case MyXQL.start_link(mysql_connection_options(database, endpoint, config)) do
             {:ok, conn} ->
               table_name = config["table_name"] || "trifle_stats"
 
@@ -908,23 +1082,15 @@ defmodule Trifle.Organizations.Database do
     # Direct PostgreSQL check without creating a driver
     config = database.config || %{}
     table_name = config["table_name"] || "trifle_stats"
+    endpoint = database_endpoint!(database)
 
     require Logger
 
     Logger.info(
-      "PostgreSQL status check attempting to connect to: #{database.host}:#{database.port}/#{database.database_name}"
+      "PostgreSQL status check attempting to connect to: #{endpoint.host}:#{endpoint.port}/#{database.database_name}"
     )
 
-    case Postgrex.start_link(
-           hostname: database.host,
-           port: database.port,
-           username: database.username,
-           password: database.password,
-           database: database.database_name,
-           pool_size: 1,
-           pool_timeout: 5000,
-           timeout: 5000
-         ) do
+    case Postgrex.start_link(postgres_connection_options(database, endpoint, config)) do
       {:ok, conn} ->
         Logger.info("PostgreSQL status check connection successful")
 
@@ -980,23 +1146,15 @@ defmodule Trifle.Organizations.Database do
   defp mysql_exists_direct?(database) do
     config = database.config || %{}
     table_name = config["table_name"] || "trifle_stats"
+    endpoint = database_endpoint!(database)
 
     require Logger
 
     Logger.info(
-      "MySQL status check attempting to connect to: #{database.host}:#{database.port}/#{database.database_name}"
+      "MySQL status check attempting to connect to: #{endpoint.host}:#{endpoint.port}/#{database.database_name}"
     )
 
-    case MyXQL.start_link(
-           hostname: database.host,
-           port: database.port,
-           username: database.username,
-           password: database.password,
-           database: database.database_name,
-           pool_size: 1,
-           pool_timeout: 5000,
-           timeout: 5000
-         ) do
+    case MyXQL.start_link(mysql_connection_options(database, endpoint, config)) do
       {:ok, conn} ->
         Logger.info("MySQL status check connection successful")
 

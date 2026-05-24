@@ -105,19 +105,19 @@ defmodule Trifle.DatabasePools.PostgresPoolSupervisor do
   end
 
   defp start_new_postgres_pool(database, connection_name, expected_version) do
-    child_spec = postgres_pool_spec(database, connection_name)
+    with {:ok, child_spec} <- postgres_pool_spec(database, connection_name) do
+      case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+        {:ok, _pid} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:postgres, database.id, expected_version)
+          {:ok, connection_name}
 
-    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-      {:ok, _pid} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:postgres, database.id, expected_version)
-        {:ok, connection_name}
+        {:error, {:already_started, _pid}} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:postgres, database.id, expected_version)
+          {:ok, connection_name}
 
-      {:error, {:already_started, _pid}} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:postgres, database.id, expected_version)
-        {:ok, connection_name}
-
-      error ->
-        error
+        error ->
+          error
+      end
     end
   end
 
@@ -139,23 +139,30 @@ defmodule Trifle.DatabasePools.PostgresPoolSupervisor do
         val when is_binary(val) -> String.to_integer(val)
       end
 
-    # Build connection config from database record
-    config = [
-      name: connection_name,
-      hostname: database.host,
-      port: database.port || 5432,
-      username: database.username,
-      password: database.password,
-      database: database.database_name,
-      pool_size: pool_size,
-      timeout: 5000,
-      pool_timeout: 5000,
-      # Additional Postgrex options for better reliability
-      socket_options: socket_options()
-    ]
+    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
+      config =
+        [
+          name: connection_name,
+          hostname: endpoint.host,
+          port: endpoint.port || 5432,
+          username: database.username,
+          password: database.password,
+          database: database.database_name,
+          pool_size: pool_size,
+          timeout: 5000,
+          pool_timeout: 5000,
+          # Additional PostgreSQL options for better reliability
+          socket_options: socket_options()
+        ]
+        |> maybe_put_ssl_options(db_config)
 
-    {Postgrex, config}
+      {:ok, {Postgrex, config}}
+    end
   end
+
+  defp maybe_put_ssl_options(config, %{"ssl" => true}), do: Keyword.put(config, :ssl, true)
+  defp maybe_put_ssl_options(config, %{"ssl" => "true"}), do: Keyword.put(config, :ssl, true)
+  defp maybe_put_ssl_options(config, _db_config), do: config
 
   defp socket_options do
     if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [:inet]

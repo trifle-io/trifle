@@ -32,6 +32,8 @@ defmodule TrifleApp.DesignSystem.FormField do
   attr :rows, :integer, default: 4
   attr :id, :string, default: nil
   attr :maxlength, :integer, default: nil
+  attr :min, :string, default: nil
+  attr :step, :string, default: nil
 
   def form_field(assigns) do
     assigns = assign(assigns, :input_id, assigns.id || assigns.field.id)
@@ -115,6 +117,8 @@ defmodule TrifleApp.DesignSystem.FormField do
               value={@field.value}
               placeholder={@placeholder}
               maxlength={@maxlength}
+              min={@min}
+              step={@step}
               class={[
                 "block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
                 @field.errors != [] && "border-red-400 focus:border-red-400 focus:ring-red-400",
@@ -168,7 +172,11 @@ defmodule TrifleApp.DesignSystem.FormField do
     <div :if={@field.errors != []} class="space-y-1">
       <%= for error <- @field.errors do %>
         <div class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-          <svg class="h-4 w-4 shrink-0 fill-red-600 dark:fill-red-400" viewBox="0 0 20 20" aria-hidden="true">
+          <svg
+            class="h-4 w-4 shrink-0 fill-red-600 dark:fill-red-400"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
             <path
               fill-rule="evenodd"
               d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"

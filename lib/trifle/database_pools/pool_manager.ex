@@ -18,7 +18,8 @@ defmodule Trifle.DatabasePools.PoolManager do
       Trifle.DatabasePools.MongoPoolSupervisor.stop_mongo_pool(database_id),
       Trifle.DatabasePools.RedisPoolSupervisor.stop_redis_pool(database_id),
       Trifle.DatabasePools.SqlitePoolSupervisor.stop_sqlite_pool(database_id),
-      Trifle.DatabasePools.MySQLPoolSupervisor.stop_mysql_pool(database_id)
+      Trifle.DatabasePools.MySQLPoolSupervisor.stop_mysql_pool(database_id),
+      Trifle.Networking.SSHTunnelSupervisor.stop_tunnel(database_id)
     ]
 
     # Return :ok if all succeeded, or list of any errors
@@ -37,7 +38,12 @@ defmodule Trifle.DatabasePools.PoolManager do
       mongo: Trifle.DatabasePools.MongoPoolSupervisor.get_mongo_connection(database_id),
       redis: Trifle.DatabasePools.RedisPoolSupervisor.get_redis_connection(database_id),
       sqlite: Trifle.DatabasePools.SqlitePoolSupervisor.get_sqlite_connection(database_id),
-      mysql: Trifle.DatabasePools.MySQLPoolSupervisor.get_mysql_connection(database_id)
+      mysql: Trifle.DatabasePools.MySQLPoolSupervisor.get_mysql_connection(database_id),
+      ssh_tunnel:
+        case Trifle.Networking.SSHTunnel.whereis(database_id) do
+          nil -> {:error, :not_started}
+          pid -> {:ok, pid}
+        end
     }
   end
 

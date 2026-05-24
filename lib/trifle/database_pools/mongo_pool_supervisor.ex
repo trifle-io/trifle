@@ -105,19 +105,19 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
   end
 
   defp start_new_mongo_pool(database, connection_name, expected_version) do
-    child_spec = mongo_pool_spec(database, connection_name)
+    with {:ok, child_spec} <- mongo_pool_spec(database, connection_name) do
+      case DynamicSupervisor.start_child(__MODULE__, child_spec) do
+        {:ok, _pid} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:mongo, database.id, expected_version)
+          {:ok, connection_name}
 
-    case DynamicSupervisor.start_child(__MODULE__, child_spec) do
-      {:ok, _pid} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:mongo, database.id, expected_version)
-        {:ok, connection_name}
+        {:error, {:already_started, _pid}} ->
+          _ = Trifle.DatabasePools.VersionRegistry.put(:mongo, database.id, expected_version)
+          {:ok, connection_name}
 
-      {:error, {:already_started, _pid}} ->
-        _ = Trifle.DatabasePools.VersionRegistry.put(:mongo, database.id, expected_version)
-        {:ok, connection_name}
-
-      error ->
-        error
+        error ->
+          error
+      end
     end
   end
 
@@ -130,8 +130,6 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
 
   defp mongo_pool_spec(database, connection_name) do
     # Build MongoDB URL from database config
-    url = build_mongo_url(database)
-
     # Extract pool_size from config
     db_config = database.config || %{}
 
@@ -142,45 +140,51 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
         val when is_binary(val) -> String.to_integer(val)
       end
 
-    # Build connection config from database record
-    config = [
-      name: connection_name,
-      url: url,
-      pool_size: pool_size,
-      timeout: 5000,
-      pool_timeout: 5000,
-      # MongoDB-specific options
-      idle_interval: 5000,
-      backoff_max: 1000,
-      backoff_min: 500
-    ]
+    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
+      url = build_mongo_url(database, endpoint)
 
-    {Mongo, config}
+      # Build connection config from database record
+      config = [
+        name: connection_name,
+        url: url,
+        pool_size: pool_size,
+        timeout: 5000,
+        pool_timeout: 5000,
+        # MongoDB-specific options
+        idle_interval: 5000,
+        backoff_max: 1000,
+        backoff_min: 500
+      ]
+
+      {:ok, {Mongo, config}}
+    end
   end
 
-  defp build_mongo_url(database) do
+  defp build_mongo_url(database, endpoint) do
     # Handle authentication
     auth_part =
       if database.username && database.password do
-        "#{database.username}:#{database.password}@"
+        "#{encode_uri_component(database.username)}:#{encode_uri_component(database.password)}@"
       else
         ""
       end
 
     # Build full URL
     port = database.port || 27017
-    db_name = database.database_name || "admin"
+    db_name = encode_uri_component(database.database_name || "admin")
 
     # Add authSource parameter if auth_database is specified
     auth_source_param =
       if database.auth_database && database.auth_database != "" do
-        "?authSource=#{database.auth_database}"
+        "?authSource=#{encode_uri_component(database.auth_database)}"
       else
         ""
       end
 
-    "mongodb://#{auth_part}#{database.host}:#{port}/#{db_name}#{auth_source_param}"
+    "mongodb://#{auth_part}#{endpoint.host}:#{endpoint.port || port}/#{db_name}#{auth_source_param}"
   end
+
+  defp encode_uri_component(value), do: value |> to_string() |> URI.encode_www_form()
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do
     pool_name

@@ -58,7 +58,7 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
                 <% @database.driver == "sqlite" -> %>
                   {@database.file_path || "N/A"}
                 <% @database.driver == "redis" -> %>
-                  Default (0)
+                  {@database.database_name || "N/A"}
                 <% true -> %>
                   {@database.database_name || "N/A"}
               <% end %>

@@ -69,6 +69,7 @@ Conversational analytics assistant that queries your metrics using OpenAI GPT mo
 Automated builds via GitHub Actions on every push to `main` and version tags:
 - `trifle/app`: Application image (AMD64 + ARM64)
 - `trifle/environment`: Base image (Ruby, Erlang, Elixir)
+- `trifle/agent`: Private database connector agent (AMD64 + ARM64)
 
 Version is defined in the root `VERSION` file.
 

@@ -37,8 +37,14 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
           />
         <% end %>
 
-        <%= if @selected_driver && @selected_driver != "redis" && @selected_driver != "sqlite" do %>
-          <.form_field field={@form[:database_name]} label="Database Name" />
+        <%= if @selected_driver && @selected_driver != "sqlite" do %>
+          <.form_field
+            field={@form[:database_name]}
+            type={if @selected_driver == "redis", do: "number", else: "text"}
+            min={if @selected_driver == "redis", do: "0", else: nil}
+            step={if @selected_driver == "redis", do: "1", else: nil}
+            label={if @selected_driver == "redis", do: "Redis Database Number", else: "Database Name"}
+          />
         <% end %>
 
         <%= if @selected_driver && @selected_driver == "sqlite" do %>
@@ -315,7 +321,7 @@ defmodule TrifleAdmin.DatabasesLive.FormComponent do
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
-  defp config_field_type("ssl", "postgres"), do: :boolean
+  defp config_field_type("ssl", driver) when driver in ["postgres", "mysql"], do: :boolean
   defp config_field_type("joined_identifiers", _), do: :joined_identifiers
   defp config_field_type("pool_size", _), do: :integer
   defp config_field_type("pool_timeout", _), do: :integer

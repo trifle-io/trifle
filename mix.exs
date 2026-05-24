@@ -20,7 +20,7 @@ defmodule Trifle.MixProject do
   def application do
     [
       mod: {Trifle.Application, []},
-      extra_applications: [:logger, :runtime_tools, :os_mon, :inets]
+      extra_applications: [:logger, :runtime_tools, :os_mon, :inets, :ssh]
     ]
   end
 
