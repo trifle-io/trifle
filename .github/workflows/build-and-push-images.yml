@@ -24,6 +24,7 @@ env:
   REGISTRY: docker.io
   ENVIRONMENT_IMAGE_NAME: trifle/environment
   APP_IMAGE_NAME: trifle/app
+  AGENT_IMAGE_NAME: trifle/agent
 
 jobs:
   build-app:
@@ -207,6 +208,37 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Set build date
+        id: build_date
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
+      - name: Extract metadata for agent image
+        id: meta-agent
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.AGENT_IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.image_tag.outputs.version }},enable=${{ steps.image_tag.outputs.is_tag_build == 'true' }}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=latest,enable=${{ steps.image_tag.outputs.is_tag_build != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+      - name: Build and push agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: agent
+          file: ./.devops/docker/agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ steps.image_tag.outputs.is_tag_build == 'true' }}
+          tags: ${{ steps.meta-agent.outputs.tags }}
+          labels: ${{ steps.meta-agent.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.image_tag.outputs.version != '' && steps.image_tag.outputs.version || github.ref_name }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.build_date.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   security-scan:
     if: needs.build-app.outputs.is_tag_build == 'true'
     needs: [build-app]
@@ -227,15 +259,31 @@ jobs:
           output: 'trivy-results.txt'
           skip-version-check: true
 
+      - name: Run Trivy vulnerability scanner for agent
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.AGENT_IMAGE_NAME }}:${{ needs.build-app.outputs.app_tag }}'
+          format: 'table'
+          output: 'trivy-agent-results.txt'
+          skip-version-check: true
+
       - name: Display security scan results
         if: always()
         run: |
           echo "🛡️ Security Scan Results:"
           echo "========================="
           if [ -f trivy-results.txt ]; then
+            echo "Application image:"
             cat trivy-results.txt
           else
-            echo "No scan results found"
+            echo "No application scan results found"
+          fi
+          if [ -f trivy-agent-results.txt ]; then
+            echo ""
+            echo "Agent image:"
+            cat trivy-agent-results.txt
+          else
+            echo "No agent scan results found"
           fi
 
       - name: Run Trivy vulnerability scanner (SARIF format for GitHub Security)
@@ -256,8 +304,16 @@ jobs:
       - name: Check for critical vulnerabilities
         if: always()
         run: |
+          SCAN_FILES=""
           if [ -f trivy-results.txt ]; then
-            if grep -q "CRITICAL" trivy-results.txt; then
+            SCAN_FILES="${SCAN_FILES} trivy-results.txt"
+          fi
+          if [ -f trivy-agent-results.txt ]; then
+            SCAN_FILES="${SCAN_FILES} trivy-agent-results.txt"
+          fi
+
+          if [ -n "${SCAN_FILES}" ]; then
+            if grep -q "CRITICAL" ${SCAN_FILES}; then
               echo "⚠️  CRITICAL vulnerabilities found!"
               echo "Please review the security scan results above."
               echo "Continuing build - review and fix vulnerabilities in production."

@@ -31,15 +31,16 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 ### Application Build (`build-and-push-images.yml`)
 **Triggers**:
 - **Push to main**: Builds for validation (no push)
-- **Push tags (v*)**: Builds and pushes `trifle/app` with the git tag
+- **Push tags (v*)**: Builds and pushes `trifle/app` and `trifle/agent` with the git tag
 - **Pull requests**: Builds for testing only (no push)
 
 **Process**:
 1. **Uses existing environment image** from Docker Hub
 2. **Builds assets** with Node.js/Elixir on GitHub Actions
 3. **Builds application image** with pre-compiled assets
-4. **Multi-platform**: AMD64 and ARM64
-5. **Security scanning**: Trivy vulnerability checks (shows in build logs)
+4. **Builds agent image** from `agent`
+5. **Multi-platform**: AMD64 and ARM64
+6. **Security scanning**: Trivy vulnerability checks (shows in build logs)
 
 ### Environment Build (`build-environment-image.yml`)
 **Triggers**:
@@ -55,6 +56,7 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 - `trifle/environment:ruby_3.2.0-erlang_28.0.2-elixir_1.18.4`
 - `trifle/environment:latest`
 - `trifle/app:1.2.3` (when you tag releases like `v1.2.3`)
+- `trifle/agent:1.2.3` (when you tag releases like `v1.2.3`)
 
 ## Usage
 
