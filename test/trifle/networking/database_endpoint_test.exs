@@ -17,9 +17,20 @@ defmodule Trifle.Networking.DatabaseEndpointTest do
   end
 
   test "keeps sqlite direct databases local" do
-    database = %Database{connection_method: "direct", driver: "sqlite", host: nil, port: nil}
+    database = %Database{
+      connection_method: "direct",
+      driver: "sqlite",
+      host: "stale.internal",
+      port: 5432
+    }
 
     assert {:ok, %{host: nil, port: nil, via: :local}} = DatabaseEndpoint.resolve(database)
+  end
+
+  test "rejects connector connection method until connector routing is implemented" do
+    database = %Database{connection_method: "connector", driver: "postgres"}
+
+    assert {:error, :connector_connection_not_implemented} = DatabaseEndpoint.resolve(database)
   end
 
   test "rejects legacy agent connection method" do

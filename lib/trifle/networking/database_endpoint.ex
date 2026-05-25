@@ -14,8 +14,8 @@ defmodule Trifle.Networking.DatabaseEndpoint do
     {:error, :connector_connection_not_implemented}
   end
 
-  def resolve(%Database{connection_method: "direct", driver: "sqlite"} = database) do
-    {:ok, %{host: database.host, port: database.port, via: :local}}
+  def resolve(%Database{connection_method: "direct", driver: "sqlite"}) do
+    {:ok, %{host: nil, port: nil, via: :local}}
   end
 
   def resolve(%Database{connection_method: "ssh_tunnel"} = database) do
