@@ -2,21 +2,21 @@
 
 set -euo pipefail
 
-# Build the Trifle private database agent image.
-# Usage: ./.devops/scripts/build-agent.sh [tag] [platform] [image_name]
+# Build the Trifle private connector image.
+# Usage: ./.devops/scripts/build-connector.sh [tag] [platform] [image_name]
 #
 # Examples:
-#   ./.devops/scripts/build-agent.sh
-#   ./.devops/scripts/build-agent.sh 0.15.0 amd64
-#   ./.devops/scripts/build-agent.sh 0.15.0 multi trifle/agent
+#   ./.devops/scripts/build-connector.sh
+#   ./.devops/scripts/build-connector.sh 0.15.0 amd64
+#   ./.devops/scripts/build-connector.sh 0.15.0 multi trifle/connector
 
 TAG="${1:-latest}"
 PLATFORM="${2:-current}"
-IMAGE_NAME="${3:-trifle/agent}"
+IMAGE_NAME="${3:-trifle/connector}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-CONTEXT_DIR="$ROOT_DIR/agent"
-DOCKERFILE="$ROOT_DIR/.devops/docker/agent/Dockerfile"
+CONTEXT_DIR="$ROOT_DIR/connector"
+DOCKERFILE="$ROOT_DIR/.devops/docker/connector/Dockerfile"
 
 if [[ -f "$ROOT_DIR/VERSION" ]]; then
   VERSION="${VERSION:-$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")}"
@@ -40,7 +40,7 @@ COMMON_ARGS=(
   --build-arg "BUILD_DATE=$BUILD_DATE"
 )
 
-echo "Building Trifle agent image"
+echo "Building Trifle connector image"
 echo "Image: $IMAGE_NAME:$TAG"
 echo "Platform: $PLATFORM"
 echo "Version: $VERSION"
@@ -58,12 +58,12 @@ case "$PLATFORM" in
     docker build --platform linux/arm64 "${COMMON_ARGS[@]}" "$CONTEXT_DIR"
     ;;
   multi)
-    if ! docker buildx ls | grep -q "trifle-agent-builder"; then
-      docker buildx create --name trifle-agent-builder --driver docker-container --bootstrap
+    if ! docker buildx ls | grep -q "trifle-connector-builder"; then
+      docker buildx create --name trifle-connector-builder --driver docker-container --bootstrap
     fi
 
     docker buildx build \
-      --builder trifle-agent-builder \
+      --builder trifle-connector-builder \
       --platform linux/amd64,linux/arm64 \
       "${COMMON_ARGS[@]}" \
       --push \

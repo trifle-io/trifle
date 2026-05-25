@@ -23,18 +23,18 @@ RUN CGO_ENABLED=0 \
     go build \
       -trimpath \
       -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
-      -o /out/trifle-agent \
-      ./cmd/trifle-agent
+      -o /out/trifle-connector \
+      ./cmd/trifle-connector
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=builder /out/trifle-agent /trifle-agent
+COPY --from=builder /out/trifle-connector /trifle-connector
 
 USER nonroot:nonroot
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD ["/trifle-agent", "healthcheck"]
+  CMD ["/trifle-connector", "healthcheck"]
 
-ENTRYPOINT ["/trifle-agent"]
+ENTRYPOINT ["/trifle-connector"]

@@ -20,8 +20,8 @@ defmodule Trifle.Networking.DatabaseEndpoint do
     end
   end
 
-  def resolve(%Database{connection_method: "agent"}) do
-    {:error, :agent_connection_not_implemented}
+  def resolve(%Database{connection_method: "connector"}) do
+    {:error, :connector_connection_not_implemented}
   end
 
   def resolve(%Database{} = database) do

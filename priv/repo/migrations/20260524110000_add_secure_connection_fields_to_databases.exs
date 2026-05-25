@@ -14,7 +14,7 @@ defmodule Trifle.Repo.Migrations.AddSecureConnectionFieldsToDatabases do
     end
 
     create constraint(:databases, :chk_databases_connection_method_allowed,
-             check: "connection_method IN ('direct', 'ssh_tunnel', 'agent')"
+             check: "connection_method IN ('direct', 'ssh_tunnel', 'connector')"
            )
 
     create constraint(:databases, :chk_databases_ssh_port_valid,

@@ -158,6 +158,28 @@ defmodule Trifle.OrganizationsFixtures do
     database
   end
 
+  def organization_connector_fixture(attrs \\ %{}) do
+    {connector, _token} = organization_connector_with_token_fixture(attrs)
+    connector
+  end
+
+  def organization_connector_with_token_fixture(attrs \\ %{}) do
+    organization =
+      Map.get(attrs, :organization) || Map.get(attrs, "organization") || organization_fixture()
+
+    attrs =
+      attrs
+      |> Map.delete(:organization)
+      |> Map.delete("organization")
+      |> Enum.into(%{
+        name: "test connector"
+      })
+
+    {:ok, connector, token} = Trifle.Organizations.create_connector_for_org(organization, attrs)
+
+    {connector, token}
+  end
+
   @doc """
   Generate a database_token.
   """

@@ -8,7 +8,7 @@ defmodule Trifle.Organizations.Database do
   @foreign_key_type :binary_id
 
   @drivers ["redis", "postgres", "mongo", "sqlite", "mysql"]
-  @connection_methods ["direct", "ssh_tunnel", "agent"]
+  @connection_methods ["direct", "ssh_tunnel", "connector"]
   @pool_relevant_fields [
     :driver,
     :connection_method,
@@ -26,6 +26,7 @@ defmodule Trifle.Organizations.Database do
     :ssh_public_key,
     :ssh_passphrase,
     :ssh_host_key_fingerprint,
+    :organization_connector_id,
     :config
   ]
 
@@ -59,6 +60,7 @@ defmodule Trifle.Organizations.Database do
     field :last_error, :string
 
     belongs_to :organization, Trifle.Organizations.Organization
+    belongs_to :organization_connector, Trifle.Organizations.OrganizationConnector
     has_many :database_tokens, Trifle.Organizations.DatabaseToken
 
     timestamps()
@@ -190,7 +192,8 @@ defmodule Trifle.Organizations.Database do
       :last_error,
       :default_timeframe,
       :default_granularity,
-      :organization_id
+      :organization_id,
+      :organization_connector_id
     ])
     |> validate_required([:display_name, :driver, :beginning_of_week, :organization_id])
     |> validate_inclusion(:driver, @drivers)
@@ -278,10 +281,12 @@ defmodule Trifle.Organizations.Database do
       {"sqlite", method} when method != "direct" ->
         changeset
         |> clear_ssh_fields()
+        |> clear_connector_fields()
         |> add_error(:connection_method, "must be direct for SQLite databases")
 
       {_, "ssh_tunnel"} ->
         changeset
+        |> clear_connector_fields()
         |> maybe_put_default_ssh_port()
         |> validate_required([
           :ssh_host,
@@ -292,14 +297,25 @@ defmodule Trifle.Organizations.Database do
           :ssh_host_key_fingerprint
         ])
 
-      {_, "agent"} ->
+      {_, "connector"} ->
         changeset
         |> clear_ssh_fields()
-        |> add_error(:connection_method, "is reserved for the Trifle agent data plane")
+        |> validate_required([:organization_connector_id])
+        |> assoc_constraint(:organization_connector)
+        |> check_constraint(:connection_method,
+          name: :chk_databases_connector_required,
+          message: "requires a Trifle private connector"
+        )
 
       _ ->
-        clear_ssh_fields(changeset)
+        changeset
+        |> clear_ssh_fields()
+        |> clear_connector_fields()
     end
+  end
+
+  defp clear_connector_fields(changeset) do
+    put_change(changeset, :organization_connector_id, nil)
   end
 
   defp clear_ssh_fields(changeset) do

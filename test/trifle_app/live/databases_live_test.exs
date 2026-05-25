@@ -35,7 +35,22 @@ defmodule TrifleApp.DatabasesLiveTest do
 
     assert html =~ "Connection Method"
     assert html =~ "Direct + IP allowlist"
+    assert html =~ "SSH tunnel"
+    assert html =~ "Private Connector"
     assert html =~ "Allowlist Trifle Cloud egress"
+  end
+
+  test "private connector method prompts for connector creation when none exist", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{"driver" => "mysql", "connection_method" => "connector"}
+      })
+
+    assert html =~ "Create a private connector before selecting this connection method."
   end
 
   test "ssh tunnel method shows bastion fields and generated public key", %{conn: conn} do
@@ -52,6 +67,24 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Host Key Fingerprint"
     assert html =~ "Trifle Public Key"
     assert html =~ "ssh-rsa"
+  end
+
+  test "private connector method appears when the organization has a connector", %{
+    conn: conn,
+    organization: organization
+  } do
+    {connector, _token} = organization_connector_with_token_fixture(%{organization: organization})
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{"driver" => "mysql", "connection_method" => "connector"}
+      })
+
+    assert html =~ "Private Connector"
+    assert html =~ connector.name
   end
 
   test "new database form shows sqlite upload field when sqlite driver selected", %{conn: conn} do
