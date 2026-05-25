@@ -41,8 +41,8 @@ const (
 
 type config struct {
 	CloudURL             string
-	AgentID              string
-	AgentName            string
+	ConnectorID          string
+	ConnectorName        string
 	Token                string
 	HealthAddr           string
 	PollInterval         time.Duration
@@ -74,7 +74,7 @@ type runtimeStatusView struct {
 	LastError           string    `json:"last_error,omitempty"`
 }
 
-type agent struct {
+type connector struct {
 	cfg        config
 	httpClient *http.Client
 	status     *runtimeStatus
@@ -85,7 +85,7 @@ type agent struct {
 }
 
 type heartbeatRequest struct {
-	AgentID      string            `json:"agent_id"`
+	ConnectorID  string            `json:"connector_id"`
 	Name         string            `json:"name,omitempty"`
 	Version      string            `json:"version"`
 	Commit       string            `json:"commit"`
@@ -136,7 +136,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version":
-			fmt.Printf("trifle-agent %s commit=%s built=%s\n", version, commit, buildDate)
+			fmt.Printf("trifle-connector %s commit=%s built=%s\n", version, commit, buildDate)
 			return
 		case "healthcheck":
 			if err := runHealthcheck(); err != nil {
@@ -161,12 +161,12 @@ func main() {
 	}
 
 	hostname, _ := os.Hostname()
-	if cfg.AgentID == "" {
-		cfg.AgentID = hostname
+	if cfg.ConnectorID == "" {
+		cfg.ConnectorID = hostname
 	}
 
 	status := &runtimeStatus{StartedAt: time.Now().UTC()}
-	a := &agent{
+	a := &connector{
 		cfg:        cfg,
 		httpClient: client,
 		status:     status,
@@ -190,9 +190,9 @@ func main() {
 		<-ctx.Done()
 	} else {
 		logger.Printf(
-			"level=info msg=%q agent_id=%q cloud_url=%q health_addr=%q capabilities=%q",
-			"starting trifle agent",
-			cfg.AgentID,
+			"level=info msg=%q connector_id=%q cloud_url=%q health_addr=%q capabilities=%q",
+			"starting trifle connector",
+			cfg.ConnectorID,
 			cfg.CloudURL,
 			cfg.HealthAddr,
 			strings.Join(cfg.Capabilities, ","),
@@ -205,7 +205,7 @@ func main() {
 	_ = healthServer.Shutdown(shutdownCtx)
 }
 
-func (a *agent) run(ctx context.Context) {
+func (a *connector) run(ctx context.Context) {
 	heartbeatTicker := time.NewTicker(a.cfg.HeartbeatInterval)
 	pollTicker := time.NewTicker(a.cfg.PollInterval)
 	defer heartbeatTicker.Stop()
@@ -221,7 +221,7 @@ func (a *agent) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			a.logger.Printf("level=info msg=%q", "agent shutting down")
+			a.logger.Printf("level=info msg=%q", "connector shutting down")
 			return
 		case <-heartbeatTicker.C:
 			a.sendHeartbeat(ctx)
@@ -231,7 +231,7 @@ func (a *agent) run(ctx context.Context) {
 	}
 }
 
-func (a *agent) dispatchPoll(ctx context.Context) {
+func (a *connector) dispatchPoll(ctx context.Context) {
 	select {
 	case a.pollSem <- struct{}{}:
 		go func() {
@@ -243,10 +243,10 @@ func (a *agent) dispatchPoll(ctx context.Context) {
 	}
 }
 
-func (a *agent) sendHeartbeat(ctx context.Context) {
+func (a *connector) sendHeartbeat(ctx context.Context) {
 	payload := heartbeatRequest{
-		AgentID:      a.cfg.AgentID,
-		Name:         a.cfg.AgentName,
+		ConnectorID:  a.cfg.ConnectorID,
+		Name:         a.cfg.ConnectorName,
 		Version:      version,
 		Commit:       commit,
 		BuildDate:    buildDate,
@@ -259,7 +259,7 @@ func (a *agent) sendHeartbeat(ctx context.Context) {
 		},
 	}
 
-	err := a.postJSON(ctx, "/api/v1/agents/heartbeat", payload, nil)
+	err := a.postJSON(ctx, "/api/v1/connectors/heartbeat", payload, nil)
 	if err != nil {
 		if isNotFound(err) {
 			a.markControlPlanePending()
@@ -278,8 +278,8 @@ func (a *agent) sendHeartbeat(ctx context.Context) {
 	a.status.mu.Unlock()
 }
 
-func (a *agent) pollJobs(ctx context.Context) {
-	endpoint := fmt.Sprintf("/api/v1/agents/jobs?agent_id=%s", url.QueryEscape(a.cfg.AgentID))
+func (a *connector) pollJobs(ctx context.Context) {
+	endpoint := fmt.Sprintf("/api/v1/connectors/jobs?connector_id=%s", url.QueryEscape(a.cfg.ConnectorID))
 	var response jobListResponse
 
 	err := a.getJSON(ctx, endpoint, &response)
@@ -305,7 +305,7 @@ func (a *agent) pollJobs(ctx context.Context) {
 	}
 }
 
-func (a *agent) enqueueJob(ctx context.Context, j job) {
+func (a *connector) enqueueJob(ctx context.Context, j job) {
 	select {
 	case a.jobQueue <- j:
 	case <-ctx.Done():
@@ -314,13 +314,13 @@ func (a *agent) enqueueJob(ctx context.Context, j job) {
 		if j.ID != "" {
 			a.completeJob(ctx, j.ID, jobCompletionRequest{
 				Status: "error",
-				Error:  "agent job queue is full",
+				Error:  "connector job queue is full",
 			})
 		}
 	}
 }
 
-func (a *agent) runJobWorker(ctx context.Context, workerID int) {
+func (a *connector) runJobWorker(ctx context.Context, workerID int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -332,7 +332,7 @@ func (a *agent) runJobWorker(ctx context.Context, workerID int) {
 	}
 }
 
-func (a *agent) handleJob(ctx context.Context, j job) {
+func (a *connector) handleJob(ctx context.Context, j job) {
 	if j.ID == "" {
 		a.logger.Printf("level=warn msg=%q type=%q", "received job without id", j.Type)
 		return
@@ -343,9 +343,9 @@ func (a *agent) handleJob(ctx context.Context, j job) {
 		a.completeJob(ctx, j.ID, jobCompletionRequest{
 			Status: "ok",
 			Result: map[string]any{
-				"pong":       true,
-				"agent_id":   a.cfg.AgentID,
-				"handled_at": time.Now().UTC(),
+				"pong":         true,
+				"connector_id": a.cfg.ConnectorID,
+				"handled_at":   time.Now().UTC(),
 			},
 		})
 	case "tcp_check", "database_tcp_check":
@@ -358,7 +358,7 @@ func (a *agent) handleJob(ctx context.Context, j job) {
 	}
 }
 
-func (a *agent) handleTCPCheck(ctx context.Context, j job) {
+func (a *connector) handleTCPCheck(ctx context.Context, j job) {
 	var payload tcpCheckPayload
 	if err := json.Unmarshal(j.Payload, &payload); err != nil {
 		a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "error", Error: "invalid tcp_check payload"})
@@ -373,7 +373,7 @@ func (a *agent) handleTCPCheck(ctx context.Context, j job) {
 	if !hostAllowed(host, port, a.cfg.AllowedHosts) {
 		a.completeJob(ctx, j.ID, jobCompletionRequest{
 			Status: "error",
-			Error:  fmt.Sprintf("target %s is not allowed by TRIFLE_AGENT_ALLOWED_HOSTS", net.JoinHostPort(host, strconv.Itoa(port))),
+			Error:  fmt.Sprintf("target %s is not allowed by TRIFLE_CONNECTOR_ALLOWED_HOSTS", net.JoinHostPort(host, strconv.Itoa(port))),
 		})
 		return
 	}
@@ -410,8 +410,8 @@ func (a *agent) handleTCPCheck(ctx context.Context, j job) {
 	a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "ok", Result: result})
 }
 
-func (a *agent) completeJob(ctx context.Context, id string, payload jobCompletionRequest) {
-	path := fmt.Sprintf("/api/v1/agents/jobs/%s/complete", url.PathEscape(id))
+func (a *connector) completeJob(ctx context.Context, id string, payload jobCompletionRequest) {
+	path := fmt.Sprintf("/api/v1/connectors/jobs/%s/complete", url.PathEscape(id))
 	if err := a.postJSON(ctx, path, payload, nil); err != nil {
 		a.markError(err)
 		a.logger.Printf("level=warn msg=%q job_id=%q error=%q", "job completion failed", id, err)
@@ -425,7 +425,7 @@ func (a *agent) completeJob(ctx context.Context, id string, payload jobCompletio
 	a.status.mu.Unlock()
 }
 
-func (a *agent) getJSON(ctx context.Context, path string, out any) error {
+func (a *connector) getJSON(ctx context.Context, path string, out any) error {
 	req, err := a.newRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return err
@@ -434,7 +434,7 @@ func (a *agent) getJSON(ctx context.Context, path string, out any) error {
 	return a.doJSON(req, out)
 }
 
-func (a *agent) postJSON(ctx context.Context, path string, in any, out any) error {
+func (a *connector) postJSON(ctx context.Context, path string, in any, out any) error {
 	var body bytes.Buffer
 	if err := json.NewEncoder(&body).Encode(in); err != nil {
 		return err
@@ -449,7 +449,7 @@ func (a *agent) postJSON(ctx context.Context, path string, in any, out any) erro
 	return a.doJSON(req, out)
 }
 
-func (a *agent) newRequest(ctx context.Context, method string, path string, body io.Reader) (*http.Request, error) {
+func (a *connector) newRequest(ctx context.Context, method string, path string, body io.Reader) (*http.Request, error) {
 	base, err := url.Parse(a.cfg.CloudURL)
 	if err != nil {
 		return nil, err
@@ -465,11 +465,11 @@ func (a *agent) newRequest(ctx context.Context, method string, path string, body
 	}
 	req.Header.Set("Authorization", "Bearer "+a.cfg.Token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "trifle-agent/"+version)
+	req.Header.Set("User-Agent", "trifle-connector/"+version)
 	return req, nil
 }
 
-func (a *agent) doJSON(req *http.Request, out any) error {
+func (a *connector) doJSON(req *http.Request, out any) error {
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -495,14 +495,14 @@ func (a *agent) doJSON(req *http.Request, out any) error {
 	return json.Unmarshal(body, out)
 }
 
-func (a *agent) markError(err error) {
+func (a *connector) markError(err error) {
 	a.status.mu.Lock()
 	defer a.status.mu.Unlock()
 	a.status.CloudReachable = false
 	a.status.LastError = err.Error()
 }
 
-func (a *agent) markControlPlanePending() {
+func (a *connector) markControlPlanePending() {
 	a.status.mu.Lock()
 	defer a.status.mu.Unlock()
 	a.status.CloudReachable = false
@@ -569,33 +569,33 @@ func startHealthServer(ctx context.Context, addr string, status *runtimeStatus, 
 func loadConfig() (config, error) {
 	cfg := config{
 		CloudURL:           getEnv("TRIFLE_CLOUD_URL", defaultCloudURL),
-		AgentID:            strings.TrimSpace(os.Getenv("TRIFLE_AGENT_ID")),
-		AgentName:          strings.TrimSpace(os.Getenv("TRIFLE_AGENT_NAME")),
-		Token:              getTokenEnv(),
-		HealthAddr:         getEnv("TRIFLE_AGENT_HEALTH_ADDR", defaultHealthAddr),
-		Capabilities:       splitCSV(getEnv("TRIFLE_AGENT_CAPABILITIES", "postgres,mysql,mongo,redis")),
-		AllowedHosts:       splitCSV(os.Getenv("TRIFLE_AGENT_ALLOWED_HOSTS")),
-		CAFile:             strings.TrimSpace(os.Getenv("TRIFLE_AGENT_CA_FILE")),
-		InsecureSkipVerify: truthy(os.Getenv("TRIFLE_AGENT_INSECURE_SKIP_VERIFY")),
+		ConnectorID:        getEnv("TRIFLE_CONNECTOR_ID", ""),
+		ConnectorName:      getEnv("TRIFLE_CONNECTOR_NAME", ""),
+		Token:              getEnv("TRIFLE_CONNECTOR_TOKEN", ""),
+		HealthAddr:         getEnv("TRIFLE_CONNECTOR_HEALTH_ADDR", defaultHealthAddr),
+		Capabilities:       splitCSV(getEnv("TRIFLE_CONNECTOR_CAPABILITIES", "postgres,mysql,mongo,redis")),
+		AllowedHosts:       splitCSV(getEnv("TRIFLE_CONNECTOR_ALLOWED_HOSTS", "")),
+		CAFile:             getEnv("TRIFLE_CONNECTOR_CA_FILE", ""),
+		InsecureSkipVerify: truthy(getEnv("TRIFLE_CONNECTOR_INSECURE_SKIP_VERIFY", "")),
 	}
 
-	if truthy(os.Getenv("TRIFLE_AGENT_CONTROL_PLANE_DISABLED")) {
+	if truthy(getEnv("TRIFLE_CONNECTOR_CONTROL_PLANE_DISABLED", "")) {
 		cfg.ControlPlaneDisabled = true
 	}
 
 	var err error
-	if cfg.PollInterval, err = getDurationEnv("TRIFLE_AGENT_POLL_INTERVAL", defaultPollInterval); err != nil {
+	if cfg.PollInterval, err = getDurationEnv("TRIFLE_CONNECTOR_POLL_INTERVAL", defaultPollInterval); err != nil {
 		return cfg, err
 	}
-	if cfg.HeartbeatInterval, err = getDurationEnv("TRIFLE_AGENT_HEARTBEAT_INTERVAL", defaultHeartbeatInterval); err != nil {
+	if cfg.HeartbeatInterval, err = getDurationEnv("TRIFLE_CONNECTOR_HEARTBEAT_INTERVAL", defaultHeartbeatInterval); err != nil {
 		return cfg, err
 	}
-	if cfg.RequestTimeout, err = getDurationEnv("TRIFLE_AGENT_REQUEST_TIMEOUT", defaultRequestTimeout); err != nil {
+	if cfg.RequestTimeout, err = getDurationEnv("TRIFLE_CONNECTOR_REQUEST_TIMEOUT", defaultRequestTimeout); err != nil {
 		return cfg, err
 	}
 
 	if cfg.Token == "" && !cfg.ControlPlaneDisabled {
-		return cfg, errors.New("TRIFLE_AGENT_TOKEN or TRIFLE_TOKEN is required")
+		return cfg, errors.New("TRIFLE_CONNECTOR_TOKEN is required")
 	}
 	if !cfg.ControlPlaneDisabled {
 		if err := validateCloudURL(cfg.CloudURL); err != nil {
@@ -603,13 +603,13 @@ func loadConfig() (config, error) {
 		}
 	}
 	if cfg.PollInterval < time.Second {
-		return cfg, errors.New("TRIFLE_AGENT_POLL_INTERVAL must be at least 1s")
+		return cfg, errors.New("TRIFLE_CONNECTOR_POLL_INTERVAL must be at least 1s")
 	}
 	if cfg.HeartbeatInterval < time.Second {
-		return cfg, errors.New("TRIFLE_AGENT_HEARTBEAT_INTERVAL must be at least 1s")
+		return cfg, errors.New("TRIFLE_CONNECTOR_HEARTBEAT_INTERVAL must be at least 1s")
 	}
 	if cfg.HealthAddr == "" {
-		return cfg, errors.New("TRIFLE_AGENT_HEALTH_ADDR cannot be empty")
+		return cfg, errors.New("TRIFLE_CONNECTOR_HEALTH_ADDR cannot be empty")
 	}
 
 	return cfg, nil
@@ -655,7 +655,7 @@ func newHTTPClient(cfg config) (*http.Client, error) {
 
 func runHealthcheck() error {
 	fs := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
-	addr := fs.String("addr", getEnv("TRIFLE_AGENT_HEALTH_ADDR", defaultHealthAddr), "health endpoint address")
+	addr := fs.String("addr", getEnv("TRIFLE_CONNECTOR_HEALTH_ADDR", defaultHealthAddr), "health endpoint address")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return err
 	}
@@ -822,13 +822,6 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func getTokenEnv() string {
-	if token := strings.TrimSpace(os.Getenv("TRIFLE_AGENT_TOKEN")); token != "" {
-		return token
-	}
-	return strings.TrimSpace(os.Getenv("TRIFLE_TOKEN"))
 }
 
 func getDurationEnv(key string, fallback time.Duration) (time.Duration, error) {

@@ -44,7 +44,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
               field={@form[:connection_method]}
               type="select"
               label="Connection Method"
-              options={connection_method_options()}
+              options={connection_method_options(@available_connectors)}
             />
 
             <%= if @selected_connection_method == "direct" do %>
@@ -101,6 +101,24 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
                   </p>
                 </div>
               <% end %>
+            <% end %>
+
+            <%= if @selected_connection_method == "connector" do %>
+              <div class="mt-4">
+                <%= if Enum.empty?(@available_connectors) do %>
+                  <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    Create a private connector before selecting this connection method.
+                  </div>
+                <% else %>
+                  <.form_field
+                    field={@form[:organization_connector_id]}
+                    type="select"
+                    label="Private Connector"
+                    options={connector_options(@available_connectors)}
+                    prompt="Choose a connector..."
+                  />
+                <% end %>
+              </div>
             <% end %>
           </div>
         <% end %>
@@ -353,6 +371,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
       |> ensure_sqlite_upload()
       |> assign(assigns)
       |> assign(:generated_ssh_key, nil)
+      |> assign(:available_connectors, available_connectors(database))
       |> assign(:selected_driver, selected_driver)
       |> assign(:selected_connection_method, selected_connection_method)
       |> assign(:config_options, config_options)
@@ -730,7 +749,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   defp selected_connection_method(socket, params, _selected_driver) do
     case Map.get(params, "connection_method") do
-      value when value in ["direct", "ssh_tunnel"] ->
+      value when value in ["direct", "ssh_tunnel", "connector"] ->
         value
 
       _ ->
@@ -740,12 +759,32 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
     end
   end
 
-  defp connection_method_options do
+  defp connection_method_options(_connectors) do
     [
       {"Direct + IP allowlist", "direct"},
-      {"SSH tunnel", "ssh_tunnel"}
+      {"SSH tunnel", "ssh_tunnel"},
+      {"Private Connector", "connector"}
     ]
   end
+
+  defp connector_options(connectors) do
+    Enum.map(connectors, fn connector ->
+      label =
+        case connector.hostname do
+          value when is_binary(value) and value != "" -> "#{connector.name} (#{value})"
+          _ -> connector.name
+        end
+
+      {label, connector.id}
+    end)
+  end
+
+  defp available_connectors(%Database{organization_id: organization_id})
+       when is_binary(organization_id) do
+    Organizations.list_connectors_for_org(organization_id)
+  end
+
+  defp available_connectors(_database), do: []
 
   defp maybe_ensure_generated_ssh_key(socket, "ssh_tunnel") do
     cond do

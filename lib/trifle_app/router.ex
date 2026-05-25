@@ -81,6 +81,7 @@ defmodule TrifleApp.Router do
       live "/organization/sso", OrganizationSSOLive, :show
       live "/organization/delivery", OrganizationDeliveryLive, :show
       live "/organization/tokens", OrganizationTokensLive, :index
+      live "/organization/connectors", OrganizationConnectorsLive, :index
       live "/organization/billing", OrganizationBillingLive, :show
       live "/dbs", DatabasesLive, :index
       live "/dbs/new", DatabasesLive, :new
@@ -172,6 +173,10 @@ defmodule TrifleApp.Router do
     pipe_through [:api]
 
     get("/health", MetricsController, :health)
+
+    post("/connectors/heartbeat", ConnectorsController, :heartbeat)
+    get("/connectors/jobs", ConnectorsController, :jobs)
+    post("/connectors/jobs/:id/complete", ConnectorsController, :complete_job)
 
     scope "/bootstrap" do
       post("/signup", BootstrapController, :signup)

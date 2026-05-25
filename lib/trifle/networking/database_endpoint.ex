@@ -6,8 +6,16 @@ defmodule Trifle.Networking.DatabaseEndpoint do
   alias Trifle.Networking.SSHTunnelSupervisor
   alias Trifle.Organizations.Database
 
-  def resolve(%Database{driver: "sqlite"} = database) do
-    {:ok, %{host: database.host, port: database.port, via: :local}}
+  def resolve(%Database{connection_method: "agent"}) do
+    {:error, :agent_connection_not_supported}
+  end
+
+  def resolve(%Database{connection_method: "connector"}) do
+    {:error, :connector_connection_not_implemented}
+  end
+
+  def resolve(%Database{connection_method: "direct", driver: "sqlite"}) do
+    {:ok, %{host: nil, port: nil, via: :local}}
   end
 
   def resolve(%Database{connection_method: "ssh_tunnel"} = database) do
@@ -20,16 +28,16 @@ defmodule Trifle.Networking.DatabaseEndpoint do
     end
   end
 
-  def resolve(%Database{connection_method: "agent"}) do
-    {:error, :agent_connection_not_implemented}
-  end
-
-  def resolve(%Database{} = database) do
+  def resolve(%Database{connection_method: "direct"} = database) do
     {:ok,
      %{
        host: database.host,
        port: database.port || Database.default_port(database.driver),
        via: :direct
      }}
+  end
+
+  def resolve(%Database{}) do
+    {:error, :unsupported_connection_method}
   end
 end

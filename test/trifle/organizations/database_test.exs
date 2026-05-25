@@ -38,7 +38,7 @@ defmodule Trifle.Organizations.DatabaseTest do
     end
 
     test "includes secure connection methods" do
-      assert Database.connection_methods() == ["direct", "ssh_tunnel", "agent"]
+      assert Database.connection_methods() == ["direct", "ssh_tunnel", "connector"]
     end
   end
 
@@ -135,17 +135,15 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert get_field(changeset, :ssh_port) == 22
     end
 
-    test "keeps agent connection method reserved" do
+    test "requires an organization connector when connector connection method is selected" do
       changeset =
         Database.changeset(
           %Database{},
-          mysql_attrs(%{connection_method: "agent"})
+          mysql_attrs(%{connection_method: "connector"})
         )
 
       refute changeset.valid?
-
-      assert {"is reserved for the Trifle agent data plane", _} =
-               changeset.errors[:connection_method]
+      assert {"can't be blank", _} = changeset.errors[:organization_connector_id]
     end
 
     test "clears ssh fields when connection method is not ssh tunnel" do
@@ -227,6 +225,46 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert database.beginning_of_week == 1
       assert database.config["table_name"] == "trifle_stats"
       assert database.config["joined_identifiers"] == "full"
+    end
+
+    test "creates connector-connected database with a connector from the same organization" do
+      organization = organization_fixture()
+
+      {connector, _token} =
+        organization_connector_with_token_fixture(%{organization: organization})
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(
+                 organization,
+                 mysql_attrs(%{
+                   connection_method: "connector",
+                   organization_connector_id: connector.id
+                 })
+                 |> Map.delete(:organization_id)
+               )
+
+      assert database.connection_method == "connector"
+      assert database.organization_connector_id == connector.id
+    end
+
+    test "rejects connector-connected database with a connector from another organization" do
+      organization = organization_fixture()
+      other_organization = organization_fixture(%{name: "other organization"})
+
+      {connector, _token} =
+        organization_connector_with_token_fixture(%{organization: other_organization})
+
+      assert {:error, changeset} =
+               Organizations.create_database_for_org(
+                 organization,
+                 mysql_attrs(%{
+                   connection_method: "connector",
+                   organization_connector_id: connector.id
+                 })
+                 |> Map.delete(:organization_id)
+               )
+
+      assert {"is not available", _} = changeset.errors[:organization_connector_id]
     end
   end
 

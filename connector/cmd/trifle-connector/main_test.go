@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoadConfigRequiresToken(t *testing.T) {
-	clearAgentEnv(t)
+	clearConnectorEnv(t)
 
 	_, err := loadConfig()
 	if err == nil {
@@ -17,11 +17,11 @@ func TestLoadConfigRequiresToken(t *testing.T) {
 }
 
 func TestLoadConfigAllowsHealthOnlyModeWithoutToken(t *testing.T) {
-	clearAgentEnv(t)
-	t.Setenv("TRIFLE_AGENT_CONTROL_PLANE_DISABLED", "true")
-	t.Setenv("TRIFLE_AGENT_POLL_INTERVAL", "10")
-	t.Setenv("TRIFLE_AGENT_HEARTBEAT_INTERVAL", "45s")
-	t.Setenv("TRIFLE_AGENT_ALLOWED_HOSTS", "db.internal,10.0.0.0/8")
+	clearConnectorEnv(t)
+	t.Setenv("TRIFLE_CONNECTOR_CONTROL_PLANE_DISABLED", "true")
+	t.Setenv("TRIFLE_CONNECTOR_POLL_INTERVAL", "10")
+	t.Setenv("TRIFLE_CONNECTOR_HEARTBEAT_INTERVAL", "45s")
+	t.Setenv("TRIFLE_CONNECTOR_ALLOWED_HOSTS", "db.internal,10.0.0.0/8")
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -41,36 +41,48 @@ func TestLoadConfigAllowsHealthOnlyModeWithoutToken(t *testing.T) {
 	}
 }
 
-func TestLoadConfigUsesSharedTokenFallback(t *testing.T) {
-	clearAgentEnv(t)
-	t.Setenv("TRIFLE_TOKEN", "shared-token")
+func TestLoadConfigUsesConnectorEnv(t *testing.T) {
+	clearConnectorEnv(t)
+	t.Setenv("TRIFLE_CONNECTOR_TOKEN", "connector-token")
+	t.Setenv("TRIFLE_CONNECTOR_ID", "connector-id")
+	t.Setenv("TRIFLE_CONNECTOR_NAME", "Private VPC")
+	t.Setenv("TRIFLE_CONNECTOR_ALLOWED_HOSTS", "db.internal:5432")
 
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatalf("expected config to load: %v", err)
 	}
-	if cfg.Token != "shared-token" {
-		t.Fatalf("expected shared token fallback, got %q", cfg.Token)
+	if cfg.Token != "connector-token" {
+		t.Fatalf("expected connector token, got %q", cfg.Token)
+	}
+	if cfg.ConnectorID != "connector-id" {
+		t.Fatalf("expected connector id, got %q", cfg.ConnectorID)
+	}
+	if cfg.ConnectorName != "Private VPC" {
+		t.Fatalf("expected connector name, got %q", cfg.ConnectorName)
+	}
+	if len(cfg.AllowedHosts) != 1 || cfg.AllowedHosts[0] != "db.internal:5432" {
+		t.Fatalf("expected connector allowed hosts, got %#v", cfg.AllowedHosts)
 	}
 }
 
 func TestLoadConfigRejectsInvalidDuration(t *testing.T) {
-	clearAgentEnv(t)
-	t.Setenv("TRIFLE_AGENT_CONTROL_PLANE_DISABLED", "true")
-	t.Setenv("TRIFLE_AGENT_POLL_INTERVAL", "30sec")
+	clearConnectorEnv(t)
+	t.Setenv("TRIFLE_CONNECTOR_CONTROL_PLANE_DISABLED", "true")
+	t.Setenv("TRIFLE_CONNECTOR_POLL_INTERVAL", "30sec")
 
 	_, err := loadConfig()
 	if err == nil {
 		t.Fatal("expected invalid duration error")
 	}
-	if !strings.Contains(err.Error(), "TRIFLE_AGENT_POLL_INTERVAL") {
+	if !strings.Contains(err.Error(), "TRIFLE_CONNECTOR_POLL_INTERVAL") {
 		t.Fatalf("expected env key in error, got %q", err.Error())
 	}
 }
 
 func TestLoadConfigSkipsCloudURLValidationInHealthOnlyMode(t *testing.T) {
-	clearAgentEnv(t)
-	t.Setenv("TRIFLE_AGENT_CONTROL_PLANE_DISABLED", "true")
+	clearConnectorEnv(t)
+	t.Setenv("TRIFLE_CONNECTOR_CONTROL_PLANE_DISABLED", "true")
 	t.Setenv("TRIFLE_CLOUD_URL", "not a url")
 
 	if _, err := loadConfig(); err != nil {
@@ -139,24 +151,23 @@ func TestSplitCSV(t *testing.T) {
 	}
 }
 
-func clearAgentEnv(t *testing.T) {
+func clearConnectorEnv(t *testing.T) {
 	t.Helper()
 
 	keys := []string{
 		"TRIFLE_CLOUD_URL",
-		"TRIFLE_AGENT_ID",
-		"TRIFLE_AGENT_NAME",
-		"TRIFLE_AGENT_TOKEN",
-		"TRIFLE_TOKEN",
-		"TRIFLE_AGENT_HEALTH_ADDR",
-		"TRIFLE_AGENT_POLL_INTERVAL",
-		"TRIFLE_AGENT_HEARTBEAT_INTERVAL",
-		"TRIFLE_AGENT_REQUEST_TIMEOUT",
-		"TRIFLE_AGENT_CAPABILITIES",
-		"TRIFLE_AGENT_ALLOWED_HOSTS",
-		"TRIFLE_AGENT_CA_FILE",
-		"TRIFLE_AGENT_INSECURE_SKIP_VERIFY",
-		"TRIFLE_AGENT_CONTROL_PLANE_DISABLED",
+		"TRIFLE_CONNECTOR_ID",
+		"TRIFLE_CONNECTOR_NAME",
+		"TRIFLE_CONNECTOR_TOKEN",
+		"TRIFLE_CONNECTOR_HEALTH_ADDR",
+		"TRIFLE_CONNECTOR_POLL_INTERVAL",
+		"TRIFLE_CONNECTOR_HEARTBEAT_INTERVAL",
+		"TRIFLE_CONNECTOR_REQUEST_TIMEOUT",
+		"TRIFLE_CONNECTOR_CAPABILITIES",
+		"TRIFLE_CONNECTOR_ALLOWED_HOSTS",
+		"TRIFLE_CONNECTOR_CA_FILE",
+		"TRIFLE_CONNECTOR_INSECURE_SKIP_VERIFY",
+		"TRIFLE_CONNECTOR_CONTROL_PLANE_DISABLED",
 	}
 
 	for _, key := range keys {
