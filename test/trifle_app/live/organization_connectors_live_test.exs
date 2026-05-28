@@ -40,6 +40,16 @@ defmodule TrifleApp.OrganizationConnectorsLiveTest do
     assert html =~ "trifle/connector:latest"
     assert html =~ "Production VPC"
 
+    html =
+      lv
+      |> element("button", "Kubernetes")
+      |> render_click()
+
+    assert html =~ "cat &gt; trifle-connector.yaml &lt;&lt;&#39;YAML&#39;"
+    assert html =~ "apiVersion: apps/v1"
+    assert html =~ "kubectl apply -f trifle-connector.yaml"
+    assert html =~ "TRIFLE_CONNECTOR_TOKEN"
+
     assert [%{name: "Production VPC"}] = Organizations.list_connectors_for_org(organization)
   end
 end

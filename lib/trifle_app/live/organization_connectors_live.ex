@@ -19,6 +19,7 @@ defmodule TrifleApp.OrganizationConnectorsLive do
       |> assign(:issued_token, nil)
       |> assign(:connector_error, nil)
       |> assign(:new_connector_name, "")
+      |> assign(:connector_install_tab, "docker")
 
     cond do
       is_nil(current_user) ->
@@ -44,7 +45,7 @@ defmodule TrifleApp.OrganizationConnectorsLive do
               Private Connectors
             </h1>
             <p class="mt-2 text-sm text-gray-500 dark:text-slate-400">
-              Connect private databases through a Docker connector running inside your network.
+              Connect private databases through a Private Connector running inside your network.
             </p>
           </div>
           <%= if @can_manage do %>
@@ -147,22 +148,53 @@ defmodule TrifleApp.OrganizationConnectorsLive do
                   {@issued_token}
                 </code>
                 <div>
-                  <label class="block text-sm font-medium text-gray-900 dark:text-white">
-                    Docker command
-                  </label>
-                  <pre
-                    id="organization_connector_command"
-                    class="mt-2 max-h-56 overflow-x-auto rounded-md px-3 py-2 font-mono text-xs leading-5 shadow-inner"
-                    style="background-color: #0f172a; color: #f8fafc;"
-                  ><code>{docker_command(@issued_connector, @issued_token)}</code></pre>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="inline-flex rounded-md border border-gray-200 bg-gray-50 p-1 text-xs font-medium dark:border-slate-700 dark:bg-slate-900">
+                      <button
+                        type="button"
+                        phx-click="select_connector_install_tab"
+                        phx-value-tab="docker"
+                        class={connector_install_tab_classes(@connector_install_tab == "docker")}
+                      >
+                        Docker
+                      </button>
+                      <button
+                        type="button"
+                        phx-click="select_connector_install_tab"
+                        phx-value-tab="kubernetes"
+                        class={connector_install_tab_classes(@connector_install_tab == "kubernetes")}
+                      >
+                        Kubernetes
+                      </button>
+                    </div>
+                  </div>
+                  <%= if @connector_install_tab == "kubernetes" do %>
+                    <pre
+                      id="organization_connector_kubernetes_manifest"
+                      class="mt-2 max-h-72 overflow-x-auto rounded-md px-3 py-2 font-mono text-xs leading-5 shadow-inner"
+                      style="background-color: #0f172a; color: #f8fafc;"
+                    ><code>{kubernetes_install_command(@issued_connector, @issued_token)}</code></pre>
+                  <% else %>
+                    <pre
+                      id="organization_connector_docker_command"
+                      class="mt-2 max-h-56 overflow-x-auto rounded-md px-3 py-2 font-mono text-xs leading-5 shadow-inner"
+                      style="background-color: #0f172a; color: #f8fafc;"
+                    ><code>{docker_command(@issued_connector, @issued_token)}</code></pre>
+                  <% end %>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
+                    Replace <code>db.internal:5432</code>
+                    with the database host and port this connector may reach.
+                  </p>
                 </div>
                 <div class="flex justify-end gap-2">
                   <button
                     type="button"
-                    phx-click={JS.dispatch("phx:copy", to: "#organization_connector_command")}
+                    phx-click={
+                      JS.dispatch("phx:copy", to: connector_install_target(@connector_install_tab))
+                    }
                     class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                   >
-                    Copy command
+                    Copy {connector_install_label(@connector_install_tab)}
                   </button>
                   <button
                     type="button"
@@ -223,7 +255,8 @@ defmodule TrifleApp.OrganizationConnectorsLive do
      |> assign(:issued_connector, nil)
      |> assign(:issued_token, nil)
      |> assign(:connector_error, nil)
-     |> assign(:new_connector_name, "")}
+     |> assign(:new_connector_name, "")
+     |> assign(:connector_install_tab, "docker")}
   end
 
   def handle_event("close_create_modal", _params, socket) do
@@ -233,7 +266,13 @@ defmodule TrifleApp.OrganizationConnectorsLive do
      |> assign(:issued_connector, nil)
      |> assign(:issued_token, nil)
      |> assign(:connector_error, nil)
-     |> assign(:new_connector_name, "")}
+     |> assign(:new_connector_name, "")
+     |> assign(:connector_install_tab, "docker")}
+  end
+
+  def handle_event("select_connector_install_tab", %{"tab" => tab}, socket)
+      when tab in ["docker", "kubernetes"] do
+    {:noreply, assign(socket, :connector_install_tab, tab)}
   end
 
   def handle_event("change_connector_form", %{"connector" => params}, socket) do
@@ -254,7 +293,8 @@ defmodule TrifleApp.OrganizationConnectorsLive do
            |> assign(:show_create_modal, true)
            |> assign(:issued_connector, connector)
            |> assign(:issued_token, token)
-           |> assign(:connector_error, nil)}
+           |> assign(:connector_error, nil)
+           |> assign(:connector_install_tab, "docker")}
 
         {:error, changeset} ->
           {:noreply,
@@ -368,10 +408,111 @@ defmodule TrifleApp.OrganizationConnectorsLive do
 
   defp docker_command(_, _), do: ""
 
+  defp kubernetes_install_command(%OrganizationConnector{} = connector, token) do
+    manifest = kubernetes_manifest(connector, token)
+
+    [
+      "cat > trifle-connector.yaml <<'YAML'",
+      manifest,
+      "YAML",
+      "",
+      "kubectl apply -f trifle-connector.yaml"
+    ]
+    |> Enum.join("\n")
+  end
+
+  defp kubernetes_install_command(_, _), do: ""
+
+  defp kubernetes_manifest(%OrganizationConnector{} = connector, token) do
+    cloud_url = TrifleWeb.Endpoint.url()
+
+    [
+      "apiVersion: v1",
+      "kind: Secret",
+      "metadata:",
+      "  name: trifle-connector",
+      "type: Opaque",
+      "stringData:",
+      "  TRIFLE_CONNECTOR_TOKEN: #{yaml_quote(token)}",
+      "---",
+      "apiVersion: apps/v1",
+      "kind: Deployment",
+      "metadata:",
+      "  name: trifle-connector",
+      "  labels:",
+      "    app.kubernetes.io/name: trifle-connector",
+      "spec:",
+      "  replicas: 1",
+      "  selector:",
+      "    matchLabels:",
+      "      app.kubernetes.io/name: trifle-connector",
+      "  template:",
+      "    metadata:",
+      "      labels:",
+      "        app.kubernetes.io/name: trifle-connector",
+      "    spec:",
+      "      containers:",
+      "        - name: connector",
+      "          image: trifle/connector:latest",
+      "          imagePullPolicy: Always",
+      "          env:",
+      "            - name: TRIFLE_CLOUD_URL",
+      "              value: #{yaml_quote(cloud_url)}",
+      "            - name: TRIFLE_CONNECTOR_ID",
+      "              value: #{yaml_quote(connector.id)}",
+      "            - name: TRIFLE_CONNECTOR_NAME",
+      "              value: #{yaml_quote(connector.name)}",
+      "            - name: TRIFLE_CONNECTOR_ALLOWED_HOSTS",
+      "              value: 'db.internal:5432'",
+      "            - name: TRIFLE_CONNECTOR_HEALTH_ADDR",
+      "              value: '0.0.0.0:8080'",
+      "            - name: TRIFLE_CONNECTOR_TOKEN",
+      "              valueFrom:",
+      "                secretKeyRef:",
+      "                  name: trifle-connector",
+      "                  key: TRIFLE_CONNECTOR_TOKEN",
+      "          ports:",
+      "            - name: http",
+      "              containerPort: 8080",
+      "          readinessProbe:",
+      "            httpGet:",
+      "              path: /readyz",
+      "              port: http",
+      "            initialDelaySeconds: 5",
+      "            periodSeconds: 10",
+      "          livenessProbe:",
+      "            httpGet:",
+      "              path: /healthz",
+      "              port: http",
+      "            initialDelaySeconds: 10",
+      "            periodSeconds: 30"
+    ]
+    |> Enum.join("\n")
+  end
+
+  defp connector_install_tab_classes(true) do
+    "rounded px-3 py-1.5 text-gray-900 shadow-sm bg-white dark:bg-slate-700 dark:text-white"
+  end
+
+  defp connector_install_tab_classes(false) do
+    "rounded px-3 py-1.5 text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-100"
+  end
+
+  defp connector_install_target("kubernetes"), do: "#organization_connector_kubernetes_manifest"
+  defp connector_install_target(_tab), do: "#organization_connector_docker_command"
+
+  defp connector_install_label("kubernetes"), do: "manifest"
+  defp connector_install_label(_tab), do: "command"
+
   defp docker_env(key, value), do: "-e #{key}=#{shell_quote(value)}"
 
   defp shell_quote(value) do
     value = value |> to_string() |> String.replace("'", "'\"'\"'")
+    "'#{value}'"
+  end
+
+  defp yaml_quote(value) do
+    value = value |> to_string() |> String.replace("'", "''")
     "'#{value}'"
   end
 
