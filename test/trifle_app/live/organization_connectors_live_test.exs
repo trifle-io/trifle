@@ -39,6 +39,8 @@ defmodule TrifleApp.OrganizationConnectorsLiveTest do
     assert html =~ "docker run -d --name trifle-connector"
     assert html =~ "trifle/connector:latest"
     assert html =~ "Production VPC"
+    assert html =~ "Copy command"
+    assert html =~ "Copied"
 
     html =
       lv
@@ -49,6 +51,8 @@ defmodule TrifleApp.OrganizationConnectorsLiveTest do
     assert html =~ "apiVersion: apps/v1"
     assert html =~ "kubectl apply -f trifle-connector.yaml"
     assert html =~ "TRIFLE_CONNECTOR_TOKEN"
+    assert html =~ "Copy manifest"
+    assert html =~ "Copied"
 
     assert [%{name: "Production VPC"}] = Organizations.list_connectors_for_org(organization)
   end

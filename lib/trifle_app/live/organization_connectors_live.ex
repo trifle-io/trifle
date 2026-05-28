@@ -188,13 +188,23 @@ defmodule TrifleApp.OrganizationConnectorsLive do
                 </div>
                 <div class="flex justify-end gap-2">
                   <button
+                    id="organization_connector_copy_install"
                     type="button"
+                    phx-hook="CopyFeedback"
                     phx-click={
                       JS.dispatch("phx:copy", to: connector_install_target(@connector_install_tab))
                     }
+                    data-copy-label="organization_connector_copy_label"
+                    data-copied-label="organization_connector_copied_label"
+                    data-copy-timeout="2000"
                     class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                   >
-                    Copy {connector_install_label(@connector_install_tab)}
+                    <span id="organization_connector_copy_label">
+                      Copy {connector_install_label(@connector_install_tab)}
+                    </span>
+                    <span id="organization_connector_copied_label" class="hidden text-green-600">
+                      Copied
+                    </span>
                   </button>
                   <button
                     type="button"

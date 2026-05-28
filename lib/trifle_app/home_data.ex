@@ -14,7 +14,10 @@ defmodule TrifleApp.HomeData do
   @activity_window_seconds 86_400
   @preferred_granularities ["10m", "15m", "30m", "1h"]
   @default_granularity "1h"
-  @default_fetch_opts [transponders: :none]
+  @default_connector_timeout 15_000
+  @default_source_timeout 20_000
+  @default_max_concurrency 4
+  @default_fetch_opts [transponders: :none, connector_timeout: @default_connector_timeout]
 
   def recent_dashboard_visits(user, membership, limit \\ @recent_limit) do
     Organizations.list_recent_dashboard_visits_for_membership(user, membership, limit)
@@ -28,9 +31,25 @@ defmodule TrifleApp.HomeData do
   def source_activity(nil, _opts), do: []
 
   def source_activity(%OrganizationMembership{} = membership, opts) do
-    membership
-    |> Source.list_for_membership()
-    |> Enum.map(&build_source_activity(&1, opts))
+    sources = Source.list_for_membership(membership)
+
+    sources
+    |> Task.async_stream(&build_source_activity(&1, opts),
+      max_concurrency: source_activity_max_concurrency(opts),
+      on_timeout: :kill_task,
+      timeout: Keyword.get(opts, :source_timeout, @default_source_timeout)
+    )
+    |> Enum.zip(sources)
+    |> Enum.map(fn
+      {{:ok, activity}, _source} ->
+        activity
+
+      {{:exit, :timeout}, source} ->
+        source_activity_error(source, :activity_timeout)
+
+      {{:exit, reason}, source} ->
+        source_activity_error(source, {:exit, reason})
+    end)
   end
 
   defp build_source_activity(source, opts) do
@@ -44,7 +63,9 @@ defmodule TrifleApp.HomeData do
 
     result =
       try do
-        Source.fetch_series(
+        fetcher = Keyword.get(opts, :fetcher, &Source.fetch_series/6)
+
+        fetcher.(
           source,
           "__system__key__",
           from,
@@ -69,15 +90,26 @@ defmodule TrifleApp.HomeData do
         }
 
       {:error, reason} ->
-        %{
-          source: source,
-          granularity: granularity,
-          timeline: [],
-          total: 0.0,
-          last_event_at: nil,
-          error: reason
-        }
+        source_activity_error(source, reason, granularity)
     end
+  end
+
+  defp source_activity_max_concurrency(opts) do
+    opts
+    |> Keyword.get(:max_concurrency, @default_max_concurrency)
+    |> min(@default_max_concurrency)
+    |> max(1)
+  end
+
+  defp source_activity_error(source, reason, granularity \\ nil) do
+    %{
+      source: source,
+      granularity: granularity || pick_granularity(Source.available_granularities(source)),
+      timeline: [],
+      total: 0.0,
+      last_event_at: nil,
+      error: reason
+    }
   end
 
   defp pick_granularity(list) do

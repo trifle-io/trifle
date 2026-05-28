@@ -27,6 +27,8 @@ defmodule TrifleApp.HomeLive do
      |> assign(:recent_limit, @recent_limit)
      |> assign(:current_user, user)
      |> assign(:current_membership, membership)
+     |> assign(:source_activity, [])
+     |> assign(:source_activity_loading, false)
      |> load_home_data(user, membership)}
   end
 
@@ -35,7 +37,23 @@ defmodule TrifleApp.HomeLive do
         _uri,
         %{assigns: %{current_user: user, current_membership: membership}} = socket
       ) do
-    {:noreply, load_home_data(socket, user, membership)}
+    socket =
+      socket
+      |> load_home_data(user, membership)
+      |> maybe_load_source_activity(membership)
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:source_activity_task, {:ok, source_activity}, socket) do
+    {:noreply, assign(socket, source_activity: source_activity, source_activity_loading: false)}
+  end
+
+  def handle_async(:source_activity_task, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(source_activity: [], source_activity_loading: false)
+     |> put_flash(:error, "Failed to load source activity: #{inspect(reason)}")}
   end
 
   def render(assigns) do
@@ -248,68 +266,73 @@ defmodule TrifleApp.HomeLive do
           </div>
         </div>
 
-        <%= if Enum.empty?(@source_activity) do %>
-          <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-            Connect a data source to see activity.
-            <.link
-              navigate={~p"/dbs/new"}
-              class="ml-1 font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
-            >
-              Add a database
-            </.link>
-            <%= if Trifle.Config.projects_enabled?() do %>
-              <span class="mx-1 text-gray-400 dark:text-slate-500">|</span>
+        <%= cond do %>
+          <% @source_activity_loading and @has_sources? -> %>
+            <div class="rounded-lg border border-gray-200 bg-white px-4 py-5 text-sm text-gray-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              Loading source activity...
+            </div>
+          <% Enum.empty?(@source_activity) -> %>
+            <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              Connect a data source to see activity.
               <.link
-                navigate={~p"/projects/new"}
-                class="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
+                navigate={~p"/dbs/new"}
+                class="ml-1 font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
               >
-                Add a project
+                Add a database
               </.link>
-            <% end %>
-          </div>
-        <% else %>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <%= for activity <- @source_activity do %>
-              <div class="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pb-10 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                <div class="flex items-start justify-between gap-3 pb-4">
-                  <div>
-                    <div class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                      <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-200">
-                        {source_icon(activity.source)}
-                      </span>
-                      <span class="truncate">
-                        {Source.display_name(activity.source)}
-                      </span>
+              <%= if Trifle.Config.projects_enabled?() do %>
+                <span class="mx-1 text-gray-400 dark:text-slate-500">|</span>
+                <.link
+                  navigate={~p"/projects/new"}
+                  class="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-300"
+                >
+                  Add a project
+                </.link>
+              <% end %>
+            </div>
+          <% true -> %>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <%= for activity <- @source_activity do %>
+                <div class="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pb-10 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                  <div class="flex items-start justify-between gap-3 pb-4">
+                    <div>
+                      <div class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-200">
+                          {source_icon(activity.source)}
+                        </span>
+                        <span class="truncate">
+                          {Source.display_name(activity.source)}
+                        </span>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">
+                        Last event: {last_event_label(activity.last_event_at)}
+                      </div>
                     </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">
-                      Last event: {last_event_label(activity.last_event_at)}
+                    <div class="text-right">
+                      <div class="text-xl font-semibold text-teal-700 dark:text-teal-300">
+                        {ExploreCore.format_number(activity.total)}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-slate-400">events</div>
                     </div>
                   </div>
-                  <div class="text-right">
-                    <div class="text-xl font-semibold text-teal-700 dark:text-teal-300">
-                      {ExploreCore.format_number(activity.total)}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">events</div>
-                  </div>
-                </div>
 
-                <%= if activity_error = Map.get(activity, :error) do %>
-                  <div class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-900/30 dark:text-red-200 dark:ring-red-800/60">
-                    Unable to load activity ({format_error(activity_error)})
-                  </div>
-                <% else %>
-                  <div
-                    id={"sparkline-#{sparkline_dom_id(activity)}"}
-                    class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
-                    phx-hook="HomeSparkline"
-                    data-series={Jason.encode!(sparkline_series(activity.timeline))}
-                    data-line-color={ChartColors.primary()}
-                  >
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
-          </div>
+                  <%= if activity_error = Map.get(activity, :error) do %>
+                    <div class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-900/30 dark:text-red-200 dark:ring-red-800/60">
+                      Unable to load activity ({format_error(activity_error)})
+                    </div>
+                  <% else %>
+                    <div
+                      id={"sparkline-#{sparkline_dom_id(activity)}"}
+                      class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
+                      phx-hook="HomeSparkline"
+                      data-series={Jason.encode!(sparkline_series(activity.timeline))}
+                      data-line-color={ChartColors.primary()}
+                    >
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
         <% end %>
       </section>
     </div>
@@ -328,8 +351,22 @@ defmodule TrifleApp.HomeLive do
       HomeData.triggered_monitors(user, membership, preload: [:dashboard])
     )
     |> assign(:monitors_count, Monitors.count_monitors_for_membership(membership))
-    |> assign(:source_activity, HomeData.source_activity(membership))
     |> assign(:has_sources?, has_sources?(membership))
+  end
+
+  defp maybe_load_source_activity(socket, membership) do
+    cond do
+      not socket.assigns.has_sources? ->
+        assign(socket, source_activity: [], source_activity_loading: false)
+
+      not connected?(socket) ->
+        assign(socket, :source_activity_loading, true)
+
+      true ->
+        socket
+        |> assign(:source_activity_loading, true)
+        |> start_async(:source_activity_task, fn -> HomeData.source_activity(membership) end)
+    end
   end
 
   defp dashboard_full_name(%{name: name, group_id: group_id}) do
@@ -419,6 +456,8 @@ defmodule TrifleApp.HomeLive do
   defp format_error({:exception, error}) do
     "Exception: #{inspect(error)}"
   end
+
+  defp format_error(:activity_timeout), do: "Timed out"
 
   defp format_error(%struct{} = error) do
     "#{inspect(struct)}: #{Exception.message(error)}"
