@@ -16,6 +16,8 @@ defmodule Trifle.Stats.SeriesFetcher do
   require Logger
 
   @default_chunk_size 720
+  @default_progressive_concurrency 1
+  @connector_progressive_concurrency 10
   @transponder_timeout 300_000
 
   # Public API
@@ -46,6 +48,7 @@ defmodule Trifle.Stats.SeriesFetcher do
         [
           progressive: true,
           chunk_size: @default_chunk_size,
+          progressive_concurrency: default_progressive_concurrency(source),
           progress_callback: nil
         ],
         opts
@@ -131,6 +134,7 @@ defmodule Trifle.Stats.SeriesFetcher do
         granularity,
         config,
         opts[:chunk_size],
+        opts[:progressive_concurrency],
         opts[:progress_callback],
         fetcher
       )
@@ -156,27 +160,50 @@ defmodule Trifle.Stats.SeriesFetcher do
          granularity,
          config,
          chunk_size,
+         progressive_concurrency,
          progress_callback,
          fetcher
        ) do
     timeline = generate_timeline(from, to, granularity, config)
     chunks = Enum.chunk_every(timeline, chunk_size)
     total_chunks = length(chunks)
+    concurrency = normalize_progressive_concurrency(progressive_concurrency)
 
-    # Load all chunks and accumulate results with progress reporting
-    {results, _} =
+    chunk_entries =
       chunks
-      # Load newest first
+      # Load newest first.
       |> Enum.reverse()
       |> Enum.with_index(1)
-      |> Enum.reduce({{:ok, %{}}, 0}, fn {chunk, chunk_index}, {acc_result, _} ->
-        if progress_callback do
-          progress_callback.({:chunk_progress, chunk_index, total_chunks})
-        end
 
-        chunk_result = load_chunk(key, chunk, granularity, config, fetcher)
-        new_result = accumulate_chunk_result(chunk_result, acc_result)
-        {new_result, chunk_index}
+    loaded_chunks =
+      if concurrency == 1 do
+        load_chunks_serial(
+          chunk_entries,
+          key,
+          granularity,
+          config,
+          progress_callback,
+          fetcher,
+          total_chunks
+        )
+      else
+        load_chunks_concurrent(
+          chunk_entries,
+          key,
+          granularity,
+          config,
+          progress_callback,
+          fetcher,
+          total_chunks,
+          concurrency
+        )
+      end
+
+    results =
+      loaded_chunks
+      |> Enum.sort_by(fn {chunk_index, _chunk_result} -> chunk_index end)
+      |> Enum.reduce({:ok, %{}}, fn {_chunk_index, chunk_result}, acc_result ->
+        accumulate_chunk_result(chunk_result, acc_result)
       end)
 
     case results do
@@ -188,12 +215,90 @@ defmodule Trifle.Stats.SeriesFetcher do
     end
   end
 
+  defp load_chunks_serial(
+         chunk_entries,
+         key,
+         granularity,
+         config,
+         progress_callback,
+         fetcher,
+         total_chunks
+       ) do
+    Enum.map(chunk_entries, fn {chunk, chunk_index} ->
+      if progress_callback do
+        progress_callback.({:chunk_progress, chunk_index, total_chunks})
+      end
+
+      {chunk_index, load_chunk(key, chunk, granularity, config, fetcher)}
+    end)
+  end
+
+  defp load_chunks_concurrent(
+         chunk_entries,
+         key,
+         granularity,
+         config,
+         progress_callback,
+         fetcher,
+         total_chunks,
+         concurrency
+       ) do
+    {loaded_chunks, _completed} =
+      chunk_entries
+      |> Task.async_stream(
+        fn {chunk, chunk_index} ->
+          {chunk_index, load_chunk(key, chunk, granularity, config, fetcher)}
+        end,
+        max_concurrency: concurrency,
+        ordered: false,
+        timeout: :infinity
+      )
+      |> Enum.reduce({[], 0}, fn
+        {:ok, {chunk_index, chunk_result}}, {acc, completed} ->
+          completed = completed + 1
+
+          if progress_callback do
+            progress_callback.({:chunk_progress, completed, total_chunks})
+          end
+
+          {[{chunk_index, chunk_result} | acc], completed}
+
+        {:exit, reason}, {acc, completed} ->
+          completed = completed + 1
+
+          if progress_callback do
+            progress_callback.({:chunk_progress, completed, total_chunks})
+          end
+
+          {[{completed, {:error, reason}} | acc], completed}
+      end)
+
+    loaded_chunks
+  end
+
   defp load_chunk(key, chunk, granularity, config, fetcher) do
     chunk_from = List.first(chunk)
     chunk_to = List.last(chunk)
 
     fetcher.(key, chunk_from, chunk_to, granularity, config)
   end
+
+  defp default_progressive_concurrency(%Source{
+         module: Trifle.Stats.Source.Database,
+         record: %Database{connection_method: "connector"}
+       }) do
+    @connector_progressive_concurrency
+  end
+
+  defp default_progressive_concurrency(_source), do: @default_progressive_concurrency
+
+  defp normalize_progressive_concurrency(value) when is_integer(value) do
+    value
+    |> max(1)
+    |> min(@connector_progressive_concurrency)
+  end
+
+  defp normalize_progressive_concurrency(_value), do: @default_progressive_concurrency
 
   defp raw_stats_fetcher(
          %Source{

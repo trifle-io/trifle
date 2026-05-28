@@ -51,6 +51,59 @@ defmodule Trifle.Stats.ConnectorValuesTest do
              Repo.reload!(job)
   end
 
+  test "fetches progressive source series through multiple connector stats_values jobs" do
+    organization = organization_fixture()
+    {connector, _token} = organization_connector_with_token_fixture(%{organization: organization})
+    database = connector_database_fixture(organization, connector)
+    source = Source.from_database(database)
+    from = ~U[2026-05-28 10:00:00Z]
+    middle = ~U[2026-05-28 11:00:00Z]
+    to = ~U[2026-05-28 12:00:00Z]
+
+    task =
+      Task.async(fn ->
+        Source.fetch_series(source, "orders", from, to, "1h",
+          chunk_size: 1,
+          connector_timeout: 2_000
+        )
+      end)
+
+    jobs = wait_for_connector_jobs(connector.id, 3)
+
+    assert Enum.all?(jobs, fn job ->
+             job.type == "stats_values" and length(job.payload["points"]) == 1
+           end)
+
+    jobs_by_key =
+      Map.new(jobs, fn job ->
+        point = List.first(job.payload["points"])
+        {point["identifier"]["key"], job}
+      end)
+
+    for {key, at, count} <- [
+          {"orders::1h::1779962400", from, 3},
+          {"orders::1h::1779966000", middle, 5},
+          {"orders::1h::1779969600", to, 8}
+        ] do
+      job = Map.fetch!(jobs_by_key, key)
+
+      assert {:ok, _completed} =
+               Organizations.complete_connector_job(connector, job.id, %{
+                 "status" => "ok",
+                 "result" => %{
+                   "at" => [DateTime.to_iso8601(at)],
+                   "values" => [%{"count" => count}]
+                 }
+               })
+    end
+
+    assert {:ok, %{series: series, transponder_results: %{successful: []}}} =
+             Task.await(task, 2_000)
+
+    assert series.series[:at] == [from, middle, to]
+    assert series.series[:values] == [%{"count" => 3}, %{"count" => 5}, %{"count" => 8}]
+  end
+
   defp connector_database_fixture(organization, connector) do
     {:ok, database} =
       Organizations.create_database_for_org(organization, %{
@@ -90,6 +143,30 @@ defmodule Trifle.Stats.ConnectorValuesTest do
           Process.sleep(20)
           wait_for_connector_job(connector_id, deadline)
         end
+    end
+  end
+
+  defp wait_for_connector_jobs(connector_id, count) do
+    wait_for_connector_jobs(connector_id, count, System.monotonic_time(:millisecond) + 1_000)
+  end
+
+  defp wait_for_connector_jobs(connector_id, count, deadline) do
+    jobs =
+      Repo.all(
+        from j in ConnectorJob,
+          where: j.organization_connector_id == ^connector_id,
+          order_by: [asc: j.inserted_at]
+      )
+
+    if length(jobs) >= count do
+      jobs
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk("expected #{count} connector jobs, got #{length(jobs)}")
+      else
+        Process.sleep(20)
+        wait_for_connector_jobs(connector_id, count, deadline)
+      end
     end
   end
 end
