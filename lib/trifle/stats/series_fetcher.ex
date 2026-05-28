@@ -9,6 +9,8 @@ defmodule Trifle.Stats.SeriesFetcher do
   - Handling both system keys and specific keys
   """
 
+  alias Trifle.Organizations.Database
+  alias Trifle.Stats.ConnectorValues
   alias Trifle.Stats.Source
 
   require Logger
@@ -49,7 +51,9 @@ defmodule Trifle.Stats.SeriesFetcher do
         opts
       )
 
-    with {:ok, raw_stats} <- fetch_raw_stats(key, from, to, granularity, config, opts),
+    fetcher = raw_stats_fetcher(source, opts)
+
+    with {:ok, raw_stats} <- fetch_raw_stats(key, from, to, granularity, config, opts, fetcher),
          {:ok, result} <-
            apply_transponders_to_stats(raw_stats, transponders, opts[:progress_callback]) do
       {:ok, result}
@@ -117,7 +121,7 @@ defmodule Trifle.Stats.SeriesFetcher do
 
   # Private Implementation
 
-  defp fetch_raw_stats(key, from, to, granularity, config, opts) do
+  defp fetch_raw_stats(key, from, to, granularity, config, opts, fetcher) do
     if opts[:progressive] and
          should_slice_timeline?(from, to, granularity, config, opts[:chunk_size]) do
       fetch_stats_progressive(
@@ -127,24 +131,34 @@ defmodule Trifle.Stats.SeriesFetcher do
         granularity,
         config,
         opts[:chunk_size],
-        opts[:progress_callback]
+        opts[:progress_callback],
+        fetcher
       )
     else
-      fetch_stats_direct(key, from, to, granularity, config, opts[:progress_callback])
+      fetch_stats_direct(key, from, to, granularity, config, opts[:progress_callback], fetcher)
     end
   end
 
-  defp fetch_stats_direct(key, from, to, granularity, config, progress_callback) do
+  defp fetch_stats_direct(key, from, to, granularity, config, progress_callback, fetcher) do
     if progress_callback do
       progress_callback.({:chunk_progress, 1, 1})
     end
 
-    # Use Trifle.Stats.values to fetch raw stats data
-    stats = Trifle.Stats.values(key, from, to, granularity, config)
-    {:ok, ensure_chronological(stats)}
+    with {:ok, stats} <- fetcher.(key, from, to, granularity, config) do
+      {:ok, ensure_chronological(stats)}
+    end
   end
 
-  defp fetch_stats_progressive(key, from, to, granularity, config, chunk_size, progress_callback) do
+  defp fetch_stats_progressive(
+         key,
+         from,
+         to,
+         granularity,
+         config,
+         chunk_size,
+         progress_callback,
+         fetcher
+       ) do
     timeline = generate_timeline(from, to, granularity, config)
     chunks = Enum.chunk_every(timeline, chunk_size)
     total_chunks = length(chunks)
@@ -160,7 +174,7 @@ defmodule Trifle.Stats.SeriesFetcher do
           progress_callback.({:chunk_progress, chunk_index, total_chunks})
         end
 
-        chunk_result = load_chunk(key, chunk, granularity, config)
+        chunk_result = load_chunk(key, chunk, granularity, config, fetcher)
         new_result = accumulate_chunk_result(chunk_result, acc_result)
         {new_result, chunk_index}
       end)
@@ -174,13 +188,31 @@ defmodule Trifle.Stats.SeriesFetcher do
     end
   end
 
-  defp load_chunk(key, chunk, granularity, config) do
+  defp load_chunk(key, chunk, granularity, config, fetcher) do
     chunk_from = List.first(chunk)
     chunk_to = List.last(chunk)
 
-    # Use Trifle.Stats.values to fetch raw stats data
-    stats = Trifle.Stats.values(key, chunk_from, chunk_to, granularity, config)
-    {:ok, stats}
+    fetcher.(key, chunk_from, chunk_to, granularity, config)
+  end
+
+  defp raw_stats_fetcher(
+         %Source{
+           module: Trifle.Stats.Source.Database,
+           record: %Database{connection_method: "connector"} = database
+         },
+         opts
+       ) do
+    connector_opts = Keyword.take(opts, [:connector_timeout])
+
+    fn key, from, to, granularity, _config ->
+      ConnectorValues.fetch_values(database, key, from, to, granularity, connector_opts)
+    end
+  end
+
+  defp raw_stats_fetcher(_source, _opts) do
+    fn key, from, to, granularity, config ->
+      {:ok, Trifle.Stats.values(key, from, to, granularity, config)}
+    end
   end
 
   defp accumulate_chunk_result({:ok, chunk_stats}, {:ok, accumulated_stats}) do
@@ -191,6 +223,10 @@ defmodule Trifle.Stats.SeriesFetcher do
 
     merged_stats = %{at: merged_at, values: merged_values}
     {:ok, merged_stats}
+  end
+
+  defp accumulate_chunk_result({:error, error}, _accumulated_stats) do
+    {:error, error}
   end
 
   defp accumulate_chunk_result(_chunk, {:error, error}) do

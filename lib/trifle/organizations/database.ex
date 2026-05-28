@@ -2,6 +2,7 @@ defmodule Trifle.Organizations.Database do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Trifle.Organizations.{ConnectorJob, OrganizationConnector}
   alias Trifle.Timeframe
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -508,17 +509,16 @@ defmodule Trifle.Organizations.Database do
     put_change(changeset, :granularities, parsed_granularities)
   end
 
+  def stats_config(%__MODULE__{connection_method: "connector"} = database) do
+    stats_metadata_config(database)
+  end
+
   def stats_config(database) do
     driver = get_or_create_driver(database)
 
     # Use database granularities if available, otherwise use defaults
     granularities =
-      case database.granularities do
-        [] -> default_granularities()
-        nil -> default_granularities()
-        list when is_list(list) -> list
-        _ -> default_granularities()
-      end
+      configured_granularities(database)
 
     Trifle.Stats.Configuration.configure(
       driver,
@@ -527,6 +527,29 @@ defmodule Trifle.Organizations.Database do
       beginning_of_week: beginning_of_week_for(database) || :monday,
       track_granularities: granularities
     )
+  end
+
+  def stats_metadata_config(database) do
+    granularities = configured_granularities(database)
+
+    %Trifle.Stats.Configuration{
+      driver: nil,
+      time_zone: database.time_zone || "UTC",
+      time_zone_database: Tzdata.TimeZoneDatabase,
+      beginning_of_week: beginning_of_week_for(database) || :monday,
+      track_granularities: granularities,
+      granularities: granularities,
+      validate_driver: false
+    }
+  end
+
+  defp configured_granularities(database) do
+    case database.granularities do
+      [] -> default_granularities()
+      nil -> default_granularities()
+      list when is_list(list) -> list
+      _ -> default_granularities()
+    end
   end
 
   # Get or create supervised connection pool for a database
@@ -720,28 +743,32 @@ defmodule Trifle.Organizations.Database do
   def check_status(database) do
     try do
       {setup_exists, error_msg} =
-        case database.driver do
-          "redis" ->
-            driver = build_driver_for_check(database)
-            {redis_exists?(driver), nil}
+        if database.connection_method == "connector" do
+          connector_exists?(database)
+        else
+          case database.driver do
+            "redis" ->
+              driver = build_driver_for_check(database)
+              {redis_exists?(driver), nil}
 
-          "mongo" ->
-            require Logger
-            result = mongo_exists_direct?(database)
-            Logger.info("MongoDB exists check returned: #{inspect(result)}")
-            {result, nil}
+            "mongo" ->
+              require Logger
+              result = mongo_exists_direct?(database)
+              Logger.info("MongoDB exists check returned: #{inspect(result)}")
+              {result, nil}
 
-          "postgres" ->
-            postgres_exists_direct?(database)
+            "postgres" ->
+              postgres_exists_direct?(database)
 
-          "sqlite" ->
-            {sqlite_exists_direct?(database), nil}
+            "sqlite" ->
+              {sqlite_exists_direct?(database), nil}
 
-          "mysql" ->
-            mysql_exists_direct?(database)
+            "mysql" ->
+              mysql_exists_direct?(database)
 
-          _ ->
-            {false, nil}
+            _ ->
+              {false, nil}
+          end
         end
 
       status =
@@ -1248,6 +1275,109 @@ defmodule Trifle.Organizations.Database do
       {:error, _reason} ->
         false
     end
+  end
+
+  defp connector_exists?(database) do
+    with {:ok, payload} <- connector_tcp_check_payload(database),
+         {:ok, connector} <- connector_for_database(database),
+         {:ok, job} <-
+           Trifle.Organizations.enqueue_connector_job(connector, "database_tcp_check", payload),
+         {:ok, completed_job} <- await_connector_job(connector, job) do
+      connector_check_result(completed_job, database)
+    else
+      {:error, message} when is_binary(message) -> {false, message}
+      {:error, reason} -> {false, inspect(reason)}
+    end
+  end
+
+  defp connector_tcp_check_payload(database) do
+    host = database.host || ""
+    host = host |> to_string() |> String.trim()
+    port = database.port || default_port(database.driver)
+
+    cond do
+      host == "" ->
+        {:error, "Database host is required for Private Connector checks"}
+
+      not is_integer(port) ->
+        {:error, "Database port is required for Private Connector checks"}
+
+      true ->
+        {:ok,
+         %{
+           "database_id" => database.id,
+           "driver" => database.driver,
+           "host" => host,
+           "port" => port,
+           "timeout_seconds" => 10
+         }}
+    end
+  end
+
+  defp connector_for_database(%{organization_connector_id: nil}) do
+    {:error, "Private Connector is not selected"}
+  end
+
+  defp connector_for_database(database) do
+    case Trifle.Repo.get_by(OrganizationConnector,
+           id: database.organization_connector_id,
+           organization_id: database.organization_id
+         ) do
+      %OrganizationConnector{} = connector -> {:ok, connector}
+      nil -> {:error, "Private Connector is not available"}
+    end
+  end
+
+  defp await_connector_job(connector, job) do
+    deadline = System.monotonic_time(:millisecond) + 25_000
+    await_connector_job(connector.id, job.id, deadline)
+  end
+
+  defp await_connector_job(connector_id, job_id, deadline) do
+    case Trifle.Repo.get_by(ConnectorJob, id: job_id, organization_connector_id: connector_id) do
+      %ConnectorJob{status: status} = job when status in ["ok", "error"] ->
+        {:ok, job}
+
+      %ConnectorJob{} ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          {:error, "Timed out waiting for Private Connector to check database reachability"}
+        else
+          Process.sleep(250)
+          await_connector_job(connector_id, job_id, deadline)
+        end
+
+      nil ->
+        {:error, "Private Connector check job was not found"}
+    end
+  end
+
+  defp connector_check_result(%ConnectorJob{status: "ok", result: %{} = result}, database) do
+    case Map.get(result, "reachable") || Map.get(result, :reachable) do
+      true ->
+        {true, nil}
+
+      _ ->
+        error =
+          Map.get(result, "error") ||
+            Map.get(result, :error) ||
+            "Private Connector could not reach #{database.host}:#{database.port || default_port(database.driver)}"
+
+        {false, error}
+    end
+  end
+
+  defp connector_check_result(%ConnectorJob{status: "ok"}, database) do
+    {false,
+     "Private Connector returned an invalid check result for #{database.host}:#{database.port || default_port(database.driver)}"}
+  end
+
+  defp connector_check_result(%ConnectorJob{status: "error", error: error}, _database)
+       when is_binary(error) and error != "" do
+    {false, error}
+  end
+
+  defp connector_check_result(%ConnectorJob{status: "error"}, _database) do
+    {false, "Private Connector check failed"}
   end
 
   defp convert_postgres_error_to_friendly_message(error, database) do

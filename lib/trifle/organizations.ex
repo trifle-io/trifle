@@ -2333,6 +2333,7 @@ defmodule Trifle.Organizations do
           |> Map.new()
           |> atomize_keys()
           |> normalize_connector_job_completion_attrs()
+          |> maybe_scrub_connector_job_payload(job)
 
         job
         |> ConnectorJob.changeset(attrs)
@@ -2358,6 +2359,25 @@ defmodule Trifle.Organizations do
     |> Map.put(:status, status)
     |> Map.put(:completed_at, DateTime.utc_now() |> DateTime.truncate(:second))
   end
+
+  defp maybe_scrub_connector_job_payload(attrs, %ConnectorJob{type: "stats_values"} = job) do
+    Map.put(attrs, :payload, scrub_connector_job_payload(job.payload))
+  end
+
+  defp maybe_scrub_connector_job_payload(attrs, _job), do: attrs
+
+  defp scrub_connector_job_payload(value) when is_map(value) do
+    Map.new(value, fn
+      {key, _value} when key in ["password", :password] -> {key, "[redacted]"}
+      {key, nested} -> {key, scrub_connector_job_payload(nested)}
+    end)
+  end
+
+  defp scrub_connector_job_payload(values) when is_list(values) do
+    Enum.map(values, &scrub_connector_job_payload/1)
+  end
+
+  defp scrub_connector_job_payload(value), do: value
 
   ## Database tokens
 

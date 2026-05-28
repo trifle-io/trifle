@@ -25,7 +25,7 @@ defmodule TrifleApp.ExploreCore do
 
     case select_source_from_params(params, sources) do
       nil ->
-        {:ok, assign_no_source(socket)}
+        {:ok, assign_no_explore_source(socket, sources)}
 
       source ->
         {:ok, assign_source_state(socket, source)}
@@ -973,9 +973,13 @@ defmodule TrifleApp.ExploreCore do
           updated_socket
 
         new_source ->
-          updated_socket
-          |> apply_source_change(new_source)
-          |> recalculate_timeframe_for_source(new_source)
+          updated_socket = apply_source_change(updated_socket, new_source)
+
+          if updated_socket.assigns[:source] do
+            recalculate_timeframe_for_source(updated_socket, new_source)
+          else
+            updated_socket
+          end
       end
 
     if is_nil(updated_socket.assigns[:source]) do
@@ -1323,7 +1327,7 @@ defmodule TrifleApp.ExploreCore do
     cond do
       sources == [] -> nil
       source = source_from_explicit_params(params, sources) -> source
-      true -> hd(sources)
+      true -> List.first(sources)
     end
   end
 
@@ -1348,6 +1352,10 @@ defmodule TrifleApp.ExploreCore do
   defp apply_source_change(socket, nil), do: assign_no_source(socket)
 
   defp apply_source_change(socket, source) do
+    apply_supported_source_change(socket, source)
+  end
+
+  defp apply_supported_source_change(socket, source) do
     {transponder_info, response_paths} = build_transponder_info(Source.transponders(source))
     config = Source.stats_config(source)
     available_granularities = Source.available_granularities(source) || []
@@ -1397,6 +1405,8 @@ defmodule TrifleApp.ExploreCore do
   defp assign_no_source(socket) do
     socket
     |> assign(:page_title, "Explore")
+    |> assign(:no_source_title, "No sources found")
+    |> assign(:no_source_message, "Please add a database or project first to use Explore.")
     |> assign(:no_source, true)
     |> assign(:source, nil)
     |> assign(:selected_source_ref, nil)
@@ -1428,6 +1438,10 @@ defmodule TrifleApp.ExploreCore do
     |> assign(:show_export_dropdown, false)
     |> assign(:expanded_widget, nil)
   end
+
+  defp assign_no_explore_source(socket, []), do: assign_no_source(socket)
+
+  defp assign_no_explore_source(socket, _sources), do: assign_no_source(socket)
 
   defp ensure_source_in_list(sources, source) do
     cond do
@@ -1994,10 +2008,10 @@ defmodule TrifleApp.ExploreCore do
         <div class="max-w-3xl mx-auto mt-16">
           <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              No sources found
+              {@no_source_title}
             </h2>
             <p class="text-gray-600 dark:text-slate-300">
-              Please add a database or project first to use Explore.
+              {@no_source_message}
             </p>
             <div class="mt-4">
               <.link

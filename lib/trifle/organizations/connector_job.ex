@@ -6,7 +6,7 @@ defmodule Trifle.Organizations.ConnectorJob do
   @foreign_key_type :binary_id
 
   @statuses ["pending", "running", "ok", "error"]
-  @types ["ping", "tcp_check", "database_tcp_check"]
+  @types ["ping", "tcp_check", "database_tcp_check", "stats_values"]
 
   schema "connector_jobs" do
     field :type, :string

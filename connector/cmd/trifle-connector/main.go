@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,11 +17,20 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	mysql "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
@@ -130,6 +140,39 @@ type tcpCheckResult struct {
 	LatencyMS int64  `json:"latency_ms,omitempty"`
 	Error     string `json:"error,omitempty"`
 	CheckedAt string `json:"checked_at"`
+}
+
+type statsValuesPayload struct {
+	DatabaseID     string         `json:"database_id,omitempty"`
+	Driver         string         `json:"driver"`
+	Host           string         `json:"host"`
+	Port           int            `json:"port,omitempty"`
+	DatabaseName   string         `json:"database_name,omitempty"`
+	Username       string         `json:"username,omitempty"`
+	Password       string         `json:"password,omitempty"`
+	AuthDatabase   string         `json:"auth_database,omitempty"`
+	Config         map[string]any `json:"config,omitempty"`
+	Storage        statsStorage   `json:"storage"`
+	Points         []statsPoint   `json:"points"`
+	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
+}
+
+type statsStorage struct {
+	TableName      string `json:"table_name,omitempty"`
+	CollectionName string `json:"collection_name,omitempty"`
+	Prefix         string `json:"prefix,omitempty"`
+	Separator      string `json:"separator,omitempty"`
+}
+
+type statsPoint struct {
+	At         string         `json:"at"`
+	Identifier map[string]any `json:"identifier,omitempty"`
+	RedisKey   string         `json:"redis_key,omitempty"`
+}
+
+type statsValuesResult struct {
+	At     []string         `json:"at"`
+	Values []map[string]any `json:"values"`
 }
 
 func main() {
@@ -350,6 +393,8 @@ func (a *connector) handleJob(ctx context.Context, j job) {
 		})
 	case "tcp_check", "database_tcp_check":
 		a.handleTCPCheck(ctx, j)
+	case "stats_values":
+		a.handleStatsValues(ctx, j)
 	default:
 		a.completeJob(ctx, j.ID, jobCompletionRequest{
 			Status: "error",
@@ -408,6 +453,241 @@ func (a *connector) handleTCPCheck(ctx context.Context, j job) {
 	}
 
 	a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "ok", Result: result})
+}
+
+func (a *connector) handleStatsValues(ctx context.Context, j job) {
+	var payload statsValuesPayload
+	if err := json.Unmarshal(j.Payload, &payload); err != nil {
+		a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "error", Error: "invalid stats_values payload"})
+		return
+	}
+
+	host, port, err := resolveStatsTarget(payload)
+	if err != nil {
+		a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "error", Error: err.Error()})
+		return
+	}
+	if !hostAllowed(host, port, a.cfg.AllowedHosts) {
+		a.completeJob(ctx, j.ID, jobCompletionRequest{
+			Status: "error",
+			Error:  fmt.Sprintf("target %s is not allowed by TRIFLE_CONNECTOR_ALLOWED_HOSTS", net.JoinHostPort(host, strconv.Itoa(port))),
+		})
+		return
+	}
+
+	timeout := statsQueryTimeout(payload.TimeoutSeconds)
+	queryCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	result, err := fetchStatsValues(queryCtx, payload, host, port, timeout)
+	if err != nil {
+		a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "error", Error: err.Error()})
+		return
+	}
+
+	a.completeJob(ctx, j.ID, jobCompletionRequest{Status: "ok", Result: result})
+}
+
+func fetchStatsValues(ctx context.Context, payload statsValuesPayload, host string, port int, timeout time.Duration) (statsValuesResult, error) {
+	switch strings.ToLower(strings.TrimSpace(payload.Driver)) {
+	case "mongo":
+		return fetchMongoStats(ctx, payload, host, port, timeout)
+	case "postgres":
+		return fetchPostgresStats(ctx, payload, host, port, timeout)
+	case "mysql":
+		return fetchMySQLStats(ctx, payload, host, port, timeout)
+	case "redis":
+		return fetchRedisStats(ctx, payload, host, port, timeout)
+	default:
+		return statsValuesResult{}, fmt.Errorf("unsupported stats driver %q", payload.Driver)
+	}
+}
+
+func fetchMongoStats(ctx context.Context, payload statsValuesPayload, host string, port int, timeout time.Duration) (statsValuesResult, error) {
+	dbName := defaultString(payload.DatabaseName, "admin")
+	collectionName := defaultString(payload.Storage.CollectionName, "trifle_stats")
+	uri := mongoURI(payload, host, port, dbName)
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri).SetConnectTimeout(timeout).SetServerSelectionTimeout(timeout))
+	if err != nil {
+		return statsValuesResult{}, err
+	}
+	defer func() { _ = client.Disconnect(context.Background()) }()
+
+	if err := client.Ping(ctx, nil); err != nil {
+		return statsValuesResult{}, err
+	}
+
+	collection := client.Database(dbName).Collection(collectionName)
+	result := emptyStatsResult(payload.Points)
+
+	for index, point := range payload.Points {
+		filter := bson.M{}
+		for key, value := range point.Identifier {
+			filter[key] = normalizeMongoIdentifierValue(key, value)
+		}
+
+		var doc bson.M
+		err := collection.FindOne(ctx, filter).Decode(&doc)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			continue
+		}
+		if err != nil {
+			return statsValuesResult{}, err
+		}
+
+		if data, ok := mapValue(normalizeBSONValue(doc["data"])); ok {
+			result.Values[index] = data
+		}
+	}
+
+	return result, nil
+}
+
+func fetchPostgresStats(ctx context.Context, payload statsValuesPayload, host string, port int, timeout time.Duration) (statsValuesResult, error) {
+	dsn := postgresDSN(payload, host, port)
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return statsValuesResult{}, err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	db.SetConnMaxLifetime(timeout)
+
+	if err := db.PingContext(ctx); err != nil {
+		return statsValuesResult{}, err
+	}
+
+	tableName := defaultString(payload.Storage.TableName, "trifle_stats")
+	return fetchSQLStats(ctx, db, tableName, payload.Points, quotePostgresIdentifier, postgresPlaceholder)
+}
+
+func fetchMySQLStats(ctx context.Context, payload statsValuesPayload, host string, port int, timeout time.Duration) (statsValuesResult, error) {
+	cfg := mysql.NewConfig()
+	cfg.User = payload.Username
+	cfg.Passwd = payload.Password
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(host, strconv.Itoa(port))
+	cfg.DBName = payload.DatabaseName
+	cfg.ParseTime = true
+	cfg.Timeout = timeout
+	cfg.ReadTimeout = timeout
+	cfg.WriteTimeout = timeout
+	cfg.Loc = time.UTC
+	cfg.Params = map[string]string{
+		"charset":   "utf8mb4",
+		"collation": "utf8mb4_unicode_ci",
+	}
+	if truthyConfig(payload.Config["ssl"]) {
+		cfg.TLSConfig = "true"
+	}
+
+	db, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		return statsValuesResult{}, err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	db.SetConnMaxLifetime(timeout)
+
+	if err := db.PingContext(ctx); err != nil {
+		return statsValuesResult{}, err
+	}
+
+	tableName := defaultString(payload.Storage.TableName, "trifle_stats")
+	return fetchSQLStats(ctx, db, tableName, payload.Points, quoteMySQLIdentifier, func(_ int) string { return "?" })
+}
+
+func fetchRedisStats(ctx context.Context, payload statsValuesPayload, host string, port int, timeout time.Duration) (statsValuesResult, error) {
+	dbNumber, err := redisDatabaseNumber(payload.DatabaseName)
+	if err != nil {
+		return statsValuesResult{}, err
+	}
+
+	client := redis.NewClient(&redis.Options{
+		Addr:        net.JoinHostPort(host, strconv.Itoa(port)),
+		Password:    payload.Password,
+		DB:          dbNumber,
+		DialTimeout: timeout,
+		ReadTimeout: timeout,
+	})
+	defer client.Close()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return statsValuesResult{}, err
+	}
+
+	result := emptyStatsResult(payload.Points)
+	for index, point := range payload.Points {
+		if strings.TrimSpace(point.RedisKey) == "" {
+			continue
+		}
+
+		values, err := client.HGetAll(ctx, point.RedisKey).Result()
+		if err != nil {
+			return statsValuesResult{}, err
+		}
+
+		flat := make(map[string]any, len(values))
+		for key, value := range values {
+			flat[key] = parseRedisValue(value)
+		}
+		result.Values[index] = unpackFlatMap(flat)
+	}
+
+	return result, nil
+}
+
+func fetchSQLStats(ctx context.Context, db *sql.DB, tableName string, points []statsPoint, quoteIdentifier func(string) string, placeholder func(int) string) (statsValuesResult, error) {
+	result := emptyStatsResult(points)
+
+	for index, point := range points {
+		if len(point.Identifier) == 0 {
+			continue
+		}
+
+		columns := sortedMapKeys(point.Identifier)
+		conditions := make([]string, 0, len(columns))
+		args := make([]any, 0, len(columns))
+		for argIndex, column := range columns {
+			conditions = append(conditions, fmt.Sprintf("%s = %s", quoteIdentifier(column), placeholder(argIndex+1)))
+			args = append(args, normalizeSQLIdentifierValue(column, point.Identifier[column]))
+		}
+
+		query := fmt.Sprintf(
+			"SELECT %s FROM %s WHERE %s LIMIT 1",
+			quoteIdentifier("data"),
+			quoteIdentifier(tableName),
+			strings.Join(conditions, " AND "),
+		)
+
+		var raw []byte
+		err := db.QueryRowContext(ctx, query, args...).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return statsValuesResult{}, err
+		}
+
+		result.Values[index] = unpackFlatMap(decodeJSONMap(raw))
+	}
+
+	return result, nil
+}
+
+func emptyStatsResult(points []statsPoint) statsValuesResult {
+	result := statsValuesResult{
+		At:     make([]string, len(points)),
+		Values: make([]map[string]any, len(points)),
+	}
+
+	for index, point := range points {
+		result.At[index] = point.At
+		result.Values[index] = map[string]any{}
+	}
+
+	return result
 }
 
 func (a *connector) completeJob(ctx context.Context, id string, payload jobCompletionRequest) {
@@ -786,6 +1066,326 @@ func normalizeHost(host string) string {
 	host = strings.Trim(host, "[]")
 	host = strings.TrimSuffix(host, ".")
 	return host
+}
+
+func resolveStatsTarget(payload statsValuesPayload) (string, int, error) {
+	host := normalizeHost(payload.Host)
+	if host == "" {
+		return "", 0, errors.New("host is required")
+	}
+
+	port := payload.Port
+	if port == 0 {
+		port = defaultStatsPort(payload.Driver)
+	}
+	if port < 1 || port > 65535 {
+		return "", 0, errors.New("port must be between 1 and 65535")
+	}
+
+	return host, port, nil
+}
+
+func defaultStatsPort(driver string) int {
+	switch strings.ToLower(strings.TrimSpace(driver)) {
+	case "postgres":
+		return 5432
+	case "mysql":
+		return 3306
+	case "mongo":
+		return 27017
+	case "redis":
+		return 6379
+	default:
+		return 0
+	}
+}
+
+func statsQueryTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return 30 * time.Second
+	}
+	timeout := time.Duration(seconds) * time.Second
+	if timeout > 2*time.Minute {
+		return 2 * time.Minute
+	}
+	return timeout
+}
+
+func mongoURI(payload statsValuesPayload, host string, port int, dbName string) string {
+	u := url.URL{
+		Scheme: "mongodb",
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:   "/" + dbName,
+	}
+	if payload.Username != "" {
+		u.User = url.UserPassword(payload.Username, payload.Password)
+	}
+	if strings.TrimSpace(payload.AuthDatabase) != "" {
+		q := u.Query()
+		q.Set("authSource", payload.AuthDatabase)
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
+}
+
+func postgresDSN(payload statsValuesPayload, host string, port int) string {
+	u := url.URL{
+		Scheme: "postgres",
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:   "/" + payload.DatabaseName,
+	}
+	if payload.Username != "" {
+		u.User = url.UserPassword(payload.Username, payload.Password)
+	}
+
+	q := u.Query()
+	if truthyConfig(payload.Config["ssl"]) {
+		q.Set("sslmode", "require")
+	} else {
+		q.Set("sslmode", "disable")
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func sortedMapKeys(values map[string]any) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func postgresPlaceholder(index int) string {
+	return "$" + strconv.Itoa(index)
+}
+
+func quotePostgresIdentifier(identifier string) string {
+	parts := strings.Split(identifier, ".")
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.ReplaceAll(part, `"`, `""`)
+		quoted = append(quoted, `"`+part+`"`)
+	}
+	return strings.Join(quoted, ".")
+}
+
+func quoteMySQLIdentifier(identifier string) string {
+	parts := strings.Split(identifier, ".")
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.ReplaceAll(part, "`", "``")
+		quoted = append(quoted, "`"+part+"`")
+	}
+	return strings.Join(quoted, ".")
+}
+
+func normalizeSQLIdentifierValue(column string, value any) any {
+	if strings.EqualFold(column, "at") {
+		if parsed, ok := parseTimeValue(value); ok {
+			return parsed
+		}
+	}
+	return normalizeScalar(value)
+}
+
+func normalizeMongoIdentifierValue(column string, value any) any {
+	if strings.EqualFold(column, "at") {
+		if parsed, ok := parseTimeValue(value); ok {
+			return parsed
+		}
+	}
+	return normalizeScalar(value)
+}
+
+func parseTimeValue(value any) (time.Time, bool) {
+	switch v := value.(type) {
+	case string:
+		parsed, err := time.Parse(time.RFC3339Nano, v)
+		if err == nil {
+			return parsed, true
+		}
+	case float64:
+		if v == float64(int64(v)) {
+			return time.Unix(int64(v), 0).UTC(), true
+		}
+	case int64:
+		return time.Unix(v, 0).UTC(), true
+	case int:
+		return time.Unix(int64(v), 0).UTC(), true
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return time.Unix(i, 0).UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
+func normalizeScalar(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i
+		}
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+	case float64:
+		if v == float64(int64(v)) {
+			return int64(v)
+		}
+	}
+	return value
+}
+
+func decodeJSONMap(raw []byte) map[string]any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	var decoded map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return map[string]any{}
+	}
+	return decoded
+}
+
+func unpackFlatMap(flat map[string]any) map[string]any {
+	out := map[string]any{}
+	for key, value := range flat {
+		parts := strings.Split(key, ".")
+		current := out
+		for index, part := range parts {
+			if index == len(parts)-1 {
+				current[part] = normalizeJSONNumber(value)
+				continue
+			}
+			next, ok := current[part].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				current[part] = next
+			}
+			current = next
+		}
+	}
+	return out
+}
+
+func normalizeJSONNumber(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i
+		}
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+	case map[string]any:
+		return unpackFlatMap(v)
+	}
+	return value
+}
+
+func parseRedisValue(value string) any {
+	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return i
+	}
+	if f, err := strconv.ParseFloat(value, 64); err == nil {
+		return f
+	}
+	return value
+}
+
+func redisDatabaseNumber(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	db, err := strconv.Atoi(value)
+	if err != nil || db < 0 {
+		return 0, fmt.Errorf("redis database must be a non-negative integer")
+	}
+	return db, nil
+}
+
+func normalizeBSONValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, value := range v {
+			out[key] = normalizeBSONValue(value)
+		}
+		return out
+	case bson.M:
+		out := make(map[string]any, len(v))
+		for key, value := range v {
+			out[key] = normalizeBSONValue(value)
+		}
+		return out
+	case bson.D:
+		out := make(map[string]any, len(v))
+		for _, element := range v {
+			out[element.Key] = normalizeBSONValue(element.Value)
+		}
+		return out
+	case primitive.A:
+		out := make([]any, len(v))
+		for index, value := range v {
+			out[index] = normalizeBSONValue(value)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for index, value := range v {
+			out[index] = normalizeBSONValue(value)
+		}
+		return out
+	case primitive.DateTime:
+		return v.Time().UTC().Format(time.RFC3339Nano)
+	case primitive.Decimal128:
+		return v.String()
+	case int32:
+		return int64(v)
+	default:
+		return v
+	}
+}
+
+func mapValue(value any) (map[string]any, bool) {
+	switch v := value.(type) {
+	case map[string]any:
+		return v, true
+	case bson.M:
+		out := normalizeBSONValue(v)
+		if mapped, ok := out.(map[string]any); ok {
+			return mapped, true
+		}
+	}
+	return nil, false
+}
+
+func defaultString(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func truthyConfig(value any) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return truthy(v)
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	default:
+		return false
+	}
 }
 
 func healthcheckTarget(addr string) string {

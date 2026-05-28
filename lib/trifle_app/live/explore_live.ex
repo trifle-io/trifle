@@ -87,10 +87,10 @@ defmodule TrifleApp.ExploreLive do
         <div class="max-w-3xl mx-auto mt-16">
           <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              No sources found
+              {@no_source_title}
             </h2>
             <p class="text-gray-600 dark:text-slate-300">
-              Please add a database or project first to use Explore.
+              {@no_source_message}
             </p>
             <div class="mt-4">
               <.link
