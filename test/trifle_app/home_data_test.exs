@@ -2,6 +2,7 @@ defmodule TrifleApp.HomeDataTest do
   use Trifle.DataCase, async: true
 
   import Trifle.AccountsFixtures
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
   alias Trifle.Organizations
@@ -11,6 +12,7 @@ defmodule TrifleApp.HomeDataTest do
   test "source_activity uses a bounded connector timeout and summarizes counts" do
     user = user_fixture()
     organization = organization_fixture(%{user: user})
+    app_entitlement_fixture(organization)
     database_fixture(%{organization: organization, display_name: "Events"})
     membership = Organizations.get_membership_for_user(user)
     parent = self()
