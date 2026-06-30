@@ -2790,7 +2790,7 @@ Hooks.DashboardGrid = {
     const content = item.querySelector('.grid-stack-item-content');
     if (!content) return;
     content.dataset.widgetLoadingState = normalizedState;
-    this._syncWidgetRefreshSpinner(content, normalizedState);
+    this._syncWidgetRefreshIndicator(content, normalizedState);
     this._syncWidgetLoadingBody(content, normalizedType, normalizedState);
   },
 
@@ -2798,20 +2798,19 @@ Hooks.DashboardGrid = {
     return ['kpi', 'timeseries', 'category', 'table', 'list', 'distribution', 'heatmap'].includes(type);
   },
 
-  _syncWidgetRefreshSpinner(content, state) {
+  _syncWidgetRefreshIndicator(content, state) {
     if (!content || !content.querySelector) return;
     const header = content.querySelector('.grid-widget-header');
     if (!header) return;
     const actions = content.querySelector('.grid-widget-actions');
-    const existing = header.querySelector('[data-role="widget-refresh-spinner"]');
+    const existing = header.querySelector('[data-role="widget-refresh-indicator"]');
     if (state === 'refresh') {
       if (existing) return;
-      const spinner = document.createElement('div');
-      spinner.className = 'grid-widget-loading-indicator pointer-events-none absolute left-1/2 top-1/2 z-10 inline-flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-teal-600 dark:text-teal-300';
-      spinner.setAttribute('data-role', 'widget-refresh-spinner');
-      spinner.setAttribute('aria-label', 'Refreshing widget');
-      spinner.innerHTML = '<span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>';
-      header.insertBefore(spinner, actions || null);
+      const indicator = document.createElement('div');
+      indicator.className = 'grid-widget-refresh-indicator';
+      indicator.setAttribute('data-role', 'widget-refresh-indicator');
+      indicator.setAttribute('aria-label', 'Refreshing widget');
+      header.insertBefore(indicator, actions || null);
       return;
     }
     if (existing) existing.remove();

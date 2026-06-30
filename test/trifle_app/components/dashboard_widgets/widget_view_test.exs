@@ -594,7 +594,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert Map.new(attrs)["data-widget-loading-state"] == "initial"
   end
 
-  test "renders header refresh spinners when data already exists during loading", %{
+  test "renders header refresh indicators when data already exists during loading", %{
     assigns: assigns
   } do
     html = render_component(&WidgetView.grid/1, Map.put(assigns, :loading, true))
@@ -604,7 +604,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert [_] =
              Floki.find(
                document,
-               "#chat-grid-1-grid-widget-content-kpi-1 [data-role=\"widget-refresh-spinner\"]"
+               "#chat-grid-1-grid-widget-content-kpi-1 [data-role=\"widget-refresh-indicator\"].grid-widget-refresh-indicator"
              )
 
     assert [_] = Floki.find(document, "#chat-grid-1-grid-widget-content-kpi-1 .kpi-wrap")

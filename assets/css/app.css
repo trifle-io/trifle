@@ -155,6 +155,66 @@ textarea.bg-transparent {
   background-color: transparent !important;
 }
 
+.grid-widget-refresh-indicator {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 20;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(20, 184, 166, 0.12);
+}
+
+.grid-widget-refresh-indicator::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(20, 184, 166, 0),
+    rgba(20, 184, 166, 0.95),
+    rgba(45, 212, 191, 0.72),
+    rgba(20, 184, 166, 0)
+  );
+  transform: translateX(-120%);
+  will-change: transform;
+  animation: trifle-widget-refresh-sweep 1.15s linear infinite;
+}
+
+.dark .grid-widget-refresh-indicator {
+  background: rgba(45, 212, 191, 0.16);
+}
+
+.dark .grid-widget-refresh-indicator::before {
+  background: linear-gradient(
+    90deg,
+    rgba(45, 212, 191, 0),
+    rgba(45, 212, 191, 0.98),
+    rgba(94, 234, 212, 0.78),
+    rgba(45, 212, 191, 0)
+  );
+}
+
+@keyframes trifle-widget-refresh-sweep {
+  to {
+    transform: translateX(360%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-widget-refresh-indicator::before {
+    width: 100%;
+    transform: none;
+    animation: none;
+    will-change: auto;
+  }
+}
+
 /* Ensure widget controls stay visible on touch devices without hover support */
 @media (hover: none) {
   .grid-widget-actions {

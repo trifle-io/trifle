@@ -1194,12 +1194,10 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
           </div>
           <%= if @widget_loading_state == :refresh do %>
             <div
-              class="grid-widget-loading-indicator pointer-events-none absolute left-1/2 top-1/2 z-10 inline-flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-teal-600 dark:text-teal-300"
-              data-role="widget-refresh-spinner"
+              class="grid-widget-refresh-indicator"
+              data-role="widget-refresh-indicator"
               aria-label="Refreshing widget"
             >
-              <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent">
-              </span>
             </div>
           <% end %>
           <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/widget-panel:opacity-100 group-focus-within/widget-panel:opacity-100">
