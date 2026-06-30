@@ -2220,25 +2220,25 @@ Hooks.DashboardGrid = {
     const handleClass = nested ? 'nested-grid-widget-handle' : 'root-grid-widget-handle';
     const safeWidgetId = this.escapeHtml(widgetId);
     const duplicateBtn = (this.editable && !locked) ? `
-      <button type=\"button\" class=\"grid-widget-duplicate inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Duplicate widget\">
-        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+      <button type=\"button\" class=\"grid-widget-duplicate inline-flex items-center p-1 rounded group/action\" data-widget-id=\"${safeWidgetId}\" title=\"Duplicate widget\">
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100\">
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75\" />
         </svg>
       </button>` : '';
     const editBtn = (this.editable && !locked) ? `
-      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Edit widget\">
-        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group/action\" data-widget-id=\"${safeWidgetId}\" title=\"Edit widget\">
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100\">
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
         </svg>
       </button>` : '';
     return `
-      <div class=\"grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group\" data-widget-id=\"${safeWidgetId}\" data-widget-type=\"${this.escapeHtml(widgetType)}\" data-item-kind=\"widget\" data-widget-title=\"${this.escapeHtml(titleText)}\" data-widget-loading-state=\"idle\">
+      <div class=\"grid-stack-item-content bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow text-gray-700 dark:text-slate-300 flex flex-col group/widget-panel\" data-widget-id=\"${safeWidgetId}\" data-widget-type=\"${this.escapeHtml(widgetType)}\" data-item-kind=\"widget\" data-widget-title=\"${this.escapeHtml(titleText)}\" data-widget-loading-state=\"idle\">
         <div class=\"grid-widget-header relative flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-gray-100 dark:border-slate-700/60\">
           <div class=\"grid-widget-handle ${handleClass} cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"grid-widget-title font-semibold truncate text-gray-900 dark:text-white\" data-original-title=\"${this.escapeHtml(titleText)}\">${this.escapeHtml(titleText)}</div></div>
-          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
-            <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeWidgetId}\" title=\"Expand widget\">
-              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100\">
+          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/widget-panel:opacity-100 group-focus-within/widget-panel:opacity-100\">
+            <button type=\"button\" class=\"grid-widget-expand inline-flex items-center p-1 rounded group/action\" data-widget-id=\"${safeWidgetId}\" title=\"Expand widget\">
+              <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100\">
                 <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15\" />
               </svg>
             </button>
@@ -2265,17 +2265,17 @@ Hooks.DashboardGrid = {
       : 'grid-widget-title font-semibold truncate text-slate-800 dark:text-slate-100';
     const headerTextStyleAttr = this._groupHeaderTextStyleAttr(headerStyle);
     const editBtn = (this.editable && !derived) ? `
-      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group\" data-widget-id=\"${safeGroupId}\" title=\"Edit group\"${headerTextStyleAttr}>
-        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-100\"${headerTextStyleAttr}>
+      <button type=\"button\" class=\"grid-widget-edit inline-flex items-center p-1 rounded group/action\" data-widget-id=\"${safeGroupId}\" title=\"Edit group\"${headerTextStyleAttr}>
+        <svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" class=\"h-4 w-4 text-slate-600 dark:text-slate-300 transition-colors group-hover/action:text-slate-800 dark:group-hover/action:text-slate-100\"${headerTextStyleAttr}>
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z\" />
           <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\" />
         </svg>
       </button>` : '';
     return `
-      <div class=\"grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group\" data-widget-id=\"${safeGroupId}\" data-widget-type=\"group\" data-item-kind=\"group\" data-widget-title=\"${this.escapeHtml(titleText)}\"${derivedAttrs}>
+      <div class=\"grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group/group-panel\" data-widget-id=\"${safeGroupId}\" data-widget-type=\"group\" data-item-kind=\"group\" data-widget-title=\"${this.escapeHtml(titleText)}\"${derivedAttrs}>
         <div class=\"grid-widget-header flex items-center justify-between pt-2 px-3 mb-2 pb-1 border-b border-slate-300/80 dark:border-slate-700/80\"${headerStyleAttr}>
           <div class=\"grid-widget-handle root-grid-widget-handle group-grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0\"><div class=\"${titleClass}\" data-original-title=\"${this.escapeHtml(titleText)}\"${headerTextStyleAttr}>${this.escapeHtml(titleText)}</div></div>
-          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100\">
+          <div class=\"grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/group-panel:opacity-100 group-focus-within/group-panel:opacity-100\">
             ${editBtn}
           </div>
         </div>

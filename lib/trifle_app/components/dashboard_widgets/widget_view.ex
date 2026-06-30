@@ -792,7 +792,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "dark:text-slate-300",
       "flex",
       "flex-col",
-      "group"
+      "group/widget-panel"
     ]
   end
 
@@ -1202,7 +1202,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               </span>
             </div>
           <% end %>
-          <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+          <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/widget-panel:opacity-100 group-focus-within/widget-panel:opacity-100">
             <%= unless @print_mode do %>
               <% export_links =
                 widget_export_links(@widget_export, @dashboard_id, @widget_id, @export_params) %>
@@ -1220,7 +1220,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   <button
                     type="button"
                     data-role="download-button"
-                    class="inline-flex items-center p-1 rounded group"
+                    class="inline-flex items-center p-1 rounded group/action"
                     aria-label="Export widget"
                     aria-haspopup="menu"
                     aria-expanded="false"
@@ -1233,7 +1233,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                         viewBox="0 0 24 24"
                         stroke-width="1.5"
                         stroke="currentColor"
-                        class="h-4 w-4 text-teal-600 dark:text-teal-300 transition-colors group-hover:text-teal-700 dark:group-hover:text-teal-200"
+                        class="h-4 w-4 text-teal-600 dark:text-teal-300 transition-colors group-hover/action:text-teal-700 dark:group-hover/action:text-teal-200"
                       >
                         <path
                           stroke-linecap="round"
@@ -1341,7 +1341,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <% end %>
             <button
               type="button"
-              class="grid-widget-expand inline-flex items-center p-1 rounded group"
+              class="grid-widget-expand inline-flex items-center p-1 rounded group/action"
               data-widget-id={@widget_id}
               title="Expand widget"
             >
@@ -1351,7 +1351,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                 viewBox="0 0 24 24"
                 stroke-width="1.5"
                 stroke="currentColor"
-                class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100"
+                class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100"
               >
                 <path
                   stroke-linecap="round"
@@ -1363,7 +1363,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             <%= if @editable do %>
               <button
                 type="button"
-                class="grid-widget-duplicate inline-flex items-center p-1 rounded group"
+                class="grid-widget-duplicate inline-flex items-center p-1 rounded group/action"
                 data-widget-id={@widget_id}
                 title="Duplicate widget"
               >
@@ -1373,7 +1373,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   viewBox="0 0 24 24"
                   stroke-width="1.5"
                   stroke="currentColor"
-                  class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100"
+                  class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100"
                 >
                   <path
                     stroke-linecap="round"
@@ -1384,7 +1384,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               </button>
               <button
                 type="button"
-                class="grid-widget-edit inline-flex items-center p-1 rounded group"
+                class="grid-widget-edit inline-flex items-center p-1 rounded group/action"
                 data-widget-id={@widget_id}
                 title="Edit widget"
               >
@@ -1394,7 +1394,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                   viewBox="0 0 24 24"
                   stroke-width="1.5"
                   stroke="currentColor"
-                  class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover:text-gray-800 dark:group-hover:text-slate-100"
+                  class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100"
                 >
                   <path
                     stroke-linecap="round"
@@ -1482,7 +1482,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     >
       <div
         id={widget_dom_id(@grid_dom_id, "grid-widget-content", @group_id)}
-        class="grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group"
+        class="grid-stack-item-content border border-slate-300/90 bg-slate-50/70 dark:border-slate-600 dark:bg-slate-900/35 rounded-md shadow-sm text-gray-700 dark:text-slate-300 flex flex-col min-h-0 group/group-panel"
         data-widget-id={@group_id}
         data-widget-type="group"
         data-item-kind="group"
@@ -1498,7 +1498,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
               {@title}
             </div>
           </div>
-          <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+          <div class="grid-widget-actions flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/group-panel:opacity-100 group-focus-within/group-panel:opacity-100">
             <%= if @editable_group? do %>
               <button
                 type="button"
@@ -1591,11 +1591,19 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   end
 
   defp group_edit_button_classnames(%{default?: true}) do
-    ["grid-widget-edit", "inline-flex", "items-center", "p-1", "rounded", "group"]
+    ["grid-widget-edit", "inline-flex", "items-center", "p-1", "rounded", "group/action"]
   end
 
   defp group_edit_button_classnames(_surface) do
-    ["grid-widget-edit", "inline-flex", "items-center", "p-1", "rounded", "group", "text-current"]
+    [
+      "grid-widget-edit",
+      "inline-flex",
+      "items-center",
+      "p-1",
+      "rounded",
+      "group/action",
+      "text-current"
+    ]
   end
 
   defp group_edit_icon_classnames(%{default?: true}) do
@@ -1605,8 +1613,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
       "text-slate-600",
       "dark:text-slate-300",
       "transition-colors",
-      "group-hover:text-slate-800",
-      "dark:group-hover:text-slate-100"
+      "group-hover/action:text-slate-800",
+      "dark:group-hover/action:text-slate-100"
     ]
   end
 

@@ -336,6 +336,68 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert style =~ "color: #0F172A"
   end
 
+  test "scopes hover action classes for groups and nested widgets" do
+    child = %{
+      "id" => "kpi-child",
+      "type" => "kpi",
+      "title" => "Nested orders",
+      "path" => "metrics.count",
+      "function" => "mean",
+      "w" => 4,
+      "h" => 2,
+      "x" => 0,
+      "y" => 0
+    }
+
+    group = %{
+      "id" => "group-1",
+      "type" => "group",
+      "title" => "Latency",
+      "x" => 0,
+      "y" => 0,
+      "w" => 6,
+      "h" => 4,
+      "children" => [child]
+    }
+
+    html =
+      render_component(&WidgetView.group_item/1,
+        group: group,
+        dashboard: %{id: "dash-group", payload: %{"grid" => [group]}},
+        editable: true
+      )
+
+    {:ok, document} = Floki.parse_document(html)
+
+    [{"div", group_shell_attrs, _}] =
+      Floki.find(document, "#dashboard-grid-grid-widget-content-group-1")
+
+    assert "group/group-panel" in class_tokens(group_shell_attrs)
+
+    [{"div", group_actions_attrs, _}] =
+      Floki.find(
+        document,
+        "#dashboard-grid-grid-widget-content-group-1 > .grid-widget-header > .grid-widget-actions"
+      )
+
+    assert "group-hover/group-panel:opacity-100" in class_tokens(group_actions_attrs)
+    refute "group-hover:opacity-100" in class_tokens(group_actions_attrs)
+
+    [{"div", child_shell_attrs, _}] =
+      Floki.find(document, "#dashboard-grid-grid-widget-content-kpi-child")
+
+    assert "group/widget-panel" in class_tokens(child_shell_attrs)
+
+    [{"div", child_actions_attrs, _}] =
+      Floki.find(
+        document,
+        "#dashboard-grid-grid-widget-content-kpi-child > .grid-widget-header > .grid-widget-actions"
+      )
+
+    assert "group-hover/widget-panel:opacity-100" in class_tokens(child_actions_attrs)
+    refute "group-hover:opacity-100" in class_tokens(child_actions_attrs)
+  end
+
   test "renders list widget entries", %{assigns: assigns} do
     html = render_component(&WidgetView.grid/1, assigns)
     {:ok, document} = Floki.parse_document(html)
@@ -549,5 +611,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
 
     [{"div", attrs, _}] = Floki.find(document, "#chat-grid-1-widget-data-kpi-1")
     assert Map.new(attrs)["data-widget-loading-state"] == "refresh"
+  end
+
+  defp class_tokens(attrs) do
+    attrs
+    |> Map.new()
+    |> Map.get("class", "")
+    |> String.split()
   end
 end
