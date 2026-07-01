@@ -8,6 +8,7 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
@@ -42,6 +43,7 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
       <MetricSeriesEditor.editor
         widget={@widget}
         path_options={@path_options}
+        group_path={@group_path}
         path_placeholder="metrics.total"
         path_help="KPI widgets display the first visible resolved series. Keep source rows hidden when you want a derived expression row to drive the KPI."
       />

@@ -11,8 +11,9 @@ defmodule Trifle.Chat.DashboardSpec do
       required: true,
       description: description,
       item_schema: %{
-        kind: "path | expression",
-        path: "Required when kind=path. Wildcards such as breakdown.* are allowed in path rows.",
+        kind: "path | nested | expression",
+        path:
+          "Required when kind=path or kind=nested. Wildcards such as breakdown.* are allowed in path rows. Nested rows resolve under a widget group path prefix.",
         expression:
           "Required when kind=expression. Uses the transponder expression syntax and can reference previous rows as a, b, c.",
         label: "Optional display label.",
@@ -440,6 +441,7 @@ defmodule Trifle.Chat.DashboardSpec do
     - Pass `grid` as an array of widget objects. Do not wrap it inside another `grid`, `widgets`, or `payload` object unless reusing an existing dashboard payload.
     - Every metric widget uses `series`, an ordered array of row objects. Only `text` can omit `series`.
     - A path row looks like `{"kind":"path","path":"revenue","visible":true}`.
+    - A nested row looks like `{"kind":"nested","path":"count","visible":true}` and is only for widgets inside a group with a path prefix.
     - An expression row looks like `{"kind":"expression","expression":"a / b","visible":true}`.
     - Expression rows can reference previous rows as `a`, `b`, `c`, and hidden rows still evaluate and can feed visible rows.
     - Use only documented field names. `chart` and `style` are invalid widget fields; use `chart_type`.

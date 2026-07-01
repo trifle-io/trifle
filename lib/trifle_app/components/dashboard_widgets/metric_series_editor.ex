@@ -5,7 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
   import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
 
-  alias TrifleApp.Components.DashboardWidgets.{MetricSeries, SeriesColorSelector}
+  alias TrifleApp.Components.DashboardWidgets.{GroupExpansion, MetricSeries, SeriesColorSelector}
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
@@ -17,11 +17,13 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   attr :event_name, :string, default: "widget_series_rows_update"
   attr :editor_id, :string, default: nil
   attr :layout, :string, default: "full"
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
     rows = MetricSeries.rows_for_form(widget, Map.get(assigns, :path_options, []))
     widget_id = Map.get(assigns, :editor_id) || widget_id(widget)
+    group_path = GroupExpansion.normalize_group_path(Map.get(assigns, :group_path))
 
     assigns =
       assigns
@@ -32,6 +34,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       |> assign(:field_prefix, Map.get(assigns, :field_prefix))
       |> assign(:field_scope, blank_to_nil(Map.get(assigns, :field_scope)))
       |> assign(:layout, normalize_layout(Map.get(assigns, :layout)))
+      |> assign(:group_path, group_path)
+      |> assign(:nested_series_available?, not is_nil(group_path))
 
     ~H"""
     <div
@@ -76,6 +80,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                       row={row}
                       field_scope={@field_scope}
                       field_prefix={@field_prefix}
+                      nested_series_available?={@nested_series_available?}
+                      group_path={@group_path}
                     />
                     <.series_value_input
                       row={row}
@@ -112,6 +118,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                         row={row}
                         field_scope={@field_scope}
                         field_prefix={@field_prefix}
+                        nested_series_available?={@nested_series_available?}
+                        group_path={@group_path}
                       />
                       <.series_value_input
                         row={row}
@@ -228,35 +236,70 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   attr :row, :map, required: true
   attr :field_scope, :string, default: nil
   attr :field_prefix, :string, required: true
+  attr :nested_series_available?, :boolean, required: true
+  attr :group_path, :string, default: nil
 
   defp series_kind_radios(assigns) do
     ~H"""
-    <label class={kind_icon_classes(MetricSeries.path_row?(@row))}>
+    <%= if MetricSeries.nested_row?(@row) and not @nested_series_available? do %>
+      <input
+        type="radio"
+        name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
+        value="nested"
+        data-role="series-kind"
+        checked
+        class="hidden"
+        tabindex="-1"
+        aria-hidden="true"
+      />
+    <% end %>
+    <label class={kind_icon_classes(MetricSeries.path_row?(@row))} title="Series: top-level path">
       <input
         type="radio"
         name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
         value="path"
-        aria-label="Path series"
+        aria-label="Series"
         data-role="series-kind"
         checked={MetricSeries.path_row?(@row)}
         class="sr-only"
       />
-      <span class="sr-only">Path series</span>
+      <span class="sr-only">Series: top-level path</span>
       <.path_icon />
     </label>
-    <label class={kind_icon_classes(MetricSeries.expression_row?(@row))}>
+    <label
+      class={kind_icon_classes(MetricSeries.expression_row?(@row))}
+      title="Function: formula using previous rows"
+    >
       <input
         type="radio"
         name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
         value="expression"
-        aria-label="Expression series"
+        aria-label="Function"
         data-role="series-kind"
         checked={MetricSeries.expression_row?(@row)}
         class="sr-only"
       />
-      <span class="sr-only">Expression series</span>
+      <span class="sr-only">Function: formula using previous rows</span>
       <.formula_icon />
     </label>
+    <%= if @nested_series_available? do %>
+      <label
+        class={kind_icon_classes(MetricSeries.nested_row?(@row))}
+        title={"Nested: path under group prefix #{@group_path}"}
+      >
+        <input
+          type="radio"
+          name={input_name(@field_scope, @field_prefix, "kind", @row["index"])}
+          value="nested"
+          aria-label="Nested"
+          data-role="series-kind"
+          checked={MetricSeries.nested_row?(@row)}
+          class="sr-only"
+        />
+        <span class="sr-only">Nested: path under group prefix {@group_path}</span>
+        <.nested_icon />
+      </label>
+    <% end %>
     <div class={shell_divider_classes()}></div>
     """
   end
@@ -271,7 +314,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   defp series_value_input(assigns) do
     ~H"""
     <div class="min-w-0 flex-1">
-      <%= if MetricSeries.path_row?(@row) do %>
+      <%= if MetricSeries.path_like_row?(@row) do %>
         <.path_autocomplete_input
           id={"widget-series-path-#{@widget_id}-#{@row["index"]}"}
           name={input_name(@field_scope, @field_prefix, "path", @row["index"])}
@@ -421,6 +464,25 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
         stroke-linecap="round"
         stroke-linejoin="round"
         d="M4.745 3A23.933 23.933 0 0 0 3 12c0 3.183.62 6.22 1.745 9M19.5 3c.967 2.78 1.5 5.817 1.5 9s-.533 6.22-1.5 9M8.25 8.885l1.444-.89a.75.75 0 0 1 1.105.402l2.402 7.206a.75.75 0 0 0 1.104.401l1.445-.889m-8.25.75.213.09a1.687 1.687 0 0 0 2.062-.617l4.45-6.676a1.688 1.688 0 0 1 2.062-.618l.213.09"
+      />
+    </svg>
+    """
+  end
+
+  defp nested_icon(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke-width="1.5"
+      stroke="currentColor"
+      class="h-5 w-5"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0-3.75-3.75M17.25 21 21 17.25"
       />
     </svg>
     """

@@ -9,6 +9,7 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
@@ -45,6 +46,7 @@ defmodule TrifleApp.Components.DashboardWidgets.DistributionEditor do
       <MetricSeriesEditor.editor
         widget={@widget}
         path_options={@path_options}
+        group_path={@group_path}
         path_placeholder="metrics.distribution.*"
         path_help="Path rows can target wildcard bucket groups. Expression rows apply bucket-by-bucket after matching bindings and compatible bucket layouts."
       />

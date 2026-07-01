@@ -137,7 +137,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
 
       expanded_path =
         case row_kind(row) do
-          "path" -> expand_path(path, option_values)
+          kind when kind in ["path", "nested"] -> expand_path(path, option_values)
           _ -> ""
         end
 
@@ -161,7 +161,9 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
 
   def row_kind(row), do: Map.get(row, "kind", "path")
   def path_row?(row), do: row_kind(row) == "path"
+  def nested_row?(row), do: row_kind(row) == "nested"
   def expression_row?(row), do: row_kind(row) == "expression"
+  def path_like_row?(row), do: row_kind(row) in ["path", "nested"]
 
   def visible?(row) do
     row
@@ -347,13 +349,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
         "kind" =>
           row
           |> Map.get("kind", Map.get(row, :kind, "path"))
-          |> to_string()
-          |> String.trim()
-          |> String.downcase()
-          |> case do
-            "expression" -> "expression"
-            _ -> "path"
-          end,
+          |> normalize_kind(),
         "path" => row |> Map.get("path", Map.get(row, :path, "")) |> to_string() |> String.trim(),
         "expression" =>
           row
@@ -377,8 +373,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
       }
 
     case normalized["kind"] do
-      "path" -> Map.put(normalized, "expression", "")
-      _ -> Map.put(normalized, "path", "")
+      "expression" -> Map.put(normalized, "path", "")
+      _ -> Map.put(normalized, "expression", "")
     end
   end
 
@@ -393,6 +389,18 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
       "visible" => true,
       "color_selector" => Helpers.default_series_color_selector()
     }
+  end
+
+  defp normalize_kind(kind) do
+    kind
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "expression" -> "expression"
+      "nested" -> "nested"
+      _ -> "path"
+    end
   end
 
   defp ensure_default_row([]), do: [default_row()]

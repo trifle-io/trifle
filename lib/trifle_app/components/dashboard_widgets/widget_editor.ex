@@ -7,6 +7,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
@@ -18,17 +19,18 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetEditor do
       |> assign(:editor_module, Registry.editor_module(widget_type(widget)))
 
     ~H"""
-    {render_editor_component(@editor_module, @widget, @path_options)}
+    {render_editor_component(@editor_module, @widget, @path_options, @group_path)}
     """
   end
 
-  defp render_editor_component(nil, _widget, _path_options), do: nil
+  defp render_editor_component(nil, _widget, _path_options, _group_path), do: nil
 
-  defp render_editor_component(editor_module, widget, path_options) do
+  defp render_editor_component(editor_module, widget, path_options, group_path) do
     editor_module.editor(%{
       widget: widget,
       path_options: path_options,
-      __changed__: %{widget: true, path_options: true}
+      group_path: group_path,
+      __changed__: %{widget: true, path_options: true, group_path: true}
     })
   end
 

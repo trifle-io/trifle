@@ -8,6 +8,7 @@ defmodule TrifleApp.Components.DashboardWidgets.CategoryEditor do
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
@@ -23,6 +24,7 @@ defmodule TrifleApp.Components.DashboardWidgets.CategoryEditor do
         <MetricSeriesEditor.editor
           widget={@widget}
           path_options={@path_options}
+          group_path={@group_path}
           path_placeholder="metrics.category.*"
           path_help="Use * to group dynamic category keys. Expression rows combine matching categories or wildcard bindings."
         />

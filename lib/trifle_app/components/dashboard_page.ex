@@ -1434,6 +1434,7 @@ defmodule TrifleApp.Components.DashboardPage do
           <% active_tab = workspace.active_tab || "summary" %>
           <% preview_type = preview.type || draft_widget["type"] || "kpi" %>
           <% group_widget = preview_type == "group" %>
+          <% group_path = workspace[:group_path] %>
           <% preview_title = preview.title || draft_widget["title"] || "Untitled Widget" %>
           <% chart_data = preview[:chart_data] %>
           <% visual_data = preview[:visual_data] %>
@@ -1500,6 +1501,7 @@ defmodule TrifleApp.Components.DashboardPage do
                       <.widget_workspace_edit_form
                         draft_widget={draft_widget}
                         widget_path_options={@widget_path_options}
+                        group_path={group_path}
                       />
                     <% end %>
                   </div>
@@ -1636,6 +1638,7 @@ defmodule TrifleApp.Components.DashboardPage do
                                 <.widget_workspace_edit_form
                                   draft_widget={draft_widget}
                                   widget_path_options={@widget_path_options}
+                                  group_path={group_path}
                                 />
                               </div>
                             <% end %>
@@ -1659,6 +1662,7 @@ defmodule TrifleApp.Components.DashboardPage do
                       <.widget_workspace_edit_form
                         draft_widget={draft_widget}
                         widget_path_options={@widget_path_options}
+                        group_path={group_path}
                       />
                     </div>
                   <% end %>
@@ -1858,7 +1862,11 @@ defmodule TrifleApp.Components.DashboardPage do
 
   defp widget_workspace_edit_form(assigns) do
     group_widget? = (assigns.draft_widget["type"] || "") == "group"
-    assigns = assign(assigns, :group_widget?, group_widget?)
+
+    assigns =
+      assigns
+      |> assign(:group_widget?, group_widget?)
+      |> assign_new(:group_path, fn -> nil end)
 
     ~H"""
     <.form
@@ -1943,7 +1951,11 @@ defmodule TrifleApp.Components.DashboardPage do
         />
       </div>
 
-      <WidgetEditor.editor widget={@draft_widget} path_options={@widget_path_options} />
+      <WidgetEditor.editor
+        widget={@draft_widget}
+        path_options={@widget_path_options}
+        group_path={@group_path}
+      />
     </.form>
     """
   end

@@ -45,7 +45,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupEditor do
           preview_class="rounded-md px-3 py-2 text-sm font-mono text-gray-900 dark:text-white"
         />
         <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-          Regular paths prefix child series. A terminal .* repeats this group for each matching path.
+          Nested series in child widgets use this path as their prefix. A terminal .* repeats this group for each matching path.
         </p>
       </div>
 

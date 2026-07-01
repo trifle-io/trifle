@@ -1418,7 +1418,10 @@ defmodule TrifleApp.DashboardLive do
     navigate_timeframe(socket, :forward)
   end
 
-  defp build_expanded_widget(socket, widget) when is_map(widget) do
+  defp build_expanded_widget(socket, widget, group_path)
+
+  defp build_expanded_widget(socket, widget, group_path) when is_map(widget) do
+    widget = apply_workspace_group_path(widget, group_path)
     id = to_string(widget["id"])
     stats = socket.assigns[:stats]
     type = widget_type(widget)
@@ -1488,7 +1491,59 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp build_expanded_widget(_socket, _widget), do: nil
+  defp build_expanded_widget(_socket, _widget, _group_path), do: nil
+
+  defp apply_workspace_group_path(widget, group_path) when is_map(widget) do
+    group_path = GroupExpansion.normalize_group_path(group_path)
+
+    cond do
+      is_nil(group_path) ->
+        widget
+
+      not MetricSeries.metric_widget?(widget) ->
+        widget
+
+      true ->
+        widget
+        |> MetricSeries.normalize_widget()
+        |> Map.update("series", [], fn rows ->
+          Enum.map(rows, fn row ->
+            if MetricSeries.nested_row?(row) do
+              Map.put(
+                row,
+                "path",
+                prefixed_workspace_path(group_path, MetricSeries.row_path(row))
+              )
+            else
+              row
+            end
+          end)
+        end)
+    end
+  end
+
+  defp apply_workspace_group_path(widget, _group_path), do: widget
+
+  defp prefixed_workspace_path(prefix, path) do
+    path = path |> to_string() |> String.trim()
+
+    cond do
+      path == "" ->
+        prefix
+
+      path == prefix or String.starts_with?(path, prefix <> ".") ->
+        path
+
+      path == "$" ->
+        prefix
+
+      String.starts_with?(path, "$.") ->
+        prefixed_workspace_path(prefix, String.replace_prefix(path, "$.", ""))
+
+      true ->
+        prefix <> "." <> path
+    end
+  end
 
   defp maybe_put_chart(nil, base), do: base
   defp maybe_put_chart(chart_map, base), do: Map.put(base, :chart_data, chart_map)
@@ -1517,7 +1572,7 @@ defmodule TrifleApp.DashboardLive do
   defp maybe_refresh_widget_workspace_preview(socket) do
     case socket.assigns[:widget_workspace] do
       %{draft_widget: %{} = draft_widget} = workspace ->
-        preview = build_expanded_widget(socket, draft_widget)
+        preview = build_expanded_widget(socket, draft_widget, Map.get(workspace, :group_path))
 
         socket
         |> assign(:widget_workspace, Map.put(workspace, :preview, preview))
@@ -4320,6 +4375,46 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  defp parent_group_path_for_node(items, id) when is_list(items) do
+    find_parent_group_path(items, id, nil)
+  end
+
+  defp parent_group_path_for_node(_items, _id), do: nil
+
+  defp find_parent_group_path(items, id, current_group_path) do
+    needle = to_string(id)
+
+    Enum.find_value(items, fn item ->
+      item_id =
+        item
+        |> Map.get("id", Map.get(item, :id))
+        |> case do
+          nil -> nil
+          value -> to_string(value)
+        end
+
+      cond do
+        item_id == needle ->
+          current_group_path
+
+        LayoutTree.group?(item) ->
+          group_path = group_context_path(item) || current_group_path
+          find_parent_group_path(LayoutTree.group_children(item), id, group_path)
+
+        true ->
+          nil
+      end
+    end)
+  end
+
+  defp group_context_path(group) do
+    (Map.get(group, "_concrete_group_path") ||
+       Map.get(group, :_concrete_group_path) ||
+       Map.get(group, "group_path") ||
+       Map.get(group, :group_path))
+    |> GroupExpansion.normalize_group_path()
+  end
+
   defp open_widget_workspace(socket, id, requested_tab) do
     editable? =
       !socket.assigns.is_public_access and
@@ -4334,16 +4429,19 @@ defmodule TrifleApp.DashboardLive do
         socket
       end
 
+    layout_items = dashboard_grid_root_items(socket.assigns.dashboard)
+
     items =
       case requested_tab do
         "summary" -> WidgetView.root_grid_items(socket.assigns.dashboard, socket.assigns[:stats])
-        _ -> dashboard_grid_root_items(socket.assigns.dashboard)
+        _ -> layout_items
       end
 
     path_options = socket.assigns[:widget_path_options] || []
+    lookup_items = if editable?, do: layout_items, else: items
 
     widget =
-      LayoutTree.find_node(items, id)
+      (LayoutTree.find_node(lookup_items, id) || LayoutTree.find_node(items, id))
       |> case do
         nil -> %{"id" => id, "title" => "", "type" => "kpi"}
         found -> Map.put_new(found, "type", "kpi")
@@ -4351,13 +4449,18 @@ defmodule TrifleApp.DashboardLive do
       |> maybe_auto_expand_widget_paths(path_options)
 
     active_tab = normalize_widget_workspace_tab(requested_tab, editable?, widget_type(widget))
-    preview = build_expanded_widget(socket, widget)
+
+    group_path =
+      parent_group_path_for_node(lookup_items, id) || parent_group_path_for_node(items, id)
+
+    preview = build_expanded_widget(socket, widget, group_path)
 
     workspace = %{
       widget_id: to_string(Map.get(widget, "id", id)),
       base_widget: widget,
       draft_widget: widget,
       preview: preview,
+      group_path: group_path,
       active_tab: active_tab,
       editable?: editable?,
       dirty?: false,
@@ -4413,7 +4516,7 @@ defmodule TrifleApp.DashboardLive do
         socket = assign(socket, :editing_widget, widget)
 
         if to_string(widget_id) == to_string(widget["id"]) do
-          preview = build_expanded_widget(socket, widget)
+          preview = build_expanded_widget(socket, widget, Map.get(workspace, :group_path))
           dirty? = widget_workspace_dirty?(workspace, widget)
 
           updated_workspace =

@@ -29,6 +29,7 @@ defmodule Trifle.Chat.DashboardSpecTest do
     assert prompt =~ "12-column GridStack"
     assert prompt =~ "Every metric widget uses `series`"
     assert prompt =~ "\"kind\":\"path\""
+    assert prompt =~ "\"kind\":\"nested\""
     assert prompt =~ "\"kind\":\"expression\""
     assert prompt =~ "`chart` and `style` are invalid"
     assert prompt =~ "Distribution and heatmap widgets are for histograms/buckets"

@@ -7,6 +7,7 @@ defmodule TrifleApp.Components.DashboardWidgets.ListEditor do
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
@@ -23,6 +24,7 @@ defmodule TrifleApp.Components.DashboardWidgets.ListEditor do
       <MetricSeriesEditor.editor
         widget={@widget}
         path_options={@path_options}
+        group_path={@group_path}
         path_placeholder="keys.*"
         path_help="List widgets behave like category widgets. Use hidden rows plus one visible expression row when you want computed rankings."
       />

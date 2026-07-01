@@ -31,7 +31,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
     }
   end
 
-  test "regular group path prefixes child path rows and dollar-relative paths" do
+  test "regular group path prefixes child nested rows and leaves path rows absolute" do
     [group] =
       [
         %{
@@ -45,8 +45,9 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
               "type" => "timeseries",
               "series" => [
                 %{"kind" => "path", "path" => "count", "visible" => true},
-                %{"kind" => "path", "path" => "$", "visible" => true},
-                %{"kind" => "path", "path" => "$.system.count", "visible" => true}
+                %{"kind" => "nested", "path" => "count", "visible" => true},
+                %{"kind" => "nested", "path" => "$", "visible" => true},
+                %{"kind" => "nested", "path" => "$.system.count", "visible" => true}
               ]
             }
           ]
@@ -57,10 +58,98 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
     [child] = LayoutTree.group_children(group)
 
     assert [
-             %{"path" => "jobs.email.count"},
-             %{"path" => "jobs.email"},
-             %{"path" => "jobs.email.system.count"}
-           ] = Enum.map(child["series"], &Map.take(&1, ["path"]))
+             %{"kind" => "path", "path" => "count"},
+             %{"kind" => "nested", "path" => "jobs.email.count"},
+             %{"kind" => "nested", "path" => "jobs.email"},
+             %{"kind" => "nested", "path" => "jobs.email.system.count"}
+           ] = Enum.map(child["series"], &Map.take(&1, ["kind", "path"]))
+  end
+
+  test "terminal wildcard group path prefixes only nested child rows" do
+    [first, second, widget_after] =
+      [
+        %{
+          "id" => "group-1",
+          "type" => "group",
+          "title" => "Jobs",
+          "group_path" => "jobs.*",
+          "x" => 0,
+          "y" => 0,
+          "w" => 12,
+          "h" => 4,
+          "children" => [
+            %{
+              "id" => "ts-1",
+              "type" => "timeseries",
+              "series" => [
+                %{"kind" => "path", "path" => "system.count", "visible" => true},
+                %{"kind" => "nested", "path" => "count", "visible" => true}
+              ]
+            }
+          ]
+        },
+        %{"id" => "kpi-after", "type" => "kpi", "x" => 0, "y" => 4, "w" => 3, "h" => 2}
+      ]
+      |> GroupExpansion.expand_root_items(stats())
+
+    assert first["id"] == "group-1"
+    assert first["title"] == "Jobs: jobs.email"
+    refute GroupExpansion.derived?(first)
+
+    [first_child] = LayoutTree.group_children(first)
+
+    assert [
+             %{"kind" => "path", "path" => "system.count"},
+             %{"kind" => "nested", "path" => "jobs.email.count"}
+           ] = Enum.map(first_child["series"], &Map.take(&1, ["kind", "path"]))
+
+    assert GroupExpansion.derived?(second)
+    assert second["title"] == "Jobs: jobs.sms"
+    assert second["id"] =~ "--expanded--1--jobs-sms"
+
+    [second_child] = LayoutTree.group_children(second)
+    assert second_child["id"] =~ second["id"]
+
+    assert [
+             %{"kind" => "path", "path" => "system.count"},
+             %{"kind" => "nested", "path" => "jobs.sms.count"}
+           ] = Enum.map(second_child["series"], &Map.take(&1, ["kind", "path"]))
+
+    assert widget_after["y"] == 8
+  end
+
+  test "legacy path rows inside wildcard groups stay absolute" do
+    [first, second, _widget_after] =
+      [
+        %{
+          "id" => "group-1",
+          "type" => "group",
+          "title" => "Jobs",
+          "group_path" => "jobs.*",
+          "x" => 0,
+          "y" => 0,
+          "w" => 12,
+          "h" => 4,
+          "children" => [
+            %{
+              "id" => "ts-1",
+              "type" => "timeseries",
+              "series" => [%{"kind" => "path", "path" => "count", "visible" => true}]
+            }
+          ]
+        },
+        %{"id" => "kpi-after", "type" => "kpi", "x" => 0, "y" => 4, "w" => 3, "h" => 2}
+      ]
+      |> GroupExpansion.expand_root_items(stats())
+
+    [first_child] = LayoutTree.group_children(first)
+    [second_child] = LayoutTree.group_children(second)
+
+    assert [%{"kind" => "path", "path" => "count"}] =
+             Enum.map(first_child["series"], &Map.take(&1, ["kind", "path"]))
+
+    assert [%{"kind" => "path", "path" => "count"}] =
+             Enum.map(second_child["series"], &Map.take(&1, ["kind", "path"]))
   end
 
   test "group path validation rejects empty path segments" do
@@ -86,7 +175,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
             %{
               "id" => "ts-1",
               "type" => "timeseries",
-              "series" => [%{"kind" => "path", "path" => "count", "visible" => true}]
+              "series" => [%{"kind" => "nested", "path" => "count", "visible" => true}]
             }
           ]
         },
@@ -128,7 +217,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
             %{
               "id" => "ts-1",
               "type" => "timeseries",
-              "series" => [%{"kind" => "path", "path" => "count", "visible" => true}]
+              "series" => [%{"kind" => "nested", "path" => "count", "visible" => true}]
             }
           ]
         }
@@ -174,7 +263,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
               %{
                 "id" => "ts-1",
                 "type" => "timeseries",
-                "series" => [%{"kind" => "path", "path" => "count", "visible" => true}]
+                "series" => [%{"kind" => "nested", "path" => "count", "visible" => true}]
               }
             ]
           }
@@ -208,7 +297,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansionTest do
         %{
           "id" => "ts-1",
           "type" => "timeseries",
-          "series" => [%{"kind" => "path", "path" => "count", "visible" => true}]
+          "series" => [%{"kind" => "nested", "path" => "count", "visible" => true}]
         }
       ]
     }

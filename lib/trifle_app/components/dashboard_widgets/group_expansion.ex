@@ -269,7 +269,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
 
   defp prefix_series_row(row, concrete_path) when is_map(row) do
     case MetricSeries.row_kind(row) do
-      "path" ->
+      "nested" ->
         path = MetricSeries.row_path(row)
         Map.put(row, "path", prefixed_path(concrete_path, path))
 

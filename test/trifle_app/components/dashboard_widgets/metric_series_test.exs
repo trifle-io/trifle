@@ -100,6 +100,31 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     assert normalized["series"] == []
   end
 
+  test "normalize_widget preserves nested rows as path-like series" do
+    widget = %{
+      "type" => "timeseries",
+      "series" => [
+        %{
+          "kind" => "nested",
+          "path" => "count",
+          "expression" => "a / b",
+          "label" => "Count",
+          "visible" => true,
+          "color_selector" => "default.*"
+        }
+      ]
+    }
+
+    assert [
+             %{
+               "kind" => "nested",
+               "path" => "count",
+               "expression" => "",
+               "label" => "Count"
+             }
+           ] = MetricSeries.normalize_widget(widget)["series"]
+  end
+
   test "table editor renders its custom path help" do
     html =
       render_component(&TableEditor.editor/1,
@@ -111,15 +136,31 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     refute html =~ "Hidden source rows can feed visible expression rows."
   end
 
-  test "table editor exposes accessible names for series kind controls" do
+  test "table editor exposes accessible names and tooltips for available series kind controls" do
     html =
       render_component(&TableEditor.editor/1,
         widget: %{"id" => "table-1", "type" => "table", "series" => []},
         path_options: []
       )
 
-    assert html =~ ~s(aria-label="Path series")
-    assert html =~ ~s(aria-label="Expression series")
+    assert html =~ ~s(aria-label="Series")
+    assert html =~ ~s(title="Series: top-level path")
+    assert html =~ ~s(aria-label="Function")
+    assert html =~ ~s(title="Function: formula using previous rows")
+    refute html =~ ~s(aria-label="Nested")
+  end
+
+  test "table editor exposes nested series kind only when a group path is present" do
+    html =
+      render_component(&TableEditor.editor/1,
+        widget: %{"id" => "table-1", "type" => "table", "series" => []},
+        path_options: [],
+        group_path: "store.*"
+      )
+
+    assert html =~ ~s(aria-label="Nested")
+    assert html =~ ~s(title="Nested: path under group prefix store.*")
+    assert html =~ ~s(value="nested")
   end
 
   test "table editor scopes ids for atom-keyed widgets" do

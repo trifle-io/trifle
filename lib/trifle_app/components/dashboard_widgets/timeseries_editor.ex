@@ -8,6 +8,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
 
   attr :widget, :map, required: true
   attr :path_options, :list, default: []
+  attr :group_path, :string, default: nil
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
@@ -28,6 +29,7 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
         <MetricSeriesEditor.editor
           widget={@widget}
           path_options={@path_options}
+          group_path={@group_path}
           path_placeholder="metrics.sales"
           path_help="Use * to expand dynamic keys such as breakdown.*. Hidden source rows can feed visible expression rows."
         />

@@ -961,6 +961,97 @@ defmodule TrifleApp.DashboardLiveTest do
     assert group_after_layout["header_color_selector"] == "cool.4"
   end
 
+  test "child widgets under a group path can save nested series rows", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        payload: %{
+          "grid" => [
+            %{
+              "id" => "group-1",
+              "type" => "group",
+              "title" => "Stores",
+              "group_path" => "store.*",
+              "x" => 0,
+              "y" => 0,
+              "w" => 6,
+              "h" => 5,
+              "children" => [
+                %{
+                  "id" => "widget-1",
+                  "type" => "timeseries",
+                  "title" => "Store Count",
+                  "series" => [
+                    %{
+                      "kind" => "path",
+                      "path" => "count",
+                      "expression" => "",
+                      "label" => "",
+                      "visible" => true,
+                      "color_selector" => "default.*"
+                    }
+                  ],
+                  "chart_type" => "line",
+                  "x" => 0,
+                  "y" => 0,
+                  "w" => 4,
+                  "h" => 2
+                }
+              ]
+            }
+          ]
+        }
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    html = render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    assert has_element?(view, ~s(input[name="widget_series_kind[0]"][value="nested"]))
+    assert html =~ ~s(title="Nested: path under group prefix store.*")
+
+    render_hook(view, "widget_series_rows_update", %{
+      "widget_id" => "widget-1",
+      "rows" => [
+        %{
+          "kind" => "nested",
+          "path" => "count",
+          "expression" => "",
+          "label" => "Count",
+          "visible" => true,
+          "color_selector" => "default.*"
+        }
+      ]
+    })
+
+    assert has_element?(
+             view,
+             ~s(input[name="widget_series_kind[0]"][value="nested"][checked])
+           )
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Store Count",
+      "ts_chart_type" => "line",
+      "widget_series_kind" => %{"0" => "nested"},
+      "widget_series_path" => %{"0" => "count"},
+      "widget_series_expression" => %{"0" => ""},
+      "widget_series_label" => %{"0" => "Count"},
+      "widget_series_visible" => %{"0" => "true"},
+      "widget_series_color_selector" => %{"0" => "default.*"}
+    })
+
+    updated = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    [%{"children" => [child]}] = updated.payload["grid"]
+
+    assert [%{"kind" => "nested", "path" => "count", "label" => "Count"}] =
+             Enum.map(child["series"], &Map.take(&1, ["kind", "path", "label"]))
+  end
+
   test "moving a widget into a group preserves its original type and payload", %{
     conn: conn,
     dashboard: dashboard,
