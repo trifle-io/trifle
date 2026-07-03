@@ -21,22 +21,22 @@ defmodule Trifle.Organizations do
     ProjectClusterAccess,
     OrganizationApiToken,
     OrganizationConnector,
-    ConnectorJob,
     ProjectToken,
     DatabaseToken,
     Organization,
     OrganizationMembership,
     OrganizationInvitation,
-    OrganizationSSOProvider,
-    OrganizationSSODomain,
     Database,
     Dashboard,
     DashboardVisit,
-    Transponder,
     DashboardGroup
   }
 
+  alias Trifle.Organizations.Attrs
+  alias Trifle.Organizations.Connectors
   alias Trifle.Organizations.InvitationNotifier
+  alias Trifle.Organizations.SSO
+  alias Trifle.Organizations.Transponders
   alias Trifle.Organizations.TokenCache
   alias Trifle.Organizations.TokenTouchThrottle
 
@@ -477,179 +477,12 @@ defmodule Trifle.Organizations do
 
   ## Organization SSO providers
 
-  def list_sso_providers(%Organization{} = organization) do
-    organization
-    |> Repo.preload(sso_providers: [:domains])
-    |> Map.get(:sso_providers, [])
-  end
-
-  def get_sso_provider_for_org(%Organization{} = organization, provider) do
-    if provider in OrganizationSSOProvider.providers() do
-      from(p in OrganizationSSOProvider,
-        where: p.organization_id == ^organization.id and p.provider == ^provider,
-        preload: [:domains]
-      )
-      |> Repo.one()
-    else
-      nil
-    end
-  end
-
-  def google_sso_enabled?(%Organization{} = organization) do
-    case get_sso_provider_for_org(organization, :google) do
-      %OrganizationSSOProvider{enabled: true, domains: [_ | _]} -> true
-      _ -> false
-    end
-  end
-
-  def upsert_google_sso_provider(%Organization{} = organization, attrs) when is_map(attrs) do
-    attrs =
-      attrs
-      |> Map.new(fn
-        {key, value} when is_atom(key) -> {Atom.to_string(key), value}
-        other -> other
-      end)
-
-    Repo.transaction(fn ->
-      provider =
-        organization
-        |> get_sso_provider_for_org(:google)
-        |> case do
-          nil ->
-            %OrganizationSSOProvider{}
-            |> OrganizationSSOProvider.changeset(%{
-              "organization_id" => organization.id,
-              "provider" => :google,
-              "enabled" => Map.get(attrs, "enabled", true),
-              "auto_provision_members" => Map.get(attrs, "auto_provision_members", true)
-            })
-            |> Repo.insert()
-
-          %OrganizationSSOProvider{} = provider ->
-            provider
-            |> OrganizationSSOProvider.changeset(%{
-              "enabled" => Map.get(attrs, "enabled", provider.enabled),
-              "auto_provision_members" =>
-                Map.get(attrs, "auto_provision_members", provider.auto_provision_members)
-            })
-            |> Repo.update()
-        end
-        |> case do
-          {:ok, provider} -> provider
-          {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback({:changeset, changeset})
-          {:error, reason} -> Repo.rollback(reason)
-        end
-
-      domains = normalize_domains(Map.get(attrs, "domains", []))
-
-      with :ok <- replace_provider_domains(provider, domains) do
-        Repo.preload(provider, :domains)
-      else
-        {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback({:changeset, changeset})
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
-  end
-
-  def find_google_sso_provider_for_domain(domain) when domain in [nil, ""] do
-    nil
-  end
-
-  def find_google_sso_provider_for_domain(domain) when is_binary(domain) do
-    normalized = normalize_domain(domain)
-
-    from(p in OrganizationSSOProvider,
-      join: d in OrganizationSSODomain,
-      on: d.organization_sso_provider_id == p.id,
-      where:
-        p.provider == :google and p.enabled == true and
-          fragment("lower(?) = ?", d.domain, ^normalized),
-      preload: [:organization]
-    )
-    |> Repo.one()
-  end
-
-  def ensure_membership_for_sso(%User{} = user, :google, email) when is_binary(email) do
-    case get_membership_for_user(user) do
-      %OrganizationMembership{} = membership ->
-        {:ok, membership}
-
-      nil ->
-        domain =
-          email
-          |> String.split("@")
-          |> List.last()
-          |> normalize_domain()
-
-        with {:domain, domain} when is_binary(domain) <- {:domain, domain},
-             %OrganizationSSOProvider{} = provider <- find_google_sso_provider_for_domain(domain),
-             true <- provider.auto_provision_members do
-          case create_membership(provider.organization, user) do
-            {:ok, membership} -> {:ok, membership}
-            {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
-          end
-        else
-          {:domain, _} -> {:error, :invalid_email_domain}
-          false -> {:error, :auto_provision_disabled}
-          nil -> {:error, :domain_not_allowed}
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  end
-
-  def ensure_membership_for_sso(_, _, _), do: {:error, :unsupported_provider}
-
-  defp replace_provider_domains(%OrganizationSSOProvider{} = provider, []) do
-    Repo.delete_all(
-      from d in OrganizationSSODomain,
-        where: d.organization_sso_provider_id == ^provider.id
-    )
-
-    :ok
-  end
-
-  defp replace_provider_domains(%OrganizationSSOProvider{} = provider, domains) do
-    Repo.delete_all(
-      from d in OrganizationSSODomain,
-        where: d.organization_sso_provider_id == ^provider.id
-    )
-
-    Enum.reduce_while(domains, :ok, fn domain, :ok ->
-      %OrganizationSSODomain{}
-      |> OrganizationSSODomain.changeset(%{
-        organization_sso_provider_id: provider.id,
-        domain: domain
-      })
-      |> Repo.insert()
-      |> case do
-        {:ok, _record} -> {:cont, :ok}
-        {:error, %Ecto.Changeset{} = changeset} -> {:halt, {:error, changeset}}
-      end
-    end)
-  end
-
-  defp normalize_domains(domains) when is_list(domains) do
-    domains
-    |> Enum.map(&normalize_domain/1)
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.uniq()
-  end
-
-  defp normalize_domains(value) when is_binary(value) do
-    value
-    |> String.split(~r/[,;\s]+/, trim: true)
-    |> normalize_domains()
-  end
-
-  defp normalize_domains(_), do: []
-
-  defp normalize_domain(nil), do: nil
-
-  defp normalize_domain(domain) when is_binary(domain) do
-    domain
-    |> String.trim()
-    |> String.downcase()
-  end
+  defdelegate list_sso_providers(organization), to: SSO
+  defdelegate get_sso_provider_for_org(organization, provider), to: SSO
+  defdelegate google_sso_enabled?(organization), to: SSO
+  defdelegate upsert_google_sso_provider(organization, attrs), to: SSO
+  defdelegate find_google_sso_provider_for_domain(domain), to: SSO
+  defdelegate ensure_membership_for_sso(user, provider, email), to: SSO
 
   def accept_invitation(%OrganizationInvitation{} = invitation, %User{} = user) do
     invitation = Repo.preload(invitation, [:organization, :invited_by])
@@ -729,34 +562,7 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp assign_org_id(attrs, %Organization{} = organization) do
-    assign_org_id(attrs, organization.id)
-  end
-
-  defp assign_org_id(attrs, organization_id) when is_binary(organization_id) do
-    attrs
-    |> Map.put("organization_id", organization_id)
-    |> Map.delete(:organization_id)
-  end
-
-  defp ensure_transponder_org(attrs) do
-    case Map.get(attrs, :organization_id) || Map.get(attrs, "organization_id") do
-      nil ->
-        case Map.get(attrs, :database_id) || Map.get(attrs, "database_id") do
-          nil ->
-            attrs
-
-          database_id ->
-            case Repo.get(Database, database_id) do
-              nil -> attrs
-              %Database{} = database -> assign_org_id(attrs, database.organization_id)
-            end
-        end
-
-      _ ->
-        attrs
-    end
-  end
+  defp assign_org_id(attrs, org_or_id), do: Attrs.assign_org_id(attrs, org_or_id)
 
   defp ensure_dashboard_source(attrs, %OrganizationMembership{} = membership, default \\ nil) do
     with {:ok, {type, id}} <- resolve_dashboard_source(attrs, default),
@@ -1030,31 +836,7 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp atomize_keys(attrs) when is_map(attrs) do
-    Enum.reduce(attrs, %{}, fn {key, value}, acc ->
-      cond do
-        is_atom(key) ->
-          Map.put(acc, key, value)
-
-        is_binary(key) ->
-          atom_key =
-            try do
-              String.to_existing_atom(key)
-            rescue
-              ArgumentError -> nil
-            end
-
-          if atom_key do
-            Map.put(acc, atom_key, value)
-          else
-            Map.put(acc, key, value)
-          end
-
-        true ->
-          Map.put(acc, key, value)
-      end
-    end)
-  end
+  defp atomize_keys(attrs), do: Attrs.atomize_keys(attrs)
 
   defp maybe_cleanup_replaced_sqlite_file(
          %Database{driver: "sqlite", file_path: old_path, config: old_config},
@@ -2171,218 +1953,23 @@ defmodule Trifle.Organizations do
 
   ## Organization connectors
 
-  def list_connectors_for_org(%Organization{} = organization) do
-    list_connectors_for_org(organization.id)
-  end
-
-  def list_connectors_for_org(organization_id) when is_binary(organization_id) do
-    from(a in OrganizationConnector,
-      where: a.organization_id == ^organization_id,
-      order_by: [desc: a.last_seen_at, desc: a.inserted_at]
-    )
-    |> Repo.all()
-  end
-
-  def get_connector_for_org!(%Organization{} = organization, id) when is_binary(id) do
-    get_connector_for_org!(organization.id, id)
-  end
-
-  def get_connector_for_org!(organization_id, id)
-      when is_binary(organization_id) and is_binary(id) do
-    Repo.get_by!(OrganizationConnector, id: id, organization_id: organization_id)
-  end
-
-  def get_connector_for_org(organization_id, id)
-      when is_binary(organization_id) and is_binary(id) do
-    Repo.get_by(OrganizationConnector, id: id, organization_id: organization_id)
-  end
-
-  def create_connector_for_org(%Organization{} = organization, attrs \\ %{}) do
-    token_value = OrganizationConnector.build_token()
-
-    attrs =
-      attrs
-      |> Map.new()
-      |> assign_org_id(organization)
-      |> atomize_keys()
-      |> Map.put(:token_hash, OrganizationConnector.hash_token(token_value))
-      |> Map.put(:token_last5, OrganizationConnector.token_last5(token_value))
-
-    case %OrganizationConnector{}
-         |> OrganizationConnector.changeset(attrs)
-         |> Repo.insert() do
-      {:ok, connector} -> {:ok, connector, token_value}
-      {:error, changeset} -> {:error, changeset}
-    end
-  end
-
-  def change_connector(%OrganizationConnector{} = connector, attrs \\ %{}) do
-    OrganizationConnector.changeset(connector, attrs)
-  end
-
-  def delete_connector(%OrganizationConnector{} = connector) do
-    Repo.transaction(fn ->
-      from(d in Database, where: d.organization_connector_id == ^connector.id)
-      |> Repo.update_all(
-        set: [connection_method: "direct", organization_connector_id: nil],
-        inc: [pool_version: 1]
-      )
-
-      case Repo.delete(connector) do
-        {:ok, deleted} -> deleted
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
-  end
-
-  def get_connector_auth(token) when is_binary(token) do
-    token
-    |> OrganizationConnector.valid_query()
-    |> Repo.one()
-    |> Repo.preload(:organization)
-    |> case do
-      %OrganizationConnector{} = connector ->
-        {:ok, %{connector: connector, organization: connector.organization}}
-
-      _ ->
-        {:error, :not_found}
-    end
-  end
-
-  def get_connector_auth(_), do: {:error, :not_found}
-
-  def record_connector_heartbeat(%OrganizationConnector{} = connector, attrs \\ %{}) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    attrs =
-      attrs
-      |> Map.new()
-      |> atomize_keys()
-      |> Map.take([
-        :name,
-        :version,
-        :commit,
-        :build_date,
-        :hostname,
-        :capabilities,
-        :metadata
-      ])
-      |> Map.merge(%{
-        status: "online",
-        last_heartbeat_at: now,
-        last_seen_at: now,
-        last_error: nil
-      })
-
-    connector
-    |> OrganizationConnector.changeset(attrs)
-    |> Repo.update()
-  end
-
-  def touch_connector_poll(%OrganizationConnector{} = connector) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    connector
-    |> OrganizationConnector.changeset(%{
-      status: "online",
-      last_poll_at: now,
-      last_seen_at: now
-    })
-    |> Repo.update()
-  end
-
-  def enqueue_connector_job(%OrganizationConnector{} = connector, type, payload \\ %{}) do
-    %ConnectorJob{}
-    |> ConnectorJob.changeset(%{
-      organization_connector_id: connector.id,
-      type: to_string(type),
-      payload: payload || %{}
-    })
-    |> Repo.insert()
-  end
-
-  def list_pending_connector_jobs(%OrganizationConnector{} = connector, limit \\ 10) do
-    limit = max(1, min(limit, 50))
-
-    Repo.transaction(fn ->
-      jobs =
-        from(j in ConnectorJob,
-          where: j.organization_connector_id == ^connector.id and j.status == "pending",
-          order_by: [asc: j.inserted_at],
-          limit: ^limit,
-          lock: "FOR UPDATE SKIP LOCKED"
-        )
-        |> Repo.all()
-
-      ids = Enum.map(jobs, & &1.id)
-
-      if ids != [] do
-        from(j in ConnectorJob, where: j.id in ^ids)
-        |> Repo.update_all(set: [status: "running"])
-      end
-
-      Enum.map(jobs, fn job -> %{job | status: "running"} end)
-    end)
-    |> case do
-      {:ok, jobs} -> jobs
-      {:error, _reason} -> []
-    end
-  end
-
-  def complete_connector_job(%OrganizationConnector{} = connector, job_id, attrs)
-      when is_binary(job_id) and is_map(attrs) do
-    case Repo.get_by(ConnectorJob, id: job_id, organization_connector_id: connector.id) do
-      %ConnectorJob{} = job ->
-        attrs =
-          attrs
-          |> Map.new()
-          |> atomize_keys()
-          |> normalize_connector_job_completion_attrs()
-          |> maybe_scrub_connector_job_payload(job)
-
-        job
-        |> ConnectorJob.changeset(attrs)
-        |> Repo.update()
-
-      nil ->
-        {:error, :not_found}
-    end
-  end
-
-  def complete_connector_job(_connector, _job_id, _attrs), do: {:error, :not_found}
-
-  defp normalize_connector_job_completion_attrs(attrs) do
-    status =
-      case Map.get(attrs, :status) do
-        value when value in ["ok", "error"] -> value
-        "completed" -> "ok"
-        value -> value
-      end
-
-    attrs
-    |> Map.take([:status, :result, :error, :logs])
-    |> Map.put(:status, status)
-    |> Map.put(:completed_at, DateTime.utc_now() |> DateTime.truncate(:second))
-  end
-
-  defp maybe_scrub_connector_job_payload(attrs, %ConnectorJob{type: "stats_values"} = job) do
-    Map.put(attrs, :payload, scrub_connector_job_payload(job.payload))
-  end
-
-  defp maybe_scrub_connector_job_payload(attrs, _job), do: attrs
-
-  defp scrub_connector_job_payload(value) when is_map(value) do
-    Map.new(value, fn
-      {key, _value} when key in ["password", :password] -> {key, "[redacted]"}
-      {key, nested} -> {key, scrub_connector_job_payload(nested)}
-    end)
-  end
-
-  defp scrub_connector_job_payload(values) when is_list(values) do
-    Enum.map(values, &scrub_connector_job_payload/1)
-  end
-
-  defp scrub_connector_job_payload(value), do: value
+  defdelegate list_connectors_for_org(org_or_id), to: Connectors
+  defdelegate get_connector_for_org!(org_or_id, id), to: Connectors
+  defdelegate get_connector_for_org(organization_id, id), to: Connectors
+  defdelegate create_connector_for_org(organization), to: Connectors
+  defdelegate create_connector_for_org(organization, attrs), to: Connectors
+  defdelegate change_connector(connector), to: Connectors
+  defdelegate change_connector(connector, attrs), to: Connectors
+  defdelegate delete_connector(connector), to: Connectors
+  defdelegate get_connector_auth(token), to: Connectors
+  defdelegate record_connector_heartbeat(connector), to: Connectors
+  defdelegate record_connector_heartbeat(connector, attrs), to: Connectors
+  defdelegate touch_connector_poll(connector), to: Connectors
+  defdelegate enqueue_connector_job(connector, type), to: Connectors
+  defdelegate enqueue_connector_job(connector, type, payload), to: Connectors
+  defdelegate list_pending_connector_jobs(connector), to: Connectors
+  defdelegate list_pending_connector_jobs(connector, limit), to: Connectors
+  defdelegate complete_connector_job(connector, job_id, attrs), to: Connectors
 
   ## Database tokens
 
@@ -2664,7 +2251,7 @@ defmodule Trifle.Organizations do
     |> Multi.update_all(:monitors, monitors_for_source_query(:database, database.id),
       set: [source_type: nil, source_id: nil]
     )
-    |> Multi.delete_all(:transponders, transponders_for_source_query(:database, database.id))
+    |> Multi.delete_all(:transponders, Transponders.for_source_query(:database, database.id))
     |> Multi.delete(:database, database)
     |> Repo.transaction()
     |> case do
@@ -2759,145 +2346,23 @@ defmodule Trifle.Organizations do
 
   ## Transponder functions
 
-  alias Trifle.Organizations.Transponder
-
-  @doc """
-  Returns the list of transponders for a database.
-  """
-  def list_transponders_for_database(%Database{} = database) do
-    list_transponders_for_source(:database, database.id, database.organization_id)
-  end
-
-  @doc """
-  Returns the list of transponders for a project.
-  """
-  def list_transponders_for_project(%Project{} = project) do
-    list_transponders_for_source(:project, project.id, nil)
-  end
-
-  @doc """
-  Gets a single transponder.
-  """
-  def get_transponder_for_org!(%Organization{} = organization, id) when is_binary(id) do
-    Repo.get_by!(Transponder, id: id, organization_id: organization.id)
-  end
-
-  def get_transponder_for_org!(organization_id, id)
-      when is_binary(organization_id) and is_binary(id) do
-    Repo.get_by!(Transponder, id: id, organization_id: organization_id)
-  end
-
-  def get_transponder!(id), do: Repo.get!(Transponder, id)
-
-  def get_transponder_for_source!(%Database{} = database, id) when is_binary(id) do
-    Repo.get_by!(Transponder,
-      id: id,
-      source_type: source_type_string(:database),
-      source_id: database.id,
-      organization_id: database.organization_id
-    )
-  end
-
-  def get_transponder_for_source!(%Project{} = project, id) when is_binary(id) do
-    Repo.get_by!(Transponder,
-      id: id,
-      source_type: source_type_string(:project),
-      source_id: project.id
-    )
-  end
-
-  @doc """
-  Creates a transponder bound to a database.
-  """
-  def create_transponder_for_database(%Database{} = database, attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Map.put("database_id", database.id)
-      |> Map.delete(:database_id)
-      |> assign_org_id(database.organization_id)
-      |> assign_source(:database, database.id)
-      |> atomize_keys()
-
-    create_transponder(attrs)
-  end
-
-  @doc """
-  Creates a transponder bound to a project.
-  """
-  def create_transponder_for_project(%Project{} = project, attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Map.delete(:database_id)
-      |> Map.delete("database_id")
-      |> assign_source(:project, project.id)
-      |> atomize_keys()
-
-    create_transponder(attrs)
-  end
-
-  @doc """
-  Creates a transponder.
-  """
-  def create_transponder(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> ensure_transponder_org()
-      |> ensure_transponder_source()
-      |> atomize_keys()
-
-    %Transponder{}
-    |> Transponder.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a transponder.
-  """
-  def update_transponder(%Transponder{} = transponder, attrs) do
-    attrs = ensure_transponder_source(attrs)
-
-    transponder
-    |> Transponder.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a transponder.
-  """
-  def delete_transponder(%Transponder{} = transponder) do
-    Repo.delete(transponder)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking transponder changes.
-  """
-  def change_transponder(%Transponder{} = transponder, attrs \\ %{}) do
-    attrs = ensure_transponder_source(attrs)
-
-    Transponder.changeset(transponder, attrs)
-  end
-
-  @doc """
-  Updates the order of transponders for a database.
-  """
-  def update_transponder_order(%Database{} = database, transponder_ids) do
-    update_transponder_order_for_source(:database, database.id, transponder_ids)
-  end
-
-  def update_transponder_order(%Project{} = project, transponder_ids) do
-    update_transponder_order_for_source(:project, project.id, transponder_ids)
-  end
-
-  @doc """
-  Sets the next available order for a new transponder.
-  """
-  def get_next_transponder_order(%Database{} = database) do
-    get_next_transponder_order_for_source(:database, database.id)
-  end
-
-  def get_next_transponder_order(%Project{} = project) do
-    get_next_transponder_order_for_source(:project, project.id)
-  end
+  defdelegate list_transponders_for_database(database), to: Transponders
+  defdelegate list_transponders_for_project(project), to: Transponders
+  defdelegate get_transponder_for_org!(org_or_id, id), to: Transponders
+  defdelegate get_transponder!(id), to: Transponders
+  defdelegate get_transponder_for_source!(source, id), to: Transponders
+  defdelegate create_transponder_for_database(database), to: Transponders
+  defdelegate create_transponder_for_database(database, attrs), to: Transponders
+  defdelegate create_transponder_for_project(project), to: Transponders
+  defdelegate create_transponder_for_project(project, attrs), to: Transponders
+  defdelegate create_transponder, to: Transponders
+  defdelegate create_transponder(attrs), to: Transponders
+  defdelegate update_transponder(transponder, attrs), to: Transponders
+  defdelegate delete_transponder(transponder), to: Transponders
+  defdelegate change_transponder(transponder), to: Transponders
+  defdelegate change_transponder(transponder, attrs), to: Transponders
+  defdelegate update_transponder_order(source, transponder_ids), to: Transponders
+  defdelegate get_next_transponder_order(source), to: Transponders
 
   @doc """
   Returns the next position index for dashboards within a group (global).
@@ -2937,112 +2402,6 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp list_transponders_for_source(type, source_id, organization_id) do
-    type_string = source_type_string(type)
-
-    base_query =
-      from t in Transponder,
-        where: t.source_type == ^type_string and t.source_id == ^source_id,
-        order_by: [asc: t.order, asc: t.key]
-
-    query =
-      case organization_id do
-        nil -> base_query
-        org_id -> from t in base_query, where: t.organization_id == ^org_id
-      end
-
-    Repo.all(query)
-  end
-
-  defp transponders_for_source_query(type, source_id) do
-    type_string = source_type_string(type)
-
-    from(t in Transponder,
-      where: t.source_type == ^type_string and t.source_id == ^source_id
-    )
-  end
-
-  defp update_transponder_order_for_source(type, source_id, transponder_ids) do
-    type_string = source_type_string(type)
-
-    Repo.transaction(fn ->
-      transponder_ids
-      |> Enum.with_index()
-      |> Enum.each(fn {transponder_id, index} ->
-        from(t in Transponder,
-          where:
-            t.id == ^transponder_id and t.source_type == ^type_string and
-              t.source_id == ^source_id
-        )
-        |> Repo.update_all(set: [order: index])
-      end)
-    end)
-  end
-
-  defp get_next_transponder_order_for_source(type, source_id) do
-    type_string = source_type_string(type)
-
-    query =
-      from(t in Transponder,
-        where: t.source_type == ^type_string and t.source_id == ^source_id,
-        select: max(t.order)
-      )
-
-    case Repo.one(query) do
-      nil -> 0
-      max_order -> max_order + 1
-    end
-  end
-
-  defp assign_source(attrs, type, source_id) do
-    attrs
-    |> Map.put("source_type", source_type_string(type))
-    |> Map.put("source_id", source_id)
-    |> Map.delete(:source_type)
-    |> Map.delete(:source_id)
-  end
-
-  defp ensure_transponder_source(nil), do: %{}
-
-  defp ensure_transponder_source(attrs) when is_map(attrs) do
-    source_type = Map.get(attrs, :source_type) || Map.get(attrs, "source_type")
-    source_id = Map.get(attrs, :source_id) || Map.get(attrs, "source_id")
-    database_id = Map.get(attrs, :database_id) || Map.get(attrs, "database_id")
-
-    cond do
-      source_type && source_id ->
-        attrs
-        |> Map.put("source_type", normalize_source_type(source_type))
-        |> Map.delete(:source_type)
-        |> Map.put("source_id", source_id)
-        |> Map.delete(:source_id)
-
-      database_id ->
-        attrs
-        |> Map.put("source_type", source_type_string(:database))
-        |> Map.put("source_id", database_id)
-
-      true ->
-        attrs
-    end
-  end
-
-  defp ensure_transponder_source(attrs), do: attrs
-
-  defp normalize_source_type(value) when is_atom(value) do
-    value
-    |> Atom.to_string()
-    |> normalize_source_type()
-  end
-
-  defp normalize_source_type(value) when is_binary(value) do
-    value
-    |> String.trim()
-    |> String.downcase()
-  end
-
-  defp normalize_source_type(_), do: nil
-
   defp project_subscription_query(%Project{} = project) do
     from(s in Subscription,
       where:
@@ -3064,7 +2423,7 @@ defmodule Trifle.Organizations do
     |> Multi.update_all(:monitors, monitors_for_source_query(:project, project.id),
       set: [source_type: nil, source_id: nil]
     )
-    |> Multi.delete_all(:transponders, transponders_for_source_query(:project, project.id))
+    |> Multi.delete_all(:transponders, Transponders.for_source_query(:project, project.id))
     |> Multi.delete_all(:subscription, project_subscription_query(project))
     |> Multi.delete(:project, project)
     |> Repo.transaction()
@@ -3080,17 +2439,7 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp source_type_string(type) when is_atom(type) do
-    type
-    |> Atom.to_string()
-    |> String.downcase()
-  end
-
-  defp source_type_string(type) when is_binary(type) do
-    type
-    |> String.trim()
-    |> String.downcase()
-  end
+  defp source_type_string(type), do: Attrs.source_type_string(type)
 
   defp dashboards_for_source_query(:database, source_id) do
     from(d in Dashboard,
