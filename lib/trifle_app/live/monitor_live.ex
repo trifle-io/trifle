@@ -2289,25 +2289,7 @@ defmodule TrifleApp.MonitorLive do
   defp format_delivery_datetime(value), do: to_string(value)
 
   defp monitor_export_filename(prefix, %Monitor{} = monitor, ext) do
-    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
-
-    base =
-      [prefix, monitor.name]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&sanitize_filename_component/1)
-      |> Enum.join("-")
-
-    if base == "" do
-      prefix <> "-" <> ts <> ext
-    else
-      base <> "-" <> ts <> ext
-    end
-  end
-
-  defp sanitize_filename_component(value) do
-    value
-    |> to_string()
-    |> String.replace(~r/[^a-zA-Z0-9_-]+/, "-")
+    TrifleApp.ExportFilename.build(prefix, [monitor.name], ext)
   end
 
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""

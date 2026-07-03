@@ -2601,22 +2601,7 @@ defmodule TrifleApp.ChatShellLive do
     |> max(0)
   end
 
-  defp format_duration(nil), do: nil
-
-  defp format_duration(seconds) when is_integer(seconds) and seconds >= 0 do
-    cond do
-      seconds < 60 ->
-        "#{seconds}s"
-
-      true ->
-        minutes = div(seconds, 60)
-        remaining = rem(seconds, 60)
-        "#{minutes}m#{pad_two(remaining)}s"
-    end
-  end
-
-  defp pad_two(value) when value < 10, do: "0#{value}"
-  defp pad_two(value), do: Integer.to_string(value)
+  defp format_duration(seconds), do: TrifleApp.Format.duration_seconds(seconds)
 
   defp ensure_period(text) when is_binary(text) do
     text

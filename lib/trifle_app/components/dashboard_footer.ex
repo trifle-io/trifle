@@ -7,7 +7,6 @@ defmodule TrifleApp.Components.DashboardFooter do
   """
   use TrifleApp, :html
 
-  alias TrifleApp.DashboardLive
 
   attr :summary, :map, required: true
   attr :load_duration_microseconds, :integer, default: nil
@@ -255,7 +254,7 @@ defmodule TrifleApp.Components.DashboardFooter do
                   />
                 </svg>
                 <span class="font-medium">Load:</span>
-                <span>{DashboardLive.format_duration(@load_duration_microseconds)}</span>
+                <span>{TrifleApp.Format.duration_us(@load_duration_microseconds)}</span>
               </div>
             <% end %>
           </div>

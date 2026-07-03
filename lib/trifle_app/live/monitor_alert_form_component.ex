@@ -843,20 +843,7 @@ defmodule TrifleApp.MonitorAlertFormComponent do
 
   defp finished_elapsed(_), do: nil
 
-  defp format_duration(seconds) when is_integer(seconds) and seconds >= 0 do
-    cond do
-      seconds < 60 ->
-        "#{seconds}s"
-
-      true ->
-        minutes = div(seconds, 60)
-        remaining = rem(seconds, 60)
-        "#{minutes}m#{pad_two(remaining)}s"
-    end
-  end
-
-  defp pad_two(value) when value < 10, do: "0#{value}"
-  defp pad_two(value), do: Integer.to_string(value)
+  defp format_duration(seconds), do: TrifleApp.Format.duration_seconds(seconds)
 
   defp variant_label(:conservative), do: "Conservative"
   defp variant_label(:balanced), do: "Balanced"

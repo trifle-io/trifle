@@ -2874,36 +2874,7 @@ defmodule TrifleApp.DashboardLive do
   defp series_from_assigns(assigns), do: SeriesExport.extract_series(assigns[:stats])
 
   defp export_filename(prefix, assigns, ext) do
-    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
-
-    base =
-      [prefix, assigns[:dashboard] && assigns.dashboard.name]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&String.replace(to_string(&1), ~r/[^a-zA-Z0-9_-]+/, "-"))
-      |> Enum.join("-")
-
-    if(base == "", do: prefix, else: base) <> "-" <> ts <> ext
-  end
-
-  def format_duration(microseconds) when is_nil(microseconds), do: nil
-
-  def format_duration(microseconds) when is_integer(microseconds) do
-    cond do
-      microseconds < 1_000 ->
-        "#{microseconds}μs"
-
-      microseconds < 1_000_000 ->
-        ms = div(microseconds, 1_000)
-        "#{ms}ms"
-
-      microseconds < 60_000_000 ->
-        seconds = div(microseconds, 1_000_000)
-        "#{seconds}s"
-
-      true ->
-        minutes = div(microseconds, 60_000_000)
-        "#{minutes}m"
-    end
+    TrifleApp.ExportFilename.build(prefix, [assigns[:dashboard] && assigns.dashboard.name], ext)
   end
 
   def render(assigns) do

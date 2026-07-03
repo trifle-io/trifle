@@ -46,27 +46,6 @@ defmodule TrifleApp.ExploreCore do
     |> NaiveDateTime.to_iso8601()
   end
 
-  def format_duration(microseconds) when is_nil(microseconds), do: nil
-
-  def format_duration(microseconds) when is_integer(microseconds) do
-    cond do
-      microseconds < 1_000 ->
-        "#{microseconds}μs"
-
-      microseconds < 1_000_000 ->
-        ms = div(microseconds, 1_000)
-        "#{ms}ms"
-
-      microseconds < 60_000_000 ->
-        seconds = div(microseconds, 1_000_000)
-        "#{seconds}s"
-
-      true ->
-        minutes = div(microseconds, 60_000_000)
-        "#{minutes}m"
-    end
-  end
-
   def format_timeframe_display(from, to) do
     from_date = from |> DateTime.to_date() |> Date.to_string()
     to_date = to |> DateTime.to_date() |> Date.to_string()
@@ -660,20 +639,6 @@ defmodule TrifleApp.ExploreCore do
      socket
      |> assign(loading: true)
      |> push_source_patch(params)}
-  end
-
-  def determine_granularity_for_timeframe(from, to) do
-    duration_seconds = DateTime.diff(to, from, :second)
-
-    cond do
-      duration_seconds <= 3600 -> "1m"
-      duration_seconds <= 86400 -> "1h"
-      duration_seconds <= 604_800 -> "1d"
-      duration_seconds <= 2_592_000 -> "1w"
-      duration_seconds <= 7_776_000 -> "1mo"
-      duration_seconds <= 31_536_000 -> "1mo"
-      true -> "1y"
-    end
   end
 
   @doc """
@@ -1839,8 +1804,6 @@ defmodule TrifleApp.ExploreCore do
   end
 
   defp export_filename(prefix, assigns, ext) do
-    ts = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(:basic)
-
     source_name =
       cond do
         Map.has_key?(assigns, :source) && assigns.source -> Source.display_name(assigns.source)
@@ -1848,13 +1811,7 @@ defmodule TrifleApp.ExploreCore do
         true -> nil
       end
 
-    base =
-      [prefix, source_name, assigns[:key]]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&String.replace(to_string(&1), ~r/[^a-zA-Z0-9_-]+/, "-"))
-      |> Enum.join("-")
-
-    if(base == "", do: prefix, else: base) <> "-" <> ts <> ext
+    TrifleApp.ExportFilename.build(prefix, [source_name, assigns[:key]], ext)
   end
 
   def format_nested_path(path, all_paths, transponder_info \\ %{}, opts \\ [])
@@ -2453,7 +2410,7 @@ defmodule TrifleApp.ExploreCore do
                         />
                       </svg>
                       <span class="text-gray-900 dark:text-white">
-                        {format_duration(@load_duration_microseconds)}
+                        {TrifleApp.Format.duration_us(@load_duration_microseconds)}
                       </span>
                     </div>
                   <% end %>
