@@ -20,6 +20,9 @@ defmodule TrifleApp.CommandPaletteLayoutTest do
     assert html =~ ~s(aria-label="Search workspace")
     assert html =~ "Search"
     assert html =~ "Mr. Baker"
+    assert html =~ "commandPaletteNewTabShortcutLabel()"
+    assert html =~ "handleCommandPaletteItemClick($event)"
+    assert html =~ "new tab"
 
     assert {trigger_position, _} = :binary.match(html, "command-palette-trigger")
     assert {workspace_position, _} = :binary.match(html, "Workspace")

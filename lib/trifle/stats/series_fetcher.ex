@@ -118,19 +118,24 @@ defmodule Trifle.Stats.SeriesFetcher do
   Determines if timeline should be loaded progressively.
   """
   def should_slice_timeline?(from, to, granularity, config, chunk_size \\ @default_chunk_size) do
-    timeline = generate_timeline(from, to, granularity, config)
-    length(timeline) > chunk_size
+    from
+    |> generate_timeline(to, granularity, config)
+    |> timeline_exceeds_chunk_size?(chunk_size)
   end
 
   # Private Implementation
 
+  defp timeline_exceeds_chunk_size?(timeline, chunk_size) do
+    length(timeline) > (chunk_size || @default_chunk_size)
+  end
+
   defp fetch_raw_stats(key, from, to, granularity, config, opts, fetcher) do
-    if opts[:progressive] and
-         should_slice_timeline?(from, to, granularity, config, opts[:chunk_size]) do
+    timeline = if opts[:progressive], do: generate_timeline(from, to, granularity, config)
+
+    if timeline && timeline_exceeds_chunk_size?(timeline, opts[:chunk_size]) do
       fetch_stats_progressive(
         key,
-        from,
-        to,
+        timeline,
         granularity,
         config,
         opts[:chunk_size],
@@ -155,8 +160,7 @@ defmodule Trifle.Stats.SeriesFetcher do
 
   defp fetch_stats_progressive(
          key,
-         from,
-         to,
+         timeline,
          granularity,
          config,
          chunk_size,
@@ -164,7 +168,6 @@ defmodule Trifle.Stats.SeriesFetcher do
          progress_callback,
          fetcher
        ) do
-    timeline = generate_timeline(from, to, granularity, config)
     chunks = Enum.chunk_every(timeline, chunk_size)
     total_chunks = length(chunks)
     concurrency = normalize_progressive_concurrency(progressive_concurrency)

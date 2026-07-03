@@ -30,6 +30,7 @@ defmodule Trifle.Application do
         {Phoenix.PubSub, name: Trifle.PubSub},
         Trifle.Chat.RunnerRegistry,
         Trifle.Organizations.TokenCache,
+        Trifle.Organizations.TokenTouchThrottle,
         # Start Finch
         {Finch, name: Trifle.Finch},
         {Oban, Application.fetch_env!(:trifle, Oban)},

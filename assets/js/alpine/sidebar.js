@@ -250,6 +250,10 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     return isApplePlatform() ? "⌘+K" : "Ctrl+K";
   },
 
+  commandPaletteNewTabShortcutLabel() {
+    return isApplePlatform() ? "⌘+Enter" : "Ctrl+Enter";
+  },
+
   loadState() {
     const preload = window.__TRIFLE_SIDEBAR_PRELOAD__ || {};
     const sidebarStorageKey = normalizeSidebarStorageKey(this.storageKey);
@@ -781,6 +785,38 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     this.selectCommandPaletteElement(active);
   },
 
+  openActiveCommandPaletteItemInNewTab() {
+    const visibleItems = this.getCommandPaletteVisibleItems();
+    const active = visibleItems[this.commandPaletteActiveIndex] || visibleItems[0];
+    this.openCommandPaletteElementInNewTab(active);
+  },
+
+  handleCommandPaletteEnter(event) {
+    if (!event) return;
+
+    event.preventDefault();
+
+    if (event.metaKey || event.ctrlKey) {
+      this.openActiveCommandPaletteItemInNewTab();
+    } else {
+      this.selectActiveCommandPaletteItem();
+    }
+  },
+
+  handleCommandPaletteItemClick(event) {
+    if (!event) return;
+
+    event.preventDefault();
+
+    const element = event.currentTarget;
+
+    if (event.metaKey || event.ctrlKey) {
+      this.openCommandPaletteElementInNewTab(element);
+    } else {
+      this.selectCommandPaletteElement(element);
+    }
+  },
+
   selectCommandPaletteElement(element) {
     if (!(element instanceof HTMLElement) || element.hidden) return;
 
@@ -796,6 +832,23 @@ window.trifleSidebar = ({ storageKey = "trifle:sidebar", defaultCollapsed = fals
     if (!to) return;
 
     this.navigateCommandPalette(to);
+  },
+
+  openCommandPaletteElementInNewTab(element) {
+    if (!(element instanceof HTMLElement) || element.hidden) return;
+
+    const action = element.dataset.commandPaletteAction;
+    if (action === "chat") {
+      this.selectCommandPaletteElement(element);
+      return;
+    }
+
+    const to = element.dataset.commandPaletteTo;
+    if (!to) return;
+
+    window.open(to, "_blank", "noopener");
+    this.closeCommandPalette({ restoreFocus: false });
+    this.closeMobile();
   },
 
   navigateCommandPalette(to) {

@@ -38,6 +38,7 @@ defmodule Trifle.Organizations do
 
   alias Trifle.Organizations.InvitationNotifier
   alias Trifle.Organizations.TokenCache
+  alias Trifle.Organizations.TokenTouchThrottle
 
   ## Organizations
 
@@ -1661,20 +1662,24 @@ defmodule Trifle.Organizations do
   def touch_organization_api_token(token, attrs \\ %{})
 
   def touch_organization_api_token(token, attrs) when is_binary(token) do
-    attrs = attrs || %{}
-    attrs = Map.new(attrs)
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    token_hash = OrganizationApiToken.hash_token(token)
 
-    updates =
-      [last_used_at: now]
-      |> maybe_put_token_metadata_update(
-        :last_used_from,
-        token_metadata_value(attrs, :last_used_from)
-      )
+    if TokenTouchThrottle.allow?(token_hash) do
+      attrs = attrs || %{}
+      attrs = Map.new(attrs)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    token
-    |> OrganizationApiToken.valid_query()
-    |> Repo.update_all(set: updates)
+      updates =
+        [last_used_at: now]
+        |> maybe_put_token_metadata_update(
+          :last_used_from,
+          token_metadata_value(attrs, :last_used_from)
+        )
+
+      token
+      |> OrganizationApiToken.valid_query()
+      |> Repo.update_all(set: updates)
+    end
 
     :ok
   end

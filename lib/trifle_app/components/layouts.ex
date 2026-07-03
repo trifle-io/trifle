@@ -116,7 +116,7 @@ defmodule TrifleApp.Layouts do
             x-on:input="queueCommandPaletteRefresh()"
             x-on:keydown.arrow-down.prevent="moveCommandPaletteActive(1)"
             x-on:keydown.arrow-up.prevent="moveCommandPaletteActive(-1)"
-            x-on:keydown.enter.prevent="selectActiveCommandPaletteItem()"
+            x-on:keydown.enter="handleCommandPaletteEnter($event)"
             x-bind:aria-activedescendant="commandPaletteActiveItemId || null"
             role="combobox"
             aria-controls="command-palette-results"
@@ -165,7 +165,7 @@ defmodule TrifleApp.Layouts do
                     class="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/70 dark:text-slate-200 dark:hover:bg-slate-800/80 dark:hover:text-white"
                     x-bind:class="commandPaletteItemActive($el) ? 'bg-slate-900/5 text-slate-900 dark:bg-slate-800 dark:text-white' : ''"
                     x-on:mousemove="activateCommandPaletteElement($event.currentTarget)"
-                    x-on:click="selectCommandPaletteElement($event.currentTarget)"
+                    x-on:click="handleCommandPaletteItemClick($event)"
                   >
                     <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50 text-slate-500 transition group-hover:border-teal-200 group-hover:bg-teal-50 group-hover:text-teal-700 dark:border-slate-700/80 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:border-teal-400/40 dark:group-hover:bg-teal-400/10 dark:group-hover:text-teal-200">
                       <TrifleApp.SidebarIcons.icon
@@ -216,6 +216,15 @@ defmodule TrifleApp.Layouts do
               Enter
             </kbd>
             to open
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <kbd
+              class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[0.68rem] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              x-text="commandPaletteNewTabShortcutLabel()"
+            >
+              ⌘+Enter
+            </kbd>
+            new tab
           </span>
           <span class="ml-auto inline-flex items-center gap-1">
             <kbd class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[0.68rem] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
