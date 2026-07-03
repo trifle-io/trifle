@@ -11,7 +11,6 @@ defmodule Trifle.Organizations do
   alias Trifle.Monitors.Monitor
   alias Trifle.Repo
   alias Trifle.SqliteUploads
-  alias Trifle.Stats.Source, as: StatsSource
 
   alias Trifle.Accounts.User
 
@@ -19,26 +18,20 @@ defmodule Trifle.Organizations do
     Project,
     ProjectCluster,
     ProjectClusterAccess,
-    OrganizationApiToken,
     OrganizationConnector,
-    ProjectToken,
-    DatabaseToken,
     Organization,
     OrganizationMembership,
     OrganizationInvitation,
-    Database,
-    Dashboard,
-    DashboardVisit,
-    DashboardGroup
+    Database
   }
 
   alias Trifle.Organizations.Attrs
   alias Trifle.Organizations.Connectors
+  alias Trifle.Organizations.Dashboards
   alias Trifle.Organizations.InvitationNotifier
   alias Trifle.Organizations.SSO
+  alias Trifle.Organizations.Tokens
   alias Trifle.Organizations.Transponders
-  alias Trifle.Organizations.TokenCache
-  alias Trifle.Organizations.TokenTouchThrottle
 
   ## Organizations
 
@@ -271,70 +264,13 @@ defmodule Trifle.Organizations do
     membership.role in ["owner", "admin"]
   end
 
-  def can_manage_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
-    membership_owner?(membership) || membership_admin?(membership) ||
-      dashboard.user_id == membership.user_id
-  end
+  defdelegate can_manage_dashboard?(dashboard, membership), to: Dashboards
+  defdelegate can_view_dashboard?(dashboard, membership), to: Dashboards
+  defdelegate can_edit_dashboard?(dashboard, membership), to: Dashboards
+  defdelegate can_clone_dashboard?(dashboard, membership), to: Dashboards
 
-  def can_view_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
-    cond do
-      membership_owner?(membership) -> true
-      membership.role == "admin" -> true
-      dashboard.user_id == membership.user_id -> true
-      dashboard.visibility -> true
-      true -> false
-    end
-  end
-
-  def can_edit_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
-    cond do
-      dashboard.organization_id != membership.organization_id -> false
-      membership_owner?(membership) -> true
-      membership_admin?(membership) -> true
-      dashboard.user_id == membership.user_id -> true
-      dashboard.locked -> false
-      dashboard.visibility -> true
-      true -> false
-    end
-  end
-
-  def can_clone_dashboard?(%Dashboard{} = dashboard, %OrganizationMembership{} = membership) do
-    can_view_dashboard?(dashboard, membership)
-  end
-
-  def transfer_dashboard_ownership(
-        %Dashboard{} = dashboard,
-        %OrganizationMembership{} = membership,
-        target_membership_id
-      )
-      when is_binary(target_membership_id) do
-    cond do
-      dashboard.organization_id != membership.organization_id ->
-        {:error, :unauthorized}
-
-      not can_manage_dashboard?(dashboard, membership) ->
-        {:error, :forbidden}
-
-      true ->
-        case get_membership(target_membership_id) do
-          nil ->
-            {:error, :not_found}
-
-          %OrganizationMembership{organization_id: org_id}
-          when org_id != dashboard.organization_id ->
-            {:error, :invalid_target}
-
-          %OrganizationMembership{} = new_owner ->
-            if new_owner.user_id == dashboard.user_id do
-              {:error, :same_owner}
-            else
-              dashboard
-              |> Dashboard.changeset(%{user_id: new_owner.user_id})
-              |> Repo.update()
-            end
-        end
-    end
-  end
+  defdelegate transfer_dashboard_ownership(dashboard, membership, target_membership_id),
+    to: Dashboards
 
   ## Organization invitations
 
@@ -563,278 +499,6 @@ defmodule Trifle.Organizations do
   end
 
   defp assign_org_id(attrs, org_or_id), do: Attrs.assign_org_id(attrs, org_or_id)
-
-  defp ensure_dashboard_source(attrs, %OrganizationMembership{} = membership, default \\ nil) do
-    with {:ok, {type, id}} <- resolve_dashboard_source(attrs, default),
-         {:ok, updated_attrs} <- coerce_dashboard_source(attrs, membership, type, id) do
-      {:ok, updated_attrs}
-    end
-  end
-
-  defp maybe_ensure_dashboard_source(attrs, %OrganizationMembership{} = membership, default) do
-    if valid_source_tuple?(default) or dashboard_source_params_present?(attrs) do
-      ensure_dashboard_source(attrs, membership, default)
-    else
-      {:ok, attrs}
-    end
-  end
-
-  defp resolve_dashboard_source(attrs, default) do
-    case fetch_attr(attrs, "source") do
-      %{} = source_map ->
-        type = fetch_attr(source_map, "type")
-        id = fetch_attr(source_map, "id")
-        normalize_source_tuple(type, id)
-
-      _ ->
-        cond do
-          type = fetch_attr(attrs, "source_type") ->
-            id = fetch_attr(attrs, "source_id")
-            normalize_source_tuple(type, id)
-
-          id = fetch_attr(attrs, "database_id") ->
-            normalize_source_tuple("database", id)
-
-          valid_source_tuple?(default) ->
-            {:ok, default}
-
-          true ->
-            {:error, "Source selection is required"}
-        end
-    end
-  end
-
-  defp normalize_source_tuple(type, id) do
-    type = type && type |> to_string() |> String.trim() |> String.downcase()
-    id = id && to_string(id) |> String.trim()
-
-    cond do
-      type in ["database", "project"] and id not in [nil, ""] ->
-        {:ok, {type, id}}
-
-      true ->
-        {:error, "Invalid source selection"}
-    end
-  end
-
-  defp valid_source_tuple?({type, id})
-       when type in ["database", "project"] and id not in [nil, ""] do
-    true
-  end
-
-  defp valid_source_tuple?(_), do: false
-
-  defp coerce_dashboard_source(attrs, membership, "database", id) do
-    try do
-      database = get_database_for_org!(membership.organization_id, id)
-
-      with :ok <- ensure_source_active(:database, database) do
-        {:ok,
-         attrs
-         |> drop_source_param()
-         |> put_attr("database_id", id)
-         |> put_attr("source_type", "database")
-         |> put_attr("source_id", id)}
-      else
-        {:source_inactive, reason} ->
-          {:error, inactive_source_message("Database", reason)}
-      end
-    rescue
-      Ecto.NoResultsError ->
-        {:error, "Database is not part of this organization"}
-    end
-  end
-
-  defp coerce_dashboard_source(attrs, membership, "project", id) do
-    try do
-      project = get_project_for_org!(membership.organization_id, id)
-
-      with :ok <- ensure_source_active(:project, project) do
-        {:ok,
-         attrs
-         |> drop_source_param()
-         |> put_attr("database_id", nil)
-         |> put_attr("source_type", "project")
-         |> put_attr("source_id", project.id)}
-      else
-        {:source_inactive, reason} ->
-          {:error, inactive_source_message("Project", reason)}
-      end
-    rescue
-      Ecto.NoResultsError ->
-        {:error, "Project not found"}
-    end
-  end
-
-  defp coerce_dashboard_source(_attrs, _membership, _type, _id) do
-    {:error, "Invalid source selection"}
-  end
-
-  defp drop_source_param(attrs) do
-    attrs
-    |> Map.delete("source")
-    |> Map.delete(:source)
-  end
-
-  defp dashboard_source_params_present?(attrs) when is_map(attrs) do
-    Enum.any?(
-      [
-        :source,
-        "source",
-        :source_type,
-        "source_type",
-        :source_id,
-        "source_id",
-        :database_id,
-        "database_id"
-      ],
-      &Map.has_key?(attrs, &1)
-    )
-  end
-
-  defp dashboard_source_params_present?(_attrs), do: false
-
-  defp fetch_attr(attrs, key) when is_binary(key) do
-    Map.get(attrs, key) || Map.get(attrs, String.to_atom(key))
-  end
-
-  defp put_attr(attrs, key, value) when is_binary(key) do
-    attrs
-    |> Map.put(key, value)
-    |> Map.delete(String.to_atom(key))
-  end
-
-  defp ensure_dashboard_source_defaults(attrs) do
-    cond do
-      fetch_attr(attrs, "source_type") && fetch_attr(attrs, "source_id") ->
-        attrs
-
-      source = fetch_attr(attrs, "source") ->
-        type = fetch_attr(source, "type")
-        id = fetch_attr(source, "id")
-
-        attrs
-        |> drop_source_param()
-        |> put_attr("source_type", type)
-        |> put_attr("source_id", id)
-
-      database_id = fetch_attr(attrs, "database_id") ->
-        attrs
-        |> put_attr("source_type", "database")
-        |> put_attr("source_id", database_id)
-
-      true ->
-        attrs
-    end
-  end
-
-  defp ensure_dashboard_lock_default(attrs) when is_map(attrs) do
-    if Map.has_key?(attrs, :locked) || Map.has_key?(attrs, "locked") do
-      attrs
-    else
-      Map.put(attrs, "locked", false)
-    end
-  end
-
-  defp ensure_dashboard_lock_default(attrs), do: attrs
-
-  defp sanitize_dashboard_update_attrs(attrs, allow_protected?) when is_map(attrs) do
-    sanitized =
-      attrs
-      |> Map.delete(:user_id)
-      |> Map.delete("user_id")
-
-    cond do
-      allow_protected? ->
-        {:ok, sanitized}
-
-      Enum.any?([:locked, "locked", :visibility, "visibility"], &Map.has_key?(attrs, &1)) ->
-        {:error, :forbidden}
-
-      true ->
-        {:ok, sanitized}
-    end
-  end
-
-  defp sanitize_dashboard_update_attrs(attrs, _allow_protected?), do: {:ok, attrs}
-
-  defp ensure_parent_group_within_org(attrs, %OrganizationMembership{} = membership) do
-    value = Map.get(attrs, "parent_group_id") || Map.get(attrs, :parent_group_id)
-
-    cond do
-      value in [nil, ""] ->
-        attrs
-        |> Map.delete(:parent_group_id)
-        |> Map.delete("parent_group_id")
-
-      match?(%DashboardGroup{}, value) ->
-        id = value.id
-        ensure_parent_group_exists(id, membership)
-
-        attrs
-        |> Map.put("parent_group_id", id)
-        |> Map.delete(:parent_group_id)
-
-      is_binary(value) ->
-        ensure_parent_group_exists(value, membership)
-
-        attrs
-        |> Map.put("parent_group_id", value)
-        |> Map.delete(:parent_group_id)
-
-      true ->
-        parent_id = to_string(value)
-        ensure_parent_group_exists(parent_id, membership)
-
-        attrs
-        |> Map.put("parent_group_id", parent_id)
-        |> Map.delete(:parent_group_id)
-    end
-  end
-
-  defp ensure_parent_group_exists(parent_id, %OrganizationMembership{} = membership) do
-    case Repo.get_by(DashboardGroup, id: parent_id, organization_id: membership.organization_id) do
-      nil ->
-        raise Ecto.NoResultsError, queryable: DashboardGroup, message: "Dashboard group not found"
-
-      _group ->
-        :ok
-    end
-  end
-
-  defp ensure_dashboard_group_within_org(attrs, %OrganizationMembership{} = membership) do
-    value = Map.get(attrs, "group_id") || Map.get(attrs, :group_id)
-
-    cond do
-      value in [nil, ""] ->
-        attrs
-        |> Map.delete(:group_id)
-        |> Map.delete("group_id")
-
-      match?(%DashboardGroup{}, value) ->
-        id = value.id
-        _ = get_dashboard_group_for_membership!(membership, id)
-
-        attrs
-        |> Map.put("group_id", id)
-        |> Map.delete(:group_id)
-
-      is_binary(value) ->
-        _ = get_dashboard_group_for_membership!(membership, value)
-
-        attrs
-        |> Map.put("group_id", value)
-        |> Map.delete(:group_id)
-
-      true ->
-        group_id = to_string(value)
-        _ = get_dashboard_group_for_membership!(membership, group_id)
-
-        attrs
-        |> Map.put("group_id", group_id)
-        |> Map.delete(:group_id)
-    end
-  end
 
   defp atomize_keys(attrs), do: Attrs.atomize_keys(attrs)
 
@@ -1321,266 +985,30 @@ defmodule Trifle.Organizations do
 
   ## Organization API tokens
 
-  @organization_api_token_cache_ttl_ms 60_000
+  defdelegate list_organization_api_tokens_for_org(org_or_id), to: Tokens
+  defdelegate get_organization_api_token_for_org!(organization_id, token_id), to: Tokens
+  defdelegate get_organization_api_token_for_org(organization_id, token_id), to: Tokens
+  defdelegate create_organization_api_token(user, attrs \\ %{}), to: Tokens
+  defdelegate update_organization_api_token(token, attrs), to: Tokens
+  defdelegate bind_organization_api_token_to_organization(token, organization_id), to: Tokens
+  defdelegate delete_organization_api_token(token), to: Tokens
+  defdelegate change_organization_api_token(token, attrs \\ %{}), to: Tokens
+  defdelegate get_api_token_auth(token), to: Tokens
+  defdelegate touch_organization_api_token(token, attrs \\ %{}), to: Tokens
 
-  def list_organization_api_tokens_for_org(%Organization{} = organization) do
-    list_organization_api_tokens_for_org(organization.id)
-  end
+  defdelegate grant_organization_api_token_source_access(
+                token,
+                source_type,
+                source_id,
+                read,
+                write
+              ),
+              to: Tokens
 
-  def list_organization_api_tokens_for_org(organization_id) when is_binary(organization_id) do
-    from(t in OrganizationApiToken,
-      where: t.organization_id == ^organization_id,
-      order_by: [desc: t.inserted_at]
-    )
-    |> Repo.all()
-  end
-
-  def get_organization_api_token_for_org!(organization_id, token_id)
-      when is_binary(organization_id) and is_binary(token_id) do
-    Repo.get_by!(OrganizationApiToken, id: token_id, organization_id: organization_id)
-  end
-
-  def get_organization_api_token_for_org(organization_id, token_id)
-      when is_binary(organization_id) and is_binary(token_id) do
-    Repo.get_by(OrganizationApiToken, id: token_id, organization_id: organization_id)
-  end
-
-  def create_organization_api_token(%User{} = user, attrs \\ %{}) do
-    token_value = OrganizationApiToken.build_token()
-    attrs = prepare_organization_api_token_attrs(user, attrs, token_value)
-
-    case %OrganizationApiToken{}
-         |> OrganizationApiToken.changeset(attrs)
-         |> Repo.insert() do
-      {:ok, record} -> {:ok, record, token_value}
-      {:error, changeset} -> {:error, changeset}
-    end
-  end
-
-  def update_organization_api_token(%OrganizationApiToken{} = token, attrs) do
-    attrs = normalize_organization_api_token_update_attrs(attrs)
-
-    token
-    |> OrganizationApiToken.changeset(attrs)
-    |> Repo.update()
-    |> case do
-      {:ok, updated} ->
-        TokenCache.invalidate(updated.token_hash)
-        {:ok, updated}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
-  end
-
-  def bind_organization_api_token_to_organization(
-        %OrganizationApiToken{} = token,
-        organization_id
-      )
-      when is_binary(organization_id) do
-    token
-    |> OrganizationApiToken.changeset(%{organization_id: organization_id})
-    |> Repo.update()
-    |> case do
-      {:ok, updated} ->
-        TokenCache.invalidate(updated.token_hash)
-        {:ok, updated}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
-  end
-
-  def bind_organization_api_token_to_organization(_token, _organization_id),
-    do: {:error, :invalid_organization_id}
-
-  def delete_organization_api_token(%OrganizationApiToken{} = token) do
-    case Repo.delete(token) do
-      {:ok, deleted} ->
-        TokenCache.invalidate(deleted.token_hash)
-        {:ok, deleted}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
-  end
-
-  def change_organization_api_token(%OrganizationApiToken{} = token, attrs \\ %{}) do
-    attrs = normalize_organization_api_token_update_attrs(attrs)
-    OrganizationApiToken.changeset(token, attrs)
-  end
-
-  def get_api_token_auth(token) when is_binary(token) do
-    token_hash = OrganizationApiToken.hash_token(token)
-
-    case TokenCache.get(token_hash) do
-      {:ok, payload} ->
-        {:ok, payload}
-
-      :error ->
-        token
-        |> OrganizationApiToken.valid_query()
-        |> Repo.one()
-        |> Repo.preload([:user, :organization])
-        |> case do
-          %OrganizationApiToken{user: %User{} = user} = record ->
-            payload = %{token: record, user: user, organization: record.organization}
-            cache_ttl_ms = token_cache_ttl_ms(record)
-
-            if cache_ttl_ms > 0 do
-              TokenCache.put(token_hash, payload, cache_ttl_ms)
-            end
-
-            {:ok, payload}
-
-          _ ->
-            {:error, :not_found}
-        end
-    end
-  end
-
-  def get_api_token_auth(_), do: {:error, :not_found}
-
-  def touch_organization_api_token(token, attrs \\ %{})
-
-  def touch_organization_api_token(token, attrs) when is_binary(token) do
-    token_hash = OrganizationApiToken.hash_token(token)
-
-    if TokenTouchThrottle.allow?(token_hash) do
-      attrs = attrs || %{}
-      attrs = Map.new(attrs)
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      updates =
-        [last_used_at: now]
-        |> maybe_put_token_metadata_update(
-          :last_used_from,
-          token_metadata_value(attrs, :last_used_from)
-        )
-
-      token
-      |> OrganizationApiToken.valid_query()
-      |> Repo.update_all(set: updates)
-    end
-
-    :ok
-  end
-
-  def touch_organization_api_token(_token, _attrs), do: :ok
-
-  def grant_organization_api_token_source_access(
-        %OrganizationApiToken{} = token,
-        source_type,
-        source_id,
-        read,
-        write
-      ) do
-    with {:ok, source_key} <- source_key(source_type, source_id) do
-      case Repo.transaction(fn ->
-             locked_token =
-               from(t in OrganizationApiToken,
-                 where: t.id == ^token.id,
-                 lock: "FOR UPDATE"
-               )
-               |> Repo.one()
-
-             case locked_token do
-               %OrganizationApiToken{} = locked_token ->
-                 permissions =
-                   locked_token.permissions
-                   |> normalize_token_permissions()
-                   |> put_in(
-                     ["sources", source_key],
-                     %{"read" => permission_boolean(read), "write" => permission_boolean(write)}
-                   )
-
-                 case update_organization_api_token(locked_token, %{permissions: permissions}) do
-                   {:ok, updated_token} -> updated_token
-                   {:error, reason} -> Repo.rollback(reason)
-                 end
-
-               _ ->
-                 Repo.rollback(:not_found)
-             end
-           end) do
-        {:ok, updated_token} -> {:ok, updated_token}
-        {:error, reason} -> {:error, reason}
-      end
-    end
-  end
-
-  def ensure_token_permission(
-        %OrganizationApiToken{} = token,
-        source_type,
-        source_id,
-        mode
-      ) do
-    if token_has_permission?(token.permissions, source_type, source_id, mode) do
-      :ok
-    else
-      {:error, :invalid_permissions}
-    end
-  end
-
-  def token_has_permission?(permissions, source_type, source_id, mode) do
-    permissions = normalize_token_permissions(permissions)
-    wildcard = Map.get(permissions, "wildcard", %{})
-
-    source_grant =
-      with {:ok, key} <- source_key(source_type, source_id) do
-        Map.get(Map.get(permissions, "sources", %{}), key, %{})
-      else
-        _ -> %{}
-      end
-
-    wildcard_read = permission_boolean(Map.get(wildcard, "read"))
-    wildcard_write = permission_boolean(Map.get(wildcard, "write"))
-    source_read = permission_boolean(Map.get(source_grant, "read"))
-    source_write = permission_boolean(Map.get(source_grant, "write"))
-    read_allowed = wildcard_read || source_read
-    write_allowed = wildcard_write || source_write
-
-    case mode do
-      :read -> read_allowed
-      :write -> write_allowed
-      :any -> read_allowed || write_allowed
-      :none -> true
-      nil -> false
-      _ -> false
-    end
-  end
-
-  def source_permission(%OrganizationApiToken{} = token, source_type, source_id) do
-    permissions = normalize_token_permissions(token.permissions)
-    wildcard = Map.get(permissions, "wildcard", %{})
-
-    source_grant =
-      with {:ok, key} <- source_key(source_type, source_id) do
-        Map.get(Map.get(permissions, "sources", %{}), key, %{})
-      else
-        _ -> %{}
-      end
-
-    %{
-      read:
-        permission_boolean(Map.get(wildcard, "read")) ||
-          permission_boolean(Map.get(source_grant, "read")),
-      write:
-        permission_boolean(Map.get(wildcard, "write")) ||
-          permission_boolean(Map.get(source_grant, "write"))
-    }
-  end
-
-  def source_permission(_token, _source_type, _source_id), do: %{read: false, write: false}
-
-  def source_key(source_type, source_id) do
-    with {:ok, source_type} <- normalize_token_source_type(source_type),
-         {:ok, source_id} <- Ecto.UUID.cast(source_id) do
-      {:ok, "#{source_type}:#{source_id}"}
-    else
-      _ -> {:error, :invalid_source}
-    end
-  end
+  defdelegate ensure_token_permission(token, source_type, source_id, mode), to: Tokens
+  defdelegate token_has_permission?(permissions, source_type, source_id, mode), to: Tokens
+  defdelegate source_permission(token, source_type, source_id), to: Tokens
+  defdelegate source_key(source_type, source_id), to: Tokens
 
   def get_source_for_org(organization_id, source_id)
       when is_binary(organization_id) and is_binary(source_id) do
@@ -1615,14 +1043,16 @@ defmodule Trifle.Organizations do
 
   def get_operational_source_for_org(_organization_id, _source_id), do: {:error, :bad_request}
 
-  defp ensure_source_active(source_type, record) do
+  @doc false
+  def ensure_source_active(source_type, record) do
     case Billing.source_access_status(source_type, record) do
       %{active?: true} -> :ok
       %{inactive_reason: reason} -> {:source_inactive, reason}
     end
   end
 
-  defp inactive_source_message(source_label, reason) when is_binary(source_label) do
+  @doc false
+  def inactive_source_message(source_label, reason) when is_binary(source_label) do
     case Billing.source_access_status_reason(reason) do
       :pending_checkout ->
         "#{source_label} requires an active subscription before it can be used."
@@ -1647,309 +1077,17 @@ defmodule Trifle.Organizations do
     end
   end
 
-  def normalize_token_permissions(permissions) do
-    wildcard =
-      permissions
-      |> token_permissions_value("wildcard")
-      |> normalize_permission_grant()
-
-    sources =
-      permissions
-      |> token_permissions_value("sources")
-      |> normalize_token_sources()
-
-    %{"wildcard" => wildcard, "sources" => sources}
-  end
-
-  defp prepare_organization_api_token_attrs(%User{} = user, attrs, token_value) do
-    attrs = attrs || %{}
-    attrs = Map.new(attrs)
-
-    organization_id =
-      token_metadata_value(attrs, :organization_id) || organization_id_for_user(user)
-
-    attrs
-    |> Map.put(:user_id, user.id)
-    |> Map.put(:token_hash, OrganizationApiToken.hash_token(token_value))
-    |> Map.put(:token_last5, OrganizationApiToken.token_last5(token_value))
-    |> Map.put(
-      :permissions,
-      normalize_token_permissions(token_metadata_value(attrs, :permissions))
-    )
-    |> Map.put_new(:name, "CLI token")
-    |> maybe_put_token_metadata(:organization_id, organization_id)
-    |> maybe_put_token_metadata(:created_by, token_metadata_value(attrs, :created_by))
-    |> maybe_put_token_metadata(:created_from, token_metadata_value(attrs, :created_from))
-    |> maybe_put_token_metadata(:expires_at, token_metadata_value(attrs, :expires_at))
-  end
-
-  defp normalize_organization_api_token_update_attrs(attrs) do
-    attrs = attrs || %{}
-
-    protected_keys = [
-      :id,
-      "id",
-      :organization_id,
-      "organization_id",
-      :user_id,
-      "user_id",
-      :token_hash,
-      "token_hash",
-      :token_last5,
-      "token_last5",
-      :token,
-      "token",
-      :created_by,
-      "created_by",
-      :created_from,
-      "created_from",
-      :last_used_at,
-      "last_used_at",
-      :last_used_from,
-      "last_used_from",
-      :inserted_at,
-      "inserted_at",
-      :updated_at,
-      "updated_at",
-      :revoked_at,
-      "revoked_at"
-    ]
-
-    attrs =
-      attrs
-      |> Map.new()
-      |> Map.drop(protected_keys)
-
-    permissions = token_metadata_value(attrs, :permissions)
-
-    if is_nil(permissions) do
-      attrs
-    else
-      Map.put(attrs, :permissions, normalize_token_permissions(permissions))
-    end
-  end
-
-  defp organization_id_for_user(%User{} = user) do
-    case get_membership_for_user(user) do
-      %OrganizationMembership{} = membership -> membership.organization_id
-      _ -> nil
-    end
-  end
-
-  defp token_permissions_value(%{} = map, key) do
-    Map.get(map, key) || Map.get(map, String.to_atom(key))
-  rescue
-    ArgumentError -> nil
-  end
-
-  defp token_permissions_value(_, _), do: nil
-
-  defp normalize_token_sources(%{} = sources) do
-    Enum.reduce(sources, %{}, fn {key, value}, acc ->
-      case normalize_token_source_key(key) do
-        {:ok, normalized_key} ->
-          Map.put(acc, normalized_key, normalize_permission_grant(value))
-
-        {:error, :invalid_source} ->
-          acc
-
-        :error ->
-          acc
-      end
-    end)
-  end
-
-  defp normalize_token_sources(_), do: %{}
-
-  defp normalize_token_source_key(key) do
-    key = to_string(key)
-
-    case String.split(key, ":", parts: 2) do
-      [source_type, source_id] ->
-        source_key(source_type, source_id)
-
-      _ ->
-        :error
-    end
-  end
-
-  defp normalize_permission_grant(%{} = grant) do
-    %{
-      "read" => permission_boolean(token_permissions_value(grant, "read")),
-      "write" => permission_boolean(token_permissions_value(grant, "write"))
-    }
-  end
-
-  defp normalize_permission_grant(_), do: %{"read" => false, "write" => false}
-
-  defp normalize_token_source_type(source_type) when is_binary(source_type) do
-    case String.trim(source_type) do
-      "project" -> {:ok, "project"}
-      "database" -> {:ok, "database"}
-      _ -> {:error, :invalid_source}
-    end
-  end
-
-  defp normalize_token_source_type(:project), do: {:ok, "project"}
-  defp normalize_token_source_type(:database), do: {:ok, "database"}
-  defp normalize_token_source_type(_), do: {:error, :invalid_source}
-
-  defp permission_boolean(value) when is_boolean(value), do: value
-  defp permission_boolean("true"), do: true
-  defp permission_boolean("false"), do: false
-  defp permission_boolean(_), do: false
-
-  defp token_cache_ttl_ms(%OrganizationApiToken{expires_at: nil}),
-    do: @organization_api_token_cache_ttl_ms
-
-  defp token_cache_ttl_ms(%OrganizationApiToken{expires_at: %DateTime{} = expires_at}) do
-    expires_in_ms = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
-
-    expires_in_ms
-    |> max(0)
-    |> min(@organization_api_token_cache_ttl_ms)
-  end
-
-  defp token_cache_ttl_ms(_), do: @organization_api_token_cache_ttl_ms
-
-  defp token_metadata_value(attrs, key) when is_map(attrs) do
-    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
-  end
-
-  defp token_metadata_value(_attrs, _key), do: nil
-
-  defp maybe_put_token_metadata(attrs, _key, nil), do: attrs
-  defp maybe_put_token_metadata(attrs, key, value), do: Map.put(attrs, key, value)
-
-  defp maybe_put_token_metadata_update(updates, _key, nil), do: updates
-  defp maybe_put_token_metadata_update(updates, key, value), do: Keyword.put(updates, key, value)
-
-  @doc """
-  Returns the list of project_tokens.
-
-  ## Examples
-
-      iex> list_project_tokens()
-      [%ProjectToken{}, ...]
-
-  """
-  def list_project_tokens do
-    Repo.all(ProjectToken)
-  end
-
-  def list_projects_project_tokens(%Project{} = project) do
-    query =
-      from(
-        pt in ProjectToken,
-        where: pt.project_id == ^project.id
-      )
-
-    Repo.all(query)
-  end
-
-  @doc """
-  Gets a single project_token.
-
-  Raises `Ecto.NoResultsError` if the Project token does not exist.
-
-  ## Examples
-
-      iex> get_project_token!(123)
-      %ProjectToken{}
-
-      iex> get_project_token!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_project_token!(id), do: Repo.get!(ProjectToken, id)
-
-  def get_project_by_token(token) when is_binary(token) do
-    with %ProjectToken{} = record <- Repo.get_by(ProjectToken, token: token),
-         record <- Repo.preload(record, :project),
-         {:ok, _id} <-
-           Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", record.token,
-             max_age: 86400 * 365
-           ),
-         %Project{} = project <- record.project do
-      {:ok, project, record}
-    else
-      _ ->
-        {:error, :not_found}
-    end
-  end
-
-  @doc """
-  Creates a project_token.
-
-  ## Examples
-
-      iex> create_project_token(%{field: value})
-      {:ok, %ProjectToken{}}
-
-      iex> create_project_token(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_project_token(attrs \\ %{}) do
-    %ProjectToken{}
-    |> ProjectToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def create_projects_project_token(attrs \\ %{}, %Project{} = project) do
-    attrs = Map.put(attrs, "project", project)
-
-    %ProjectToken{}
-    |> ProjectToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a project_token.
-
-  ## Examples
-
-      iex> update_project_token(project_token, %{field: new_value})
-      {:ok, %ProjectToken{}}
-
-      iex> update_project_token(project_token, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_project_token(%ProjectToken{} = project_token, attrs) do
-    project_token
-    |> ProjectToken.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a project_token.
-
-  ## Examples
-
-      iex> delete_project_token(project_token)
-      {:ok, %ProjectToken{}}
-
-      iex> delete_project_token(project_token)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_project_token(%ProjectToken{} = project_token) do
-    Repo.delete(project_token)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking project_token changes.
-
-  ## Examples
-
-      iex> change_project_token(project_token)
-      %Ecto.Changeset{data: %ProjectToken{}}
-
-  """
-  def change_project_token(%ProjectToken{} = project_token, attrs \\ %{}) do
-    ProjectToken.changeset(project_token, attrs)
-  end
+  defdelegate normalize_token_permissions(permissions), to: Tokens
+
+  defdelegate list_project_tokens, to: Tokens
+  defdelegate list_projects_project_tokens(project), to: Tokens
+  defdelegate get_project_token!(id), to: Tokens
+  defdelegate get_project_by_token(token), to: Tokens
+  defdelegate create_project_token(attrs \\ %{}), to: Tokens
+  defdelegate create_projects_project_token(attrs \\ %{}, project), to: Tokens
+  defdelegate update_project_token(project_token, attrs), to: Tokens
+  defdelegate delete_project_token(project_token), to: Tokens
+  defdelegate change_project_token(project_token, attrs \\ %{}), to: Tokens
 
   ## Organization connectors
 
@@ -1973,132 +1111,15 @@ defmodule Trifle.Organizations do
 
   ## Database tokens
 
-  @doc """
-  Returns the list of database_tokens.
-
-  ## Examples
-
-      iex> list_database_tokens()
-      [%DatabaseToken{}, ...]
-
-  """
-  def list_database_tokens do
-    Repo.all(DatabaseToken)
-  end
-
-  def list_databases_database_tokens(%Database{} = database) do
-    query =
-      from(
-        dt in DatabaseToken,
-        where: dt.database_id == ^database.id
-      )
-
-    Repo.all(query)
-  end
-
-  @doc """
-  Gets a single database_token.
-
-  Raises `Ecto.NoResultsError` if the Database token does not exist.
-
-  ## Examples
-
-      iex> get_database_token!(123)
-      %DatabaseToken{}
-
-      iex> get_database_token!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_database_token!(id), do: Repo.get!(DatabaseToken, id)
-
-  def get_database_by_token(token) when is_binary(token) do
-    with %DatabaseToken{} = record <- Repo.get_by(DatabaseToken, token: token),
-         record <- Repo.preload(record, :database),
-         {:ok, _id} <-
-           Phoenix.Token.verify(TrifleWeb.Endpoint, "database auth", record.token,
-             max_age: 86400 * 365
-           ),
-         %Database{} = database <- record.database do
-      {:ok, database, record}
-    else
-      _ ->
-        {:error, :not_found}
-    end
-  end
-
-  @doc """
-  Creates a database_token.
-
-  ## Examples
-
-      iex> create_database_token(%{field: value})
-      {:ok, %DatabaseToken{}}
-
-      iex> create_database_token(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_database_token(attrs \\ %{}) do
-    %DatabaseToken{}
-    |> DatabaseToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def create_databases_database_token(attrs \\ %{}, %Database{} = database) do
-    attrs = Map.put(attrs, "database", database)
-
-    %DatabaseToken{}
-    |> DatabaseToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a database_token.
-
-  ## Examples
-
-      iex> update_database_token(database_token, %{field: new_value})
-      {:ok, %DatabaseToken{}}
-
-      iex> update_database_token(database_token, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_database_token(%DatabaseToken{} = database_token, attrs) do
-    database_token
-    |> DatabaseToken.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a database_token.
-
-  ## Examples
-
-      iex> delete_database_token(database_token)
-      {:ok, %DatabaseToken{}}
-
-      iex> delete_database_token(database_token)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_database_token(%DatabaseToken{} = database_token) do
-    Repo.delete(database_token)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking database_token changes.
-
-  ## Examples
-
-      iex> change_database_token(database_token)
-      %Ecto.Changeset{data: %DatabaseToken{}}
-
-  """
-  def change_database_token(%DatabaseToken{} = database_token, attrs \\ %{}) do
-    DatabaseToken.changeset(database_token, attrs)
-  end
+  defdelegate list_database_tokens, to: Tokens
+  defdelegate list_databases_database_tokens(database), to: Tokens
+  defdelegate get_database_token!(id), to: Tokens
+  defdelegate get_database_by_token(token), to: Tokens
+  defdelegate create_database_token(attrs \\ %{}), to: Tokens
+  defdelegate create_databases_database_token(attrs \\ %{}, database), to: Tokens
+  defdelegate update_database_token(database_token, attrs), to: Tokens
+  defdelegate delete_database_token(database_token), to: Tokens
+  defdelegate change_database_token(database_token, attrs \\ %{}), to: Tokens
 
   ## Database functions
 
@@ -2245,7 +1266,7 @@ defmodule Trifle.Organizations do
   """
   def delete_database(%Database{} = database) do
     Multi.new()
-    |> Multi.update_all(:dashboards, dashboards_for_source_query(:database, database.id),
+    |> Multi.update_all(:dashboards, Dashboards.for_source_query(:database, database.id),
       set: [source_type: nil, source_id: nil, database_id: nil]
     )
     |> Multi.update_all(:monitors, monitors_for_source_query(:database, database.id),
@@ -2364,43 +1385,8 @@ defmodule Trifle.Organizations do
   defdelegate update_transponder_order(source, transponder_ids), to: Transponders
   defdelegate get_next_transponder_order(source), to: Transponders
 
-  @doc """
-  Returns the next position index for dashboards within a group (global).
-  Pass nil for top-level (ungrouped).
-  """
-  def get_next_dashboard_position_for_group(group_id) do
-    base = from(d in Dashboard, select: max(d.position))
-
-    query =
-      case group_id do
-        nil -> from(d in base, where: is_nil(d.group_id))
-        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
-      end
-
-    case Repo.one(query) do
-      nil -> 0
-      max_pos -> max_pos + 1
-    end
-  end
-
-  def get_next_dashboard_position_for_membership(%OrganizationMembership{} = membership, group_id) do
-    base =
-      from(d in Dashboard,
-        where: d.organization_id == ^membership.organization_id,
-        select: max(d.position)
-      )
-
-    query =
-      case group_id do
-        nil -> from(d in base, where: is_nil(d.group_id))
-        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
-      end
-
-    case Repo.one(query) do
-      nil -> 0
-      max_pos -> max_pos + 1
-    end
-  end
+  defdelegate get_next_dashboard_position_for_group(group_id), to: Dashboards
+  defdelegate get_next_dashboard_position_for_membership(membership, group_id), to: Dashboards
 
   defp project_subscription_query(%Project{} = project) do
     from(s in Subscription,
@@ -2417,7 +1403,7 @@ defmodule Trifle.Organizations do
 
   defp delete_project_with_dependencies(%Project{} = project) do
     Multi.new()
-    |> Multi.update_all(:dashboards, dashboards_for_source_query(:project, project.id),
+    |> Multi.update_all(:dashboards, Dashboards.for_source_query(:project, project.id),
       set: [source_type: nil, source_id: nil, database_id: nil]
     )
     |> Multi.update_all(:monitors, monitors_for_source_query(:project, project.id),
@@ -2439,23 +1425,6 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp source_type_string(type), do: Attrs.source_type_string(type)
-
-  defp dashboards_for_source_query(:database, source_id) do
-    from(d in Dashboard,
-      where:
-        (d.source_type == "database" and d.source_id == ^source_id) or d.database_id == ^source_id
-    )
-  end
-
-  defp dashboards_for_source_query(type, source_id) do
-    type = source_type_string(type)
-
-    from(d in Dashboard,
-      where: d.source_type == ^type and d.source_id == ^source_id
-    )
-  end
-
   defp monitors_for_source_query(type, source_id) do
     type = monitor_source_type(type)
 
@@ -2469,867 +1438,76 @@ defmodule Trifle.Organizations do
   defp monitor_source_type("database"), do: :database
   defp monitor_source_type("project"), do: :project
 
-  defp dashboards_base_query(
-         %User{} = user,
-         %OrganizationMembership{} = membership
-       ) do
-    base =
-      from(d in Dashboard,
-        where: d.organization_id == ^membership.organization_id,
-        order_by: [asc: d.position, asc: d.inserted_at],
-        preload: [:user, :database]
-      )
-
-    case membership.role do
-      "owner" -> base
-      "admin" -> base
-      _ -> from(d in base, where: d.user_id == ^user.id or d.visibility == true)
-    end
-  end
-
-  def list_dashboards_for_membership(
-        %User{} = user,
-        %OrganizationMembership{} = membership,
-        group_id \\ nil
-      ) do
-    base = dashboards_base_query(user, membership)
-
-    query =
-      case group_id do
-        nil -> from(d in base, where: is_nil(d.group_id))
-        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
-      end
-
-    Repo.all(query)
-  end
-
-  def list_all_dashboards_for_membership(
-        %User{} = user,
-        %OrganizationMembership{} = membership,
-        opts \\ []
-      ) do
-    dashboards_base_query(user, membership)
-    |> maybe_limit_query(Keyword.get(opts, :limit))
-    |> Repo.all()
-  end
-
-  def dashboard_group_name_lookup_for_membership(
-        %OrganizationMembership{} = membership,
-        dashboards
-      )
-      when is_list(dashboards) do
-    group_ids =
-      dashboards
-      |> Enum.flat_map(fn
-        %Dashboard{group_id: group_id} when is_binary(group_id) -> [group_id]
-        _ -> []
-      end)
-      |> Enum.uniq()
-
-    if group_ids == [] do
-      %{}
-    else
-      groups_by_id =
-        DashboardGroup
-        |> where([g], g.organization_id == ^membership.organization_id)
-        |> Repo.all()
-        |> Map.new(&{&1.id, &1})
-
-      Map.new(group_ids, fn group_id ->
-        names =
-          group_id
-          |> dashboard_group_chain_from_lookup(groups_by_id)
-          |> Enum.reverse()
-          |> Enum.map(& &1.name)
-
-        {group_id, names}
-      end)
-    end
-  end
-
-  def list_recent_dashboard_visits_for_membership(user, membership, limit \\ 5)
-  def list_recent_dashboard_visits_for_membership(_, nil, _limit), do: []
-  def list_recent_dashboard_visits_for_membership(nil, _membership, _limit), do: []
-
-  def list_recent_dashboard_visits_for_membership(
-        %User{} = user,
-        %OrganizationMembership{} = membership,
-        limit
-      ) do
-    limit = max(limit || 0, 0)
-
-    dashboard_scope =
-      dashboards_base_query(user, membership)
-      |> Ecto.Query.exclude(:preload)
-
-    from(v in DashboardVisit,
-      join: d in subquery(dashboard_scope),
-      on: d.id == v.dashboard_id,
-      where:
-        v.user_id == ^user.id and
-          v.organization_id == ^membership.organization_id,
-      order_by: [desc: v.last_viewed_at, desc: v.updated_at, desc: v.inserted_at],
-      limit: ^limit,
-      preload: [dashboard: d]
-    )
-    |> Repo.all()
-  end
-
-  def record_dashboard_visit(_, nil, _), do: {:error, :unauthorized}
-  def record_dashboard_visit(nil, _membership, _), do: {:error, :unauthorized}
-
-  def record_dashboard_visit(
-        %User{} = user,
-        %OrganizationMembership{} = membership,
-        %Dashboard{} = dashboard
-      ) do
-    cond do
-      membership.user_id != user.id ->
-        {:error, :unauthorized}
-
-      dashboard.organization_id != membership.organization_id ->
-        {:error, :unauthorized}
-
-      true ->
-        now = DateTime.utc_now()
-
-        attrs = %{
-          user_id: user.id,
-          organization_id: membership.organization_id,
-          dashboard_id: dashboard.id,
-          last_viewed_at: now,
-          view_count: 1
-        }
-
-        case Repo.insert(
-               DashboardVisit.changeset(%DashboardVisit{}, attrs),
-               conflict_target: [:user_id, :dashboard_id],
-               on_conflict: [
-                 inc: [view_count: 1],
-                 set: [
-                   last_viewed_at: now,
-                   organization_id: membership.organization_id,
-                   updated_at: now
-                 ]
-               ]
-             ) do
-          {:ok, _visit} -> :ok
-          {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
-        end
-    end
-  end
-
-  defp maybe_limit_query(query, value) when is_integer(value) and value > 0 do
-    limit(query, ^value)
-  end
-
-  defp maybe_limit_query(query, _value), do: query
-
-  defp dashboard_group_chain_from_lookup(group_id, groups_by_id) do
-    do_dashboard_group_chain_from_lookup(group_id, groups_by_id, MapSet.new())
-  end
-
-  defp do_dashboard_group_chain_from_lookup(nil, _groups_by_id, _visited), do: []
-
-  defp do_dashboard_group_chain_from_lookup(group_id, groups_by_id, visited) do
-    cond do
-      MapSet.member?(visited, group_id) ->
-        []
-
-      group = Map.get(groups_by_id, group_id) ->
-        [
-          group
-          | do_dashboard_group_chain_from_lookup(
-              group.parent_group_id,
-              groups_by_id,
-              MapSet.put(visited, group_id)
-            )
-        ]
-
-      true ->
-        []
-    end
-  end
-
-  def count_dashboards_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
-    base =
-      from(d in Dashboard,
-        where: d.organization_id == ^membership.organization_id
-      )
-
-    base =
-      case membership.role do
-        "owner" -> base
-        "admin" -> base
-        _ -> from(d in base, where: d.user_id == ^user.id or d.visibility == true)
-      end
-
-    Repo.one(from(d in base, select: count(d.id)))
-  end
-
-  def count_dashboard_groups_for_membership(%OrganizationMembership{} = membership) do
-    Repo.one(
-      from(g in DashboardGroup,
-        where: g.organization_id == ^membership.organization_id,
-        select: count(g.id)
-      )
-    )
-  end
-
-  def list_dashboard_groups_for_membership(
-        %OrganizationMembership{} = membership,
-        parent_group_id \\ nil
-      ) do
-    base =
-      from(g in DashboardGroup,
-        where: g.organization_id == ^membership.organization_id,
-        order_by: [asc: g.position]
-      )
-
-    query =
-      case parent_group_id do
-        nil -> from(g in base, where: is_nil(g.parent_group_id))
-        id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
-      end
-
-    Repo.all(query)
-  end
-
-  def list_dashboard_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
-    top_groups = list_dashboard_groups_for_membership(membership, nil)
-
-    Enum.map(top_groups, fn group ->
-      build_group_tree_for_membership(user, membership, group)
-    end)
-  end
-
-  defp build_group_tree_for_membership(
-         %User{} = user,
-         %OrganizationMembership{} = membership,
-         %DashboardGroup{} = group
-       ) do
-    children = list_dashboard_groups_for_membership(membership, group.id)
-
-    %{
-      group: group,
-      children: Enum.map(children, &build_group_tree_for_membership(user, membership, &1)),
-      dashboards: list_dashboards_for_membership(user, membership, group.id)
-    }
-  end
-
-  def get_dashboard_for_membership!(%OrganizationMembership{} = membership, id)
-      when is_binary(id) do
-    dashboard =
-      Dashboard
-      |> Repo.get_by!(id: id, organization_id: membership.organization_id)
-      |> Repo.preload([:user, :database, :group])
-
-    if can_view_dashboard?(dashboard, membership) do
-      dashboard
-    else
-      raise Ecto.NoResultsError, queryable: Dashboard
-    end
-  end
-
-  def create_dashboard_for_membership(
-        %User{} = user,
-        %OrganizationMembership{} = membership,
-        attrs \\ %{}
-      ) do
-    attrs =
-      attrs
-      |> Map.put("user_id", user.id)
-      |> Map.delete(:user_id)
-      |> ensure_dashboard_group_within_org(membership)
-
-    with {:ok, attrs} <- ensure_dashboard_source(attrs, membership) do
-      attrs =
-        attrs
-        |> assign_org_id(membership.organization_id)
-        |> ensure_dashboard_lock_default()
-        |> atomize_keys()
-
-      %Dashboard{}
-      |> Dashboard.changeset(attrs)
-      |> Repo.insert()
-    else
-      {:error, message} ->
-        changeset =
-          %Dashboard{}
-          |> Dashboard.changeset(%{})
-          |> Ecto.Changeset.add_error(:source_id, message)
-
-        {:error, changeset}
-    end
-  end
-
-  def create_dashboard_group_for_membership(%OrganizationMembership{} = membership, attrs \\ %{}) do
-    attrs =
-      attrs
-      |> ensure_parent_group_within_org(membership)
-      |> assign_org_id(membership.organization_id)
-      |> atomize_keys()
-
-    %DashboardGroup{}
-    |> DashboardGroup.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def get_dashboard_group_for_membership!(%OrganizationMembership{} = membership, id)
-      when is_binary(id) do
-    Repo.get_by!(DashboardGroup, id: id, organization_id: membership.organization_id)
-  end
-
-  def update_dashboard_for_membership(
-        %Dashboard{} = dashboard,
-        %OrganizationMembership{} = membership,
-        attrs
-      ) do
-    cond do
-      dashboard.organization_id != membership.organization_id ->
-        {:error, :unauthorized}
-
-      not can_edit_dashboard?(dashboard, membership) ->
-        {:error, :forbidden}
-
-      true ->
-        can_manage? = can_manage_dashboard?(dashboard, membership)
-
-        attrs =
-          attrs
-          |> ensure_dashboard_group_within_org(membership)
-
-        default_source = {dashboard.source_type, dashboard.source_id}
-
-        with {:ok, attrs} <- maybe_ensure_dashboard_source(attrs, membership, default_source),
-             {:ok, sanitized_attrs} <- sanitize_dashboard_update_attrs(attrs, can_manage?) do
-          dashboard
-          |> Dashboard.changeset(
-            assign_org_id(sanitized_attrs, membership.organization_id)
-            |> atomize_keys()
-          )
-          |> Repo.update()
-        else
-          {:error, :forbidden} ->
-            {:error, :forbidden}
-
-          {:error, message} ->
-            changeset =
-              dashboard
-              |> Dashboard.changeset(%{})
-              |> Ecto.Changeset.add_error(:source_id, message)
-
-            {:error, changeset}
-        end
-    end
-  end
-
-  def delete_dashboard_for_membership(
-        %Dashboard{} = dashboard,
-        %OrganizationMembership{} = membership
-      ) do
-    cond do
-      dashboard.organization_id != membership.organization_id ->
-        {:error, :unauthorized}
-
-      not can_edit_dashboard?(dashboard, membership) ->
-        {:error, :forbidden}
-
-      true ->
-        delete_dashboard(dashboard)
-    end
-  end
-
-  def reorder_nodes_for_membership(
-        %OrganizationMembership{} = membership,
-        parent_group_id,
-        items,
-        from_parent_id,
-        from_items,
-        moved_id,
-        moved_type
-      )
-      when is_list(items) do
-    if (moved_type == "group" and parent_group_id) &&
-         group_descendant_for_membership?(membership, moved_id, parent_group_id) do
-      {:error, :invalid_parent}
-    else
-      Repo.transaction(fn ->
-        Enum.with_index(items)
-        |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
-          case type do
-            "dashboard" ->
-              dashboard =
-                Repo.get_by!(Dashboard, id: id, organization_id: membership.organization_id)
-
-              unless can_edit_dashboard?(dashboard, membership) do
-                Repo.rollback({:error, :forbidden})
-              end
-
-              from(d in Dashboard, where: d.id == ^id)
-              |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
-
-            "group" ->
-              from(g in DashboardGroup,
-                where: g.id == ^id and g.organization_id == ^membership.organization_id
-              )
-              |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
-
-            _ ->
-              :ok
-          end
-        end)
-
-        if is_list(from_items) and from_parent_id != parent_group_id do
-          Enum.with_index(from_items)
-          |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
-            case type do
-              "dashboard" ->
-                dashboard =
-                  Repo.get_by!(Dashboard, id: id, organization_id: membership.organization_id)
-
-                unless can_edit_dashboard?(dashboard, membership) do
-                  Repo.rollback({:error, :forbidden})
-                end
-
-                from(d in Dashboard, where: d.id == ^id)
-                |> Repo.update_all(set: [position: idx])
-
-              "group" ->
-                from(g in DashboardGroup,
-                  where: g.id == ^id and g.organization_id == ^membership.organization_id
-                )
-                |> Repo.update_all(set: [position: idx])
-
-              _ ->
-                :ok
-            end
-          end)
-        end
-      end)
-    end
-  end
-
-  @doc """
-  Returns the list of dashboards for a database.
-  """
-  def list_dashboards_for_database(%Database{} = database) do
-    from(d in Dashboard,
-      where: d.database_id == ^database.id,
-      order_by: [asc: d.position, asc: d.inserted_at],
-      preload: :user
-    )
-    |> Repo.all()
-  end
-
-  @doc """
-  Returns all dashboards across the organization (all databases).
-  """
-  def list_all_dashboards do
-    from(d in Dashboard,
-      order_by: [asc: d.inserted_at, asc: d.id],
-      preload: [:user, :database, :organization]
-    )
-    |> Repo.all()
-  end
-
-  def count_dashboards do
-    Repo.aggregate(Dashboard, :count, :id)
-  end
-
-  # Removed database-scoped dashboard group listing in favor of global groups
-
-  @doc """
-  Returns dashboard groups at the organization level, optionally under a parent group.
-  """
-  def list_dashboard_groups_global(nil) do
-    from(g in DashboardGroup,
-      where: is_nil(g.parent_group_id),
-      order_by: [asc: g.position]
-    )
-    |> Repo.all()
-  end
-
-  def list_dashboard_groups_global(parent_group_id) when is_binary(parent_group_id) do
-    from(g in DashboardGroup,
-      where: g.parent_group_id == ^parent_group_id,
-      order_by: [asc: g.position]
-    )
-    |> Repo.all()
-  end
-
-  # Removed database-scoped dashboard listing in favor of user-or-visible global queries
-
-  @doc """
-  Returns dashboards either created by the given user or visible to everyone, filtered by group.
-  """
-  def list_dashboards_for_user_or_visible(%Trifle.Accounts.User{} = user, group_id \\ nil) do
-    base =
-      from(d in Dashboard,
-        where: d.user_id == ^user.id or d.visibility == true,
-        order_by: [asc: d.position, asc: d.inserted_at],
-        preload: [:user, :database]
-      )
-
-    query =
-      case group_id do
-        nil -> from(d in base, where: is_nil(d.group_id))
-        id when is_binary(id) -> from(d in base, where: d.group_id == ^id)
-      end
-
-    Repo.all(query)
-  end
-
-  @doc """
-  Counts dashboards either created by the given user or visible to everyone.
-  """
-  def count_dashboards_for_user_or_visible(%Trifle.Accounts.User{} = user) do
-    query =
-      from(d in Dashboard,
-        where: d.user_id == ^user.id or d.visibility == true,
-        select: count(d.id)
-      )
-
-    Repo.one(query)
-  end
-
-  @doc """
-  Counts total dashboard groups in the organization.
-  """
-  def count_dashboard_groups_global do
-    Repo.one(from(g in DashboardGroup, select: count(g.id)))
-  end
-
-  @doc """
-  Builds a nested tree of groups and dashboards for the entire organization.
-  Includes dashboards owned by user or visible to everyone.
-  """
-  def list_dashboard_tree_global(%Trifle.Accounts.User{} = user) do
-    top_groups = list_dashboard_groups_global(nil)
-
-    Enum.map(top_groups, fn g ->
-      build_group_tree_global(user, g)
-    end)
-  end
-
-  defp build_group_tree_global(%Trifle.Accounts.User{} = user, %DashboardGroup{} = group) do
-    children = list_dashboard_groups_global(group.id)
-
-    %{
-      group: group,
-      children: Enum.map(children, &build_group_tree_global(user, &1)),
-      dashboards: list_dashboards_for_user_or_visible(user, group.id)
-    }
-  end
-
-  @doc """
-  Creates a dashboard group.
-  """
-  def create_dashboard_group(attrs \\ %{}) do
-    %DashboardGroup{}
-    |> DashboardGroup.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a dashboard group.
-  """
-  def update_dashboard_group(%DashboardGroup{} = group, attrs) do
-    group
-    |> DashboardGroup.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a dashboard group, moving its children (groups and dashboards) to its parent.
-  """
-  def delete_dashboard_group(%DashboardGroup{} = group) do
-    Repo.transaction(fn ->
-      # Move dashboards to parent
-      from(d in Dashboard, where: d.group_id == ^group.id)
-      |> Repo.update_all(set: [group_id: group.parent_group_id])
-
-      # Move child groups to parent
-      from(g in DashboardGroup, where: g.parent_group_id == ^group.id)
-      |> Repo.update_all(set: [parent_group_id: group.parent_group_id])
-
-      Repo.delete!(group)
-    end)
-  end
-
-  @doc """
-  Gets a dashboard group by id.
-  """
-  def get_dashboard_group!(id), do: Repo.get!(DashboardGroup, id)
-
-  @doc """
-  Returns the next position index for dashboard groups under a parent group (global).
-  """
-  def get_next_dashboard_group_position(parent_group_id) do
-    base = from(g in DashboardGroup, select: max(g.position))
-
-    query =
-      case parent_group_id do
-        nil -> from(g in base, where: is_nil(g.parent_group_id))
-        id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
-      end
-
-    case Repo.one(query) do
-      nil -> 0
-      max_pos -> max_pos + 1
-    end
-  end
-
-  def get_next_dashboard_group_position_for_membership(
-        %OrganizationMembership{} = membership,
-        parent_group_id
-      ) do
-    base =
-      from(g in DashboardGroup,
-        where: g.organization_id == ^membership.organization_id,
-        select: max(g.position)
-      )
-
-    query =
-      case parent_group_id do
-        nil -> from(g in base, where: is_nil(g.parent_group_id))
-        id when is_binary(id) -> from(g in base, where: g.parent_group_id == ^id)
-      end
-
-    case Repo.one(query) do
-      nil -> 0
-      max_pos -> max_pos + 1
-    end
-  end
-
-  @doc """
-  Reorders mixed nodes (groups and dashboards) within a container (global).
-  items: list of maps %{"id" => id, "type" => "group" | "dashboard"}
-  from_items: same for the source container after the move
-  """
-  def reorder_nodes(parent_group_id, items, from_parent_id, from_items, moved_id, moved_type)
-      when is_list(items) do
-    # Cycle protection for groups
-    if (moved_type == "group" and parent_group_id) && group_descendant?(moved_id, parent_group_id) do
-      {:error, :invalid_parent}
-    else
-      Repo.transaction(fn ->
-        # Update target container in order
-        Enum.with_index(items)
-        |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
-          case type do
-            "dashboard" ->
-              from(d in Dashboard, where: d.id == ^id)
-              |> Repo.update_all(set: [group_id: parent_group_id, position: idx])
-
-            "group" ->
-              from(g in DashboardGroup, where: g.id == ^id)
-              |> Repo.update_all(set: [parent_group_id: parent_group_id, position: idx])
-
-            _ ->
-              :ok
-          end
-        end)
-
-        # Normalize source container positions if different container
-        if is_list(from_items) and from_parent_id != parent_group_id do
-          Enum.with_index(from_items)
-          |> Enum.each(fn {%{"id" => id, "type" => type}, idx} ->
-            case type do
-              "dashboard" ->
-                from(d in Dashboard, where: d.id == ^id)
-                |> Repo.update_all(set: [position: idx])
-
-              "group" ->
-                from(g in DashboardGroup, where: g.id == ^id)
-                |> Repo.update_all(set: [position: idx])
-
-              _ ->
-                :ok
-            end
-          end)
-        end
-      end)
-    end
-  end
-
-  defp group_descendant_for_membership?(
-         %OrganizationMembership{} = membership,
-         group_id,
-         possible_parent_id
-       ) do
-    case Repo.get_by(DashboardGroup,
-           id: possible_parent_id,
-           organization_id: membership.organization_id
-         ) do
-      nil ->
-        false
-
-      %DashboardGroup{parent_group_id: nil} ->
-        group_id == possible_parent_id
-
-      %DashboardGroup{parent_group_id: parent_id} = group ->
-        group_id == group.id or group_descendant_for_membership?(membership, group_id, parent_id)
-    end
-  end
-
-  # Returns true if possible_parent_id is a descendant of group_id
-  defp group_descendant?(group_id, possible_parent_id) do
-    case Repo.get(DashboardGroup, possible_parent_id) do
-      nil ->
-        false
-
-      %DashboardGroup{parent_group_id: nil} ->
-        group_id == possible_parent_id
-
-      %DashboardGroup{parent_group_id: parent_id} = g ->
-        group_id == g.id || group_descendant?(group_id, parent_id)
-    end
-  end
-
-  @doc """
-  Gets a single dashboard.
-  """
-  def get_dashboard!(id) do
-    Dashboard
-    |> Repo.get!(id)
-    |> Repo.preload([:user, :database])
-  end
-
-  def resolve_dashboard_source(%Dashboard{} = dashboard) do
-    cond do
-      dashboard.source_type in [nil, ""] or dashboard.source_id in [nil, ""] ->
-        {:error, :source_not_configured}
-
-      dashboard.source_type == "project" ->
-        try do
-          project = get_project_for_org!(dashboard.organization_id, dashboard.source_id)
-
-          with :ok <- ensure_source_active(:project, project) do
-            {:ok, StatsSource.from_project(project)}
-          else
-            {:source_inactive, reason} -> {:error, :source_inactive, reason}
-          end
-        rescue
-          Ecto.NoResultsError -> {:error, :source_not_found}
-        end
-
-      dashboard.source_type == "database" and match?(%Database{}, dashboard.database) ->
-        with :ok <- ensure_source_active(:database, dashboard.database) do
-          {:ok, StatsSource.from_database(dashboard.database)}
-        else
-          {:source_inactive, reason} -> {:error, :source_inactive, reason}
-        end
-
-      dashboard.source_type == "database" ->
-        try do
-          database = get_database_for_org!(dashboard.organization_id, dashboard.source_id)
-
-          with :ok <- ensure_source_active(:database, database) do
-            {:ok, StatsSource.from_database(database)}
-          else
-            {:source_inactive, reason} -> {:error, :source_inactive, reason}
-          end
-        rescue
-          Ecto.NoResultsError -> {:error, :source_not_found}
-        end
-
-      true ->
-        {:error, :source_not_configured}
-    end
-  end
-
-  @doc """
-  Creates a dashboard.
-  """
-  def create_dashboard(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> ensure_dashboard_source_defaults()
-      |> ensure_dashboard_lock_default()
-
-    %Dashboard{}
-    |> Dashboard.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a dashboard.
-  """
-  def update_dashboard(%Dashboard{} = dashboard, attrs) do
-    dashboard
-    |> Dashboard.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a dashboard.
-  """
-  def delete_dashboard(%Dashboard{} = dashboard) do
-    Repo.delete(dashboard)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking dashboard changes.
-  """
-  def change_dashboard(%Dashboard{} = dashboard, attrs \\ %{}) do
-    Dashboard.changeset(dashboard, attrs)
-  end
-
-  @doc """
-  Generates a public access token for a dashboard.
-  """
-  def generate_dashboard_public_token(%Dashboard{} = dashboard) do
-    dashboard
-    |> Dashboard.generate_public_token()
-    |> Repo.update()
-  end
-
-  @doc """
-  Removes the public access token from a dashboard.
-  """
-  def remove_dashboard_public_token(%Dashboard{} = dashboard) do
-    dashboard
-    |> Dashboard.remove_public_token()
-    |> Repo.update()
-  end
-
-  @doc """
-  Gets a dashboard by public access token for unauthenticated access.
-  """
-  def get_dashboard_by_token(_dashboard_id, token) when token in [nil, ""] do
-    {:error, :invalid_token}
-  end
-
-  def get_dashboard_by_token(dashboard_id, token)
-      when is_binary(dashboard_id) and is_binary(token) do
-    case Repo.get(Dashboard, dashboard_id) do
-      %Dashboard{access_token: ^token} = dashboard when not is_nil(token) ->
-        dashboard = Repo.preload(dashboard, [:user, :database])
-        {:ok, dashboard}
-
-      _ ->
-        {:error, :not_found}
-    end
-  end
-
-  @doc """
-  Returns the list of DashboardGroup structs from top-level down to the given group_id.
-  If `group_id` is nil, returns an empty list.
-  """
-  def get_dashboard_group_chain(nil), do: []
-
-  def get_dashboard_group_chain(group_id) when is_binary(group_id) do
-    chain = do_group_chain(group_id, [])
-    Enum.reverse(chain)
-  end
-
-  defp do_group_chain(nil, acc), do: acc
-
-  defp do_group_chain(group_id, acc) do
-    case Repo.get(DashboardGroup, group_id) do
-      nil -> acc
-      %DashboardGroup{parent_group_id: parent} = g -> do_group_chain(parent, [g | acc])
-    end
-  end
+  ## Dashboards
+
+  defdelegate list_dashboards_for_membership(user, membership, group_id \\ nil), to: Dashboards
+  defdelegate list_all_dashboards_for_membership(user, membership, opts \\ []), to: Dashboards
+  defdelegate dashboard_group_name_lookup_for_membership(membership, dashboards), to: Dashboards
+
+  defdelegate list_recent_dashboard_visits_for_membership(user, membership, limit \\ 5),
+    to: Dashboards
+
+  defdelegate record_dashboard_visit(user, membership, dashboard), to: Dashboards
+  defdelegate count_dashboards_for_membership(user, membership), to: Dashboards
+  defdelegate count_dashboard_groups_for_membership(membership), to: Dashboards
+
+  defdelegate list_dashboard_groups_for_membership(membership, parent_group_id \\ nil),
+    to: Dashboards
+
+  defdelegate list_dashboard_tree_for_membership(user, membership), to: Dashboards
+  defdelegate get_dashboard_for_membership!(membership, id), to: Dashboards
+  defdelegate create_dashboard_for_membership(user, membership, attrs \\ %{}), to: Dashboards
+  defdelegate create_dashboard_group_for_membership(membership, attrs \\ %{}), to: Dashboards
+  defdelegate get_dashboard_group_for_membership!(membership, id), to: Dashboards
+  defdelegate update_dashboard_for_membership(dashboard, membership, attrs), to: Dashboards
+  defdelegate delete_dashboard_for_membership(dashboard, membership), to: Dashboards
+
+  defdelegate reorder_nodes_for_membership(
+                membership,
+                parent_group_id,
+                items,
+                from_parent_id,
+                from_items,
+                moved_id,
+                moved_type
+              ),
+              to: Dashboards
+
+  defdelegate list_dashboards_for_database(database), to: Dashboards
+  defdelegate list_all_dashboards, to: Dashboards
+  defdelegate count_dashboards, to: Dashboards
+  defdelegate list_dashboard_groups_global(parent_group_id), to: Dashboards
+  defdelegate list_dashboards_for_user_or_visible(user, group_id \\ nil), to: Dashboards
+  defdelegate count_dashboards_for_user_or_visible(user), to: Dashboards
+  defdelegate count_dashboard_groups_global, to: Dashboards
+  defdelegate list_dashboard_tree_global(user), to: Dashboards
+  defdelegate create_dashboard_group(attrs \\ %{}), to: Dashboards
+  defdelegate update_dashboard_group(group, attrs), to: Dashboards
+  defdelegate delete_dashboard_group(group), to: Dashboards
+  defdelegate get_dashboard_group!(id), to: Dashboards
+  defdelegate get_next_dashboard_group_position(parent_group_id), to: Dashboards
+
+  defdelegate get_next_dashboard_group_position_for_membership(membership, parent_group_id),
+    to: Dashboards
+
+  defdelegate reorder_nodes(
+                parent_group_id,
+                items,
+                from_parent_id,
+                from_items,
+                moved_id,
+                moved_type
+              ),
+              to: Dashboards
+
+  defdelegate get_dashboard!(id), to: Dashboards
+  defdelegate resolve_dashboard_source(dashboard), to: Dashboards
+  defdelegate create_dashboard(attrs \\ %{}), to: Dashboards
+  defdelegate update_dashboard(dashboard, attrs), to: Dashboards
+  defdelegate delete_dashboard(dashboard), to: Dashboards
+  defdelegate change_dashboard(dashboard, attrs \\ %{}), to: Dashboards
+  defdelegate generate_dashboard_public_token(dashboard), to: Dashboards
+  defdelegate remove_dashboard_public_token(dashboard), to: Dashboards
+  defdelegate get_dashboard_by_token(dashboard_id, token), to: Dashboards
+  defdelegate get_dashboard_group_chain(group_id), to: Dashboards
 end
