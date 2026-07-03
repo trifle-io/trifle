@@ -41,6 +41,37 @@ defmodule Trifle.Stats.SeriesFetcher do
   def fetch_series(source, key, from, to, granularity, transponders, opts \\ [])
 
   def fetch_series(%Source{} = source, key, from, to, granularity, transponders, opts) do
+    :telemetry.span(
+      [:trifle, :stats, :fetch_series],
+      %{key: key, granularity: granularity},
+      fn ->
+        result = do_fetch_series(source, key, from, to, granularity, transponders, opts)
+
+        status =
+          case result do
+            {:ok, _} -> :ok
+            _ -> :error
+          end
+
+        {result, %{key: key, granularity: granularity, status: status}}
+      end
+    )
+  end
+
+  def fetch_series(
+        %Trifle.Organizations.Database{} = database,
+        key,
+        from,
+        to,
+        granularity,
+        transponders,
+        opts
+      ) do
+    source = Source.from_database(database)
+    fetch_series(source, key, from, to, granularity, transponders, opts)
+  end
+
+  defp do_fetch_series(%Source{} = source, key, from, to, granularity, transponders, opts) do
     config = Source.stats_config(source)
 
     opts =
@@ -61,19 +92,6 @@ defmodule Trifle.Stats.SeriesFetcher do
            apply_transponders_to_stats(raw_stats, transponders, opts[:progress_callback]) do
       {:ok, result}
     end
-  end
-
-  def fetch_series(
-        %Trifle.Organizations.Database{} = database,
-        key,
-        from,
-        to,
-        granularity,
-        transponders,
-        opts
-      ) do
-    source = Source.from_database(database)
-    fetch_series(source, key, from, to, granularity, transponders, opts)
   end
 
   @doc """

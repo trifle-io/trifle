@@ -14,6 +14,9 @@ config :trifle, :deployment_mode, :saas
 
 config :trifle, :projects_enabled, nil
 
+# Short-TTL cache for billing entitlement lookups; 0 disables caching.
+config :trifle, :billing_entitlement_cache_ttl_ms, 60_000
+
 config :trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024
 config :trifle, :sqlite_upload_root, Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")
 config :trifle, :sqlite_storage_backend, :local

@@ -72,6 +72,16 @@ defmodule Trifle.Billing do
   end
 
   defp upsert_entitlement(attrs) do
+    result = do_upsert_entitlement(attrs)
+
+    with {:ok, %Trifle.Billing.Entitlement{organization_id: organization_id}} <- result do
+      Trifle.Cache.invalidate({:org_entitlement, organization_id})
+    end
+
+    result
+  end
+
+  defp do_upsert_entitlement(attrs) do
     case Trifle.Repo.get_by(Trifle.Billing.Entitlement, organization_id: attrs.organization_id) do
       nil ->
         Trifle.Repo.insert(
@@ -533,7 +543,18 @@ defmodule Trifle.Billing do
     source_access_status(:database, database)
   end
 
-  def source_access_status(:project, %Trifle.Organizations.Project{} = project) do
+  def source_access_status(source_type, record) do
+    :telemetry.span(
+      [:trifle, :billing, :source_access_status],
+      %{source_type: source_type},
+      fn ->
+        result = do_source_access_status(source_type, record)
+        {result, %{source_type: source_type, active: result.active?}}
+      end
+    )
+  end
+
+  defp do_source_access_status(:project, %Trifle.Organizations.Project{} = project) do
     case source_access_allowed?(:project, project) do
       :ok ->
         %{
@@ -551,8 +572,8 @@ defmodule Trifle.Billing do
     end
   end
 
-  def source_access_status(:database, %{organization_id: organization_id})
-      when :erlang.is_binary(organization_id) do
+  defp do_source_access_status(:database, %{organization_id: organization_id})
+       when :erlang.is_binary(organization_id) do
     case source_access_allowed?(:database, %{organization_id: organization_id}) do
       :ok ->
         %{billing_state: "active", active?: true, inactive_reason: nil}
@@ -566,7 +587,7 @@ defmodule Trifle.Billing do
     end
   end
 
-  def source_access_status(_, _) do
+  defp do_source_access_status(_, _) do
     %{billing_state: "active", active?: true, inactive_reason: nil}
   end
 
@@ -1958,7 +1979,23 @@ defmodule Trifle.Billing do
   end
 
   def get_org_entitlement(organization_id) when :erlang.is_binary(organization_id) do
+    ttl_ms = entitlement_cache_ttl_ms()
+
+    if ttl_ms > 0 do
+      Trifle.Cache.fetch({:org_entitlement, organization_id}, ttl_ms, fn ->
+        fetch_org_entitlement(organization_id)
+      end)
+    else
+      fetch_org_entitlement(organization_id)
+    end
+  end
+
+  defp fetch_org_entitlement(organization_id) do
     Trifle.Repo.get_by(Trifle.Billing.Entitlement, organization_id: organization_id)
+  end
+
+  defp entitlement_cache_ttl_ms do
+    Application.get_env(:trifle, :billing_entitlement_cache_ttl_ms, 60_000)
   end
 
   def get_billing_plan(id) when :erlang.is_binary(id) do

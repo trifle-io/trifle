@@ -10,7 +10,7 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
   def init(params), do: params
 
   def call(conn, params \\ %{mode: :any}) do
-    with {:ok, auth} <- find_source_from_header(conn, params.mode) do
+    with {:ok, auth} <- authenticate(conn, params.mode) do
       conn
       |> assign(:current_api_token, auth.token)
       |> assign(:current_api_user, auth.user)
@@ -65,6 +65,21 @@ defmodule TrifleApi.Plugs.AuthenticateBySourceToken do
         |> render("401.json", %{})
         |> halt()
     end
+  end
+
+  defp authenticate(conn, mode) do
+    :telemetry.span([:trifle, :api, :source_auth], %{mode: mode}, fn ->
+      result = find_source_from_header(conn, mode)
+
+      status =
+        case result do
+          {:ok, _auth} -> :ok
+          {:error, reason} -> reason
+          {:error, reason, _detail} -> reason
+        end
+
+      {result, %{mode: mode, status: status}}
+    end)
   end
 
   def find_source_from_header(conn, mode) do

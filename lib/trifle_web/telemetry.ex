@@ -51,6 +51,23 @@ defmodule TrifleWeb.Telemetry do
         unit: {:native, :millisecond}
       ),
 
+      # Application Metrics
+      summary("trifle.stats.fetch_series.stop.duration",
+        tags: [:granularity, :status],
+        unit: {:native, :millisecond},
+        description: "Time spent fetching and transforming a stats series"
+      ),
+      summary("trifle.api.source_auth.stop.duration",
+        tags: [:mode, :status],
+        unit: {:native, :millisecond},
+        description: "Time spent authenticating a source-token API request"
+      ),
+      summary("trifle.billing.source_access_status.stop.duration",
+        tags: [:source_type, :active],
+        unit: {:native, :millisecond},
+        description: "Time spent resolving billing access status for a source"
+      ),
+
       # Database Metrics
       summary("trifle.repo.query.total_time",
         unit: {:native, :millisecond},

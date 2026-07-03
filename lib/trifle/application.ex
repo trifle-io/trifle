@@ -29,6 +29,7 @@ defmodule Trifle.Application do
         # Start the PubSub system
         {Phoenix.PubSub, name: Trifle.PubSub},
         Trifle.Chat.RunnerRegistry,
+        Trifle.Cache,
         Trifle.Organizations.TokenCache,
         Trifle.Organizations.TokenTouchThrottle,
         # Start Finch
