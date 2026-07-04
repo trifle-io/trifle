@@ -1,6 +1,8 @@
 defmodule TrifleApp.MonitorLive do
   use TrifleApp, :live_view
 
+  on_mount({TrifleApp.Live.PageShell, :default})
+
   alias Phoenix.LiveView.JS
   alias Ecto.Changeset
   alias Trifle.Monitors
@@ -153,14 +155,6 @@ defmodule TrifleApp.MonitorLive do
     delete_monitor(socket, socket.assigns.monitor)
   end
 
-  def handle_event("show_transponder_errors", _params, socket) do
-    {:noreply, assign(socket, :show_error_modal, true)}
-  end
-
-  def handle_event("hide_transponder_errors", _params, socket) do
-    {:noreply, assign(socket, :show_error_modal, false)}
-  end
-
   def handle_event("show_execution_details", %{"id" => id}, socket) do
     execution = find_execution(socket.assigns.executions, id)
 
@@ -244,16 +238,6 @@ defmodule TrifleApp.MonitorLive do
 
   def handle_event("close_alert_modal", _params, socket) do
     {:noreply, clear_alert_modal(socket)}
-  end
-
-  def handle_event("toggle_export_dropdown", _params, socket) do
-    current = socket.assigns[:show_export_dropdown] || false
-
-    {:noreply, assign(socket, :show_export_dropdown, !current)}
-  end
-
-  def handle_event("hide_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, :show_export_dropdown, false)}
   end
 
   def handle_event("download_monitor_csv", _params, socket) do
@@ -466,31 +450,8 @@ defmodule TrifleApp.MonitorLive do
     {:noreply, put_flash(socket, :error, message)}
   end
 
-  def handle_info({:chat_context_request, request_id, requester}, socket) do
-    send(requester, {:chat_context_response, request_id, monitor_chat_context(socket)})
-    {:noreply, socket}
-  end
-
-  def handle_info({:chat_context_request, request_id, requester, expected_path}, socket) do
-    context = monitor_chat_context(socket)
-
-    if ChatPageContext.matches_path?(context, expected_path) do
-      send(requester, {:chat_context_response, request_id, context})
-    end
-
-    {:noreply, socket}
-  end
-
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     {:noreply, socket |> handle_filter_change(changes) |> publish_chat_page_context()}
-  end
-
-  def handle_info({:loading_progress, progress_map}, socket) do
-    {:noreply, assign(socket, :loading_progress, progress_map)}
-  end
-
-  def handle_info({:transponding, state}, socket) do
-    {:noreply, assign(socket, :transponding, state)}
   end
 
   def handle_info({:ai_recommendation_tick, component_id, request_id}, socket) do
@@ -963,6 +924,9 @@ defmodule TrifleApp.MonitorLive do
   end
 
   defp publish_chat_page_context(socket), do: socket
+
+  @doc false
+  def chat_page_context(socket), do: monitor_chat_context(socket)
 
   defp monitor_chat_context(socket) do
     monitor = socket.assigns.monitor

@@ -1,5 +1,8 @@
 defmodule TrifleApp.DashboardLive do
   use TrifleApp, :live_view
+
+  on_mount({TrifleApp.Live.PageShell, :default})
+
   alias Trifle.Organizations
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations.DashboardSegments
@@ -1095,18 +1098,6 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  def handle_event("toggle_export_dropdown", _params, socket) do
-    current = socket.assigns[:show_export_dropdown] || false
-
-    {:noreply,
-     socket
-     |> assign(:show_export_dropdown, !current)}
-  end
-
-  def handle_event("hide_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, :show_export_dropdown, false)}
-  end
-
   def handle_event("download_dashboard_csv", _params, socket) do
     series = series_from_assigns(socket.assigns)
 
@@ -1150,14 +1141,6 @@ defmodule TrifleApp.DashboardLive do
     fname = export_filename("dashboard", socket.assigns, ".png")
     url = ~p"/export/dashboards/#{socket.assigns.dashboard.id}/png?filename=#{fname}"
     {:noreply, push_event(socket, "file_download_url", %{url: url, filename: fname})}
-  end
-
-  def handle_event("show_transponder_errors", _params, socket) do
-    {:noreply, assign(socket, show_error_modal: true)}
-  end
-
-  def handle_event("hide_transponder_errors", _params, socket) do
-    {:noreply, assign(socket, show_error_modal: false)}
   end
 
   def handle_event("reload_data", _params, socket) do
@@ -1583,21 +1566,6 @@ defmodule TrifleApp.DashboardLive do
   end
 
   # Filter bar message handling
-  def handle_info({:chat_context_request, request_id, requester}, socket) do
-    send(requester, {:chat_context_response, request_id, dashboard_chat_context(socket)})
-    {:noreply, socket}
-  end
-
-  def handle_info({:chat_context_request, request_id, requester, expected_path}, socket) do
-    context = dashboard_chat_context(socket)
-
-    if ChatPageContext.matches_path?(context, expected_path) do
-      send(requester, {:chat_context_response, request_id, context})
-    end
-
-    {:noreply, socket}
-  end
-
   def handle_info({:chat_page_action, request_id, requester, payload}, socket) do
     type = if is_map(payload), do: Map.get(payload, "type") || Map.get(payload, :type)
 
@@ -1671,14 +1639,6 @@ defmodule TrifleApp.DashboardLive do
   end
 
   # Progress message handling
-  def handle_info({:loading_progress, progress_map}, socket) do
-    {:noreply, assign(socket, :loading_progress, progress_map)}
-  end
-
-  def handle_info({:transponding, state}, socket) do
-    {:noreply, assign(socket, :transponding, state)}
-  end
-
   defp publish_chat_page_context(%{assigns: %{is_public_access: true}} = socket), do: socket
 
   defp publish_chat_page_context(%{assigns: %{dashboard: %{id: _}}} = socket) do
@@ -1686,6 +1646,9 @@ defmodule TrifleApp.DashboardLive do
   end
 
   defp publish_chat_page_context(socket), do: socket
+
+  @doc false
+  def chat_page_context(socket), do: dashboard_chat_context(socket)
 
   defp dashboard_chat_context(socket) do
     dashboard = socket.assigns.dashboard

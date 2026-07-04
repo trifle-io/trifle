@@ -100,12 +100,14 @@ defmodule TrifleApi.MetricsQueryController do
          {:ok, resolved_path} <- Query.ensure_no_wildcards(resolved_path),
          available <- Query.available_paths(result.series),
          :ok <- Query.ensure_paths_exist([resolved_path], available),
-         table_all <- Query.tabularize_series(result.series),
          {:ok, formatted, matched_paths} <-
            Query.format_timeline_result(result.series, resolved_path, slices),
          matched_paths <- Enum.filter(matched_paths, &Enum.member?(available, &1)),
          true <- matched_paths != [] || {:missing_timeline, available, resolved_path} do
-      table = Query.subset_table(table_all, matched_paths)
+      table =
+        result.series
+        |> Query.tabularize_series(only_paths: matched_paths)
+        |> Query.subset_table(matched_paths)
 
       payload =
         %{
@@ -151,9 +153,11 @@ defmodule TrifleApi.MetricsQueryController do
          {:ok, formatted, matched_paths} <-
            Query.format_category_result(result.series, resolved_path, slices),
          matched_paths <- Enum.filter(matched_paths, &Enum.member?(available, &1)),
-         true <- matched_paths != [] || {:missing_categories, available, resolved_path},
-         table_all <- Query.tabularize_series(result.series) do
-      table = Query.subset_table(table_all, matched_paths)
+         true <- matched_paths != [] || {:missing_categories, available, resolved_path} do
+      table =
+        result.series
+        |> Query.tabularize_series(only_paths: matched_paths)
+        |> Query.subset_table(matched_paths)
 
       payload =
         %{

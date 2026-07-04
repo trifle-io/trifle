@@ -4,6 +4,8 @@ defmodule TrifleApp.ExploreLive do
   """
   use TrifleApp, :live_view
 
+  on_mount({TrifleApp.Live.PageShell, :default})
+
   alias Decimal
   alias Jason
   alias TrifleApp.Components.DataTable
@@ -59,6 +61,9 @@ defmodule TrifleApp.ExploreLive do
   def handle_info(msg, socket) do
     ExploreCore.handle_info(msg, socket)
   end
+
+  @doc false
+  def chat_page_context(socket), do: ExploreCore.explore_chat_context(socket)
 
   @impl true
   def render(assigns) do

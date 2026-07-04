@@ -472,14 +472,6 @@ defmodule TrifleApp.ExploreCore do
     {:noreply, socket}
   end
 
-  def handle_event("show_transponder_errors", _, socket) do
-    {:noreply, assign(socket, show_error_modal: true)}
-  end
-
-  def handle_event("hide_transponder_errors", _, socket) do
-    {:noreply, assign(socket, show_error_modal: false)}
-  end
-
   def handle_event("navigate_timeframe_backward", _, socket) do
     navigate_timeframe(socket, :backward)
   end
@@ -515,14 +507,6 @@ defmodule TrifleApp.ExploreCore do
       end
 
     reload_current_timeframe(socket)
-  end
-
-  def handle_event("toggle_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, show_export_dropdown: !socket.assigns.show_export_dropdown)}
-  end
-
-  def handle_event("hide_export_dropdown", _params, socket) do
-    {:noreply, assign(socket, show_export_dropdown: false)}
   end
 
   def handle_event("download_explore_csv", _params, socket) do
@@ -906,21 +890,6 @@ defmodule TrifleApp.ExploreCore do
     {:noreply, socket}
   end
 
-  def handle_info({:chat_context_request, request_id, requester}, socket) do
-    send(requester, {:chat_context_response, request_id, explore_chat_context(socket)})
-    {:noreply, socket}
-  end
-
-  def handle_info({:chat_context_request, request_id, requester, expected_path}, socket) do
-    context = explore_chat_context(socket)
-
-    if ChatPageContext.matches_path?(context, expected_path) do
-      send(requester, {:chat_context_response, request_id, context})
-    end
-
-    {:noreply, socket}
-  end
-
   def handle_info({:filter_bar, {:filter_changed, changes}}, socket) do
     require Logger
     Logger.info("ExploreLive.handle_info filter_bar: changes=#{inspect(changes)}")
@@ -1003,14 +972,6 @@ defmodule TrifleApp.ExploreCore do
   end
 
   # Progress message handling
-  def handle_info({:loading_progress, progress_map}, socket) do
-    {:noreply, assign(socket, :loading_progress, progress_map)}
-  end
-
-  def handle_info({:transponding, state}, socket) do
-    {:noreply, assign(socket, :transponding, state)}
-  end
-
   def handle_async(:data_task, {:ok, data}, socket) do
     # Handle both single system stats and dual system+key stats
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
@@ -1243,7 +1204,8 @@ defmodule TrifleApp.ExploreCore do
     ChatBus.publish_page_context(socket, explore_chat_context(socket))
   end
 
-  defp explore_chat_context(socket) do
+  @doc false
+  def explore_chat_context(socket) do
     source = socket.assigns[:source]
 
     ChatPageContext.build(:explore,

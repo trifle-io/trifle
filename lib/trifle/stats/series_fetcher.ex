@@ -537,22 +537,6 @@ defmodule Trifle.Stats.SeriesFetcher do
     }
   end
 
-  @doc """
-  Converts processed stats to table-ready format.
-  """
-  def to_table_data(stats) do
-    case Trifle.Stats.Tabler.tabulize(stats) do
-      {:ok, tabulated} ->
-        case Trifle.Stats.Tabler.seriesize(tabulated) do
-          {:ok, serialized} -> {:ok, serialized}
-          error -> {:error, {:table_serialization_failed, error}}
-        end
-
-      error ->
-        {:error, {:table_processing_failed, error}}
-    end
-  end
-
   defp datetime_to_chart_timestamp(%DateTime{} = dt) do
     dt
     |> DateTime.to_naive()

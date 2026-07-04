@@ -1,24 +1,39 @@
 defmodule Trifle.Stats.Tabler do
+  @doc """
+  Flattens a stats series into `%{at: timestamps, paths: sorted_paths,
+  values: %{{path, at} => value}}`. Single pass over the series; `:at`
+  comes back newest-first (reverse input order), matching how callers
+  consume it.
+  """
   def tabulize(%{at: at, values: values}) do
-    Enum.with_index(at)
-    |> Enum.reduce(%{at: [], paths: [], values: %{}}, fn {a, i}, acc ->
-      packed = Trifle.Stats.Packer.pack(Enum.at(values, i))
-      zip(acc, a, packed)
-    end)
+    {at_acc, paths, value_map} = do_tabulize(at, values, [], MapSet.new(), %{})
+
+    %{
+      at: at_acc,
+      paths: paths |> MapSet.to_list() |> Enum.sort(),
+      values: value_map
+    }
   end
 
-  def zip(acc, at, packed) do
-    %{
-      at: [at | acc[:at]],
-      paths: [Map.keys(packed) | acc[:paths]] |> List.flatten() |> Enum.uniq() |> Enum.sort(),
-      values:
-        Map.merge(
-          acc[:values],
-          Map.new(packed, fn {k, v} ->
-            {{k, at}, v}
-          end)
-        )
-    }
+  defp do_tabulize([], _values, at_acc, paths, value_map), do: {at_acc, paths, value_map}
+
+  defp do_tabulize([a | at_rest], values, at_acc, paths, value_map) do
+    {value, values_rest} =
+      case values do
+        [v | rest] -> {v, rest}
+        [] -> {nil, []}
+      end
+
+    packed = Trifle.Stats.Packer.pack(value)
+
+    paths = Enum.reduce(Map.keys(packed), paths, &MapSet.put(&2, &1))
+
+    value_map =
+      Enum.reduce(packed, value_map, fn {k, v}, acc ->
+        Map.put(acc, {k, a}, v)
+      end)
+
+    do_tabulize(at_rest, values_rest, [a | at_acc], paths, value_map)
   end
 
   def seriesize(stats) do
