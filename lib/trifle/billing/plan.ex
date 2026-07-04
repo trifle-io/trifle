@@ -31,6 +31,16 @@ defmodule Trifle.Billing.Plan do
     timestamps()
   end
 
+  @doc "Project tier key of a project-scoped plan; nil for other scopes."
+  def project_tier(%__MODULE__{scope_type: "project", tier_key: tier_key}), do: tier_key
+  def project_tier(_), do: nil
+
+  @doc "Event hard limit of a project-scoped plan; nil for other scopes."
+  def project_hard_limit(%__MODULE__{scope_type: "project", hard_limit: hard_limit}),
+    do: hard_limit
+
+  def project_hard_limit(_), do: nil
+
   def changeset(plan, attrs) do
     plan
     |> cast(attrs, [

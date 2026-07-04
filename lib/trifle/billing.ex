@@ -1,25 +1,13 @@
 defmodule Trifle.Billing do
-  defp usage_period(%Trifle.Billing.Subscription{} = subscription) do
-    period_start =
-      case subscription.current_period_start do
-        x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-          beginning_of_month(now())
-
-        x ->
-          x
-      end
-
-    period_end =
-      case subscription.current_period_end do
-        x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-          end_of_month(period_start)
-
-        x ->
-          x
-      end
-
-    {period_start, period_end}
-  end
+  defdelegate source_access_allowed?(source_type, record), to: Trifle.Billing.Access
+  defdelegate source_access_status(record), to: Trifle.Billing.Access
+  defdelegate source_access_status(source_type, record), to: Trifle.Billing.Access
+  defdelegate source_access_status_reason(reason), to: Trifle.Billing.Access
+  defdelegate ingest_allowed?(project), to: Trifle.Billing.Access
+  defdelegate app_access_allowed_for_org_id(organization_id), to: Trifle.Billing.Access
+  defdelegate allowed_to_create_project?(organization), to: Trifle.Billing.Access
+  defdelegate allowed_to_add_member?(organization), to: Trifle.Billing.Access
+  defdelegate record_project_event_usage!(project, increment \\ 1), to: Trifle.Billing.Access
 
   defp upsert_subscription(nil, attrs) do
     Trifle.Repo.insert(
@@ -327,7 +315,7 @@ defmodule Trifle.Billing do
                 "pending_checkout"
 
               %Trifle.Billing.Subscription{} = subscription ->
-                project_state_from_subscription(project, subscription)
+                Trifle.Billing.Access.project_state_from_subscription(project, subscription)
             end
         end
 
@@ -520,79 +508,6 @@ defmodule Trifle.Billing do
 
   defp stale_scope_subscription_event?(_, _, _, _) do
     false
-  end
-
-  def source_access_allowed?(:project, %Trifle.Organizations.Project{} = project) do
-    ingest_allowed?(project)
-  end
-
-  def source_access_allowed?(:database, %{organization_id: organization_id})
-      when :erlang.is_binary(organization_id) do
-    app_access_allowed_for_org_id(organization_id)
-  end
-
-  def source_access_allowed?(_, _) do
-    :ok
-  end
-
-  def source_access_status(%Trifle.Organizations.Project{} = project) do
-    source_access_status(:project, project)
-  end
-
-  def source_access_status(%Trifle.Organizations.Database{} = database) do
-    source_access_status(:database, database)
-  end
-
-  def source_access_status(source_type, record) do
-    :telemetry.span(
-      [:trifle, :billing, :source_access_status],
-      %{source_type: source_type},
-      fn ->
-        result = do_source_access_status(source_type, record)
-        {result, %{source_type: source_type, active: result.active?}}
-      end
-    )
-  end
-
-  defp do_source_access_status(:project, %Trifle.Organizations.Project{} = project) do
-    case source_access_allowed?(:project, project) do
-      :ok ->
-        %{
-          billing_state: "active",
-          active?: true,
-          inactive_reason: nil
-        }
-
-      {:error, reason} ->
-        %{
-          billing_state: project_billing_state_for_reason(project, reason),
-          active?: false,
-          inactive_reason: source_inactive_reason(reason)
-        }
-    end
-  end
-
-  defp do_source_access_status(:database, %{organization_id: organization_id})
-       when :erlang.is_binary(organization_id) do
-    case source_access_allowed?(:database, %{organization_id: organization_id}) do
-      :ok ->
-        %{billing_state: "active", active?: true, inactive_reason: nil}
-
-      {:error, reason} ->
-        %{
-          billing_state: "locked",
-          active?: false,
-          inactive_reason: source_inactive_reason(reason)
-        }
-    end
-  end
-
-  defp do_source_access_status(_, _) do
-    %{billing_state: "active", active?: true, inactive_reason: nil}
-  end
-
-  def source_access_status_reason(reason) do
-    source_inactive_reason(reason)
   end
 
   defp should_upsert_by_scope?("customer.subscription.created", _status) do
@@ -1027,89 +942,6 @@ defmodule Trifle.Billing do
     end
   end
 
-  def record_project_event_usage!(%Trifle.Organizations.Project{} = project, increment)
-      when :erlang.andalso(:erlang.is_integer(increment), :erlang.>(increment, 0)) do
-    case enabled?() do
-      x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-        :ok
-
-      _ ->
-        case get_scope_subscription(project.organization_id, "project", project.id) do
-          %Trifle.Billing.Subscription{} = subscription ->
-            {period_start, period_end} = usage_period(subscription)
-            hard_limit = project_hard_limit(subscription)
-            tier_key = project_tier_key(subscription)
-
-            attrs = %{
-              project_id: project.id,
-              period_start: period_start,
-              period_end: period_end,
-              events_count: increment,
-              tier_key: tier_key,
-              hard_limit: hard_limit,
-              locked_at: nil
-            }
-
-            Trifle.Repo.insert(
-              Trifle.Billing.ProjectUsage.changeset(
-                %Trifle.Billing.ProjectUsage{
-                  __meta__: %{
-                    __struct__: Ecto.Schema.Metadata,
-                    context: nil,
-                    prefix: nil,
-                    schema: Trifle.Billing.ProjectUsage,
-                    source: "project_billing_usage",
-                    state: :built
-                  },
-                  events_count: 0,
-                  hard_limit: nil,
-                  id: nil,
-                  inserted_at: nil,
-                  locked_at: nil,
-                  period_end: nil,
-                  period_start: nil,
-                  project: %{
-                    __cardinality__: :one,
-                    __field__: :project,
-                    __owner__: Trifle.Billing.ProjectUsage,
-                    __struct__: Ecto.Association.NotLoaded
-                  },
-                  project_id: nil,
-                  tier_key: nil,
-                  updated_at: nil
-                },
-                attrs
-              ),
-              on_conflict: [
-                inc: [events_count: increment],
-                set: [
-                  period_end: period_end,
-                  tier_key: tier_key,
-                  hard_limit: hard_limit,
-                  updated_at: DateTime.truncate(DateTime.utc_now(), :second)
-                ]
-              ],
-              conflict_target: [:project_id, :period_start]
-            )
-
-            usage =
-              Trifle.Repo.get_by!(Trifle.Billing.ProjectUsage,
-                project_id: project.id,
-                period_start: period_start
-              )
-
-            maybe_mark_usage_locked(usage)
-
-          nil ->
-            {:error, :project_subscription_required}
-        end
-    end
-  end
-
-  def record_project_event_usage!(x0) do
-    record_project_event_usage!(x0, 1)
-  end
-
   defp project_tier_order("100k") do
     1
   end
@@ -1136,119 +968,6 @@ defmodule Trifle.Billing do
 
   defp project_tier_order(_) do
     99
-  end
-
-  defp project_tier_key(%Trifle.Billing.Subscription{} = subscription) do
-    case (case Map.get(
-                 case subscription.metadata do
-                   x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) -> %{}
-                   x -> x
-                 end,
-                 "project_tier"
-               ) do
-            x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-              Map.get(
-                case subscription.metadata do
-                  x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) -> %{}
-                  x -> x
-                end,
-                :project_tier
-              )
-
-            x ->
-              x
-          end) do
-      x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-        project_tier_from_price_id(subscription.stripe_price_id)
-
-      x ->
-        x
-    end
-  end
-
-  defp project_tier_from_price_id(nil) do
-    nil
-  end
-
-  defp project_tier_from_price_id(price_id) when :erlang.is_binary(price_id) do
-    case plan_for_price_id(price_id) do
-      %Trifle.Billing.Plan{} = plan -> project_tier_from_plan(plan)
-      _ -> nil
-    end
-  end
-
-  defp project_tier_from_plan(%Trifle.Billing.Plan{scope_type: "project", tier_key: tier_key}) do
-    tier_key
-  end
-
-  defp project_tier_from_plan(_) do
-    nil
-  end
-
-  defp project_state_from_subscription(
-         %Trifle.Organizations.Project{} = project,
-         %Trifle.Billing.Subscription{} = subscription
-       ) do
-    with :ok <- ensure_subscription_allows_access(subscription),
-         :ok <- ensure_project_usage_below_limit(project, subscription) do
-      "active"
-    else
-      {:error, :project_usage_limit_reached} -> "locked"
-      {:error, _} -> "locked"
-    end
-  end
-
-  defp project_billing_state_for_reason(
-         %Trifle.Organizations.Project{} = _project,
-         reason
-       ) do
-    case source_inactive_reason(reason) do
-      :pending_checkout -> "pending_checkout"
-      _ -> "locked"
-    end
-  end
-
-  defp project_hard_limit_from_price_id(price_id) do
-    case plan_for_price_id(price_id) do
-      %Trifle.Billing.Plan{} = plan -> project_hard_limit_from_plan(plan)
-      _ -> nil
-    end
-  end
-
-  defp project_hard_limit_from_plan(%Trifle.Billing.Plan{
-         scope_type: "project",
-         hard_limit: hard_limit
-       }) do
-    hard_limit
-  end
-
-  defp project_hard_limit_from_plan(_) do
-    nil
-  end
-
-  defp project_hard_limit(%Trifle.Billing.Subscription{} = subscription) do
-    metadata_limit =
-      Map.get(
-        case subscription.metadata do
-          x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) -> %{}
-          x -> x
-        end,
-        "project_hard_limit"
-      )
-
-    cond do
-      (case :erlang.is_integer(metadata_limit) do
-         false -> false
-         true -> :erlang.>(metadata_limit, 0)
-       end) ->
-        metadata_limit
-
-      :erlang.is_binary(metadata_limit) ->
-        parse_int(metadata_limit)
-
-      true ->
-        project_hard_limit_from_price_id(subscription.stripe_price_id)
-    end
   end
 
   defp project_checkout_params(organization, customer, project, tier_key, retention_enabled, opts) do
@@ -1670,43 +1389,6 @@ defmodule Trifle.Billing do
     entry
   end
 
-  defp maybe_mark_usage_locked(%Trifle.Billing.ProjectUsage{} = usage) do
-    cond do
-      :erlang.==(usage.hard_limit, nil) ->
-        {:ok, usage}
-
-      :erlang.<(usage.events_count, usage.hard_limit) ->
-        {:ok, usage}
-
-      :erlang.not(:erlang.==(usage.locked_at, nil)) ->
-        {:ok, usage}
-
-      true ->
-        case Trifle.Repo.update(
-               Trifle.Billing.ProjectUsage.changeset(
-                 usage,
-                 %{locked_at: now()}
-               )
-             ) do
-          {:ok, updated_usage} ->
-            case Trifle.Repo.get(Trifle.Organizations.Project, usage.project_id) do
-              %Trifle.Organizations.Project{} = project ->
-                project
-                |> Ecto.Changeset.change(billing_state: "locked")
-                |> Trifle.Repo.update()
-
-              _ ->
-                :ok
-            end
-
-            {:ok, updated_usage}
-
-          error ->
-            error
-        end
-    end
-  end
-
   defp maybe_change_or_create_app_subscription(
          organization,
          customer,
@@ -1821,25 +1503,6 @@ defmodule Trifle.Billing do
 
           _ ->
             {:error, :duplicate_event}
-        end
-    end
-  end
-
-  def ingest_allowed?(%Trifle.Organizations.Project{} = project) do
-    case enabled?() do
-      x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-        :ok
-
-      _ ->
-        with :ok <- app_access_allowed_for_org_id(project.organization_id),
-             %Trifle.Billing.Subscription{} = subscription <-
-               get_scope_subscription(project.organization_id, "project", project.id),
-             :ok <- ensure_subscription_allows_access(subscription),
-             :ok <- ensure_project_usage_below_limit(project, subscription) do
-          :ok
-        else
-          nil -> {:error, :project_subscription_required}
-          {:error, reason} -> {:error, reason}
         end
     end
   end
@@ -2567,131 +2230,6 @@ defmodule Trifle.Billing do
     end
   end
 
-  defp ensure_subscription_allows_access(%Trifle.Billing.Subscription{} = subscription) do
-    cond do
-      :lists.member(subscription.status, ["active", "trialing"]) ->
-        :ok
-
-      (case :lists.member(subscription.status, ["past_due", "unpaid"]) do
-         false -> false
-         true -> Trifle.Billing.Subscription.in_grace?(subscription)
-         other -> :erlang.error({:badbool, :and, other})
-       end) ->
-        :ok
-
-      :lists.member(subscription.status, ["past_due", "unpaid"]) ->
-        {:error, :payment_grace_expired}
-
-      true ->
-        {:error, :subscription_inactive}
-    end
-  end
-
-  defp source_inactive_reason(:project_subscription_required), do: :pending_checkout
-  defp source_inactive_reason(:pending_checkout), do: :pending_checkout
-  defp source_inactive_reason(:missing_app_subscription), do: :missing_app_subscription
-  defp source_inactive_reason(:billing_locked), do: :billing_locked
-  defp source_inactive_reason(:subscription_inactive), do: :subscription_inactive
-  defp source_inactive_reason(:payment_grace_expired), do: :payment_grace_expired
-  defp source_inactive_reason(:project_usage_limit_reached), do: :project_usage_limit_reached
-  defp source_inactive_reason(reason) when is_atom(reason), do: reason
-  defp source_inactive_reason(_), do: :source_inactive
-
-  defp ensure_seat_available(_organization_id, %Trifle.Billing.Entitlement{seat_limit: nil}) do
-    :ok
-  end
-
-  defp ensure_seat_available(organization_id, %Trifle.Billing.Entitlement{seat_limit: seat_limit})
-       when :erlang.andalso(:erlang.is_integer(seat_limit), :erlang.>(seat_limit, 0)) do
-    current_member_count =
-      Trifle.Repo.one(%{
-        offset: nil,
-        select: %Ecto.Query.SelectExpr{
-          fields: nil,
-          expr: {:count, [], [{{:., [], [{:&, [], [0]}, :id]}, [], []}]},
-          params: [],
-          file: "/workspaces/trifle/lib/trifle/billing.ex",
-          line: 1418,
-          take: %{},
-          subqueries: [],
-          aliases: %{}
-        },
-        sources: nil,
-        prefix: nil,
-        windows: [],
-        aliases: %{},
-        lock: nil,
-        limit: nil,
-        __struct__: Ecto.Query,
-        from: %Ecto.Query.FromExpr{
-          source:
-            {Trifle.Organizations.OrganizationMembership.__schema__(:source),
-             Trifle.Organizations.OrganizationMembership},
-          params: [],
-          as: nil,
-          prefix: Trifle.Organizations.OrganizationMembership.__schema__(:prefix),
-          hints: [],
-          file: "/workspaces/trifle/lib/trifle/billing.ex",
-          line: 1418
-        },
-        joins: [],
-        combinations: [],
-        distinct: nil,
-        with_ctes: nil,
-        wheres: [
-          %Ecto.Query.BooleanExpr{
-            expr:
-              {:==, [], [{{:., [], [{:&, [], [0]}, :organization_id]}, [], []}, {:^, [], [0]}]},
-            op: :and,
-            params: [
-              {Ecto.Query.Builder.not_nil!(
-                 organization_id,
-                 "m.organization_id"
-               ), {0, :organization_id}}
-            ],
-            subqueries: [],
-            file: "/workspaces/trifle/lib/trifle/billing.ex",
-            line: 1418
-          }
-        ],
-        updates: [],
-        assocs: [],
-        preloads: [],
-        order_bys: [],
-        havings: [],
-        group_bys: []
-      })
-
-    case :erlang.<(current_member_count, seat_limit) do
-      false -> {:error, :seat_limit_reached}
-      true -> :ok
-    end
-  end
-
-  defp ensure_seat_available(_, _) do
-    :ok
-  end
-
-  defp ensure_project_usage_below_limit(
-         %Trifle.Organizations.Project{} = project,
-         %Trifle.Billing.Subscription{} = subscription
-       ) do
-    hard_limit = project_hard_limit(subscription)
-
-    case hard_limit do
-      nil ->
-        :ok
-
-      hard_limit when :erlang.andalso(:erlang.is_integer(hard_limit), :erlang.>(hard_limit, 0)) ->
-        usage = current_usage(project, subscription)
-
-        case :erlang.>=(usage.events_count, hard_limit) do
-          false -> :ok
-          true -> {:error, :project_usage_limit_reached}
-        end
-    end
-  end
-
   def ensure_customer_for_org(%Trifle.Organizations.Organization{} = organization) do
     case enabled?() do
       x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
@@ -2769,25 +2307,6 @@ defmodule Trifle.Billing do
     Oban.insert(Trifle.Billing.Jobs.ProcessStripeEvent.new(args, queue: :billing))
   end
 
-  defp end_of_month(%DateTime{} = period_start) do
-    next_month =
-      Date.add(
-        Date.end_of_month(DateTime.to_date(period_start)),
-        1
-      )
-
-    {:ok, naive} =
-      NaiveDateTime.new(next_month, %Time{
-        calendar: Calendar.ISO,
-        hour: 0,
-        minute: 0,
-        second: 0,
-        microsecond: {0, 0}
-      })
-
-    DateTime.from_naive!(naive, "Etc/UTC")
-  end
-
   def enabled?() do
     Trifle.Config.saas_mode?()
   end
@@ -2799,56 +2318,6 @@ defmodule Trifle.Billing do
         true -> :erlang.==(opts[:constraint], :unique)
       end
     end)
-  end
-
-  defp current_usage(%Trifle.Organizations.Project{} = _project, nil) do
-    %{events_count: 0, hard_limit: nil, tier_key: nil, period_start: nil, period_end: nil}
-  end
-
-  defp current_usage(
-         %Trifle.Organizations.Project{} = project,
-         %Trifle.Billing.Subscription{} = subscription
-       ) do
-    {period_start, period_end} = usage_period(subscription)
-
-    usage =
-      Trifle.Repo.get_by(Trifle.Billing.ProjectUsage,
-        project_id: project.id,
-        period_start: period_start
-      )
-
-    case usage do
-      %Trifle.Billing.ProjectUsage{} = usage ->
-        usage
-
-      nil ->
-        %Trifle.Billing.ProjectUsage{
-          __meta__: %{
-            __struct__: Ecto.Schema.Metadata,
-            context: nil,
-            prefix: nil,
-            schema: Trifle.Billing.ProjectUsage,
-            source: "project_billing_usage",
-            state: :built
-          },
-          id: nil,
-          inserted_at: nil,
-          locked_at: nil,
-          project: %{
-            __cardinality__: :one,
-            __field__: :project,
-            __owner__: Trifle.Billing.ProjectUsage,
-            __struct__: Ecto.Association.NotLoaded
-          },
-          updated_at: nil,
-          project_id: project.id,
-          period_start: period_start,
-          period_end: period_end,
-          events_count: 0,
-          tier_key: project_tier_key(subscription),
-          hard_limit: project_hard_limit(subscription)
-        }
-    end
   end
 
   def create_webhook_event(payload) when :erlang.is_map(payload) do
@@ -3167,8 +2636,8 @@ defmodule Trifle.Billing do
         %{
           "app_tier" => app_tier_from_plan(matched_plan),
           "seat_limit" => app_seat_limit_from_plan(matched_plan),
-          "project_tier" => project_tier_from_plan(matched_plan),
-          "project_hard_limit" => project_hard_limit_from_plan(matched_plan)
+          "project_tier" => Trifle.Billing.Plan.project_tier(matched_plan),
+          "project_hard_limit" => Trifle.Billing.Plan.project_hard_limit(matched_plan)
         },
         "subscription_item_id",
         subscription_item_id
@@ -3203,7 +2672,7 @@ defmodule Trifle.Billing do
     projects_with_billing =
       Enum.map(projects, fn project ->
         subscription = get_scope_subscription(membership.organization_id, "project", project.id)
-        usage = current_usage(project, subscription)
+        usage = Trifle.Billing.Access.current_usage(project, subscription)
 
         %{
           project: project,
@@ -3244,21 +2713,6 @@ defmodule Trifle.Billing do
       %Trifle.Billing.Entitlement{billing_locked: locked} -> locked
       _ -> enabled?()
     end
-  end
-
-  defp beginning_of_month(%DateTime{} = datetime) do
-    {:ok, date} = Date.new(datetime.year, datetime.month, 1)
-
-    {:ok, naive} =
-      NaiveDateTime.new(date, %Time{
-        calendar: Calendar.ISO,
-        hour: 0,
-        minute: 0,
-        second: 0,
-        microsecond: {0, 0}
-      })
-
-    DateTime.from_naive!(naive, "Etc/UTC")
   end
 
   def available_project_tiers(organization_id) do
@@ -3524,45 +2978,6 @@ defmodule Trifle.Billing do
       "line_items" => [%{"price" => price_id, "quantity" => 1}],
       "subscription_data" => %{"metadata" => metadata}
     }
-  end
-
-  def app_access_allowed_for_org_id(organization_id) when :erlang.is_binary(organization_id) do
-    case enabled?() do
-      x when :erlang.orelse(:erlang."=:="(x, false), :erlang."=:="(x, nil)) ->
-        :ok
-
-      _ ->
-        case get_org_entitlement(organization_id) do
-          %Trifle.Billing.Entitlement{billing_locked: true, lock_reason: reason}
-          when :erlang.is_binary(reason) ->
-            {:error, :erlang.binary_to_atom(reason)}
-
-          %Trifle.Billing.Entitlement{billing_locked: true} ->
-            {:error, :billing_locked}
-
-          %Trifle.Billing.Entitlement{app_tier: tier}
-          when :erlang.andalso(:erlang.is_binary(tier), :erlang."/="(tier, "")) ->
-            :ok
-
-          _ ->
-            {:error, :missing_app_subscription}
-        end
-    end
-  end
-
-  def allowed_to_create_project?(%Trifle.Organizations.Organization{} = organization) do
-    app_access_allowed_for_org_id(organization.id)
-  end
-
-  def allowed_to_add_member?(%Trifle.Organizations.Organization{} = organization) do
-    with :ok <- app_access_allowed_for_org_id(organization.id),
-         %Trifle.Billing.Entitlement{} = entitlement <- get_org_entitlement(organization.id),
-         :ok <- ensure_seat_available(organization.id, entitlement) do
-      :ok
-    else
-      nil -> {:error, :billing_required}
-      {:error, reason} -> {:error, reason}
-    end
   end
 
   def admin_subscriptions_query(search_query, scope) do
