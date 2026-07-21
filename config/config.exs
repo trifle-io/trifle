@@ -140,6 +140,7 @@ config :trifle, Oban,
   repo: Trifle.Repo,
   queues: [
     default: 10,
+    notifications: 5,
     monitors: 5,
     reports: 5,
     alerts: 5,

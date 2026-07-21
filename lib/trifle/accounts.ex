@@ -5,6 +5,7 @@ defmodule Trifle.Accounts do
 
   import Ecto.Query, warn: false
   alias Trifle.Repo
+  alias Trifle.SystemNotifications
 
   alias Trifle.Accounts.{User, UserApiToken, UserToken, UserNotifier}
 
@@ -93,6 +94,7 @@ defmodule Trifle.Accounts do
     %User{}
     |> User.registration_changeset(attrs)
     |> Repo.insert()
+    |> notify_user_created()
   end
 
   @doc """
@@ -140,7 +142,21 @@ defmodule Trifle.Accounts do
       name: name
     })
     |> Repo.insert()
+    |> notify_user_created()
   end
+
+  defp notify_user_created({:ok, %User{} = user} = result) do
+    SystemNotifications.enqueue(:user_created, %{
+      user_id: user.id,
+      name: user.name,
+      email: user.email,
+      occurred_at: user.inserted_at
+    })
+
+    result
+  end
+
+  defp notify_user_created(result), do: result
 
   defp maybe_update_user_name(user, nil), do: {:ok, user}
 

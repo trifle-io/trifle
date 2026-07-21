@@ -230,7 +230,7 @@ defmodule Trifle.Billing do
     false
   end
 
-  defp sync_subscription_from_stripe(payload, event_type) do
+  defp sync_subscription_from_stripe(payload, event_type, notification_source \\ nil) do
     with {:ok, stripe_subscription_id} <- fetch_required_string(payload, "id"),
          {:ok, organization_id} <- resolve_organization_id_from_subscription(payload),
          {:ok, scope_type} <- resolve_scope_type(payload),
@@ -292,11 +292,89 @@ defmodule Trifle.Billing do
                    scope_id,
                    subscription
                  ),
-               {:ok, _record} <- upsert_subscription(subscription, attrs) do
+               {:ok, record} <- upsert_subscription(subscription, attrs) do
+            maybe_notify_subscription_transition(
+              event_type,
+              subscription,
+              record,
+              notification_source
+            )
+
             {:ok, organization_id}
           end
       end
     end
+  end
+
+  defp maybe_notify_subscription_transition(_event_type, _previous, _current, nil), do: :ok
+
+  defp maybe_notify_subscription_transition(
+         "customer.subscription.created",
+         _previous,
+         current,
+         notification_source
+       ) do
+    enqueue_subscription_notification(:subscription_created, current, notification_source)
+  end
+
+  defp maybe_notify_subscription_transition(
+         "customer.subscription.updated",
+         previous,
+         %Trifle.Billing.Subscription{cancel_at_period_end: true} = current,
+         notification_source
+       ) do
+    if is_nil(previous) or previous.cancel_at_period_end != true do
+      enqueue_subscription_notification(
+        :subscription_cancellation_scheduled,
+        current,
+        notification_source
+      )
+    end
+
+    :ok
+  end
+
+  defp maybe_notify_subscription_transition(
+         "customer.subscription.deleted",
+         _previous,
+         current,
+         notification_source
+       ) do
+    enqueue_subscription_notification(:subscription_cancelled, current, notification_source)
+  end
+
+  defp maybe_notify_subscription_transition(_event_type, _previous, _current, _source), do: :ok
+
+  defp enqueue_subscription_notification(event, subscription, notification_source) do
+    organization =
+      Trifle.Repo.get(Trifle.Organizations.Organization, subscription.organization_id)
+
+    project =
+      case subscription.scope_type do
+        "project" -> Trifle.Repo.get(Trifle.Organizations.Project, subscription.scope_id)
+        _ -> nil
+      end
+
+    Trifle.SystemNotifications.enqueue(
+      event,
+      %{
+        subscription_id: subscription.id,
+        scope_type: if(subscription.scope_type == "project", do: "project", else: "organization"),
+        organization_id: subscription.organization_id,
+        organization_name: organization && organization.name,
+        project_id: project && project.id,
+        project_name: project && project.name,
+        status: subscription.status,
+        stripe_price_id: subscription.stripe_price_id,
+        stripe_subscription_id: subscription.stripe_subscription_id,
+        interval: subscription.interval,
+        current_period_end: subscription.current_period_end,
+        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      },
+      idempotency_key: "stripe:#{notification_source}:#{event}"
+    )
+
+    :ok
   end
 
   defp sync_project_billing_states(organization_id) do
@@ -1014,6 +1092,10 @@ defmodule Trifle.Billing do
   end
 
   def process_stripe_event(payload) when :erlang.is_map(payload) do
+    process_stripe_event(payload, nil)
+  end
+
+  defp process_stripe_event(payload, notification_source) when :erlang.is_map(payload) do
     event_type = Map.get(payload, "type")
 
     data =
@@ -1028,14 +1110,19 @@ defmodule Trifle.Billing do
              :erlang."=:="(type, "customer.subscription.created"),
              :erlang."=:="(type, "customer.subscription.updated")
            ) ->
-        with {:ok, organization_id} <- sync_subscription_from_stripe(data, type),
+        with {:ok, organization_id} <-
+               sync_subscription_from_stripe(data, type, notification_source),
              {:ok, _} <- refresh_entitlements!(organization_id) do
           :ok
         end
 
       "customer.subscription.deleted" ->
         with {:ok, organization_id} <-
-               sync_subscription_from_stripe(data, "customer.subscription.deleted"),
+               sync_subscription_from_stripe(
+                 data,
+                 "customer.subscription.deleted",
+                 notification_source
+               ),
              {:ok, _} <- refresh_entitlements!(organization_id) do
           :ok
         end
@@ -1061,7 +1148,7 @@ defmodule Trifle.Billing do
   end
 
   defp process_and_mark_event(%Trifle.Billing.WebhookEvent{} = event) do
-    case process_stripe_event(event.payload) do
+    case process_stripe_event(event.payload, event.stripe_event_id) do
       :ok ->
         mark_webhook_event_processed(event)
 

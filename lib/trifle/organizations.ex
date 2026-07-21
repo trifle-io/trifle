@@ -11,6 +11,7 @@ defmodule Trifle.Organizations do
   alias Trifle.Monitors.Monitor
   alias Trifle.Repo
   alias Trifle.SqliteUploads
+  alias Trifle.SystemNotifications
 
   alias Trifle.Accounts.User
 
@@ -377,8 +378,12 @@ defmodule Trifle.Organizations do
     |> OrganizationInvitation.changeset(attrs)
     |> Repo.insert()
     |> tap(fn
-      {:ok, invitation} -> InvitationNotifier.deliver_invitation(invitation)
-      _ -> :ok
+      {:ok, invitation} ->
+        InvitationNotifier.deliver_invitation(invitation)
+        notify_invitation_created(invitation)
+
+      _ ->
+        :ok
     end)
   end
 
@@ -820,6 +825,7 @@ defmodule Trifle.Organizations do
     %Project{}
     |> Project.changeset(apply_project_billing_defaults(attrs))
     |> Repo.insert()
+    |> notify_project_created()
   end
 
   def create_users_project(attrs \\ %{}, %Trifle.Accounts.User{} = user) do
@@ -843,6 +849,7 @@ defmodule Trifle.Organizations do
     |> Project.changeset(attrs)
     |> ensure_project_cluster(membership.organization_id)
     |> Repo.insert()
+    |> notify_project_created()
   end
 
   defp apply_project_billing_defaults(attrs) when is_map(attrs) do
@@ -1210,12 +1217,14 @@ defmodule Trifle.Organizations do
     %Database{}
     |> database_changeset(attrs)
     |> Repo.insert()
+    |> notify_database_created()
   end
 
   def create_database(attrs \\ %{}) do
     %Database{}
     |> database_changeset(attrs)
     |> Repo.insert()
+    |> notify_database_created()
   end
 
   @doc """
@@ -1340,7 +1349,87 @@ defmodule Trifle.Organizations do
   Checks the database status and updates the tracking fields.
   """
   def check_database_status(%Database{} = database) do
-    Database.check_status(database)
+    database
+    |> Database.check_status()
+    |> notify_database_checked()
+  end
+
+  defp notify_invitation_created(%OrganizationInvitation{} = invitation) do
+    invitation = Repo.preload(invitation, [:organization, :invited_by])
+
+    SystemNotifications.enqueue(:user_invited, %{
+      invitation_id: invitation.id,
+      organization_id: invitation.organization_id,
+      organization_name: invitation.organization && invitation.organization.name,
+      email: invitation.email,
+      role: invitation.role,
+      invited_by_email: invitation.invited_by && invitation.invited_by.email,
+      expires_at: invitation.expires_at,
+      occurred_at: invitation.inserted_at
+    })
+  end
+
+  defp notify_project_created({:ok, %Project{} = project} = result) do
+    project = Repo.preload(project, [:organization, :user])
+
+    SystemNotifications.enqueue(:project_created, %{
+      project_id: project.id,
+      project_name: project.name,
+      organization_id: project.organization_id,
+      organization_name: project.organization && project.organization.name,
+      owner_email: project.user && project.user.email,
+      occurred_at: project.inserted_at
+    })
+
+    result
+  end
+
+  defp notify_project_created(result), do: result
+
+  defp notify_database_created({:ok, %Database{} = database} = result) do
+    database = Repo.preload(database, :organization)
+
+    SystemNotifications.enqueue(:database_created, %{
+      database_id: database.id,
+      database_name: database.display_name,
+      organization_id: database.organization_id,
+      organization_name: database.organization && database.organization.name,
+      driver: database.driver,
+      connection_method: database.connection_method,
+      occurred_at: database.inserted_at
+    })
+
+    result
+  end
+
+  defp notify_database_created(result), do: result
+
+  defp notify_database_checked({result, %Database{} = database, detail} = response)
+       when result in [:ok, :error] do
+    database = Repo.preload(database, :organization)
+
+    SystemNotifications.enqueue(:database_checked, %{
+      database_id: database.id,
+      database_name: database.display_name,
+      organization_id: database.organization_id,
+      organization_name: database.organization && database.organization.name,
+      driver: database.driver,
+      connection_method: database.connection_method,
+      status: database.last_check_status,
+      error: if(result == :error, do: redact_database_error(detail), else: nil),
+      occurred_at: database.last_check_at || DateTime.utc_now()
+    })
+
+    response
+  end
+
+  defp notify_database_checked(response), do: response
+
+  defp redact_database_error(error) do
+    error
+    |> to_string()
+    |> String.replace(~r/(?i)(password|passphrase|secret|token)=([^\s,;]+)/, "\\1=[REDACTED]")
+    |> String.replace(~r{(://[^:/\s]+:)[^@\s]+@}, "\\1[REDACTED]@")
   end
 
   @doc """
