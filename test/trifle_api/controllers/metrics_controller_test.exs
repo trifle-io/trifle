@@ -215,6 +215,143 @@ defmodule TrifleApi.MetricsControllerTest do
       assert %{"errors" => %{"detail" => "Bad request"}} = json_response(conn, 400)
       assert %{fetch_series: 0, track: 0} = Trifle.MetricsMock.calls()
     end
+
+    test "tracks metrics by default and forwards untracked", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
+      parent = self()
+
+      Trifle.MetricsMock.stub_track(fn key, at, values, _config, opts ->
+        send(parent, {:tracked, key, at, values, opts})
+        :ok
+      end)
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, project.id)
+        |> post(~p"/api/v1/metrics", %{
+          key: "orders",
+          at: "2026-07-22T12:00:00Z",
+          values: %{count: 1},
+          untracked: true
+        })
+
+      assert %{"data" => %{"created" => "ok"}} = json_response(conn, 201)
+      assert_received {:tracked, "orders", %DateTime{}, %{"count" => 1}, [untracked: true]}
+      assert %{track: 1, assert: 0} = Trifle.MetricsMock.calls()
+    end
+
+    test "dispatches assert operations", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
+      parent = self()
+
+      Trifle.MetricsMock.stub_assert(fn key, at, values, _config, opts ->
+        send(parent, {:asserted, key, at, values, opts})
+        :ok
+      end)
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, project.id)
+        |> post(~p"/api/v1/metrics", %{
+          operation: "assert",
+          key: "state::orders",
+          at: "2026-07-22T12:00:00Z",
+          values: %{pending: 4}
+        })
+
+      assert %{"data" => %{"created" => "ok"}} = json_response(conn, 201)
+
+      assert_received {:asserted, "state::orders", %DateTime{}, %{"pending" => 4},
+                       [untracked: false]}
+
+      assert %{track: 0, assert: 1} = Trifle.MetricsMock.calls()
+    end
+
+    test "accepts gzip-compressed metric writes", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
+      body =
+        Jason.encode!(%{
+          operation: "track",
+          key: "orders",
+          at: "2026-07-22T12:00:00Z",
+          values: %{count: 1}
+        })
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, project.id)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("content-encoding", "gzip")
+        |> post(~p"/api/v1/metrics", :zlib.gzip(body))
+
+      assert %{"data" => %{"created" => "ok"}} = json_response(conn, 201)
+      assert %{track: 1} = Trifle.MetricsMock.calls()
+    end
+
+    test "rejects invalid operations and untracked values", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
+      invalid_operation =
+        conn
+        |> api_conn()
+        |> auth_conn(token, project.id)
+        |> post(~p"/api/v1/metrics", %{
+          operation: "delete",
+          key: "orders",
+          at: "2026-07-22T12:00:00Z",
+          values: %{count: 1}
+        })
+
+      assert json_response(invalid_operation, 400)
+
+      invalid_untracked =
+        build_conn()
+        |> api_conn()
+        |> auth_conn(token, project.id)
+        |> post(~p"/api/v1/metrics", %{
+          key: "orders",
+          at: "2026-07-22T12:00:00Z",
+          values: %{count: 1},
+          untracked: "true"
+        })
+
+      assert json_response(invalid_untracked, 400)
+      assert %{track: 0, assert: 0} = Trifle.MetricsMock.calls()
+    end
+
+    test "returns 500 when metric storage fails", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
+      Trifle.MetricsMock.stub_track({:error, :unavailable})
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, project.id)
+        |> post(~p"/api/v1/metrics", %{
+          key: "orders",
+          at: "2026-07-22T12:00:00Z",
+          values: %{count: 1}
+        })
+
+      assert json_response(conn, 500)
+    end
   end
 
   defp api_conn(conn) do

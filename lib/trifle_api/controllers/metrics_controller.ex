@@ -39,14 +39,23 @@ defmodule TrifleApi.MetricsController do
   end
 
   def create(%{assigns: %{current_project: current_project}} = conn, params) do
-    with key when is_binary(key) and byte_size(key) > 0 <- params["key"],
+    with {:ok, operation} <- parse_operation(params["operation"]),
+         {:ok, untracked} <- parse_untracked(params["untracked"]),
+         key when is_binary(key) and byte_size(key) > 0 <- params["key"],
          at when is_binary(at) and byte_size(at) > 0 <- params["at"],
-         values when not is_nil(values) <- params["values"],
+         values when is_map(values) <- params["values"],
          {:ok, at, _} <- DateTime.from_iso8601(at),
-         stats_config <- Trifle.Organizations.Project.stats_config(current_project) do
-      normalized_at = normalize_at(at, current_project)
-      metrics_module().track(key, normalized_at, values, stats_config)
-
+         stats_config <- Trifle.Organizations.Project.stats_config(current_project),
+         result <-
+           write_metric(
+             operation,
+             key,
+             normalize_at(at, current_project),
+             values,
+             stats_config,
+             untracked
+           ),
+         :ok <- normalize_write_result(result) do
       conn
       |> put_status(:created)
       |> render("created.json")
@@ -65,6 +74,21 @@ defmodule TrifleApi.MetricsController do
         conn
         |> put_status(:bad_request)
         |> render("400.json")
+
+      {:error, :invalid_params} ->
+        conn
+        |> put_status(:bad_request)
+        |> render("400.json")
+
+      {:write_error, _reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> render("500.json")
+
+      _invalid ->
+        conn
+        |> put_status(:bad_request)
+        |> render("400.json")
     end
   end
 
@@ -79,6 +103,26 @@ defmodule TrifleApi.MetricsController do
     |> put_status(:ok)
     |> render("health.json")
   end
+
+  defp parse_operation(nil), do: {:ok, :track}
+  defp parse_operation("track"), do: {:ok, :track}
+  defp parse_operation("assert"), do: {:ok, :assert}
+  defp parse_operation(_), do: {:error, :invalid_params}
+
+  defp parse_untracked(nil), do: {:ok, false}
+  defp parse_untracked(value) when is_boolean(value), do: {:ok, value}
+  defp parse_untracked(_), do: {:error, :invalid_params}
+
+  defp write_metric(:track, key, at, values, stats_config, untracked) do
+    metrics_module().track(key, at, values, stats_config, untracked: untracked)
+  end
+
+  defp write_metric(:assert, key, at, values, stats_config, untracked) do
+    metrics_module().assert(key, at, values, stats_config, untracked: untracked)
+  end
+
+  defp normalize_write_result({:error, reason}), do: {:write_error, reason}
+  defp normalize_write_result(_result), do: :ok
 
   defp fetch_optional_param(params, key) do
     case Map.get(params, key) do

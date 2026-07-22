@@ -7,7 +7,11 @@ defmodule Trifle.Metrics do
     Source.fetch_series(source, key, from, to, granularity, opts)
   end
 
-  def track(key, at, values, stats_config) do
-    Trifle.Stats.track(key, at, values, stats_config)
+  def track(key, at, values, stats_config, opts \\ []) do
+    Trifle.Stats.track(key, at, values, stats_config, opts)
+  end
+
+  def assert(key, at, values, stats_config, opts \\ []) do
+    Trifle.Stats.assert(key, at, values, stats_config, opts)
   end
 end
