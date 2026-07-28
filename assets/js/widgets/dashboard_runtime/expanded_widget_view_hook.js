@@ -12,6 +12,10 @@ export const registerExpandedWidgetViewHook = (Hooks, deps) => {
     buildBucketIndexMap,
     buildDistributionHeatmapAggregation,
     buildDistributionScatterSeries,
+    AGGRID_PATH_COL_MIN_WIDTH,
+    AGGRID_PATH_COL_MAX_WIDTH,
+    ensureAgGridCommunity,
+    getAggridHeaderComponentClass,
     parseJsonSafe
   } = deps;
 
@@ -40,11 +44,16 @@ Hooks.ExpandedWidgetView = {
     this.lastPayloadKey = null;
     this.retryTimer = null;
     this._sparklineTimer = null;
+    this.summaryGrid = null;
+    this.summaryGridRoot = null;
+    this.summaryResizeObserver = null;
+    this.summaryRenderToken = 0;
     this.colors = [];
     this.handleResize = () => {
       if (this.chart && typeof this.chart.resize === 'function') {
         try { this.chart.resize(); } catch (_) {}
       }
+      this.resizeSummaryGrid();
     };
     this.handleThemeChange = () => this.render(true);
     this._annotationsVisible = readAnnotationsCookie();
@@ -69,6 +78,7 @@ Hooks.ExpandedWidgetView = {
 
   destroyed() {
     this.disposeChart();
+    this.destroySummaryGrid();
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
@@ -1120,64 +1130,343 @@ Hooks.ExpandedWidgetView = {
       return;
     }
 
-    const escapeHtml = (str) => String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
     const rows = seriesEntries.map((entry, idx) => {
       const color = entry.color || this.seriesColor(idx);
       const values = this.extractNumericValues(entry.data);
       const stats = this.computeSeriesStats(values);
-      const name = escapeHtml(entry.name || `Series ${idx + 1}`);
-      const formatRaw = (value) => {
-        if (!Number.isFinite(value)) return '';
-        try { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value); }
-        catch (_) { return String(value); }
-      };
-      const formatStat = (value) => Number.isFinite(value) ? formatCompactNumber(value) : '—';
 
       return {
-        name,
+        path: String(entry.name || `Series ${idx + 1}`),
         color,
-        min: { display: formatStat(stats.min), raw: escapeHtml(formatRaw(stats.min)) },
-        max: { display: formatStat(stats.max), raw: escapeHtml(formatRaw(stats.max)) },
-        mean: { display: formatStat(stats.mean), raw: escapeHtml(formatRaw(stats.mean)) },
-        sum: { display: formatStat(stats.sum), raw: escapeHtml(formatRaw(stats.sum)) }
+        mean: stats.mean,
+        sum: stats.sum,
+        max: stats.max,
+        min: stats.min,
+        oldest: stats.oldest,
+        latest: stats.latest
       };
     });
 
-    const bodyHtml = rows.map((row) => `
-      <tr>
-        <td class="py-2 pr-4 pl-5 text-sm whitespace-nowrap text-gray-600 dark:text-slate-300">
-          <div class="flex items-center gap-3">
-            <span class="inline-flex h-2.5 w-2.5 rounded-full" style="background-color: ${row.color};"></span>
-            <span class="font-medium" style="color: ${row.color};">${row.name}</span>
-          </div>
-        </td>
-        <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.min.raw}">${row.min.display}</td>
-        <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.max.raw}">${row.max.display}</td>
-        <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.mean.raw}">${row.mean.display}</td>
-        <td class="py-2 pr-5 pl-5 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${row.sum.raw}">${row.sum.display}</td>
-      </tr>
-    `).join('');
+    this.renderSummaryGrid(rows, this.summaryColumnDefs());
+  },
 
-    this.tableRoot.innerHTML = `
-      <div class="h-full overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-700">
-          <thead class="bg-white dark:bg-slate-900/60">
-            <tr>
-              <th scope="col" class="py-3.5 pr-4 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Path</th>
-              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Min</th>
-              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Max</th>
-              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Mean</th>
-              <th scope="col" class="py-3.5 pr-5 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Sum</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-900/60">
-            ${bodyHtml}
-          </tbody>
-        </table>
-      </div>
-    `;
+  renderSummaryGrid(rows, columnDefs) {
+    const root = this.ensureSummaryGridRoot();
+    if (!root) return;
 
-    this.activateFastTooltips();
+    const renderToken = ++this.summaryRenderToken;
+    ensureAgGridCommunity()
+      .then(() => {
+        if (
+          renderToken !== this.summaryRenderToken ||
+          !root.isConnected ||
+          root !== this.summaryGridRoot
+        ) {
+          return;
+        }
+
+        if (!this.summaryGrid || this.summaryGrid.root !== root || !this.summaryGrid.api) {
+          this.createSummaryGrid(root);
+        }
+        if (!this.summaryGrid || !this.summaryGrid.api) return;
+
+        try {
+          const columnFields = new Set(
+            columnDefs.map((column) => column && column.field).filter((field) => field)
+          );
+          const sortState =
+            this.summaryGrid.columnApi &&
+            typeof this.summaryGrid.columnApi.getColumnState === 'function'
+              ? this.summaryGrid.columnApi
+                  .getColumnState()
+                  .filter((column) => column && column.sort && columnFields.has(column.colId))
+              : [];
+          this.summaryGrid.api.setColumnDefs(columnDefs);
+          if (
+            sortState.length &&
+            this.summaryGrid.columnApi &&
+            typeof this.summaryGrid.columnApi.applyColumnState === 'function'
+          ) {
+            this.summaryGrid.columnApi.applyColumnState({ state: sortState });
+          }
+          this.summaryGrid.api.setRowData(rows);
+          this.summaryGrid.api.refreshCells({ force: true });
+          requestAnimationFrame(() => {
+            this.autoSizeSummaryPathColumn(rows);
+            this.resizeSummaryGrid();
+          });
+        } catch (err) {
+          console.error('[ExpandedWidgetView] Failed to render expanded data grid', err);
+          this.showTablePlaceholder('Unable to render expanded data.');
+        }
+      })
+      .catch((err) => {
+        if (renderToken !== this.summaryRenderToken) return;
+        console.error('[ExpandedWidgetView] Failed to load AG Grid for expanded data', err);
+        this.showTablePlaceholder('Unable to load expanded data.');
+      });
+  },
+
+  ensureSummaryGridRoot() {
+    if (!this.tableRoot) return null;
+    if (
+      this.summaryGridRoot &&
+      this.summaryGridRoot.isConnected &&
+      this.tableRoot.contains(this.summaryGridRoot)
+    ) {
+      this.applySummaryGridTheme();
+      return this.summaryGridRoot;
+    }
+
+    this.destroySummaryGrid();
+    this.tableRoot.innerHTML = '';
+
+    const shell = document.createElement('div');
+    shell.className = 'aggrid-table-shell aggrid-summary-table-shell h-full min-h-0 w-full';
+    shell.dataset.role = 'aggrid-summary-table';
+
+    const root = document.createElement('div');
+    root.className = 'ag-theme-alpine h-full min-h-0 w-full';
+    root.dataset.role = 'aggrid-summary-table-root';
+    shell.appendChild(root);
+    this.tableRoot.appendChild(shell);
+
+    this.summaryGridRoot = root;
+    this.applySummaryGridTheme();
+    return root;
+  },
+
+  createSummaryGrid(root) {
+    const agGrid = window.agGrid;
+    if (!agGrid || typeof agGrid.Grid !== 'function') return;
+
+    root.innerHTML = '';
+    const gridOptions = {
+      columnDefs: [],
+      rowData: [],
+      suppressCellFocus: true,
+      suppressMovableColumns: true,
+      suppressRowClickSelection: true,
+      animateRows: false,
+      rowHeight: 36,
+      headerHeight: 44,
+      enableBrowserTooltips: true,
+      defaultColDef: {
+        sortable: true,
+        sortingOrder: ['asc', 'desc', null],
+        filter: false,
+        resizable: false,
+        suppressMenu: true,
+        headerComponent: getAggridHeaderComponentClass()
+      }
+    };
+
+    new agGrid.Grid(root, gridOptions);
+    this.summaryGrid = {
+      api: gridOptions.api,
+      columnApi: gridOptions.columnApi,
+      gridOptions,
+      root
+    };
+
+    if (typeof ResizeObserver !== 'undefined') {
+      this.summaryResizeObserver = new ResizeObserver(() => this.resizeSummaryGrid());
+      try { this.summaryResizeObserver.observe(root); } catch (_) {}
+    }
+  },
+
+  summaryColumnDefs() {
+    return [
+      this.summaryPathColumn('Path'),
+      this.summaryNumericColumn('mean', 'Mean'),
+      this.summaryNumericColumn('sum', 'Sum'),
+      this.summaryNumericColumn('max', 'Max'),
+      this.summaryNumericColumn('min', 'Min'),
+      this.summaryNumericColumn('oldest', 'Oldest'),
+      this.summaryNumericColumn('latest', 'Latest')
+    ];
+  },
+
+  categoryColumnDefs() {
+    return [
+      this.summaryPathColumn('Category'),
+      this.summaryNumericColumn('value', 'Value')
+    ];
+  },
+
+  summaryNumericColumn(field, headerName) {
+    return {
+      field,
+      headerName,
+      headerTooltip: headerName,
+      type: 'numericColumn',
+      minWidth: 108,
+      flex: 1,
+      comparator: this.summaryNumericComparator.bind(this),
+      valueFormatter: (params) => this.formatSummaryDisplay(params && params.value),
+      tooltipValueGetter: (params) => this.formatSummaryRaw(params && params.value),
+      cellClass: 'aggrid-numeric-cell aggrid-body-cell ag-right-aligned-cell',
+      headerClass: 'aggrid-header-cell ag-right-aligned-header',
+      headerComponentParams: { lines: [headerName], align: 'right' }
+    };
+  },
+
+  summaryPathColumn(headerName) {
+    return {
+      field: 'path',
+      headerName,
+      headerTooltip: headerName,
+      pinned: 'left',
+      lockPinned: true,
+      suppressMovable: true,
+      minWidth: AGGRID_PATH_COL_MIN_WIDTH,
+      maxWidth: AGGRID_PATH_COL_MAX_WIDTH,
+      width: AGGRID_PATH_COL_MIN_WIDTH,
+      suppressSizeToFit: true,
+      resizable: true,
+      comparator: (valueA, valueB) =>
+        String(valueA || '').localeCompare(String(valueB || ''), undefined, { sensitivity: 'base' }),
+      cellRenderer: (params) => this.renderSummaryPathCell(params),
+      cellClass: 'aggrid-path-cell-wrapper aggrid-body-cell aggrid-path-pinned ag-left-aligned-cell',
+      headerClass: 'aggrid-header-cell ag-left-aligned-header',
+      headerComponentParams: { lines: [headerName], align: 'left' }
+    };
+  },
+
+  renderSummaryPathCell(params) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex min-w-0 items-center gap-3';
+
+    const color = this.normalizedExplicitColor(params && params.data && params.data.color);
+    const marker = document.createElement('span');
+    marker.className = 'inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full';
+    marker.style.backgroundColor = color || this.seriesColor(0);
+    marker.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.className = 'truncate font-medium';
+    label.textContent = params && params.value != null ? String(params.value) : '';
+    if (color) label.style.color = color;
+
+    wrapper.appendChild(marker);
+    wrapper.appendChild(label);
+    return wrapper;
+  },
+
+  summaryNumericComparator(valueA, valueB, _nodeA, _nodeB, isDescending) {
+    const hasA = Number.isFinite(valueA);
+    const hasB = Number.isFinite(valueB);
+    if (!hasA && !hasB) return 0;
+    if (!hasA) return isDescending ? -1 : 1;
+    if (!hasB) return isDescending ? 1 : -1;
+    return valueA - valueB;
+  },
+
+  formatSummaryDisplay(value) {
+    return Number.isFinite(value) ? this.formatSummaryRaw(value) : '—';
+  },
+
+  formatSummaryRaw(value) {
+    if (!Number.isFinite(value)) return '';
+    try {
+      return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
+    } catch (_) {
+      return String(value);
+    }
+  },
+
+  applySummaryGridTheme() {
+    const root = this.summaryGridRoot;
+    if (!root) return;
+    const isDark = this.getTheme() === 'dark';
+    const shell = root.closest('[data-role="aggrid-summary-table"]');
+    if (shell) shell.dataset.theme = isDark ? 'dark' : 'light';
+    root.classList.remove('ag-theme-alpine', 'ag-theme-alpine-dark');
+    root.classList.add(isDark ? 'ag-theme-alpine-dark' : 'ag-theme-alpine');
+
+    if (this.summaryGrid && this.summaryGrid.api) {
+      try {
+        this.summaryGrid.api.refreshCells({ force: true });
+        this.summaryGrid.api.redrawRows();
+      } catch (_) {}
+    }
+  },
+
+  resizeSummaryGrid() {
+    if (!this.summaryGrid || !this.summaryGrid.api || !this.summaryGridRoot) return;
+    if (this.summaryGridRoot.clientWidth === 0 || this.summaryGridRoot.clientHeight === 0) return;
+    try { this.summaryGrid.api.sizeColumnsToFit(); } catch (_) {}
+  },
+
+  autoSizeSummaryPathColumn(rows) {
+    if (!this.summaryGrid || !this.summaryGrid.columnApi) return;
+    const column = this.summaryGrid.columnApi.getColumn('path');
+    if (!column) return;
+
+    try {
+      this.summaryGrid.columnApi.autoSizeColumns(['path'], false);
+    } catch (_) {}
+
+    const colDef = column.getColDef ? column.getColDef() : null;
+    const minWidth =
+      colDef && Number.isFinite(colDef.minWidth)
+        ? colDef.minWidth
+        : AGGRID_PATH_COL_MIN_WIDTH;
+    const maxWidth =
+      colDef && Number.isFinite(colDef.maxWidth)
+        ? colDef.maxWidth
+        : AGGRID_PATH_COL_MAX_WIDTH;
+    let width = null;
+    try {
+      width = column.getActualWidth ? column.getActualWidth() : null;
+    } catch (_) {
+      width = null;
+    }
+    if (!Number.isFinite(width)) return;
+
+    const measuredWidth = this.measureSummaryPathWidth(rows);
+    const desiredWidth = Number.isFinite(measuredWidth) ? Math.max(width, measuredWidth) : width;
+    const clamped = Math.max(minWidth, Math.min(maxWidth, desiredWidth));
+    if (clamped !== width) {
+      try { this.summaryGrid.columnApi.setColumnWidth(column, clamped); } catch (_) {}
+    }
+  },
+
+  measureSummaryPathWidth(rows) {
+    const labels = Array.isArray(rows)
+      ? rows.map((row) => String((row && row.path) || ''))
+      : [];
+    if (!labels.length) return AGGRID_PATH_COL_MIN_WIDTH;
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext && canvas.getContext('2d');
+    let widestLabel = 0;
+
+    if (context) {
+      context.font =
+        '500 12px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      widestLabel = labels.reduce(
+        (widest, label) => Math.max(widest, context.measureText(label).width),
+        0
+      );
+    } else {
+      widestLabel = labels.reduce((widest, label) => Math.max(widest, label.length * 7.5), 0);
+    }
+
+    return Math.ceil(widestLabel + 56);
+  },
+
+  destroySummaryGrid() {
+    this.summaryRenderToken += 1;
+    if (this.summaryResizeObserver) {
+      try { this.summaryResizeObserver.disconnect(); } catch (_) {}
+      this.summaryResizeObserver = null;
+    }
+    if (this.summaryGrid && this.summaryGrid.api && typeof this.summaryGrid.api.destroy === 'function') {
+      try { this.summaryGrid.api.destroy(); } catch (_) {}
+    }
+    this.summaryGrid = null;
+    this.summaryGridRoot = null;
   },
 
   extractNumericValues(seriesData) {
@@ -1196,13 +1485,22 @@ Hooks.ExpandedWidgetView = {
 
   computeSeriesStats(values) {
     if (!Array.isArray(values) || values.length === 0) {
-      return { min: null, max: null, mean: null, sum: null };
+      return {
+        mean: null,
+        sum: null,
+        max: null,
+        min: null,
+        oldest: null,
+        latest: null
+      };
     }
     const sum = values.reduce((acc, value) => acc + value, 0);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const mean = sum / values.length;
-    return { min, max, mean, sum };
+    const oldest = values[0];
+    const latest = values[values.length - 1];
+    return { mean, sum, max, min, oldest, latest };
   },
 
   formatKpiMainValue(data) {
@@ -1626,6 +1924,7 @@ Hooks.ExpandedWidgetView = {
 
   renderDistributionTable(data) {
     if (!this.tableRoot) return;
+    this.destroySummaryGrid();
     const is3d =
       String(data?.mode || '2d').toLowerCase() === '3d' ||
       String(data?.chart_type || '').toLowerCase() === 'heatmap' ||
@@ -1770,6 +2069,7 @@ Hooks.ExpandedWidgetView = {
 
   showTablePlaceholder(message) {
     if (!this.tableRoot) return;
+    this.destroySummaryGrid();
     this.tableRoot.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.className =
@@ -1797,53 +2097,16 @@ Hooks.ExpandedWidgetView = {
       return;
     }
 
-    const escapeHtml = (str) => String(str || '').replace(/[&<>"']/g, (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s]));
-    const formatRaw = (value) => {
-      if (!Number.isFinite(value)) return '';
-      try {
-        return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
-      } catch (_) {
-        return String(value);
-      }
-    };
-
     const rows = items.map((item, idx) => {
-      const name = escapeHtml(String(item.name ?? `Item ${idx + 1}`));
       const value = Number(item.value);
-      const color = this.resolveSeriesColor(item && item.color, idx);
-      const formatted = Number.isFinite(value) ? formatCompactNumber(value) : '—';
-      const raw = escapeHtml(formatRaw(value));
+      return {
+        path: String(item.name ?? `Item ${idx + 1}`),
+        color: this.resolveSeriesColor(item && item.color, idx),
+        value: Number.isFinite(value) ? value : null
+      };
+    });
 
-      return `
-        <tr>
-          <td class="py-2 pr-4 pl-5 text-sm whitespace-nowrap text-gray-600 dark:text-slate-300">
-            <div class="flex items-center gap-3">
-              <span class="inline-flex h-2.5 w-2.5 rounded-full" style="background-color: ${color};"></span>
-              <span class="font-medium" style="color: ${color};">${name}</span>
-            </div>
-          </td>
-          <td class="px-5 py-2 text-sm whitespace-nowrap text-gray-500 dark:text-slate-200" data-tooltip="${raw}">${formatted}</td>
-        </tr>
-      `;
-    }).join('');
-
-    this.tableRoot.innerHTML = `
-      <div class="h-full overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-300 dark:divide-slate-700">
-          <thead class="bg-white dark:bg-slate-900/60">
-            <tr>
-              <th scope="col" class="py-3.5 pr-4 pl-5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Category</th>
-              <th scope="col" class="px-5 py-3.5 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">Value</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-900/60">
-            ${rows}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    this.activateFastTooltips();
+    this.renderSummaryGrid(rows, this.categoryColumnDefs());
   },
 
   activateFastTooltips() {

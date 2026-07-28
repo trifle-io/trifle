@@ -85,6 +85,7 @@ export const getAggridHeaderComponentClass = () => {
   if (aggridHeaderComponentClass) return aggridHeaderComponentClass;
   class TrifleAgGridHeader {
     init(params) {
+      this.params = params;
       this.eGui = document.createElement('div');
       this.eGui.className = 'aggrid-header-cell-wrapper';
       if (params && params.align === 'left') {
@@ -102,13 +103,70 @@ export const getAggridHeaderComponentClass = () => {
         span.textContent = segment;
         this.eGui.appendChild(span);
       });
+
+      if (params && params.enableSorting && typeof params.progressSort === 'function') {
+        this.eGui.classList.add('aggrid-header-sortable');
+        this.sortIndicator = document.createElement('span');
+        this.sortIndicator.className = 'aggrid-header-sort-indicator';
+        this.sortIndicator.setAttribute('aria-hidden', 'true');
+        this.eGui.appendChild(this.sortIndicator);
+
+        this.onClick = (event) => params.progressSort(!!event.shiftKey);
+        this.onKeyDown = (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          params.progressSort(!!event.shiftKey);
+        };
+        this.onSortChanged = () => this.updateSortIndicator();
+
+        this.eGui.addEventListener('click', this.onClick);
+        if (params.eGridHeader) {
+          params.eGridHeader.addEventListener('keydown', this.onKeyDown);
+        }
+        if (params.column && typeof params.column.addEventListener === 'function') {
+          params.column.addEventListener('sortChanged', this.onSortChanged);
+        }
+        this.updateSortIndicator();
+      }
     }
 
     getGui() {
       return this.eGui;
     }
 
-    destroy() {}
+    updateSortIndicator() {
+      if (!this.sortIndicator) return;
+      const column = this.params && this.params.column;
+      const sort =
+        column && typeof column.getSort === 'function'
+          ? column.getSort()
+          : column && typeof column.getSortDef === 'function'
+            ? column.getSortDef()?.direction
+            : null;
+
+      this.sortIndicator.textContent = sort === 'asc' ? '↑' : sort === 'desc' ? '↓' : '';
+      const ariaSort = sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none';
+      if (this.params && this.params.eGridHeader) {
+        this.params.eGridHeader.setAttribute('aria-sort', ariaSort);
+      }
+    }
+
+    destroy() {
+      if (this.eGui && this.onClick) {
+        this.eGui.removeEventListener('click', this.onClick);
+      }
+      if (this.params && this.params.eGridHeader && this.onKeyDown) {
+        this.params.eGridHeader.removeEventListener('keydown', this.onKeyDown);
+      }
+      if (
+        this.params &&
+        this.params.column &&
+        this.onSortChanged &&
+        typeof this.params.column.removeEventListener === 'function'
+      ) {
+        this.params.column.removeEventListener('sortChanged', this.onSortChanged);
+      }
+    }
   }
   aggridHeaderComponentClass = TrifleAgGridHeader;
   return aggridHeaderComponentClass;
