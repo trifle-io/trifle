@@ -248,6 +248,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     classes = body_attrs |> Map.new() |> Map.get("class", "")
     assert String.contains?(classes, "items-start")
     assert String.contains?(classes, "text-widget-body")
+    assert String.contains?(classes, "min-h-0")
+
+    style = body_attrs |> Map.new() |> Map.get("style", "")
+    assert style =~ "justify-content: safe center"
+    assert style =~ "overflow-y: auto"
   end
 
   test "renders explicit text widget background styles server-side" do

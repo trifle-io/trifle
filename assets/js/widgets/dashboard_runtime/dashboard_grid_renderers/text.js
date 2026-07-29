@@ -135,12 +135,13 @@ export const createDashboardGridTextRendererMethods = ({ sanitizeRichHtml }) => 
         titleBar.style.display = 'block';
       }
 
-      body.className = 'grid-widget-body flex-1 flex text-widget-body flex-col gap-2 px-4 pt-0 pb-4';
+      body.className =
+        'grid-widget-body flex-1 flex text-widget-body flex-col min-h-0 gap-2 px-4 pt-0 pb-4';
       body.dataset.textSubtype = it.subtype || 'header';
-      body.style.justifyContent = 'center';
+      body.style.justifyContent = 'safe center';
       body.style.alignItems = 'center';
       body.style.textAlign = 'center';
-      body.style.overflowY = 'visible';
+      body.style.overflowY = 'auto';
       body.style.paddingTop = '';
       body.style.paddingBottom = '';
 

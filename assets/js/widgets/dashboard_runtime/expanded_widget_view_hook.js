@@ -1251,6 +1251,8 @@ Hooks.ExpandedWidgetView = {
       rowHeight: 36,
       headerHeight: 44,
       enableBrowserTooltips: true,
+      enableRangeSelection: true,
+      enableCellTextSelection: true,
       defaultColDef: {
         sortable: true,
         sortingOrder: ['asc', 'desc', null],

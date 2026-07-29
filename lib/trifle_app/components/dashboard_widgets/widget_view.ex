@@ -499,6 +499,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         "flex",
         "text-widget-body",
         "flex-col",
+        "min-h-0",
         "gap-2",
         "px-4",
         "pt-0",
@@ -903,7 +904,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   defp text_body_style("html"),
     do: "justify-content: flex-start; align-items: stretch; text-align: left; overflow-y: auto;"
 
-  defp text_body_style("header"), do: "justify-content: center;"
+  defp text_body_style("header"),
+    do: "justify-content: safe center; overflow-y: auto;"
+
   defp text_body_style(_), do: nil
 
   defp text_title_size_class("small"), do: "text-2xl"

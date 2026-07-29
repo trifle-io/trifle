@@ -63,6 +63,13 @@ defmodule TrifleApp.Assets.ExpandedWidgetSummaryTest do
     assert source =~ "this.summaryGrid.api.destroy()"
   end
 
+  test "summary and category grids allow selecting and copying cell text" do
+    source = File.read!(@source_path)
+
+    assert source =~ "enableRangeSelection: true"
+    assert source =~ "enableCellTextSelection: true"
+  end
+
   test "summary and category path columns auto-size to content within configured bounds" do
     source = File.read!(@source_path)
 
