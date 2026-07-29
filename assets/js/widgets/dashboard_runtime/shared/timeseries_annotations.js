@@ -10,6 +10,8 @@ export const escapeTimeseriesTooltipHtml = (value) =>
 export const renderTimeseriesTooltipLines = (lines) => `<div>${lines.join('<br/>')}</div>`;
 export const TIMESERIES_TOOLTIP_Z_INDEX = 10000;
 export const ANNOTATION_POPOVER_Z_INDEX = 12050;
+export const TIMESERIES_TOOLTIP_RESPONSIVE_CSS =
+  'max-width:min(30rem, calc(100vw - 2rem));white-space:normal;overflow-wrap:anywhere;word-break:break-word;';
 
 export const annotationGroupsForItem = (context, item) => {
   if (!item || item.annotations_enabled === false || item.annotations_enabled === 'false') return [];

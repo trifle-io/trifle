@@ -1,4 +1,4 @@
-import { annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam } from "./shared/timeseries_annotations";
+import { TIMESERIES_TOOLTIP_RESPONSIVE_CSS, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam } from "./shared/timeseries_annotations";
 
 export const registerExpandedWidgetViewHook = (Hooks, deps) => {
   const {
@@ -502,6 +502,8 @@ Hooks.ExpandedWidgetView = {
       tooltip: {
         trigger: 'axis',
         appendToBody: true,
+        confine: true,
+        extraCssText: TIMESERIES_TOOLTIP_RESPONSIVE_CSS,
         textStyle: { fontFamily: chartFontFamily },
         formatter: (params) => {
           const list = Array.isArray(params) ? params : [params];

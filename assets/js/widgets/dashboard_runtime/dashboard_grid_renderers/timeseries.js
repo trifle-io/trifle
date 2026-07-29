@@ -1,4 +1,4 @@
-import { ANNOTATION_POPOVER_Z_INDEX, TIMESERIES_TOOLTIP_Z_INDEX, annotationGroupsForItem, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam, timestampMs } from "../shared/timeseries_annotations";
+import { ANNOTATION_POPOVER_Z_INDEX, TIMESERIES_TOOLTIP_RESPONSIVE_CSS, TIMESERIES_TOOLTIP_Z_INDEX, annotationGroupsForItem, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam, timestampMs } from "../shared/timeseries_annotations";
 
 export const createDashboardGridTimeseriesRendererMethods = ({
   echarts,
@@ -447,7 +447,8 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       tooltip: {
         trigger: 'axis',
         appendToBody: true,
-        extraCssText: `z-index:${TIMESERIES_TOOLTIP_Z_INDEX};`,
+        confine: true,
+        extraCssText: `z-index:${TIMESERIES_TOOLTIP_Z_INDEX};${TIMESERIES_TOOLTIP_RESPONSIVE_CSS}`,
         textStyle: { fontFamily: chartFontFamily },
             formatter: (params) => {
               const list = Array.isArray(params) ? params : [params];
