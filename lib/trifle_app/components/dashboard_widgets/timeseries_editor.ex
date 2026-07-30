@@ -59,14 +59,13 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
             Chart Type
           </label>
           <input type="hidden" name="ts_chart_type" value={@chart_type} />
-          <.button_group size="sm">
+          <.button_group size="sm" labels="hidden">
             <:button
               :for={{label, value} <- chart_type_options_ts()}
               phx-click="set_ts_chart_type"
               values={%{"widget-id" => Map.get(@widget, "id"), "chart-type" => value}}
               selected={@chart_type == value}
-              title={label}
-              aria-label={label}
+              label={label}
             >
               <.chart_type_icon type={value} />
             </:button>

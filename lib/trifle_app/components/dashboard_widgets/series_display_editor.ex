@@ -64,16 +64,14 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
               data-series-display-mode-button="visual"
               aria-pressed={to_string(@series_display_mode == "visual")}
               selected={@series_display_mode == "visual"}
-            >
-              Visual
-            </:button>
+              label="Visual"
+            />
             <:button
               data-series-display-mode-button="raw"
               aria-pressed={to_string(@series_display_mode == "raw")}
               selected={@series_display_mode == "raw"}
-            >
-              Raw
-            </:button>
+              label="Raw"
+            />
           </.button_group>
         </div>
 
@@ -159,9 +157,8 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
               phx_value_option={value}
               values={%{"widget-id" => Map.get(@widget, "id")}}
               selected={@series_sort == value}
-            >
-              {label}
-            </:button>
+              label={label}
+            />
           </.button_group>
           <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
             Natural order keeps numeric suffixes in human order instead of string order.

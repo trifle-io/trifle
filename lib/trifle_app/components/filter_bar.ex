@@ -212,14 +212,15 @@ defmodule TrifleApp.Components.FilterBar do
           <div class="flex shrink-0 items-center gap-4 md:w-full md:justify-end lg:w-auto lg:ml-auto">
             <!-- Controls Section -->
             <%= if @show_controls do %>
-              <div id="controls-container" phx-hook="FastTooltip">
-                <.button_group label="Controls">
+              <div id="controls-container">
+                <.button_group label="Controls" labels="hidden">
                   <:button
                     phx-target={@myself}
                     phx-click="navigate_timeframe_backward"
                     class="filter-bar-pressable"
                     data-filter-bar-action="timeframe-backward"
-                    data-tooltip="Move timeframe backward in time (H)"
+                    label="Previous timeframe"
+                    tooltip="Move timeframe backward in time (H)"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -241,7 +242,8 @@ defmodule TrifleApp.Components.FilterBar do
                     phx-click="reload_data"
                     class="filter-bar-pressable"
                     data-filter-bar-action="refresh"
-                    data-tooltip="Refresh data for current timeframe (R)"
+                    label="Refresh"
+                    tooltip="Refresh data for current timeframe (R)"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -264,7 +266,8 @@ defmodule TrifleApp.Components.FilterBar do
                     selected={!@use_fixed_display}
                     class="filter-bar-pressable"
                     data-filter-bar-action="play-pause"
-                    data-tooltip={
+                    label={if @use_fixed_display, do: "Play", else: "Pause"}
+                    tooltip={
                       if @use_fixed_display,
                         do: "Play (auto-update) (P)",
                         else: "Pause (freeze range) (P)"
@@ -309,7 +312,8 @@ defmodule TrifleApp.Components.FilterBar do
                     phx-click="navigate_timeframe_forward"
                     class="filter-bar-pressable"
                     data-filter-bar-action="timeframe-forward"
-                    data-tooltip="Move timeframe forward in time (L)"
+                    label="Next timeframe"
+                    tooltip="Move timeframe forward in time (L)"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -333,7 +337,7 @@ defmodule TrifleApp.Components.FilterBar do
     <!-- Granularity Section -->
           <!-- Button Group (suppressed when dropdown explicitly requested or forced) -->
             <%= if !(@force_granularity_dropdown || @show_granularity_dropdown) do %>
-              <div class="hidden md:block" id="granularity-container" phx-hook="FastTooltip">
+              <div class="hidden md:block" id="granularity-container">
                 {render_granularity_button_group(assigns)}
               </div>
             <% end %>
@@ -810,52 +814,19 @@ defmodule TrifleApp.Components.FilterBar do
 
   defp render_granularity_button_group(assigns) do
     ~H"""
-    <div class="relative">
-      <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
-        Granularity
-      </label>
-      <div class="inline-flex rounded-md ring-1 ring-black/10 dark:ring-white/10" role="group">
-        <%= for {granularity, index} <- Enum.with_index(@available_granularities) do %>
-          <% position =
-            cond do
-              length(@available_granularities) == 1 -> :only
-              index == 0 -> :first
-              index == length(@available_granularities) - 1 -> :last
-              true -> :middle
-            end %>
-          <button
-            type="button"
-            phx-target={@myself}
-            phx-click="select_granularity"
-            phx-value-granularity={granularity}
-            data-filter-bar-granularity={to_string(granularity)}
-            data-tooltip={Granularity.display_name(granularity)}
-            class={[
-              "filter-bar-pressable relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800",
-              case position do
-                :only -> "rounded-md"
-                :first -> "rounded-l-md"
-                :middle -> ""
-                :last -> "rounded-r-md"
-              end,
-              if(@granularity == granularity,
-                do:
-                  "bg-white dark:bg-slate-800 text-teal-500 dark:text-teal-300 font-semibold border-b-2 border-b-teal-500 dark:border-b-teal-400",
-                else:
-                  "bg-white dark:bg-slate-800/80 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700"
-              ),
-              case position do
-                :first -> ""
-                :only -> ""
-                _ -> "border-l border-gray-200 dark:border-slate-700"
-              end
-            ]}
-          >
-            {granularity}
-          </button>
-        <% end %>
-      </div>
-    </div>
+    <.button_group label="Granularity">
+      <:button
+        :for={granularity <- @available_granularities}
+        phx-target={@myself}
+        phx-click="select_granularity"
+        phx_value_granularity={granularity}
+        data-filter-bar-granularity={to_string(granularity)}
+        selected={@granularity == granularity}
+        class="filter-bar-pressable"
+        label={to_string(granularity)}
+        tooltip={Granularity.display_name(granularity)}
+      />
+    </.button_group>
     """
   end
 

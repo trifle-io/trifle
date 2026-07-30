@@ -68,9 +68,8 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
               phx-click="change_text_subtype"
               values={%{"widget-id" => Map.get(@widget, "id"), "text-subtype" => value}}
               selected={@subtype == value}
-            >
-              {label}
-            </:button>
+              label={label}
+            />
           </.button_group>
           <p :if={@subtype != "html"} class="mt-2 text-xs text-gray-500 dark:text-slate-400">
             Uses the main title field above as its headline.
@@ -104,10 +103,9 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
               phx-click="set_text_title_size"
               values={%{"widget-id" => Map.get(@widget, "id"), "text-title-size" => value}}
               selected={@title_size == value}
-              title={help}
-            >
-              {label}
-            </:button>
+              label={label}
+              tooltip={help}
+            />
           </.button_group>
         </div>
 
@@ -116,14 +114,13 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
             Alignment
           </label>
           <input type="hidden" name="text_alignment" value={@alignment} />
-          <.button_group size="sm">
+          <.button_group size="sm" labels="hidden">
             <:button
               :for={{label, value} <- text_alignment_options()}
               phx-click="set_text_alignment"
               values={%{"widget-id" => Map.get(@widget, "id"), "text-alignment" => value}}
               selected={@alignment == value}
-              title={label}
-              aria-label={label}
+              label={label}
             >
               <.alignment_icon alignment={value} />
             </:button>

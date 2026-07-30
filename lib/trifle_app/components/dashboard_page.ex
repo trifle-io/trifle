@@ -1467,17 +1467,15 @@ defmodule TrifleApp.Components.DashboardPage do
                       phx-click="set_widget_workspace_tab"
                       values={%{"tab" => "summary"}}
                       selected={active_tab == "summary"}
-                    >
-                      Summary
-                    </:button>
+                      label="Summary"
+                    />
                     <:button
                       :if={editable}
                       phx-click="set_widget_workspace_tab"
                       values={%{"tab" => "edit"}}
                       selected={active_tab == "edit"}
-                    >
-                      Edit
-                    </:button>
+                      label="Edit"
+                    />
                   </.button_group>
                 </div>
               </div>
@@ -1899,19 +1897,16 @@ defmodule TrifleApp.Components.DashboardPage do
             Widget Type
           </label>
           <input type="hidden" name="widget_type" value={sel} />
-          <.button_group size="lg">
+          <.button_group size="lg" labels="responsive">
             <:button
               :for={{label, value} <- widget_type_options()}
               phx-click="set_widget_type"
               values={%{"widget-id" => @draft_widget["id"], "type" => value}}
               selected={sel == value}
-              title={label}
-              class="min-w-[5.5rem]"
+              label={label}
+              class="md:min-w-[5.5rem]"
             >
-              <span class="flex flex-col items-center gap-1.5">
-                <.widget_type_icon type={value} />
-                <span class="text-xs font-medium">{label}</span>
-              </span>
+              <.widget_type_icon type={value} />
             </:button>
           </.button_group>
         <% end %>
@@ -1959,28 +1954,28 @@ defmodule TrifleApp.Components.DashboardPage do
   attr :type, :string, required: true
 
   defp widget_type_icon(%{type: "kpi"} = assigns),
-    do: ~H|<EditorIcons.kpi_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.kpi_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "timeseries"} = assigns),
-    do: ~H|<EditorIcons.line_chart_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.line_chart_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "category"} = assigns),
-    do: ~H|<EditorIcons.pie_chart_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.pie_chart_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "distribution"} = assigns),
-    do: ~H|<EditorIcons.bar_chart_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.bar_chart_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "heatmap"} = assigns),
-    do: ~H|<EditorIcons.heatmap_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.heatmap_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "table"} = assigns),
-    do: ~H|<EditorIcons.table_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.table_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "list"} = assigns),
-    do: ~H|<EditorIcons.list_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.list_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "text"} = assigns),
-    do: ~H|<EditorIcons.text_icon class="h-6 w-6" />|
+    do: ~H|<EditorIcons.text_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp expanded_list_items(data) when is_map(data) do
     Map.get(data, :items) || Map.get(data, "items") || []

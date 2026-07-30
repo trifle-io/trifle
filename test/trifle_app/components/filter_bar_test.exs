@@ -260,6 +260,7 @@ defmodule TrifleApp.Components.FilterBarTest do
     end
 
     assert Floki.find(document, ~s(button[data-filter-bar-action="granularity"])) != []
+    refute html =~ ~s(phx-hook="FastTooltip")
   end
 
   test "keeps timeframe and granularity shortcut metadata when controls are hidden", %{conn: conn} do

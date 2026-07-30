@@ -1,76 +1,124 @@
 export const registerStatusHooks = (Hooks, deps = {}) => {
-Hooks.FastTooltip = {
-  mounted() {
-    this.initTooltips();
-  },
-  
-  updated() {
-    this.initTooltips();
-  },
-  
-  initTooltips() {
-    // Remove existing tooltips
+  // Fast tooltips are globally delegated: any element carrying [data-tooltip]
+  // gets a JS tooltip on hover/focus, wherever it lives (modals, forms,
+  // JS-generated content) — no wrapper hook or per-element binding required.
+  // Optional [data-tooltip-media] (e.g. "(max-width: 767px)") restricts the
+  // tooltip to viewports matching the media query.
+  let activeTooltipTarget = null;
+  let activeTooltipDescription = null;
+  let tooltipSequence = 0;
+
+  const matchesTooltipMedia = (element) => {
+    const media = element.dataset.tooltipMedia;
+    if (!media || !window.matchMedia) return true;
+    return window.matchMedia(media).matches;
+  };
+
+  const hideFastTooltip = () => {
     document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
-    
-    const tooltipElements = this.el.querySelectorAll('[data-tooltip], [data-fast-tooltip]');
-    
-    tooltipElements.forEach(el => {
-      if (el.dataset.fastTooltipBound === 'true') return;
-      el.dataset.fastTooltipBound = 'true';
+    if (!activeTooltipDescription) return;
 
-      el.addEventListener('mouseenter', (e) => {
-        const text = e.currentTarget.dataset.tooltip;
-        if (!text) return;
-        this.showTooltip(e.currentTarget, text);
-      });
+    const { element, tooltipId } = activeTooltipDescription;
+    if (element.isConnected) {
+      const remainingDescriptions = String(element.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter((id) => id && id !== tooltipId);
 
-      el.addEventListener('focus', (e) => {
-        const text = e.currentTarget.dataset.tooltip;
-        if (!text) return;
-        this.showTooltip(e.currentTarget, text);
-      });
-      
-      el.addEventListener('mouseleave', () => {
-        this.hideTooltip();
-      });
+      if (remainingDescriptions.length > 0) {
+        element.setAttribute('aria-describedby', remainingDescriptions.join(' '));
+      } else {
+        element.removeAttribute('aria-describedby');
+      }
+    }
 
-      el.addEventListener('blur', () => {
-        this.hideTooltip();
-      });
+    activeTooltipDescription = null;
+  };
+
+  const activateTooltipTarget = (target) => {
+    const el = target instanceof Element ? target.closest('[data-tooltip]') : null;
+    if (el === activeTooltipTarget && document.querySelector('.fast-tooltip')) return;
+
+    activeTooltipTarget = el;
+    hideFastTooltip();
+
+    if (!el) return;
+    const text = el.dataset.tooltip;
+    if (!text || !matchesTooltipMedia(el)) return;
+    showFastTooltip(el, text);
+  };
+
+  const clearTooltipTarget = () => {
+    activeTooltipTarget = null;
+    hideFastTooltip();
+  };
+
+  const installFastTooltipDelegation = () => {
+    if (window.__fastTooltipDelegated) return;
+    window.__fastTooltipDelegated = true;
+
+    document.addEventListener('mouseover', (e) => activateTooltipTarget(e.target));
+    document.addEventListener('focusin', (e) => activateTooltipTarget(e.target));
+    document.addEventListener('focusout', clearTooltipTarget);
+    document.addEventListener('mouseleave', clearTooltipTarget);
+    document.addEventListener('pointerdown', clearTooltipTarget);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') clearTooltipTarget();
     });
-  },
-  
-  showTooltip(element, text) {
+    document.addEventListener('phx:page-loading-start', clearTooltipTarget);
+    window.addEventListener('scroll', clearTooltipTarget, true);
+    window.addEventListener('resize', clearTooltipTarget);
+    window.addEventListener('blur', clearTooltipTarget);
+  };
+
+  function showFastTooltip(element, text) {
+    hideFastTooltip();
+    if (!element?.isConnected || !text) return;
+
+    activeTooltipTarget = element;
+
     // Detect dark mode
     const isDarkMode = document.documentElement.classList.contains('dark');
     const backgroundColor = isDarkMode ? '#0f172a' : '#374151';
     const textColor = isDarkMode ? '#ffffff' : '#ffffff';
     const placement = String(element.dataset.tooltipPlacement || 'top').toLowerCase();
     const gap = 8;
-    const viewportLeft = window.scrollX + 8;
-    const viewportRight = window.scrollX + window.innerWidth - 8;
-    const viewportTop = window.scrollY + 8;
-    const viewportBottom = window.scrollY + window.innerHeight - 8;
-    
+    const viewportLeft = 8;
+    const viewportRight = window.innerWidth - 8;
+    const viewportTop = 8;
+    const viewportBottom = window.innerHeight - 8;
+
     // Create tooltip element
     const tooltip = document.createElement('div');
+    const tooltipId = `fast-tooltip-${++tooltipSequence}`;
+    tooltip.id = tooltipId;
+    tooltip.setAttribute('role', 'tooltip');
     tooltip.className = 'fast-tooltip';
     tooltip.textContent = text;
     tooltip.style.cssText = `
-      position: absolute;
+      position: fixed;
       background: ${backgroundColor};
       color: ${textColor};
       padding: 4px 8px;
       border-radius: 4px;
       font-size: 12px;
-      z-index: 1000;
+      line-height: 1.25;
+      max-width: min(20rem, calc(100vw - 16px));
+      z-index: 13000;
       pointer-events: none;
-      white-space: nowrap;
+      text-align: center;
+      white-space: normal;
       box-shadow: 0 1px 4px rgba(0,0,0,0.1);
     `;
-    
+
     document.body.appendChild(tooltip);
-    
+
+    const previousDescription = element.getAttribute('aria-describedby');
+    element.setAttribute(
+      'aria-describedby',
+      [previousDescription, tooltipId].filter(Boolean).join(' ')
+    );
+    activeTooltipDescription = { element, tooltipId };
+
     // Position tooltip
     const rect = element.getBoundingClientRect();
     const tooltipRect = tooltip.getBoundingClientRect();
@@ -79,50 +127,54 @@ Hooks.FastTooltip = {
     let top;
 
     if (placement === 'right') {
-      left = rect.right + gap + window.scrollX;
-      top = rect.top + (rect.height / 2) - (tooltipRect.height / 2) + window.scrollY;
+      left = rect.right + gap;
+      top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
 
       if (left + tooltipRect.width > viewportRight) {
-        left = rect.left - tooltipRect.width - gap + window.scrollX;
-      }
-
-      if (left < viewportLeft) {
-        left = viewportLeft;
-      }
-
-      if (top < viewportTop) {
-        top = viewportTop;
-      }
-
-      if (top + tooltipRect.height > viewportBottom) {
-        top = viewportBottom - tooltipRect.height;
+        left = rect.left - tooltipRect.width - gap;
       }
     } else {
-      left = rect.left + (rect.width / 2) - (tooltipRect.width / 2) + window.scrollX;
-      top = rect.top - tooltipRect.height - gap + window.scrollY;
+      left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+      top = rect.top - tooltipRect.height - gap;
 
-      // Keep tooltip within viewport
-      if (left < viewportLeft) left = viewportLeft;
-      if (left + tooltipRect.width > viewportRight) {
-        left = viewportRight - tooltipRect.width;
-      }
       if (top < viewportTop) {
-        top = rect.bottom + gap + window.scrollY;
-      }
-
-      if (top + tooltipRect.height > viewportBottom) {
-        top = viewportBottom - tooltipRect.height;
+        top = rect.bottom + gap;
       }
     }
-    
+
+    const maximumLeft = Math.max(viewportLeft, viewportRight - tooltipRect.width);
+    const maximumTop = Math.max(viewportTop, viewportBottom - tooltipRect.height);
+    left = Math.min(Math.max(left, viewportLeft), maximumLeft);
+    top = Math.min(Math.max(top, viewportTop), maximumTop);
+
     tooltip.style.left = left + 'px';
     tooltip.style.top = top + 'px';
-  },
-  
-  hideTooltip() {
-    document.querySelectorAll('.fast-tooltip').forEach(el => el.remove());
   }
-}
+
+  installFastTooltipDelegation();
+
+  // Legacy shim: FastTooltip previously bound per-element listeners from this
+  // hook, and some renderers (expanded widget view, AG Grid tables) call its
+  // methods directly. Delegation now covers every [data-tooltip] element, so
+  // the hook reduces to the shared show/hide helpers.
+  Hooks.FastTooltip = {
+    mounted() {},
+    updated() {
+      if (activeTooltipTarget && !activeTooltipTarget.isConnected) clearTooltipTarget();
+    },
+    destroyed() {
+      if (activeTooltipTarget && this.el.contains(activeTooltipTarget)) clearTooltipTarget();
+    },
+    initTooltips() {},
+
+    showTooltip(element, text) {
+      if (matchesTooltipMedia(element)) showFastTooltip(element, text);
+    },
+
+    hideTooltip() {
+      clearTooltipTarget();
+    }
+  }
 
 Hooks.ChatContextRefresh = {
   mounted() {

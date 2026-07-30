@@ -64,9 +64,8 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
               phx-click="set_kpi_function"
               values={%{"widget-id" => @widget_id, "function" => value}}
               selected={@function == value}
-            >
-              {label}
-            </:button>
+              label={label}
+            />
           </.button_group>
         </div>
 
@@ -80,10 +79,9 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
               phx-click="change_kpi_subtype"
               values={%{"widget-id" => @widget_id, "kpi-subtype" => value}}
               selected={@subtype == value}
-              title={help}
-            >
-              {label}
-            </:button>
+              label={label}
+              tooltip={help}
+            />
           </.button_group>
           <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
             {kpi_subtype_help(@subtype)}
@@ -101,10 +99,9 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
               phx-click="set_kpi_size"
               values={%{"widget-id" => @widget_id, "size" => value}}
               selected={@size == value}
-              title={help}
-            >
-              {label}
-            </:button>
+              label={label}
+              tooltip={help}
+            />
           </.button_group>
         </div>
 
