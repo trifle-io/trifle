@@ -3,6 +3,9 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
 
   use Phoenix.Component
 
+  import TrifleApp.DesignSystem.ButtonGroup
+
+  alias TrifleApp.Components.DashboardWidgets.EditorIcons
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
   alias TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor
 
@@ -24,78 +27,77 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
       |> assign(:annotations_enabled, annotations_enabled?(widget))
 
     ~H"""
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="sm:col-span-2">
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div class="space-y-4 xl:col-span-2">
         <MetricSeriesEditor.editor
           widget={@widget}
           path_options={@path_options}
           group_path={@group_path}
           path_placeholder="metrics.sales"
-          path_help="Use * to expand dynamic keys such as breakdown.*. Hidden source rows can feed visible expression rows."
+          path_help="Use * to expand dynamic keys such as breakdown.*."
         />
-      </div>
 
-      <div class="sm:col-span-2">
         <SeriesDisplayEditor.controls widget={@widget} />
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Y-axis unit
-        </label>
-        <input
-          type="text"
-          name="ts_y_label"
-          value={Map.get(@widget, "y_label", "")}
-          class="block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white sm:text-sm"
-          placeholder="e.g., $, Orders, Errors (%)"
-        />
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Chart Type
-        </label>
-        <input type="hidden" name="ts_chart_type" value={@chart_type} />
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-          <%= for {label, value, position} <- chart_type_options_ts() do %>
-            <button
-              type="button"
-              class={chart_toggle_classes(@chart_type == value, position)}
-              phx-click="set_ts_chart_type"
-              phx-value-widget-id={Map.get(@widget, "id")}
-              phx-value-chart-type={value}
-            >
-              {label}
-            </button>
-          <% end %>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-4 sm:col-span-2">
-        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-          <input type="checkbox" name="ts_stacked" checked={@stacked} /> Stacked
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-          <input type="checkbox" name="ts_normalized" checked={@normalized} /> Normalized
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-          <input type="checkbox" name="ts_legend" checked={@legend} /> Show legend
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-          <input type="hidden" name="ts_hovered_only" value="false" />
-          <input type="checkbox" name="ts_hovered_only" value="true" checked={@hovered_only} />
-          Show only hovered series
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-          <input type="hidden" name="ts_annotations_enabled" value="false" />
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Y-axis unit
+          </label>
           <input
-            type="checkbox"
-            name="ts_annotations_enabled"
-            value="true"
-            checked={@annotations_enabled}
-          /> Annotations
-        </label>
+            type="text"
+            name="ts_y_label"
+            value={Map.get(@widget, "y_label", "")}
+            class="block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white sm:text-sm"
+            placeholder="e.g., $, Orders, Errors (%)"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Chart Type
+          </label>
+          <input type="hidden" name="ts_chart_type" value={@chart_type} />
+          <.button_group size="sm">
+            <:button
+              :for={{label, value} <- chart_type_options_ts()}
+              phx-click="set_ts_chart_type"
+              values={%{"widget-id" => Map.get(@widget, "id"), "chart-type" => value}}
+              selected={@chart_type == value}
+              title={label}
+              aria-label={label}
+            >
+              <.chart_type_icon type={value} />
+            </:button>
+          </.button_group>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+            <input type="checkbox" name="ts_stacked" checked={@stacked} /> Stacked
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+            <input type="checkbox" name="ts_normalized" checked={@normalized} /> Normalized
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+            <input type="checkbox" name="ts_legend" checked={@legend} /> Show legend
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+            <input type="hidden" name="ts_hovered_only" value="false" />
+            <input type="checkbox" name="ts_hovered_only" value="true" checked={@hovered_only} />
+            Show only hovered series
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+            <input type="hidden" name="ts_annotations_enabled" value="false" />
+            <input
+              type="checkbox"
+              name="ts_annotations_enabled"
+              value="true"
+              checked={@annotations_enabled}
+            /> Annotations
+          </label>
+        </div>
       </div>
     </div>
     """
@@ -113,31 +115,17 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
 
   defp chart_type_options_ts do
     [
-      {"Line", "line", :first},
-      {"Area", "area", :middle},
-      {"Dots", "dots", :middle},
-      {"Bar", "bar", :last}
+      {"Line", "line"},
+      {"Area", "area"},
+      {"Dots", "dots"},
+      {"Bar", "bar"}
     ]
   end
 
-  defp chart_toggle_classes(selected, position) do
-    base =
-      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[4.5rem] text-center"
+  attr :type, :string, required: true
 
-    corners =
-      case position do
-        :first -> "rounded-l-md"
-        :last -> "rounded-r-md"
-        _ -> "border-x border-gray-200 dark:border-slate-600"
-      end
-
-    state =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, corners, state], " ")
-  end
+  defp chart_type_icon(%{type: "line"} = assigns), do: ~H"<EditorIcons.line_chart_icon />"
+  defp chart_type_icon(%{type: "area"} = assigns), do: ~H"<EditorIcons.area_chart_icon />"
+  defp chart_type_icon(%{type: "dots"} = assigns), do: ~H"<EditorIcons.scatter_chart_icon />"
+  defp chart_type_icon(%{type: "bar"} = assigns), do: ~H"<EditorIcons.bar_chart_icon />"
 end

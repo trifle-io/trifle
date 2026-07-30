@@ -3,6 +3,8 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
 
   use Phoenix.Component
 
+  import TrifleApp.DesignSystem.ButtonGroup
+
   alias TrifleApp.Components.DashboardWidgets.{SeriesAliases, SeriesOrder}
 
   attr :widget, :map, required: true
@@ -57,24 +59,22 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
             </p>
           </div>
 
-          <div class="inline-flex overflow-hidden rounded-md border border-gray-200 shadow-sm dark:border-slate-600">
-            <button
-              type="button"
+          <.button_group size="sm">
+            <:button
               data-series-display-mode-button="visual"
-              aria-pressed={@series_display_mode == "visual"}
-              class={mode_toggle_classes(@series_display_mode == "visual", :first)}
+              aria-pressed={to_string(@series_display_mode == "visual")}
+              selected={@series_display_mode == "visual"}
             >
               Visual
-            </button>
-            <button
-              type="button"
+            </:button>
+            <:button
               data-series-display-mode-button="raw"
-              aria-pressed={@series_display_mode == "raw"}
-              class={mode_toggle_classes(@series_display_mode == "raw", :last)}
+              aria-pressed={to_string(@series_display_mode == "raw")}
+              selected={@series_display_mode == "raw"}
             >
               Raw
-            </button>
-          </div>
+            </:button>
+          </.button_group>
         </div>
 
         <div data-series-display-mode-panel="visual" hidden={@series_display_mode != "visual"}>
@@ -87,7 +87,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
         <div data-series-display-mode-panel="raw" hidden={@series_display_mode != "raw"}>
           <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
                 Aliases
               </label>
               <textarea
@@ -95,7 +95,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
                 rows="5"
                 data-role="series-aliases-raw"
                 class={[
-                  "mt-2 block w-full rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-teal-500 dark:bg-slate-800 dark:text-white",
+                  "block w-full rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-teal-500 dark:bg-slate-800 dark:text-white",
                   if(@series_aliases_error,
                     do: "border-rose-300 focus:border-rose-500 dark:border-rose-500",
                     else: "border-gray-300 focus:border-teal-500 dark:border-slate-600"
@@ -116,28 +116,28 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+              <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
                 Priority First
               </label>
               <textarea
                 name="series_priority"
                 rows="5"
                 data-role="series-priority-raw"
-                class="mt-2 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                class="block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                 placeholder="United States,Germany"
               >{@series_priority_text}</textarea>
               <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 Matching series render first in this order after aliases are applied.
               </p>
 
-              <label class="mt-4 block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+              <label class="mt-4 block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
                 Priority Last
               </label>
               <textarea
                 name="series_priority_last"
                 rows="5"
                 data-role="series-priority-last-raw"
-                class="mt-2 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                class="block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                 placeholder="Other,Unknown"
               >{@series_priority_last_text}</textarea>
               <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
@@ -148,23 +148,21 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
         </div>
 
         <div class="border-t border-gray-200 pt-4 dark:border-slate-700">
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Sorting
           </label>
           <input type="hidden" name="series_sort" value={@series_sort} />
-          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-            <%= for {label, value, position} <- sort_mode_options() do %>
-              <button
-                type="button"
-                class={sort_toggle_classes(@series_sort == value, position)}
-                phx-click="set_series_sort"
-                phx-value-option={value}
-                phx-value-widget-id={Map.get(@widget, "id")}
-              >
-                {label}
-              </button>
-            <% end %>
-          </div>
+          <.button_group size="sm">
+            <:button
+              :for={{label, value} <- sort_mode_options()}
+              phx-click="set_series_sort"
+              phx_value_option={value}
+              values={%{"widget-id" => Map.get(@widget, "id")}}
+              selected={@series_sort == value}
+            >
+              {label}
+            </:button>
+          </.button_group>
           <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
             Natural order keeps numeric suffixes in human order instead of string order.
           </p>
@@ -355,51 +353,9 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesDisplayEditor do
 
   defp sort_mode_options do
     [
-      {"Natural", "natural", :first},
-      {"Alphabetical", "alpha", :last}
+      {"Natural", "natural"},
+      {"Alphabetical", "alpha"}
     ]
-  end
-
-  defp sort_toggle_classes(selected, position) do
-    base =
-      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[4.5rem] text-center"
-
-    corners =
-      case position do
-        :first -> "rounded-l-md"
-        :last -> "rounded-r-md"
-        _ -> "border-x border-gray-200 dark:border-slate-600"
-      end
-
-    state =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, corners, state], " ")
-  end
-
-  defp mode_toggle_classes(selected, position) do
-    base =
-      "px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 min-w-[4rem] text-center"
-
-    corners =
-      case position do
-        :first -> "rounded-l-md"
-        :last -> "rounded-r-md border-l border-gray-200 dark:border-slate-600"
-        _ -> ""
-      end
-
-    state =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, corners, state], " ")
   end
 
   defp visual_input_classes do

@@ -213,31 +213,44 @@ export const registerSeriesDisplayEditorHook = (Hooks, deps = {}) => {
     },
 
     applyModeButtonClasses(button, selected) {
+      // Mirrors TrifleApp.DesignSystem.ButtonGroup size="sm" classes.
       const base = [
-        'px-3',
-        'py-1.5',
-        'text-xs',
+        'relative',
+        'inline-flex',
+        'items-center',
+        'px-2.5',
+        'h-8',
+        'text-sm',
         'font-medium',
-        'transition',
-        'focus:outline-none',
-        'focus-visible:ring-2',
-        'focus-visible:ring-teal-500',
-        'min-w-[4rem]',
-        'text-center'
+        'transition-colors',
+        'focus-visible:outline-none',
+        'focus-visible:bg-white',
+        'active:bg-white',
+        'dark:focus-visible:bg-slate-800',
+        'dark:active:bg-slate-800'
       ];
 
       const edge = button.dataset.seriesDisplayModeButton === 'raw'
-        ? ['rounded-r-md', 'border-l', 'border-gray-200', 'dark:border-slate-600']
+        ? ['rounded-r-md', 'border-l', 'border-gray-200', 'dark:border-slate-700']
         : ['rounded-l-md'];
 
       const state = selected
-        ? ['bg-teal-600', 'text-white', 'hover:bg-teal-500']
+        ? [
+            'bg-white',
+            'dark:bg-slate-800',
+            'text-teal-500',
+            'dark:text-teal-300',
+            'font-semibold',
+            'border-b-2',
+            'border-b-teal-500',
+            'dark:border-b-teal-400'
+          ]
         : [
             'bg-white',
+            'dark:bg-slate-800/80',
             'text-gray-700',
-            'hover:bg-gray-50',
-            'dark:bg-slate-800',
-            'dark:text-slate-200',
+            'dark:text-slate-300',
+            'hover:bg-gray-100',
             'dark:hover:bg-slate-700'
           ];
 

@@ -104,7 +104,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                 />
               </div>
             <% else %>
-              <div class="space-y-3 lg:grid lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto] lg:items-center lg:gap-3 lg:space-y-0">
+              <div class="space-y-3 lg:grid lg:grid-cols-[auto_minmax(0,1.6fr)_minmax(0,1fr)_12rem_auto] lg:items-center lg:gap-3 lg:space-y-0">
                 <div class="flex items-start gap-3 lg:contents">
                   <.series_visibility_toggle
                     row={row}
@@ -157,7 +157,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
       <p class="text-xs text-gray-500 dark:text-slate-400">
         {@path_help ||
-          "Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c and use the same syntax as transponders. Hidden source rows can feed visible expression rows."}
+          "Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c."}
       </p>
     </div>
     """

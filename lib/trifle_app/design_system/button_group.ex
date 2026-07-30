@@ -24,8 +24,9 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
         </:button>
       </.button_group>
   """
-  attr :label, :string, required: true
+  attr :label, :string, default: nil
   attr :class, :string, default: ""
+  attr :size, :string, default: "md", values: ["md", "sm", "lg"]
 
   slot :button, required: true do
     attr :"phx-click", :string
@@ -35,10 +36,14 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
     attr :phx_value_option, :string
     attr :phx_value_widget_id, :string
     attr :phx_value_granularity, :string
+    attr :values, :map
     attr :title, :string
     attr :class, :string
+    attr :"aria-label", :string
+    attr :"aria-pressed", :string
     attr :"data-tooltip", :string
     attr :"data-filter-bar-action", :string
+    attr :"data-series-display-mode-button", :string
     attr :selected, :boolean
     attr :disabled, :boolean
   end
@@ -46,7 +51,10 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
   def button_group(assigns) do
     ~H"""
     <div class={["relative", @class]}>
-      <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10">
+      <label
+        :if={@label}
+        class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-10"
+      >
         {@label}
       </label>
       <div
@@ -65,9 +73,12 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
           <button
             type="button"
             {button_attributes(button)}
-            class={button_classes(button, position)}
+            class={button_classes(button, position, @size)}
             title={button[:title]}
+            aria-label={button[:"aria-label"]}
+            aria-pressed={button[:"aria-pressed"]}
             data-tooltip={button[:"data-tooltip"]}
+            data-series-display-mode-button={button[:"data-series-display-mode-button"]}
           >
             {render_slot(button)}
           </button>
@@ -88,15 +99,31 @@ defmodule TrifleApp.DesignSystem.ButtonGroup do
     |> add_attr_if_present("phx-value-granularity", button[:phx_value_granularity])
     |> add_attr_if_present("data-filter-bar-action", button[:"data-filter-bar-action"])
     |> add_attr_if_present("disabled", button[:disabled])
+    |> add_value_attrs(button[:values])
+  end
+
+  defp add_value_attrs(attrs, nil), do: attrs
+
+  defp add_value_attrs(attrs, values) when is_map(values) do
+    Enum.reduce(values, attrs, fn {key, value}, acc ->
+      add_attr_if_present(acc, "phx-value-#{key}", value)
+    end)
   end
 
   defp add_attr_if_present(attrs, _key, nil), do: attrs
   defp add_attr_if_present(attrs, _key, false), do: attrs
   defp add_attr_if_present(attrs, key, value), do: [{String.to_atom(key), value} | attrs]
 
-  defp button_classes(button, position) do
+  defp button_classes(button, position, size) do
+    size_classes =
+      case size do
+        "sm" -> "px-2.5 h-8"
+        "lg" -> "px-4 py-2.5 justify-center"
+        _ -> "px-3 py-2 h-9"
+      end
+
     base_classes =
-      "relative inline-flex items-center px-3 py-2 text-sm font-medium h-9 transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800"
+      "relative inline-flex items-center #{size_classes} text-sm font-medium transition-colors focus-visible:outline-none focus-visible:bg-white active:bg-white dark:focus-visible:bg-slate-800 dark:active:bg-slate-800"
 
     position_classes =
       case position do

@@ -861,6 +861,21 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event("set_widget_type", params, socket) do
+    with id when not is_nil(id) <- param(params, "widget_id"),
+         type when not is_nil(type) <- param(params, "type"),
+         true <- type in ~w(kpi timeseries category distribution heatmap table list text) do
+      socket = ensure_widget_path_options(socket)
+      path_options = socket.assigns[:widget_path_options] || []
+
+      update_editing_widget(socket, id, fn widget ->
+        apply_widget_params_for_edit(widget, %{"widget_type" => type}, path_options)
+      end)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("set_kpi_function", params, socket) do
     with id when not is_nil(id) <- param(params, "widget_id"),
          func when not is_nil(func) <- param(params, "function") do

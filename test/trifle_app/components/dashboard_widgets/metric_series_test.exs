@@ -201,7 +201,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
         path_options: []
       )
 
-    assert html =~ "lg:grid-cols-[auto_minmax(0,1.6fr)_14rem_12rem_auto]"
+    assert html =~ "lg:grid-cols-[auto_minmax(0,1.6fr)_minmax(0,1fr)_12rem_auto]"
     assert html =~ "grid-cols-[minmax(0,1fr)_9rem_auto]"
     assert html =~ "sm:grid-cols-[minmax(0,1fr)_12rem_auto]"
   end

@@ -3,6 +3,8 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
 
   use Phoenix.Component
 
+  import TrifleApp.DesignSystem.ButtonGroup
+
   alias TrifleApp.Components.DashboardWidgets.Helpers
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEditor
 
@@ -39,101 +41,75 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
     ~H"""
     <input type="hidden" name="kpi_subtype" value={@subtype} />
 
-    <div class="space-y-4">
-      <MetricSeriesEditor.editor
-        widget={@widget}
-        path_options={@path_options}
-        group_path={@group_path}
-        path_placeholder="metrics.total"
-        path_help="KPI widgets display the first visible resolved series. Keep source rows hidden when you want a derived expression row to drive the KPI."
-      />
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div class="space-y-4 xl:col-span-2">
+        <MetricSeriesEditor.editor
+          widget={@widget}
+          path_options={@path_options}
+          group_path={@group_path}
+          path_placeholder="metrics.total"
+          path_help="KPI widgets display the first visible resolved series."
+        />
+      </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Function
           </label>
           <input type="hidden" name="kpi_function" value={@function} />
-          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-            <%= for {label, value, position} <- kpi_function_options() do %>
-              <button
-                type="button"
-                class={kpi_toggle_classes(@function == value, position)}
-                phx-click="set_kpi_function"
-                phx-value-widget-id={@widget_id}
-                phx-value-function={value}
-              >
-                {label}
-              </button>
-            <% end %>
-          </div>
+          <.button_group size="sm">
+            <:button
+              :for={{label, value} <- kpi_function_options()}
+              phx-click="set_kpi_function"
+              values={%{"widget-id" => @widget_id, "function" => value}}
+              selected={@function == value}
+            >
+              {label}
+            </:button>
+          </.button_group>
         </div>
 
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Display Mode
           </label>
-          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden">
-            <button
-              type="button"
-              class={subtype_button_classes(@subtype == "number", "rounded-l-md")}
+          <.button_group size="sm">
+            <:button
+              :for={{label, value, help} <- kpi_subtype_options()}
               phx-click="change_kpi_subtype"
-              phx-value-widget-id={@widget_id}
-              phx-value-kpi-subtype="number"
+              values={%{"widget-id" => @widget_id, "kpi-subtype" => value}}
+              selected={@subtype == value}
+              title={help}
             >
-              Number
-            </button>
-            <button
-              type="button"
-              class={
-                subtype_button_classes(
-                  @subtype == "split",
-                  "border-x border-gray-200 dark:border-slate-600"
-                )
-              }
-              phx-click="change_kpi_subtype"
-              phx-value-widget-id={@widget_id}
-              phx-value-kpi-subtype="split"
-            >
-              Split
-            </button>
-            <button
-              type="button"
-              class={subtype_button_classes(@subtype == "goal", "rounded-r-md")}
-              phx-click="change_kpi_subtype"
-              phx-value-widget-id={@widget_id}
-              phx-value-kpi-subtype="goal"
-            >
-              Goal
-            </button>
-          </div>
+              {label}
+            </:button>
+          </.button_group>
           <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
-            Number shows a single aggregate. Split compares the current timeframe to the previous half. Goal lets you track progress toward a target.
+            {kpi_subtype_help(@subtype)}
           </p>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Widget size
           </label>
           <input type="hidden" name="kpi_size" value={@size} />
-          <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-            <%= for {label, value, position} <- kpi_size_options() do %>
-              <button
-                type="button"
-                class={kpi_toggle_classes(@size == value, position)}
-                phx-click="set_kpi_size"
-                phx-value-widget-id={@widget_id}
-                phx-value-size={value}
-              >
-                {label}
-              </button>
-            <% end %>
-          </div>
+          <.button_group size="sm">
+            <:button
+              :for={{label, value, help} <- kpi_size_options()}
+              phx-click="set_kpi_size"
+              values={%{"widget-id" => @widget_id, "size" => value}}
+              selected={@size == value}
+              title={help}
+            >
+              {label}
+            </:button>
+          </.button_group>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Unit
           </label>
           <input
@@ -146,8 +122,8 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
         </div>
 
         <%= if @subtype == "goal" do %>
-          <div class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
               Target value
             </label>
             <input
@@ -159,110 +135,87 @@ defmodule TrifleApp.Components.DashboardWidgets.KpiEditor do
             />
           </div>
         <% end %>
+
+        <%= case @subtype do %>
+          <% "split" -> %>
+            <div class="space-y-2">
+              <p class="text-sm text-gray-700 dark:text-slate-300">
+                Split timeframe by half is enabled for this subtype.
+              </p>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <label
+                  class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300"
+                  title="Shows percent change between halves: (Now − Prev) / |Prev| × 100. Hidden when Prev is missing or zero."
+                >
+                  <input type="checkbox" name="kpi_diff" checked={@diff_checked} />
+                  Difference between splits
+                </label>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                  <input type="checkbox" name="kpi_timeseries" checked={@timeseries_checked} />
+                  Show timeseries
+                </label>
+              </div>
+            </div>
+          <% "goal" -> %>
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <label
+                  class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300"
+                  title="Progress bar illustrates progress toward the target."
+                >
+                  <input type="checkbox" name="kpi_goal_progress" checked={@goal_progress_checked} />
+                  Show progress bar
+                </label>
+                <label
+                  class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300"
+                  title="When inverted, staying at or below the target is considered success; exceeding it turns the progress indicator red."
+                >
+                  <input type="checkbox" name="kpi_goal_invert" checked={@goal_invert_checked} />
+                  Invert goal (lower is better)
+                </label>
+              </div>
+            </div>
+          <% _ -> %>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                <input type="checkbox" name="kpi_timeseries" checked={@timeseries_checked} />
+                Show timeseries
+              </label>
+            </div>
+        <% end %>
       </div>
     </div>
-
-    <%= case @subtype do %>
-      <% "split" -> %>
-        <div class="space-y-2">
-          <p class="text-sm text-gray-700 dark:text-slate-300">
-            Split timeframe by half is enabled for this subtype.
-          </p>
-          <div class="flex flex-wrap items-center gap-4">
-            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-              <input type="checkbox" name="kpi_diff" checked={@diff_checked} />
-              Difference between splits
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-              <input type="checkbox" name="kpi_timeseries" checked={@timeseries_checked} />
-              Show timeseries
-            </label>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-slate-400">
-            Shows percent change between halves: (Now − Prev) / |Prev| × 100. Hidden when Prev is missing or zero.
-          </p>
-        </div>
-      <% "goal" -> %>
-        <div class="space-y-2">
-          <div class="flex flex-wrap items-center gap-4">
-            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-              <input type="checkbox" name="kpi_goal_progress" checked={@goal_progress_checked} />
-              Show progress bar
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-              <input type="checkbox" name="kpi_goal_invert" checked={@goal_invert_checked} />
-              Invert goal (lower is better)
-            </label>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-slate-400">
-            Progress bar illustrates progress toward the target.
-          </p>
-          <p class="text-xs text-gray-500 dark:text-slate-400">
-            When inverted, staying at or below the target is considered success; exceeding it turns the progress indicator red.
-          </p>
-        </div>
-      <% _ -> %>
-        <div class="flex items-center gap-4">
-          <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
-            <input type="checkbox" name="kpi_timeseries" checked={@timeseries_checked} />
-            Show timeseries
-          </label>
-        </div>
-    <% end %>
     """
-  end
-
-  defp subtype_button_classes(selected, extra_class) do
-    base =
-      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[4.5rem]"
-
-    state_classes =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, state_classes, extra_class], " ")
   end
 
   defp kpi_function_options do
     [
-      {"Mean", "mean", :first},
-      {"Sum", "sum", :middle},
-      {"Max", "max", :middle},
-      {"Min", "min", :middle},
-      {"Oldest", "oldest", :middle},
-      {"Latest", "latest", :last}
+      {"Mean", "mean"},
+      {"Sum", "sum"},
+      {"Max", "max"},
+      {"Min", "min"},
+      {"Oldest", "oldest"},
+      {"Latest", "latest"}
     ]
   end
+
+  defp kpi_subtype_options do
+    [
+      {"Number", "number", "Shows a single aggregate value."},
+      {"Split", "split", "Compares the current timeframe to the previous half."},
+      {"Goal", "goal", "Tracks progress toward a target value."}
+    ]
+  end
+
+  defp kpi_subtype_help("split"), do: "Split compares the current timeframe to the previous half."
+  defp kpi_subtype_help("goal"), do: "Goal lets you track progress toward a target."
+  defp kpi_subtype_help(_), do: "Number shows a single aggregate."
 
   defp kpi_size_options do
     [
-      {"S", "s", :first},
-      {"M", "m", :middle},
-      {"L", "l", :last}
+      {"S", "s", "Small"},
+      {"M", "m", "Medium"},
+      {"L", "l", "Large"}
     ]
-  end
-
-  defp kpi_toggle_classes(selected, position) do
-    base =
-      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[3.5rem] text-center"
-
-    corners =
-      case position do
-        :first -> "rounded-l-md"
-        :last -> "rounded-r-md"
-        _ -> "border-x border-gray-200 dark:border-slate-600"
-      end
-
-    state =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, corners, state], " ")
   end
 end

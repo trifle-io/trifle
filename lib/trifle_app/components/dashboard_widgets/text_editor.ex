@@ -3,7 +3,9 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
 
   use Phoenix.Component
 
-  alias TrifleApp.Components.DashboardWidgets.{Helpers, SeriesColorSelector}
+  import TrifleApp.DesignSystem.ButtonGroup
+
+  alias TrifleApp.Components.DashboardWidgets.{EditorIcons, Helpers, SeriesColorSelector}
 
   attr :widget, :map, required: true
 
@@ -22,117 +24,111 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
       |> assign(:alignment, Helpers.normalize_text_alignment(Map.get(widget, "alignment")))
 
     ~H"""
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Content Type
-        </label>
-        <input type="hidden" name="text_subtype" value={@subtype} />
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-          <%= for {label, value, position} <- text_subtype_options() do %>
-            <button
-              type="button"
-              class={text_toggle_classes(@subtype == value, position)}
-              phx-click="change_text_subtype"
-              phx-value-widget-id={Map.get(@widget, "id")}
-              phx-value-text-subtype={value}
-            >
-              {label}
-            </button>
-          <% end %>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div class="space-y-4 xl:col-span-2">
+        <%= if @subtype == "html" do %>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+              HTML Content
+            </label>
+            <textarea
+              name="text_payload"
+              rows="10"
+              class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
+              placeholder="<p>Write custom HTML here</p>"
+            ><%= Map.get(@widget, "payload", "") %></textarea>
+            <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
+              Content is sanitized—only safe HTML is rendered.
+            </p>
+          </div>
+        <% end %>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Background color
-        </label>
-        <SeriesColorSelector.input
-          id_prefix={"text-background-color-#{Map.get(@widget, "id", "new")}"}
-          name="text_background_color_selector"
-          index={0}
-          indexed_name={false}
-          selector={@background_selector}
-          allow_palette_rotate={false}
-          default_label="Default"
-          default_preview_colors={[Helpers.default_text_widget_background_preview()]}
-          class="mt-2 sm:max-w-xs"
-        />
-      </div>
-
-      <%= if @subtype == "html" do %>
-        <div class="sm:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-            HTML Content
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Subtitle
           </label>
           <textarea
-            name="text_payload"
-            rows="10"
-            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm font-mono"
-            placeholder="<p>Write custom HTML here</p>"
-          ><%= Map.get(@widget, "payload", "") %></textarea>
-          <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
-            Content is sanitized—only safe HTML is rendered.
-          </p>
+            name="text_subtitle"
+            rows="3"
+            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            placeholder="Optional supporting text"
+          ><%= Map.get(@widget, "subtitle", "") %></textarea>
         </div>
-      <% else %>
-        <div class="sm:col-span-2">
-          <p class="text-xs text-gray-500 dark:text-slate-400">
-            This widget uses the main title field above as its headline.
-          </p>
-        </div>
-      <% end %>
+      </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Title Size
-        </label>
-        <input type="hidden" name="text_title_size" value={@title_size} />
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-          <%= for {label, value, position} <- text_title_size_options() do %>
-            <button
-              type="button"
-              class={text_toggle_classes(@title_size == value, position)}
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Content Type
+          </label>
+          <input type="hidden" name="text_subtype" value={@subtype} />
+          <.button_group size="sm">
+            <:button
+              :for={{label, value} <- text_subtype_options()}
+              phx-click="change_text_subtype"
+              values={%{"widget-id" => Map.get(@widget, "id"), "text-subtype" => value}}
+              selected={@subtype == value}
+            >
+              {label}
+            </:button>
+          </.button_group>
+          <p :if={@subtype != "html"} class="mt-2 text-xs text-gray-500 dark:text-slate-400">
+            Uses the main title field above as its headline.
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Background color
+          </label>
+          <SeriesColorSelector.input
+            id_prefix={"text-background-color-#{Map.get(@widget, "id", "new")}"}
+            name="text_background_color_selector"
+            index={0}
+            indexed_name={false}
+            selector={@background_selector}
+            allow_palette_rotate={false}
+            default_label="Default"
+            default_preview_colors={[Helpers.default_text_widget_background_preview()]}
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Title Size
+          </label>
+          <input type="hidden" name="text_title_size" value={@title_size} />
+          <.button_group size="sm">
+            <:button
+              :for={{label, value, help} <- text_title_size_options()}
               phx-click="set_text_title_size"
-              phx-value-widget-id={Map.get(@widget, "id")}
-              phx-value-text-title-size={value}
+              values={%{"widget-id" => Map.get(@widget, "id"), "text-title-size" => value}}
+              selected={@title_size == value}
+              title={help}
             >
               {label}
-            </button>
-          <% end %>
+            </:button>
+          </.button_group>
         </div>
-      </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Alignment
-        </label>
-        <input type="hidden" name="text_alignment" value={@alignment} />
-        <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden mt-2">
-          <%= for {label, value, position} <- text_alignment_options() do %>
-            <button
-              type="button"
-              class={text_toggle_classes(@alignment == value, position)}
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Alignment
+          </label>
+          <input type="hidden" name="text_alignment" value={@alignment} />
+          <.button_group size="sm">
+            <:button
+              :for={{label, value} <- text_alignment_options()}
               phx-click="set_text_alignment"
-              phx-value-widget-id={Map.get(@widget, "id")}
-              phx-value-text-alignment={value}
+              values={%{"widget-id" => Map.get(@widget, "id"), "text-alignment" => value}}
+              selected={@alignment == value}
+              title={label}
+              aria-label={label}
             >
-              {label}
-            </button>
-          <% end %>
+              <.alignment_icon alignment={value} />
+            </:button>
+          </.button_group>
         </div>
-      </div>
-
-      <div class="sm:col-span-2">
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Subtitle
-        </label>
-        <textarea
-          name="text_subtitle"
-          rows="3"
-          class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-          placeholder="Optional supporting text"
-        ><%= Map.get(@widget, "subtitle", "") %></textarea>
       </div>
     </div>
     """
@@ -140,45 +136,30 @@ defmodule TrifleApp.Components.DashboardWidgets.TextEditor do
 
   defp text_subtype_options do
     [
-      {"Header", "header", :first},
-      {"HTML", "html", :last}
+      {"Header", "header"},
+      {"HTML", "html"}
     ]
   end
 
   defp text_title_size_options do
     [
-      {"L", "large", :first},
-      {"M", "medium", :middle},
-      {"S", "small", :last}
+      {"L", "large", "Large"},
+      {"M", "medium", "Medium"},
+      {"S", "small", "Small"}
     ]
   end
 
   defp text_alignment_options do
     [
-      {"Left", "left", :first},
-      {"Center", "center", :middle},
-      {"Right", "right", :last}
+      {"Left", "left"},
+      {"Center", "center"},
+      {"Right", "right"}
     ]
   end
 
-  defp text_toggle_classes(selected, position) do
-    base =
-      "px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 transition min-w-[3.5rem] text-center"
+  attr :alignment, :string, required: true
 
-    corners =
-      case position do
-        :first -> "rounded-l-md"
-        :last -> "rounded-r-md"
-        _ -> "border-x border-gray-200 dark:border-slate-600"
-      end
-
-    state =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, corners, state], " ")
-  end
+  defp alignment_icon(%{alignment: "left"} = assigns), do: ~H"<EditorIcons.align_left_icon />"
+  defp alignment_icon(%{alignment: "center"} = assigns), do: ~H"<EditorIcons.align_center_icon />"
+  defp alignment_icon(%{alignment: "right"} = assigns), do: ~H"<EditorIcons.align_right_icon />"
 end

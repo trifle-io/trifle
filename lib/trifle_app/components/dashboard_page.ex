@@ -18,6 +18,7 @@ defmodule TrifleApp.Components.DashboardPage do
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardPayload
+  alias TrifleApp.Components.DashboardWidgets.EditorIcons
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   alias TrifleApp.Components.DashboardWidgets.WidgetView
   alias TrifleApp.DesignSystem.ChartColors
@@ -1446,42 +1447,38 @@ defmodule TrifleApp.Components.DashboardPage do
             on_cancel={JS.push("request_close_widget_workspace")}
           >
             <:title>
-              <div class="relative flex min-h-[2.5rem] items-center pr-14">
+              <div class="flex min-h-[2.5rem] items-center justify-between gap-3 pr-14">
                 <div class="flex min-w-0 items-center gap-3">
                   <span class="truncate">{preview_title}</span>
                   <span class="inline-flex items-center rounded-full bg-teal-100/70 dark:bg-teal-900/40 px-3 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-200">
                     {String.capitalize(to_string(preview_type))}
                   </span>
-                  <span :if={workspace.dirty?} class="text-xs text-amber-600 dark:text-amber-300">
+                  <span
+                    :if={workspace.dirty?}
+                    class="hidden sm:inline text-xs text-amber-600 dark:text-amber-300"
+                  >
                     Unsaved changes
                   </span>
                 </div>
-                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <div class="inline-flex rounded-md border border-gray-300 dark:border-slate-600 overflow-hidden">
-                    <button
+                <div class="shrink-0">
+                  <.button_group size="sm">
+                    <:button
                       :if={!group_widget}
-                      type="button"
                       phx-click="set_widget_workspace_tab"
-                      phx-value-tab="summary"
-                      class={workspace_tab_button_classes(active_tab == "summary", :first)}
+                      values={%{"tab" => "summary"}}
+                      selected={active_tab == "summary"}
                     >
                       Summary
-                    </button>
-                    <button
+                    </:button>
+                    <:button
                       :if={editable}
-                      type="button"
                       phx-click="set_widget_workspace_tab"
-                      phx-value-tab="edit"
-                      class={
-                        workspace_tab_button_classes(
-                          active_tab == "edit",
-                          if(group_widget, do: :first, else: :last)
-                        )
-                      }
+                      values={%{"tab" => "edit"}}
+                      selected={active_tab == "edit"}
                     >
                       Edit
-                    </button>
-                  </div>
+                    </:button>
+                  </.button_group>
                 </div>
               </div>
             </:title>
@@ -1510,7 +1507,10 @@ defmodule TrifleApp.Components.DashboardPage do
                     <% render_table = preview[:table_data] %>
                     <% aggrid_payload =
                       DataTable.to_aggrid_payload(render_table, @transponder_info || %{}) %>
-                    <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col">
+                    <div class={[
+                      "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4 flex flex-col",
+                      if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
+                    ]}>
                       <%= cond do %>
                         <% is_nil(render_table) -> %>
                           <div class="h-full w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300 text-center">
@@ -1546,7 +1546,10 @@ defmodule TrifleApp.Components.DashboardPage do
                   <% else %>
                     <%= if preview_type == "list" do %>
                       <% list_data = preview[:list_data] %>
-                      <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
+                      <div class={[
+                        "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4",
+                        if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
+                      ]}>
                         <%= if list_data do %>
                           <% items = expanded_list_items(list_data) %>
                           <% empty_message = expanded_list_empty_message(list_data) %>
@@ -1624,17 +1627,23 @@ defmodule TrifleApp.Components.DashboardPage do
                         data-visual={if visual_data, do: Jason.encode!(visual_data)}
                         data-text={if text_data, do: Jason.encode!(text_data)}
                       >
-                        <div class="flex-1 min-h-0">
+                        <div class={[
+                          "min-h-0",
+                          if(active_tab == "edit", do: "flex-[3] min-h-[10rem]", else: "flex-1")
+                        ]}>
                           <div class="h-full w-full overflow-hidden rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
                             <div data-role="chart" class="h-full w-full overflow-hidden"></div>
                           </div>
                         </div>
-                        <div class="flex-1 min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
+                        <div class={[
+                          "min-h-0 rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto",
+                          if(active_tab == "edit", do: "flex-[7]", else: "flex-1")
+                        ]}>
                           <%= if active_tab == "summary" do %>
                             <div data-role="table-root" class="h-full w-full overflow-auto"></div>
                           <% else %>
                             <%= if editable do %>
-                              <div class="h-full overflow-auto p-4">
+                              <div class="h-full overflow-auto p-6">
                                 <.widget_workspace_edit_form
                                   draft_widget={draft_widget}
                                   widget_path_options={@widget_path_options}
@@ -1658,7 +1667,7 @@ defmodule TrifleApp.Components.DashboardPage do
                   <% end %>
 
                   <%= if active_tab == "edit" and editable and preview_type in ["table", "list"] do %>
-                    <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-4">
+                    <div class="flex-[7] min-h-0 overflow-auto rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 p-6">
                       <.widget_workspace_edit_form
                         draft_widget={draft_widget}
                         widget_path_options={@widget_path_options}
@@ -1671,18 +1680,14 @@ defmodule TrifleApp.Components.DashboardPage do
             </:body>
             <:actions>
               <div class="w-full flex items-center justify-between gap-3">
-                <div :if={editable} class="flex flex-col items-start gap-1">
-                  <span class={[
-                    "text-xs font-medium text-red-600 dark:text-red-400",
-                    if(active_tab == "edit", do: "visible", else: "invisible")
-                  ]}>
+                <div :if={editable && active_tab == "edit"} class="flex flex-col items-start gap-1">
+                  <span class="text-xs font-medium text-red-600 dark:text-red-400">
                     Danger Zone
                   </span>
                   <.danger_button
                     type="button"
                     phx-click="delete_widget"
                     phx-value-id={draft_widget["id"]}
-                    disabled={active_tab != "edit"}
                     data-confirm={
                       if group_widget,
                         do:
@@ -1690,7 +1695,7 @@ defmodule TrifleApp.Components.DashboardPage do
                         else:
                           "Are you sure you want to delete this widget? This action cannot be undone."
                     }
-                    class={"px-3 py-2 " <> if(active_tab == "edit", do: "visible", else: "invisible")}
+                    class="px-3 py-2"
                   >
                     {if(group_widget, do: "Delete Group", else: "Delete Widget")}
                   </.danger_button>
@@ -1889,48 +1894,26 @@ defmodule TrifleApp.Components.DashboardPage do
             Widget Group
           </div>
         <% else %>
-          <label
-            for="widget_type"
-            class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2"
-          >
+          <% sel = @draft_widget["type"] || "kpi" %>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Widget Type
           </label>
-          <div class="grid grid-cols-1 sm:max-w-xs mt-2">
-            <select
-              id="widget_type"
-              name="widget_type"
-              class="col-start-1 row-start-1 w-full appearance-none rounded-md py-1.5 pr-8 pl-3 text-base outline-1 -outline-offset-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-gray-300 dark:outline-slate-600 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 sm:text-sm/6"
+          <input type="hidden" name="widget_type" value={sel} />
+          <.button_group size="lg">
+            <:button
+              :for={{label, value} <- widget_type_options()}
+              phx-click="set_widget_type"
+              values={%{"widget-id" => @draft_widget["id"], "type" => value}}
+              selected={sel == value}
+              title={label}
+              class="min-w-[5.5rem]"
             >
-              <% sel = @draft_widget["type"] || "kpi" %>
-              <option value="kpi" selected={sel == "kpi"}>KPI</option>
-              <option value="timeseries" selected={sel == "timeseries"}>
-                Timeseries
-              </option>
-              <option value="category" selected={sel == "category"}>Category</option>
-              <option value="distribution" selected={sel == "distribution"}>
-                Distribution
-              </option>
-              <option value="heatmap" selected={sel == "heatmap"}>
-                Heatmap
-              </option>
-              <option value="table" selected={sel == "table"}>Table</option>
-              <option value="list" selected={sel == "list"}>List</option>
-              <option value="text" selected={sel == "text"}>Text</option>
-            </select>
-            <svg
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              data-slot="icon"
-              aria-hidden="true"
-              class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-            >
-              <path
-                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                clip-rule="evenodd"
-                fill-rule="evenodd"
-              />
-            </svg>
-          </div>
+              <span class="flex flex-col items-center gap-1.5">
+                <.widget_type_icon type={value} />
+                <span class="text-xs font-medium">{label}</span>
+              </span>
+            </:button>
+          </.button_group>
         <% end %>
       </div>
       <div>
@@ -1960,26 +1943,44 @@ defmodule TrifleApp.Components.DashboardPage do
     """
   end
 
-  defp workspace_tab_button_classes(selected, position) do
-    base =
-      "px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-
-    corners =
-      case position do
-        :first -> "rounded-l-md"
-        :last -> "rounded-r-md border-l border-gray-300 dark:border-slate-600"
-        _ -> ""
-      end
-
-    state =
-      if selected do
-        "bg-teal-600 text-white hover:bg-teal-500"
-      else
-        "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-      end
-
-    Enum.join([base, corners, state], " ")
+  defp widget_type_options do
+    [
+      {"KPI", "kpi"},
+      {"Timeseries", "timeseries"},
+      {"Category", "category"},
+      {"Distribution", "distribution"},
+      {"Heatmap", "heatmap"},
+      {"Table", "table"},
+      {"List", "list"},
+      {"Text", "text"}
+    ]
   end
+
+  attr :type, :string, required: true
+
+  defp widget_type_icon(%{type: "kpi"} = assigns),
+    do: ~H|<EditorIcons.kpi_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "timeseries"} = assigns),
+    do: ~H|<EditorIcons.line_chart_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "category"} = assigns),
+    do: ~H|<EditorIcons.pie_chart_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "distribution"} = assigns),
+    do: ~H|<EditorIcons.bar_chart_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "heatmap"} = assigns),
+    do: ~H|<EditorIcons.heatmap_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "table"} = assigns),
+    do: ~H|<EditorIcons.table_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "list"} = assigns),
+    do: ~H|<EditorIcons.list_icon class="h-6 w-6" />|
+
+  defp widget_type_icon(%{type: "text"} = assigns),
+    do: ~H|<EditorIcons.text_icon class="h-6 w-6" />|
 
   defp expanded_list_items(data) when is_map(data) do
     Map.get(data, :items) || Map.get(data, "items") || []

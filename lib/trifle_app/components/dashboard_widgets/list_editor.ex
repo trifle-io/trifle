@@ -20,18 +20,20 @@ defmodule TrifleApp.Components.DashboardWidgets.ListEditor do
       |> assign(:label_strategy, Map.get(widget, "label_strategy") || "short")
 
     ~H"""
-    <div class="space-y-5">
-      <MetricSeriesEditor.editor
-        widget={@widget}
-        path_options={@path_options}
-        group_path={@group_path}
-        path_placeholder="keys.*"
-        path_help="List widgets behave like category widgets. Use hidden rows plus one visible expression row when you want computed rankings."
-      />
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div class="xl:col-span-2">
+        <MetricSeriesEditor.editor
+          widget={@widget}
+          path_options={@path_options}
+          group_path={@group_path}
+          path_placeholder="keys.*"
+          path_help="List widgets behave like category widgets."
+        />
+      </div>
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Max Items
           </label>
           <input
@@ -39,44 +41,42 @@ defmodule TrifleApp.Components.DashboardWidgets.ListEditor do
             min="1"
             name="list_limit"
             value={@limit}
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
             placeholder="Unlimited"
           />
           <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
-            Leave blank to show all items. Set a value to limit visible rows.
+            Leave blank to show all items.
           </p>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Sort Order
           </label>
           <select
             name="list_sort"
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
           >
             <%= for {label, value} <- sort_options() do %>
               <option value={value} selected={@sort == value}>{label}</option>
             <% end %>
           </select>
         </div>
-      </div>
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
             Label Style
           </label>
           <select
             name="list_label_strategy"
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
           >
             <%= for {label, value} <- label_strategy_options() do %>
               <option value={value} selected={@label_strategy == value}>{label}</option>
             <% end %>
           </select>
           <p class="mt-2 text-xs text-gray-500 dark:text-slate-400">
-            Choose whether to display the full path or just the final segment (default).
+            Show the full path or just the final segment.
           </p>
         </div>
       </div>

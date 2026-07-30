@@ -29,41 +29,42 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupEditor do
         Widget groups organize related widgets into a nested grid. Drag widgets into the group on the dashboard to control layout and, later, hover sync scope.
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Group path
-        </label>
-        <.path_autocomplete_input
-          id={"group-path-#{Map.get(@widget, "id", "new")}"}
-          name="group_path"
-          value={@group_path}
-          placeholder="jobs.*"
-          path_options={@path_options}
-          annotated={true}
-          input_data_role="group-path"
-          input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
-          preview_class="rounded-md px-3 py-2 text-sm font-mono text-gray-900 dark:text-white"
-        />
-        <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
-          Nested series in child widgets use this path as their prefix. A terminal .* repeats this group for each matching path.
-        </p>
-      </div>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Group path
+          </label>
+          <.path_autocomplete_input
+            id={"group-path-#{Map.get(@widget, "id", "new")}"}
+            name="group_path"
+            value={@group_path}
+            placeholder="jobs.*"
+            path_options={@path_options}
+            annotated={true}
+            input_data_role="group-path"
+            input_class="block w-full rounded-md border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+            preview_class="rounded-md px-3 py-2 text-sm font-mono text-gray-900 dark:text-white"
+          />
+          <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            Nested series in child widgets use this path as their prefix. A terminal .* repeats this group for each matching path.
+          </p>
+        </div>
 
-      <div class="sm:max-w-xs">
-        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-          Header background
-        </label>
-        <SeriesColorSelector.input
-          id_prefix={"group-header-color-#{Map.get(@widget, "id", "new")}"}
-          name="group_header_color_selector"
-          index={0}
-          indexed_name={false}
-          selector={@header_color_selector}
-          allow_palette_rotate={true}
-          default_label="Default"
-          default_preview_colors={[Helpers.default_group_header_background_preview()]}
-          class="mt-2"
-        />
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+            Header background
+          </label>
+          <SeriesColorSelector.input
+            id_prefix={"group-header-color-#{Map.get(@widget, "id", "new")}"}
+            name="group_header_color_selector"
+            index={0}
+            indexed_name={false}
+            selector={@header_color_selector}
+            allow_palette_rotate={true}
+            default_label="Default"
+            default_preview_colors={[Helpers.default_group_header_background_preview()]}
+          />
+        </div>
       </div>
     </div>
     """
