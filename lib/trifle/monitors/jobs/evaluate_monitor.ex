@@ -445,7 +445,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp deliver_alert_events(monitor, events, timeframe, trigger_type) do
     notify_every = normalize_notify_every(monitor.alert_notify_every)
 
-    Enum.map(events, fn %{alert: %Alert{} = alert} ->
+    Enum.map(events, fn %{alert: %Alert{} = alert} = event ->
       cond do
         monitor.status == :paused ->
           {:suppressed, alert, %{reason: :monitor_paused, event: trigger_type}}
@@ -455,10 +455,11 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
            %{reason: :notify_every, notify_every: notify_every, event: trigger_type}}
 
         true ->
-          case TestDelivery.deliver_alert(monitor, alert,
-                 export_params: timeframe,
-                 trigger_type: trigger_type
-               ) do
+          delivery_opts =
+            [export_params: timeframe, trigger_type: trigger_type]
+            |> maybe_put_triggered_series(trigger_type, event)
+
+          case TestDelivery.deliver_alert(monitor, alert, delivery_opts) do
             {:ok, payload} ->
               {:ok, alert, %{payload: prune_large_values(payload), event: trigger_type}}
 
@@ -472,6 +473,17 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       end
     end)
   end
+
+  defp maybe_put_triggered_series(opts, :triggered, event) do
+    triggered_series =
+      event
+      |> Map.get(:target_results, [])
+      |> AlertEvaluatorUtils.triggered_series()
+
+    Keyword.put(opts, :triggered_series, triggered_series)
+  end
+
+  defp maybe_put_triggered_series(opts, _trigger_type, _event), do: opts
 
   defp execution_status(triggered, deliveries, evaluations) do
     triggered_ids =

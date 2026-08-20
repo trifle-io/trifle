@@ -57,4 +57,34 @@ defmodule Trifle.Monitors.AlertEvaluator.UtilsTest do
     assert [%{name: "delta: c", source_path: "delta.c", error: :no_data}] =
              result.meta[:series_errors]
   end
+
+  test "extracts notification context for triggered series only" do
+    results = [
+      %{
+        target: %{
+          name: "delta: a",
+          source_path: "delta.a",
+          data: [[1_735_689_600_000, 3.0]]
+        },
+        result: %AlertEvaluator.Result{triggered?: false, summary: "No breach."}
+      },
+      %{
+        target: %{
+          name: "delta: b",
+          source_path: "delta.b",
+          data: [[1_735_689_600_000, 13.0]]
+        },
+        result: %AlertEvaluator.Result{triggered?: true, summary: "Threshold breached."}
+      }
+    ]
+
+    assert [
+             %{
+               name: "delta: b",
+               source_path: "delta.b",
+               summary: "Threshold breached.",
+               data: [[1_735_689_600_000, 13.0]]
+             }
+           ] = AlertEvaluatorUtils.triggered_series(results)
+  end
 end

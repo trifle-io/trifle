@@ -28,23 +28,23 @@ defmodule TrifleApp.Exports.MonitorLayout do
   @doc """
   Returns the normalized grid widget definitions for an alert monitor.
   """
-  @spec alert_widgets(Monitor.t(), Series.t() | nil) :: list()
-  def alert_widgets(%Monitor{} = monitor, stats \\ nil) do
+  @spec alert_widgets(Monitor.t(), Series.t() | nil, keyword()) :: list()
+  def alert_widgets(%Monitor{} = monitor, stats \\ nil, opts \\ []) do
     source_widget = AlertSeries.source_widget(monitor)
-    groups = alert_widget_groups(monitor, stats)
+    groups = alert_widget_groups(monitor, stats, opts)
     [source_widget | groups]
   end
 
   @doc """
   Builds the synthetic alert preview dashboard used by monitor pages and exports.
   """
-  @spec alert_dashboard(Monitor.t(), Series.t() | nil) :: map()
-  def alert_dashboard(%Monitor{} = monitor, stats \\ nil) do
+  @spec alert_dashboard(Monitor.t(), Series.t() | nil, keyword()) :: map()
+  def alert_dashboard(%Monitor{} = monitor, stats \\ nil, opts \\ []) do
     %{
       id: "#{monitor.id}-alert-preview",
       key: monitor.alert_metric_key,
       name: monitor.name || "Alert Preview",
-      payload: %{"grid" => alert_widgets(monitor, stats)}
+      payload: %{"grid" => alert_widgets(monitor, stats, opts)}
     }
   end
 
@@ -54,6 +54,23 @@ defmodule TrifleApp.Exports.MonitorLayout do
   @spec build(Monitor.t(), Keyword.t()) :: {:ok, Layout.t()} | {:error, term()}
   def build(%Monitor{} = monitor, opts \\ []) do
     do_build(monitor, opts)
+  end
+
+  @doc """
+  Builds a compact alert snapshot containing the source chart and the selected
+  resolved series for a single alert.
+  """
+  @spec build_alert_snapshot(Monitor.t(), Alert.t(), [String.t()], Keyword.t()) ::
+          {:ok, Layout.t()} | {:error, term()}
+  def build_alert_snapshot(
+        %Monitor{} = monitor,
+        %Alert{} = alert,
+        source_paths,
+        opts \\ []
+      )
+      when is_list(source_paths) do
+    snapshot = %{alert_id: alert.id, source_paths: source_paths}
+    do_build(monitor, Keyword.put(opts, :alert_snapshot, snapshot))
   end
 
   @doc """
@@ -87,7 +104,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
              context.theme,
              context.viewport,
              context.source,
-             context.selected_widget_id
+             context.selected_widget_id,
+             context.alert_snapshot
            ) do
       {:ok, layout}
     end
@@ -97,6 +115,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
     params = Keyword.get(opts, :params, %{})
     theme = Keyword.get(opts, :theme, :light)
     selected_widget = Keyword.get(opts, :selected_widget_id)
+    alert_snapshot = Keyword.get(opts, :alert_snapshot)
 
     default_viewport =
       case selected_widget do
@@ -128,7 +147,8 @@ defmodule TrifleApp.Exports.MonitorLayout do
          theme: theme,
          viewport: viewport,
          source: source,
-         selected_widget_id: selected_widget
+         selected_widget_id: selected_widget,
+         alert_snapshot: alert_snapshot
        }}
     end
   end
@@ -371,9 +391,18 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end
   end
 
-  defp compose_layout(monitor, export, timeframe, theme, viewport, source, selected_widget_id) do
+  defp compose_layout(
+         monitor,
+         export,
+         timeframe,
+         theme,
+         viewport,
+         source,
+         selected_widget_id,
+         alert_snapshot
+       ) do
     stats_struct = export.raw.series
-    dashboard = insights_dashboard(monitor, stats_struct)
+    dashboard = insights_dashboard(monitor, stats_struct, alert_snapshot)
     root_items_all = WidgetView.root_grid_items(dashboard)
     grid_items = maybe_filter_widgets(root_items_all, selected_widget_id)
     widget_items = LayoutTree.flatten_widgets(grid_items)
@@ -458,14 +487,25 @@ defmodule TrifleApp.Exports.MonitorLayout do
   defp theme_class(:dark), do: "dark"
   defp theme_class(_), do: nil
 
-  defp insights_dashboard(%Monitor{type: :report, dashboard: %{} = dashboard}, _stats),
-    do: dashboard
+  defp insights_dashboard(
+         %Monitor{type: :report, dashboard: %{} = dashboard},
+         _stats,
+         _alert_snapshot
+       ),
+       do: dashboard
 
-  defp insights_dashboard(%Monitor{type: :alert} = monitor, stats) do
+  defp insights_dashboard(%Monitor{type: :alert} = monitor, stats, %{} = alert_snapshot) do
+    alert_dashboard(monitor, stats,
+      alert_id: Map.get(alert_snapshot, :alert_id),
+      source_paths: Map.get(alert_snapshot, :source_paths, [])
+    )
+  end
+
+  defp insights_dashboard(%Monitor{type: :alert} = monitor, stats, _alert_snapshot) do
     alert_dashboard(monitor, stats)
   end
 
-  defp insights_dashboard(%Monitor{} = monitor, _stats) do
+  defp insights_dashboard(%Monitor{} = monitor, _stats, _alert_snapshot) do
     %{
       id: "#{monitor.id}-preview",
       key: nil,
@@ -764,9 +804,14 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end
   end
 
-  defp alert_widget_groups(%Monitor{} = monitor, %Series{} = stats) do
-    alerts = monitor_alerts(monitor)
-    targets = AlertSeries.resolved_final_targets(stats, monitor)
+  defp alert_widget_groups(%Monitor{} = monitor, %Series{} = stats, opts) do
+    alerts = monitor |> monitor_alerts() |> filter_snapshot_alerts(opts)
+
+    targets =
+      stats
+      |> AlertSeries.resolved_final_targets(monitor)
+      |> filter_snapshot_targets(opts)
+
     base_y = AlertSeries.source_widget_height()
 
     if alerts == [] do
@@ -791,7 +836,7 @@ defmodule TrifleApp.Exports.MonitorLayout do
     end
   end
 
-  defp alert_widget_groups(%Monitor{} = monitor, nil) do
+  defp alert_widget_groups(%Monitor{} = monitor, nil, _opts) do
     if monitor_alerts(monitor) != [] do
       Logger.warning(
         "Skipping alert widget groups for monitor #{inspect(monitor.id)}: stats are missing"
@@ -801,7 +846,34 @@ defmodule TrifleApp.Exports.MonitorLayout do
     []
   end
 
-  defp alert_widget_groups(_monitor, _stats), do: []
+  defp alert_widget_groups(_monitor, _stats, _opts), do: []
+
+  defp filter_snapshot_alerts(alerts, opts) do
+    case Keyword.fetch(opts, :alert_id) do
+      {:ok, alert_id} -> Enum.filter(alerts, &(to_string(&1.id) == to_string(alert_id)))
+      :error -> alerts
+    end
+  end
+
+  defp filter_snapshot_targets(targets, opts) do
+    case Keyword.fetch(opts, :source_paths) do
+      {:ok, source_paths} ->
+        selected =
+          source_paths
+          |> List.wrap()
+          |> Enum.reject(&is_nil/1)
+          |> Enum.map(&to_string/1)
+          |> MapSet.new()
+
+        Enum.filter(targets, fn target ->
+          source_path = Map.get(target, :source_path)
+          is_binary(source_path) and MapSet.member?(selected, source_path)
+        end)
+
+      :error ->
+        targets
+    end
+  end
 
   defp alert_group_widgets(%Monitor{} = monitor, target, alerts) do
     alerts

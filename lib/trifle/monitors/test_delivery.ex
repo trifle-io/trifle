@@ -213,6 +213,7 @@ defmodule Trifle.Monitors.TestDelivery do
     layout_builder = layout_builder(opts)
     exporter = exporter(opts)
     exporter_opts = Keyword.get(opts, :exporter_opts, [])
+    triggered_series = triggered_series_for_delivery(opts)
 
     Enum.reduce_while(media, {:ok, []}, fn medium, {:ok, acc} ->
       medium_opts = put_export_log_context(exporter_opts, %{medium: medium})
@@ -228,7 +229,8 @@ defmodule Trifle.Monitors.TestDelivery do
              params,
              layout_builder,
              exporter,
-             medium_opts
+             medium_opts,
+             triggered_series
            ) do
         {:ok, export} ->
           Logger.info("[monitor_export #{log_label}] build_alert_export success medium=#{medium}")
@@ -339,12 +341,30 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
-  defp build_alert_export(_monitor, _alert, medium, _params, _builder, _exporter, _opts)
+  defp build_alert_export(
+         _monitor,
+         _alert,
+         medium,
+         _params,
+         _builder,
+         _exporter,
+         _opts,
+         _triggered_series
+       )
        when medium not in @supported_media do
     {:error, "Unsupported delivery medium: #{inspect(medium)}"}
   end
 
-  defp build_alert_export(monitor, alert, medium, params, builder, _exporter, _opts)
+  defp build_alert_export(
+         monitor,
+         alert,
+         medium,
+         params,
+         builder,
+         _exporter,
+         _opts,
+         []
+       )
        when medium in [:file_csv, :file_json] do
     opts = [params: params]
 
@@ -362,7 +382,41 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
-  defp build_alert_export(monitor, alert, medium, params, builder, exporter, exporter_opts) do
+  defp build_alert_export(
+         monitor,
+         alert,
+         medium,
+         _params,
+         _builder,
+         _exporter,
+         _opts,
+         triggered_series
+       )
+       when medium in [:file_csv, :file_json] do
+    with {:ok, export} <- triggered_series_export(triggered_series),
+         {:ok, binary, content_type} <- encode_series_export(medium, export) do
+      filename = build_filename({:alert, monitor, alert}, medium)
+
+      {:ok,
+       %{
+         medium: medium,
+         filename: filename,
+         content_type: content_type,
+         binary: binary
+       }}
+    end
+  end
+
+  defp build_alert_export(
+         monitor,
+         alert,
+         medium,
+         params,
+         builder,
+         exporter,
+         exporter_opts,
+         triggered_series
+       ) do
     log_context = Keyword.get(exporter_opts, :log_context, %{})
     log_label = ExportLog.label(log_context)
 
@@ -392,7 +446,7 @@ defmodule Trifle.Monitors.TestDelivery do
       "[monitor_export #{log_label}] alert_layout_build start medium=#{medium} theme=#{theme}"
     )
 
-    case builder.build(monitor, layout_opts) do
+    case build_alert_layout(builder, monitor, alert, triggered_series, layout_opts) do
       {:ok, %Layout{} = layout} ->
         Logger.info(
           "[monitor_export #{log_label}] alert_layout_build success layout_id=#{layout.id}"
@@ -438,6 +492,126 @@ defmodule Trifle.Monitors.TestDelivery do
 
       true ->
         MonitorLayout.series_export(monitor, opts)
+    end
+  end
+
+  defp build_alert_layout(builder, monitor, _alert, [], layout_opts) do
+    builder.build(monitor, layout_opts)
+  end
+
+  defp build_alert_layout(builder, monitor, alert, triggered_series, layout_opts) do
+    _ = Code.ensure_loaded(builder)
+
+    source_paths =
+      triggered_series
+      |> Enum.map(&Map.get(&1, :source_path))
+      |> Enum.reject(&blank?/1)
+
+    cond do
+      function_exported?(builder, :build_alert_snapshot, 4) ->
+        builder.build_alert_snapshot(monitor, alert, source_paths, layout_opts)
+
+      true ->
+        builder.build(monitor, layout_opts)
+    end
+  end
+
+  defp triggered_series_for_delivery(opts) do
+    case Keyword.get(opts, :trigger_type) do
+      :triggered ->
+        opts
+        |> Keyword.get(:triggered_series, [])
+        |> List.wrap()
+        |> Enum.filter(&is_map/1)
+        |> Enum.map(&normalize_triggered_series/1)
+
+      _ ->
+        []
+    end
+  end
+
+  defp normalize_triggered_series(series) do
+    %{
+      name: Map.get(series, :name) || Map.get(series, "name"),
+      source_path: Map.get(series, :source_path) || Map.get(series, "source_path"),
+      summary: Map.get(series, :summary) || Map.get(series, "summary"),
+      data: Map.get(series, :data) || Map.get(series, "data") || []
+    }
+  end
+
+  defp triggered_series_export(triggered_series) do
+    entries = triggered_series_export_entries(triggered_series)
+
+    timestamps =
+      entries
+      |> Enum.flat_map(fn {_label, values} -> Map.keys(values) end)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.flat_map(fn timestamp ->
+        case DateTime.from_unix(timestamp, :millisecond) do
+          {:ok, datetime} -> [{timestamp, datetime}]
+          {:error, _reason} -> []
+        end
+      end)
+
+    case timestamps do
+      [] ->
+        {:error, "No triggered series data available for export."}
+
+      timestamps ->
+        {:ok,
+         %{
+           at: Enum.map(timestamps, &elem(&1, 1)),
+           values:
+             Enum.map(timestamps, fn {timestamp, _datetime} ->
+               Map.new(entries, fn {label, values} ->
+                 {label, Map.get(values, timestamp)}
+               end)
+             end)
+         }}
+    end
+  end
+
+  defp triggered_series_export_entries(triggered_series) do
+    names =
+      triggered_series
+      |> Enum.with_index(1)
+      |> Enum.map(fn {series, index} -> triggered_series_name(series, index) end)
+
+    frequencies = Enum.frequencies(names)
+
+    triggered_series
+    |> Enum.zip(names)
+    |> Enum.map(fn {series, name} ->
+      label =
+        if Map.get(frequencies, name, 0) > 1 do
+          "#{name} (#{Map.get(series, :source_path)})"
+        else
+          name
+        end
+
+      values =
+        series
+        |> Map.get(:data, [])
+        |> Enum.reduce(%{}, fn
+          [timestamp, value], acc when is_integer(timestamp) ->
+            Map.put(acc, timestamp, value)
+
+          [timestamp, value], acc when is_float(timestamp) ->
+            Map.put(acc, round(timestamp), value)
+
+          _entry, acc ->
+            acc
+        end)
+
+      {label, values}
+    end)
+  end
+
+  defp triggered_series_name(series, index) do
+    case Map.get(series, :name) || Map.get(series, :source_path) do
+      value when is_binary(value) and value != "" -> value
+      _ -> "Series #{index}"
     end
   end
 
@@ -671,7 +845,7 @@ defmodule Trifle.Monitors.TestDelivery do
         attachments = email_attachments(exports)
         trigger_type = delivery_trigger_type(alert, opts)
         subject = email_subject(monitor, alert, trigger_type)
-        content = email_content(monitor, alert, params, trigger_type, subject)
+        content = email_content(monitor, alert, params, trigger_type, subject, opts)
 
         email =
           Email.new()
@@ -887,7 +1061,7 @@ defmodule Trifle.Monitors.TestDelivery do
         message =
           case alert do
             nil -> slack_message(monitor, nil, params)
-            %Alert{} -> slack_message(monitor, alert, params, trigger_type)
+            %Alert{} -> slack_message(monitor, alert, params, trigger_type, opts)
           end
 
         case upload_slack_exports(
@@ -933,7 +1107,7 @@ defmodule Trifle.Monitors.TestDelivery do
     message =
       case alert do
         nil -> slack_message(monitor, nil, params)
-        %Alert{} -> slack_message(monitor, alert, params, trigger_type)
+        %Alert{} -> slack_message(monitor, alert, params, trigger_type, opts)
       end
 
     cond do
@@ -1402,7 +1576,7 @@ defmodule Trifle.Monitors.TestDelivery do
     alert_descriptor(monitor, alert, trigger_type)
   end
 
-  defp email_content(%Monitor{} = monitor, nil, params, _trigger_type, subject) do
+  defp email_content(%Monitor{} = monitor, nil, params, _trigger_type, subject, _opts) do
     detail = window_details(params)
     window_line = window_detail_line(detail)
 
@@ -1415,7 +1589,14 @@ defmodule Trifle.Monitors.TestDelivery do
     )
   end
 
-  defp email_content(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type, _subject) do
+  defp email_content(
+         %Monitor{} = monitor,
+         %Alert{} = alert,
+         params,
+         trigger_type,
+         _subject,
+         opts
+       ) do
     descriptor = alert_descriptor(monitor, alert, trigger_type)
     detail = window_details(params)
     window_line = window_detail_line(detail)
@@ -1423,7 +1604,7 @@ defmodule Trifle.Monitors.TestDelivery do
     Template.action_email(
       headline: descriptor,
       greeting: "Hi,",
-      intro_lines: maybe_line(window_line),
+      intro_lines: triggered_series_lines(trigger_type, opts) ++ maybe_line(window_line),
       footer_lines: ["Snapshot attached. — Trifle"]
     )
   end
@@ -1450,16 +1631,37 @@ defmodule Trifle.Monitors.TestDelivery do
     end
   end
 
-  defp slack_message(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type) do
+  defp slack_message(%Monitor{} = monitor, %Alert{} = alert, params, trigger_type, opts) do
     detail = window_details(params)
     window_line = window_detail_line(detail)
     base = alert_descriptor(monitor, alert, trigger_type)
 
-    case window_line do
-      nil -> base
-      line -> base <> "\n" <> line
+    ([base] ++ triggered_series_lines(trigger_type, opts) ++ maybe_line(window_line))
+    |> Enum.join("\n")
+  end
+
+  defp triggered_series_lines(:triggered, opts) do
+    case triggered_series_for_delivery(opts) do
+      [] ->
+        []
+
+      triggered_series ->
+        bullets =
+          Enum.with_index(triggered_series, 1)
+          |> Enum.map(fn {series, index} ->
+            name = triggered_series_name(series, index)
+
+            case Map.get(series, :summary) do
+              summary when is_binary(summary) and summary != "" -> "• #{name} — #{summary}"
+              _ -> "• #{name}"
+            end
+          end)
+
+        ["Triggered series (#{length(triggered_series)}):" | bullets]
     end
   end
+
+  defp triggered_series_lines(_trigger_type, _opts), do: []
 
   defp slack_export_title(%Monitor{} = monitor, nil, export, _trigger_type) do
     "#{monitor.name} · #{medium_label(export.medium)}"

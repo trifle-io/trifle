@@ -3,7 +3,7 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
 
   import ExUnit.CaptureLog
 
-  alias Trifle.Monitors.Alert
+  alias Trifle.Monitors.{Alert, AlertSeries}
   alias Trifle.Monitors.Alert.Settings
   alias Trifle.Monitors.Monitor
   alias Trifle.Stats.Series
@@ -105,6 +105,50 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
     refute Map.has_key?(evaluations, "critical")
     assert Map.has_key?(evaluations, "warning")
     refute Map.has_key?(datasets.timeseries[critical_widget_id], :alert_summary)
+  end
+
+  test "filters an alert snapshot to the source chart and selected target paths" do
+    stats = build_series()
+
+    monitor = %Monitor{
+      id: "monitor-1",
+      type: :alert,
+      name: "Latency guard",
+      alert_metric_key: "latency.p95",
+      alert_series: [
+        %{"kind" => "path", "path" => "incoming.*", "visible" => false},
+        %{"kind" => "path", "path" => "outgoing.*", "visible" => false},
+        %{"kind" => "expression", "expression" => "a - b", "label" => "delta", "visible" => true}
+      ],
+      alerts: [
+        %Alert{
+          id: "warning",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 6.0}
+        },
+        %Alert{
+          id: "critical",
+          analysis_strategy: :threshold,
+          settings: %Settings{threshold_direction: :above, threshold_value: 12.0}
+        }
+      ]
+    }
+
+    [selected | _] = AlertSeries.resolved_final_targets(stats, monitor)
+
+    dashboard =
+      MonitorLayout.alert_dashboard(monitor, stats,
+        alert_id: "warning",
+        source_paths: [selected.source_path]
+      )
+
+    assert [source_widget, group] = get_in(dashboard, [:payload, "grid"])
+    assert source_widget["id"] == "#{monitor.id}-alert-source"
+    assert group["title"] == selected.name
+    assert group["y"] == AlertSeries.source_widget_height()
+
+    assert [child] = group["children"]
+    assert child["id"] == "#{monitor.id}-alert-series-#{selected.index}-alert-warning-chart"
   end
 
   test "inject_alert_overlay preserves trailing chart gaps for alert widgets" do

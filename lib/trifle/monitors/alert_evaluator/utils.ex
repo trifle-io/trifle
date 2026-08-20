@@ -61,6 +61,25 @@ defmodule Trifle.Monitors.AlertEvaluator.Utils do
     }
   end
 
+  @spec triggered_series(list()) :: list()
+  def triggered_series(results) when is_list(results) do
+    results
+    |> Enum.filter(&triggered_result?/1)
+    |> Enum.map(fn entry ->
+      target = target_for(entry)
+      result = result_for(entry)
+
+      %{
+        name: target_name(target),
+        source_path: target_source_path(target),
+        summary: Map.get(result, :summary),
+        data: Map.get(target, :data) || Map.get(target, "data") || []
+      }
+    end)
+  end
+
+  def triggered_series(_results), do: []
+
   defp aggregation_summary([], _triggered, %AlertEvaluator.Result{}) do
     "Alert evaluation failed for all resolved series."
   end
@@ -93,6 +112,10 @@ defmodule Trifle.Monitors.AlertEvaluator.Utils do
 
   defp successful_result?(entry) do
     match?(%AlertEvaluator.Result{}, result_for(entry))
+  end
+
+  defp triggered_result?(entry) do
+    successful_result?(entry) and Map.get(result_for(entry), :triggered?, false)
   end
 
   defp target_for(entry) when is_map(entry), do: Map.get(entry, :target) || %{}
