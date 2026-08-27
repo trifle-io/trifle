@@ -289,6 +289,9 @@ input[type="checkbox"] {
 /* Only add dropdown arrow to selects that don't have custom icons */
 select:not([class*="grid"]):not([class*="col-"]) {
   @apply bg-white dark:bg-slate-800 bg-no-repeat;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 0.5rem center;
   background-size: 1em 1em;
