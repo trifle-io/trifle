@@ -248,42 +248,6 @@ Hooks.ExpandedWidgetView = {
     return this.normalizedExplicitColor(color) || this.seriesColor(index);
   },
 
-  getWidgetConfig(data) {
-    if (!data || typeof data !== 'object') return {};
-
-    if (data.widgetConfig && typeof data.widgetConfig === 'object') {
-      return data.widgetConfig;
-    }
-
-    if (data.widget_config && typeof data.widget_config === 'object') {
-      return data.widget_config;
-    }
-
-    return {};
-  },
-
-  resolveCategoryLegendVisible(data, chartType, seriesCount) {
-    const widgetConfig = this.getWidgetConfig(data);
-    const explicitLegendVisible =
-      widgetConfig.legendVisible !== undefined
-        ? widgetConfig.legendVisible
-        : widgetConfig.legend_visible !== undefined
-          ? widgetConfig.legend_visible
-          : data && data.legend !== undefined
-            ? data.legend
-            : undefined;
-
-    if (explicitLegendVisible !== undefined) {
-      return !!explicitLegendVisible;
-    }
-
-    if (chartType === 'pie' || chartType === 'donut') {
-      return seriesCount > 1;
-    }
-
-    return true;
-  },
-
   renderEmptyChart(message, opts = {}) {
     const chart = this.ensureChart(opts);
     if (!chart) return;
@@ -359,9 +323,8 @@ Hooks.ExpandedWidgetView = {
     const seriesType = isBar ? 'bar' : isDots ? 'scatter' : 'line';
     const stacked = !!data.stacked;
     const normalized = !!data.normalized;
-    const showLegend = !!data.legend;
     const tooltipHoveredOnly = !!data.hovered_only;
-    const bottomPadding = showLegend ? 56 : 28;
+    const bottomPadding = 56;
     const palette = Array.isArray(this.colors) ? this.colors : [];
     const chartFontFamily =
       'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -496,9 +459,7 @@ Hooks.ExpandedWidgetView = {
         splitLine: { show: false }
       },
       yAxis,
-      legend: showLegend
-        ? { type: 'scroll', bottom: 6, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData }
-        : { show: false },
+      legend: { show: true, type: 'scroll', bottom: 6, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData },
       tooltip: {
         trigger: 'axis',
         appendToBody: true,
@@ -1580,7 +1541,6 @@ Hooks.ExpandedWidgetView = {
     const isDarkMode = this.getTheme() === 'dark';
     const chartType = String(data.chart_type || 'bar').toLowerCase();
     const series = Array.isArray(data?.data) ? data.data : [];
-    const legendVisible = this.resolveCategoryLegendVisible(data, chartType, series.length);
 
     let option;
     if (chartType === 'pie' || chartType === 'donut') {
@@ -1588,7 +1548,7 @@ Hooks.ExpandedWidgetView = {
       const labelLineColor = isDarkMode ? '#475569' : '#94A3B8';
       option = {
         backgroundColor: 'transparent',
-        legend: { show: legendVisible },
+        legend: { show: true },
         tooltip: {
           trigger: 'item',
           appendToBody: true,
@@ -1652,10 +1612,7 @@ Hooks.ExpandedWidgetView = {
     const labels = Array.isArray(data?.bucket_labels) ? data.bucket_labels : [];
     const verticalLabelsRaw = Array.isArray(data?.vertical_bucket_labels) ? data.vertical_bucket_labels : [];
     const series = Array.isArray(data?.series) ? data.series : [];
-    const legendFlag = data?.legend;
-    const showLegendDefault = series.length > 1;
-    const showLegend = legendFlag === undefined ? showLegendDefault : !!legendFlag;
-    const bottomPadding = showLegend ? 56 : 24;
+    const bottomPadding = 56;
     const chartFontFamily =
       'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
@@ -1691,8 +1648,6 @@ Hooks.ExpandedWidgetView = {
     const options = {
       isDarkMode: this.getTheme() === 'dark',
       colors: Array.isArray(this.colors) && this.colors.length ? this.colors : null,
-      legendFlag,
-      showLegend,
       bottomPadding,
       chartFontFamily
     };
@@ -1711,7 +1666,7 @@ Hooks.ExpandedWidgetView = {
   },
 
   renderHeatmapDistribution(data, chart, labels, verticalLabels, series, options) {
-    const { isDarkMode, legendFlag, chartFontFamily, colors } = options;
+    const { isDarkMode, chartFontFamily, colors } = options;
     const labelIndexMap = buildBucketIndexMap(labels);
     const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
     const seriesList = Array.isArray(series) ? series : [];
@@ -1727,8 +1682,8 @@ Hooks.ExpandedWidgetView = {
       return;
     }
 
-    const showScale = legendFlag === undefined ? true : !!legendFlag;
-    const gridBottom = showScale ? 72 : 20;
+    const showScale = true;
+    const gridBottom = 72;
     const visualMapBottom = 8;
     const fallbackHeatColor = colors ? colors[0] : this.seriesColor(0);
     const visualSettings = resolveHeatmapVisualMap({
@@ -1759,7 +1714,7 @@ Hooks.ExpandedWidgetView = {
   },
 
   render3DScatterDistribution(data, chart, labels, verticalLabels, series, options) {
-    const { isDarkMode, colors, showLegend, bottomPadding, chartFontFamily } = options;
+    const { isDarkMode, colors, bottomPadding, chartFontFamily } = options;
     const labelIndexMap = buildBucketIndexMap(labels);
     const verticalLabelIndexMap = buildBucketIndexMap(verticalLabels);
     const scatterData = buildDistributionScatterSeries({
@@ -1785,14 +1740,13 @@ Hooks.ExpandedWidgetView = {
 
     const option = {
       backgroundColor: 'transparent',
-      legend: showLegend
-        ? {
-            data: legendNames,
-            textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-            bottom: 0,
-            type: legendNames.length > 4 ? 'scroll' : 'plain'
-          }
-        : { show: false },
+      legend: {
+        show: true,
+        data: legendNames,
+        textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+        bottom: 0,
+        type: legendNames.length > 4 ? 'scroll' : 'plain'
+      },
       grid: { top: 16, left: 64, right: 16, bottom: bottomPadding },
       tooltip: {
         trigger: 'item',
@@ -1862,7 +1816,7 @@ Hooks.ExpandedWidgetView = {
   },
 
   render2DBarDistribution(data, chart, labels, series, options) {
-    const { isDarkMode, colors, showLegend, bottomPadding, chartFontFamily } = options;
+    const { isDarkMode, colors, bottomPadding, chartFontFamily } = options;
     const legendNames = [];
     const seriesData = series.map((seriesItem, idx) => {
       const name = seriesItem?.name || `Series ${idx + 1}`;
@@ -1889,14 +1843,13 @@ Hooks.ExpandedWidgetView = {
 
     const option = {
       backgroundColor: 'transparent',
-      legend: showLegend
-        ? {
-            data: legendNames,
-            textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
-            bottom: 0,
-            type: legendNames.length > 4 ? 'scroll' : 'plain'
-          }
-        : { show: false },
+      legend: {
+        show: true,
+        data: legendNames,
+        textStyle: { color: isDarkMode ? '#E2E8F0' : '#0F172A', fontFamily: chartFontFamily },
+        bottom: 0,
+        type: legendNames.length > 4 ? 'scroll' : 'plain'
+      },
       grid: { top: 16, left: 52, right: 16, bottom: bottomPadding, containLabel: true },
       tooltip: {
         trigger: 'axis',
