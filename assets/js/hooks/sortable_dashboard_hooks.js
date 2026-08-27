@@ -1,5 +1,30 @@
 export const registerSortableDashboardHooks = (Hooks, deps = {}) => {
   const { Sortable, echarts, withChartOpts } = deps;
+  const defaultDashboardGroupsStorageKey = 'dashboard_group_collapsed_default';
+  const dashboardGroupsPreloadStyleId = 'trifle-dashboard-groups-preload';
+
+  const readCollapsedDashboardGroupIds = (storageKey) => {
+    let map = {};
+    try { map = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch (_) { map = {}; }
+    return Object.keys(map || {}).filter(id => map[id]);
+  };
+
+  const applyCollapsedDashboardGroupState = (root, ids) => {
+    const collapsed = new Set((ids || []).map(String));
+
+    root.querySelectorAll('[data-dashboard-group-content]').forEach((element) => {
+      element.classList.toggle('hidden', collapsed.has(element.dataset.dashboardGroupContent));
+    });
+
+    root.querySelectorAll('[data-dashboard-group-collapsed-icon]').forEach((element) => {
+      element.classList.toggle('hidden', !collapsed.has(element.dataset.dashboardGroupCollapsedIcon));
+    });
+
+    root.querySelectorAll('[data-dashboard-group-expanded-icon]').forEach((element) => {
+      element.classList.toggle('hidden', collapsed.has(element.dataset.dashboardGroupExpandedIcon));
+    });
+  };
+
 Hooks.Sortable = {
   mounted() {
     const group = this.el.dataset.group;
@@ -96,16 +121,23 @@ Hooks.Sortable = {
 // Collapsible Dashboard Groups: sync collapsed state to localStorage
 Hooks.DashboardGroupsCollapse = {
   mounted() {
-    const dbId = this.el.dataset.dbId || 'default';
-    const key = `dashboard_group_collapsed_${dbId}`;
-    let map = {};
-    try { map = JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { map = {}; }
-    const ids = Object.keys(map).filter(id => map[id]);
+    const key = this.el.dataset.storageKey || defaultDashboardGroupsStorageKey;
+    const ids = readCollapsedDashboardGroupIds(key);
+
+    // Apply the preloaded state to the disconnected render before removing the
+    // head stylesheet. The server then takes ownership on the first LiveView patch.
+    applyCollapsedDashboardGroupState(this.el, ids);
+    const preloadStyle = document.getElementById(dashboardGroupsPreloadStyleId);
+    if (preloadStyle) preloadStyle.remove();
+    this.el.dataset.dashboardGroupsReady = 'true';
+
+    window.__TRIFLE_DASHBOARD_GROUPS_PRELOAD__ = { storageKey: key, ids };
     try { this.pushEvent('set_collapsed_groups', { ids }); } catch (_) {}
     this.saveCollapsedGroupsHandle = this.handleEvent('save_collapsed_groups', ({ ids }) => {
       const store = {};
       (ids || []).forEach(id => { store[id] = true; });
       try { localStorage.setItem(key, JSON.stringify(store)); } catch (_) {}
+      window.__TRIFLE_DASHBOARD_GROUPS_PRELOAD__ = { storageKey: key, ids: ids || [] };
     });
   },
 

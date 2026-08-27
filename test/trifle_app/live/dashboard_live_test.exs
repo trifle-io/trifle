@@ -78,6 +78,53 @@ defmodule TrifleApp.DashboardLiveTest do
     refute html =~ "top: 33%;"
   end
 
+  test "dashboard list uses native links and exposes group state for preloading", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, group} =
+      Organizations.create_dashboard_group_for_membership(membership, %{name: "Revenue"})
+
+    {:ok, dashboard} =
+      Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        group_id: group.id
+      })
+
+    {:ok, view, html} = live(conn, ~p"/dashboards")
+
+    assert has_element?(
+             view,
+             "a[data-dashboard-row-link][href=\"/dashboards/#{dashboard.id}\"]"
+           )
+
+    refute html =~ ~s(phx-click="dashboard_clicked")
+
+    assert has_element?(
+             view,
+             "#dashboard-root[data-storage-key=\"dashboard_group_collapsed_default\"]"
+           )
+
+    assert has_element?(view, "[data-dashboard-group-content=\"#{group.id}\"]")
+    assert has_element?(view, "[data-dashboard-group-collapsed-icon=\"#{group.id}\"].hidden")
+
+    assert has_element?(
+             view,
+             "[data-dashboard-group-expanded-icon=\"#{group.id}\"]:not(.hidden)"
+           )
+
+    render_hook(view, "set_collapsed_groups", %{"ids" => [group.id]})
+
+    refute has_element?(view, "[data-dashboard-group-content=\"#{group.id}\"]")
+
+    assert has_element?(
+             view,
+             "[data-dashboard-group-collapsed-icon=\"#{group.id}\"]:not(.hidden)"
+           )
+
+    assert has_element?(view, "[data-dashboard-group-expanded-icon=\"#{group.id}\"].hidden")
+  end
+
   test "renders the full dashboard path in the page heading", %{
     conn: conn,
     dashboard: dashboard,

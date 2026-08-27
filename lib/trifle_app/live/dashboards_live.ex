@@ -143,10 +143,6 @@ defmodule TrifleApp.DashboardsLive do
     end
   end
 
-  def handle_event("dashboard_clicked", %{"id" => dashboard_id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/dashboards/#{dashboard_id}")}
-  end
-
   # No-op click handler to prevent bubbling to parent row toggle
   def handle_event("noop", _params, socket) do
     {:noreply, socket}
@@ -517,7 +513,12 @@ defmodule TrifleApp.DashboardsLive do
                 </p>
               </div>
             <% else %>
-              <div class="p-2" id="dashboard-root" phx-hook="DashboardGroupsCollapse">
+              <div
+                class="p-2"
+                id="dashboard-root"
+                phx-hook="DashboardGroupsCollapse"
+                data-storage-key="dashboard_group_collapsed_default"
+              >
                 <!-- Top-level Groups -->
                 <div
                   id="dashboard-root-groups"
@@ -676,13 +677,20 @@ defmodule TrifleApp.DashboardsLive do
   attr :collapsed_groups, :any, default: nil
 
   defp render_group(assigns) do
+    collapsed? =
+      MapSet.member?(
+        assigns[:collapsed_groups] || MapSet.new(),
+        assigns.node.group.id
+      )
+
     assigns =
       assigns
       |> Map.put_new(:can_manage_dashboards, false)
       |> Map.put_new(:current_membership, nil)
+      |> Map.put(:collapsed?, collapsed?)
 
     ~H"""
-    <div data-id={@node.group.id} data-type="group">
+    <div data-id={@node.group.id} data-type="group" data-dashboard-group-id={@node.group.id}>
       <div
         class="group flex items-center justify-between pr-0 py-2 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 cursor-pointer"
         style={"padding-left: #{max(@level, 0) * 12 + 12}px"}
@@ -730,31 +738,30 @@ defmodule TrifleApp.DashboardsLive do
         <% else %>
           <div class="flex items-center gap-2">
             <span class="text-gray-400 dark:text-slate-500" aria-hidden="true">
-              <%= if MapSet.member?((@collapsed_groups || MapSet.new()), @node.group.id) do %>
-                <!-- Chevron Right -->
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-4 w-4"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              <% else %>
-                <!-- Chevron Down -->
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-4 w-4"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
-              <% end %>
+              <!-- Chevron Right -->
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class={["h-4 w-4", !@collapsed? && "hidden"]}
+                data-dashboard-group-collapsed-icon={@node.group.id}
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              <!-- Chevron Down -->
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class={["h-4 w-4", @collapsed? && "hidden"]}
+                data-dashboard-group-expanded-icon={@node.group.id}
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
             </span>
             <!-- Folder icon -->
             <svg
@@ -869,9 +876,10 @@ defmodule TrifleApp.DashboardsLive do
           </div>
         <% end %>
       </div>
-      <%= unless MapSet.member?((@collapsed_groups || MapSet.new()), @node.group.id) do %>
+      <%= unless @collapsed? do %>
         <div
           id={"group-" <> @node.group.id <> "-nodes"}
+          data-dashboard-group-content={@node.group.id}
           data-parent-id={@node.group.id}
           data-group="dashboard-nodes"
           data-event="reorder_nodes"
@@ -915,14 +923,20 @@ defmodule TrifleApp.DashboardsLive do
   defp render_dashboard(assigns) do
     ~H"""
     <div
-      class="group grid cursor-pointer items-center gap-x-3 border-b border-gray-100 py-3 hover:bg-gray-50 [grid-template-columns:minmax(0,1fr)_auto] dark:border-slate-700 dark:hover:bg-slate-700/50 md:gap-x-6 md:[grid-template-columns:minmax(0,1fr)_auto_auto]"
+      class="group relative isolate grid cursor-pointer items-center gap-x-3 border-b border-gray-100 py-3 hover:bg-gray-50 [grid-template-columns:minmax(0,1fr)_auto] dark:border-slate-700 dark:hover:bg-slate-700/50 md:gap-x-6 md:[grid-template-columns:minmax(0,1fr)_auto_auto]"
       style={"padding-left: #{max(@level, 0) * 12 + 12}px;"}
       data-id={@dashboard.id}
       data-type="dashboard"
-      phx-click="dashboard_clicked"
-      phx-value-id={@dashboard.id}
     >
-      <div class="min-w-0">
+      <.link
+        navigate={~p"/dashboards/#{@dashboard.id}"}
+        aria-label={"Open #{@dashboard.name}"}
+        data-dashboard-row-link
+        class="absolute inset-0 z-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500"
+      >
+        <span class="sr-only">Open {@dashboard.name}</span>
+      </.link>
+      <div class="pointer-events-none relative z-[1] min-w-0">
         <div class={[
           "flex items-center gap-2",
           @level > 0 && "ml-6"
@@ -947,14 +961,14 @@ defmodule TrifleApp.DashboardsLive do
           </span>
         </div>
       </div>
-      <div class="justify-self-end pr-3 sm:pr-0 sm:mr-6">
+      <div class="pointer-events-none relative z-[1] justify-self-end pr-3 sm:pr-0 sm:mr-6">
         <%= if @dashboard.user do %>
           <div class="h-6 w-6" title={"Created by #{@dashboard.user.email}"}>
             <img src={gravatar_url(@dashboard.user.email)} class="h-6 w-6 rounded-full" />
           </div>
         <% end %>
       </div>
-      <div class="flex items-center gap-2 justify-self-end mr-3 max-md:hidden" phx-click="noop">
+      <div class="pointer-events-none relative z-10 flex items-center gap-2 justify-self-end mr-3 max-md:hidden">
         <div class="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
           <%= if @can_clone_dashboard do %>
             <button
@@ -963,7 +977,7 @@ defmodule TrifleApp.DashboardsLive do
               phx-value-id={@dashboard.id}
               title="Duplicate dashboard"
               aria-label="Duplicate dashboard"
-              class="inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 mr-1"
+              class="pointer-events-auto inline-flex items-center justify-center rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-1.5 text-xs text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 mr-1"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1039,7 +1053,7 @@ defmodule TrifleApp.DashboardsLive do
         </svg>
         <!-- Drag handle -->
         <%= if @can_manage_dashboards do %>
-          <div class="drag-handle cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+          <div class="drag-handle pointer-events-auto cursor-move text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
