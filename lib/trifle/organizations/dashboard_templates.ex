@@ -247,10 +247,10 @@ defmodule Trifle.Organizations.DashboardTemplates do
 
     cond do
       template_id == dashboard.template_id ->
-        Dashboards.update_dashboard_for_membership(dashboard, membership, attrs)
+        update_dashboard_metadata(dashboard, membership, attrs)
 
       is_nil(template_id) and is_nil(dashboard.template_id) ->
-        Dashboards.update_dashboard_for_membership(dashboard, membership, attrs)
+        update_dashboard_metadata(dashboard, membership, attrs)
 
       is_nil(template_id) ->
         {:error, :template_detach_requires_context}
@@ -259,7 +259,7 @@ defmodule Trifle.Organizations.DashboardTemplates do
         Repo.transaction(fn ->
           with {:ok, _template} <- validate_reference(template_id, membership, lock: true),
                {:ok, updated_dashboard} <-
-                 Dashboards.update_dashboard_for_membership(dashboard, membership, attrs) do
+                 update_dashboard_metadata(dashboard, membership, attrs) do
             updated_dashboard
             |> Dashboard.changeset(%{template_id: template_id, payload: %{}})
             |> Repo.update!()
@@ -403,6 +403,42 @@ defmodule Trifle.Organizations.DashboardTemplates do
     end
   end
 
+  def update_user_payload(
+        template_id,
+        %OrganizationMembership{} = membership,
+        payload,
+        expected_version
+      )
+      when is_map(payload) and is_integer(expected_version) do
+    query =
+      from(t in DashboardTemplate,
+        where: t.id == ^template_id and t.organization_id == ^membership.organization_id,
+        lock: "FOR UPDATE"
+      )
+
+    case Repo.one(query) do
+      nil ->
+        {:error, :stale_template}
+
+      template ->
+        cond do
+          not can_manage_for_membership?(template, membership) ->
+            {:error, :forbidden}
+
+          template.lock_version != expected_version ->
+            {:error, :stale_template}
+
+          true ->
+            template
+            |> DashboardTemplate.payload_changeset(payload)
+            |> Repo.update()
+        end
+    end
+  end
+
+  def update_user_payload(_template_id, %OrganizationMembership{}, _payload, _expected_version),
+    do: {:error, :template_version_required}
+
   def update_user_payload(template_id, organization_id, payload, expected_version)
       when is_map(payload) and is_integer(expected_version) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
@@ -452,6 +488,17 @@ defmodule Trifle.Organizations.DashboardTemplates do
   def can_manage?(%DashboardTemplate{} = template, %User{} = user, membership) do
     template.created_by_id == user.id || Organizations.membership_owner?(membership) ||
       Organizations.membership_admin?(membership)
+  end
+
+  defp can_manage_for_membership?(template, membership) do
+    template.created_by_id == membership.user_id || Organizations.membership_owner?(membership) ||
+      Organizations.membership_admin?(membership)
+  end
+
+  defp update_dashboard_metadata(dashboard, membership, attrs) do
+    Dashboards.update_dashboard_for_membership(dashboard, membership, attrs,
+      allow_template_payload?: false
+    )
   end
 
   defp resolve_system(dashboard, key) do

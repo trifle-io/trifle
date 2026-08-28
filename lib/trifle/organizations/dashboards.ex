@@ -258,11 +258,12 @@ defmodule Trifle.Organizations.Dashboards do
 
   defp ensure_dashboard_lock_default(attrs), do: attrs
 
-  defp sanitize_dashboard_update_attrs(attrs, allow_protected?) when is_map(attrs) do
+  defp sanitize_dashboard_update_attrs(attrs, allow_protected?, opts) when is_map(attrs) do
     sanitized =
       attrs
       |> Map.delete(:user_id)
       |> Map.delete("user_id")
+      |> maybe_drop_template_payload_attrs(opts)
 
     cond do
       allow_protected? ->
@@ -276,7 +277,17 @@ defmodule Trifle.Organizations.Dashboards do
     end
   end
 
-  defp sanitize_dashboard_update_attrs(attrs, _allow_protected?), do: {:ok, attrs}
+  defp sanitize_dashboard_update_attrs(attrs, _allow_protected?, _opts), do: {:ok, attrs}
+
+  defp maybe_drop_template_payload_attrs(attrs, opts) do
+    if Keyword.get(opts, :allow_template_payload?, true) do
+      attrs
+    else
+      attrs
+      |> drop_attr("payload")
+      |> drop_attr("template_version")
+    end
+  end
 
   defp ensure_parent_group_within_org(attrs, %OrganizationMembership{} = membership) do
     value = Map.get(attrs, "parent_group_id") || Map.get(attrs, :parent_group_id)
@@ -787,7 +798,8 @@ defmodule Trifle.Organizations.Dashboards do
   def update_dashboard_for_membership(
         %Dashboard{} = dashboard,
         %OrganizationMembership{} = membership,
-        attrs
+        attrs,
+        opts \\ []
       ) do
     cond do
       dashboard.organization_id != membership.organization_id ->
@@ -806,7 +818,7 @@ defmodule Trifle.Organizations.Dashboards do
         default_source = {dashboard.source_type, dashboard.source_id}
 
         with {:ok, attrs} <- maybe_ensure_dashboard_source(attrs, membership, default_source),
-             {:ok, sanitized_attrs} <- sanitize_dashboard_update_attrs(attrs, can_manage?),
+             {:ok, sanitized_attrs} <- sanitize_dashboard_update_attrs(attrs, can_manage?, opts),
              {:ok, updated_dashboard} <-
                update_dashboard_and_template_payload(
                  dashboard,
@@ -878,7 +890,7 @@ defmodule Trifle.Organizations.Dashboards do
               dashboard,
               local_attrs,
               template_id,
-              membership.organization_id,
+              membership,
               normalized_payload,
               expected_version
             )
@@ -897,7 +909,7 @@ defmodule Trifle.Organizations.Dashboards do
          dashboard,
          local_attrs,
          template_id,
-         organization_id,
+         membership,
          payload,
          expected_version
        ) do
@@ -905,7 +917,7 @@ defmodule Trifle.Organizations.Dashboards do
     |> Ecto.Multi.run(:template, fn _repo, _changes ->
       DashboardTemplates.update_user_payload(
         template_id,
-        organization_id,
+        membership,
         payload,
         expected_version
       )

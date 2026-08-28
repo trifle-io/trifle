@@ -94,6 +94,108 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
     assert fresh.template_version == 2
   end
 
+  test "shared payload updates require template ownership or an organization admin role",
+       context do
+    creator = user_fixture()
+    editor = user_fixture()
+
+    {:ok, creator_membership} =
+      Organizations.create_membership(context.organization, creator, "member")
+
+    {:ok, editor_membership} =
+      Organizations.create_membership(context.organization, editor, "member")
+
+    template =
+      create_template(
+        %{user: creator, membership: creator_membership},
+        "Shared",
+        %{"grid" => []}
+      )
+
+    template_id = DashboardTemplateRef.encode(:user, template.id)
+
+    {:ok, dashboard} =
+      create_dashboard(context, %{template_id: template_id, visibility: true})
+
+    assert {:error, :forbidden} =
+             Organizations.update_dashboard_for_membership(dashboard, editor_membership, %{
+               payload: %{"grid" => [%{"id" => "blocked"}]},
+               template_version: 1
+             })
+
+    assert %{payload: %{"grid" => []}, lock_version: 1} = Repo.reload!(template)
+
+    assert {:ok, creator_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, creator_membership, %{
+               payload: %{"grid" => [%{"id" => "creator"}]},
+               template_version: 1
+             })
+
+    assert creator_updated.template_version == 2
+
+    assert {:ok, owner_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, context.membership, %{
+               payload: %{"grid" => [%{"id" => "owner"}]},
+               template_version: 2
+             })
+
+    assert owner_updated.template_version == 3
+
+    {:ok, admin_membership} =
+      Organizations.update_membership_role(editor_membership, "admin")
+
+    assert {:ok, admin_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, admin_membership, %{
+               payload: %{"grid" => [%{"id" => "admin"}]},
+               template_version: 3
+             })
+
+    assert admin_updated.template_version == 4
+    assert admin_updated.payload == %{"grid" => [%{"id" => "admin"}]}
+  end
+
+  test "configuration updates discard template payload attributes", context do
+    first = create_template(context, "First", %{"grid" => [%{"id" => "first"}]})
+    second = create_template(context, "Second", %{"grid" => [%{"id" => "second"}]})
+    first_id = DashboardTemplateRef.encode(:user, first.id)
+    second_id = DashboardTemplateRef.encode(:user, second.id)
+    {:ok, dashboard} = create_dashboard(context, %{template_id: first_id})
+
+    assert {:ok, configured} =
+             Organizations.update_dashboard_configuration(
+               dashboard,
+               context.membership,
+               %{
+                 "name" => "Configured",
+                 "payload" => %{"grid" => [%{"id" => "injected-string"}]},
+                 "template_version" => 1
+               },
+               first_id
+             )
+
+    assert configured.name == "Configured"
+    assert configured.payload == first.payload
+    assert Repo.reload!(first).payload == first.payload
+
+    assert {:ok, switched} =
+             Organizations.update_dashboard_configuration(
+               configured,
+               context.membership,
+               %{
+                 name: "Switched",
+                 payload: %{"grid" => [%{"id" => "injected-atom"}]},
+                 template_version: 1
+               },
+               second_id
+             )
+
+    assert switched.name == "Switched"
+    assert switched.template_id == second_id
+    assert switched.payload == second.payload
+    assert Repo.reload!(first).payload == first.payload
+    assert Repo.reload!(second).payload == second.payload
+  end
+
   test "requires an exact template version for shared payload updates", context do
     template = create_template(context, "Shared", %{"grid" => []})
 
