@@ -29,6 +29,7 @@ defmodule Trifle.Organizations do
   alias Trifle.Organizations.Attrs
   alias Trifle.Organizations.Connectors
   alias Trifle.Organizations.Dashboards
+  alias Trifle.Organizations.DashboardTemplates
   alias Trifle.Organizations.InvitationNotifier
   alias Trifle.Organizations.SSO
   alias Trifle.Organizations.Tokens
@@ -269,6 +270,73 @@ defmodule Trifle.Organizations do
   defdelegate can_view_dashboard?(dashboard, membership), to: Dashboards
   defdelegate can_edit_dashboard?(dashboard, membership), to: Dashboards
   defdelegate can_clone_dashboard?(dashboard, membership), to: Dashboards
+
+  defdelegate list_available_dashboard_templates(membership),
+    to: DashboardTemplates,
+    as: :list_available_for_membership
+
+  defdelegate list_user_dashboard_templates_for_membership(membership),
+    to: DashboardTemplates,
+    as: :list_user_for_membership
+
+  defdelegate list_all_dashboard_templates(), to: DashboardTemplates, as: :list_all_user
+  defdelegate count_all_dashboard_templates(), to: DashboardTemplates, as: :count_all_user
+  defdelegate get_dashboard_template!(id), to: DashboardTemplates, as: :get_user!
+
+  defdelegate get_dashboard_template_for_membership!(membership, id),
+    to: DashboardTemplates,
+    as: :get_user_for_membership!
+
+  defdelegate create_dashboard_template(user, membership, attrs),
+    to: DashboardTemplates,
+    as: :create_user
+
+  defdelegate update_dashboard_template(template, user, membership, attrs),
+    to: DashboardTemplates,
+    as: :update_user
+
+  defdelegate delete_dashboard_template(template, user, membership),
+    to: DashboardTemplates,
+    as: :delete_user
+
+  defdelegate convert_dashboard_to_template(user, membership, dashboard, attrs),
+    to: DashboardTemplates,
+    as: :convert_dashboard
+
+  defdelegate link_dashboard_template(dashboard, membership, template_id),
+    to: DashboardTemplates,
+    as: :link_dashboard
+
+  defdelegate update_dashboard_configuration(dashboard, membership, attrs, template_id),
+    to: DashboardTemplates
+
+  defdelegate detach_dashboard_template(dashboard, membership),
+    to: DashboardTemplates,
+    as: :detach_dashboard
+
+  defdelegate resolve_dashboard_template(dashboard),
+    to: DashboardTemplates,
+    as: :resolve_dashboard
+
+  defdelegate resolve_dashboard_templates(dashboards),
+    to: DashboardTemplates,
+    as: :resolve_dashboards
+
+  defdelegate resolve_dashboard_template!(dashboard),
+    to: DashboardTemplates,
+    as: :resolve_dashboard!
+
+  defdelegate resolve_dashboard_templates!(dashboards),
+    to: DashboardTemplates,
+    as: :resolve_dashboards!
+
+  defdelegate dashboard_template_usage_count(template),
+    to: DashboardTemplates,
+    as: :template_usage_count
+
+  defdelegate dashboard_template_usage_counts(templates),
+    to: DashboardTemplates,
+    as: :template_usage_counts
 
   defdelegate transfer_dashboard_ownership(dashboard, membership, target_membership_id),
     to: Dashboards

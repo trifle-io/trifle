@@ -2,6 +2,7 @@ defmodule Trifle.Organizations.Dashboard do
   use Ecto.Schema
   import Ecto.Changeset
   alias Ecto.UUID
+  alias Trifle.Organizations.DashboardTemplateRef
   alias Trifle.Timeframe
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -22,6 +23,11 @@ defmodule Trifle.Organizations.Dashboard do
     field(:position, :integer, default: 0)
     field(:source_type, :string)
     field(:source_id, :binary_id)
+    field(:template_id, :string)
+    field(:template_type, Ecto.Enum, values: [:system, :user], virtual: true)
+    field(:template_name, :string, virtual: true)
+    field(:template_version, :integer, virtual: true)
+    field(:template_read_only, :boolean, virtual: true, default: false)
 
     belongs_to(:organization, Trifle.Organizations.Organization)
     belongs_to(:database, Trifle.Organizations.Database)
@@ -66,7 +72,8 @@ defmodule Trifle.Organizations.Dashboard do
       :group_id,
       :organization_id,
       :source_type,
-      :source_id
+      :source_id,
+      :template_id
     ])
     |> validate_required([:user_id, :name, :key, :organization_id])
     |> validate_source_reference()
@@ -74,6 +81,8 @@ defmodule Trifle.Organizations.Dashboard do
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
     |> validate_timeframe_field(:default_timeframe)
+    |> update_change(:template_id, &normalize_template_id/1)
+    |> validate_template_id()
     |> maybe_sync_database_reference()
     |> maybe_require_database()
     |> handle_payload_field(payload_raw, payload_provided)
@@ -133,6 +142,25 @@ defmodule Trifle.Organizations.Dashboard do
         add_error(changeset, :payload, "must be a JSON object or map")
     end
   end
+
+  defp validate_template_id(changeset) do
+    validate_change(changeset, :template_id, fn :template_id, value ->
+      case DashboardTemplateRef.parse(value) do
+        :none -> []
+        {:ok, _reference} -> []
+        {:error, _reason} -> [template_id: "must be a system:<key> or user:<uuid> reference"]
+      end
+    end)
+  end
+
+  defp normalize_template_id(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_template_id(value), do: value
 
   defp handle_segments_field(changeset, segments_raw, segments_provided) do
     case {segments_provided, segments_raw} do

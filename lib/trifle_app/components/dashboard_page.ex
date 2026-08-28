@@ -34,6 +34,9 @@ defmodule TrifleApp.Components.DashboardPage do
       |> assign_new(:source_annotation_count, fn -> 0 end)
       |> assign_new(:annotation_editor, fn -> nil end)
       |> assign_new(:annotation_group, fn -> nil end)
+      |> assign_new(:dashboard_template_groups, fn -> [] end)
+      |> assign_new(:selected_dashboard_template_id, fn -> assigns[:dashboard].template_id end)
+      |> assign_new(:can_edit_dashboard_layout, fn -> assigns[:can_edit_dashboard] == true end)
 
     ~H"""
     <div
@@ -119,49 +122,51 @@ defmodule TrifleApp.Components.DashboardPage do
                 <div class="flex items-center justify-end gap-3 md:gap-4 flex-nowrap w-auto">
                   <% add_btn_id = "dashboard-" <> @dashboard.id <> "-add-widget" %>
                   <% add_group_btn_id = "dashboard-" <> @dashboard.id <> "-add-group" %>
-                  <!-- Add Widget Button -->
-                  <button
-                    id={add_btn_id}
-                    type="button"
-                    class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
-                    title="Add widget"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                  <%= if @can_edit_dashboard_layout do %>
+                    <!-- Add Widget Button -->
+                    <button
+                      id={add_btn_id}
+                      type="button"
+                      class="inline-flex items-center whitespace-nowrap rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500"
+                      title="Add widget"
                     >
-                      <path
-                        fill-rule="evenodd"
-                        d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                    <span class="hidden md:inline">Add Widget</span>
-                  </button>
-                  <button
-                    id={add_group_btn_id}
-                    type="button"
-                    class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600"
-                    title="Add widget group"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                      class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5H12.75v6.75a.75.75 0 01-1.5 0V12.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                      <span class="hidden md:inline">Add Widget</span>
+                    </button>
+                    <button
+                      id={add_group_btn_id}
+                      type="button"
+                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600"
+                      title="Add widget group"
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z"
-                      />
-                    </svg>
-                    <span class="hidden md:inline">Add Group</span>
-                  </button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="-ml-0.5 md:mr-1.5 h-4 w-4"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z"
+                        />
+                      </svg>
+                      <span class="hidden md:inline">Add Group</span>
+                    </button>
+                  <% end %>
                   <.link
                     patch={~p"/dashboards/#{@dashboard.id}/configure"}
                     class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
@@ -506,7 +511,7 @@ defmodule TrifleApp.Components.DashboardPage do
           stats={@stats}
           print_mode={@print_mode}
           current_user={@current_user}
-          can_edit_dashboard={@can_edit_dashboard}
+          can_edit_dashboard={@can_edit_dashboard_layout}
           is_public_access={@is_public_access}
           public_token={@public_token}
           grid_items={root_grid_items}
@@ -1163,195 +1168,345 @@ defmodule TrifleApp.Components.DashboardPage do
               </.form_actions>
             </:actions>
             <:below_actions>
-              <%= if @can_clone_dashboard do %>
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                        Actions
-                      </span>
-                      <p class="text-xs text-gray-500 dark:text-slate-400">
-                        Make a copy of this dashboard.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      phx-click="duplicate_dashboard"
-                      class="inline-flex items-center whitespace-nowrap rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600"
-                      title="Duplicate dashboard"
+              <div id="dashboard-actions" class="border-t border-gray-200 pt-6 dark:border-slate-600">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Actions</h3>
+                <div class="mt-4 divide-y divide-gray-200 dark:divide-slate-600">
+                  <%= if @can_manage_dashboard do %>
+                    <div
+                      id="dashboard-action-visibility"
+                      class="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
-                        class="md:-ml-0.5 md:mr-1.5 h-4 w-4"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-                        />
-                      </svg>
-                      <span class="hidden md:inline">Duplicate</span>
-                    </button>
-                  </div>
-                </div>
-              <% end %>
-
-              <%= if @can_manage_dashboard do %>
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-                  <div>
-                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                      Visibility
-                    </span>
-                    <p class="text-xs text-gray-500 dark:text-slate-400">
-                      Make this dashboard visible to everyone in the organization
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    phx-click="toggle_visibility"
-                    class={[
-                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
-                      if(@dashboard.visibility,
-                        do: "bg-teal-600",
-                        else: "bg-gray-200 dark:bg-gray-700"
-                      )
-                    ]}
-                  >
-                    <span class={[
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                      if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
-                    ]}>
-                    </span>
-                  </button>
-                </div>
-
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 flex items-center justify-between">
-                  <div>
-                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Lock</span>
-                    <p class="text-xs text-gray-500 dark:text-slate-400">
-                      Prevent regular members from editing while locked.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    phx-click="toggle_lock"
-                    disabled={!@can_manage_lock}
-                    class={[
-                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
-                      if(@dashboard.locked,
-                        do: "bg-amber-500 dark:bg-amber-400",
-                        else: "bg-gray-200 dark:bg-gray-700"
-                      ),
-                      if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
-                    ]}
-                  >
-                    <span class={[
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                      if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
-                    ]}>
-                    </span>
-                  </button>
-                </div>
-
-                <div class="border-t border-gray-200 dark:border-slate-600 pt-6 space-y-3">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
-                        Public Link
-                      </span>
-                      <p class="text-xs text-gray-500 dark:text-slate-400">
-                        Generate a shareable link for read-only access.
-                      </p>
-                    </div>
-                    <%= if @dashboard.access_token do %>
-                      <div class="flex flex-wrap items-center gap-3">
-                        <button
-                          id={"dashboard-public-link-copy-" <> @dashboard.id}
-                          type="button"
-                          phx-hook="CopyFeedback"
-                          phx-click={JS.dispatch("phx:copy", to: "#dashboard-public-url-config")}
-                          data-copy-icon={"dashboard-public-link-copy-icon-" <> @dashboard.id}
-                          data-copied-icon={"dashboard-public-link-copied-icon-" <> @dashboard.id}
-                          data-copy-label={"dashboard-public-link-copy-label-" <> @dashboard.id}
-                          data-copied-label={"dashboard-public-link-copied-label-" <> @dashboard.id}
-                          data-copy-timeout="2000"
-                          class="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700"
-                        >
-                          <svg
-                            id={"dashboard-public-link-copy-icon-" <> @dashboard.id}
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                            class="h-5 w-5"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"
-                            />
-                          </svg>
-                          <svg
-                            id={"dashboard-public-link-copied-icon-" <> @dashboard.id}
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke-width="1.5"
-                            stroke="currentColor"
-                            class="hidden h-5 w-5 text-green-600"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          <span id={"dashboard-public-link-copy-label-" <> @dashboard.id}>
-                            Copy Public Link
-                          </span>
-                          <span
-                            id={"dashboard-public-link-copied-label-" <> @dashboard.id}
-                            class="hidden text-green-600"
-                          >
-                            Copied
-                          </span>
-                        </button>
-                        <.danger_button
-                          type="button"
-                          phx-click="remove_public_token"
-                          data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
-                        >
-                          Remove Link
-                        </.danger_button>
+                      <div>
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                          Visibility
+                        </span>
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Make this dashboard visible to everyone in the organization
+                        </p>
                       </div>
-                    <% else %>
                       <button
                         type="button"
-                        phx-click="generate_public_token"
-                        class="inline-flex items-center rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 hover:bg-teal-100 dark:bg-teal-900 dark:text-teal-200 dark:ring-teal-500/30 dark:hover:bg-teal-800"
+                        phx-click="toggle_visibility"
+                        class={[
+                          "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2",
+                          if(@dashboard.visibility,
+                            do: "bg-teal-600",
+                            else: "bg-gray-200 dark:bg-gray-700"
+                          )
+                        ]}
                       >
-                        Generate Public Link
+                        <span class={[
+                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                          if(@dashboard.visibility, do: "translate-x-5", else: "translate-x-0")
+                        ]}>
+                        </span>
                       </button>
-                    <% end %>
-                  </div>
-                  <%= if @dashboard.access_token do %>
-                    <% public_url =
-                      url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}") %>
-                    <code
-                      id="dashboard-public-url-config"
-                      class="block max-w-full break-all rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700 dark:bg-slate-800 dark:text-slate-200"
+                    </div>
+
+                    <div
+                      id="dashboard-action-lock"
+                      class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      {public_url}
-                    </code>
+                      <div>
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                          Lock
+                        </span>
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Prevent regular members from editing while locked.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="toggle_lock"
+                        disabled={!@can_manage_lock}
+                        class={[
+                          "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2",
+                          if(@dashboard.locked,
+                            do: "bg-amber-500 dark:bg-amber-400",
+                            else: "bg-gray-200 dark:bg-gray-700"
+                          ),
+                          if(@can_manage_lock, do: nil, else: "cursor-not-allowed opacity-60")
+                        ]}
+                      >
+                        <span class={[
+                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                          if(@dashboard.locked, do: "translate-x-5", else: "translate-x-0")
+                        ]}>
+                        </span>
+                      </button>
+                    </div>
+
+                    <div id="dashboard-action-public-link" class="space-y-3 py-4">
+                      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                            Public Link
+                          </span>
+                          <p class="text-xs text-gray-500 dark:text-slate-400">
+                            Generate a shareable link for read-only access.
+                          </p>
+                        </div>
+                        <%= if @dashboard.access_token do %>
+                          <div class="flex flex-wrap items-center gap-3">
+                            <button
+                              id={"dashboard-public-link-copy-" <> @dashboard.id}
+                              type="button"
+                              phx-hook="CopyFeedback"
+                              phx-click={JS.dispatch("phx:copy", to: "#dashboard-public-url-config")}
+                              data-copy-icon={"dashboard-public-link-copy-icon-" <> @dashboard.id}
+                              data-copied-icon={"dashboard-public-link-copied-icon-" <> @dashboard.id}
+                              data-copy-label={"dashboard-public-link-copy-label-" <> @dashboard.id}
+                              data-copied-label={"dashboard-public-link-copied-label-" <> @dashboard.id}
+                              data-copy-timeout="2000"
+                              class="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700"
+                            >
+                              <svg
+                                id={"dashboard-public-link-copy-icon-" <> @dashboard.id}
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="h-5 w-5"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"
+                                />
+                              </svg>
+                              <svg
+                                id={"dashboard-public-link-copied-icon-" <> @dashboard.id}
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="hidden h-5 w-5 text-green-600"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              <span id={"dashboard-public-link-copy-label-" <> @dashboard.id}>
+                                Copy Public Link
+                              </span>
+                              <span
+                                id={"dashboard-public-link-copied-label-" <> @dashboard.id}
+                                class="hidden text-green-600"
+                              >
+                                Copied
+                              </span>
+                            </button>
+                            <.danger_button
+                              type="button"
+                              phx-click="remove_public_token"
+                              data-confirm="Are you sure you want to remove the public link? Anyone with the current link will lose access."
+                            >
+                              Remove Link
+                            </.danger_button>
+                          </div>
+                        <% else %>
+                          <button
+                            type="button"
+                            phx-click="generate_public_token"
+                            class="inline-flex items-center rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 hover:bg-teal-100 dark:bg-teal-900 dark:text-teal-200 dark:ring-teal-500/30 dark:hover:bg-teal-800"
+                          >
+                            Generate Public Link
+                          </button>
+                        <% end %>
+                      </div>
+                      <%= if @dashboard.access_token do %>
+                        <% public_url =
+                          url(@socket, ~p"/d/#{@dashboard.id}?token=#{@dashboard.access_token}") %>
+                        <code
+                          id="dashboard-public-url-config"
+                          class="block max-w-full break-all rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700 dark:bg-slate-800 dark:text-slate-200"
+                        >
+                          {public_url}
+                        </code>
+                      <% end %>
+                    </div>
+                  <% end %>
+
+                  <%= if @can_clone_dashboard do %>
+                    <div
+                      id="dashboard-action-duplicate"
+                      class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                          Duplicate
+                        </span>
+                        <p class="text-xs text-gray-500 dark:text-slate-400">
+                          Make an independent copy of this dashboard.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="duplicate_dashboard"
+                        class="inline-flex items-center whitespace-nowrap rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-slate-700 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-600"
+                        title="Duplicate dashboard"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke-width="1.5"
+                          stroke="currentColor"
+                          class="h-4 w-4 md:-ml-0.5 md:mr-1.5"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                          />
+                        </svg>
+                        <span class="hidden md:inline">Duplicate</span>
+                      </button>
+                    </div>
+                  <% end %>
+
+                  <%= if @can_edit_dashboard do %>
+                    <div id="dashboard-action-template" class="space-y-4 py-4">
+                      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0 flex-1">
+                          <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                            Template
+                          </span>
+                          <p class="text-xs text-gray-500 dark:text-slate-400">
+                            <%= if @dashboard.template_id do %>
+                              Detach to keep a local copy of the current layout and stop receiving template updates.
+                            <% else %>
+                              Create an organization template from this layout so other dashboards can reuse it.
+                            <% end %>
+                          </p>
+                        </div>
+                        <%= if @dashboard.template_id do %>
+                          <.secondary_button
+                            id="detach-dashboard-template"
+                            type="button"
+                            class="shrink-0 self-start whitespace-nowrap sm:self-auto"
+                            phx-click="detach_dashboard_template"
+                            phx-disable-with="Detaching..."
+                            data-confirm="Detach this dashboard from its template? The current layout will be copied to this dashboard and future template updates will no longer apply."
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke-width="1.5"
+                              stroke="currentColor"
+                              aria-hidden="true"
+                              data-template-action-icon="detach"
+                              class="-ml-0.5 mr-1.5 h-4 w-4"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M8.25 7.5V6.108c0-1.135.845-2.098 1.976-2.192.373-.03.748-.057 1.123-.08M15.75 18H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5A3.375 3.375 0 0 0 6.375 7.5H5.25m11.9-3.664A2.251 2.251 0 0 0 15 2.25h-1.5a2.251 2.251 0 0 0-2.15 1.586m5.8 0c.065.21.1.433.1.664v.75h-6V4.5c0-.231.035-.454.1-.664M6.75 7.5H4.875c-.621 0-1.125.504-1.125 1.125v12c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V16.5a9 9 0 0 0-9-9Z"
+                              />
+                            </svg>
+                            Detach
+                          </.secondary_button>
+                        <% else %>
+                          <.secondary_button
+                            id="convert-dashboard-to-template"
+                            type="button"
+                            class="shrink-0 self-start whitespace-nowrap sm:self-auto"
+                            phx-click="convert_dashboard_to_template"
+                            phx-value-name={@temp_name || @dashboard.name}
+                            phx-disable-with="Creating..."
+                            data-confirm="Convert this dashboard layout into an organization template? Future layout edits will update every dashboard using it."
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke-width="1.5"
+                              stroke="currentColor"
+                              aria-hidden="true"
+                              data-template-action-icon="copy"
+                              class="-ml-0.5 mr-1.5 h-4 w-4"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75"
+                              />
+                            </svg>
+                            Create template
+                          </.secondary_button>
+                        <% end %>
+                      </div>
+
+                      <div id="dashboard-template-field" class="sm:max-w-md">
+                        <label
+                          for="configure_template_id"
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-300"
+                        >
+                          Layout
+                        </label>
+                        <div class="grid grid-cols-1">
+                          <select
+                            id="configure_template_id"
+                            name="template_id"
+                            phx-hook="ConfirmSelect"
+                            data-event="change_dashboard_template"
+                            data-current-value={@dashboard.template_id || ""}
+                            data-confirm-message="Use this template? The dashboard's current layout will be replaced immediately."
+                            class="col-start-1 row-start-1 block w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-teal-600 dark:bg-slate-800 dark:text-white dark:outline-slate-600 sm:text-sm/6"
+                          >
+                            <option
+                              value=""
+                              selected={@selected_dashboard_template_id in [nil, ""]}
+                              disabled={!is_nil(@dashboard.template_id)}
+                            >
+                              No template (local layout)
+                            </option>
+                            <%= for group <- @dashboard_template_groups || [],
+                                    Enum.any?(group.templates) do %>
+                              <optgroup label={group.label}>
+                                <%= for template <- group.templates do %>
+                                  <option
+                                    value={template.template_id}
+                                    selected={@selected_dashboard_template_id == template.template_id}
+                                  >
+                                    {template.name}
+                                  </option>
+                                <% end %>
+                              </optgroup>
+                            <% end %>
+                          </select>
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                            aria-hidden="true"
+                            class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
+                          >
+                            <path
+                              d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                              clip-rule="evenodd"
+                              fill-rule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                          Shared templates synchronize only the layout. Other dashboard settings stay local.
+                        </p>
+                      </div>
+                    </div>
                   <% end %>
                 </div>
+              </div>
 
-                <div class="border-t border-red-200 dark:border-red-800 pt-6">
+              <%= if @can_manage_dashboard do %>
+                <div
+                  id="dashboard-danger-zone"
+                  class="border-t border-red-200 pt-6 dark:border-red-800"
+                >
                   <div class="mb-4">
                     <span class="text-sm font-medium text-red-700 dark:text-red-400">
                       Danger Zone

@@ -103,6 +103,12 @@ defmodule TrifleAdmin.Layouts do
         to: ~p"/admin/dashboards",
         icon: "sidebar-dashboards"
       },
+      %{
+        menu: :dashboard_templates,
+        label: "Dashboard Templates",
+        to: ~p"/admin/dashboard-templates",
+        icon: "sidebar-dashboards"
+      },
       %{menu: :monitors, label: "Monitors", to: ~p"/admin/monitors", icon: "sidebar-monitors"},
       %{menu: :billing, label: "Billing", to: ~p"/admin/billing", icon: "sidebar-billing"}
     ]
@@ -138,6 +144,7 @@ defmodule TrifleAdmin.Layouts do
       {:project_clusters, TrifleAdmin.ProjectClustersLive} -> true
       {:databases, TrifleAdmin.DatabasesLive} -> true
       {:dashboards, TrifleAdmin.DashboardsLive} -> true
+      {:dashboard_templates, TrifleAdmin.DashboardTemplatesLive} -> true
       {:monitors, TrifleAdmin.MonitorsLive} -> true
       {:billing, TrifleAdmin.BillingLive} -> true
       {:billing, TrifleAdmin.BillingPlansLive} -> true

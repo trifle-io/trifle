@@ -3,6 +3,9 @@ defmodule TrifleApp.Components.DashboardPayload do
 
   use TrifleApp, :html
 
+  alias Trifle.Organizations
+  alias Trifle.Organizations.Dashboard
+
   attr :rest, :global
 
   def payload_button(assigns) do
@@ -48,6 +51,15 @@ defmodule TrifleApp.Components.DashboardPayload do
   end
 
   def dashboard_payload_json(nil), do: "{}"
+
+  def dashboard_payload_json(%Dashboard{} = dashboard) do
+    dashboard
+    |> Organizations.resolve_dashboard_template!()
+    |> Map.get(:payload, %{})
+    |> Jason.encode!(pretty: true)
+  rescue
+    _ -> inspect(dashboard.payload || %{}, pretty: true, limit: :infinity)
+  end
 
   def dashboard_payload_json(dashboard) do
     dashboard
