@@ -278,6 +278,43 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
     assert reloaded.payload == original_payload
   end
 
+  test "conversion reloads the dashboard and rejects a stale repeated conversion", context do
+    stale_payload = %{"grid" => [%{"id" => "stale"}]}
+    current_payload = %{"grid" => [%{"id" => "current"}]}
+    {:ok, stale_dashboard} = create_dashboard(context, %{payload: stale_payload})
+
+    assert {:ok, _updated_dashboard} =
+             Organizations.update_dashboard_for_membership(
+               stale_dashboard,
+               context.membership,
+               %{payload: current_payload}
+             )
+
+    template_count = Repo.aggregate(DashboardTemplate, :count, :id)
+
+    assert {:ok, %{template: template, dashboard: converted}} =
+             Organizations.convert_dashboard_to_template(
+               context.user,
+               context.membership,
+               stale_dashboard,
+               %{name: "Current template"}
+             )
+
+    assert template.payload == current_payload
+    assert converted.template_id == DashboardTemplateRef.encode(:user, template.id)
+
+    assert {:error, :already_template_backed} =
+             Organizations.convert_dashboard_to_template(
+               context.user,
+               context.membership,
+               stale_dashboard,
+               %{name: "Duplicate template"}
+             )
+
+    assert Repo.aggregate(DashboardTemplate, :count, :id) == template_count + 1
+    assert Repo.get!(Dashboard, stale_dashboard.id).template_id == converted.template_id
+  end
+
   test "blocks deleting templates that are still linked", context do
     template = create_template(context, "In use", %{"grid" => []})
 

@@ -175,23 +175,36 @@ defmodule Trifle.Organizations.DashboardTemplates do
         {:error, :already_template_backed}
 
       true ->
-        template_changeset =
+        Multi.new()
+        |> Multi.run(:locked_dashboard, fn repo, _changes ->
+          query =
+            from(d in Dashboard,
+              where: d.id == ^dashboard.id and d.organization_id == ^membership.organization_id,
+              lock: "FOR UPDATE"
+            )
+
+          case repo.one(query) do
+            nil -> {:error, :not_found}
+            %Dashboard{template_id: nil} = locked -> {:ok, locked}
+            %Dashboard{} -> {:error, :already_template_backed}
+          end
+        end)
+        |> Multi.insert(:template, fn %{locked_dashboard: locked_dashboard} ->
           DashboardTemplate.changeset(%DashboardTemplate{}, %{
             organization_id: membership.organization_id,
             created_by_id: user.id,
-            name: template_name(attrs, dashboard),
-            payload: dashboard.payload || %{}
+            name: template_name(attrs, locked_dashboard),
+            payload: locked_dashboard.payload || %{}
           })
-
-        Multi.new()
-        |> Multi.insert(:template, template_changeset)
-        |> Multi.run(:dashboard, fn repo, %{template: template} ->
-          dashboard
-          |> Dashboard.changeset(%{
+        end)
+        |> Multi.update(:dashboard, fn %{
+                                         locked_dashboard: locked_dashboard,
+                                         template: template
+                                       } ->
+          Dashboard.changeset(locked_dashboard, %{
             template_id: DashboardTemplateRef.encode(:user, template.id),
             payload: %{}
           })
-          |> repo.update()
         end)
         |> Repo.transaction()
         |> case do
