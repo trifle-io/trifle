@@ -39,6 +39,7 @@ defmodule TrifleApp.Exports.DashboardLayoutTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -107,6 +108,7 @@ defmodule TrifleApp.Exports.DashboardLayoutTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{

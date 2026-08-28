@@ -286,6 +286,34 @@ defmodule TrifleApp.DashboardLiveTest do
     assert reloaded.template_version == 2
   end
 
+  test "stale local dashboard layout edits require a reload", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+    external_payload = %{"grid" => [%{"id" => "external", "type" => "text"}]}
+
+    assert {:ok, externally_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, membership, %{
+               payload: external_payload,
+               dashboard_version: dashboard.lock_version
+             })
+
+    assert externally_updated.lock_version == dashboard.lock_version + 1
+
+    html =
+      render_hook(view, "dashboard_grid_changed", %{
+        "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+      })
+
+    assert html =~ "This dashboard changed since you opened it"
+
+    reloaded = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert reloaded.payload == external_payload
+    assert reloaded.lock_version == dashboard.lock_version + 1
+  end
+
   test "duplicating a template-backed dashboard preserves its template reference", %{
     conn: conn,
     user: user,
@@ -719,6 +747,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -787,6 +816,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -873,6 +903,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -944,6 +975,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1012,6 +1044,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1088,6 +1121,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1138,6 +1172,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1251,6 +1286,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1342,6 +1378,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1412,6 +1449,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1483,6 +1521,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{

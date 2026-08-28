@@ -56,7 +56,7 @@ defmodule TrifleApi.DashboardsController do
          {:ok, dashboard} <- fetch_dashboard(membership, id),
          :ok <- ensure_visible(dashboard),
          {:ok, attrs} <- dashboard_attrs(params, :update),
-         :ok <- validate_template_payload_write(dashboard, attrs),
+         :ok <- validate_payload_version(dashboard, attrs),
          {:ok, %Dashboard{} = updated} <-
            Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
       render(conn, "show.json", dashboard: updated)
@@ -64,7 +64,9 @@ defmodule TrifleApi.DashboardsController do
       {:error, :not_found} -> render_not_found(conn)
       {:error, :forbidden} -> render_not_found(conn)
       {:error, :unauthorized} -> render_forbidden(conn)
+      {:error, :stale_dashboard} -> render_dashboard_conflict(conn)
       {:error, :stale_template} -> render_template_conflict(conn)
+      {:error, :dashboard_version_required} -> render_dashboard_version_required(conn)
       {:error, :template_version_required} -> render_template_version_required(conn)
       {:error, :template_read_only} -> render_template_read_only(conn)
       {:error, %Ecto.Changeset{} = changeset} -> render_changeset(conn, changeset)
@@ -114,6 +116,7 @@ defmodule TrifleApi.DashboardsController do
         "visibility",
         "locked",
         "payload",
+        "dashboard_version",
         "template_version",
         "segments",
         "group_id",
@@ -137,9 +140,14 @@ defmodule TrifleApi.DashboardsController do
     {:ok, attrs}
   end
 
-  defp validate_template_payload_write(dashboard, attrs) do
+  defp validate_payload_version(dashboard, attrs) do
     if Map.has_key?(attrs, "payload") do
       case DashboardTemplateRef.parse(dashboard.template_id) do
+        :none ->
+          if exact_integer?(Map.get(attrs, "dashboard_version")),
+            do: :ok,
+            else: {:error, :dashboard_version_required}
+
         {:ok, {:user, _id}} ->
           if exact_integer?(Map.get(attrs, "template_version")),
             do: :ok,
@@ -186,6 +194,20 @@ defmodule TrifleApi.DashboardsController do
     conn
     |> put_status(:conflict)
     |> json(%{errors: %{template_version: ["is stale; reload the dashboard and try again"]}})
+  end
+
+  defp render_dashboard_conflict(conn) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: %{dashboard_version: ["is stale; reload the dashboard and try again"]}})
+  end
+
+  defp render_dashboard_version_required(conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{
+      errors: %{dashboard_version: ["is required when updating a dashboard payload"]}
+    })
   end
 
   defp render_template_version_required(conn) do

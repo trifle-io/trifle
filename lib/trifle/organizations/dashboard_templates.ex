@@ -300,12 +300,24 @@ defmodule Trifle.Organizations.DashboardTemplates do
 
       true ->
         Repo.transaction(fn ->
-          with {:ok, effective} <- resolve_dashboard(dashboard, lock: true) do
+          locked_dashboard =
+            from(d in Dashboard,
+              where: d.id == ^dashboard.id and d.organization_id == ^membership.organization_id,
+              lock: "FOR UPDATE"
+            )
+            |> Repo.one()
+
+          with %Dashboard{} = locked_dashboard <- locked_dashboard,
+               {:ok, effective} <- resolve_dashboard(locked_dashboard, lock: true) do
             effective
-            |> Dashboard.changeset(%{template_id: nil, payload: effective.payload || %{}})
+            |> Dashboard.payload_changeset(%{
+              template_id: nil,
+              payload: effective.payload || %{}
+            })
             |> Ecto.Changeset.force_change(:payload, effective.payload || %{})
             |> Repo.update!()
           else
+            nil -> Repo.rollback(:not_found)
             {:error, reason} -> Repo.rollback(reason)
           end
         end)

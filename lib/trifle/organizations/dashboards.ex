@@ -286,6 +286,7 @@ defmodule Trifle.Organizations.Dashboards do
       attrs
       |> drop_attr("payload")
       |> drop_attr("template_version")
+      |> drop_attr("dashboard_version")
     end
   end
 
@@ -833,7 +834,9 @@ defmodule Trifle.Organizations.Dashboards do
           {:error, reason}
           when reason in [
                  :invalid_template_id,
+                 :stale_dashboard,
                  :stale_template,
+                 :dashboard_version_required,
                  :template_link_requires_context,
                  :template_not_found,
                  :template_read_only,
@@ -862,19 +865,36 @@ defmodule Trifle.Organizations.Dashboards do
       {payload_provided?, payload} = attr_value(attrs, "payload")
       {version_provided?, expected_version_value} = attr_value(attrs, "template_version")
 
+      {dashboard_version_provided?, expected_dashboard_version_value} =
+        attr_value(attrs, "dashboard_version")
+
       local_attrs =
         attrs
         |> drop_attr("payload")
         |> drop_attr("template_version")
+        |> drop_attr("dashboard_version")
         |> Attrs.assign_org_id(membership.organization_id)
         |> Attrs.atomize_keys()
 
       case DashboardTemplateRef.parse(dashboard.template_id) do
-        :none ->
-          attrs =
-            if payload_provided?, do: Map.put(local_attrs, :payload, payload), else: local_attrs
+        :none when payload_provided? ->
+          with {:ok, expected_version} <-
+                 validate_dashboard_version(
+                   dashboard_version_provided?,
+                   expected_dashboard_version_value
+                 ),
+               {:ok, normalized_payload} <- normalize_dashboard_payload(dashboard, payload) do
+            update_local_dashboard_payload(
+              dashboard,
+              membership,
+              local_attrs,
+              normalized_payload,
+              expected_version
+            )
+          end
 
-          update_local_dashboard(dashboard, attrs)
+        :none ->
+          update_local_dashboard(dashboard, local_attrs)
 
         {:ok, {:system, _key}} when payload_provided? ->
           {:error, :template_read_only}
@@ -943,6 +963,51 @@ defmodule Trifle.Organizations.Dashboards do
     end
   end
 
+  defp update_local_dashboard_payload(
+         dashboard,
+         membership,
+         local_attrs,
+         payload,
+         expected_version
+       ) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.run(:dashboard, fn repo, _changes ->
+      query =
+        from(d in Dashboard,
+          where: d.id == ^dashboard.id and d.organization_id == ^membership.organization_id,
+          lock: "FOR UPDATE"
+        )
+
+      case repo.one(query) do
+        nil ->
+          {:error, :unauthorized}
+
+        %Dashboard{template_id: template_id} when not is_nil(template_id) ->
+          {:error, :stale_dashboard}
+
+        %Dashboard{lock_version: version} when version != expected_version ->
+          {:error, :stale_dashboard}
+
+        locked_dashboard ->
+          if can_edit_dashboard?(locked_dashboard, membership) do
+            locked_dashboard
+            |> Dashboard.payload_changeset(Map.put(local_attrs, :payload, payload))
+            |> repo.update()
+          else
+            {:error, :forbidden}
+          end
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{dashboard: updated_dashboard}} ->
+        DashboardTemplates.resolve_dashboard(updated_dashboard)
+
+      {:error, _operation, reason, _changes} ->
+        {:error, reason}
+    end
+  end
+
   defp normalize_dashboard_payload(dashboard, payload) do
     changeset = Dashboard.changeset(dashboard, %{payload: payload})
 
@@ -992,6 +1057,15 @@ defmodule Trifle.Organizations.Dashboards do
   end
 
   defp validate_template_version(false, _value), do: {:error, :template_version_required}
+
+  defp validate_dashboard_version(true, value) do
+    case parse_integer(value) do
+      version when is_integer(version) -> {:ok, version}
+      _ -> {:error, :dashboard_version_required}
+    end
+  end
+
+  defp validate_dashboard_version(false, _value), do: {:error, :dashboard_version_required}
 
   def delete_dashboard_for_membership(
         %Dashboard{} = dashboard,
@@ -1433,9 +1507,14 @@ defmodule Trifle.Organizations.Dashboards do
   Updates a dashboard.
   """
   def update_dashboard(%Dashboard{} = dashboard, attrs) do
-    dashboard
-    |> Dashboard.changeset(attrs)
-    |> Repo.update()
+    changeset =
+      if attr_present?(attrs, "payload") do
+        Dashboard.payload_changeset(dashboard, attrs)
+      else
+        Dashboard.changeset(dashboard, attrs)
+      end
+
+    Repo.update(changeset, stale_error_field: :lock_version)
   end
 
   @doc """

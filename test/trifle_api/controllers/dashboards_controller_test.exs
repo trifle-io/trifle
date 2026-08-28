@@ -58,6 +58,61 @@ defmodule TrifleApi.DashboardsControllerTest do
     assert data["payload"] == template.payload
   end
 
+  test "requires dashboard_version and returns 409 for stale local payload writes", context do
+    dashboard = create_dashboard(context, nil)
+
+    missing_version_conn =
+      context.conn
+      |> api_conn()
+      |> auth_conn(context.token, context.database.id)
+      |> put(~p"/api/v1/dashboards/#{dashboard.id}", %{
+        dashboard: %{payload: %{"grid" => [%{"id" => "missing-version"}]}}
+      })
+
+    assert %{"errors" => %{"dashboard_version" => [_message]}} =
+             json_response(missing_version_conn, 422)
+
+    for invalid_version <- [nil, "", "1.0", "1x", %{}] do
+      invalid_version_conn =
+        context.conn
+        |> api_conn()
+        |> auth_conn(context.token, context.database.id)
+        |> put(~p"/api/v1/dashboards/#{dashboard.id}", %{
+          dashboard: %{
+            payload: %{"grid" => [%{"id" => "invalid-version"}]},
+            dashboard_version: invalid_version
+          }
+        })
+
+      assert %{"errors" => %{"dashboard_version" => [_message]}} =
+               json_response(invalid_version_conn, 422)
+    end
+
+    payload = %{"grid" => [%{"id" => "updated"}]}
+
+    updated_conn =
+      context.conn
+      |> api_conn()
+      |> auth_conn(context.token, context.database.id)
+      |> put(~p"/api/v1/dashboards/#{dashboard.id}", %{
+        dashboard: %{payload: payload, dashboard_version: 1}
+      })
+
+    assert %{"data" => %{"payload" => ^payload, "dashboard_version" => 2}} =
+             json_response(updated_conn, 200)
+
+    stale_conn =
+      context.conn
+      |> api_conn()
+      |> auth_conn(context.token, context.database.id)
+      |> put(~p"/api/v1/dashboards/#{dashboard.id}", %{
+        dashboard: %{payload: %{"grid" => []}, dashboard_version: 1}
+      })
+
+    assert %{"errors" => %{"dashboard_version" => [_message]}} =
+             json_response(stale_conn, 409)
+  end
+
   test "requires template_version and returns 409 for stale linked payload writes", context do
     template = create_template(context)
     dashboard = create_dashboard(context, DashboardTemplateRef.encode(:user, template.id))

@@ -30,6 +30,7 @@ defmodule TrifleApi.DashboardsJSON do
       template_name: dashboard.template_name,
       template_version: dashboard.template_version,
       template_read_only: dashboard.template_read_only,
+      dashboard_version: dashboard.lock_version,
       payload: dashboard.payload || %{},
       segments: dashboard.segments || [],
       inserted_at: format_datetime(dashboard.inserted_at),

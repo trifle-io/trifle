@@ -94,6 +94,45 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
     assert fresh.template_version == 2
   end
 
+  test "local dashboard payload updates require and increment the dashboard version", context do
+    {:ok, dashboard} = create_dashboard(context, %{payload: %{"grid" => []}})
+    new_payload = %{"grid" => [%{"id" => "new-widget"}]}
+
+    for attrs <- [
+          %{payload: new_payload},
+          %{payload: new_payload, dashboard_version: nil},
+          %{payload: new_payload, dashboard_version: ""},
+          %{payload: new_payload, dashboard_version: "1.0"},
+          %{payload: new_payload, dashboard_version: "1x"}
+        ] do
+      assert {:error, :dashboard_version_required} =
+               Organizations.update_dashboard_for_membership(
+                 dashboard,
+                 context.membership,
+                 attrs
+               )
+    end
+
+    assert {:ok, updated} =
+             Organizations.update_dashboard_for_membership(dashboard, context.membership, %{
+               payload: new_payload,
+               dashboard_version: dashboard.lock_version
+             })
+
+    assert updated.payload == new_payload
+    assert updated.lock_version == 2
+
+    assert {:error, :stale_dashboard} =
+             Organizations.update_dashboard_for_membership(dashboard, context.membership, %{
+               payload: %{"grid" => []},
+               dashboard_version: dashboard.lock_version
+             })
+
+    fresh = Organizations.get_dashboard_for_membership!(context.membership, dashboard.id)
+    assert fresh.payload == new_payload
+    assert fresh.lock_version == 2
+  end
+
   test "shared payload updates require template ownership or an organization admin role",
        context do
     creator = user_fixture()
@@ -264,6 +303,7 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
 
     assert detached.template_id == nil
     assert detached.payload == original_payload
+    assert detached.lock_version == converted.lock_version + 1
 
     assert {:ok, _template} =
              Organizations.update_dashboard_template(
@@ -287,7 +327,10 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
              Organizations.update_dashboard_for_membership(
                stale_dashboard,
                context.membership,
-               %{payload: current_payload}
+               %{
+                 payload: current_payload,
+                 dashboard_version: stale_dashboard.lock_version
+               }
              )
 
     template_count = Repo.aggregate(DashboardTemplate, :count, :id)

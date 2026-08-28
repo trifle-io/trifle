@@ -24,6 +24,7 @@ defmodule Trifle.Organizations.Dashboard do
     field(:source_type, :string)
     field(:source_id, :binary_id)
     field(:template_id, :string)
+    field(:lock_version, :integer, default: 1)
     field(:template_type, Ecto.Enum, values: [:system, :user], virtual: true)
     field(:template_name, :string, virtual: true)
     field(:template_version, :integer, virtual: true)
@@ -88,6 +89,12 @@ defmodule Trifle.Organizations.Dashboard do
     |> handle_payload_field(payload_raw, payload_provided)
     |> handle_segments_field(segments_raw, segments_provided)
     |> unique_constraint(:access_token)
+  end
+
+  def payload_changeset(dashboard, attrs) do
+    dashboard
+    |> changeset(attrs)
+    |> optimistic_lock(:lock_version)
   end
 
   defp handle_payload_field(changeset, payload_raw, payload_provided) do
