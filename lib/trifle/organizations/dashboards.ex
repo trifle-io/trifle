@@ -573,7 +573,7 @@ defmodule Trifle.Organizations.Dashboards do
   defp maybe_limit_query(query, _value), do: query
 
   defp resolve_dashboards_preserving_unresolved(dashboards) do
-    Enum.map(dashboards, &resolve_dashboard_preserving_unresolved/1)
+    DashboardTemplates.resolve_dashboards_preserving_unresolved(dashboards)
   end
 
   defp resolve_dashboard_preserving_unresolved(%Dashboard{} = dashboard) do

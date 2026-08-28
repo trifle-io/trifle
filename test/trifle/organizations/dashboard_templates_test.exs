@@ -297,6 +297,13 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
     assert {:ok, dashboard} =
              create_dashboard(context, %{payload: %{"grid" => [%{"id" => "local"}]}})
 
+    template = create_template(context, "Resolvable", %{"grid" => [%{"id" => "shared"}]})
+
+    assert {:ok, linked_dashboard} =
+             create_dashboard(context, %{
+               template_id: DashboardTemplateRef.encode(:user, template.id)
+             })
+
     missing_reference = DashboardTemplateRef.encode(:user, Ecto.UUID.generate())
 
     Dashboard
@@ -308,6 +315,9 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
 
     assert %Dashboard{template_id: ^missing_reference} =
              Enum.find(listed, &(&1.id == dashboard.id))
+
+    assert %Dashboard{payload: %{"grid" => [%{"id" => "shared"}]}} =
+             Enum.find(listed, &(&1.id == linked_dashboard.id))
 
     assert %Dashboard{template_id: ^missing_reference} =
              Organizations.get_dashboard_for_membership!(context.membership, dashboard.id)

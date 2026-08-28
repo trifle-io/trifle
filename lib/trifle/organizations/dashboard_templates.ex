@@ -320,6 +320,32 @@ defmodule Trifle.Organizations.DashboardTemplates do
   end
 
   def resolve_dashboards(dashboards) when is_list(dashboards) do
+    templates_by_id = user_templates_by_id(dashboards)
+
+    Enum.reduce_while(dashboards, {:ok, []}, fn dashboard, {:ok, acc} ->
+      case resolve_dashboard_from_map(dashboard, templates_by_id) do
+        {:ok, resolved} -> {:cont, {:ok, [resolved | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, resolved} -> {:ok, Enum.reverse(resolved)}
+      error -> error
+    end
+  end
+
+  def resolve_dashboards_preserving_unresolved(dashboards) when is_list(dashboards) do
+    templates_by_id = user_templates_by_id(dashboards)
+
+    Enum.map(dashboards, fn dashboard ->
+      case resolve_dashboard_from_map(dashboard, templates_by_id) do
+        {:ok, resolved} -> resolved
+        {:error, _reason} -> dashboard
+      end
+    end)
+  end
+
+  defp user_templates_by_id(dashboards) do
     user_ids =
       dashboards
       |> Enum.flat_map(fn dashboard ->
@@ -330,28 +356,17 @@ defmodule Trifle.Organizations.DashboardTemplates do
       end)
       |> Enum.uniq()
 
-    templates_by_id =
-      from(t in DashboardTemplate, where: t.id in ^user_ids)
-      |> Repo.all()
-      |> Map.new(&{&1.id, &1})
+    from(t in DashboardTemplate, where: t.id in ^user_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
+  end
 
-    Enum.reduce_while(dashboards, {:ok, []}, fn dashboard, {:ok, acc} ->
-      result =
-        case DashboardTemplateRef.parse(dashboard.template_id) do
-          :none -> {:ok, clear_template_metadata(dashboard)}
-          {:ok, {:system, key}} -> resolve_system(dashboard, key)
-          {:ok, {:user, id}} -> resolve_user_from_map(dashboard, id, templates_by_id)
-          {:error, reason} -> {:error, reason}
-        end
-
-      case result do
-        {:ok, resolved} -> {:cont, {:ok, [resolved | acc]}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, resolved} -> {:ok, Enum.reverse(resolved)}
-      error -> error
+  defp resolve_dashboard_from_map(dashboard, templates_by_id) do
+    case DashboardTemplateRef.parse(dashboard.template_id) do
+      :none -> {:ok, clear_template_metadata(dashboard)}
+      {:ok, {:system, key}} -> resolve_system(dashboard, key)
+      {:ok, {:user, id}} -> resolve_user_from_map(dashboard, id, templates_by_id)
+      {:error, reason} -> {:error, reason}
     end
   end
 
