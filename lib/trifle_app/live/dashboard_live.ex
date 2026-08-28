@@ -1420,6 +1420,7 @@ defmodule TrifleApp.DashboardLive do
           {:ok, %{template: template, dashboard: updated_dashboard}} ->
             {:noreply,
              socket
+             |> assign(:layout_stale, false)
              |> assign_dashboard(updated_dashboard)
              |> assign_dashboard_template_options(updated_dashboard)
              |> put_flash(:info, "Converted to template #{template.name}")
@@ -1447,6 +1448,7 @@ defmodule TrifleApp.DashboardLive do
         {:ok, updated_dashboard} ->
           {:noreply,
            socket
+           |> assign(:layout_stale, false)
            |> assign_dashboard(updated_dashboard)
            |> assign_dashboard_template_options(updated_dashboard)
            |> put_flash(:info, "Dashboard detached from template")

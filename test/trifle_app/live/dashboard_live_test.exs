@@ -314,6 +314,75 @@ defmodule TrifleApp.DashboardLiveTest do
     assert reloaded.lock_version == dashboard.lock_version + 1
   end
 
+  test "converting a stale local dashboard restores layout editing", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert {:ok, _externally_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, membership, %{
+               payload: %{"grid" => []},
+               dashboard_version: dashboard.lock_version
+             })
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+    })
+
+    refute has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    render_click(view, "convert_dashboard_to_template", %{"name" => "Recovered template"})
+
+    assert has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    template =
+      membership
+      |> Organizations.list_user_dashboard_templates_for_membership()
+      |> Enum.find(&(&1.name == "Recovered template"))
+
+    assert template.created_by_id == user.id
+  end
+
+  test "detaching a stale template restores layout editing", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, template} =
+      Organizations.create_dashboard_template(user, membership, %{
+        name: "Stale shared layout",
+        payload: dashboard.payload
+      })
+
+    {:ok, dashboard} =
+      Organizations.link_dashboard_template(dashboard, membership, "user:#{template.id}")
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert {:ok, _updated_template} =
+             Organizations.update_dashboard_template(template, user, membership, %{
+               payload: %{"grid" => []},
+               template_version: template.lock_version
+             })
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+    })
+
+    refute has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    render_click(view, "detach_dashboard_template", %{})
+
+    assert has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    assert Organizations.get_dashboard_for_membership!(membership, dashboard.id).template_id ==
+             nil
+  end
+
   test "duplicating a template-backed dashboard preserves its template reference", %{
     conn: conn,
     user: user,
