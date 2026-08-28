@@ -43,8 +43,7 @@ defmodule TrifleApp.DesignSystem.Modal do
       phx-key={if(cancel_action, do: "escape", else: nil)}
     >
       <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-        <div class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-slate-900/80">
-        </div>
+        <div class="fixed inset-0 bg-gray-500/75 transition-opacity dark:bg-slate-900/80"></div>
 
         <div class={[
           "relative transform rounded-lg bg-white dark:bg-slate-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:p-6",
@@ -76,10 +75,7 @@ defmodule TrifleApp.DesignSystem.Modal do
     <!-- Title -->
           <div class={["sm:flex sm:items-start", if(@size == "full", do: "flex-none")]}>
             <div class="mt-3 w-full text-center sm:ml-0 sm:mt-0 sm:text-left">
-              <h3
-                class="text-base font-semibold text-gray-900 dark:text-white"
-                id={"#{@id}-title"}
-              >
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white" id={"#{@id}-title"}>
                 {render_slot(@title)}
               </h3>
             </div>

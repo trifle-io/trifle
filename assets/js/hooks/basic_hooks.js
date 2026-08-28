@@ -90,6 +90,59 @@ Hooks.CopyFeedback = {
   }
 }
 
+Hooks.ConfirmSelect = {
+  mounted() {
+    this.syncConfirmedValue()
+
+    this._handleConfirmedChange = () => {
+      const nextValue = this.el.value
+
+      if (nextValue === this.confirmedValue) return
+
+      const message = this.el.dataset.confirmMessage || "Apply this selection?"
+
+      if (!window.confirm(message)) {
+        this.el.value = this.confirmedValue
+        return
+      }
+
+      const eventName = this.el.dataset.event
+      if (!eventName) {
+        this.el.value = this.confirmedValue
+        return
+      }
+
+      this.el.disabled = true
+      this.el.setAttribute("aria-busy", "true")
+
+      this.pushEvent(eventName, {value: nextValue}, (reply = {}) => {
+        if (reply.ok !== true) {
+          this.el.value = this.confirmedValue
+        }
+
+        this.el.disabled = false
+        this.el.removeAttribute("aria-busy")
+      })
+    }
+
+    this.el.addEventListener("change", this._handleConfirmedChange)
+  },
+  updated() {
+    this.syncConfirmedValue()
+    this.el.disabled = false
+    this.el.removeAttribute("aria-busy")
+  },
+  destroyed() {
+    if (this._handleConfirmedChange) {
+      this.el.removeEventListener("change", this._handleConfirmedChange)
+    }
+  },
+  syncConfirmedValue() {
+    this.confirmedValue = this.el.dataset.currentValue || ""
+    this.el.value = this.confirmedValue
+  }
+}
+
 Hooks.SmartTimeframeInput = {
   mounted() {
     this.handleEvent("update_smart_timeframe_input", ({value}) => {

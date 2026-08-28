@@ -14,7 +14,10 @@ defmodule TrifleApp.DesignSystem.DataTable do
 
   def data_table(assigns) do
     ~H"""
-    <div class={["rounded-lg bg-white shadow-sm ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/5", @class]}>
+    <div class={[
+      "rounded-lg bg-white shadow-sm ring-1 ring-black/5 dark:bg-slate-800 dark:ring-white/5",
+      @class
+    ]}>
       {render_slot(@header)}
 
       <div class="overflow-x-auto overflow-hidden" id={@id} phx-hook={@phx_hook}>

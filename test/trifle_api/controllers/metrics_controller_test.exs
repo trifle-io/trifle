@@ -12,6 +12,8 @@ defmodule TrifleApi.MetricsControllerTest do
   alias Trifle.Repo
 
   setup do
+    on_exit(Trifle.ConfigFixtures.enable_saas_with_projects())
+
     previous_metrics_module = Application.get_env(:trifle, :metrics_module)
     Application.put_env(:trifle, :metrics_module, Trifle.MetricsMock)
     start_supervised!(Trifle.MetricsMock)

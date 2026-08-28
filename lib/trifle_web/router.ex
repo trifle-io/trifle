@@ -43,6 +43,15 @@ defmodule TrifleWeb.Router do
       live "/billing/plans/:id/show", BillingPlansLive, :show
       live "/billing/plans/:id/edit", BillingPlansLive, :edit
     end
+
+    live_session :dashboard_templates_admin,
+      on_mount: [
+        {TrifleApp.UserAuth, :ensure_authenticated},
+        {TrifleApp.UserAuth, :ensure_admin}
+      ] do
+      live "/dashboard-templates", DashboardTemplatesLive, :index
+      live "/dashboard-templates/:id/show", DashboardTemplatesLive, :show
+    end
   end
 
   scope "/admin" do

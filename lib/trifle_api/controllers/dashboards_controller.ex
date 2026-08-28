@@ -4,6 +4,7 @@ defmodule TrifleApi.DashboardsController do
   alias Ecto.NoResultsError
   alias Trifle.Organizations
   alias Trifle.Organizations.Dashboard
+  alias Trifle.Organizations.DashboardTemplateRef
   alias TrifleApi.AuthContext
 
   plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
@@ -55,6 +56,7 @@ defmodule TrifleApi.DashboardsController do
          {:ok, dashboard} <- fetch_dashboard(membership, id),
          :ok <- ensure_visible(dashboard),
          {:ok, attrs} <- dashboard_attrs(params, :update),
+         :ok <- validate_payload_version(dashboard, attrs),
          {:ok, %Dashboard{} = updated} <-
            Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
       render(conn, "show.json", dashboard: updated)
@@ -62,6 +64,11 @@ defmodule TrifleApi.DashboardsController do
       {:error, :not_found} -> render_not_found(conn)
       {:error, :forbidden} -> render_not_found(conn)
       {:error, :unauthorized} -> render_forbidden(conn)
+      {:error, :stale_dashboard} -> render_dashboard_conflict(conn)
+      {:error, :stale_template} -> render_template_conflict(conn)
+      {:error, :dashboard_version_required} -> render_dashboard_version_required(conn)
+      {:error, :template_version_required} -> render_template_version_required(conn)
+      {:error, :template_read_only} -> render_template_read_only(conn)
       {:error, %Ecto.Changeset{} = changeset} -> render_changeset(conn, changeset)
       _ -> render_unauthorized(conn)
     end
@@ -109,6 +116,8 @@ defmodule TrifleApi.DashboardsController do
         "visibility",
         "locked",
         "payload",
+        "dashboard_version",
+        "template_version",
         "segments",
         "group_id",
         "default_timeframe",
@@ -131,6 +140,35 @@ defmodule TrifleApi.DashboardsController do
     {:ok, attrs}
   end
 
+  defp validate_payload_version(dashboard, attrs) do
+    if Map.has_key?(attrs, "payload") do
+      case DashboardTemplateRef.parse(dashboard.template_id) do
+        :none ->
+          if exact_integer?(Map.get(attrs, "dashboard_version")),
+            do: :ok,
+            else: {:error, :dashboard_version_required}
+
+        {:ok, {:user, _id}} ->
+          if exact_integer?(Map.get(attrs, "template_version")),
+            do: :ok,
+            else: {:error, :template_version_required}
+
+        _ ->
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  defp exact_integer?(value) when is_integer(value), do: true
+
+  defp exact_integer?(value) when is_binary(value) do
+    match?({_integer, ""}, Integer.parse(value))
+  end
+
+  defp exact_integer?(_value), do: false
+
   defp render_changeset(conn, changeset) do
     conn
     |> put_status(:unprocessable_entity)
@@ -150,6 +188,40 @@ defmodule TrifleApi.DashboardsController do
     |> put_status(:forbidden)
     |> put_view(TrifleApi.ErrorJSON)
     |> render("403.json")
+  end
+
+  defp render_template_conflict(conn) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: %{template_version: ["is stale; reload the dashboard and try again"]}})
+  end
+
+  defp render_dashboard_conflict(conn) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: %{dashboard_version: ["is stale; reload the dashboard and try again"]}})
+  end
+
+  defp render_dashboard_version_required(conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{
+      errors: %{dashboard_version: ["is required when updating a dashboard payload"]}
+    })
+  end
+
+  defp render_template_version_required(conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{
+      errors: %{template_version: ["is required when updating a template-backed payload"]}
+    })
+  end
+
+  defp render_template_read_only(conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{errors: %{payload: ["cannot be changed for a system template"]}})
   end
 
   defp render_unauthorized(conn) do

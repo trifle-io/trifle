@@ -7,7 +7,6 @@ defmodule TrifleApp.Components.DashboardFooter do
   """
   use TrifleApp, :html
 
-
   attr :summary, :map, required: true
   attr :load_duration_microseconds, :integer, default: nil
   attr :show_export_dropdown, :boolean, default: false

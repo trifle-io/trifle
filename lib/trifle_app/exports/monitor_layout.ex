@@ -89,13 +89,15 @@ defmodule TrifleApp.Exports.MonitorLayout do
   @spec series_export(Monitor.t(), Keyword.t()) ::
           {:ok, %{export: SeriesExport.result(), timeframe: map()}} | {:error, term()}
   def series_export(%Monitor{} = monitor, opts \\ []) do
-    with {:ok, context} <- build_context(monitor, opts) do
+    with {:ok, monitor} <- resolve_monitor_dashboard(monitor),
+         {:ok, context} <- build_context(monitor, opts) do
       {:ok, %{export: context.export, timeframe: context.timeframe}}
     end
   end
 
   defp do_build(monitor, opts) do
-    with {:ok, context} <- build_context(monitor, opts),
+    with {:ok, monitor} <- resolve_monitor_dashboard(monitor),
+         {:ok, context} <- build_context(monitor, opts),
          {:ok, layout} <-
            compose_layout(
              monitor,
@@ -110,6 +112,16 @@ defmodule TrifleApp.Exports.MonitorLayout do
       {:ok, layout}
     end
   end
+
+  defp resolve_monitor_dashboard(
+         %Monitor{dashboard: %Organizations.Dashboard{} = dashboard} = monitor
+       ) do
+    with {:ok, effective_dashboard} <- Organizations.resolve_dashboard_template(dashboard) do
+      {:ok, %{monitor | dashboard: effective_dashboard}}
+    end
+  end
+
+  defp resolve_monitor_dashboard(%Monitor{} = monitor), do: {:ok, monitor}
 
   defp build_context(monitor, opts) do
     params = Keyword.get(opts, :params, %{})

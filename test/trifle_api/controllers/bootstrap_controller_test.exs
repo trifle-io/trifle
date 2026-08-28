@@ -11,6 +11,8 @@ defmodule TrifleApi.BootstrapControllerTest do
   alias Trifle.Repo
 
   setup %{conn: conn} do
+    on_exit(Trifle.ConfigFixtures.enable_saas_with_projects(sqlite_storage_backend: :local))
+
     user = user_fixture()
 
     {:ok, conn: api_conn(conn), user: user}

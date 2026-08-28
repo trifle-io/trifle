@@ -53,7 +53,8 @@ defmodule TrifleApp.Exports.DashboardLayout do
 
     viewport = Keyword.get(opts, :viewport, default_viewport)
 
-    with {:ok, source} <- dashboard_source(dashboard),
+    with {:ok, dashboard} <- Organizations.resolve_dashboard_template(dashboard),
+         {:ok, source} <- dashboard_source(dashboard),
          {:ok, timeframe} <- resolve_timeframe(source, dashboard, params),
          {:ok, export} <- fetch_series(source, timeframe),
          {:ok, layout} <-

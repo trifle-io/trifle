@@ -4,6 +4,7 @@ defmodule TrifleApp.DashboardLive do
   on_mount({TrifleApp.Live.PageShell, :default})
 
   alias Trifle.Organizations
+  alias Trifle.Organizations.DashboardTemplateRef
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations.DashboardSegments
   alias Trifle.Organizations.SourceAnnotations
@@ -150,6 +151,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, component_source_ref(socket.assigns.source))
     |> assign(:configure_segments, configure_segments_from_dashboard(socket.assigns.dashboard))
+    |> assign_dashboard_template_options(socket.assigns.dashboard)
   end
 
   def handle_event("update_temp_name", %{"value" => name}, socket) do
@@ -482,7 +484,8 @@ defmodule TrifleApp.DashboardLive do
         attrs = %{
           "name" => (original.name || "Dashboard") <> " (copy)",
           "key" => original.key || "dashboard",
-          "payload" => original.payload || %{},
+          "payload" => if(original.template_id, do: %{}, else: original.payload || %{}),
+          "template_id" => original.template_id,
           "visibility" => original.visibility,
           "group_id" => original.group_id,
           "position" =>
@@ -522,7 +525,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      !socket.assigns.can_edit_dashboard ->
+      !socket.assigns.can_edit_dashboard_layout ->
         {:noreply, socket}
 
       true ->
@@ -537,7 +540,7 @@ defmodule TrifleApp.DashboardLive do
         case Organizations.update_dashboard_for_membership(
                dashboard,
                membership,
-               %{payload: payload}
+               dashboard_payload_update_attrs(dashboard, payload)
              ) do
           {:ok, updated_dashboard} ->
             # If stats are loaded, recompute KPI values (in case new widgets were added)
@@ -547,8 +550,8 @@ defmodule TrifleApp.DashboardLive do
 
             {:noreply, socket}
 
-          {:error, _} ->
-            {:noreply, socket}
+          {:error, reason} ->
+            {:noreply, handle_layout_update_error(socket, reason)}
         end
     end
   end
@@ -562,7 +565,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      !socket.assigns.can_edit_dashboard ->
+      !socket.assigns.can_edit_dashboard_layout ->
         {:noreply, socket}
 
       GroupExpansion.synthetic_id?(id) ->
@@ -638,7 +641,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      !socket.assigns.can_edit_dashboard ->
+      !socket.assigns.can_edit_dashboard_layout ->
         {:noreply, socket}
 
       true ->
@@ -670,7 +673,7 @@ defmodule TrifleApp.DashboardLive do
             case Organizations.update_dashboard_for_membership(
                    socket.assigns.dashboard,
                    membership,
-                   %{payload: payload}
+                   dashboard_payload_update_attrs(socket.assigns.dashboard, payload)
                  ) do
               {:ok, dashboard} ->
                 saved_item = LayoutTree.find_node(updated, id) || %{}
@@ -689,8 +692,8 @@ defmodule TrifleApp.DashboardLive do
                    widget_update_event_payload(id, title, resolved_type, saved_item)
                  )}
 
-              {:error, _} ->
-                {:noreply, socket}
+              {:error, reason} ->
+                {:noreply, handle_layout_update_error(socket, reason)}
             end
 
           {:error, message} ->
@@ -1031,7 +1034,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      !socket.assigns.can_edit_dashboard ->
+      !socket.assigns.can_edit_dashboard_layout ->
         {:noreply, socket}
 
       true ->
@@ -1044,7 +1047,7 @@ defmodule TrifleApp.DashboardLive do
         case Organizations.update_dashboard_for_membership(
                socket.assigns.dashboard,
                membership,
-               %{payload: payload}
+               dashboard_payload_update_attrs(socket.assigns.dashboard, payload)
              ) do
           {:ok, dashboard} ->
             widget_id = to_string(id)
@@ -1062,8 +1065,8 @@ defmodule TrifleApp.DashboardLive do
 
             {:noreply, socket}
 
-          {:error, _} ->
-            {:noreply, socket}
+          {:error, reason} ->
+            {:noreply, handle_layout_update_error(socket, reason)}
         end
     end
   end
@@ -1076,7 +1079,7 @@ defmodule TrifleApp.DashboardLive do
       is_nil(socket.assigns[:current_user]) ->
         {:noreply, socket}
 
-      !socket.assigns.can_edit_dashboard ->
+      !socket.assigns.can_edit_dashboard_layout ->
         {:noreply, socket}
 
       true ->
@@ -1093,7 +1096,7 @@ defmodule TrifleApp.DashboardLive do
           case Organizations.update_dashboard_for_membership(
                  socket.assigns.dashboard,
                  membership,
-                 %{payload: payload}
+                 dashboard_payload_update_attrs(socket.assigns.dashboard, payload)
                ) do
             {:ok, dashboard} ->
               socket =
@@ -1106,8 +1109,8 @@ defmodule TrifleApp.DashboardLive do
 
               {:noreply, socket}
 
-            {:error, _} ->
-              {:noreply, socket}
+            {:error, reason} ->
+              {:noreply, handle_layout_update_error(socket, reason)}
           end
         end
     end
@@ -1204,6 +1207,49 @@ defmodule TrifleApp.DashboardLive do
     reload_current_timeframe(socket)
   end
 
+  def handle_event(
+        "change_dashboard_template",
+        %{"value" => template_id},
+        socket
+      ) do
+    cond do
+      !socket.assigns.can_edit_dashboard ->
+        {:reply, %{ok: false},
+         put_flash(
+           socket,
+           :error,
+           permission_message(socket, "You do not have permission to update this dashboard")
+         )}
+
+      template_id in [nil, ""] ->
+        {:reply, %{ok: false}, socket}
+
+      template_id == socket.assigns.dashboard.template_id ->
+        {:reply, %{ok: true}, socket}
+
+      true ->
+        dashboard = socket.assigns.dashboard
+        membership = socket.assigns.current_membership
+
+        case Organizations.link_dashboard_template(dashboard, membership, template_id) do
+          {:ok, updated_dashboard} ->
+            updated_socket =
+              socket
+              |> assign(:layout_stale, false)
+              |> assign_dashboard(updated_dashboard)
+              |> assign_dashboard_template_options(updated_dashboard)
+              |> put_flash(:info, "Dashboard now uses #{updated_dashboard.template_name}")
+              |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")
+
+            {:reply, %{ok: true}, updated_socket}
+
+          {:error, reason} ->
+            {:reply, %{ok: false},
+             put_flash(socket, :error, dashboard_template_error_message(reason))}
+        end
+    end
+  end
+
   def handle_event("segments_editor_change", params, socket) do
     current_segments = socket.assigns.configure_segments || []
     segments_params = Map.get(params, "segments", %{})
@@ -1217,6 +1263,14 @@ defmodule TrifleApp.DashboardLive do
       socket
       |> assign(:configure_segments, updated_segments)
       |> assign(:temp_timeframe, Map.get(params, "timeframe", socket.assigns[:temp_timeframe]))
+      |> assign(
+        :selected_dashboard_template_id,
+        Map.get(
+          params,
+          "template_id",
+          socket.assigns[:selected_dashboard_template_id]
+        )
+      )
 
     {:noreply, socket}
   end
@@ -1330,6 +1384,82 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  def handle_event("convert_dashboard_to_template", params, socket) do
+    cond do
+      !socket.assigns.can_edit_dashboard ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           permission_message(socket, "You do not have permission to update this dashboard")
+         )}
+
+      !is_nil(socket.assigns.dashboard.template_id) ->
+        {:noreply, put_flash(socket, :error, "This dashboard already uses a template")}
+
+      true ->
+        dashboard = socket.assigns.dashboard
+        membership = socket.assigns.current_membership
+
+        template_name =
+          params
+          |> Map.get("name", dashboard.name)
+          |> to_string()
+          |> String.trim()
+          |> case do
+            "" -> dashboard.name
+            name -> name
+          end
+
+        case Organizations.convert_dashboard_to_template(
+               socket.assigns.current_user,
+               membership,
+               dashboard,
+               %{name: template_name}
+             ) do
+          {:ok, %{template: template, dashboard: updated_dashboard}} ->
+            {:noreply,
+             socket
+             |> assign(:layout_stale, false)
+             |> assign_dashboard(updated_dashboard)
+             |> assign_dashboard_template_options(updated_dashboard)
+             |> put_flash(:info, "Converted to template #{template.name}")
+             |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, dashboard_template_error_message(reason))}
+        end
+    end
+  end
+
+  def handle_event("detach_dashboard_template", _params, socket) do
+    if !socket.assigns.can_edit_dashboard do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         permission_message(socket, "You do not have permission to update this dashboard")
+       )}
+    else
+      dashboard = socket.assigns.dashboard
+      membership = socket.assigns.current_membership
+
+      case Organizations.detach_dashboard_template(dashboard, membership) do
+        {:ok, updated_dashboard} ->
+          {:noreply,
+           socket
+           |> assign(:layout_stale, false)
+           |> assign_dashboard(updated_dashboard)
+           |> assign_dashboard_template_options(updated_dashboard)
+           |> put_flash(:info, "Dashboard detached from template")
+           |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, dashboard_template_error_message(reason))}
+      end
+    end
+  end
+
   def handle_event("save_settings", params, socket) do
     if !socket.assigns.can_edit_dashboard do
       {:noreply,
@@ -1345,6 +1475,7 @@ defmodule TrifleApp.DashboardLive do
       tf = Map.get(params, "timeframe")
       gran = Map.get(params, "granularity")
       source_ref = Map.get(params, "source_ref")
+      template_id = Map.get(params, "template_id", dashboard.template_id)
 
       segment_params = Map.get(params, "segments") || %{}
 
@@ -1374,7 +1505,12 @@ defmodule TrifleApp.DashboardLive do
                membership
              ),
            {:ok, attrs} <- apply_source_to_attrs(attrs, source) do
-        case Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
+        case Organizations.update_dashboard_configuration(
+               dashboard,
+               membership,
+               attrs,
+               template_id
+             ) do
           {:ok, updated_dashboard} ->
             new_sources =
               membership
@@ -1395,11 +1531,27 @@ defmodule TrifleApp.DashboardLive do
              |> assign(:temp_timeframe, dashboard_default_timeframe(updated_dashboard, source))
              |> assign(:page_title, updated_page_title)
              |> assign(:configure_segments, configure_segments_from_dashboard(updated_dashboard))
+             |> assign_dashboard_template_options(updated_dashboard)
              |> put_flash(:info, "Settings saved")
              |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
 
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, "Failed to save settings")}
+          {:error, reason} ->
+            message =
+              case reason do
+                %Ecto.Changeset{} = changeset ->
+                  changeset_error_message(changeset) || "Failed to save settings"
+
+                reason when reason in [:forbidden, :unauthorized] ->
+                  permission_message(
+                    socket,
+                    "You do not have permission to update this dashboard"
+                  )
+
+                reason ->
+                  dashboard_template_error_message(reason)
+              end
+
+            {:noreply, put_flash(socket, :error, message)}
         end
       else
         {:error, message} ->
@@ -1698,10 +1850,10 @@ defmodule TrifleApp.DashboardLive do
         can_navigate: true,
         can_change_query: true,
         can_preview_dashboard_update: true,
-        can_apply_dashboard_update: socket.assigns[:can_edit_dashboard] == true
+        can_apply_dashboard_update: socket.assigns[:can_edit_dashboard_layout] == true
       },
       editable_payload_ref:
-        if(socket.assigns[:can_edit_dashboard],
+        if(socket.assigns[:can_edit_dashboard_layout],
           do: %{type: "dashboard", id: to_string(dashboard.id)}
         )
     )
@@ -1715,7 +1867,7 @@ defmodule TrifleApp.DashboardLive do
       socket.assigns[:is_public_access] ->
         {socket, {:error, "Public dashboards cannot be modified from chat."}}
 
-      !socket.assigns[:can_edit_dashboard] ->
+      !socket.assigns[:can_edit_dashboard_layout] ->
         {socket, {:error, error_message}}
 
       true ->
@@ -1734,7 +1886,10 @@ defmodule TrifleApp.DashboardLive do
               visualization_value(dashboard_data, "default_granularity") ||
                 socket.assigns.dashboard.default_granularity
           }
-          |> maybe_put_dashboard_payload(visualization_value(dashboard_data, "payload"))
+          |> maybe_put_dashboard_payload(
+            visualization_value(dashboard_data, "payload"),
+            socket.assigns.dashboard
+          )
           |> maybe_put_dashboard_source_attrs(source)
 
         case Organizations.update_dashboard_for_membership(
@@ -1766,6 +1921,17 @@ defmodule TrifleApp.DashboardLive do
           {:error, :unauthorized} ->
             {socket, {:error, error_message}}
 
+          {:error, :stale_template} ->
+            updated_socket = handle_layout_update_error(socket, :stale_template)
+            {updated_socket, {:error, "Reload the dashboard before updating its template."}}
+
+          {:error, :stale_dashboard} ->
+            updated_socket = handle_layout_update_error(socket, :stale_dashboard)
+            {updated_socket, {:error, "Reload the dashboard before updating its layout."}}
+
+          {:error, :template_read_only} ->
+            {socket, {:error, "System template layouts cannot be edited."}}
+
           {:error, %Ecto.Changeset{} = changeset} ->
             {socket, {:error, changeset_error_message(changeset) || "Failed to update dashboard"}}
 
@@ -1775,8 +1941,26 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp maybe_put_dashboard_payload(attrs, %{} = payload), do: Map.put(attrs, "payload", payload)
-  defp maybe_put_dashboard_payload(attrs, _payload), do: attrs
+  defp maybe_put_dashboard_payload(attrs, %{} = payload, dashboard) do
+    Map.merge(attrs, dashboard_payload_update_attrs(dashboard, payload))
+  end
+
+  defp maybe_put_dashboard_payload(attrs, _payload, _dashboard), do: attrs
+
+  defp dashboard_payload_update_attrs(dashboard, payload) do
+    attrs = %{payload: payload}
+
+    case {DashboardTemplateRef.parse(dashboard.template_id), dashboard.template_version} do
+      {:none, _template_version} ->
+        Map.put(attrs, :dashboard_version, dashboard.lock_version)
+
+      {{:ok, {:user, _id}}, version} when is_integer(version) ->
+        Map.put(attrs, :template_version, version)
+
+      _ ->
+        attrs
+    end
+  end
 
   defp maybe_put_dashboard_source_attrs(attrs, nil), do: attrs
 
@@ -1890,6 +2074,7 @@ defmodule TrifleApp.DashboardLive do
     |> assign(:dashboard_source_status, dashboard_source_status)
     |> assign(:sources, sources)
     |> assign(:selected_source_ref, selected_source_ref)
+    |> assign(:layout_stale, false)
     |> assign_dashboard(dashboard)
     |> assign(:is_public_access, is_public_access)
     |> assign(:public_token, public_token)
@@ -2157,9 +2342,15 @@ defmodule TrifleApp.DashboardLive do
       match?(%Trifle.Organizations.Dashboard{}, dashboard) and
           match?(%Trifle.Organizations.OrganizationMembership{}, membership) ->
         can_manage = Organizations.can_manage_dashboard?(dashboard, membership)
+        can_edit = Organizations.can_edit_dashboard?(dashboard, membership)
+        layout_stale = socket.assigns[:layout_stale] == true
 
         socket
-        |> assign(:can_edit_dashboard, Organizations.can_edit_dashboard?(dashboard, membership))
+        |> assign(:can_edit_dashboard, can_edit)
+        |> assign(
+          :can_edit_dashboard_layout,
+          can_edit && !dashboard.template_read_only && !layout_stale
+        )
         |> assign(:can_clone_dashboard, Organizations.can_clone_dashboard?(dashboard, membership))
         |> assign(:can_manage_dashboard, can_manage)
         |> assign(:can_manage_lock, can_manage)
@@ -2168,6 +2359,7 @@ defmodule TrifleApp.DashboardLive do
       true ->
         socket
         |> assign(:can_edit_dashboard, false)
+        |> assign(:can_edit_dashboard_layout, false)
         |> assign(:can_clone_dashboard, false)
         |> assign(:can_manage_dashboard, false)
         |> assign(:can_manage_lock, false)
@@ -2198,6 +2390,63 @@ defmodule TrifleApp.DashboardLive do
     |> assign_dashboard_permissions()
     |> assign_dashboard_owner_state()
     |> assign_segment_state()
+  end
+
+  defp assign_dashboard_template_options(socket, dashboard) do
+    socket
+    |> assign(
+      :dashboard_template_groups,
+      Organizations.list_available_dashboard_templates(socket.assigns.current_membership)
+    )
+    |> assign(:selected_dashboard_template_id, dashboard.template_id)
+  end
+
+  defp dashboard_template_error_message(:already_template_backed),
+    do: "This dashboard already uses a template"
+
+  defp dashboard_template_error_message(:template_not_found),
+    do: "The selected dashboard template is no longer available"
+
+  defp dashboard_template_error_message(:invalid_template_id),
+    do: "The selected dashboard template is invalid"
+
+  defp dashboard_template_error_message(:template_detach_requires_context),
+    do: "Use the Detach action to stop using this template"
+
+  defp dashboard_template_error_message(:stale_template),
+    do: "This dashboard template changed. Reload the page and try again."
+
+  defp dashboard_template_error_message(%Ecto.Changeset{}),
+    do: "Failed to save settings"
+
+  defp dashboard_template_error_message(_reason), do: "Failed to update the dashboard template"
+
+  defp handle_layout_update_error(socket, :stale_template) do
+    socket
+    |> assign(:layout_stale, true)
+    |> assign_dashboard_permissions()
+    |> put_flash(
+      :error,
+      "This dashboard template changed since you opened it. Reload the page before making more layout changes."
+    )
+  end
+
+  defp handle_layout_update_error(socket, :stale_dashboard) do
+    socket
+    |> assign(:layout_stale, true)
+    |> assign_dashboard_permissions()
+    |> put_flash(
+      :error,
+      "This dashboard changed since you opened it. Reload the page before making more layout changes."
+    )
+  end
+
+  defp handle_layout_update_error(socket, :template_read_only) do
+    put_flash(socket, :error, "System template layouts cannot be edited.")
+  end
+
+  defp handle_layout_update_error(socket, _reason) do
+    put_flash(socket, :error, "Failed to update the dashboard layout.")
   end
 
   defp normalize_dashboard_metric_widgets(%_{} = dashboard) do
@@ -4368,7 +4617,7 @@ defmodule TrifleApp.DashboardLive do
     editable? =
       !socket.assigns.is_public_access and
         !is_nil(socket.assigns[:current_user]) and
-        socket.assigns.can_edit_dashboard and
+        socket.assigns.can_edit_dashboard_layout and
         not GroupExpansion.synthetic_id?(id)
 
     socket =

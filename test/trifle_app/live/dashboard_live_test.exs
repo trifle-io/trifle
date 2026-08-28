@@ -8,6 +8,7 @@ defmodule TrifleApp.DashboardLiveTest do
   alias Trifle.AccountsFixtures
   alias Trifle.Organizations
   alias Trifle.Organizations.SourceAnnotations
+  alias Trifle.Repo
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DashboardWidgets.WidgetView
 
@@ -76,6 +77,338 @@ defmodule TrifleApp.DashboardLiveTest do
 
     assert has_element?(view, "#smart_timeframe")
     refute html =~ "top: 33%;"
+  end
+
+  test "system templates keep dashboard configuration available but disable layout editing", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    assert {:ok, dashboard} =
+             Organizations.link_dashboard_template(dashboard, membership, "system:blank")
+
+    {:ok, view, html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    refute has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+    assert html =~ "Configure"
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [%{"id" => "blocked", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+    })
+
+    reloaded = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert reloaded.payload == %{"grid" => []}
+  end
+
+  test "configure groups templates and switches the selected layout immediately", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    template_payload = %{"grid" => [%{"id" => "shared-widget", "type" => "text"}]}
+
+    {:ok, template} =
+      Organizations.create_dashboard_template(user, membership, %{
+        name: "Reusable layout",
+        payload: template_payload
+      })
+
+    template_id = "user:#{template.id}"
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}/configure")
+
+    assert has_element?(
+             view,
+             "#dashboard-template-field #configure_template_id[phx-hook='ConfirmSelect'][data-confirm-message][data-current-value='']"
+           )
+
+    refute has_element?(view, "#configure_template_id[data-confirm]")
+
+    assert has_element?(
+             view,
+             "#configure_template_id optgroup[label='System templates'] option[value='system:blank']",
+             "Blank dashboard"
+           )
+
+    assert has_element?(
+             view,
+             "#configure_template_id optgroup[label='Organization templates'] option[value='#{template_id}']",
+             "Reusable layout"
+           )
+
+    html = render_hook(view, "change_dashboard_template", %{"value" => template_id})
+
+    assert html =~ "Dashboard now uses Reusable layout"
+    assert_patch(view, ~p"/dashboards/#{dashboard.id}")
+    refute has_element?(view, "#configure-modal")
+
+    reloaded = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert reloaded.template_id == template_id
+    assert reloaded.payload == template_payload
+    assert Repo.get!(Trifle.Organizations.Dashboard, dashboard.id).payload == %{}
+  end
+
+  test "configure presents dashboard actions in their intended order", %{
+    conn: conn,
+    dashboard: dashboard
+  } do
+    {:ok, view, html} = live(conn, ~p"/dashboards/#{dashboard.id}/configure")
+
+    assert has_element?(view, "#dashboard-actions h3", "Actions")
+
+    positions =
+      Enum.map(
+        [
+          "dashboard-action-visibility",
+          "dashboard-action-lock",
+          "dashboard-action-public-link",
+          "dashboard-action-duplicate",
+          "dashboard-action-template",
+          "dashboard-danger-zone"
+        ],
+        fn id ->
+          {position, _length} = :binary.match(html, ~s(id="#{id}"))
+          position
+        end
+      )
+
+    assert positions == Enum.sort(positions)
+  end
+
+  test "configure shows field validation errors when settings cannot be saved", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}/configure")
+
+    html =
+      render_hook(view, "save_settings", %{
+        "name" => "",
+        "key" => dashboard.key,
+        "timeframe" => dashboard.default_timeframe,
+        "granularity" => dashboard.default_granularity,
+        "source_ref" => "database:#{database.id}"
+      })
+
+    assert html =~ "Name can&#39;t be blank"
+  end
+
+  test "configure converts a local dashboard to a template and detaches a template snapshot", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    original_payload = dashboard.payload
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}/configure")
+
+    assert has_element?(view, "#convert-dashboard-to-template", "Create template")
+
+    assert has_element?(
+             view,
+             "#convert-dashboard-to-template svg[data-template-action-icon='copy']"
+           )
+
+    refute has_element?(view, "#detach-dashboard-template")
+
+    html =
+      render_click(view, "convert_dashboard_to_template", %{
+        "name" => "Workspace template"
+      })
+
+    assert html =~ "Converted to template Workspace template"
+    assert_patch(view, ~p"/dashboards/#{dashboard.id}")
+    refute has_element?(view, "#configure-modal")
+
+    template =
+      membership
+      |> Organizations.list_user_dashboard_templates_for_membership()
+      |> Enum.find(&(&1.name == "Workspace template"))
+
+    assert template.payload == original_payload
+
+    converted = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert converted.template_id == "user:#{template.id}"
+
+    render_patch(view, ~p"/dashboards/#{dashboard.id}/configure")
+
+    assert has_element?(view, "#detach-dashboard-template", "Detach")
+
+    assert has_element?(
+             view,
+             "#detach-dashboard-template svg[data-template-action-icon='detach']"
+           )
+
+    html = render_click(view, "detach_dashboard_template")
+
+    assert html =~ "Dashboard detached from template"
+    assert_patch(view, ~p"/dashboards/#{dashboard.id}")
+    refute has_element?(view, "#configure-modal")
+
+    detached = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert detached.template_id == nil
+    assert detached.payload == original_payload
+  end
+
+  test "stale shared template layout edits require a reload", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, template} =
+      Organizations.create_dashboard_template(user, membership, %{
+        name: "Shared layout",
+        payload: dashboard.payload
+      })
+
+    template_id = "user:#{template.id}"
+    {:ok, dashboard} = Organizations.link_dashboard_template(dashboard, membership, template_id)
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    external_payload = %{"grid" => [%{"id" => "external", "type" => "text"}]}
+
+    assert {:ok, _template} =
+             Organizations.update_dashboard_template(template, user, membership, %{
+               payload: external_payload,
+               template_version: 1
+             })
+
+    html =
+      render_hook(view, "dashboard_grid_changed", %{
+        "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+      })
+
+    assert html =~ "Reload the page before making more layout changes"
+
+    reloaded = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert reloaded.payload == external_payload
+    assert reloaded.template_version == 2
+  end
+
+  test "stale local dashboard layout edits require a reload", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+    external_payload = %{"grid" => [%{"id" => "external", "type" => "text"}]}
+
+    assert {:ok, externally_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, membership, %{
+               payload: external_payload,
+               dashboard_version: dashboard.lock_version
+             })
+
+    assert externally_updated.lock_version == dashboard.lock_version + 1
+
+    html =
+      render_hook(view, "dashboard_grid_changed", %{
+        "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+      })
+
+    assert html =~ "This dashboard changed since you opened it"
+
+    reloaded = Organizations.get_dashboard_for_membership!(membership, dashboard.id)
+    assert reloaded.payload == external_payload
+    assert reloaded.lock_version == dashboard.lock_version + 1
+  end
+
+  test "converting a stale local dashboard restores layout editing", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert {:ok, _externally_updated} =
+             Organizations.update_dashboard_for_membership(dashboard, membership, %{
+               payload: %{"grid" => []},
+               dashboard_version: dashboard.lock_version
+             })
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+    })
+
+    refute has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    render_click(view, "convert_dashboard_to_template", %{"name" => "Recovered template"})
+
+    assert has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    template =
+      membership
+      |> Organizations.list_user_dashboard_templates_for_membership()
+      |> Enum.find(&(&1.name == "Recovered template"))
+
+    assert template.created_by_id == user.id
+  end
+
+  test "detaching a stale template restores layout editing", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, template} =
+      Organizations.create_dashboard_template(user, membership, %{
+        name: "Stale shared layout",
+        payload: dashboard.payload
+      })
+
+    {:ok, dashboard} =
+      Organizations.link_dashboard_template(dashboard, membership, "user:#{template.id}")
+
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+    assert {:ok, _updated_template} =
+             Organizations.update_dashboard_template(template, user, membership, %{
+               payload: %{"grid" => []},
+               template_version: template.lock_version
+             })
+
+    render_hook(view, "dashboard_grid_changed", %{
+      "items" => [%{"id" => "stale", "x" => 0, "y" => 0, "w" => 2, "h" => 2}]
+    })
+
+    refute has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    render_click(view, "detach_dashboard_template", %{})
+
+    assert has_element?(view, "#dashboard-#{dashboard.id}-add-widget")
+
+    assert Organizations.get_dashboard_for_membership!(membership, dashboard.id).template_id ==
+             nil
+  end
+
+  test "duplicating a template-backed dashboard preserves its template reference", %{
+    conn: conn,
+    user: user,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, template} =
+      Organizations.create_dashboard_template(user, membership, %{
+        name: "Reusable layout",
+        payload: dashboard.payload
+      })
+
+    template_id = "user:#{template.id}"
+    {:ok, dashboard} = Organizations.link_dashboard_template(dashboard, membership, template_id)
+    {:ok, view, _html} = live(conn, ~p"/dashboards")
+
+    render_click(view, "duplicate_dashboard", %{"id" => dashboard.id})
+
+    copy =
+      user
+      |> Organizations.list_all_dashboards_for_membership(membership)
+      |> Enum.find(&(&1.name == "#{dashboard.name} (copy)"))
+
+    assert copy.template_id == template_id
+    assert copy.payload == dashboard.payload
+    assert Repo.get!(Trifle.Organizations.Dashboard, copy.id).payload == %{}
   end
 
   test "dashboard list uses native links and exposes group state for preloading", %{
@@ -483,6 +816,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -551,6 +885,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -637,6 +972,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -708,6 +1044,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -776,6 +1113,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -852,6 +1190,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -902,6 +1241,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1015,6 +1355,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1106,6 +1447,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1176,6 +1518,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{
@@ -1247,6 +1590,7 @@ defmodule TrifleApp.DashboardLiveTest do
   } do
     {:ok, dashboard} =
       Organizations.update_dashboard_for_membership(dashboard, membership, %{
+        dashboard_version: dashboard.lock_version,
         payload: %{
           "grid" => [
             %{

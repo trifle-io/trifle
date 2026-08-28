@@ -138,6 +138,9 @@ defmodule TrifleApp.UserAuth do
       on user_token.
       Redirects to login page if there's no logged user.
 
+    * `:ensure_admin` - Authenticates the user from the session and redirects
+      non-administrators to the signed-in home page.
+
     * `:redirect_if_user_is_authenticated` - Authenticates the user from the session.
       Redirects to signed_in_path if there's a logged user.
 
@@ -176,6 +179,21 @@ defmodule TrifleApp.UserAuth do
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
         |> Phoenix.LiveView.redirect(to: ~p"/users/log_in")
+
+      {:halt, socket}
+    end
+  end
+
+  def on_mount(:ensure_admin, _params, session, socket) do
+    socket = mount_current_user(session, socket)
+
+    if match?(%Accounts.User{is_admin: true}, socket.assigns.current_user) do
+      {:cont, socket}
+    else
+      socket =
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "Administrator access is required.")
+        |> Phoenix.LiveView.redirect(to: signed_in_path(socket))
 
       {:halt, socket}
     end

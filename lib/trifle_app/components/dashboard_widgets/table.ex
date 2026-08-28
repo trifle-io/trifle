@@ -53,14 +53,21 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
 
           visible_entries
           |> Enum.with_index()
-          |> Enum.reduce({row_acc, value_acc, color_acc}, fn {{_binding_key, entry}, emitted_index},
-                                                             {inner_rows, inner_values, inner_colors} ->
+          |> Enum.reduce({row_acc, value_acc, color_acc}, fn {{_binding_key, entry},
+                                                              emitted_index},
+                                                             {inner_rows, inner_values,
+                                                              inner_colors} ->
             path_key =
               entry.source_path ||
                 "__table__.#{resolved.index}.#{emitted_index}.#{String.replace(entry.name, ".", "__")}"
 
             display_path = table_display_path(resolved.row, entry)
-            color = Helpers.resolve_series_color(MetricSeries.row_color_selector(resolved.row), emitted_index)
+
+            color =
+              Helpers.resolve_series_color(
+                MetricSeries.row_color_selector(resolved.row),
+                emitted_index
+              )
 
             row = %{
               path: path_key,

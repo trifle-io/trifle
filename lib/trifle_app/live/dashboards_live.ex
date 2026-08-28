@@ -98,7 +98,8 @@ defmodule TrifleApp.DashboardsLive do
           attrs = %{
             "name" => (original.name || "Dashboard") <> " (copy)",
             "key" => original.key || "dashboard",
-            "payload" => original.payload || %{},
+            "payload" => if(original.template_id, do: %{}, else: original.payload || %{}),
+            "template_id" => original.template_id,
             "visibility" => original.visibility,
             "group_id" => original.group_id,
             "position" =>
