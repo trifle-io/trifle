@@ -34,8 +34,6 @@ defmodule TrifleWeb.Router do
       live "/databases/:id/show", DatabasesLive, :show
       live "/dashboards", DashboardsLive, :index
       live "/dashboards/:id/show", DashboardsLive, :show
-      live "/dashboard-templates", DashboardTemplatesLive, :index
-      live "/dashboard-templates/:id/show", DashboardTemplatesLive, :show
       live "/monitors", MonitorsLive, :index
       live "/monitors/:id/show", MonitorsLive, :show
       live "/billing", BillingLive, :index
@@ -44,6 +42,15 @@ defmodule TrifleWeb.Router do
       live "/billing/plans/new", BillingPlansLive, :new
       live "/billing/plans/:id/show", BillingPlansLive, :show
       live "/billing/plans/:id/edit", BillingPlansLive, :edit
+    end
+
+    live_session :dashboard_templates_admin,
+      on_mount: [
+        {TrifleApp.UserAuth, :ensure_authenticated},
+        {TrifleApp.UserAuth, :ensure_admin}
+      ] do
+      live "/dashboard-templates", DashboardTemplatesLive, :index
+      live "/dashboard-templates/:id/show", DashboardTemplatesLive, :show
     end
   end
 

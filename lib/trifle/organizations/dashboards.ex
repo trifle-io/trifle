@@ -446,7 +446,7 @@ defmodule Trifle.Organizations.Dashboards do
 
     query
     |> Repo.all()
-    |> DashboardTemplates.resolve_dashboards!()
+    |> resolve_dashboards_preserving_unresolved()
   end
 
   def list_all_dashboards_for_membership(
@@ -457,7 +457,7 @@ defmodule Trifle.Organizations.Dashboards do
     dashboards_base_query(user, membership)
     |> maybe_limit_query(Keyword.get(opts, :limit))
     |> Repo.all()
-    |> DashboardTemplates.resolve_dashboards!()
+    |> resolve_dashboards_preserving_unresolved()
   end
 
   def dashboard_group_name_lookup_for_membership(
@@ -572,6 +572,17 @@ defmodule Trifle.Organizations.Dashboards do
 
   defp maybe_limit_query(query, _value), do: query
 
+  defp resolve_dashboards_preserving_unresolved(dashboards) do
+    Enum.map(dashboards, &resolve_dashboard_preserving_unresolved/1)
+  end
+
+  defp resolve_dashboard_preserving_unresolved(%Dashboard{} = dashboard) do
+    case DashboardTemplates.resolve_dashboard(dashboard) do
+      {:ok, resolved} -> resolved
+      {:error, _reason} -> dashboard
+    end
+  end
+
   defp dashboard_group_chain_from_lookup(group_id, groups_by_id) do
     do_dashboard_group_chain_from_lookup(group_id, groups_by_id, MapSet.new())
   end
@@ -672,7 +683,7 @@ defmodule Trifle.Organizations.Dashboards do
       |> Repo.preload([:user, :database, :group])
 
     if can_view_dashboard?(dashboard, membership) do
-      DashboardTemplates.resolve_dashboard!(dashboard)
+      resolve_dashboard_preserving_unresolved(dashboard)
     else
       raise Ecto.NoResultsError, queryable: Dashboard
     end
@@ -709,7 +720,7 @@ defmodule Trifle.Organizations.Dashboards do
   end
 
   defp create_dashboard_with_template(attrs, membership) do
-    template_id = normalize_template_id(fetch_attr(attrs, "template_id"))
+    template_id = DashboardTemplateRef.normalize(fetch_attr(attrs, "template_id"))
 
     attrs =
       attrs
@@ -755,10 +766,6 @@ defmodule Trifle.Organizations.Dashboards do
     )
     |> Repo.insert()
   end
-
-  defp normalize_template_id(value) when value in [nil, ""], do: nil
-  defp normalize_template_id(value) when is_binary(value), do: String.trim(value)
-  defp normalize_template_id(value), do: value
 
   def create_dashboard_group_for_membership(%OrganizationMembership{} = membership, attrs \\ %{}) do
     attrs =
@@ -841,8 +848,7 @@ defmodule Trifle.Organizations.Dashboards do
       {:error, :template_link_requires_context}
     else
       {payload_provided?, payload} = attr_value(attrs, "payload")
-      {_version_provided?, expected_version_value} = attr_value(attrs, "template_version")
-      expected_version = parse_integer(expected_version_value) || dashboard.template_version
+      {version_provided?, expected_version_value} = attr_value(attrs, "template_version")
 
       local_attrs =
         attrs
@@ -865,7 +871,9 @@ defmodule Trifle.Organizations.Dashboards do
           update_local_dashboard(dashboard, local_attrs)
 
         {:ok, {:user, template_id}} when payload_provided? ->
-          with {:ok, normalized_payload} <- normalize_dashboard_payload(dashboard, payload) do
+          with {:ok, expected_version} <-
+                 validate_template_version(version_provided?, expected_version_value),
+               {:ok, normalized_payload} <- normalize_dashboard_payload(dashboard, payload) do
             update_user_template_and_dashboard(
               dashboard,
               local_attrs,
@@ -964,6 +972,15 @@ defmodule Trifle.Organizations.Dashboards do
 
   defp parse_integer(_value), do: nil
 
+  defp validate_template_version(true, value) do
+    case parse_integer(value) do
+      version when is_integer(version) -> {:ok, version}
+      _ -> {:error, :template_version_required}
+    end
+  end
+
+  defp validate_template_version(false, _value), do: {:error, :template_version_required}
+
   def delete_dashboard_for_membership(
         %Dashboard{} = dashboard,
         %OrganizationMembership{} = membership
@@ -1060,7 +1077,7 @@ defmodule Trifle.Organizations.Dashboards do
       preload: :user
     )
     |> Repo.all()
-    |> DashboardTemplates.resolve_dashboards!()
+    |> resolve_dashboards_preserving_unresolved()
   end
 
   @doc """
@@ -1072,7 +1089,7 @@ defmodule Trifle.Organizations.Dashboards do
       preload: [:user, :database, :organization]
     )
     |> Repo.all()
-    |> DashboardTemplates.resolve_dashboards!()
+    |> resolve_dashboards_preserving_unresolved()
   end
 
   def count_dashboards do
@@ -1121,7 +1138,7 @@ defmodule Trifle.Organizations.Dashboards do
 
     query
     |> Repo.all()
-    |> DashboardTemplates.resolve_dashboards!()
+    |> resolve_dashboards_preserving_unresolved()
   end
 
   @doc """
@@ -1338,7 +1355,7 @@ defmodule Trifle.Organizations.Dashboards do
     Dashboard
     |> Repo.get!(id)
     |> Repo.preload([:user, :database])
-    |> DashboardTemplates.resolve_dashboard!()
+    |> resolve_dashboard_preserving_unresolved()
   end
 
   def resolve_dashboard_source(%Dashboard{} = dashboard) do
@@ -1455,7 +1472,7 @@ defmodule Trifle.Organizations.Dashboards do
         dashboard =
           dashboard
           |> Repo.preload([:user, :database])
-          |> DashboardTemplates.resolve_dashboard!()
+          |> resolve_dashboard_preserving_unresolved()
 
         {:ok, dashboard}
 

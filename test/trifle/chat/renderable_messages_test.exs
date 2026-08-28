@@ -22,7 +22,11 @@ defmodule Trifle.Chat.RenderableMessagesTest do
         %{
           role: "assistant",
           tool_calls: [
-            %{id: "call-1", type: "function", function: %{name: "build_metric_dashboard", arguments: "{}"}}
+            %{
+              id: "call-1",
+              type: "function",
+              function: %{name: "build_metric_dashboard", arguments: "{}"}
+            }
           ]
         },
         %{
@@ -39,7 +43,9 @@ defmodule Trifle.Chat.RenderableMessagesTest do
       ]
     }
 
-    assert [%{role: "assistant", visualizations: visualizations}] = Chat.renderable_messages(session)
+    assert [%{role: "assistant", visualizations: visualizations}] =
+             Chat.renderable_messages(session)
+
     assert length(visualizations) == 1
     assert hd(visualizations).type == "dashboard"
   end
@@ -66,7 +72,11 @@ defmodule Trifle.Chat.RenderableMessagesTest do
         %{
           role: "assistant",
           tool_calls: [
-            %{id: "call-1", type: "function", function: %{name: "build_metric_dashboard", arguments: "{}"}}
+            %{
+              id: "call-1",
+              type: "function",
+              function: %{name: "build_metric_dashboard", arguments: "{}"}
+            }
           ]
         },
         %{
@@ -82,7 +92,9 @@ defmodule Trifle.Chat.RenderableMessagesTest do
       ]
     }
 
-    assert [%{role: "assistant", visualizations: visualizations}] = Chat.renderable_messages(session)
+    assert [%{role: "assistant", visualizations: visualizations}] =
+             Chat.renderable_messages(session)
+
     assert length(visualizations) == 1
     assert hd(visualizations).type == "dashboard"
   end

@@ -81,7 +81,7 @@ defmodule Trifle.Organizations.Dashboard do
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:key, min: 1)
     |> validate_timeframe_field(:default_timeframe)
-    |> update_change(:template_id, &normalize_template_id/1)
+    |> update_change(:template_id, &DashboardTemplateRef.normalize/1)
     |> validate_template_id()
     |> maybe_sync_database_reference()
     |> maybe_require_database()
@@ -152,15 +152,6 @@ defmodule Trifle.Organizations.Dashboard do
       end
     end)
   end
-
-  defp normalize_template_id(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp normalize_template_id(value), do: value
 
   defp handle_segments_field(changeset, segments_raw, segments_provided) do
     case {segments_provided, segments_raw} do

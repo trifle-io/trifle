@@ -175,6 +175,25 @@ defmodule TrifleApp.DashboardLiveTest do
     assert positions == Enum.sort(positions)
   end
 
+  test "configure shows field validation errors when settings cannot be saved", %{
+    conn: conn,
+    dashboard: dashboard,
+    database: database
+  } do
+    {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}/configure")
+
+    html =
+      render_hook(view, "save_settings", %{
+        "name" => "",
+        "key" => dashboard.key,
+        "timeframe" => dashboard.default_timeframe,
+        "granularity" => dashboard.default_granularity,
+        "source_ref" => "database:#{database.id}"
+      })
+
+    assert html =~ "Name can&#39;t be blank"
+  end
+
   test "configure converts a local dashboard to a template and detaches a template snapshot", %{
     conn: conn,
     dashboard: dashboard,

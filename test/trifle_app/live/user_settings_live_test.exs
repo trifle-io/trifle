@@ -23,7 +23,6 @@ defmodule TrifleApp.UserSettingsLiveTest do
       assert path == ~p"/users/log_in"
       assert %{"error" => "You must log in to access this page."} = flash
     end
-
   end
 
   describe "update email form" do

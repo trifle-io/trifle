@@ -34,6 +34,12 @@ defmodule Trifle.Organizations.DashboardTemplate do
     |> validate_required([:organization_id, :name, :payload, :lock_version])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:lock_version, greater_than: 0)
+    |> foreign_key_constraint(:organization_id,
+      name: :dashboard_templates_organization_id_fkey
+    )
+    |> foreign_key_constraint(:created_by_id,
+      name: :dashboard_templates_created_by_id_fkey
+    )
   end
 
   def payload_changeset(template, payload) when is_map(payload) do

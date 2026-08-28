@@ -5,6 +5,10 @@ defmodule TrifleApp.ProjectBillingLiveTest do
   import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
+  setup do
+    on_exit(Trifle.ConfigFixtures.enable_saas_with_projects())
+  end
+
   test "canceled project subscription can be resubscribed from the current tier card", %{
     conn: conn
   } do

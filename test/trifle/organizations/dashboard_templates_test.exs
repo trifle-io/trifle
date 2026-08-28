@@ -2,16 +2,20 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
   use Trifle.DataCase
 
   import Trifle.AccountsFixtures
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
   alias Trifle.Organizations
   alias Trifle.Organizations.Dashboard
+  alias Trifle.Organizations.DashboardTemplate
   alias Trifle.Organizations.DashboardTemplateRef
+  alias Trifle.Organizations.DashboardTemplates.ResolutionError
 
   setup do
     user = user_fixture()
     organization = organization_fixture(%{user: user})
     membership = Organizations.get_membership_for_user(user)
+    app_entitlement_fixture(organization)
     database = database_fixture(%{organization: organization})
 
     %{
@@ -72,7 +76,8 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
 
     assert {:ok, updated} =
              Organizations.update_dashboard_for_membership(first, context.membership, %{
-               payload: new_payload
+               payload: new_payload,
+               template_version: first.template_version
              })
 
     assert updated.payload == new_payload
@@ -80,12 +85,37 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
 
     assert {:error, :stale_template} =
              Organizations.update_dashboard_for_membership(stale, context.membership, %{
-               payload: %{"grid" => [%{"id" => "stale-widget"}]}
+               payload: %{"grid" => [%{"id" => "stale-widget"}]},
+               template_version: stale.template_version
              })
 
     fresh = Organizations.get_dashboard_for_membership!(context.membership, stale.id)
     assert fresh.payload == new_payload
     assert fresh.template_version == 2
+  end
+
+  test "requires an exact template version for shared payload updates", context do
+    template = create_template(context, "Shared", %{"grid" => []})
+
+    {:ok, dashboard} =
+      create_dashboard(context, %{
+        template_id: DashboardTemplateRef.encode(:user, template.id)
+      })
+
+    for attrs <- [
+          %{payload: %{"grid" => []}},
+          %{payload: %{"grid" => []}, template_version: nil},
+          %{payload: %{"grid" => []}, template_version: ""},
+          %{payload: %{"grid" => []}, template_version: "1.0"},
+          %{payload: %{"grid" => []}, template_version: "1x"}
+        ] do
+      assert {:error, :template_version_required} =
+               Organizations.update_dashboard_for_membership(
+                 dashboard,
+                 context.membership,
+                 attrs
+               )
+    end
   end
 
   test "system template payloads are read-only while dashboard metadata remains editable",
@@ -183,6 +213,114 @@ defmodule Trifle.Organizations.DashboardTemplatesTest do
              create_dashboard(context, %{
                template_id: DashboardTemplateRef.encode(:user, other_template.id)
              })
+  end
+
+  test "normalizes a whitespace-only template selection to a local dashboard", context do
+    assert {:ok, dashboard} = create_dashboard(context, %{template_id: "   "})
+    assert dashboard.template_id == nil
+    assert Repo.get!(Dashboard, dashboard.id).template_id == nil
+  end
+
+  test "usage counts include templates with no linked dashboards", context do
+    used = create_template(context, "Used", %{"grid" => []})
+    unused = create_template(context, "Unused", %{"grid" => []})
+
+    assert {:ok, _dashboard} =
+             create_dashboard(context, %{
+               template_id: DashboardTemplateRef.encode(:user, used.id)
+             })
+
+    counts = Organizations.dashboard_template_usage_counts([used, unused])
+    assert counts[used.id] == 1
+    assert counts[unused.id] == 0
+  end
+
+  test "template metadata updates cannot transfer ownership", context do
+    template = create_template(context, "Owned", %{"grid" => []})
+    other_user = user_fixture()
+    unique = System.unique_integer([:positive])
+
+    other_organization =
+      organization_fixture(%{
+        user: other_user,
+        name: "Other organization #{unique}",
+        slug: "other-organization-#{unique}"
+      })
+
+    assert {:ok, updated} =
+             Organizations.update_dashboard_template(
+               template,
+               context.user,
+               context.membership,
+               %{
+                 name: "Renamed",
+                 organization_id: other_organization.id,
+                 created_by_id: other_user.id,
+                 creator_id: other_user.id
+               }
+             )
+
+    assert updated.name == "Renamed"
+    assert updated.organization_id == template.organization_id
+    assert updated.created_by_id == template.created_by_id
+  end
+
+  test "template foreign keys return changeset errors", context do
+    missing_id = Ecto.UUID.generate()
+
+    assert {:error, changeset} =
+             %DashboardTemplate{}
+             |> DashboardTemplate.changeset(%{
+               organization_id: missing_id,
+               created_by_id: context.user.id,
+               name: "Missing organization",
+               payload: %{}
+             })
+             |> Repo.insert()
+
+    assert "does not exist" in errors_on(changeset).organization_id
+
+    assert {:error, changeset} =
+             %DashboardTemplate{}
+             |> DashboardTemplate.changeset(%{
+               organization_id: context.organization.id,
+               created_by_id: missing_id,
+               name: "Missing creator",
+               payload: %{}
+             })
+             |> Repo.insert()
+
+    assert "does not exist" in errors_on(changeset).created_by_id
+  end
+
+  test "read paths preserve dashboards whose templates cannot be resolved", context do
+    assert {:ok, dashboard} =
+             create_dashboard(context, %{payload: %{"grid" => [%{"id" => "local"}]}})
+
+    missing_reference = DashboardTemplateRef.encode(:user, Ecto.UUID.generate())
+
+    Dashboard
+    |> Repo.get!(dashboard.id)
+    |> change(template_id: missing_reference)
+    |> Repo.update!()
+
+    listed = Organizations.list_all_dashboards_for_membership(context.user, context.membership)
+
+    assert %Dashboard{template_id: ^missing_reference} =
+             Enum.find(listed, &(&1.id == dashboard.id))
+
+    assert %Dashboard{template_id: ^missing_reference} =
+             Organizations.get_dashboard_for_membership!(context.membership, dashboard.id)
+  end
+
+  test "bang resolution preserves not-found semantics and exposes other reasons" do
+    assert_raise Ecto.NoResultsError, fn ->
+      Organizations.resolve_dashboard_template!(%Dashboard{template_id: "system:missing"})
+    end
+
+    assert_raise ResolutionError, ~r/invalid_template_id/, fn ->
+      Organizations.resolve_dashboard_template!(%Dashboard{template_id: "malformed"})
+    end
   end
 
   defp create_template(context, name, payload) do

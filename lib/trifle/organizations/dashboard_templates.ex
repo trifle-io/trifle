@@ -21,6 +21,20 @@ defmodule Trifle.Organizations.DashboardTemplates do
     defstruct [:template_id, :type, :id, :name, :group, :version, :read_only]
   end
 
+  defmodule ResolutionError do
+    defexception [:reason, :message]
+
+    @impl true
+    def exception(opts) do
+      reason = Keyword.fetch!(opts, :reason)
+
+      %__MODULE__{
+        reason: reason,
+        message: "failed to resolve dashboard template: #{inspect(reason)}"
+      }
+    end
+  end
+
   def list_available_for_membership(%OrganizationMembership{} = membership) do
     system = Enum.map(SystemDashboardTemplates.list(), &system_descriptor/1)
 
@@ -85,7 +99,16 @@ defmodule Trifle.Organizations.DashboardTemplates do
         attrs = stringify_keys(attrs)
         expected_version = fetch_integer(attrs, "template_version")
         payload = Map.get(attrs, "payload")
-        metadata_attrs = Map.drop(attrs, ["payload", "template_version", "lock_version"])
+
+        metadata_attrs =
+          Map.drop(attrs, [
+            "payload",
+            "template_version",
+            "lock_version",
+            "organization_id",
+            "created_by_id",
+            "creator_id"
+          ])
 
         Multi.new()
         |> maybe_update_payload(template, payload, expected_version)
@@ -394,6 +417,8 @@ defmodule Trifle.Organizations.DashboardTemplates do
   end
 
   def template_usage_counts(templates) when is_list(templates) do
+    empty_counts = Map.new(templates, &{&1.id, 0})
+
     references =
       Map.new(templates, fn template ->
         {DashboardTemplateRef.encode(:user, template.id), template.id}
@@ -406,6 +431,7 @@ defmodule Trifle.Organizations.DashboardTemplates do
     )
     |> Repo.all()
     |> Map.new(fn {reference, count} -> {Map.fetch!(references, reference), count} end)
+    |> then(&Map.merge(empty_counts, &1))
   end
 
   def can_manage?(%DashboardTemplate{} = template, %User{} = user, membership) do
@@ -512,9 +538,12 @@ defmodule Trifle.Organizations.DashboardTemplates do
   defp transaction_result({:ok, changes}, key), do: {:ok, Map.fetch!(changes, key)}
   defp transaction_result({:error, _operation, reason, _changes}, _key), do: {:error, reason}
 
-  defp raise_template_resolution_error(reason) do
-    _ = reason
+  defp raise_template_resolution_error(:template_not_found) do
     raise Ecto.NoResultsError, queryable: DashboardTemplate
+  end
+
+  defp raise_template_resolution_error(reason) do
+    raise ResolutionError, reason: reason
   end
 
   defp template_name(attrs, dashboard) do

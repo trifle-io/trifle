@@ -11,6 +11,8 @@ defmodule TrifleApp.DatabasesLiveTest do
   alias Trifle.Repo
 
   setup %{conn: conn} do
+    on_exit(Trifle.ConfigFixtures.enable_saas_with_projects())
+
     user = Trifle.AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})
     app_entitlement_fixture(organization)

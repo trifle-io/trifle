@@ -20,6 +20,7 @@ defmodule TrifleApp.DesignSystem.DatabaseLabel do
   """
   attr :driver, :string, required: true
   attr :class, :string, default: ""
+
   def database_label(assigns) do
     ~H"""
     <span class={[

@@ -12,6 +12,16 @@ defmodule Trifle.Organizations.DashboardTemplateRef do
   def encode(:system, key) when is_binary(key), do: "system:#{String.trim(key)}"
   def encode(:user, id) when is_binary(id), do: "user:#{String.trim(id)}"
 
+  @spec normalize(term()) :: term()
+  def normalize(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  def normalize(value), do: value
+
   @spec parse(nil | String.t()) :: :none | {:ok, parsed()} | {:error, :invalid_template_id}
   def parse(nil), do: :none
 

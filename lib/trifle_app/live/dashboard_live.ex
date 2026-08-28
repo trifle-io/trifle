@@ -4,6 +4,7 @@ defmodule TrifleApp.DashboardLive do
   on_mount({TrifleApp.Live.PageShell, :default})
 
   alias Trifle.Organizations
+  alias Trifle.Organizations.DashboardTemplateRef
   alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Organizations.DashboardSegments
   alias Trifle.Organizations.SourceAnnotations
@@ -539,7 +540,7 @@ defmodule TrifleApp.DashboardLive do
         case Organizations.update_dashboard_for_membership(
                dashboard,
                membership,
-               %{payload: payload}
+               dashboard_payload_update_attrs(dashboard, payload)
              ) do
           {:ok, updated_dashboard} ->
             # If stats are loaded, recompute KPI values (in case new widgets were added)
@@ -672,7 +673,7 @@ defmodule TrifleApp.DashboardLive do
             case Organizations.update_dashboard_for_membership(
                    socket.assigns.dashboard,
                    membership,
-                   %{payload: payload}
+                   dashboard_payload_update_attrs(socket.assigns.dashboard, payload)
                  ) do
               {:ok, dashboard} ->
                 saved_item = LayoutTree.find_node(updated, id) || %{}
@@ -1046,7 +1047,7 @@ defmodule TrifleApp.DashboardLive do
         case Organizations.update_dashboard_for_membership(
                socket.assigns.dashboard,
                membership,
-               %{payload: payload}
+               dashboard_payload_update_attrs(socket.assigns.dashboard, payload)
              ) do
           {:ok, dashboard} ->
             widget_id = to_string(id)
@@ -1095,7 +1096,7 @@ defmodule TrifleApp.DashboardLive do
           case Organizations.update_dashboard_for_membership(
                  socket.assigns.dashboard,
                  membership,
-                 %{payload: payload}
+                 dashboard_payload_update_attrs(socket.assigns.dashboard, payload)
                ) do
             {:ok, dashboard} ->
               socket =
@@ -1533,7 +1534,22 @@ defmodule TrifleApp.DashboardLive do
              |> push_patch(to: ~p"/dashboards/#{updated_dashboard.id}")}
 
           {:error, reason} ->
-            {:noreply, put_flash(socket, :error, dashboard_template_error_message(reason))}
+            message =
+              case reason do
+                %Ecto.Changeset{} = changeset ->
+                  changeset_error_message(changeset) || "Failed to save settings"
+
+                reason when reason in [:forbidden, :unauthorized] ->
+                  permission_message(
+                    socket,
+                    "You do not have permission to update this dashboard"
+                  )
+
+                reason ->
+                  dashboard_template_error_message(reason)
+              end
+
+            {:noreply, put_flash(socket, :error, message)}
         end
       else
         {:error, message} ->
@@ -1868,7 +1884,10 @@ defmodule TrifleApp.DashboardLive do
               visualization_value(dashboard_data, "default_granularity") ||
                 socket.assigns.dashboard.default_granularity
           }
-          |> maybe_put_dashboard_payload(visualization_value(dashboard_data, "payload"))
+          |> maybe_put_dashboard_payload(
+            visualization_value(dashboard_data, "payload"),
+            socket.assigns.dashboard
+          )
           |> maybe_put_dashboard_source_attrs(source)
 
         case Organizations.update_dashboard_for_membership(
@@ -1916,8 +1935,23 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
-  defp maybe_put_dashboard_payload(attrs, %{} = payload), do: Map.put(attrs, "payload", payload)
-  defp maybe_put_dashboard_payload(attrs, _payload), do: attrs
+  defp maybe_put_dashboard_payload(attrs, %{} = payload, dashboard) do
+    Map.merge(attrs, dashboard_payload_update_attrs(dashboard, payload))
+  end
+
+  defp maybe_put_dashboard_payload(attrs, _payload, _dashboard), do: attrs
+
+  defp dashboard_payload_update_attrs(dashboard, payload) do
+    attrs = %{payload: payload}
+
+    case {DashboardTemplateRef.parse(dashboard.template_id), dashboard.template_version} do
+      {{:ok, {:user, _id}}, version} when is_integer(version) ->
+        Map.put(attrs, :template_version, version)
+
+      _ ->
+        attrs
+    end
+  end
 
   defp maybe_put_dashboard_source_attrs(attrs, nil), do: attrs
 

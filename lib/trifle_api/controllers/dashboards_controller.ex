@@ -141,7 +141,7 @@ defmodule TrifleApi.DashboardsController do
     if Map.has_key?(attrs, "payload") do
       case DashboardTemplateRef.parse(dashboard.template_id) do
         {:ok, {:user, _id}} ->
-          if Map.has_key?(attrs, "template_version"),
+          if exact_integer?(Map.get(attrs, "template_version")),
             do: :ok,
             else: {:error, :template_version_required}
 
@@ -152,6 +152,14 @@ defmodule TrifleApi.DashboardsController do
       :ok
     end
   end
+
+  defp exact_integer?(value) when is_integer(value), do: true
+
+  defp exact_integer?(value) when is_binary(value) do
+    match?({_integer, ""}, Integer.parse(value))
+  end
+
+  defp exact_integer?(_value), do: false
 
   defp render_changeset(conn, changeset) do
     conn

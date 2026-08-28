@@ -2,15 +2,19 @@ defmodule TrifleAdmin.DashboardTemplatesLiveTest do
   use TrifleApp.ConnCase
 
   import Phoenix.LiveViewTest
+  import Trifle.BillingFixtures
   import Trifle.OrganizationsFixtures
 
+  alias Trifle.Accounts
   alias Trifle.AccountsFixtures
   alias Trifle.Organizations
 
   setup %{conn: conn} do
     user = AccountsFixtures.user_fixture()
+    {:ok, user} = Accounts.update_user_admin_status(user.id, true)
     organization = organization_fixture(%{user: user})
     membership = Organizations.get_membership_for_user(user)
+    app_entitlement_fixture(organization)
 
     {:ok, template} =
       Organizations.create_dashboard_template(user, membership, %{
@@ -58,5 +62,18 @@ defmodule TrifleAdmin.DashboardTemplatesLiveTest do
     assert html =~ "Dashboard Template Details"
     assert html =~ "Linked dashboards"
     assert html =~ "throughput"
+  end
+
+  test "rejects non-administrators before index or show renders", context do
+    user = AccountsFixtures.user_fixture()
+    conn = log_in_user(build_conn(), user)
+
+    for path <- [
+          "/admin/dashboard-templates",
+          "/admin/dashboard-templates/#{context.template.id}/show"
+        ] do
+      assert {:error, {:redirect, %{to: "/", flash: flash}}} = live(conn, path)
+      assert flash["error"] == "Administrator access is required."
+    end
   end
 end

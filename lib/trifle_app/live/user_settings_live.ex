@@ -8,7 +8,9 @@ defmodule TrifleApp.UserSettingsLive do
     <div class="px-4 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-4xl">
         <div class="pb-8">
-          <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">Account Settings</h1>
+          <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+            Account Settings
+          </h1>
           <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-400">
             Manage your profile, theme, email address, and password settings.
           </p>
@@ -220,7 +222,6 @@ defmodule TrifleApp.UserSettingsLive do
               </:actions>
             </.form_container>
           </div>
-
         </div>
       </div>
     </div>
@@ -389,5 +390,4 @@ defmodule TrifleApp.UserSettingsLive do
         {:noreply, assign(socket, theme_form: to_form(changeset))}
     end
   end
-
 end

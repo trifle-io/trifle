@@ -73,6 +73,22 @@ defmodule TrifleApi.DashboardsControllerTest do
     assert %{"errors" => %{"template_version" => [_message]}} =
              json_response(missing_version_conn, 422)
 
+    for invalid_version <- [nil, "", "1.0", "1x", %{}] do
+      invalid_version_conn =
+        context.conn
+        |> api_conn()
+        |> auth_conn(context.token, context.database.id)
+        |> put(~p"/api/v1/dashboards/#{dashboard.id}", %{
+          dashboard: %{
+            payload: %{"grid" => [%{"id" => "invalid-version"}]},
+            template_version: invalid_version
+          }
+        })
+
+      assert %{"errors" => %{"template_version" => [_message]}} =
+               json_response(invalid_version_conn, 422)
+    end
+
     payload = %{"grid" => [%{"id" => "updated"}]}
 
     updated_conn =

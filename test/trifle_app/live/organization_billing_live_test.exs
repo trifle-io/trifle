@@ -7,6 +7,10 @@ defmodule TrifleApp.OrganizationBillingLiveTest do
 
   alias Trifle.Organizations
 
+  setup do
+    on_exit(Trifle.ConfigFixtures.enable_saas_with_projects())
+  end
+
   test "canceled app subscription can be resubscribed from the current plan card", %{conn: conn} do
     user = Trifle.AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})
