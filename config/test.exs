@@ -67,6 +67,8 @@ config :trifle, Oban,
 
 config :trifle, :oban_web_enabled, false
 
+config :trifle, Trifle.Observability, enabled: false
+
 # Tests write entitlements directly via Repo fixtures, bypassing cache
 # invalidation — disable the cache so billing state changes are always visible.
 config :trifle, :billing_entitlement_cache_ttl_ms, 0

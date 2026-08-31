@@ -7,6 +7,8 @@ defmodule Trifle.Application do
 
   @impl true
   def start(_type, _args) do
+    observability_children = Trifle.Observability.setup()
+
     children =
       [
         # Start the Telemetry supervisor
@@ -14,32 +16,35 @@ defmodule Trifle.Application do
         # Start the encryption vault
         Trifle.Vault,
         # Start the Ecto repository (main application PostgreSQL)
-        Trifle.Repo,
-        # Track active database pool versions per node
-        Trifle.DatabasePools.VersionRegistry,
-        # Start dynamic database connection pool supervisors
-        Trifle.DatabasePools.PostgresPoolSupervisor,
-        Trifle.DatabasePools.MongoPoolSupervisor,
-        Trifle.DatabasePools.MongoProjectClusterPoolSupervisor,
-        Trifle.DatabasePools.RedisPoolSupervisor,
-        Trifle.DatabasePools.SqlitePoolSupervisor,
-        Trifle.DatabasePools.MySQLPoolSupervisor,
-        {Registry, keys: :unique, name: Trifle.Networking.SSHTunnelRegistry},
-        Trifle.Networking.SSHTunnelSupervisor,
-        # Start the PubSub system
-        {Phoenix.PubSub, name: Trifle.PubSub},
-        Trifle.Chat.RunnerRegistry,
-        Trifle.Cache,
-        Trifle.Organizations.TokenCache,
-        Trifle.Organizations.TokenTouchThrottle,
-        # Start Finch
-        {Finch, name: Trifle.Finch},
-        {Oban, Application.fetch_env!(:trifle, Oban)},
-        # Start the Endpoint (http/https)
-        TrifleWeb.Endpoint
-        # Start a worker by calling: Trifle.Worker.start_link(arg)
-        # {Trifle.Worker, arg}
-      ]
+        Trifle.Repo
+      ] ++
+        observability_children ++
+        [
+          # Track active database pool versions per node
+          Trifle.DatabasePools.VersionRegistry,
+          # Start dynamic database connection pool supervisors
+          Trifle.DatabasePools.PostgresPoolSupervisor,
+          Trifle.DatabasePools.MongoPoolSupervisor,
+          Trifle.DatabasePools.MongoProjectClusterPoolSupervisor,
+          Trifle.DatabasePools.RedisPoolSupervisor,
+          Trifle.DatabasePools.SqlitePoolSupervisor,
+          Trifle.DatabasePools.MySQLPoolSupervisor,
+          {Registry, keys: :unique, name: Trifle.Networking.SSHTunnelRegistry},
+          Trifle.Networking.SSHTunnelSupervisor,
+          # Start the PubSub system
+          {Phoenix.PubSub, name: Trifle.PubSub},
+          Trifle.Chat.RunnerRegistry,
+          Trifle.Cache,
+          Trifle.Organizations.TokenCache,
+          Trifle.Organizations.TokenTouchThrottle,
+          # Start Finch
+          {Finch, name: Trifle.Finch},
+          {Oban, Application.fetch_env!(:trifle, Oban)},
+          # Start the Endpoint (http/https)
+          TrifleWeb.Endpoint
+          # Start a worker by calling: Trifle.Worker.start_link(arg)
+          # {Trifle.Worker, arg}
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

@@ -123,6 +123,14 @@ app:
       secretAccessKey: ""
       forcePathStyle: true
       prefix: "sqlite-files"
+
+  # Internal Trifle.Traces storage. Metadata is always stored in PostgreSQL.
+  # Leave storagePath empty for metadata-only traces, or place it under the
+  # persistence mount to retain full trace payloads.
+  traces:
+    storagePath: ""
+    retentionDays: 7
+    gzip: true
   
   # Environment variables
   env:

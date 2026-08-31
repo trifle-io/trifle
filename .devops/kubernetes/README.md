@@ -62,6 +62,11 @@ app:
       secretAccessKey: ""
       forcePathStyle: true
       prefix: "sqlite-files"
+  traces:
+    # Leave blank for PostgreSQL metadata only.
+    storagePath: "/home/app/uploads/traces"
+    retentionDays: 7
+    gzip: true
 
 # Initial user creation
 initialUser:
@@ -192,6 +197,13 @@ SQLite object storage is configured with `app.sqliteStorage`:
 - `backend: local` keeps files on mounted storage.
 - `backend: s3` stores uploads in S3-compatible object storage and reads via local cache (`cacheRoot`).
 - `objectStore.accessKeyId` and `objectStore.secretAccessKey` are rendered into the app secret and injected as env vars.
+
+Trifle's internal background-job traces always store searchable metadata in PostgreSQL.
+Set `app.traces.storagePath` to retain the full trace narrative on a filesystem; leave it
+blank for metadata-only traces. Keep the path under `persistence.mountPath` when using the
+chart-managed PVC. With multiple application replicas, the payload path must be backed by
+ReadWriteMany storage so every replica can read traces written by the others; otherwise use
+a single replica or leave filesystem payload storage disabled.
 
 ### Autoscaling
 

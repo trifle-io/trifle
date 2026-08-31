@@ -113,6 +113,49 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+observability_defaults = Application.get_env(:trifle, Trifle.Observability, [])
+
+observability_enabled =
+  case System.get_env("TRIFLE_OBSERVABILITY_ENABLED") do
+    nil -> Keyword.get(observability_defaults, :enabled, true)
+    "" -> Keyword.get(observability_defaults, :enabled, true)
+    value -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on", "enabled"]
+  end
+
+traces_storage_path =
+  case System.get_env("TRIFLE_TRACES_STORAGE_PATH") do
+    nil -> Keyword.get(observability_defaults, :traces_storage_path)
+    value -> if String.trim(value) == "", do: nil, else: String.trim(value)
+  end
+
+traces_retention_days =
+  case System.get_env("TRIFLE_TRACES_RETENTION_DAYS") do
+    nil ->
+      Keyword.get(observability_defaults, :traces_retention_days, 7)
+
+    "" ->
+      Keyword.get(observability_defaults, :traces_retention_days, 7)
+
+    value ->
+      case Integer.parse(value) do
+        {days, ""} when days > 0 -> days
+        _ -> Keyword.get(observability_defaults, :traces_retention_days, 7)
+      end
+  end
+
+traces_gzip =
+  case System.get_env("TRIFLE_TRACES_GZIP") do
+    nil -> Keyword.get(observability_defaults, :traces_gzip, true)
+    "" -> Keyword.get(observability_defaults, :traces_gzip, true)
+    value -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on", "enabled"]
+  end
+
+config :trifle, Trifle.Observability,
+  enabled: observability_enabled,
+  traces_storage_path: traces_storage_path,
+  traces_retention_days: traces_retention_days,
+  traces_gzip: traces_gzip
+
 sqlite_upload_max_bytes =
   case System.get_env("TRIFLE_SQLITE_UPLOAD_MAX_BYTES") do
     nil ->

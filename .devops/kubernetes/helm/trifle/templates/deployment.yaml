@@ -25,6 +25,7 @@ spec:
       {{- $sqliteUpload := .Values.app.sqliteUpload | default (dict) }}
       {{- $sqliteStorage := .Values.app.sqliteStorage | default (dict) }}
       {{- $sqliteObjectStore := (index $sqliteStorage "objectStore") | default (dict) }}
+      {{- $traces := .Values.app.traces | default (dict) }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -173,6 +174,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: sqlite-object-store-secret-access-key
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_STORAGE_PATH")) (hasKey $traces "storagePath") }}
+            - name: TRIFLE_TRACES_STORAGE_PATH
+              value: {{ index $traces "storagePath" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_RETENTION_DAYS")) (hasKey $traces "retentionDays") }}
+            - name: TRIFLE_TRACES_RETENTION_DAYS
+              value: {{ index $traces "retentionDays" | quote }}
+            {{- end }}
+            {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_GZIP")) (hasKey $traces "gzip") }}
+            - name: TRIFLE_TRACES_GZIP
+              value: {{ index $traces "gzip" | quote }}
             {{- end }}
             - name: LANG
               value: "en_US.UTF-8"

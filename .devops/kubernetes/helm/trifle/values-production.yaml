@@ -70,6 +70,11 @@ app:
       secretAccessKey: ""
       forcePathStyle: true
       prefix: "sqlite-files"
+  traces:
+    # Set to /home/app/uploads/traces to retain full payloads on the app PVC.
+    storagePath: ""
+    retentionDays: 7
+    gzip: true
   env:
     MIX_ENV: "prod"
     PHX_SERVER: "true"

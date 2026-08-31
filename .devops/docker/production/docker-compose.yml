@@ -74,6 +74,11 @@ services:
       
       # Timezone
       TZ: ${TZ:-UTC}
+
+      # Optional trace payload storage (metadata always stays in PostgreSQL)
+      TRIFLE_TRACES_STORAGE_PATH: ${TRIFLE_TRACES_STORAGE_PATH:-}
+      TRIFLE_TRACES_RETENTION_DAYS: ${TRIFLE_TRACES_RETENTION_DAYS:-7}
+      TRIFLE_TRACES_GZIP: ${TRIFLE_TRACES_GZIP:-true}
       
     ports:
       - "4000:4000"
