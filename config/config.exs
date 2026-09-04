@@ -35,7 +35,16 @@ config :trifle, :request_body_max_bytes, 8_000_000
 
 config :trifle, Trifle.Observability,
   enabled: true,
+  traces_storage_backend: :none,
   traces_storage_path: nil,
+  traces_s3: [
+    endpoint: nil,
+    buckets: [],
+    region: "us-east-1",
+    access_key_id: nil,
+    secret_access_key: nil,
+    prefix: "traces"
+  ],
   traces_retention_days: 7,
   traces_gzip: true,
   traces_bump_every: 15,

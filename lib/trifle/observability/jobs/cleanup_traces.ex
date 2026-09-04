@@ -1,5 +1,5 @@
 defmodule Trifle.Observability.Jobs.CleanupTraces do
-  @moduledoc "Removes expired Trifle Traces metadata and filesystem payloads."
+  @moduledoc "Removes expired Trifle Traces metadata and managed payloads."
 
   use Oban.Worker,
     queue: :default,
@@ -8,8 +8,12 @@ defmodule Trifle.Observability.Jobs.CleanupTraces do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
+    Trifle.Traces.trace("Clean up expired traces", head: true)
+
     case Trifle.Observability.cleanup!() do
-      {:ok, _deleted} -> :ok
+      {:ok, deleted} ->
+        Trifle.Traces.trace("Expired trace indexes deleted: #{deleted}")
+        :ok
     end
   end
 end

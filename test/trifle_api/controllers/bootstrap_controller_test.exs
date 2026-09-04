@@ -259,6 +259,75 @@ defmodule TrifleApi.BootstrapControllerTest do
       assert "is invalid" in source_id_errors
     end
 
+    test "database bootstrap accepts optional Traces config and never returns credentials", %{
+      conn: conn,
+      user_token: user_token
+    } do
+      trace_path = Path.join(System.tmp_dir!(), "bootstrap-traces-#{Ecto.UUID.generate()}")
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Postgres observability",
+          "driver" => "postgres",
+          "host" => "postgres",
+          "port" => 5432,
+          "database_name" => Trifle.Repo.config()[:database],
+          "username" => Trifle.Repo.config()[:username],
+          "password" => Trifle.Repo.config()[:password],
+          "trace_config" => %{
+            "index_name" => "bootstrap_traces",
+            "data_driver" => "file",
+            "data_path" => trace_path,
+            "retention_days" => 7,
+            "gzip" => true
+          },
+          "trace_access_key_id" => "must-not-be-returned",
+          "trace_secret_access_key" => "must-not-be-returned"
+        })
+
+      assert %{
+               "data" => %{
+                 "source" => %{
+                   "capabilities" => %{"stats" => true, "traces" => true},
+                   "trace_config" => %{"index_name" => "bootstrap_traces"}
+                 }
+               }
+             } = json_response(conn, 201)
+
+      response = Jason.encode!(json_response(conn, 201))
+      refute response =~ "must-not-be-returned"
+      refute response =~ "trace_access_key_id"
+      refute response =~ "trace_secret_access_key"
+    end
+
+    test "database bootstrap remains restricted to organization owners", %{
+      conn: conn,
+      organization: organization
+    } do
+      member = user_fixture()
+      {:ok, _membership} = Organizations.create_membership(organization, member, "member")
+
+      {:ok, _token_record, member_token} =
+        Organizations.create_organization_api_token(member, %{
+          name: "Member bootstrap",
+          organization_id: organization.id
+        })
+
+      conn =
+        conn
+        |> auth_user_conn(member_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Forbidden database",
+          "driver" => "sqlite",
+          "file_path" => "/tmp/forbidden.sqlite"
+        })
+
+      assert %{"errors" => %{"detail" => "Only organization owners can create databases"}} =
+               json_response(conn, 403)
+    end
+
     test "auto-grants created sources to current token and can issue scoped token", %{
       conn: conn,
       user_token: user_token

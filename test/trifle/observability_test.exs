@@ -3,6 +3,14 @@ defmodule Trifle.ObservabilityTest do
 
   alias Trifle.Traces.Driver.Data.File, as: FileData
   alias Trifle.Traces.Driver.Data.Null, as: NullData
+  alias Trifle.Traces.Driver.Data.S3, as: S3Data
+
+  defmodule FakeS3 do
+    def put_lifecycle(test_pid, bucket, rules) do
+      send(test_pid, {:put_lifecycle, bucket, rules})
+      :ok
+    end
+  end
 
   test "derives a named Postgrex connection from the Ecto Repo options" do
     options =
@@ -49,6 +57,59 @@ defmodule Trifle.ObservabilityTest do
              )
 
     assert File.dir?(path)
+  end
+
+  test "requires a path for explicit filesystem storage" do
+    assert_raise ArgumentError, ~r/TRIFLE_TRACES_STORAGE_PATH is required/, fn ->
+      Trifle.Observability.trace_data_driver(
+        traces_storage_backend: :file,
+        traces_storage_path: nil
+      )
+    end
+  end
+
+  test "configures S3 storage and its retention lifecycle" do
+    test_pid = self()
+
+    assert %S3Data{
+             adapter: FakeS3,
+             buckets: ["trifle-traces"],
+             prefix: "internal",
+             gzip: true,
+             client: ^test_pid
+           } =
+             Trifle.Observability.trace_data_driver(
+               traces_storage_backend: :s3,
+               traces_retention_days: 14,
+               traces_gzip: true,
+               traces_s3: [
+                 adapter: FakeS3,
+                 client: test_pid,
+                 buckets: ["trifle-traces"],
+                 prefix: "internal"
+               ]
+             )
+
+    assert_receive {:put_lifecycle, "trifle-traces", [rule]}
+    assert rule.id == "trifle-traces-14d"
+    assert rule.filter.prefix == "14/internal/"
+  end
+
+  test "builds ExAws client overrides for an S3-compatible endpoint" do
+    assert Trifle.Observability.s3_client_options(
+             endpoint: "http://minio:9000",
+             region: "us-east-1",
+             access_key_id: "minio",
+             secret_access_key: "miniosecret"
+           ) == [
+             access_key_id: "minio",
+             secret_access_key: "miniosecret",
+             region: "us-east-1",
+             http_opts: [with_body: true],
+             scheme: "http://",
+             host: "minio",
+             port: 9000
+           ]
   end
 
   test "keeps safe searchable Oban metadata without job arguments" do

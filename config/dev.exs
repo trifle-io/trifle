@@ -10,6 +10,18 @@ config :trifle, Trifle.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# Keep trace metadata in PostgreSQL and payloads in the local MinIO container.
+config :trifle, Trifle.Observability,
+  traces_storage_backend: :s3,
+  traces_s3: [
+    endpoint: "http://minio:9000",
+    buckets: ["trifle-traces"],
+    region: "us-east-1",
+    access_key_id: "minio",
+    secret_access_key: "miniosecret",
+    prefix: "traces"
+  ]
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

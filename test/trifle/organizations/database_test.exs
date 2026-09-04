@@ -42,6 +42,212 @@ defmodule Trifle.Organizations.DatabaseTest do
     end
   end
 
+  describe "optional Trifle Traces configuration" do
+    test "keeps an ordinary database Stats-only" do
+      changeset = Database.changeset(%Database{}, postgres_attrs())
+
+      assert changeset.valid?
+      refute Database.traces_configured?(apply_changes(changeset))
+      assert Database.capabilities(apply_changes(changeset)) == [:stats]
+    end
+
+    test "accepts and normalizes PostgreSQL with S3 payload storage" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          postgres_attrs(%{
+            trace_config: %{
+              index_name: "custom_traces",
+              data_driver: "s3",
+              data_endpoint: "http://minio:9000",
+              data_buckets: "traces-a, traces-b",
+              data_region: "us-east-1",
+              data_prefix: "jobs",
+              retention_days: "14",
+              gzip: "true"
+            },
+            trace_access_key_id: "minio",
+            trace_secret_access_key: "miniosecret"
+          })
+        )
+
+      assert changeset.valid?
+      database = apply_changes(changeset)
+      assert Database.traces_configured?(database)
+      assert Database.capabilities(database) == [:stats, :traces]
+      assert database.trace_config["data_buckets"] == ["traces-a", "traces-b"]
+      assert database.trace_config["retention_days"] == 14
+      assert database.trace_config["gzip"] == true
+    end
+
+    test "accepts MongoDB with File payload storage and clears S3 credentials" do
+      changeset =
+        Database.changeset(%Database{}, %{
+          display_name: "Mongo traces",
+          driver: "mongo",
+          host: "mongo",
+          port: 27017,
+          database_name: "trifle_test",
+          organization_id: Ecto.UUID.generate(),
+          trace_access_key_id: "unused",
+          trace_secret_access_key: "unused",
+          trace_config: file_trace_config()
+        })
+
+      assert changeset.valid?
+      database = apply_changes(changeset)
+      assert database.trace_access_key_id == nil
+      assert database.trace_secret_access_key == nil
+      assert database.trace_config["data_driver"] == "file"
+    end
+
+    test "rejects partial and unsupported trace configurations" do
+      partial =
+        Database.changeset(
+          %Database{},
+          postgres_attrs(%{trace_config: %{"index_name" => "trifle_traces"}})
+        )
+
+      refute partial.valid?
+
+      assert Enum.any?(partial.errors, fn
+               {:trace_config, {"retention days must be between 1 and 3650", _}} -> true
+               _ -> false
+             end)
+
+      unsupported =
+        Database.changeset(
+          %Database{},
+          redis_attrs(%{database_name: "0", trace_config: file_trace_config()})
+        )
+
+      refute unsupported.valid?
+
+      assert {"is only supported for direct or SSH PostgreSQL and MongoDB databases", _} =
+               unsupported.errors[:trace_config]
+    end
+
+    test "keeps the private connector Stats-only" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          postgres_attrs(%{
+            connection_method: "connector",
+            organization_connector_id: Ecto.UUID.generate(),
+            trace_config: file_trace_config()
+          })
+        )
+
+      refute changeset.valid?
+
+      assert {"is only supported for direct or SSH PostgreSQL and MongoDB databases", _} =
+               changeset.errors[:trace_config]
+    end
+
+    test "requires S3 credentials to be provided as a pair" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          postgres_attrs(%{
+            trace_config: s3_trace_config(),
+            trace_access_key_id: "access-only"
+          })
+        )
+
+      refute changeset.valid?
+
+      assert {"access key ID and secret access key must be provided together", _} =
+               changeset.errors[:trace_access_key_id]
+    end
+
+    test "requires a safe absolute File path" do
+      changeset =
+        Database.changeset(
+          %Database{},
+          postgres_attrs(%{
+            trace_config: Map.put(file_trace_config(), "data_path", "relative/traces")
+          })
+        )
+
+      refute changeset.valid?
+      assert {"File path must be an absolute non-root path", _} = changeset.errors[:trace_config]
+    end
+
+    test "removes configuration and encrypted credentials without deleting the database" do
+      organization = organization_fixture()
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(
+                 organization,
+                 postgres_attrs(%{
+                   trace_config: s3_trace_config(),
+                   trace_access_key_id: "access",
+                   trace_secret_access_key: "secret"
+                 })
+                 |> Map.drop([:organization_id])
+               )
+
+      assert {:ok, updated} = Organizations.remove_database_traces(database)
+      refute Database.traces_configured?(updated)
+      assert updated.trace_access_key_id == nil
+      assert updated.trace_secret_access_key == nil
+      assert Organizations.get_database!(database.id).id == database.id
+    end
+
+    test "encrypts S3 credentials at rest and decrypts them on load" do
+      organization = organization_fixture()
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(
+                 organization,
+                 postgres_attrs(%{
+                   trace_config: s3_trace_config(),
+                   trace_access_key_id: "trace-access",
+                   trace_secret_access_key: "trace-secret"
+                 })
+                 |> Map.drop([:organization_id])
+               )
+
+      loaded = Organizations.get_database!(database.id)
+      assert loaded.trace_access_key_id == "trace-access"
+      assert loaded.trace_secret_access_key == "trace-secret"
+
+      %{rows: [[encrypted_access, encrypted_secret]]} =
+        Trifle.Repo.query!(
+          "SELECT trace_access_key_id, trace_secret_access_key FROM databases WHERE id = $1",
+          [Ecto.UUID.dump!(database.id)]
+        )
+
+      refute encrypted_access == "trace-access"
+      refute encrypted_secret == "trace-secret"
+    end
+
+    test "blank credential fields preserve existing encrypted S3 credentials" do
+      organization = organization_fixture()
+
+      assert {:ok, database} =
+               Organizations.create_database_for_org(
+                 organization,
+                 postgres_attrs(%{
+                   trace_config: s3_trace_config(),
+                   trace_access_key_id: "trace-access",
+                   trace_secret_access_key: "trace-secret"
+                 })
+                 |> Map.drop([:organization_id])
+               )
+
+      assert {:ok, updated} =
+               Organizations.update_database(database, %{
+                 display_name: "Updated",
+                 trace_access_key_id: "",
+                 trace_secret_access_key: ""
+               })
+
+      assert updated.trace_access_key_id == "trace-access"
+      assert updated.trace_secret_access_key == "trace-secret"
+    end
+  end
+
   describe "changeset/2 for mysql" do
     test "requires host, port, database_name, username, and password" do
       changeset =
@@ -426,6 +632,45 @@ defmodule Trifle.Organizations.DatabaseTest do
       },
       overrides
     )
+  end
+
+  defp postgres_attrs(overrides \\ %{}) do
+    Map.merge(
+      %{
+        display_name: "Primary Postgres",
+        driver: "postgres",
+        host: "postgres",
+        port: 5432,
+        database_name: "trifle_test",
+        username: "postgres",
+        password: "password",
+        organization_id: Ecto.UUID.generate()
+      },
+      overrides
+    )
+  end
+
+  defp s3_trace_config do
+    %{
+      "index_name" => "trifle_traces",
+      "data_driver" => "s3",
+      "data_endpoint" => "http://minio:9000",
+      "data_buckets" => ["trifle-traces"],
+      "data_region" => "us-east-1",
+      "data_prefix" => "traces",
+      "retention_days" => 7,
+      "gzip" => true
+    }
+  end
+
+  defp file_trace_config do
+    %{
+      "index_name" => "trifle_traces",
+      "data_driver" => "file",
+      "data_path" => Path.join(System.tmp_dir!(), "trifle-traces"),
+      "retention_days" => 7,
+      "gzip" => true
+    }
   end
 
   defp redis_attrs(overrides) do

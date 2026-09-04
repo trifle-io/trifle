@@ -21,15 +21,22 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   alias Trifle.Monitors.TestDelivery
   alias Trifle.Repo
   alias Trifle.Exports.Series, as: SeriesExport
+  alias Trifle.Traces
   alias TrifleApp.Exports.MonitorLayout
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"monitor_id" => monitor_id}} = job) do
+    Traces.trace("Evaluate monitor", head: true)
+    Traces.tag("monitor:#{monitor_id}")
+    Traces.trace("Load monitor configuration")
+
     case Repo.get(Monitor, monitor_id) do
       %Monitor{} = monitor ->
         monitor = Repo.preload(monitor, [:alerts, :dashboard])
         scheduled_for = parse_scheduled_for(job.args["scheduled_for"])
         log_monitor_start(monitor, scheduled_for)
+        Traces.trace("Monitor loaded: type=#{monitor.type}; status=#{monitor.status}")
+        Traces.trace("Scheduled evaluation: #{format_dt(scheduled_for)}")
 
         try do
           handle_monitor(monitor, scheduled_for)
@@ -41,8 +48,17 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
       nil ->
         Logger.info("Monitor #{monitor_id} missing, skipping evaluation.")
+        Traces.trace("Monitor no longer exists; discarding", state: :warning)
+        Traces.warn()
         :discard
     end
+  end
+
+  def perform(%Oban.Job{}) do
+    Traces.trace("Validate monitor evaluation job", head: true)
+    Traces.trace("Required monitor identifier is missing", state: :warning)
+    Traces.warn()
+    :discard
   end
 
   defp parse_scheduled_for(nil), do: truncate_to_minute(DateTime.utc_now())
@@ -59,12 +75,22 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp handle_monitor(%Monitor{type: :report} = monitor, scheduled_for) do
     report_settings = monitor.report_settings || %{}
 
+    Traces.trace("Deliver scheduled report", head: true)
+
+    Traces.trace(
+      "Delivery channels: #{length(monitor.delivery_channels || [])}; frequency: #{Map.get(report_settings, :frequency) || "unset"}"
+    )
+
+    Traces.trace("Generate and deliver report")
+
     Logger.debug(fn ->
       "[EvaluateMonitor] deliver report monitor=#{monitor.id} freq=#{Map.get(report_settings, :frequency)} timeframe=#{Map.get(report_settings, :timeframe)} granularity=#{Map.get(report_settings, :granularity)} channels=#{length(monitor.delivery_channels || [])}"
     end)
 
     case TestDelivery.deliver_monitor(monitor) do
       {:ok, result} ->
+        Traces.trace("Report delivered")
+
         Logger.debug(fn ->
           "[EvaluateMonitor] report delivered monitor=#{monitor.id} keys=#{inspect(Map.keys(result || %{}))}"
         end)
@@ -83,6 +109,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       {:error, {:source_inactive, reason}} ->
+        Traces.trace("Report source is inactive; delivery skipped", state: :warning)
+        Traces.warn()
+
         Logger.info(fn ->
           "[EvaluateMonitor] skip report monitor=#{monitor.id} reason=source_inactive detail=#{inspect(reason)}"
         end)
@@ -102,6 +131,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       {:error, reason} ->
+        Traces.trace("Report delivery failed", state: :error)
+        Traces.fail()
+
         Logger.debug(fn ->
           "[EvaluateMonitor] report delivery failed monitor=#{monitor.id} reason=#{inspect(reason)}"
         end)
@@ -122,8 +154,14 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   end
 
   defp handle_monitor(%Monitor{type: :alert} = monitor, scheduled_for) do
+    Traces.trace("Evaluate alert monitor", head: true)
+    Traces.trace("Configured alerts: #{length(monitor.alerts || [])}")
+
     cond do
       not has_alert_metric?(monitor) ->
+        Traces.trace("Final alert series configured: false", state: :warning)
+        Traces.warn()
+
         Logger.debug(fn ->
           "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=missing_series"
         end)
@@ -141,6 +179,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       Enum.empty?(monitor.alerts || []) ->
+        Traces.trace("At least one alert configured: false", state: :warning)
+        Traces.warn()
+
         Logger.debug(fn ->
           "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=no_alerts"
         end)
@@ -158,6 +199,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         :ok
 
       true ->
+        Traces.trace("Alert prerequisites satisfied")
+
         Logger.debug(fn ->
           "[EvaluateMonitor] evaluate alert monitor=#{monitor.id} alerts=#{length(monitor.alerts || [])} timeframe=#{monitor.alert_timeframe} granularity=#{monitor.alert_granularity} notify_every=#{monitor.alert_notify_every}"
         end)
@@ -166,7 +209,11 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
     end
   end
 
-  defp handle_monitor(_monitor, _scheduled_for), do: :ok
+  defp handle_monitor(_monitor, _scheduled_for) do
+    Traces.trace("Unsupported monitor type; skipping", state: :warning)
+    Traces.warn()
+    :ok
+  end
 
   defp monitor_kind(%Monitor{type: type}) when type in [:report, :alert],
     do: Atom.to_string(type)
@@ -178,6 +225,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   end
 
   defp evaluate_alerts(%Monitor{} = monitor, scheduled_for) do
+    Traces.trace("Export alert series", head: true)
+
     with {:ok, %{export: export, timeframe: timeframe}} <- MonitorLayout.series_export(monitor),
          true <- SeriesExport.has_data?(export),
          stats when not is_nil(stats) <- fetch_stats_struct(export),
@@ -185,13 +234,25 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
            ensure_alert_targets(AlertSeries.resolved_final_targets(stats, monitor)),
          evaluations <- evaluate_each_alert(monitor, targets),
          {triggered, _non_triggered} <- Enum.split_with(evaluations, & &1.result.triggered?) do
+      Traces.trace("Series export contains data")
+      Traces.trace("Resolved alert targets: #{length(targets)}")
+
       recoveries = recovered_alerts(evaluations)
+
+      Traces.trace(
+        "Evaluation results: triggered=#{length(triggered)}; recovered=#{length(recoveries)}"
+      )
+
+      Traces.trace("Deliver alert events", head: true)
 
       deliveries =
         deliver_triggered_alerts(monitor, triggered, timeframe) ++
           deliver_recovered_alerts(monitor, recoveries, timeframe)
 
       status = execution_status(triggered, deliveries, evaluations)
+
+      Traces.trace("Delivery results: #{format_delivery_stats(deliveries)}")
+      Traces.trace("Evaluation status: #{status}")
 
       Logger.debug(fn ->
         "[EvaluateMonitor] alert evaluated monitor=#{monitor.id} triggered=#{length(triggered)} recoveries=#{length(recoveries)} deliveries=#{format_delivery_stats(deliveries)} status=#{status}"
@@ -213,6 +274,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
       maybe_update_trigger_status(monitor, triggered)
     else
       false ->
+        Traces.trace("Series export contains data: false", state: :warning)
+        Traces.warn()
+
         log_execution(monitor, %{
           status: "failed",
           summary: "Alert evaluation skipped – no series data available.",
@@ -232,6 +296,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         maybe_update_trigger_status(monitor, [])
 
       {:error, :no_final_series} ->
+        Traces.trace("Final alert series resolved no targets", state: :warning)
+        Traces.warn()
+
         log_execution(monitor, %{
           status: "failed",
           summary: "Alert evaluation skipped – final alert series did not resolve to any data.",
@@ -251,6 +318,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         maybe_update_trigger_status(monitor, [])
 
       {:error, :source_inactive, reason} ->
+        Traces.trace("Alert source is inactive; evaluation skipped", state: :warning)
+        Traces.warn()
+
         Logger.info(fn ->
           "[EvaluateMonitor] skip alert monitor=#{monitor.id} reason=source_inactive detail=#{inspect(reason)}"
         end)
@@ -269,6 +339,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         maybe_update_trigger_status(monitor, [])
 
       {:error, reason} ->
+        Traces.trace("Alert evaluation failed", state: :error)
+        Traces.fail()
+
         log_execution(monitor, %{
           status: "failed",
           summary: "Alert evaluation failed: #{format_reason(reason)}",
@@ -288,6 +361,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         {:error, reason}
 
       _ ->
+        Traces.trace("Alert export returned an unexpected response", state: :error)
+        Traces.fail()
+
         Logger.debug(fn ->
           "[EvaluateMonitor] alert evaluation unexpected export response monitor=#{monitor.id}"
         end)
@@ -340,6 +416,10 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp format_dt(other), do: inspect(other)
 
   defp handle_monitor_exception(%Monitor{} = monitor, scheduled_for, exception, stacktrace) do
+    Traces.trace("Monitor evaluation raised #{inspect(exception.__struct__)}", state: :error)
+    Traces.trace("Exception details are available in application error logs", state: :debug)
+    Traces.fail()
+
     Logger.error(fn ->
       [
         "[EvaluateMonitor] crash monitor=#{monitor.id} type=#{monitor.type} ",
@@ -381,14 +461,27 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
   defp evaluate_each_alert(%Monitor{} = monitor, stats) do
     monitor.alerts
-    |> Enum.map(fn %Alert{} = alert ->
+    |> Enum.with_index(1)
+    |> Enum.map(fn {%Alert{} = alert, alert_position} ->
+      Traces.trace("Alert #{alert_position} of #{length(monitor.alerts)}", head: true)
+      Traces.tag("alert:#{alert.id}")
+      Traces.trace("Evaluate #{length(stats)} resolved targets")
+
       target_results =
-        Enum.map(stats, fn target ->
+        stats
+        |> Enum.with_index(1)
+        |> Enum.map(fn {target, target_position} ->
+          Traces.trace("Target #{target_position} of #{length(stats)}")
+
           case AlertEvaluator.evaluate_points(alert, target.source_path, target.points) do
             {:ok, result} ->
+              Traces.trace("Target evaluation completed; triggered=#{result.triggered?}")
               %{target: target, result: result, status: :ok}
 
             {:error, reason} ->
+              Traces.trace("Target evaluation failed", state: :error)
+              Traces.fail()
+
               Logger.warning(
                 "Alert evaluation failed for monitor #{monitor.id} alert #{alert.id} target #{target.source_path}: #{inspect(reason)}"
               )
@@ -398,6 +491,7 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
         end)
 
       {status, result} = aggregate_target_results(alert, target_results)
+      Traces.trace("Alert aggregate: status=#{status}; triggered=#{result.triggered?}")
       %{alert: alert, result: result, status: status, target_results: target_results}
     end)
   end
@@ -445,25 +539,39 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp deliver_alert_events(monitor, events, timeframe, trigger_type) do
     notify_every = normalize_notify_every(monitor.alert_notify_every)
 
-    Enum.map(events, fn %{alert: %Alert{} = alert} = event ->
+    events
+    |> Enum.with_index(1)
+    |> Enum.map(fn {%{alert: %Alert{} = alert} = event, position} ->
+      Traces.trace("#{trigger_type} event #{position} of #{length(events)}", head: true)
+      Traces.tag("alert:#{alert.id}")
+
       cond do
         monitor.status == :paused ->
+          Traces.trace("Delivery suppressed because monitor is paused", state: :warning)
           {:suppressed, alert, %{reason: :monitor_paused, event: trigger_type}}
 
         trigger_type == :triggered and not deliver_on_frequency?(alert, notify_every) ->
+          Traces.trace("Delivery suppressed by notify-every frequency", state: :warning)
+
           {:suppressed, alert,
            %{reason: :notify_every, notify_every: notify_every, event: trigger_type}}
 
         true ->
+          Traces.trace("Generate and deliver alert notification")
+
           delivery_opts =
             [export_params: timeframe, trigger_type: trigger_type]
             |> maybe_put_triggered_series(trigger_type, event)
 
           case TestDelivery.deliver_alert(monitor, alert, delivery_opts) do
             {:ok, payload} ->
+              Traces.trace("Alert notification delivered")
               {:ok, alert, %{payload: prune_large_values(payload), event: trigger_type}}
 
             {:error, reason} ->
+              Traces.trace("Alert notification delivery failed", state: :error)
+              Traces.fail()
+
               Logger.warning(
                 "Alert delivery failed for monitor #{monitor.id} alert #{alert.id}: #{inspect(reason)}"
               )
@@ -869,6 +977,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp suppression_reason_label(_), do: "suppressed"
 
   defp log_execution(%Monitor{} = monitor, attrs) do
+    Traces.trace("Persist monitor execution", head: true)
+    Traces.trace("Execution status: #{Map.get(attrs, :status, "passed")}")
+
     attrs =
       attrs
       |> Map.put_new(:status, "passed")
@@ -880,9 +991,12 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
 
     case Monitors.create_execution(monitor, attrs) do
       {:ok, _execution} ->
+        Traces.trace("Monitor execution persisted")
         :ok
 
       {:error, reason} ->
+        Traces.trace("Monitor execution persistence failed", state: :error)
+        Traces.fail()
         Logger.warning("Failed to persist monitor execution: #{inspect(reason)}")
     end
   end
@@ -915,6 +1029,9 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   defp truncate_to_minute(other), do: other
 
   defp update_alert_statuses(%Monitor{} = monitor, evaluations, deliveries, evaluated_at) do
+    Traces.trace("Update alert states", head: true)
+    Traces.trace("Alerts evaluated: #{length(evaluations)}")
+
     alerts_by_id =
       monitor.alerts
       |> List.wrap()
@@ -978,6 +1095,8 @@ defmodule Trifle.Monitors.Jobs.EvaluateMonitor do
   end
 
   defp mark_all_alerts_failed(%Monitor{} = monitor, summary, evaluated_at) do
+    Traces.trace("Mark configured alerts as failed", state: :error)
+
     monitor.alerts
     |> List.wrap()
     |> Enum.each(

@@ -3,13 +3,14 @@ defmodule Trifle.Observability do
   Configures the application's own Trifle Stats and Trifle Traces storage.
 
   Trace metadata is kept in PostgreSQL. Trace payloads are written to the
-  configured filesystem path, or discarded when no path is configured.
+  configured S3-compatible object store or filesystem path.
   """
 
   require Logger
 
   alias Trifle.Traces.Driver.Data.File, as: FileData
   alias Trifle.Traces.Driver.Data.Null, as: NullData
+  alias Trifle.Traces.Driver.Data.S3, as: S3Data
   alias Trifle.Traces.Driver.Index.Postgres, as: PostgresIndex
 
   @stats_connection Trifle.Observability.StatsPostgres
@@ -76,31 +77,137 @@ defmodule Trifle.Observability do
 
   @doc false
   def trace_data_driver(options \\ config()) do
-    case options |> Keyword.get(:traces_storage_path) |> normalize_path() do
-      nil ->
+    case storage_backend(options) do
+      :none ->
         %NullData{}
 
-      path ->
+      :file ->
+        path =
+          options
+          |> Keyword.get(:traces_storage_path)
+          |> normalize_path()
+          |> require_file_path!()
+
         driver_options = [path: path, gzip: Keyword.get(options, :traces_gzip, true)]
         :ok = FileData.setup!(driver_options)
         FileData.new(driver_options)
+
+      :s3 ->
+        s3_options = Keyword.get(options, :traces_s3, [])
+
+        client_options =
+          if Keyword.has_key?(s3_options, :client),
+            do: Keyword.fetch!(s3_options, :client),
+            else: s3_client_options(s3_options)
+
+        driver_options =
+          [
+            buckets: Keyword.get(s3_options, :buckets, []),
+            prefix: Keyword.get(s3_options, :prefix, "traces"),
+            gzip: Keyword.get(options, :traces_gzip, true),
+            client: client_options
+          ]
+          |> maybe_put(:adapter, Keyword.get(s3_options, :adapter))
+
+        setup_options =
+          Keyword.put(
+            driver_options,
+            :retentions,
+            [Keyword.get(options, :traces_retention_days, 7)]
+          )
+
+        :ok = S3Data.setup!(setup_options)
+        S3Data.new(driver_options)
     end
+  end
+
+  @doc false
+  def s3_client_options(options) do
+    endpoint_options =
+      case options |> Keyword.get(:endpoint) |> normalize_optional_string() do
+        nil -> []
+        endpoint -> endpoint_client_options(endpoint)
+      end
+
+    credential_options =
+      [
+        access_key_id: Keyword.get(options, :access_key_id),
+        secret_access_key: Keyword.get(options, :secret_access_key),
+        region: Keyword.get(options, :region, "us-east-1"),
+        http_opts: Keyword.get(options, :http_opts, with_body: true)
+      ]
+      |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+
+    credential_options ++ endpoint_options
   end
 
   @doc "Deletes trace indexes and filesystem payloads past their retention window."
   def cleanup! do
     if enabled?() do
-      traces_config = Trifle.Traces.configuration()
-      deleted = PostgresIndex.cleanup!(traces_config.index_driver)
+      internal_deleted = cleanup_internal!()
 
-      case traces_config.data_driver do
-        %FileData{} = driver -> FileData.cleanup!(driver)
-        _driver -> :ok
-      end
+      configured_deleted =
+        Trifle.Organizations.list_trace_databases()
+        |> Enum.reject(
+          &(&1.managed_key == Trifle.Observability.DatabaseProvisioner.managed_key())
+        )
+        |> Enum.reduce(0, fn database, total ->
+          case Trifle.Traces.Source.Database.cleanup(database) do
+            {:ok, deleted} ->
+              total + deleted
 
-      {:ok, deleted}
+            {:error, reason} ->
+              Logger.warning(
+                "Failed to clean trace storage for database #{database.id}: #{reason}"
+              )
+
+              total
+          end
+        end)
+
+      {:ok, internal_deleted + configured_deleted}
     else
       {:ok, 0}
+    end
+  end
+
+  @doc "Builds the editable database source for the application's internal observability data."
+  def database_attrs do
+    options = config()
+    repo = Trifle.Repo.config()
+
+    with true <- enabled?() || {:error, :observability_disabled},
+         host when is_binary(host) and host != "" <- Keyword.get(repo, :hostname),
+         {:ok, trace_attrs} <- trace_database_attrs(options) do
+      {:ok,
+       %{
+         display_name: "Trifle internal observability",
+         driver: "postgres",
+         connection_method: "direct",
+         host: host,
+         port: Keyword.get(repo, :port, 5432),
+         database_name: Keyword.get(repo, :database),
+         username: Keyword.get(repo, :username),
+         password: Keyword.get(repo, :password),
+         config: %{
+           "table_name" => @stats_table,
+           "ping_table_name" => @stats_ping_table,
+           "joined_identifiers" => "full",
+           "pool_size" => 5,
+           "pool_timeout" => 15_000,
+           "timeout" => 15_000,
+           "ssl" => Keyword.get(repo, :ssl, false)
+         },
+         granularities: ["1m", "1h", "1d", "1w", "1mo"],
+         time_zone: "UTC",
+         beginning_of_week: 1,
+         default_timeframe: "24h",
+         default_granularity: "1h"
+       }
+       |> Map.merge(trace_attrs)}
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :postgres_hostname_unavailable}
     end
   end
 
@@ -174,6 +281,68 @@ defmodule Trifle.Observability do
     )
   end
 
+  defp cleanup_internal! do
+    if enabled?() do
+      traces_config = Trifle.Traces.configuration()
+      deleted = PostgresIndex.cleanup!(traces_config.index_driver)
+
+      case traces_config.data_driver do
+        %FileData{} = driver -> FileData.cleanup!(driver)
+        %S3Data{} -> :ok
+        _driver -> :ok
+      end
+
+      deleted
+    else
+      0
+    end
+  end
+
+  defp trace_database_attrs(options) do
+    base = %{
+      "index_name" => @traces_table,
+      "retention_days" => Keyword.get(options, :traces_retention_days, 7),
+      "gzip" => Keyword.get(options, :traces_gzip, true)
+    }
+
+    case storage_backend(options) do
+      :file ->
+        case options |> Keyword.get(:traces_storage_path) |> normalize_path() do
+          path when is_binary(path) ->
+            {:ok,
+             %{trace_config: Map.merge(base, %{"data_driver" => "file", "data_path" => path})}}
+
+          _ ->
+            {:error, :trace_file_path_unavailable}
+        end
+
+      :s3 ->
+        s3 = Keyword.get(options, :traces_s3, [])
+        buckets = Keyword.get(s3, :buckets, [])
+
+        if is_list(buckets) and buckets != [] do
+          {:ok,
+           %{
+             trace_config:
+               Map.merge(base, %{
+                 "data_driver" => "s3",
+                 "data_endpoint" => Keyword.get(s3, :endpoint),
+                 "data_buckets" => buckets,
+                 "data_region" => Keyword.get(s3, :region, "us-east-1"),
+                 "data_prefix" => Keyword.get(s3, :prefix, "traces")
+               }),
+             trace_access_key_id: Keyword.get(s3, :access_key_id),
+             trace_secret_access_key: Keyword.get(s3, :secret_access_key)
+           }}
+        else
+          {:error, :trace_s3_buckets_unavailable}
+        end
+
+      :none ->
+        {:error, :trace_payload_storage_unavailable}
+    end
+  end
+
   defp configure_traces do
     options = config()
 
@@ -208,4 +377,46 @@ defmodule Trifle.Observability do
       trimmed -> Path.expand(trimmed)
     end
   end
+
+  defp storage_backend(options) do
+    case Keyword.get(options, :traces_storage_backend) do
+      backend when backend in [:none, :file, :s3] ->
+        backend
+
+      nil ->
+        if(normalize_path(Keyword.get(options, :traces_storage_path)), do: :file, else: :none)
+
+      backend ->
+        raise ArgumentError, "unsupported trace storage backend: #{inspect(backend)}"
+    end
+  end
+
+  defp require_file_path!(nil) do
+    raise ArgumentError,
+          "TRIFLE_TRACES_STORAGE_PATH is required when trace storage backend is file"
+  end
+
+  defp require_file_path!(path), do: path
+
+  defp normalize_optional_string(value) when value in [nil, ""], do: nil
+
+  defp normalize_optional_string(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp endpoint_client_options(endpoint) do
+    uri = URI.parse(endpoint)
+
+    if uri.scheme in ["http", "https"] and is_binary(uri.host) do
+      [scheme: "#{uri.scheme}://", host: uri.host, port: uri.port]
+    else
+      raise ArgumentError, "invalid trace S3 endpoint: #{inspect(endpoint)}"
+    end
+  end
+
+  defp maybe_put(options, _key, nil), do: options
+  defp maybe_put(options, key, value), do: Keyword.put(options, key, value)
 end

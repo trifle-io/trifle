@@ -62,6 +62,30 @@ defmodule TrifleAdmin.DatabasesLive do
     end
   end
 
+  def handle_event("restore_internal_observability", _params, socket) do
+    case Trifle.Observability.DatabaseProvisioner.ensure_internal_database() do
+      {:ok, nil} ->
+        {:noreply,
+         put_flash(socket, :error, "Internal observability is unavailable in SaaS mode.")}
+
+      {:ok, database} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Internal observability database is available: #{database.display_name}"
+         )
+         |> push_patch(
+           to:
+             ~p"/admin/databases?#{Pagination.list_params(socket.assigns.query, socket.assigns.pagination.page)}"
+         )}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not restore internal observability: #{inspect(reason)}")}
+    end
+  end
+
   defp apply_action(socket, :show, %{"id" => id}) do
     database =
       id
@@ -84,6 +108,14 @@ defmodule TrifleAdmin.DatabasesLive do
           description="Browse configured database connections and status."
         >
           <:actions>
+            <button
+              :if={Trifle.Config.self_hosted_mode?()}
+              type="button"
+              phx-click="restore_internal_observability"
+              class="inline-flex items-center rounded-md border border-teal-300 bg-white px-3 py-2 text-sm font-semibold text-teal-700 shadow-sm hover:bg-teal-50 dark:border-teal-500/50 dark:bg-slate-800 dark:text-teal-300 dark:hover:bg-teal-500/10"
+            >
+              Restore internal source
+            </button>
             <.form for={%{}} as={:filters} phx-change="filter" class="w-64">
               <input
                 type="search"
@@ -145,7 +177,9 @@ defmodule TrifleAdmin.DatabasesLive do
                           {database.display_name}
                         </p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors duration-200">
-                          Click to view details
+                          {if Database.traces_configured?(database),
+                            do: "Stats + Traces",
+                            else: "Stats"}
                         </p>
                       </div>
                       <div class="flex-shrink-0">
