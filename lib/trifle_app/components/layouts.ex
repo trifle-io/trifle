@@ -21,18 +21,18 @@ defmodule TrifleApp.Layouts do
       type="button"
       id="command-palette-trigger"
       data-command-palette-trigger
-      class="group relative flex w-full items-center rounded-[1.15rem] border border-slate-200/80 bg-white/90 text-left text-sm font-medium text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_16px_28px_-30px_rgba(15,23,42,0.55)] transition duration-200 ease-out hover:border-teal-300/80 hover:bg-white hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500/70 dark:border-slate-700/80 dark:bg-slate-900/75 dark:text-slate-300 dark:shadow-none dark:hover:border-teal-400/40 dark:hover:bg-slate-800 dark:hover:text-white"
+      class="group relative flex items-center border border-slate-200/80 bg-white/90 text-left text-sm font-medium text-slate-500 transition duration-200 ease-out hover:border-teal-300/80 hover:bg-white hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500/70 dark:border-slate-700/80 dark:bg-slate-900/75 dark:text-slate-300 dark:shadow-none dark:hover:border-teal-400/40 dark:hover:bg-slate-800 dark:hover:text-white"
       data-fast-tooltip
       x-bind:data-tooltip={SidebarHelpers.compact_tooltip_expr("Search and navigate")}
       x-bind:data-tooltip-placement={SidebarHelpers.compact_tooltip_placement_expr()}
-      x-bind:class="compact ? 'mx-auto h-11 w-11 justify-center p-0' : 'px-3.5 py-3'"
+      x-bind:class="compact ? 'mx-auto h-9 w-9 justify-center rounded-xl p-0 shadow-none' : 'w-full rounded-[1.15rem] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_16px_28px_-30px_rgba(15,23,42,0.55)]'"
       x-on:click="openCommandPalette($event.currentTarget)"
       aria-haspopup="dialog"
       x-bind:aria-expanded="commandPaletteOpen.toString()"
     >
       <span
-        class="flex shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/80 text-slate-400 transition group-hover:text-teal-600 dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-400 dark:group-hover:border-teal-400/40 dark:group-hover:bg-teal-400/10 dark:group-hover:text-teal-200"
-        x-bind:class="compact ? 'h-9 w-9' : 'h-8 w-8'"
+        class="flex shrink-0 items-center justify-center rounded-xl border-slate-200/70 bg-white/80 text-slate-400 transition group-hover:text-teal-600 dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-400 dark:group-hover:border-teal-400/40 dark:group-hover:bg-teal-400/10 dark:group-hover:text-teal-200"
+        x-bind:class="compact ? 'h-full w-full' : 'h-8 w-8 border'"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
