@@ -984,7 +984,7 @@ defmodule TrifleApp.ExploreCore do
         keys_sum = reduce_stats(system_stats.series[:values] || [])
         # Chart always shows events from system data, for the specific key
         timeline_map = series_from(system_stats.series, ["keys", socket.assigns.key])
-        path = "keys.#{socket.assigns.key}"
+        path = Trifle.Stats.Path.join(["keys", socket.assigns.key])
 
         timeline_points =
           timeline_map
@@ -1042,7 +1042,7 @@ defmodule TrifleApp.ExploreCore do
         {timeline_data, chart_type} =
           if socket.assigns.key && socket.assigns.key != "" do
             timeline_map = series_from(raw_stats, ["keys", socket.assigns.key])
-            path = "keys.#{socket.assigns.key}"
+            path = Trifle.Stats.Path.join(["keys", socket.assigns.key])
 
             points =
               timeline_map
@@ -1598,7 +1598,7 @@ defmodule TrifleApp.ExploreCore do
   end
 
   def series_from(series_input, path) when is_list(path) do
-    path = Enum.join(path, ".")
+    path = Trifle.Stats.Path.join(path)
     series_struct = ensure_series_struct(series_input)
 
     format_timeline_map(series_struct, path, 1, &timeline_chart_point/2)
@@ -1618,7 +1618,7 @@ defmodule TrifleApp.ExploreCore do
         option_values
         |> Enum.sort()
         |> Enum.map(fn key ->
-          path = "keys." <> key
+          path = Trifle.Stats.Path.join(["keys", key])
           points = normalize_timeline_points(Map.get(timeline_map, path))
 
           data =
@@ -1792,7 +1792,7 @@ defmodule TrifleApp.ExploreCore do
 
     formatted_path =
       display_path
-      |> String.split(".")
+      |> Trifle.Stats.Path.segments()
       |> build_nested_html(all_paths, [])
       |> Enum.join(".")
 
@@ -1896,17 +1896,17 @@ defmodule TrifleApp.ExploreCore do
     prefix =
       case path_so_far do
         [] -> ""
-        parts -> Enum.join(parts, ".") <> "."
+        parts -> Trifle.Stats.Path.join(parts) <> "."
       end
 
     siblings =
       all_paths
       |> Enum.filter(fn path ->
         String.starts_with?(path, prefix) &&
-          length(String.split(path, ".")) > length(path_so_far)
+          length(Trifle.Stats.Path.segments(path)) > length(path_so_far)
       end)
       |> Enum.map(fn path ->
-        String.split(path, ".")
+        Trifle.Stats.Path.segments(path)
         |> Enum.drop(length(path_so_far))
         |> hd()
       end)

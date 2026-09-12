@@ -7,6 +7,7 @@ defmodule Trifle.Traces.Source.DatabaseTest do
   alias Trifle.Traces.Driver.Data.File, as: FileData
   alias Trifle.Traces.Driver.Index.Postgres, as: PostgresIndex
   alias Trifle.Traces.Source.Database, as: TraceDatabase
+  alias Trifle.Traces.TraceRecord
 
   test "builds, sets up, and verifies a per-database PostgreSQL/File configuration" do
     suffix = System.unique_integer([:positive])
@@ -52,6 +53,28 @@ defmodule Trifle.Traces.Source.DatabaseTest do
 
       assert {:ok, checked, true} = Organizations.check_database_status(database)
       assert checked.last_check_status == "success"
+
+      # Disabling the app's own telemetry must not disable retention for user sources.
+      refute Trifle.Observability.enabled?()
+      now = DateTime.utc_now()
+
+      expired = %TraceRecord{
+        reference: "expired",
+        key: "jobs/Example.Worker",
+        first_at: DateTime.add(now, -8, :day),
+        last_at: DateTime.add(now, -8, :day),
+        expires_at: DateTime.add(now, -1, :day)
+      }
+
+      current = %{expired | reference: "current", expires_at: DateTime.add(now, 1, :day)}
+      PostgresIndex.create(config.index_driver, expired)
+      PostgresIndex.create(config.index_driver, current)
+
+      assert {:ok, 1} = Trifle.Observability.cleanup!()
+      assert PostgresIndex.find(config.index_driver, expired.reference) == nil
+
+      assert %TraceRecord{reference: "current"} =
+               PostgresIndex.find(config.index_driver, current.reference)
     after
       Trifle.Repo.query!("DROP TABLE IF EXISTS #{trace_table}")
       Trifle.Repo.query!("DROP TABLE IF EXISTS #{stats_table}")

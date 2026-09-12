@@ -1,3 +1,5 @@
+import {pathSegments, siblingSegments} from '../../../utils/stats_path.mjs';
+
 export const createDashboardGridTableRendererMethods = ({
   Hooks,
   TABLE_PATH_HTML_FIELD,
@@ -422,11 +424,11 @@ export const createDashboardGridTableRendererMethods = ({
     const safeColor = this._normalize_table_path_color(color);
 
     if (!safeColor || label.trim() === '') {
-      wrapper.textContent = label;
+      wrapper.textContent = pathSegments(label).join('.');
       return;
     }
 
-    label.split('.').forEach((segment, index) => {
+    pathSegments(label).forEach((segment, index) => {
       if (index > 0) {
         wrapper.appendChild(document.createTextNode('.'));
       }
@@ -446,7 +448,7 @@ export const createDashboardGridTableRendererMethods = ({
   _build_path_segments(row, payload) {
     const rawPath = (row && (row.display_path || row.path)) ? String(row.display_path || row.path) : '';
     if (!rawPath) return null;
-    const parts = rawPath.split('.');
+    const parts = pathSegments(rawPath);
     const allPaths = (Array.isArray(payload.color_paths) && payload.color_paths.length
       ? payload.color_paths
       : (payload.rows || []).map((r) => r.display_path || r.path || '')
@@ -466,21 +468,7 @@ export const createDashboardGridTableRendererMethods = ({
   },
 
   _path_color_index(component, prefixParts, allPaths) {
-    const prefix = prefixParts.length ? `${prefixParts.join('.')}.` : '';
-    const siblingSet = new Set();
-    allPaths.forEach((path) => {
-      if (!path || typeof path !== 'string') return;
-      if (!prefix && path.indexOf('.') === -1 && prefixParts.length === 0) {
-        siblingSet.add(path);
-        return;
-      }
-      if (!path.startsWith(prefix)) return;
-      const remainder = path.slice(prefix.length);
-      if (!remainder) return;
-      const next = remainder.split('.')[0];
-      if (next) siblingSet.add(next);
-    });
-    const siblings = Array.from(siblingSet).sort();
+    const siblings = siblingSegments(allPaths, prefixParts).sort();
     const idx = siblings.indexOf(component);
     return idx >= 0 ? idx : 0;
   },

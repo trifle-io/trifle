@@ -124,7 +124,12 @@ app:
       forcePathStyle: true
       prefix: "sqlite-files"
 
-  # Internal Trifle.Traces storage. Metadata is always stored in PostgreSQL.
+  # The app's own Oban traces and their Stats metrics (not user-configured sources).
+  observability:
+    enabled: true # Maps to TRIFLE_OBSERVABILITY_ENABLED; restart required.
+
+  # Internal Trifle.Traces storage (when observability is enabled).
+  # Metadata is always stored in PostgreSQL.
   # Leave storagePath empty for metadata-only traces, or place it under the
   # persistence mount to retain full trace payloads.
   traces:

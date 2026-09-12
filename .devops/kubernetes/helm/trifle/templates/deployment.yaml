@@ -48,6 +48,7 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- include "trifle.observabilityEnv" . | nindent 12 }}
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:

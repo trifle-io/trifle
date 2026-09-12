@@ -66,6 +66,25 @@ defmodule Trifle.Observability.DatabaseProvisionerTest do
     assert Repo.get_by(Database, managed_key: DatabaseProvisioner.managed_key()) == nil
   end
 
+  test "disabled observability does not provision a source when an organization is created" do
+    Application.put_env(:trifle, Trifle.Observability,
+      enabled: false,
+      traces_storage_backend: :file,
+      traces_storage_path: nil
+    )
+
+    user = user_fixture()
+
+    assert {:ok, organization, _membership} =
+             Organizations.create_organization_with_owner(%{name: "No internal telemetry"}, user)
+
+    assert {:error, :observability_disabled} =
+             DatabaseProvisioner.ensure_internal_database(organization)
+
+    assert Repo.get_by(Database, managed_key: DatabaseProvisioner.managed_key()) == nil
+    assert Trifle.Observability.setup() == []
+  end
+
   defp configure_file_observability(path) do
     Application.put_env(:trifle, Trifle.Observability,
       enabled: true,

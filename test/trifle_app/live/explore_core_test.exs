@@ -3,6 +3,86 @@ defmodule TrifleApp.ExploreCoreTest do
 
   alias TrifleApp.ExploreCore
 
+  @activity_keys [
+    "jobs::Trifle.Monitors.Jobs.DispatchRunner",
+    "jobs::SimpleWorker",
+    "*",
+    "jobs::test*rb",
+    ~S(jobs::file\name),
+    "jobs::percent%2Erb",
+    "jobs::東京.rb"
+  ]
+
+  describe "hourly activity charts with literal metric names" do
+    for days <- [1, 2, 3, 7] do
+      test "all-job activity keeps every hourly bucket over #{days}d" do
+        series = hourly_activity(unquote(days))
+
+        assert {:noreply, socket} =
+                 ExploreCore.handle_async(
+                   :data_task,
+                   {:ok, %{system: Trifle.Stats.Series.new(series)}},
+                   activity_socket(nil)
+                 )
+
+        chart = Jason.decode!(socket.assigns.timeline)
+        assert socket.assigns.chart_type == "stacked"
+        assert length(chart) == length(@activity_keys)
+
+        for key <- @activity_keys do
+          assert %{"data" => points} = Enum.find(chart, &(&1["name"] == key))
+          assert points == expected_activity(series, key)
+
+          # The chart must agree with the table, not replace the hours with a total.
+          path = Trifle.Stats.Path.join(["keys", key])
+
+          for {at, values} <- Enum.zip(series.at, series.values) do
+            assert socket.assigns.stats.values[{path, at}] == get_in(values, ["keys", key])
+          end
+        end
+      end
+
+      test "selected-job activity keeps every hourly bucket over #{days}d" do
+        series = hourly_activity(unquote(days))
+
+        for key <- @activity_keys do
+          key_series = %{
+            series
+            | values: Enum.map(series.values, &%{"count" => get_in(&1, ["keys", key]) || 0})
+          }
+
+          assert {:noreply, socket} =
+                   ExploreCore.handle_async(
+                     :data_task,
+                     {:ok,
+                      %{
+                        system: Trifle.Stats.Series.new(series),
+                        key: Trifle.Stats.Series.new(key_series),
+                        key_transponder_results: []
+                      }},
+                     activity_socket(key)
+                   )
+
+          assert socket.assigns.chart_type == "single"
+          assert Jason.decode!(socket.assigns.timeline) == expected_activity(series, key)
+          assert socket.assigns.stats.paths == ["count"]
+        end
+      end
+
+      test "raw-series activity keeps escaped selected-job paths over #{days}d" do
+        series = hourly_activity(unquote(days))
+
+        for key <- @activity_keys do
+          assert {:noreply, socket} =
+                   ExploreCore.handle_async(:data_task, {:ok, series}, activity_socket(key))
+
+          assert socket.assigns.chart_type == "single"
+          assert Jason.decode!(socket.assigns.timeline) == expected_activity(series, key)
+        end
+      end
+    end
+  end
+
   describe "format_number/1" do
     test "preserves trailing zeros for whole-number suffixes" do
       assert ExploreCore.format_number(390_000_000) == "390m"
@@ -40,5 +120,39 @@ defmodule TrifleApp.ExploreCoreTest do
       assert String.contains?(html, "&lt;script&gt;alert(1)&lt;/script&gt;")
       refute String.contains?(html, "<script>alert(1)</script>")
     end
+  end
+
+  defp activity_socket(key) do
+    %Phoenix.LiveView.Socket{
+      assigns: %{
+        __changed__: %{},
+        key: key,
+        load_start_time: System.monotonic_time(:microsecond)
+      }
+    }
+  end
+
+  defp hourly_activity(days) do
+    hours = 0..(days * 24)
+
+    %{
+      at: Enum.map(hours, &DateTime.add(~U[2026-09-01 00:00:00Z], &1 * 3600, :second)),
+      values:
+        Enum.map(hours, fn hour ->
+          # Include empty and zero-valued buckets, as well as actual activity.
+          keys =
+            if rem(hour, 5) == 0,
+              do: %{},
+              else: Map.new(@activity_keys, &{&1, rem(hour, 4)})
+
+          %{"keys" => keys}
+        end)
+    }
+  end
+
+  defp expected_activity(series, key) do
+    Enum.zip_with(series.at, series.values, fn at, values ->
+      [DateTime.to_unix(at, :millisecond), get_in(values, ["keys", key]) || 0]
+    end)
   end
 end

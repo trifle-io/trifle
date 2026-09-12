@@ -1,3 +1,5 @@
+import {pathSegments} from '../../utils/stats_path.mjs';
+
 export const registerExpandedAgGridTableHook = (Hooks, deps) => {
   const {
     AGGRID_PATH_COL_MIN_WIDTH,
@@ -273,11 +275,11 @@ Hooks.ExpandedAgGridTable = {
     const safeColor = this.normalizePathColor(color);
 
     if (!safeColor || label.trim() === '') {
-      wrapper.textContent = label;
+      wrapper.textContent = pathSegments(label).join('.');
       return;
     }
 
-    label.split('.').forEach((segment, index) => {
+    pathSegments(label).forEach((segment, index) => {
       if (index > 0) {
         wrapper.appendChild(document.createTextNode('.'));
       }

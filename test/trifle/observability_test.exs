@@ -138,7 +138,10 @@ defmodule Trifle.ObservabilityTest do
            }
   end
 
-  test "cleanup is inert when internal observability is disabled in tests" do
-    assert {:ok, 0} = Trifle.Observability.cleanup!()
+  test "disabled observability starts no internal connection or tracing handler" do
+    refute Trifle.Observability.enabled?()
+    assert Trifle.Observability.setup() == []
+    assert Process.whereis(Trifle.Observability.StatsPostgres) == nil
+    assert {:error, :observability_disabled} = Trifle.Observability.database_attrs()
   end
 end

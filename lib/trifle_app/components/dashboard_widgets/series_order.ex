@@ -245,7 +245,7 @@ defmodule TrifleApp.Components.DashboardWidgets.SeriesOrder do
 
   defp leaf_name(name) do
     name
-    |> String.split(".")
+    |> Trifle.Stats.Path.segments()
     |> List.last()
     |> case do
       nil -> name

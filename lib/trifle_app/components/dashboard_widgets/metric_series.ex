@@ -190,10 +190,17 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
     trimmed = path |> to_string() |> String.trim()
 
     cond do
-      trimmed == "" -> ""
-      String.contains?(trimmed, "*") -> trimmed
-      Enum.any?(options, &String.starts_with?(&1, trimmed <> ".")) -> trimmed <> ".*"
-      true -> trimmed
+      trimmed == "" ->
+        ""
+
+      Trifle.Stats.Path.wildcard?(trimmed) ->
+        trimmed
+
+      Enum.any?(options, &(&1 != trimmed and Trifle.Metrics.ValuePath.prefix?(&1, trimmed))) ->
+        Trifle.Metrics.ValuePath.canonical(trimmed) <> ".*"
+
+      true ->
+        Trifle.Metrics.ValuePath.canonical(trimmed)
     end
   end
 
@@ -421,8 +428,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
   defp wildcard_state(path_input, expanded_path) do
     typed_path = path_input |> to_string() |> String.trim()
     normalized_expanded = expanded_path |> to_string() |> String.trim()
-    explicit_wildcard? = String.contains?(typed_path, "*")
-    auto_wildcard? = !explicit_wildcard? and String.contains?(normalized_expanded, "*")
+    explicit_wildcard? = Trifle.Stats.Path.wildcard?(typed_path)
+    auto_wildcard? = !explicit_wildcard? and Trifle.Stats.Path.wildcard?(normalized_expanded)
 
     cond do
       typed_path == "" -> :unknown

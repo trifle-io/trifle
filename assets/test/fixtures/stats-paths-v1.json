@@ -1,0 +1,549 @@
+{
+  "version": 1,
+  "path_cases": [
+    {
+      "name": "ordinary",
+      "input": "jobs.count",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.count",
+      "legacy": [
+        "jobs",
+        "count"
+      ]
+    },
+    {
+      "name": "nested",
+      "input": "jobs.test.rb",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "test",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "rb",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.test.rb",
+      "legacy": [
+        "jobs",
+        "test",
+        "rb"
+      ]
+    },
+    {
+      "name": "literal dot",
+      "input": "jobs.test\\.rb",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "test.rb",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.test\\.rb",
+      "legacy": [
+        "jobs",
+        "test\\",
+        "rb"
+      ]
+    },
+    {
+      "name": "literal star",
+      "input": "jobs.\\*.count",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "*",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.\\*.count",
+      "legacy": [
+        "jobs",
+        "\\*",
+        "count"
+      ]
+    },
+    {
+      "name": "wildcard",
+      "input": "jobs.*.count",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "*",
+          "wildcard": true,
+          "unescaped_star": true
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.*.count",
+      "legacy": [
+        "jobs",
+        "*",
+        "count"
+      ]
+    },
+    {
+      "name": "ruby",
+      "input": "jobs.Trifle::Jobs::DispatchRunner",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "Trifle::Jobs::DispatchRunner",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.Trifle::Jobs::DispatchRunner",
+      "legacy": [
+        "jobs",
+        "Trifle::Jobs::DispatchRunner"
+      ]
+    },
+    {
+      "name": "elixir",
+      "input": "jobs.Trifle\\.Jobs\\.DispatchRunner",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "Trifle.Jobs.DispatchRunner",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.Trifle\\.Jobs\\.DispatchRunner",
+      "legacy": [
+        "jobs",
+        "Trifle\\",
+        "Jobs\\",
+        "DispatchRunner"
+      ]
+    },
+    {
+      "name": "percent is literal",
+      "input": "jobs.test%2Erb",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "test%2Erb",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.test%2Erb",
+      "legacy": [
+        "jobs",
+        "test%2Erb"
+      ]
+    },
+    {
+      "name": "unknown escape",
+      "input": "jobs.a\\q",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "a\\q",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.a\\\\q",
+      "legacy": [
+        "jobs",
+        "a\\q"
+      ]
+    },
+    {
+      "name": "trailing backslash",
+      "input": "jobs.a\\",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "a\\",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.a\\\\",
+      "legacy": [
+        "jobs",
+        "a\\"
+      ]
+    },
+    {
+      "name": "escaped backslash",
+      "input": "jobs.a\\\\b",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "a\\b",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.a\\\\b",
+      "legacy": [
+        "jobs",
+        "a\\\\b"
+      ]
+    },
+    {
+      "name": "backslash before unescaped star",
+      "input": "jobs.\\\\*.count",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "\\*",
+          "wildcard": false,
+          "unescaped_star": true
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.\\\\\\*.count",
+      "legacy": [
+        "jobs",
+        "\\\\*",
+        "count"
+      ]
+    },
+    {
+      "name": "mixed literals",
+      "input": "jobs.thing\\.\\*.count",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "thing.*",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.thing\\.\\*.count",
+      "legacy": [
+        "jobs",
+        "thing\\",
+        "\\*",
+        "count"
+      ]
+    },
+    {
+      "name": "partial glob",
+      "input": "jobs.ta*sk.count",
+      "segments": [
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "ta*sk",
+          "wildcard": false,
+          "unescaped_star": true
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "jobs.ta\\*sk.count",
+      "legacy": [
+        "jobs",
+        "ta*sk",
+        "count"
+      ]
+    },
+    {
+      "name": "unicode",
+      "input": "任务.テスト\\.rb",
+      "segments": [
+        {
+          "value": "任务",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "テスト.rb",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": "任务.テスト\\.rb",
+      "legacy": [
+        "任务",
+        "テスト\\",
+        "rb"
+      ]
+    },
+    {
+      "name": "empty segments",
+      "input": ".jobs..count.",
+      "segments": [
+        {
+          "value": "",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "jobs",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "count",
+          "wildcard": false,
+          "unescaped_star": false
+        },
+        {
+          "value": "",
+          "wildcard": false,
+          "unescaped_star": false
+        }
+      ],
+      "rendered": ".jobs..count.",
+      "legacy": [
+        "",
+        "jobs",
+        "",
+        "count",
+        ""
+      ]
+    },
+    {
+      "name": "empty path",
+      "input": "",
+      "segments": [],
+      "rendered": "",
+      "legacy": []
+    }
+  ],
+  "codec_cases": [
+    {"literal": "quoted\"name", "encoded": "quoted%22name"},
+    {"literal": "%22", "encoded": "%2522"},
+    {
+      "literal": "test.rb",
+      "encoded": "test%2Erb"
+    },
+    {
+      "literal": "test%2Erb",
+      "encoded": "test%252Erb"
+    },
+    {
+      "literal": "test%25rb",
+      "encoded": "test%2525rb"
+    },
+    {
+      "literal": "*",
+      "encoded": "%2A"
+    },
+    {
+      "literal": "$count",
+      "encoded": "%24count"
+    },
+    {
+      "literal": "a\\b",
+      "encoded": "a%5Cb"
+    },
+    {
+      "literal": "任务.rb",
+      "encoded": "任务%2Erb"
+    },
+    {
+      "literal": "a\u0000b",
+      "encoded": "a%00b"
+    },
+    {
+      "literal": "plain_name",
+      "encoded": "plain_name"
+    }
+  ],
+  "packing_cases": [
+    {
+      "name": "literal and nested fields coexist",
+      "input": {
+        "jobs.test.rb": 1,
+        "jobs.test\\.rb": 2,
+        "jobs.test%2Erb": 3,
+        "jobs.\\*": 4,
+        "jobs.$cost": 5,
+        "jobs.file\\\\name": 6,
+        "jobs.quoted\"name": 7,
+        "jobs.slash/name": 8,
+        "jobs.percent%25": 9,
+        "jobs.東京\\.rb": 10,
+        "jobs.NUL\u0000": 11,
+        "jobs.other": 12
+      },
+      "logical": {
+        "jobs": {
+          "test": {
+            "rb": 1
+          },
+          "test.rb": 2,
+          "test%2Erb": 3,
+          "*": 4,
+          "$cost": 5,
+          "file\\name": 6,
+          "quoted\"name": 7,
+          "slash/name": 8,
+          "percent%25": 9,
+          "東京.rb": 10,
+          "NUL\u0000": 11,
+          "other": 12
+        }
+      },
+      "storage": {
+        "jobs.test.rb": 1,
+        "jobs.test%2Erb": 2,
+        "jobs.test%252Erb": 3,
+        "jobs.%2A": 4,
+        "jobs.%24cost": 5,
+        "jobs.file%5Cname": 6,
+        "jobs.quoted%22name": 7,
+        "jobs.slash/name": 8,
+        "jobs.percent%2525": 9,
+        "jobs.東京%2Erb": 10,
+        "jobs.NUL%00": 11,
+        "jobs.other": 12
+      }
+    },
+    {
+      "name": "nested public payload",
+      "input": {
+        "jobs": {
+          "test.rb": 1,
+          "test\\.rb": 2,
+          "test%2Erb": 3,
+          "\\*": 4,
+          "$cost": 5,
+          "file\\\\name": 6,
+          "quoted\"name": 7,
+          "slash/name": 8,
+          "percent%25": 9,
+          "東京\\.rb": 10,
+          "NUL\u0000": 11,
+          "other": 12
+        }
+      },
+      "logical": {
+        "jobs": {
+          "test": {
+            "rb": 1
+          },
+          "test.rb": 2,
+          "test%2Erb": 3,
+          "*": 4,
+          "$cost": 5,
+          "file\\name": 6,
+          "quoted\"name": 7,
+          "slash/name": 8,
+          "percent%25": 9,
+          "東京.rb": 10,
+          "NUL\u0000": 11,
+          "other": 12
+        }
+      },
+      "storage": {
+        "jobs.test.rb": 1,
+        "jobs.test%2Erb": 2,
+        "jobs.test%252Erb": 3,
+        "jobs.%2A": 4,
+        "jobs.%24cost": 5,
+        "jobs.file%5Cname": 6,
+        "jobs.quoted%22name": 7,
+        "jobs.slash/name": 8,
+        "jobs.percent%2525": 9,
+        "jobs.東京%2Erb": 10,
+        "jobs.NUL%00": 11,
+        "jobs.other": 12
+      }
+    }
+  ]
+}

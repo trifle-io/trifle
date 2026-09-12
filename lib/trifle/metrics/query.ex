@@ -104,7 +104,7 @@ defmodule Trifle.Metrics.Query do
   end
 
   def ensure_no_wildcards(path) do
-    if String.contains?(path, "*") do
+    if Trifle.Stats.Path.wildcard?(path) do
       {:error,
        %{
          status: "error",
@@ -116,7 +116,10 @@ defmodule Trifle.Metrics.Query do
   end
 
   def ensure_paths_exist(paths, available) do
-    missing = Enum.reject(paths, &Enum.member?(available, &1))
+    available_segments = MapSet.new(available, &Trifle.Stats.Path.segments/1)
+
+    missing =
+      Enum.reject(paths, &MapSet.member?(available_segments, Trifle.Stats.Path.segments(&1)))
 
     case missing do
       [] ->
@@ -510,8 +513,8 @@ defmodule Trifle.Metrics.Query do
 
   defp flatten_numeric_paths(_other, _prefix), do: %{}
 
-  defp join_path(nil, key), do: to_string(key)
-  defp join_path(prefix, key), do: "#{prefix}.#{key}"
+  defp join_path(nil, key), do: Trifle.Stats.Path.escape_segment(key)
+  defp join_path(prefix, key), do: prefix <> "." <> Trifle.Stats.Path.escape_segment(key)
 
   defp normalize_number(number) when is_integer(number), do: number
 

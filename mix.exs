@@ -64,7 +64,7 @@ defmodule Trifle.MixProject do
       {:slugy, "~> 4.1.1"},
       {:tzdata, "~> 1.1.1"},
       {:timex, "~>3.7.11"},
-      {:trifle_stats, git: "https://github.com/trifle-io/trifle_stats.git", branch: "main"},
+      trifle_stats_dependency(),
       {:trifle_traces, git: "https://github.com/trifle-io/trifle_traces.git", branch: "main"},
       {:mongodb_driver, "~> 1.2.0"},
       {:myxql, "~> 0.7.0"},
@@ -173,6 +173,17 @@ defmodule Trifle.MixProject do
       binary_part(value, prefix_size, byte_size(value) - prefix_size)
     else
       value
+    end
+  end
+
+  # Local development/test override for coordinated, unreleased library changes.
+  defp trifle_stats_dependency do
+    case {Mix.env(), System.get_env("TRIFLE_STATS_PATH")} do
+      {env, path} when env in [:dev, :test] and is_binary(path) and path != "" ->
+        {:trifle_stats, path: path}
+
+      _ ->
+        {:trifle_stats, git: "https://github.com/trifle-io/trifle_stats.git", branch: "main"}
     end
   end
 

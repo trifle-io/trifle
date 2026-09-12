@@ -116,10 +116,21 @@ config :trifle, :projects_enabled, projects_enabled
 observability_defaults = Application.get_env(:trifle, Trifle.Observability, [])
 
 observability_enabled =
-  case System.get_env("TRIFLE_OBSERVABILITY_ENABLED") do
-    nil -> Keyword.get(observability_defaults, :enabled, true)
-    "" -> Keyword.get(observability_defaults, :enabled, true)
-    value -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on", "enabled"]
+  if config_env() == :test do
+    # A development .env must never enable internal telemetry in the test suite.
+    false
+  else
+    case System.get_env("TRIFLE_OBSERVABILITY_ENABLED") do
+      nil ->
+        Keyword.get(observability_defaults, :enabled, true)
+
+      value ->
+        case String.downcase(String.trim(value)) do
+          v when v in ["1", "true", "yes", "on", "enabled"] -> true
+          v when v in ["0", "false", "no", "off", "disabled"] -> false
+          _ -> Keyword.get(observability_defaults, :enabled, true)
+        end
+    end
   end
 
 traces_storage_path =

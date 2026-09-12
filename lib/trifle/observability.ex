@@ -143,32 +143,25 @@ defmodule Trifle.Observability do
 
   @doc "Deletes trace indexes and filesystem payloads past their retention window."
   def cleanup! do
-    if enabled?() do
-      internal_deleted = cleanup_internal!()
+    internal_deleted = cleanup_internal!()
 
-      configured_deleted =
-        Trifle.Organizations.list_trace_databases()
-        |> Enum.reject(
-          &(&1.managed_key == Trifle.Observability.DatabaseProvisioner.managed_key())
-        )
-        |> Enum.reduce(0, fn database, total ->
-          case Trifle.Traces.Source.Database.cleanup(database) do
-            {:ok, deleted} ->
-              total + deleted
+    # User-configured sources retain their cleanup independently of internal telemetry.
+    configured_deleted =
+      Trifle.Organizations.list_trace_databases()
+      |> Enum.reject(&(&1.managed_key == Trifle.Observability.DatabaseProvisioner.managed_key()))
+      |> Enum.reduce(0, fn database, total ->
+        case Trifle.Traces.Source.Database.cleanup(database) do
+          {:ok, deleted} ->
+            total + deleted
 
-            {:error, reason} ->
-              Logger.warning(
-                "Failed to clean trace storage for database #{database.id}: #{reason}"
-              )
+          {:error, reason} ->
+            Logger.warning("Failed to clean trace storage for database #{database.id}: #{reason}")
 
-              total
-          end
-        end)
+            total
+        end
+      end)
 
-      {:ok, internal_deleted + configured_deleted}
-    else
-      {:ok, 0}
-    end
+    {:ok, internal_deleted + configured_deleted}
   end
 
   @doc "Builds the editable database source for the application's internal observability data."
@@ -363,8 +356,7 @@ defmodule Trifle.Observability do
   end
 
   defp metric_key(key) do
-    suffix = key |> to_string() |> String.replace("/", "::")
-    "internal::traces::#{suffix}"
+    key |> to_string() |> String.replace("/", "::")
   end
 
   defp field(job, key), do: Map.get(job, key, Map.get(job, to_string(key)))

@@ -70,6 +70,8 @@ app:
       secretAccessKey: ""
       forcePathStyle: true
       prefix: "sqlite-files"
+  observability:
+    enabled: true # Set false to disable the app's own Oban traces and Stats metrics.
   traces:
     # Set to /home/app/uploads/traces to retain full payloads on the app PVC.
     storagePath: ""

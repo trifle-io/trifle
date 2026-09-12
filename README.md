@@ -160,3 +160,56 @@ Full guides at **[docs.trifle.io/trifle-app](https://docs.trifle.io/trifle-app)*
 ## License
 
 Available under the [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license). See [LICENSE](LICENSE) for details.
+
+## Internal job metrics
+
+Internal observability is enabled by default and controls the app's own Oban traces
+and their Trifle.Stats metrics together. In development, configure it in `.env`
+(or override it in `.env.local`):
+
+```dotenv
+TRIFLE_OBSERVABILITY_ENABLED=true
+```
+
+Set it to `false` to disable internal telemetry, then restart the app process.
+Development Compose already loads these env files; the test environment always
+disables internal telemetry, even if `.env` enables it.
+
+For production Helm deployments, use:
+
+```yaml
+app:
+  observability:
+    enabled: false
+```
+
+This maps to `TRIFLE_OBSERVABILITY_ENABLED` in the app and release hook jobs.
+An explicit `app.env.TRIFLE_OBSERVABILITY_ENABLED` overrides the structured value.
+Non-Helm deployments use the same environment variable; production Docker Compose
+also forwards it from its `.env`. Apply the deployment change to restart the app.
+
+Disabling skips internal storage initialization, Oban tracing, trace metrics, and
+new internal source provisioning. It does not delete existing data or sources,
+disable ordinary application logging, or affect user-configured Stats/Traces sources
+and their retention cleanup. Existing S3 lifecycle rules still apply. Payload
+storage remains configurable through `TRIFLE_TRACES_*` / Helm `app.traces` settings.
+
+The internal observability source records Oban metrics as `jobs::JOB_NAME`, for example `jobs::Trifle.Monitors.Jobs.DispatchRunner`. Worker dots remain literal in the metric key. The payload contains `count`, `states.<state>`, and `entries.count`; trace keys are `jobs/JOB_NAME`, with no additional namespace prefix. Existing metrics and saved dashboard/monitor selections are not migrated automatically.
+
+## Testing coordinated Stats changes
+
+The default Git dependency is locked to the pushed escaped-path implementation in
+`trifle_stats` (`3a8a913aed720020e4df9038e7ebbdbf7b5df47f`). No Hex release is required
+to test this integration:
+
+```sh
+docker compose exec -T -e MIX_ENV=test app env -u TRIFLE_STATS_PATH mix test
+```
+
+For development and tests only, `TRIFLE_STATS_PATH` can select a local Stats checkout without changing that lock:
+
+```sh
+docker compose exec -T -e MIX_ENV=test -e TRIFLE_STATS_PATH=/workspaces/trifle_stats app mix test
+```
+
+Upgrade all readers and writers sharing storage together. Releases and deployment remain user-controlled; see `docs/escaped_paths_plan.md` for the coordinated handoff.

@@ -9,6 +9,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
   require Logger
 
   defstruct connection: nil,
+            client: Mongo,
+            bulk_writer: Mongo.BulkWrite,
             reference: nil,
             collection_name: "trifle_stats",
             separator: "::",
@@ -130,7 +132,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
     setup!(connection, collection_name, joined_identifier, expire_after, system_tracking)
   end
 
-  def inc(keys, values, driver, tracking_key \\ nil) do
+  def inc(keys, values, driver, count \\ 1, tracking_key \\ nil) do
     data = Trifle.Stats.Packer.pack(%{data: values})
 
     if driver.bulk_write do
@@ -163,7 +165,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
                 |> convert_keys_to_strings()
                 |> with_reference_scope(driver)
 
-              system_data = system_data_for(key, tracking_key)
+              system_data = system_data_for(key, tracking_key, count)
 
               Mongo.UnorderedBulk.update_many(
                 bulk,
@@ -179,7 +181,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
       if Mongo.UnorderedBulk.empty?(bulk) do
         :ok
       else
-        Mongo.BulkWrite.write(driver.connection, bulk, w: driver.write_concern)
+        driver.bulk_writer.write(driver.connection, bulk, w: driver.write_concern)
       end
     else
       Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
@@ -196,7 +198,9 @@ defmodule Trifle.Stats.Driver.MongoProject do
 
         update = build_update("$inc", data, expire_at)
 
-        Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+        driver.client.update_many(driver.connection, driver.collection_name, filter, update,
+          upsert: true
+        )
 
         if driver.system_tracking do
           system_filter =
@@ -205,10 +209,10 @@ defmodule Trifle.Stats.Driver.MongoProject do
             |> convert_keys_to_strings()
             |> with_reference_scope(driver)
 
-          system_data = system_data_for(key, tracking_key)
+          system_data = system_data_for(key, tracking_key, count)
           system_update = build_update("$inc", system_data, expire_at)
 
-          Mongo.update_many(
+          driver.client.update_many(
             driver.connection,
             driver.collection_name,
             system_filter,
@@ -220,8 +224,8 @@ defmodule Trifle.Stats.Driver.MongoProject do
     end
   end
 
-  def set(keys, values, driver, tracking_key \\ nil) do
-    packed_data = Trifle.Stats.Packer.pack(values)
+  def set(keys, values, driver, count \\ 1, tracking_key \\ nil) do
+    packed_data = Trifle.Stats.Packer.pack(%{data: values})
 
     if driver.bulk_write do
       bulk =
@@ -238,7 +242,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
                 do: DateTime.add(key.at, driver.expire_after, :second),
                 else: nil
 
-            set_data = %{data: packed_data}
+            set_data = packed_data
 
             bulk =
               Mongo.UnorderedBulk.update_many(
@@ -255,7 +259,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
                 |> convert_keys_to_strings()
                 |> with_reference_scope(driver)
 
-              system_data = system_data_for(key, tracking_key)
+              system_data = system_data_for(key, tracking_key, count)
 
               Mongo.UnorderedBulk.update_many(
                 bulk,
@@ -271,7 +275,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
       if Mongo.UnorderedBulk.empty?(bulk) do
         :ok
       else
-        Mongo.BulkWrite.write(driver.connection, bulk, w: driver.write_concern)
+        driver.bulk_writer.write(driver.connection, bulk, w: driver.write_concern)
       end
     else
       Enum.each(keys, fn %Trifle.Stats.Nocturnal.Key{} = key ->
@@ -286,14 +290,11 @@ defmodule Trifle.Stats.Driver.MongoProject do
             do: DateTime.add(key.at, driver.expire_after, :second),
             else: nil
 
-        update =
-          if expire_at do
-            %{"$set" => %{data: packed_data, expire_at: expire_at}}
-          else
-            %{"$set" => %{data: packed_data}}
-          end
+        update = build_update("$set", packed_data, expire_at)
 
-        Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+        driver.client.update_many(driver.connection, driver.collection_name, filter, update,
+          upsert: true
+        )
 
         if driver.system_tracking do
           system_filter =
@@ -302,10 +303,10 @@ defmodule Trifle.Stats.Driver.MongoProject do
             |> convert_keys_to_strings()
             |> with_reference_scope(driver)
 
-          system_data = system_data_for(key, tracking_key)
+          system_data = system_data_for(key, tracking_key, count)
           system_update = build_update("$inc", system_data, expire_at)
 
-          Mongo.update_many(
+          driver.client.update_many(
             driver.connection,
             driver.collection_name,
             system_filter,
@@ -367,7 +368,12 @@ defmodule Trifle.Stats.Driver.MongoProject do
     # significantly reduces cursor-not-found failures in production.
     find_opts = [single_batch: true, batch_size: max(length(identifiers), 1)]
 
-    case Mongo.find(driver.connection, driver.collection_name, %{"$or" => identifiers}, find_opts) do
+    case driver.client.find(
+           driver.connection,
+           driver.collection_name,
+           %{"$or" => identifiers},
+           find_opts
+         ) do
       {:error, error} ->
         handle_fetch_error(error, identifiers, driver, retries_left)
 
@@ -433,7 +439,10 @@ defmodule Trifle.Stats.Driver.MongoProject do
           update
         end
 
-      Mongo.update_many(driver.connection, driver.collection_name, filter, update, upsert: true)
+      driver.client.update_many(driver.connection, driver.collection_name, filter, update,
+        upsert: true
+      )
+
       :ok
     end
   end
@@ -451,7 +460,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
       filter = Map.take(identifier, ["key", "reference"])
       options = [sort: %{at: -1}, limit: 1]
 
-      case Mongo.find(driver.connection, driver.collection_name, filter, options)
+      case driver.client.find(driver.connection, driver.collection_name, filter, options)
            |> Enum.to_list() do
         [] ->
           []
@@ -496,9 +505,12 @@ defmodule Trifle.Stats.Driver.MongoProject do
     identifier_for(system_key, driver)
   end
 
-  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, tracking_key \\ nil, count \\ 1) do
+  defp system_data_for(%Trifle.Stats.Nocturnal.Key{} = key, tracking_key, count) do
     tracking_key = tracking_key || key.key
-    Trifle.Stats.Packer.pack(%{data: %{count: count, keys: %{tracking_key => count}}})
+
+    Trifle.Stats.Packer.pack(%{
+      data: %{count: count, keys: %{Trifle.Stats.Path.escape_segment(tracking_key) => count}}
+    })
   end
 
   defp convert_keys_to_strings(map) when is_map(map) do
@@ -560,7 +572,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
         |> maybe_put_at(key.at)
 
       nil ->
-        Trifle.Stats.Nocturnal.Key.identifier(key, nil)
+        Trifle.Stats.Nocturnal.Key.identifier(key, driver.separator, nil)
     end
   end
 
@@ -577,7 +589,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
         |> maybe_put_at(timestamp_for_identifier(key.at))
 
       nil ->
-        Trifle.Stats.Nocturnal.Key.simple_identifier(key, nil)
+        Trifle.Stats.Nocturnal.Key.simple_identifier(key, driver.separator, nil)
     end
   end
 
@@ -614,7 +626,7 @@ defmodule Trifle.Stats.Driver.MongoProject do
   defp extract_mongo_data(%{} = doc) do
     case Map.get(doc, "data") do
       %{} = data ->
-        normalize_mongo_data(data)
+        data |> normalize_mongo_data() |> Trifle.Stats.Packer.decode_tree()
 
       nil ->
         doc

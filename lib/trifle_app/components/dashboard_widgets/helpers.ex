@@ -864,8 +864,8 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
   defp wildcard_state(path_input, expanded_path) do
     typed_path = to_string(path_input || "") |> String.trim()
     normalized_expanded = to_string(expanded_path || "") |> String.trim()
-    explicit_wildcard? = String.contains?(typed_path, "*")
-    auto_wildcard? = !explicit_wildcard? and String.contains?(normalized_expanded, "*")
+    explicit_wildcard? = Trifle.Stats.Path.wildcard?(typed_path)
+    auto_wildcard? = !explicit_wildcard? and Trifle.Stats.Path.wildcard?(normalized_expanded)
 
     cond do
       typed_path == "" -> :unknown
