@@ -5,6 +5,7 @@ import { createDashboardGridDistributionRendererMethods } from "./dashboard_grid
 import { createDashboardGridTableRendererMethods } from "./dashboard_grid_renderers/table";
 import { createDashboardGridTextRendererMethods } from "./dashboard_grid_renderers/text";
 import { createDashboardGridListRendererMethods } from "./dashboard_grid_renderers/list";
+import { createGridPageLoadingHandlers } from "./shared/grid_page_loading.mjs";
 
 const readDashboardAnnotationsCookie = () => {
   try {
@@ -149,39 +150,11 @@ Hooks.DashboardGrid = {
     document.addEventListener('visibilitychange', this._onVisibilityResume);
     window.addEventListener('pageshow', this._onVisibilityResume);
     // Avoid persisting transient responsive changes when navigating away
-    const hideableLoadingKinds = new Set(['patch', 'redirect']);
     this._gridHiddenForLoading = false;
-    this._onPageLoadingStart = (event) => {
-      const kind = event && event.detail && event.detail.kind;
-      if (kind && !hideableLoadingKinds.has(kind)) return;
-      this._suppressSave = true;
-      this._gridHiddenForLoading = true;
-      if (this.el) {
-        this.el.classList.remove('opacity-100');
-        this.el.classList.add('opacity-0', 'pointer-events-none');
-      }
-    };
+    const pageLoading = createGridPageLoadingHandlers(this, (callback) => requestAnimationFrame(callback));
+    this._onPageLoadingStart = pageLoading.start;
     window.addEventListener('phx:page-loading-start', this._onPageLoadingStart);
-    this._onPageLoadingStop = (event) => {
-      const kind = event && event.detail && event.detail.kind;
-      if (kind && !hideableLoadingKinds.has(kind) && !this._gridHiddenForLoading) return;
-      this._suppressSave = false;
-      if (this.el) {
-        this.el.classList.remove('opacity-0', 'pointer-events-none');
-        this.el.classList.add('opacity-100');
-      }
-      this._gridHiddenForLoading = false;
-      // ensure widgets remain in sync after LiveView patches
-      requestAnimationFrame(() => {
-        try {
-          this.syncServerRenderedItems();
-          if (typeof this._applyResponsiveGrid === 'function') {
-            this._applyResponsiveGrid();
-          }
-          this._scheduleDeferredResize();
-        } catch (_) {}
-      });
-    };
+    this._onPageLoadingStop = pageLoading.stop;
     window.addEventListener('phx:page-loading-stop', this._onPageLoadingStop);
     this._sparkTimers = {};
     this._tsSyncGroupBase = ['ts-sync', this.el.dataset.dashboardId || this.el.id || 'grid', this.el.dataset.publicToken || 'priv'].join(':');

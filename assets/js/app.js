@@ -33,6 +33,8 @@ import { resolveHeatmapVisualMap, buildHeatmapOptions, buildBucketIndexMap, buil
 import { TABLE_PATH_HTML_FIELD, AGGRID_PATH_COL_MIN_WIDTH, AGGRID_PATH_COL_MAX_WIDTH, ensureAgGridCommunity, getAggridHeaderComponentClass } from "./utils/aggrid";
 import { parseJsonSafe, setHidden, findDashboardGridHook } from "./utils/dom";
 import { registerBasicHooks } from "./hooks/basic_hooks";
+import { createTraceCopyHook } from "./hooks/trace_copy_hook.mjs";
+import { createTraceMediaHook } from "./hooks/trace_media_hook.mjs";
 import { registerDatabaseExploreChartHook } from "./hooks/database_explore_chart_hook";
 import { registerTableHoverHook } from "./hooks/table_hover_hook";
 import { registerSortableDashboardHooks } from "./hooks/sortable_dashboard_hooks";
@@ -77,6 +79,8 @@ registerDashboardRuntimeHooks(Hooks, {
 });
 
 registerBasicHooks(Hooks, { setHidden });
+Hooks.TraceCopy = createTraceCopyHook();
+Hooks.TraceMedia = createTraceMediaHook();
 registerDatabaseExploreChartHook(Hooks, { echarts, withChartOpts, formatCompactNumber, chartFontFamily });
 registerTableHoverHook(Hooks);
 registerSortableDashboardHooks(Hooks, { Sortable, echarts, withChartOpts });

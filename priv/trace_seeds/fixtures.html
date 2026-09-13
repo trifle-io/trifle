@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synthetic checkout capture — Trifle trace seed</title>
+<style>
+  body { margin: 0; background: #eef2f6; font: 16px system-ui, sans-serif; color: #334155; }
+  main { margin: 48px auto; width: 800px; padding: 32px; background: white; border-radius: 16px; }
+  h1 { font-size: 26px; } small { color: #64748b; } .badge { color: #0d9488; }
+  .row { display: flex; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid #e2e8f0; }
+  canvas { margin-top: 24px; width: 800px; height: 160px; }
+  #video-fixture { display: none; }
+</style>
+<main>
+  <small>TRIFLE / DEVELOPMENT FIXTURE / NO REAL CUSTOMER DATA</small>
+  <h1>Order DEMO-1042 <span class="badge">· Confirmed</span></h1>
+  <p>A synthetic checkout screenshot for trace attachment previews.</p>
+  <div class="row"><span>Demo linen notebook × 2</span><strong>$24.00</strong></div>
+  <div class="row"><span>Demo ceramic cup × 1</span><strong>$18.00</strong></div>
+  <div class="row"><span>Delivery</span><strong>$5.00</strong></div>
+  <div class="row"><span>Total</span><strong>$47.00</strong></div>
+  <canvas width="800" height="160"></canvas>
+  <small>The matching video animates this fictional fulfillment timeline.</small>
+</main>
+<pre id="video-fixture"></pre>
+<script>
+  const canvas = document.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  function draw(frame) {
+    ctx.fillStyle = '#f1f5f9'; ctx.fillRect(0, 0, 800, 160);
+    ctx.fillStyle = '#334155'; ctx.font = '18px sans-serif';
+    ctx.fillText('Synthetic fulfillment replay', 24, 34);
+    ctx.fillStyle = '#cbd5e1'; ctx.fillRect(24, 66, 752, 12);
+    ctx.fillStyle = '#14b8a6'; ctx.fillRect(24, 66, Math.max(12, frame / 30 * 752), 12);
+    ctx.fillStyle = '#475569'; ctx.font = '15px sans-serif';
+    ctx.fillText('Validate', 24, 112); ctx.fillText('Reserve stock', 260, 112);
+    ctx.fillText('Pack', 540, 112); ctx.fillText('Dispatch', 700, 112);
+    ctx.fillText(`Frame ${frame} / 30 · demo data only`, 24, 142);
+  }
+  draw(30);
+  if (location.hash === '#video') {
+    const chunks = [];
+    const stream = canvas.captureStream(10);
+    const recorder = new MediaRecorder(stream, {mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 180000});
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    recorder.onstop = async () => {
+      const data = new Uint8Array(await new Blob(chunks, {type: 'video/webm'}).arrayBuffer());
+      document.querySelector('#video-fixture').textContent = btoa(String.fromCharCode(...data));
+      document.title = 'fixture-ready';
+      stream.getTracks().forEach(track => track.stop());
+    };
+    recorder.start();
+    let frame = 0;
+    const interval = setInterval(() => {
+      draw(frame++);
+      if (frame > 30) { clearInterval(interval); recorder.stop(); }
+    }, 100);
+  }
+</script>

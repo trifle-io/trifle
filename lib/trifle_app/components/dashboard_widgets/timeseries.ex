@@ -59,6 +59,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
         end
       end)
       |> Enum.map(&Map.delete(&1, :__series_aliases_active__))
+      |> Enum.map(&Map.put(&1, :y_axis, "primary"))
 
     series =
       if normalized and length(per_path) > 0 do

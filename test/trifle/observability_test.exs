@@ -112,32 +112,6 @@ defmodule Trifle.ObservabilityTest do
            ]
   end
 
-  test "keeps safe searchable Oban metadata without job arguments" do
-    job = %{
-      id: 42,
-      queue: "reports",
-      worker: "Trifle.Reports.Generate",
-      attempt: 2,
-      args: %{"access_token" => "secret"}
-    }
-
-    meta = Trifle.Observability.oban_meta(job)
-
-    assert meta == %{
-             id: 42,
-             queue: "reports",
-             worker: "Trifle.Reports.Generate",
-             attempt: 2
-           }
-
-    refute Map.has_key?(meta, :args)
-
-    assert Trifle.Observability.trace_context(%{meta: meta}) == %{
-             queue: "reports",
-             worker: "Trifle.Reports.Generate"
-           }
-  end
-
   test "disabled observability starts no internal connection or tracing handler" do
     refute Trifle.Observability.enabled?()
     assert Trifle.Observability.setup() == []

@@ -1792,9 +1792,10 @@ defmodule TrifleApp.ExploreCore do
 
     formatted_path =
       display_path
-      |> Trifle.Stats.Path.segments()
-      |> build_nested_html(all_paths, [])
-      |> Enum.join(".")
+      |> TrifleApp.DesignSystem.PathColors.html(
+        TrifleApp.DesignSystem.PathColors.build(all_paths)
+      )
+      |> Phoenix.HTML.safe_to_string()
 
     if transponder_name do
       # Escape the transponder name for safe HTML attribute usage
@@ -1807,35 +1808,6 @@ defmodule TrifleApp.ExploreCore do
       formatted_path
     end
     |> Phoenix.HTML.raw()
-  end
-
-  defp build_nested_html([component], all_paths, path_so_far) do
-    index = get_component_index_at_level(component, all_paths, path_so_far)
-    color = ChartColors.color_for(index)
-
-    escaped_component =
-      component
-      |> to_string()
-      |> Phoenix.HTML.html_escape()
-      |> Phoenix.HTML.safe_to_string()
-
-    ["<span style=\"color: #{color} !important\">#{escaped_component}</span>"]
-  end
-
-  defp build_nested_html([component | rest], all_paths, path_so_far) do
-    index = get_component_index_at_level(component, all_paths, path_so_far)
-    color = ChartColors.color_for(index)
-
-    escaped_component =
-      component
-      |> to_string()
-      |> Phoenix.HTML.html_escape()
-      |> Phoenix.HTML.safe_to_string()
-
-    current_html = "<span style=\"color: #{color} !important\">#{escaped_component}</span>"
-    new_path_so_far = path_so_far ++ [component]
-
-    [current_html | build_nested_html(rest, all_paths, new_path_so_far)]
   end
 
   def format_table_timestamp(datetime, _granularity) when is_struct(datetime, DateTime) do
@@ -1890,30 +1862,6 @@ defmodule TrifleApp.ExploreCore do
     value
     |> String.replace(~r/\.(\d*?)0+$/, ".\\1")
     |> String.trim_trailing(".")
-  end
-
-  defp get_component_index_at_level(component, all_paths, path_so_far) do
-    prefix =
-      case path_so_far do
-        [] -> ""
-        parts -> Trifle.Stats.Path.join(parts) <> "."
-      end
-
-    siblings =
-      all_paths
-      |> Enum.filter(fn path ->
-        String.starts_with?(path, prefix) &&
-          length(Trifle.Stats.Path.segments(path)) > length(path_so_far)
-      end)
-      |> Enum.map(fn path ->
-        Trifle.Stats.Path.segments(path)
-        |> Enum.drop(length(path_so_far))
-        |> hd()
-      end)
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    Enum.find_index(siblings, &(&1 == component)) || 0
   end
 
   def render(assigns) do

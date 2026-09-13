@@ -88,6 +88,7 @@ defmodule TrifleApp.Router do
       live "/dbs/:id", DatabaseRedirectLive, :index
       live "/dbs/:id/settings", DatabaseSettingsLive, :show
       live "/explore", ExploreLive, :show
+      live "/traces", TracesLive, :index
       live "/dbs/:id/transponders", DatabaseTranspondersLive, :index
       live "/dbs/:id/transponders/new", DatabaseTranspondersLive, :new
       live "/dbs/:id/transponders/:transponder_id", DatabaseTranspondersLive, :show
@@ -112,6 +113,7 @@ defmodule TrifleApp.Router do
     end
 
     get "/organization/billing/success", BillingController, :success
+    get "/traces/attachment", TraceAttachmentController, :show
     post "/organization/billing/portal", BillingController, :portal
     post "/organization/billing/checkout/app", BillingController, :checkout_app
 

@@ -83,6 +83,7 @@ services:
       - trifle_deps:/workspaces/trifle/deps
       - trifle_build:/workspaces/trifle/_build
       - ../trifle_stats:/workspaces/trifle_stats
+      - ../trifle_traces:/workspaces/trifle_traces
     working_dir: /workspaces/trifle
 volumes:
   trifle_deps:

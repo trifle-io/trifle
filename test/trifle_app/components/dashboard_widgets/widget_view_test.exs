@@ -163,6 +163,30 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetViewTest do
     assert text_payload_envelope["payload"]["title"] == "Highlights"
   end
 
+  test "compact read-only surfaces can reduce minimum grid height without changing dashboards", %{
+    assigns: assigns
+  } do
+    default = render_component(&WidgetView.grid/1, assigns) |> Floki.parse_document!()
+    assert Floki.attribute(default, "#chat-grid-1", "data-min-rows") == ["8"]
+
+    compact =
+      render_component(&WidgetView.grid/1, Map.put(assigns, :min_rows, 3))
+      |> Floki.parse_document!()
+
+    assert Floki.attribute(compact, "#chat-grid-1", "data-min-rows") == ["3"]
+  end
+
+  test "keeping a grid visible on URL patches is opt-in", %{assigns: assigns} do
+    default = render_component(&WidgetView.grid/1, assigns) |> Floki.parse_document!()
+    assert Floki.attribute(default, "#chat-grid-1", "data-hide-on-patch") == ["true"]
+
+    persistent =
+      render_component(&WidgetView.grid/1, Map.put(assigns, :hide_on_patch, false))
+      |> Floki.parse_document!()
+
+    assert Floki.attribute(persistent, "#chat-grid-1", "data-hide-on-patch") == ["false"]
+  end
+
   test "renders hidden annotation payload node", %{assigns: assigns} do
     annotation_groups = [
       %{

@@ -399,6 +399,7 @@ defmodule TrifleApp.Layouts do
       %{menu: :dashboards, label: "Dashboards", to: ~p"/dashboards", icon: "sidebar-dashboards"},
       %{menu: :monitors, label: "Monitors", to: ~p"/monitors", icon: "sidebar-monitors"},
       %{menu: :explore, label: "Explore", to: ~p"/explore", icon: "sidebar-explore"},
+      %{menu: :traces, label: "Traces", to: ~p"/traces", icon: "sidebar-traces"},
       Trifle.Config.projects_enabled?() &&
         %{menu: :projects, label: "Projects", to: ~p"/projects", icon: "sidebar-projects"},
       %{menu: :databases, label: "Databases", to: ~p"/dbs", icon: "sidebar-databases"}
@@ -513,6 +514,9 @@ defmodule TrifleApp.Layouts do
         true
 
       {:explore, TrifleApp.ExploreLive} ->
+        true
+
+      {:traces, TrifleApp.TracesLive} ->
         true
 
       {:projects, TrifleApp.ProjectsLive} ->

@@ -65,7 +65,7 @@ defmodule Trifle.MixProject do
       {:tzdata, "~> 1.1.1"},
       {:timex, "~>3.7.11"},
       trifle_stats_dependency(),
-      {:trifle_traces, git: "https://github.com/trifle-io/trifle_traces.git", branch: "main"},
+      trifle_traces_dependency(),
       {:mongodb_driver, "~> 1.2.0"},
       {:myxql, "~> 0.7.0"},
       {:redix, "~> 1.3.0"},
@@ -184,6 +184,16 @@ defmodule Trifle.MixProject do
 
       _ ->
         {:trifle_stats, git: "https://github.com/trifle-io/trifle_stats.git", branch: "main"}
+    end
+  end
+
+  defp trifle_traces_dependency do
+    case {Mix.env(), System.get_env("TRIFLE_TRACES_PATH")} do
+      {env, path} when env in [:dev, :test] and is_binary(path) and path != "" ->
+        {:trifle_traces, path: path}
+
+      _ ->
+        {:trifle_traces, git: "https://github.com/trifle-io/trifle_traces.git", branch: "main"}
     end
   end
 

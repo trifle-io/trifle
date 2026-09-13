@@ -4,6 +4,9 @@ defmodule TrifleApp.Components.FilterBar do
 
   Handles URL state management and provides a consistent filtering experience
   across different LiveView pages.
+
+  An optional `:attachment` slot renders page-specific filters in a separate,
+  inset panel beneath the main bar. Both panels share the sticky wrapper.
   """
   use TrifleApp, :live_component
 
@@ -22,7 +25,10 @@ defmodule TrifleApp.Components.FilterBar do
       data-filter-bar-granularities={encoded_granularities(@available_granularities)}
     >
       <div
-        class="relative rounded-2xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 p-4 shadow-lg dark:shadow-none backdrop-blur-xl transition-colors"
+        class={[
+          "relative rounded-2xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/70 p-4 shadow-lg dark:shadow-none backdrop-blur-xl transition-colors",
+          @attachment != [] && "z-10"
+        ]}
         aria-busy={if show_loading_status?(assigns), do: "true", else: "false"}
       >
         <%= if show_loading_status?(assigns) do %>
@@ -413,6 +419,13 @@ defmodule TrifleApp.Components.FilterBar do
           </div>
         </div>
       </div>
+      <div
+        :if={@attachment != []}
+        id={"#{@id}-attachment"}
+        class="relative mx-2 -mt-2 rounded-b-2xl border border-t-0 border-white/60 bg-white/60 px-4 pb-4 pt-6 shadow-sm backdrop-blur-xl transition-colors dark:border-white/10 dark:bg-slate-800/50 dark:shadow-none sm:mx-3"
+      >
+        {render_slot(@attachment)}
+      </div>
     </div>
     """
   end
@@ -478,6 +491,7 @@ defmodule TrifleApp.Components.FilterBar do
     socket =
       socket
       |> assign(assigns)
+      |> assign_new(:attachment, fn -> [] end)
       |> assign(:source_locked, Kernel.||(assigns[:source_locked], false))
       |> assign(:sources, sources)
       |> assign(:selected_source, selected_source_ref)

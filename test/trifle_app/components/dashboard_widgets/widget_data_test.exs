@@ -88,6 +88,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetDataTest do
 
     assert [%{id: "ts-1", series: ts_series}] = dataset.timeseries
     assert [%{name: "metrics.count", data: ts_points}] = ts_series
+    assert Enum.all?(ts_series, &(&1.y_axis == "primary"))
     assert length(ts_points) == 2
 
     assert [%{id: "cat-1", data: cat_data}] = dataset.category

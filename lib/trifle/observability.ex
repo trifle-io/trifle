@@ -52,9 +52,7 @@ defmodule Trifle.Observability do
         ),
         Supervisor.child_spec(
           {Trifle.Traces.Oban,
-           config: traces_config,
-           handler_id: {Trifle.Traces.Oban, :trifle_internal},
-           meta: &oban_meta/1},
+           config: traces_config, handler_id: {Trifle.Traces.Oban, :trifle_internal}},
           id: Trifle.Traces.Oban
         )
       ]
@@ -205,32 +203,34 @@ defmodule Trifle.Observability do
   end
 
   @doc false
-  def oban_meta(job) do
-    %{
-      id: field(job, :id),
-      queue: field(job, :queue),
-      worker: field(job, :worker),
-      attempt: field(job, :attempt)
-    }
+  def start_trace_metric(tracer) do
+    # Lifecycle callbacks execute in the trace's own GenServer. Preserve its initial
+    # monotonic timestamp before subsequent bumps replace bumped_at.
+    Process.put({__MODULE__, :trace_started_at, tracer.reference}, tracer.bumped_at)
+    :ok
   end
-
-  @doc false
-  def trace_context(%{meta: meta}) when is_map(meta) do
-    meta
-    |> Map.take([:queue, :worker])
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Map.new()
-  end
-
-  def trace_context(_tracer), do: %{}
 
   @doc false
   def record_trace(tracer) do
+    started_at = Process.delete({__MODULE__, :trace_started_at, tracer.reference})
+
     values = %{
       count: 1,
       states: %{to_string(tracer.state) => 1},
       entries: %{count: length(tracer.data || [])}
     }
+
+    values =
+      if is_integer(started_at) do
+        duration = max(System.monotonic_time(:millisecond) - started_at, 0)
+        sample = %{count: 1, sum: duration, square: duration * duration}
+
+        Map.put(values, :duration, Map.put(sample, :states, %{to_string(tracer.state) => sample}))
+      else
+        # A trace already in flight during a configuration update has no start
+        # sample. Keep its event count, without inventing a zero duration.
+        values
+      end
 
     Trifle.Stats.track(metric_key(tracer.key), DateTime.utc_now(), values)
   rescue
@@ -345,8 +345,8 @@ defmodule Trifle.Observability do
       bump_every: Keyword.get(options, :traces_bump_every, 15),
       payload_size_limit: Keyword.get(options, :traces_payload_size_limit, 100 * 1024),
       retention: Keyword.get(options, :traces_retention_days, 7),
-      context: &trace_context/1,
       error_handler: &trace_error/3,
+      on_liftoff: &start_trace_metric/1,
       on_wrapup: &record_trace/1
     )
   end
@@ -356,10 +356,8 @@ defmodule Trifle.Observability do
   end
 
   defp metric_key(key) do
-    key |> to_string() |> String.replace("/", "::")
+    to_string(key)
   end
-
-  defp field(job, key), do: Map.get(job, key, Map.get(job, to_string(key)))
 
   defp normalize_path(path) when path in [nil, ""], do: nil
 

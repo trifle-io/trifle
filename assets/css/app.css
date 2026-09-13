@@ -253,6 +253,120 @@ input[type="checkbox"] {
   );
 }
 
+/* Reflow whole filter pairs based on panel width, including sidebar changes.
+   Keep at least 18rem for path/tags before putting an 8rem select beside them. */
+.trace-filter-container {
+  container: trace-filters / inline-size;
+}
+
+@container trace-filters (min-width: 26.75rem) {
+  .trace-filter-pair {
+    grid-template-columns: minmax(18rem, 1fr) 8rem;
+  }
+}
+
+/* Two complete pairs, duration and Apply need this much space in one row.
+   Below it, the default grid keeps the three groups on separate rows. */
+@container trace-filters (min-width: 74rem) {
+  .trace-filter-layout {
+    grid-template-columns: minmax(26.75rem, 1fr) minmax(26.75rem, 1fr) max-content;
+    align-items: end;
+  }
+}
+
+/* FilterBar occupies its natural-height row. Everything below it shares one
+   native scrollport, so sticky headers need only top: 0 at every breakpoint. */
+.traces-workspace {
+  display: grid;
+  height: calc(100dvh - 7rem);
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.traces-scrollport {
+  min-height: 0;
+  container: traces-scrollport / size;
+}
+
+.traces-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  gap: 1.25rem;
+}
+
+.traces-content > [aria-label="Trace activity"] {
+  flex: none;
+}
+
+.trace-panels {
+  flex: 1 0 auto;
+  min-height: 32rem;
+  /* Clip rounded corners without creating an intervening scrolling ancestor. */
+  overflow: clip;
+}
+
+.trace-list-split {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100cqh;
+}
+
+@media (min-width: 1024px) {
+  .traces-workspace {
+    height: calc(100dvh - 3rem);
+  }
+}
+
+/* Keep entry text flexible; respond to the detail panel, not the viewport.
+   Narrow panels retain full timestamps on a right-aligned second line. */
+.trace-entries {
+  container: trace-entries / inline-size;
+}
+
+/* Container units use the actual available height below FilterBar. Large open
+   sections can scroll without covering every log row. No JS measurements. */
+.trace-detail-header {
+  top: 0;
+  max-height: max(8rem, calc(100cqh - 5rem));
+}
+
+.trace-entry {
+  grid-template-columns: var(--trace-line-width, 2ch) minmax(0, 1fr);
+}
+
+.trace-entry-number {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.trace-entry-message {
+  grid-column: 2;
+  grid-row: 1;
+  padding-left: min(var(--trace-entry-indent, 0rem), 20%);
+}
+
+.trace-entry-timestamp {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+}
+
+@container trace-entries (min-width: 38rem) {
+  .trace-entries[data-show-timestamps="true"] .trace-entry {
+    grid-template-columns: var(--trace-line-width, 2ch) minmax(0, 1fr) max-content;
+  }
+
+  .trace-entry-timestamp {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
 .filter-bar-pressable {
   transition-duration: 80ms;
   transition-property: transform;

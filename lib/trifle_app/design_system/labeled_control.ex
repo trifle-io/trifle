@@ -17,6 +17,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
       </.labeled_control>
   """
   attr :label, :string, required: true
+  attr :for, :string, default: nil
   attr :class, :string, default: ""
 
   slot :inner_block, required: true
@@ -24,7 +25,10 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
   def labeled_control(assigns) do
     ~H"""
     <div class={["relative", @class]}>
-      <label class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-20">
+      <label
+        for={@for}
+        class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-20"
+      >
         {@label}
       </label>
       {render_slot(@inner_block)}
@@ -43,20 +47,17 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
   attr :type, :string, default: "text"
   attr :class, :string, default: ""
   attr :input_class, :string, default: nil
-  attr :rest, :global, include: ~w(phx-change phx-keydown phx-key phx-focus phx-blur phx-hook)
+
+  attr :rest, :global,
+    include:
+      ~w(list min max step required phx-change phx-keydown phx-key phx-focus phx-blur phx-hook)
 
   slot :suffix
   slot :badge
 
   def labeled_input(assigns) do
     ~H"""
-    <div class={["relative", @class]}>
-      <label
-        for={@id}
-        class="absolute -top-2 left-2 inline-block filter-field-label px-1 text-xs font-medium text-gray-900 dark:text-white z-20"
-      >
-        {@label}
-      </label>
+    <.labeled_control label={@label} for={@id} class={@class}>
       <div class="relative">
         <input
           type={@type}
@@ -65,7 +66,7 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
           value={@value}
           placeholder={@placeholder}
           class={[
-            "block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
+            field_class(),
             @input_class,
             if(@badge != [] || @suffix != [], do: "pr-20", else: "")
           ]}
@@ -84,7 +85,33 @@ defmodule TrifleApp.DesignSystem.LabeledControl do
           </div>
         <% end %>
       </div>
-    </div>
+    </.labeled_control>
     """
+  end
+
+  @doc """
+  Renders a select field with the same floating label and styling as labeled inputs.
+  """
+  attr :label, :string, required: true
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :class, :string, default: ""
+  attr :select_class, :string, default: nil
+  attr :rest, :global, include: ~w(disabled required multiple size)
+
+  slot :inner_block, required: true
+
+  def labeled_select(assigns) do
+    ~H"""
+    <.labeled_control label={@label} for={@id} class={@class}>
+      <select id={@id} name={@name} class={[field_class(), @select_class]} {@rest}>
+        {render_slot(@inner_block)}
+      </select>
+    </.labeled_control>
+    """
+  end
+
+  defp field_class do
+    "block w-full rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"
   end
 end
