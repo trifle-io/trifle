@@ -15,6 +15,15 @@ defmodule Trifle.Traces.ReaderTest do
   end
 
   setup do
+    previous_reader_config = Application.get_env(:trifle, Reader)
+
+    on_exit(fn ->
+      if is_nil(previous_reader_config),
+        do: Application.delete_env(:trifle, Reader),
+        else: Application.put_env(:trifle, Reader, previous_reader_config)
+    end)
+
+    Application.delete_env(:trifle, Reader)
     org = organization_fixture()
     app_entitlement_fixture(org)
 
@@ -191,6 +200,53 @@ defmodule Trifle.Traces.ReaderTest do
 
       assert {:error, :unavailable} =
                Reader.attachments(membership, ctx.database.id, ctx.record.reference, 0, opts)
+    end
+  end
+
+  test "oversized recorded attachments are rejected before reading their bodies", ctx do
+    alias Trifle.Traces.Driver.Data.{S3, Encoding}
+    prefix = "7/traces/jobs/App.Worker/reader-test/"
+    artifact_key = prefix <> "artifacts/report.txt"
+
+    for {limit, size} <- [{nil, 64 * 1024 * 1024 + 1}, {6, 7}] do
+      if limit, do: Application.put_env(:trifle, Reader, max_artifact_bytes: limit)
+
+      data =
+        S3.new(
+          buckets: ["bucket"],
+          adapter: S3Adapter,
+          gzip: true,
+          client: %{
+            {"bucket", prefix <> "data_1.json.gz"} =>
+              Encoding.pack_entries([%{type: :media, message: "report.txt", size: size}], true)
+          }
+        )
+
+      opts = [configuration: fn _ -> %{ctx.config | data_driver: data} end]
+
+      assert {:error, :too_large} =
+               Reader.artifact(ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, opts)
+
+      assert_received {:s3_read, "bucket", _part_key}
+      refute_received {:s3_read, "bucket", ^artifact_key}
+    end
+  end
+
+  test "attachment limit allows its boundary and checks bodies with missing or inaccurate sizes",
+       ctx do
+    Application.put_env(:trifle, Reader, max_artifact_bytes: 5)
+    args = [ctx.membership, ctx.database.id, ctx.record.reference, 1, 0, ctx.opts]
+
+    for size <- [nil, 0, 5] do
+      Memory.write_part(ctx.config.data_driver, ctx.record, 1, [
+        %{"type" => "media", "message" => "report.txt", "size" => size}
+      ])
+
+      Memory.write_artifact(ctx.config.data_driver, ctx.record, "report.txt", payload: "hello")
+      assert {:ok, %{body: "hello"}} = apply(Reader, :artifact, args)
+
+      Memory.write_artifact(ctx.config.data_driver, ctx.record, "report.txt", payload: "longer")
+      assert {:error, :too_large} = apply(Reader, :artifact, args)
     end
   end
 

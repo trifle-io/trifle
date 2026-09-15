@@ -52,7 +52,7 @@ defmodule TrifleApp.DatabasesLive do
 
       socket
       |> put_flash(:error, message)
-      |> push_patch(to: ~p"/dbs")
+      |> push_navigate(to: ~p"/dbs")
     end
   end
 

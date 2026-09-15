@@ -483,6 +483,9 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
                       placeholder={trace_secret_placeholder(@database.trace_secret_access_key)}
                       class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
                     />
+                    <%= for error <- @form[:trace_secret_access_key].errors do %>
+                      <p class="text-sm text-red-600 dark:text-red-400">{translate_error(error)}</p>
+                    <% end %>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Leave both credential fields blank to keep stored credentials or use the runtime's AWS credential provider.
                     </p>

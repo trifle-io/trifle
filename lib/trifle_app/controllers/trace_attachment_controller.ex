@@ -28,6 +28,7 @@ defmodule TrifleApp.TraceAttachmentController do
         )
       end
     else
+      {:error, :too_large} -> send_resp(conn, 413, "Attachment exceeds the configured size limit")
       _ -> send_resp(conn, 404, "Attachment not found or unavailable")
     end
   end

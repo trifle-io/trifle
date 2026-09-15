@@ -18,7 +18,7 @@ config :trifle, Trifle.Observability,
     buckets: ["trifle-traces"],
     region: "us-east-1",
     access_key_id: "minio",
-    secret_access_key: "miniosecret",
+    secret_access_key: System.get_env("TRIFLE_TRACES_S3_SECRET_ACCESS_KEY"),
     prefix: "traces"
   ]
 

@@ -75,9 +75,9 @@ defmodule TrifleApp.Components.Traces do
             class="w-36 shrink-0"
             input_class="h-10 text-sm"
           />
-          <button class="ml-auto h-10 shrink-0 whitespace-nowrap rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+          <.primary_button class="ml-auto h-10 shrink-0 whitespace-nowrap">
             Apply filters
-          </button>
+          </.primary_button>
         </div>
         <datalist id="trace-paths"><option :for={path <- @paths} value={path} /></datalist>
       </form>

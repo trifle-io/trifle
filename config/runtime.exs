@@ -208,9 +208,18 @@ traces_retention_days =
 
 traces_gzip =
   case System.get_env("TRIFLE_TRACES_GZIP") do
-    nil -> Keyword.get(observability_defaults, :traces_gzip, true)
-    "" -> Keyword.get(observability_defaults, :traces_gzip, true)
-    value -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on", "enabled"]
+    nil ->
+      Keyword.get(observability_defaults, :traces_gzip, true)
+
+    "" ->
+      Keyword.get(observability_defaults, :traces_gzip, true)
+
+    value ->
+      case String.downcase(String.trim(value)) do
+        v when v in ["1", "true", "yes", "on", "enabled"] -> true
+        v when v in ["0", "false", "no", "off", "disabled"] -> false
+        _ -> Keyword.get(observability_defaults, :traces_gzip, true)
+      end
   end
 
 config :trifle, Trifle.Observability,

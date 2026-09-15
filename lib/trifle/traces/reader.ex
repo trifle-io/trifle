@@ -87,8 +87,14 @@ defmodule Trifle.Traces.Reader do
 
       name = field(entry, :message)
       unless safe_component?(name), do: throw(:not_found)
+
+      limit = max_artifact_bytes()
+      size = field(entry, :size)
+      if is_number(size) and size > limit, do: throw(:too_large)
+
       body = Trifle.Traces.read_artifact(record, name, config: config)
       unless is_binary(body), do: throw(:not_found)
+      if byte_size(body) > limit, do: throw(:too_large)
       %{name: name, body: body}
     end)
   end
@@ -114,7 +120,13 @@ defmodule Trifle.Traces.Reader do
     _ -> {:error, :storage_unavailable}
   catch
     :not_found -> {:error, :not_found}
+    :too_large -> {:error, :too_large}
     _, _ -> {:error, :storage_unavailable}
+  end
+
+  defp max_artifact_bytes do
+    Application.get_env(:trifle, __MODULE__, [])
+    |> Keyword.get(:max_artifact_bytes, 64 * 1024 * 1024)
   end
 
   defp find!(config, reference) do

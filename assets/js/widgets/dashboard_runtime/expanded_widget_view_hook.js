@@ -2,7 +2,7 @@ import { TIMESERIES_TOOLTIP_RESPONSIVE_CSS, annotationGroupForAxisValue, buildAn
 
 import { timeseriesTimeFormatters } from "./shared/timeseries_timezone.mjs";
 import { timeseriesLabels, timeseriesTooltipName } from "./shared/timeseries_identity.mjs";
-import { timeseriesSeriesOptions, timeseriesYAxes, timeseriesPointValue, formatTimeseriesValue, timeseriesWeightedAverages, bindTimeseriesAverageLegend } from "./shared/timeseries_axes.mjs";
+import { timeseriesAxisIndex, timeseriesSeriesOptions, timeseriesYAxes, timeseriesPointValue, formatTimeseriesValue, timeseriesWeightedAverages, bindTimeseriesAverageLegend } from "./shared/timeseries_axes.mjs";
 
 export const registerExpandedWidgetViewHook = (Hooks, deps) => {
   const {
@@ -1066,7 +1066,7 @@ Hooks.ExpandedWidgetView = {
       ? data.series.map((series, idx) => ({
           name: series.name || `Series ${idx + 1}`,
           data: series.data || [],
-          unit: series.unit,
+          unit: data.normalized && timeseriesAxisIndex(series) === 0 ? '%' : series.unit,
           summary: series.summary,
           color: this.resolveSeriesColor(series && series.color, idx)
         }))
@@ -1259,13 +1259,19 @@ Hooks.ExpandedWidgetView = {
       flex: 1,
       comparator: this.summaryNumericComparator.bind(this),
       valueFormatter: (params) => this.formatSummaryDisplay(params && params.value) +
-        (params?.value != null && params?.data?.unit ? ` ${params.data.unit}` : ''),
+        this.summaryUnitSuffix(params),
       tooltipValueGetter: (params) => this.formatSummaryRaw(params && params.value) +
-        (params?.value != null && params?.data?.unit ? ` ${params.data.unit}` : ''),
+        this.summaryUnitSuffix(params),
       cellClass: 'aggrid-numeric-cell aggrid-body-cell ag-right-aligned-cell',
       headerClass: 'aggrid-header-cell ag-right-aligned-header',
       headerComponentParams: { lines: [headerName], align: 'right' }
     };
+  },
+
+  summaryUnitSuffix(params) {
+    const unit = params?.data?.unit;
+    if (!Number.isFinite(params?.value) || !unit) return '';
+    return unit === '%' ? '%' : ` ${unit}`;
   },
 
   summaryPathColumn(headerName) {

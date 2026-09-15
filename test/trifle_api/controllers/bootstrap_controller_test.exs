@@ -306,26 +306,28 @@ defmodule TrifleApi.BootstrapControllerTest do
       conn: conn,
       organization: organization
     } do
-      member = user_fixture()
-      {:ok, _membership} = Organizations.create_membership(organization, member, "member")
+      for role <- ["admin", "member"] do
+        member = user_fixture()
+        {:ok, _membership} = Organizations.create_membership(organization, member, role)
 
-      {:ok, _token_record, member_token} =
-        Organizations.create_organization_api_token(member, %{
-          name: "Member bootstrap",
-          organization_id: organization.id
-        })
+        {:ok, _token_record, member_token} =
+          Organizations.create_organization_api_token(member, %{
+            name: "Member bootstrap",
+            organization_id: organization.id
+          })
 
-      conn =
-        conn
-        |> auth_user_conn(member_token)
-        |> post(~p"/api/v1/bootstrap/databases", %{
-          "display_name" => "Forbidden database",
-          "driver" => "sqlite",
-          "file_path" => "/tmp/forbidden.sqlite"
-        })
+        conn =
+          conn
+          |> auth_user_conn(member_token)
+          |> post(~p"/api/v1/bootstrap/databases", %{
+            "display_name" => "Forbidden database",
+            "driver" => "sqlite",
+            "file_path" => "/tmp/forbidden.sqlite"
+          })
 
-      assert %{"errors" => %{"detail" => "Only organization owners can create databases"}} =
-               json_response(conn, 403)
+        assert %{"errors" => %{"detail" => "Only organization owners can create databases"}} =
+                 json_response(conn, 403)
+      end
     end
 
     test "auto-grants created sources to current token and can issue scoped token", %{

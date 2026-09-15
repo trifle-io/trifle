@@ -28,6 +28,16 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "MySQL"
   end
 
+  test "new database authorization remains owner-only", %{conn: conn, organization: organization} do
+    for role <- ["admin", "member"] do
+      user = Trifle.AccountsFixtures.user_fixture()
+      {:ok, _membership} = Organizations.create_membership(organization, user, role)
+      member_conn = conn |> recycle() |> log_in_user(user)
+      assert {:error, {_kind, %{to: "/dbs", flash: flash}}} = live(member_conn, ~p"/dbs/new")
+      assert flash["error"] == "Only organization owners can create databases."
+    end
+  end
+
   test "new database form exposes secure connection methods for network drivers", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/dbs/new")
 
@@ -79,6 +89,43 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Trifle Traces"
     assert html =~ "Unavailable"
     assert html =~ "Private Connector remains Stats-only"
+  end
+
+  test "S3 secret access key validation errors render beside the field", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    lv
+    |> element("#database-form")
+    |> render_change(%{"database" => %{"driver" => "postgres"}})
+
+    lv |> element("button[phx-click='add_traces']") |> render_click()
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{
+          "driver" => "postgres",
+          "connection_method" => "direct",
+          "trace_config" => %{
+            "index_name" => "trifle_traces",
+            "data_driver" => "s3",
+            "data_buckets" => ["traces"],
+            "data_region" => "us-east-1",
+            "data_prefix" => "traces",
+            "retention_days" => 7,
+            "gzip" => true
+          },
+          "trace_secret_access_key" => %{"invalid" => "not a string"}
+        }
+      })
+
+    doc = Floki.parse_document!(html)
+
+    assert Floki.find(doc, "input[name='database[trace_secret_access_key]'] + p")
+           |> Floki.text() == "is invalid"
+
+    refute html =~ "not a string"
   end
 
   test "private connector method prompts for connector creation when none exist", %{conn: conn} do

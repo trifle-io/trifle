@@ -70,6 +70,11 @@ defmodule TrifleApp.Components.TracesTest do
 
     assert Floki.find(doc, ".trace-filter-actions > div:first-child #trace-filter-duration") != []
 
+    assert Floki.find(
+             doc,
+             ".trace-filter-actions button[type='submit'].ml-auto.h-10.rounded-lg.shadow-sm"
+           ) != []
+
     assert Floki.attribute(doc, "#trace-filters input, #trace-filters select", "name") ==
              ["path", "state", "tags", "tag_mode", "duration_min"]
   end

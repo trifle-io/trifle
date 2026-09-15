@@ -95,6 +95,20 @@ defmodule TrifleApp.TraceAttachmentControllerTest do
     assert conn |> get(~p"/traces/attachment") |> redirected_to() == ~p"/users/log_in"
   end
 
+  test "oversized downloads and inline previews return 413 without attachment contents", ctx do
+    Driver.call(ctx.config.data_driver, :write_part, [
+      ctx.record,
+      1,
+      [%{type: :media, message: "report.txt", size: 64 * 1024 * 1024 + 1}]
+    ])
+
+    for suffix <- ["", "&inline=true"] do
+      result = ctx.conn |> recycle() |> log_in_user(ctx.user) |> get(ctx.url <> suffix)
+      assert response(result, 413) == "Attachment exceeds the configured size limit"
+      refute result.resp_body =~ "private attachment"
+    end
+  end
+
   test "images and videos are served inline with validated types and private headers", ctx do
     for {name, mime} <- [{"checkout.png", "image/png"}, {"fulfillment.webm", "video/webm"}] do
       body = File.read!(Path.join("priv/trace_seeds", name))
