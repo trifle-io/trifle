@@ -220,7 +220,8 @@ configured separately.
 
 When enabled, Trifle's internal background-job traces store searchable metadata and
 Stats metrics in the database selected by `app.observability.indexBackend`. The default
-is PostgreSQL. Set it to `mongo` to reuse `app.mongodbUrl` for both collections.
+is PostgreSQL. For MongoDB, use the dedicated `app.observability.mongodbUrlSecretRef`
+or `app.observability.mongodbUrl`; the general `app.mongodbUrl` is only a fallback.
 
 Internal Stats are tracked at `1m`, `1h`, `1d`, and `1mo` by default. Configure the
 stored buckets with `app.observability.granularities` (or the comma-separated
@@ -229,28 +230,39 @@ default; `defaultTimeframe` and `defaultGranularity` configure those initial sel
 Internal Stats and their generated source use UTC by default. Configure both with
 `app.observability.timeZone` or `TRIFLE_OBSERVABILITY_TIME_ZONE`.
 
-Trace payloads can reuse the SQLite S3-compatible object store without duplicating
-credentials:
+Trace payload storage has independent S3-compatible settings and can reference a
+dedicated Kubernetes Secret:
 
 ```yaml
 app:
   observability:
     enabled: true
     indexBackend: mongo
+    mongodbUrlSecretRef:
+      name: trifle-observability
+      key: mongodb-url
     granularities: ["1m", "1h", "1d", "1mo"]
     defaultTimeframe: "6h"
     defaultGranularity: "1m"
     timeZone: "UTC"
   traces:
     storageBackend: s3
-    useSqliteObjectStore: true
-    s3Prefix: traces
+    s3:
+      endpoint: https://objects.example.com
+      buckets: [trifle-internal-traces]
+      region: us-east-1
+      prefix: traces
+      credentialsSecretRef:
+        name: trifle-observability
+        accessKeyIdKey: s3-access-key-id
+        secretAccessKeyKey: s3-secret-access-key
     manageS3Lifecycle: false
     retentionDays: 7
 ```
 
-Set `manageS3Lifecycle: false` when the bucket is shared. Add an object-store lifecycle
-rule for `<retentionDays>/<s3Prefix>/` if trace payloads should expire automatically.
+Create the referenced Secret in the same namespace before the Helm upgrade. Set
+`manageS3Lifecycle: false` when the bucket is shared. Add an object-store lifecycle
+rule for `<retentionDays>/<s3.prefix>/` if trace payloads should expire automatically.
 `app.traces.retentionDays` defaults to `7` and can be overridden in deployment values;
 the default object prefix is `7/traces/`. Update the lifecycle rule when changing it.
 

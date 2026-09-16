@@ -74,39 +74,74 @@ defmodule Trifle.Helm.ObservabilityTest do
     assert_observability_setting(overrides, "TRIFLE_OBSERVABILITY_TIME_ZONE", "Asia/Dubai")
   end
 
-  test "MongoDB indexes and the SQLite object store can be shared by every workload" do
+  test "dedicated MongoDB and S3 settings are passed to every workload" do
     overrides = [
       "--set-string",
-      "app.mongodbUrl=mongodb://user:password@mongo.example:27017/trifle",
+      "app.observability.mongodbUrl=mongodb://user:password@mongo.example:27017/trifle_observability",
       "--set-string",
       "app.observability.indexBackend=mongo",
       "--set-string",
       "app.traces.storageBackend=s3",
-      "--set",
-      "app.traces.useSqliteObjectStore=true",
       "--set-string",
-      "app.sqliteStorage.objectStore.endpoint=https://object.example",
+      "app.traces.s3.endpoint=https://object.example",
       "--set-string",
-      "app.sqliteStorage.objectStore.bucket=uploads",
+      "app.traces.s3.buckets[0]=traces-a",
       "--set-string",
-      "app.sqliteStorage.objectStore.accessKeyId=access",
+      "app.traces.s3.buckets[1]=traces-b",
       "--set-string",
-      "app.sqliteStorage.objectStore.secretAccessKey=secret"
+      "app.traces.s3.accessKeyId=access",
+      "--set-string",
+      "app.traces.s3.secretAccessKey=secret"
     ]
 
     for template <- @templates do
       rendered = render(template, overrides)
 
-      for variable <- ~w(MONGODB_URL TRIFLE_OBSERVABILITY_INDEX_BACKEND
+      for variable <- ~w(TRIFLE_OBSERVABILITY_MONGODB_URL TRIFLE_OBSERVABILITY_INDEX_BACKEND
                           TRIFLE_TRACES_STORAGE_BACKEND TRIFLE_TRACES_S3_ENDPOINT
                           TRIFLE_TRACES_S3_BUCKETS TRIFLE_TRACES_S3_ACCESS_KEY_ID
                           TRIFLE_TRACES_S3_SECRET_ACCESS_KEY) do
         assert length(Regex.scan(~r/- name: #{variable}\s/, rendered)) == 1
       end
 
-      assert rendered =~ "key: mongodb-url"
-      assert rendered =~ "key: sqlite-object-store-access-key-id"
-      assert rendered =~ "key: sqlite-object-store-secret-access-key"
+      assert rendered =~ ~s(value: "traces-a,traces-b")
+      assert rendered =~ "key: observability-mongodb-url"
+      assert rendered =~ "key: traces-s3-access-key-id"
+      assert rendered =~ "key: traces-s3-secret-access-key"
+      refute rendered =~ "key: sqlite-object-store-access-key-id"
+      refute rendered =~ "key: sqlite-object-store-secret-access-key"
+    end
+
+    secret = render("secret.yaml", overrides)
+    assert secret =~ "observability-mongodb-url:"
+    assert secret =~ "traces-s3-access-key-id:"
+    assert secret =~ "traces-s3-secret-access-key:"
+  end
+
+  test "dedicated observability Secrets can supply MongoDB and S3 credentials" do
+    overrides = [
+      "--set-string",
+      "app.observability.indexBackend=mongo",
+      "--set-string",
+      "app.observability.mongodbUrlSecretRef.name=observability-secret",
+      "--set-string",
+      "app.observability.mongodbUrlSecretRef.key=mongo",
+      "--set-string",
+      "app.traces.storageBackend=s3",
+      "--set-string",
+      "app.traces.s3.credentialsSecretRef.name=observability-secret",
+      "--set-string",
+      "app.traces.s3.credentialsSecretRef.accessKeyIdKey=access",
+      "--set-string",
+      "app.traces.s3.credentialsSecretRef.secretAccessKeyKey=secret"
+    ]
+
+    for template <- @templates do
+      rendered = render(template, overrides)
+
+      assert rendered =~ ~r/name: "observability-secret"\s+key: "mongo"/
+      assert rendered =~ ~r/name: "observability-secret"\s+key: "access"/
+      assert rendered =~ ~r/name: "observability-secret"\s+key: "secret"/
     end
   end
 

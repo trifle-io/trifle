@@ -114,8 +114,9 @@ Explicit app.env overrides take precedence, without duplicate env entries.
 {{- $appEnv := .Values.app.env | default (dict) -}}
 {{- $observability := .Values.app.observability | default (dict) -}}
 {{- $traces := .Values.app.traces | default (dict) -}}
-{{- $sqliteStorage := .Values.app.sqliteStorage | default (dict) -}}
-{{- $objectStore := (index $sqliteStorage "objectStore") | default (dict) -}}
+{{- $mongoSecret := (index $observability "mongodbUrlSecretRef") | default (dict) -}}
+{{- $s3 := (index $traces "s3") | default (dict) -}}
+{{- $s3Secret := (index $s3 "credentialsSecretRef") | default (dict) -}}
 {{- if and (not (hasKey $appEnv "MONGODB_URL")) .Values.app.mongodbUrl }}
 - name: MONGODB_URL
   valueFrom:
@@ -126,6 +127,21 @@ Explicit app.env overrides take precedence, without duplicate env entries.
 {{- if and (not (hasKey $appEnv "TRIFLE_OBSERVABILITY_INDEX_BACKEND")) (hasKey $observability "indexBackend") }}
 - name: TRIFLE_OBSERVABILITY_INDEX_BACKEND
   value: {{ index $observability "indexBackend" | quote }}
+{{- end }}
+{{- if not (hasKey $appEnv "TRIFLE_OBSERVABILITY_MONGODB_URL") }}
+{{- if (index $mongoSecret "name") }}
+- name: TRIFLE_OBSERVABILITY_MONGODB_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ index $mongoSecret "name" | quote }}
+      key: {{ index $mongoSecret "key" | default "mongodb-url" | quote }}
+{{- else if (index $observability "mongodbUrl") }}
+- name: TRIFLE_OBSERVABILITY_MONGODB_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "trifle.fullname" . }}-secret
+      key: observability-mongodb-url
+{{- end }}
 {{- end }}
 {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_STORAGE_BACKEND")) (index $traces "storageBackend") }}
 - name: TRIFLE_TRACES_STORAGE_BACKEND
@@ -147,36 +163,46 @@ Explicit app.env overrides take precedence, without duplicate env entries.
 - name: TRIFLE_TRACES_MANAGE_S3_LIFECYCLE
   value: {{ index $traces "manageS3Lifecycle" | quote }}
 {{- end }}
-{{- if and (eq (index $traces "storageBackend") "s3") (index $traces "useSqliteObjectStore") }}
+{{- if eq (index $appEnv "TRIFLE_TRACES_STORAGE_BACKEND" | default (index $traces "storageBackend")) "s3" }}
 {{- if not (hasKey $appEnv "TRIFLE_TRACES_S3_ENDPOINT") }}
 - name: TRIFLE_TRACES_S3_ENDPOINT
-  value: {{ index $objectStore "endpoint" | quote }}
+  value: {{ index $s3 "endpoint" | default "" | quote }}
 {{- end }}
 {{- if not (hasKey $appEnv "TRIFLE_TRACES_S3_BUCKETS") }}
 - name: TRIFLE_TRACES_S3_BUCKETS
-  value: {{ index $objectStore "bucket" | quote }}
+  value: {{ join "," (index $s3 "buckets" | default (list)) | quote }}
 {{- end }}
 {{- if not (hasKey $appEnv "TRIFLE_TRACES_S3_REGION") }}
 - name: TRIFLE_TRACES_S3_REGION
-  value: {{ index $objectStore "region" | quote }}
+  value: {{ index $s3 "region" | default "us-east-1" | quote }}
 {{- end }}
 {{- if not (hasKey $appEnv "TRIFLE_TRACES_S3_PREFIX") }}
 - name: TRIFLE_TRACES_S3_PREFIX
-  value: {{ index $traces "s3Prefix" | default "traces" | quote }}
+  value: {{ index $s3 "prefix" | default "traces" | quote }}
 {{- end }}
-{{- if and (not (hasKey $appEnv "TRIFLE_TRACES_S3_ACCESS_KEY_ID")) (index $objectStore "accessKeyId") }}
+{{- if and (not (hasKey $appEnv "TRIFLE_TRACES_S3_ACCESS_KEY_ID")) (or (index $s3Secret "name") (index $s3 "accessKeyId")) }}
 - name: TRIFLE_TRACES_S3_ACCESS_KEY_ID
   valueFrom:
     secretKeyRef:
+      {{- if (index $s3Secret "name") }}
+      name: {{ index $s3Secret "name" | quote }}
+      key: {{ index $s3Secret "accessKeyIdKey" | default "s3-access-key-id" | quote }}
+      {{- else }}
       name: {{ include "trifle.fullname" . }}-secret
-      key: sqlite-object-store-access-key-id
+      key: traces-s3-access-key-id
+      {{- end }}
 {{- end }}
-{{- if and (not (hasKey $appEnv "TRIFLE_TRACES_S3_SECRET_ACCESS_KEY")) (index $objectStore "secretAccessKey") }}
+{{- if and (not (hasKey $appEnv "TRIFLE_TRACES_S3_SECRET_ACCESS_KEY")) (or (index $s3Secret "name") (index $s3 "secretAccessKey")) }}
 - name: TRIFLE_TRACES_S3_SECRET_ACCESS_KEY
   valueFrom:
     secretKeyRef:
+      {{- if (index $s3Secret "name") }}
+      name: {{ index $s3Secret "name" | quote }}
+      key: {{ index $s3Secret "secretAccessKeyKey" | default "s3-secret-access-key" | quote }}
+      {{- else }}
       name: {{ include "trifle.fullname" . }}-secret
-      key: sqlite-object-store-secret-access-key
+      key: traces-s3-secret-access-key
+      {{- end }}
 {{- end }}
 {{- end }}
 {{- end -}}
