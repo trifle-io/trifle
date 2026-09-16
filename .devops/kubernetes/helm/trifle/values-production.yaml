@@ -73,6 +73,10 @@ app:
   observability:
     enabled: true # Set false to disable the app's own Oban traces and Stats metrics.
     indexBackend: "postgres"
+    granularities: ["1m", "1h", "1d", "1mo"]
+    defaultTimeframe: "6h"
+    defaultGranularity: "1m"
+    timeZone: "UTC"
   traces:
     # Set to /home/app/uploads/traces to retain full payloads on the app PVC.
     storageBackend: ""

@@ -36,6 +36,44 @@ defmodule Trifle.Helm.ObservabilityTest do
     assert_env(["--set", "app.observability=null"], "true")
   end
 
+  test "internal metric defaults and overrides are rendered in every workload" do
+    assert_observability_setting([], "TRIFLE_OBSERVABILITY_GRANULARITIES", "1m,1h,1d,1mo")
+    assert_observability_setting([], "TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME", "6h")
+    assert_observability_setting([], "TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY", "1m")
+    assert_observability_setting([], "TRIFLE_OBSERVABILITY_TIME_ZONE", "UTC")
+
+    overrides = [
+      "--set-string",
+      "app.env.TRIFLE_OBSERVABILITY_GRANULARITIES=5m\\,6h\\,1d",
+      "--set-string",
+      "app.env.TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME=24h",
+      "--set-string",
+      "app.env.TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY=6h",
+      "--set-string",
+      "app.env.TRIFLE_OBSERVABILITY_TIME_ZONE=Asia/Dubai"
+    ]
+
+    assert_observability_setting(
+      overrides,
+      "TRIFLE_OBSERVABILITY_GRANULARITIES",
+      "5m,6h,1d"
+    )
+
+    assert_observability_setting(
+      overrides,
+      "TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME",
+      "24h"
+    )
+
+    assert_observability_setting(
+      overrides,
+      "TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY",
+      "6h"
+    )
+
+    assert_observability_setting(overrides, "TRIFLE_OBSERVABILITY_TIME_ZONE", "Asia/Dubai")
+  end
+
   test "MongoDB indexes and the SQLite object store can be shared by every workload" do
     overrides = [
       "--set-string",
@@ -79,6 +117,19 @@ defmodule Trifle.Helm.ObservabilityTest do
 
       assert Regex.run(
                ~r/- name: TRIFLE_OBSERVABILITY_ENABLED\s+value: "([^"]*)"/,
+               rendered,
+               capture: :all_but_first
+             ) == [expected]
+    end
+  end
+
+  defp assert_observability_setting(overrides, variable, expected) do
+    for template <- @templates do
+      rendered = render(template, overrides)
+      assert length(Regex.scan(~r/- name: #{variable}\s/, rendered)) == 1
+
+      assert Regex.run(
+               ~r/- name: #{variable}\s+value: "([^"]*)"/,
                rendered,
                capture: :all_but_first
              ) == [expected]

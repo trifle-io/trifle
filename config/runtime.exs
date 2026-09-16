@@ -146,6 +146,42 @@ observability_enabled =
     end
   end
 
+observability_granularities_default =
+  Keyword.get(observability_defaults, :granularities, ["1m", "1h", "1d", "1mo"])
+
+observability_granularities =
+  case System.get_env("TRIFLE_OBSERVABILITY_GRANULARITIES") do
+    value when is_binary(value) and value != "" ->
+      parsed =
+        value
+        |> String.split([",", "\n"], trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+
+      if parsed == [], do: observability_granularities_default, else: parsed
+
+    _ ->
+      observability_granularities_default
+  end
+
+observability_default_timeframe =
+  case System.get_env("TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME") do
+    value when is_binary(value) and value != "" -> String.trim(value)
+    _ -> Keyword.get(observability_defaults, :default_timeframe, "6h")
+  end
+
+observability_default_granularity =
+  case System.get_env("TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY") do
+    value when is_binary(value) and value != "" -> String.trim(value)
+    _ -> Keyword.get(observability_defaults, :default_granularity, "1m")
+  end
+
+observability_time_zone =
+  case System.get_env("TRIFLE_OBSERVABILITY_TIME_ZONE") do
+    value when is_binary(value) and value != "" -> String.trim(value)
+    _ -> Keyword.get(observability_defaults, :time_zone, "UTC")
+  end
+
 traces_storage_path =
   case System.get_env("TRIFLE_TRACES_STORAGE_PATH") do
     nil -> Keyword.get(observability_defaults, :traces_storage_path)
@@ -255,6 +291,10 @@ config :trifle, Trifle.Observability,
   enabled: observability_enabled,
   index_backend: observability_index_backend,
   mongodb_url: observability_mongodb_url,
+  granularities: observability_granularities,
+  default_timeframe: observability_default_timeframe,
+  default_granularity: observability_default_granularity,
+  time_zone: observability_time_zone,
   traces_storage_backend: traces_storage_backend,
   traces_storage_path: traces_storage_path,
   traces_s3: traces_s3,

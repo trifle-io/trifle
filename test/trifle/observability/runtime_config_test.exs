@@ -8,8 +8,13 @@ defmodule Trifle.Observability.RuntimeConfigTest do
     env_keys = ~w(DOTENV_PATH TRIFLE_OBSERVABILITY_ENABLED DATABASE_URL SECRET_KEY_BASE
                   TRIFLE_DB_ENCRYPTION_KEY MAILER_ADAPTER TRIFLE_TRACES_GZIP
                   TRIFLE_TRACES_S3_SECRET_ACCESS_KEY TRIFLE_OBSERVABILITY_INDEX_BACKEND
+                  TRIFLE_OBSERVABILITY_GRANULARITIES
+                  TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME
+                  TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY
+                  TRIFLE_OBSERVABILITY_TIME_ZONE
                   TRIFLE_OBSERVABILITY_MONGODB_URL MONGODB_URL
-                  TRIFLE_TRACES_STORAGE_BACKEND TRIFLE_TRACES_S3_BUCKETS
+                  TRIFLE_TRACES_STORAGE_BACKEND TRIFLE_TRACES_STORAGE_PATH
+                  TRIFLE_TRACES_S3_BUCKETS
                   TRIFLE_TRACES_S3_ENDPOINT TRIFLE_TRACES_S3_REGION
                   TRIFLE_TRACES_S3_ACCESS_KEY_ID TRIFLE_TRACES_S3_PREFIX
                   TRIFLE_TRACES_MANAGE_S3_LIFECYCLE)
@@ -30,7 +35,10 @@ defmodule Trifle.Observability.RuntimeConfigTest do
 
     Enum.each(
       ~w(TRIFLE_OBSERVABILITY_INDEX_BACKEND TRIFLE_OBSERVABILITY_MONGODB_URL MONGODB_URL
-         TRIFLE_TRACES_STORAGE_BACKEND TRIFLE_TRACES_S3_BUCKETS TRIFLE_TRACES_S3_ENDPOINT
+         TRIFLE_OBSERVABILITY_GRANULARITIES TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME
+         TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY TRIFLE_OBSERVABILITY_TIME_ZONE
+         TRIFLE_TRACES_STORAGE_BACKEND TRIFLE_TRACES_STORAGE_PATH TRIFLE_TRACES_S3_BUCKETS
+         TRIFLE_TRACES_S3_ENDPOINT
          TRIFLE_TRACES_S3_REGION TRIFLE_TRACES_S3_ACCESS_KEY_ID TRIFLE_TRACES_S3_PREFIX
          TRIFLE_TRACES_MANAGE_S3_LIFECYCLE),
       &System.delete_env/1
@@ -84,6 +92,68 @@ defmodule Trifle.Observability.RuntimeConfigTest do
 
     File.write!(Path.join(dir, ".env"), "TRIFLE_OBSERVABILITY_ENABLED=true\n")
     refute enabled_config(dir, :test)
+  end
+
+  test "internal Stats granularities and source defaults are configurable", %{tmp_dir: dir} do
+    previous_stats = Application.get_env(:trifle_stats, :global_config)
+    previous_traces = Application.get_env(:trifle_traces, :configuration)
+
+    on_exit(fn ->
+      restore_application_env(:trifle_stats, :global_config, previous_stats)
+      restore_application_env(:trifle_traces, :configuration, previous_traces)
+    end)
+
+    config = observability_config(dir, :prod)
+    assert config[:granularities] == ["1m", "1h", "1d", "1mo"]
+    assert config[:default_timeframe] == "6h"
+    assert config[:default_granularity] == "1m"
+    assert config[:time_zone] == "UTC"
+
+    System.put_env("TRIFLE_OBSERVABILITY_GRANULARITIES", "5m, 6h\n1d")
+    System.put_env("TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME", "24h")
+    System.put_env("TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY", "6h")
+    System.put_env("TRIFLE_OBSERVABILITY_TIME_ZONE", "Asia/Dubai")
+
+    config = observability_config(dir, :prod)
+    assert config[:granularities] == ["5m", "6h", "1d"]
+    assert config[:default_timeframe] == "24h"
+    assert config[:default_granularity] == "6h"
+    assert config[:time_zone] == "Asia/Dubai"
+
+    config =
+      config
+      |> Keyword.put(:traces_storage_backend, :file)
+      |> Keyword.put(:traces_storage_path, Path.join(dir, "traces"))
+
+    Application.put_env(:trifle, Trifle.Observability, config)
+    assert {:ok, attrs} = Trifle.Observability.database_attrs()
+    assert attrs.granularities == ["5m", "6h", "1d"]
+    assert attrs.default_timeframe == "24h"
+    assert attrs.default_granularity == "6h"
+    assert attrs.time_zone == "Asia/Dubai"
+
+    assert [_stats_connection, _traces] = Trifle.Observability.setup()
+    assert Trifle.Stats.Configuration.get_global().granularities == ["5m", "6h", "1d"]
+    assert Trifle.Stats.Configuration.get_global().time_zone == "Asia/Dubai"
+  end
+
+  test "invalid or empty granularities use safe defaults and keep the source selection valid" do
+    assert Trifle.Observability.granularities(granularities: ["nope", "0m"]) ==
+             ["1m", "1h", "1d", "1mo"]
+
+    assert Trifle.Observability.time_zone(time_zone: "Mars/Olympus") == "UTC"
+
+    Application.put_env(:trifle, Trifle.Observability,
+      enabled: true,
+      granularities: ["1h", "1d"],
+      default_granularity: "1m",
+      traces_storage_backend: :file,
+      traces_storage_path: "/tmp/trifle-observability-test"
+    )
+
+    assert {:ok, attrs} = Trifle.Observability.database_attrs()
+    assert attrs.granularities == ["1h", "1d"]
+    assert attrs.default_granularity == "1h"
   end
 
   test "gzip accepts explicit boolean values and preserves defaults for typos", %{tmp_dir: dir} do

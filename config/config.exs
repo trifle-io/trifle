@@ -36,6 +36,10 @@ config :trifle, :request_body_max_bytes, 8_000_000
 config :trifle, Trifle.Observability,
   enabled: true,
   index_backend: :postgres,
+  granularities: ["1m", "1h", "1d", "1mo"],
+  default_timeframe: "6h",
+  default_granularity: "1m",
+  time_zone: "UTC",
   traces_storage_backend: :none,
   traces_storage_path: nil,
   traces_s3: [

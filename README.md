@@ -169,6 +169,10 @@ and their Trifle.Stats metrics together. In development, configure it in `.env`
 
 ```dotenv
 TRIFLE_OBSERVABILITY_ENABLED=true
+TRIFLE_OBSERVABILITY_GRANULARITIES=1m,1h,1d,1mo
+TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME=6h
+TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY=1m
+TRIFLE_OBSERVABILITY_TIME_ZONE=UTC
 ```
 
 Set it to `false` to disable internal telemetry, then restart the app process.
@@ -181,6 +185,10 @@ For production Helm deployments, use:
 app:
   observability:
     enabled: false
+    granularities: ["1m", "1h", "1d", "1mo"]
+    defaultTimeframe: "6h"
+    defaultGranularity: "1m"
+    timeZone: "UTC"
 ```
 
 This maps to `TRIFLE_OBSERVABILITY_ENABLED` in the app and release hook jobs.
@@ -193,6 +201,8 @@ new internal source provisioning. It does not delete existing data or sources,
 disable ordinary application logging, or affect user-configured Stats/Traces sources
 and their retention cleanup. Existing S3 lifecycle rules still apply. Payload
 storage remains configurable through `TRIFLE_TRACES_*` / Helm `app.traces` settings.
+Internal metrics and their generated source use UTC by default; configure both with
+`TRIFLE_OBSERVABILITY_TIME_ZONE` or Helm `app.observability.timeZone`.
 
 The internal observability source records Oban metrics as `jobs::JOB_NAME`, for example `jobs::Trifle.Monitors.Jobs.DispatchRunner`. Worker dots remain literal in the metric key. The payload contains `count`, `states.<state>`, and `entries.count`; trace keys are `jobs/JOB_NAME`, with no additional namespace prefix. Existing metrics and saved dashboard/monitor selections are not migrated automatically.
 

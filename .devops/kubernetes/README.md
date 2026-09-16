@@ -65,6 +65,10 @@ app:
   observability:
     enabled: true # Set false to disable the app's own Oban traces and Stats metrics.
     indexBackend: "postgres" # postgres | mongo; Mongo reuses app.mongodbUrl.
+    granularities: ["1m", "1h", "1d", "1mo"]
+    defaultTimeframe: "6h"
+    defaultGranularity: "1m"
+    timeZone: "UTC"
   traces:
     storageBackend: "file"
     storagePath: "/home/app/uploads/traces"
@@ -218,6 +222,13 @@ When enabled, Trifle's internal background-job traces store searchable metadata 
 Stats metrics in the database selected by `app.observability.indexBackend`. The default
 is PostgreSQL. Set it to `mongo` to reuse `app.mongodbUrl` for both collections.
 
+Internal Stats are tracked at `1m`, `1h`, `1d`, and `1mo` by default. Configure the
+stored buckets with `app.observability.granularities` (or the comma-separated
+`TRIFLE_OBSERVABILITY_GRANULARITIES`). The generated source opens at `6h` / `1m` by
+default; `defaultTimeframe` and `defaultGranularity` configure those initial selections.
+Internal Stats and their generated source use UTC by default. Configure both with
+`app.observability.timeZone` or `TRIFLE_OBSERVABILITY_TIME_ZONE`.
+
 Trace payloads can reuse the SQLite S3-compatible object store without duplicating
 credentials:
 
@@ -226,6 +237,10 @@ app:
   observability:
     enabled: true
     indexBackend: mongo
+    granularities: ["1m", "1h", "1d", "1mo"]
+    defaultTimeframe: "6h"
+    defaultGranularity: "1m"
+    timeZone: "UTC"
   traces:
     storageBackend: s3
     useSqliteObjectStore: true

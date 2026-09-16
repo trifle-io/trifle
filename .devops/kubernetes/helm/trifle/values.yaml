@@ -128,6 +128,10 @@ app:
   observability:
     enabled: true # Maps to TRIFLE_OBSERVABILITY_ENABLED; restart required.
     indexBackend: "postgres" # postgres | mongo; Mongo uses app.mongodbUrl.
+    granularities: ["1m", "1h", "1d", "1mo"]
+    defaultTimeframe: "6h"
+    defaultGranularity: "1m"
+    timeZone: "UTC"
 
   # Internal Trifle.Traces storage (when observability is enabled).
   # Metadata uses app.observability.indexBackend.

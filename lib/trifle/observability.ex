@@ -19,6 +19,10 @@ defmodule Trifle.Observability do
   @stats_table "trifle_internal_stats"
   @stats_ping_table "trifle_internal_stats_ping"
   @traces_table "trifle_traces"
+  @default_granularities ["1m", "1h", "1d", "1mo"]
+  @default_timeframe "6h"
+  @default_granularity "1m"
+  @default_time_zone "UTC"
 
   @postgres_options [
     :hostname,
@@ -168,6 +172,7 @@ defmodule Trifle.Observability do
   @doc "Builds the editable database source for the application's internal observability data."
   def database_attrs do
     options = config()
+    granularities = granularities(options)
 
     with true <- enabled?() || {:error, :observability_disabled},
          {:ok, connection_attrs} <- database_connection_attrs(options),
@@ -176,11 +181,11 @@ defmodule Trifle.Observability do
        %{
          display_name: "Trifle internal observability",
          connection_method: "direct",
-         granularities: ["1m", "1h", "1d", "1w", "1mo"],
-         time_zone: "UTC",
+         granularities: granularities,
+         time_zone: time_zone(options),
          beginning_of_week: 1,
-         default_timeframe: "24h",
-         default_granularity: "1h"
+         default_timeframe: default_timeframe(options),
+         default_granularity: default_granularity(options, granularities)
        }
        |> Map.merge(connection_attrs)
        |> Map.merge(trace_attrs)}
@@ -341,11 +346,59 @@ defmodule Trifle.Observability do
 
     Trifle.Stats.configure(
       driver: driver,
-      time_zone: "UTC",
+      time_zone: time_zone(options),
       beginning_of_week: :monday,
-      track_granularities: ["1m", "1h", "1d", "1w", "1mo"],
+      track_granularities: granularities(options),
       buffer_enabled: false
     )
+  end
+
+  @doc false
+  def granularities(options \\ config()) do
+    configured = Keyword.get(options, :granularities, @default_granularities)
+
+    values =
+      case configured do
+        values when is_list(values) -> values
+        value when is_binary(value) -> String.split(value, [",", "\n"], trim: true)
+        _ -> []
+      end
+
+    values =
+      values
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.uniq()
+      |> Enum.filter(&valid_granularity?/1)
+
+    if values == [], do: @default_granularities, else: values
+  end
+
+  @doc false
+  def time_zone(options \\ config()) do
+    configured = options |> Keyword.get(:time_zone, @default_time_zone) |> to_string()
+    configured = String.trim(configured)
+
+    if configured != "" and Tzdata.zone_exists?(configured),
+      do: configured,
+      else: @default_time_zone
+  end
+
+  defp valid_granularity?(value) do
+    parser = Trifle.Stats.Nocturnal.Parser.new(value)
+    Trifle.Stats.Nocturnal.Parser.valid?(parser) and parser.offset > 0
+  end
+
+  defp default_timeframe(options) do
+    case Keyword.get(options, :default_timeframe, @default_timeframe) do
+      value when is_binary(value) and value != "" -> value
+      _ -> @default_timeframe
+    end
+  end
+
+  defp default_granularity(options, granularities) do
+    configured = Keyword.get(options, :default_granularity, @default_granularity)
+    if configured in granularities, do: configured, else: List.first(granularities)
   end
 
   defp cleanup_internal! do

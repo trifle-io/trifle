@@ -87,6 +87,26 @@ Explicit app.env overrides take precedence, without duplicate env entries.
   value: "true"
   {{- end }}
 {{- end -}}
+{{- if not (hasKey $appEnv "TRIFLE_OBSERVABILITY_GRANULARITIES") }}
+- name: TRIFLE_OBSERVABILITY_GRANULARITIES
+  {{- if hasKey $observability "granularities" }}
+  value: {{ join "," (index $observability "granularities") | quote }}
+  {{- else }}
+  value: "1m,1h,1d,1mo"
+  {{- end }}
+{{- end }}
+{{- if not (hasKey $appEnv "TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME") }}
+- name: TRIFLE_OBSERVABILITY_DEFAULT_TIMEFRAME
+  value: {{ index $observability "defaultTimeframe" | default "6h" | quote }}
+{{- end }}
+{{- if not (hasKey $appEnv "TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY") }}
+- name: TRIFLE_OBSERVABILITY_DEFAULT_GRANULARITY
+  value: {{ index $observability "defaultGranularity" | default "1m" | quote }}
+{{- end }}
+{{- if not (hasKey $appEnv "TRIFLE_OBSERVABILITY_TIME_ZONE") }}
+- name: TRIFLE_OBSERVABILITY_TIME_ZONE
+  value: {{ index $observability "timeZone" | default "UTC" | quote }}
+{{- end }}
 {{- end -}}
 
 {{/* Internal observability storage shared by the app and release jobs. */}}
