@@ -277,10 +277,15 @@ input[type="checkbox"] {
 /* FilterBar occupies its natural-height row. Everything below it shares one
    native scrollport, so sticky headers need only top: 0 at every breakpoint. */
 .traces-workspace {
+  --traces-section-gap: 0.75rem;
   display: grid;
   height: calc(100dvh - 7rem);
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+.traces-workspace > [data-filter-bar-shortcuts] {
+  margin-bottom: var(--traces-section-gap);
 }
 
 .traces-scrollport {
@@ -295,11 +300,16 @@ input[type="checkbox"] {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
-  gap: 1.25rem;
+  gap: var(--traces-section-gap);
 }
 
 .traces-content > [aria-label="Trace activity"] {
   flex: none;
+}
+
+/* The page owns section spacing; do not add the dashboard wrapper's margin. */
+.traces-content > [aria-label="Trace activity"] > .mb-6 {
+  margin-bottom: 0;
 }
 
 .trace-panels {

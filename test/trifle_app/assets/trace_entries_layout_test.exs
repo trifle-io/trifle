@@ -35,6 +35,20 @@ defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
     assert source =~ ".trace-entry-timestamp {\n    grid-column: 3;\n    grid-row: 1;"
   end
 
+  test "activity has equal compact gaps without stacking the widget bottom margin" do
+    source = File.read!(@source_path)
+
+    assert source =~ "--traces-section-gap: 0.75rem;"
+
+    assert source =~
+             ".traces-workspace > [data-filter-bar-shortcuts] {\n  margin-bottom: var(--traces-section-gap);"
+
+    assert source =~ "gap: var(--traces-section-gap);"
+
+    assert source =~
+             ".traces-content > [aria-label=\"Trace activity\"] > .mb-6 {\n  margin-bottom: 0;"
+  end
+
   test "native sticky header and list size themselves without JavaScript offsets" do
     source = File.read!(@source_path)
     assert source =~ ".trace-detail-header {"
