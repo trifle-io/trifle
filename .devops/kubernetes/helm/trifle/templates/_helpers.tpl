@@ -72,3 +72,19 @@ postgresql://{{ .Values.externalPostgresql.username }}:{{ .Values.externalPostgr
 {{- end }}
 {{- end }}
 
+{{/*
+Internal observability toggle shared by the app and release hook jobs.
+Explicit app.env overrides take precedence, without duplicate env entries.
+*/}}
+{{- define "trifle.observabilityEnv" -}}
+{{- $appEnv := .Values.app.env | default (dict) -}}
+{{- $observability := .Values.app.observability | default (dict) -}}
+{{- if not (hasKey $appEnv "TRIFLE_OBSERVABILITY_ENABLED") -}}
+- name: TRIFLE_OBSERVABILITY_ENABLED
+  {{- if hasKey $observability "enabled" }}
+  value: {{ index $observability "enabled" | quote }}
+  {{- else }}
+  value: "true"
+  {{- end }}
+{{- end -}}
+{{- end -}}

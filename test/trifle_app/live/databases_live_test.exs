@@ -8,6 +8,7 @@ defmodule TrifleApp.DatabasesLiveTest do
 
   alias Trifle.Billing.Entitlement
   alias Trifle.Organizations
+  alias Trifle.Organizations.Database
   alias Trifle.Repo
 
   setup %{conn: conn} do
@@ -27,6 +28,16 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "MySQL"
   end
 
+  test "new database authorization remains owner-only", %{conn: conn, organization: organization} do
+    for role <- ["admin", "member"] do
+      user = Trifle.AccountsFixtures.user_fixture()
+      {:ok, _membership} = Organizations.create_membership(organization, user, role)
+      member_conn = conn |> recycle() |> log_in_user(user)
+      assert {:error, {_kind, %{to: "/dbs", flash: flash}}} = live(member_conn, ~p"/dbs/new")
+      assert flash["error"] == "Only organization owners can create databases."
+    end
+  end
+
   test "new database form exposes secure connection methods for network drivers", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/dbs/new")
 
@@ -40,6 +51,81 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "SSH tunnel"
     assert html =~ "Private Connector"
     assert html =~ "Allowlist Trifle Cloud egress"
+  end
+
+  test "PostgreSQL form exposes optional Trifle Traces configuration", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{"driver" => "postgres", "connection_method" => "direct"}
+      })
+
+    assert html =~ "Trifle Traces"
+    assert html =~ "Add Traces"
+
+    html =
+      lv
+      |> element("button[phx-click=\"add_traces\"]")
+      |> render_click()
+
+    assert html =~ "Index table or collection"
+    assert html =~ "S3-compatible object storage"
+    assert html =~ "Retention days"
+  end
+
+  test "Private Connector remains Stats-only", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{"driver" => "postgres", "connection_method" => "connector"}
+      })
+
+    assert html =~ "Trifle Traces"
+    assert html =~ "Unavailable"
+    assert html =~ "Private Connector remains Stats-only"
+  end
+
+  test "S3 secret access key validation errors render beside the field", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    lv
+    |> element("#database-form")
+    |> render_change(%{"database" => %{"driver" => "postgres"}})
+
+    lv |> element("button[phx-click='add_traces']") |> render_click()
+
+    html =
+      lv
+      |> element("#database-form")
+      |> render_change(%{
+        "database" => %{
+          "driver" => "postgres",
+          "connection_method" => "direct",
+          "trace_config" => %{
+            "index_name" => "trifle_traces",
+            "data_driver" => "s3",
+            "data_buckets" => ["traces"],
+            "data_region" => "us-east-1",
+            "data_prefix" => "traces",
+            "retention_days" => 7,
+            "gzip" => true
+          },
+          "trace_secret_access_key" => %{"invalid" => "not a string"}
+        }
+      })
+
+    doc = Floki.parse_document!(html)
+
+    assert Floki.find(doc, "input[name='database[trace_secret_access_key]'] + p")
+           |> Floki.text() == "is invalid"
+
+    refute html =~ "not a string"
   end
 
   test "private connector method prompts for connector creation when none exist", %{conn: conn} do
@@ -180,6 +266,48 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Sqlite Storage"
     assert html =~ "backend"
     assert html =~ "trifle-sqlite-files"
+  end
+
+  test "database settings shows and removes Traces without deleting external data", %{
+    conn: conn,
+    organization: organization
+  } do
+    trace_path = Path.join(System.tmp_dir!(), "settings-traces-#{Ecto.UUID.generate()}")
+
+    assert {:ok, database} =
+             Organizations.create_database_for_org(organization, %{
+               display_name: "Postgres traces",
+               driver: "postgres",
+               host: "postgres",
+               port: 5432,
+               database_name: Trifle.Repo.config()[:database],
+               username: Trifle.Repo.config()[:username],
+               password: Trifle.Repo.config()[:password],
+               trace_config: %{
+                 "index_name" => "settings_traces",
+                 "data_driver" => "file",
+                 "data_path" => trace_path,
+                 "retention_days" => 7,
+                 "gzip" => true
+               }
+             })
+
+    File.mkdir_p!(trace_path)
+    sentinel = Path.join(trace_path, "keep-me")
+    File.write!(sentinel, "trace payload")
+    on_exit(fn -> File.rm_rf!(trace_path) end)
+
+    {:ok, lv, html} = live(conn, ~p"/dbs/#{database.id}/settings")
+    assert html =~ "Stats + Traces"
+    assert html =~ "Remove Traces"
+
+    lv
+    |> element("button[phx-click=\"remove_traces\"]")
+    |> render_click()
+
+    updated = Organizations.get_database!(database.id)
+    refute Database.traces_configured?(updated)
+    assert File.exists?(sentinel)
   end
 
   test "inactive databases remain visible with a billing CTA", %{

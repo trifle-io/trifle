@@ -90,6 +90,24 @@ defmodule TrifleApp.DatabaseSettingsLive do
     end
   end
 
+  def handle_event("remove_traces", _params, socket) do
+    database = load_database(socket)
+
+    case Organizations.remove_database_traces(database) do
+      {:ok, updated_database} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Trifle Traces configuration removed. Existing external trace data was not deleted."
+         )
+         |> assign_database(updated_database)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not remove Trifle Traces configuration.")}
+    end
+  end
+
   def handle_event("delete", _params, socket) do
     database = load_database(socket)
 
@@ -186,6 +204,9 @@ defmodule TrifleApp.DatabaseSettingsLive do
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-3">
+                <span class="inline-flex items-center rounded-md bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-500/10 dark:text-teal-200 dark:ring-teal-400/30">
+                  {if Database.traces_configured?(@database), do: "Stats + Traces", else: "Stats"}
+                </span>
                 <span class={status_badge_class(@database.last_check_status)}>
                   {status_text(@database.last_check_status)}
                 </span>
@@ -348,6 +369,48 @@ defmodule TrifleApp.DatabaseSettingsLive do
           </div>
         <% end %>
 
+        <%= if Database.traces_configured?(@database) do %>
+          <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
+            <div class="flex items-start justify-between gap-4 px-4 py-6 sm:px-6">
+              <div>
+                <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                  Trifle Traces
+                </h2>
+                <p class="mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-slate-400">
+                  Trace metadata uses this database connection; complete payloads use the configured storage below.
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="remove_traces"
+                data-confirm="Remove the Trifle Traces configuration? Existing index and payload data will not be deleted."
+                class="shrink-0 rounded-md border border-red-300 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10"
+              >
+                Remove Traces
+              </button>
+            </div>
+            <div class="border-t border-gray-100 dark:border-slate-700">
+              <dl class="divide-y divide-gray-100 dark:divide-slate-700">
+                <%= for {key, value} <- trace_config_entries(@database) do %>
+                  <.detail_row label={humanize_config_key(key)}>
+                    {format_trace_config_value(value)}
+                  </.detail_row>
+                <% end %>
+                <.detail_row
+                  :if={@database.trace_config["data_driver"] == "s3"}
+                  label="S3 credentials"
+                >
+                  <%= if present?(@database.trace_access_key_id) do %>
+                    Stored securely
+                  <% else %>
+                    Runtime credential provider
+                  <% end %>
+                </.detail_row>
+              </dl>
+            </div>
+          </div>
+        <% end %>
+
         <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-slate-800">
           <div class="px-4 py-6 sm:px-6">
             <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">
@@ -403,7 +466,7 @@ defmodule TrifleApp.DatabaseSettingsLive do
                   data-confirm="Are you sure you want to delete all metrics data for this database? This action cannot be undone."
                   class="inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-50 dark:border-red-500/40 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-500/10"
                 >
-                  Nuke data
+                  Delete Stats data
                 </button>
                 <button
                   phx-click="delete"
@@ -506,6 +569,25 @@ defmodule TrifleApp.DatabaseSettingsLive do
   defp format_config_value(value) when is_map(value), do: inspect(value, pretty: true)
   defp format_config_value(value) when is_list(value), do: inspect(value, pretty: true)
   defp format_config_value(value), do: to_string(value)
+
+  defp trace_config_entries(%Database{trace_config: config}) when is_map(config) do
+    config
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Enum.sort_by(fn {key, _value} ->
+      case key do
+        "index_name" -> 0
+        "data_driver" -> 1
+        _ -> 2
+      end
+    end)
+  end
+
+  defp trace_config_entries(_database), do: []
+
+  defp format_trace_config_value(value) when is_list(value), do: Enum.join(value, ", ")
+  defp format_trace_config_value(true), do: "Enabled"
+  defp format_trace_config_value(false), do: "Disabled"
+  defp format_trace_config_value(value), do: to_string(value)
 
   defp format_week_start(%Database{} = database) do
     database

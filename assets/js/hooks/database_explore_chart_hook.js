@@ -136,7 +136,8 @@ Hooks.DatabaseExploreChart = {
         formatter: function(params) {
           const dateStr = formatDateTime(params.value[0], { withSeconds: true });
           const value = formatCompactNumber(params.value[1]);
-          return `${dateStr}<br/>${params.marker} ${params.seriesName}: ${value}`;
+          const escape = (text) => String(text).replace(/[&<>"']/g, (char) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+          return `${dateStr}<br/>${params.marker} ${escape(params.seriesName)}: ${value}`;
         }
       },
       xAxis: {

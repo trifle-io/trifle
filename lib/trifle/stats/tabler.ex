@@ -24,7 +24,7 @@ defmodule Trifle.Stats.Tabler do
         [] -> {nil, []}
       end
 
-    packed = Trifle.Stats.Packer.pack(value)
+    packed = Trifle.Stats.Packer.pack_tree(value)
 
     paths = Enum.reduce(Map.keys(packed), paths, &MapSet.put(&2, &1))
 

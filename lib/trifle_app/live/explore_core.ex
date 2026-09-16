@@ -984,7 +984,7 @@ defmodule TrifleApp.ExploreCore do
         keys_sum = reduce_stats(system_stats.series[:values] || [])
         # Chart always shows events from system data, for the specific key
         timeline_map = series_from(system_stats.series, ["keys", socket.assigns.key])
-        path = "keys.#{socket.assigns.key}"
+        path = Trifle.Stats.Path.join(["keys", socket.assigns.key])
 
         timeline_points =
           timeline_map
@@ -1042,7 +1042,7 @@ defmodule TrifleApp.ExploreCore do
         {timeline_data, chart_type} =
           if socket.assigns.key && socket.assigns.key != "" do
             timeline_map = series_from(raw_stats, ["keys", socket.assigns.key])
-            path = "keys.#{socket.assigns.key}"
+            path = Trifle.Stats.Path.join(["keys", socket.assigns.key])
 
             points =
               timeline_map
@@ -1598,7 +1598,7 @@ defmodule TrifleApp.ExploreCore do
   end
 
   def series_from(series_input, path) when is_list(path) do
-    path = Enum.join(path, ".")
+    path = Trifle.Stats.Path.join(path)
     series_struct = ensure_series_struct(series_input)
 
     format_timeline_map(series_struct, path, 1, &timeline_chart_point/2)
@@ -1618,7 +1618,7 @@ defmodule TrifleApp.ExploreCore do
         option_values
         |> Enum.sort()
         |> Enum.map(fn key ->
-          path = "keys." <> key
+          path = Trifle.Stats.Path.join(["keys", key])
           points = normalize_timeline_points(Map.get(timeline_map, path))
 
           data =
@@ -1792,9 +1792,10 @@ defmodule TrifleApp.ExploreCore do
 
     formatted_path =
       display_path
-      |> String.split(".")
-      |> build_nested_html(all_paths, [])
-      |> Enum.join(".")
+      |> TrifleApp.DesignSystem.PathColors.html(
+        TrifleApp.DesignSystem.PathColors.build(all_paths)
+      )
+      |> Phoenix.HTML.safe_to_string()
 
     if transponder_name do
       # Escape the transponder name for safe HTML attribute usage
@@ -1807,35 +1808,6 @@ defmodule TrifleApp.ExploreCore do
       formatted_path
     end
     |> Phoenix.HTML.raw()
-  end
-
-  defp build_nested_html([component], all_paths, path_so_far) do
-    index = get_component_index_at_level(component, all_paths, path_so_far)
-    color = ChartColors.color_for(index)
-
-    escaped_component =
-      component
-      |> to_string()
-      |> Phoenix.HTML.html_escape()
-      |> Phoenix.HTML.safe_to_string()
-
-    ["<span style=\"color: #{color} !important\">#{escaped_component}</span>"]
-  end
-
-  defp build_nested_html([component | rest], all_paths, path_so_far) do
-    index = get_component_index_at_level(component, all_paths, path_so_far)
-    color = ChartColors.color_for(index)
-
-    escaped_component =
-      component
-      |> to_string()
-      |> Phoenix.HTML.html_escape()
-      |> Phoenix.HTML.safe_to_string()
-
-    current_html = "<span style=\"color: #{color} !important\">#{escaped_component}</span>"
-    new_path_so_far = path_so_far ++ [component]
-
-    [current_html | build_nested_html(rest, all_paths, new_path_so_far)]
   end
 
   def format_table_timestamp(datetime, _granularity) when is_struct(datetime, DateTime) do
@@ -1890,30 +1862,6 @@ defmodule TrifleApp.ExploreCore do
     value
     |> String.replace(~r/\.(\d*?)0+$/, ".\\1")
     |> String.trim_trailing(".")
-  end
-
-  defp get_component_index_at_level(component, all_paths, path_so_far) do
-    prefix =
-      case path_so_far do
-        [] -> ""
-        parts -> Enum.join(parts, ".") <> "."
-      end
-
-    siblings =
-      all_paths
-      |> Enum.filter(fn path ->
-        String.starts_with?(path, prefix) &&
-          length(String.split(path, ".")) > length(path_so_far)
-      end)
-      |> Enum.map(fn path ->
-        String.split(path, ".")
-        |> Enum.drop(length(path_so_far))
-        |> hd()
-      end)
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    Enum.find_index(siblings, &(&1 == component)) || 0
   end
 
   def render(assigns) do

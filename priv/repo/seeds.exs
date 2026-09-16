@@ -76,6 +76,17 @@ _membership =
       membership
   end
 
+case Trifle.Observability.DatabaseProvisioner.ensure_internal_database(organization) do
+  {:ok, nil} ->
+    :ok
+
+  {:ok, database} ->
+    IO.puts("✅ Internal observability database is available: #{database.display_name}")
+
+  {:error, reason} ->
+    IO.puts("⚠️  Internal observability database was not created: #{inspect(reason)}")
+end
+
 # Project cluster configuration
 project_cluster_attrs = %{
   name: "Dev Cluster",

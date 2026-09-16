@@ -176,6 +176,7 @@ defmodule TrifleApi.BootstrapController do
 
   def create_database(%{assigns: %{current_api_user: %User{} = user}} = conn, params) do
     with {:ok, %OrganizationMembership{} = membership} <- ensure_membership(user),
+         :ok <- ensure_database_manager(membership),
          :ok <- ensure_app_subscription_active(membership),
          attrs <- normalize_database_attrs(params, membership),
          {:ok, attrs, uploaded_upload} <- maybe_store_sqlite_upload(attrs, params, membership) do
@@ -211,6 +212,9 @@ defmodule TrifleApi.BootstrapController do
     else
       {:error, :organization_required} ->
         render_error(conn, :conflict, "User does not belong to an organization")
+
+      {:error, :forbidden} ->
+        render_error(conn, :forbidden, "Only organization owners can create databases")
 
       {:error, reason} when reason in [:missing_app_subscription, :billing_locked] ->
         render_billing_error(conn, reason)
@@ -677,6 +681,10 @@ defmodule TrifleApi.BootstrapController do
     end
   end
 
+  defp ensure_database_manager(%OrganizationMembership{} = membership) do
+    if Organizations.membership_owner?(membership), do: :ok, else: {:error, :forbidden}
+  end
+
   defp fetch_org_token(%OrganizationMembership{} = membership, token_id) do
     {:ok, Organizations.get_organization_api_token_for_org!(membership.organization_id, token_id)}
   rescue
@@ -862,6 +870,12 @@ defmodule TrifleApi.BootstrapController do
       available_granularities: available_database_granularities(database),
       time_zone: database.time_zone || "UTC",
       setup_status: database.last_check_status,
+      capabilities: %{
+        stats: true,
+        traces: Database.traces_configured?(database)
+      },
+      trace_config:
+        if(Database.traces_configured?(database), do: database.trace_config, else: nil),
       billing_state: access.billing_state,
       active: access.active?,
       inactive_reason: inactive_reason_payload(access.inactive_reason)

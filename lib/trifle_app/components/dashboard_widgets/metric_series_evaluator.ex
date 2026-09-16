@@ -592,7 +592,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     clean_segments =
       path
       |> strip_wildcard()
-      |> String.split(".")
+      |> Trifle.Stats.Path.segments()
       |> Enum.reject(&(&1 == ""))
 
     series_struct
@@ -681,7 +681,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     key
     |> to_string()
     |> String.replace_prefix(stripped_path <> ".", "")
-    |> String.split(".")
+    |> Trifle.Stats.Path.segments()
     |> List.last()
     |> case do
       nil -> key
@@ -693,7 +693,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     path
     |> to_string()
     |> String.trim()
-    |> String.trim_trailing(".*")
+    |> Trifle.Metrics.ValuePath.strip_wildcard()
   end
 
   defp path_entry_name(row, pattern, concrete_path, binding_key) do
@@ -733,37 +733,26 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   end
 
   defp binding_key(pattern, concrete_path) do
-    pattern_regex = wildcard_regex(pattern)
-
-    case Regex.run(pattern_regex, concrete_path, capture: :all_but_first) do
-      nil ->
+    case Trifle.Metrics.ValuePath.captures(pattern, concrete_path) do
+      :error ->
         if concrete_path == pattern, do: @single_binding, else: concrete_path
 
-      [] ->
+      {:ok, []} ->
         if concrete_path == pattern, do: @single_binding, else: concrete_path
 
-      captures ->
+      {:ok, captures} ->
         {:captures, captures}
     end
   end
 
-  defp wildcard_regex(pattern) do
-    segments = String.split(pattern, ".", trim: true)
+  defp binding_label(@single_binding, fallback), do: fallback
 
-    parts =
-      segments
-      |> Enum.with_index()
-      |> Enum.map(fn
-        {"*", index} when index == length(segments) - 1 -> "(.+)"
-        {"*", _index} -> "([^.]+)"
-        {segment, _index} -> Regex.escape(segment)
-      end)
-
-    Regex.compile!("^" <> Enum.join(parts, "\\.") <> "$")
+  defp binding_label({:captures, captures}, _fallback) do
+    Enum.map_join(captures, " / ", fn path ->
+      path |> Trifle.Stats.Path.segments() |> Enum.join(".")
+    end)
   end
 
-  defp binding_label(@single_binding, fallback), do: fallback
-  defp binding_label({:captures, captures}, _fallback), do: Enum.join(captures, " / ")
   defp binding_label(other, _fallback), do: to_string(other)
 
   defp binding_key_string(@single_binding), do: "single"

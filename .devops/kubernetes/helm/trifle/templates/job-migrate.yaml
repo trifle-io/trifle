@@ -31,6 +31,7 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- include "trifle.observabilityEnv" . | nindent 12 }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

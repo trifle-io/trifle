@@ -1,5 +1,9 @@
 import { ANNOTATION_POPOVER_Z_INDEX, TIMESERIES_TOOLTIP_RESPONSIVE_CSS, TIMESERIES_TOOLTIP_Z_INDEX, annotationGroupsForItem, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam, timestampMs } from "../shared/timeseries_annotations";
 
+import { timeseriesTimeFormatters } from "../shared/timeseries_timezone.mjs";
+import { timeseriesLabels, timeseriesTooltipName } from "../shared/timeseries_identity.mjs";
+import { timeseriesSeriesOptions, timeseriesYAxes, formatTimeseriesValue, timeseriesWeightedAverages, bindTimeseriesAverageLegend } from "../shared/timeseries_axes.mjs";
+
 export const createDashboardGridTimeseriesRendererMethods = ({
   echarts,
   withChartOpts,
@@ -11,7 +15,8 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     if (!Array.isArray(items)) return;
     const isDarkMode = document.documentElement.classList.contains('dark');
     const colors = this.colors || [];
-    items.forEach((it) => {
+    items.forEach((payload) => {
+      const it = timeseriesWeightedAverages(payload);
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');
       if (!body) return;
@@ -57,12 +62,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
             chart.group = syncGroup;
           }
         }
-        const type = (it.chart_type || 'line');
-        const isBar = type === 'bar';
-        const isArea = type === 'area';
-        const isDots = type === 'dots';
-        const seriesType = isBar ? 'bar' : isDots ? 'scatter' : 'line';
-        const stacked = !!it.stacked;
+        const timeFormatters = timeseriesTimeFormatters(it.timezone);
         const normalized = !!it.normalized;
         const textColor = isDarkMode ? '#9CA3AF' : '#6B7280';
         const axisLineColor = isDarkMode ? '#374151' : '#E5E7EB';
@@ -73,19 +73,9 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         const chartFontFamily = 'Inter var, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
         const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
         const overlayLabelText = isDarkMode ? '#F8FAFC' : '#0F172A';
+        const seriesLabels = timeseriesLabels(it.series || []);
         const series = (it.series || []).map((s, idx) => {
-          const base = {
-            name: s.name || `Series ${idx + 1}`,
-            type: seriesType,
-            data: s.data || [],
-            showSymbol: isDots
-          };
-          if (isDots) {
-            base.symbol = 'circle';
-            base.symbolSize = 5;
-          }
-          if (stacked && !isDots) base.stack = 'total';
-          if (isArea) base.areaStyle = { opacity: 0.1 };
+          const base = timeseriesSeriesOptions(s, it, idx);
           const customColor = typeof s.color === 'string' && s.color.trim() !== '' ? s.color.trim() : null;
           const paletteColor = colors.length ? colors[idx % colors.length] : null;
           const appliedColor = customColor || paletteColor;
@@ -93,7 +83,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
             base.color = appliedColor;
             base.itemStyle = Object.assign({}, base.itemStyle, { color: appliedColor });
             base.lineStyle = Object.assign({}, base.lineStyle, { color: appliedColor });
-            if (isArea) {
+            if (base.areaStyle) {
               base.areaStyle = Object.assign({ opacity: 0.1 }, { color: appliedColor });
             }
           }
@@ -345,7 +335,7 @@ export const createDashboardGridTimeseriesRendererMethods = ({
           if (value > bounds.max) bounds.max = value;
         };
         const seriesBounds = { min: Infinity, max: -Infinity };
-        finalSeries.forEach((s) => {
+        finalSeries.filter((s) => s.yAxisIndex !== 1).forEach((s) => {
           (s.data || []).forEach((point) => updateBounds(seriesBounds, extractPointValue(point)));
         });
         let alertAxis = null;
@@ -433,14 +423,14 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         chart.setOption({
           backgroundColor: 'transparent',
           textStyle: { fontFamily: chartFontFamily },
-          grid: { top: 12, bottom: bottomPadding, left: 56, right: 20, containLabel: true },
+          grid: { top: 12, bottom: bottomPadding, left: 56, right: series.some(s => s.yAxisIndex === 1) ? 56 : 20, containLabel: true },
           xAxis: {
             type: 'time',
             axisLine: { lineStyle: { color: axisLineColor } },
-            axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: chartFontFamily },
+            axisLabel: { color: textColor, margin: 8, hideOverlap: true, fontFamily: chartFontFamily, ...(timeFormatters ? { formatter: timeFormatters.axis } : {}) },
             splitLine: { show: false }
           },
-          yAxis,
+          yAxis: timeseriesYAxes(yAxis, it, finalSeries, formatCompactNumber),
           legend: showLegend
             ? { type: 'scroll', bottom: 4, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData }
             : { show: false },
@@ -456,19 +446,14 @@ export const createDashboardGridTimeseriesRendererMethods = ({
               const hovered = tooltipHoveredOnly && !chart.__tsForceFullTooltip ? resolveHoveredTimeseriesParam(chart, list) : null;
               const effectiveList = hovered ? [hovered] : list;
               if (!effectiveList.length) return '';
-              const header = escapeTimeseriesTooltipHtml(effectiveList[0].axisValueLabel || '');
-              const formatValue = (val) => {
-                if (val == null) return '-';
-                if (normalized) {
-                  const pct = Number(val);
-                  return Number.isFinite(pct) ? `${pct.toFixed(2)}%` : '-';
-                }
-                return formatCompactNumber(val);
-              };
+              const header = escapeTimeseriesTooltipHtml(timeFormatters
+                ? timeFormatters.tooltip(effectiveList[0].axisValue, effectiveList[0].axisValueLabel)
+                : effectiveList[0].axisValueLabel || '');
               const lines = effectiveList.map((p) => {
                 const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
-                const seriesName = escapeTimeseriesTooltipHtml(p.seriesName || '');
-                return `${p.marker || ''}${seriesName}: <strong>${formatValue(raw)}</strong>`;
+                const seriesName = escapeTimeseriesTooltipHtml(timeseriesTooltipName(p, seriesLabels));
+                const value = formatTimeseriesValue(raw, (it.series || [])[p.seriesIndex], it, formatCompactNumber);
+                return `${p.marker || ''}${seriesName}: <strong>${escapeTimeseriesTooltipHtml(value)}</strong>`;
               });
               const annotationGroup = annotationGroupForAxisValue(
                 annotationGroups,
@@ -489,6 +474,9 @@ export const createDashboardGridTimeseriesRendererMethods = ({
         } catch (_) {}
         chart.resize();
         this._bind_ts_sync(chart, it.id);
+        bindTimeseriesAverageLegend(chart, it, (updated) => {
+          this._tsSeriesData[it.id] = updated.series.map(s => s.data || []);
+        });
         this._bind_ts_annotations(chart, it, annotationGroups);
         this._apply_ts_legend_selection(syncGroup);
         this._syncTimeseriesHoverGroups();

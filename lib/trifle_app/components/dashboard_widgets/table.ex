@@ -162,16 +162,15 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
 
   defp match_path?(path, filter) do
     cond do
-      String.ends_with?(filter, ".*") ->
-        base = String.trim_trailing(filter, ".*")
-        path == base || String.starts_with?(path, base <> ".")
+      Trifle.Metrics.ValuePath.terminal_wildcard?(filter) ->
+        base = Trifle.Metrics.ValuePath.strip_wildcard(filter)
+        Trifle.Metrics.ValuePath.prefix?(path, base)
 
-      String.contains?(filter, "*") ->
-        wildcard = Regex.escape(filter) |> String.replace("\\*", ".*")
-        Regex.match?(Regex.compile!("^#{wildcard}$"), path)
+      Trifle.Stats.Path.wildcard?(filter) ->
+        Trifle.Metrics.ValuePath.glob_matches?(path, filter)
 
       true ->
-        path == filter || String.starts_with?(path, filter <> ".")
+        Trifle.Metrics.ValuePath.prefix?(path, filter)
     end
   end
 
@@ -180,11 +179,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
 
     best_prefix =
       filters
-      |> Enum.map(&String.trim_trailing(&1, ".*"))
+      |> Enum.map(&Trifle.Metrics.ValuePath.strip_wildcard/1)
       |> Enum.map(&String.trim/1)
       |> Enum.filter(&(&1 != ""))
       |> Enum.filter(fn prefix ->
-        normalized_path == prefix || String.starts_with?(normalized_path, prefix <> ".")
+        Trifle.Metrics.ValuePath.prefix?(normalized_path, prefix)
       end)
       |> Enum.max_by(&String.length/1, fn -> nil end)
 
@@ -194,12 +193,16 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
 
       normalized_path == best_prefix ->
         normalized_path
-        |> String.split(".")
+        |> Trifle.Stats.Path.segments()
         |> List.last()
         |> Kernel.||(normalized_path)
+        |> Trifle.Stats.Path.escape_segment()
 
       true ->
-        String.replace_prefix(normalized_path, best_prefix <> ".", "")
+        normalized_path
+        |> Trifle.Stats.Path.segments()
+        |> Enum.drop(length(Trifle.Stats.Path.segments(best_prefix)))
+        |> Trifle.Stats.Path.join()
     end
   end
 
@@ -207,7 +210,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Table do
     with safe_color when is_binary(safe_color) <- normalize_hex_color(color),
          safe_path when safe_path != "" <- path |> to_string() |> String.trim() do
       safe_path
-      |> String.split(".")
+      |> Trifle.Stats.Path.segments()
       |> Enum.map(fn segment ->
         escaped_segment =
           segment

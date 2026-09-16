@@ -25,7 +25,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
         phx-change="validate"
         phx-submit="save"
       >
-        <:header title={@title} subtitle="Configure database connection for Trifle::Stats drivers" />
+        <:header title={@title} subtitle="Configure Trifle Stats and optional Trifle Traces storage" />
 
         <.form_field field={@form[:display_name]} label="Display Name" required />
 
@@ -345,6 +345,201 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
           </div>
         <% end %>
 
+        <%= if Database.traces_supported?(@selected_driver, @selected_connection_method) do %>
+          <div class="border-t pt-6 mt-6">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  Trifle Traces <span class="font-normal text-gray-500">(Optional)</span>
+                </h3>
+                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                  Add searchable trace metadata and store full trace payloads in S3 or on disk.
+                </p>
+              </div>
+              <button
+                :if={!@show_traces_config}
+                type="button"
+                phx-click="add_traces"
+                phx-target={@myself}
+                class="shrink-0 rounded-md border border-teal-300 px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 dark:border-teal-500/50 dark:text-teal-300 dark:hover:bg-teal-500/10"
+              >
+                Add Traces
+              </button>
+            </div>
+
+            <div :if={@show_traces_config} class="mt-5 space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                  Index table or collection
+                </label>
+                <input
+                  name="database[trace_config][index_name]"
+                  value={trace_config_value(@form, "index_name", "trifle_traces")}
+                  class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                  Payload storage
+                </label>
+                <select
+                  name="database[trace_config][data_driver]"
+                  class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                >
+                  <option value="s3" selected={trace_config_value(@form, "data_driver", "s3") == "s3"}>
+                    S3-compatible object storage
+                  </option>
+                  <option
+                    value="file"
+                    selected={trace_config_value(@form, "data_driver", "s3") == "file"}
+                  >
+                    Local filesystem
+                  </option>
+                </select>
+              </div>
+
+              <%= if trace_config_value(@form, "data_driver", "s3") == "file" do %>
+                <div>
+                  <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                    Storage path
+                  </label>
+                  <input
+                    name="database[trace_config][data_path]"
+                    value={trace_config_value(@form, "data_path", "")}
+                    placeholder="/var/lib/trifle/traces"
+                    class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    The path must be absolute and writable by every Trifle application replica.
+                  </p>
+                </div>
+              <% else %>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div class="sm:col-span-2">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Endpoint <span class="font-normal text-gray-500">(Optional for AWS)</span>
+                    </label>
+                    <input
+                      name="database[trace_config][data_endpoint]"
+                      value={trace_config_value(@form, "data_endpoint", "")}
+                      placeholder="https://s3.example.com"
+                      class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Buckets
+                    </label>
+                    <input
+                      name="database[trace_config][data_buckets]"
+                      value={trace_buckets_value(@form)}
+                      placeholder="trifle-traces"
+                      class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Region
+                    </label>
+                    <input
+                      name="database[trace_config][data_region]"
+                      value={trace_config_value(@form, "data_region", "us-east-1")}
+                      class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Prefix
+                    </label>
+                    <input
+                      name="database[trace_config][data_prefix]"
+                      value={trace_config_value(@form, "data_prefix", "traces")}
+                      class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Access key ID
+                    </label>
+                    <input
+                      type="password"
+                      name="database[trace_access_key_id]"
+                      value=""
+                      autocomplete="new-password"
+                      placeholder={trace_secret_placeholder(@database.trace_access_key_id)}
+                      class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Secret access key
+                    </label>
+                    <input
+                      type="password"
+                      name="database[trace_secret_access_key]"
+                      value=""
+                      autocomplete="new-password"
+                      placeholder={trace_secret_placeholder(@database.trace_secret_access_key)}
+                      class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                    />
+                    <%= for error <- @form[:trace_secret_access_key].errors do %>
+                      <p class="text-sm text-red-600 dark:text-red-400">{translate_error(error)}</p>
+                    <% end %>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Leave both credential fields blank to keep stored credentials or use the runtime's AWS credential provider.
+                    </p>
+                  </div>
+                </div>
+              <% end %>
+
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="block text-sm font-medium text-gray-900 dark:text-white">
+                    Retention days
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="3650"
+                    name="database[trace_config][retention_days]"
+                    value={trace_config_value(@form, "retention_days", 7)}
+                    class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
+                  />
+                </div>
+                <div class="flex items-end pb-2">
+                  <input name="database[trace_config][gzip]" type="hidden" value="false" />
+                  <label class="flex items-center gap-3 text-sm font-medium text-gray-900 dark:text-white">
+                    <input
+                      name="database[trace_config][gzip]"
+                      type="checkbox"
+                      value="true"
+                      checked={trace_config_value(@form, "gzip", true) in [true, "true"]}
+                      class="rounded border-gray-300 text-teal-600 focus:ring-teal-500 dark:border-gray-600 dark:bg-gray-700"
+                    /> Compress payloads with gzip
+                  </label>
+                </div>
+              </div>
+
+              <%= for error <- @form[:trace_config].errors do %>
+                <p class="text-sm text-red-600 dark:text-red-400">{translate_error(error)}</p>
+              <% end %>
+              <%= for error <- @form[:trace_access_key_id].errors do %>
+                <p class="text-sm text-red-600 dark:text-red-400">{translate_error(error)}</p>
+              <% end %>
+            </div>
+          </div>
+        <% else %>
+          <div :if={@selected_driver} class="border-t pt-6 mt-6">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              Trifle Traces <span class="font-normal text-gray-500">(Unavailable)</span>
+            </h3>
+            <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              Traces currently require a direct or SSH PostgreSQL or MongoDB connection. Private Connector remains Stats-only.
+            </p>
+          </div>
+        <% end %>
+
         <:actions>
           <.form_actions>
             <.secondary_button type="button" phx-click={JS.patch(@patch)}>
@@ -374,6 +569,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
       |> assign(:available_connectors, available_connectors(database))
       |> assign(:selected_driver, selected_driver)
       |> assign(:selected_connection_method, selected_connection_method)
+      |> assign(:show_traces_config, Database.traces_configured?(database))
       |> assign(:config_options, config_options)
       |> assign(:cloud_egress_ips, cloud_egress_ips())
       |> assign(:week_options, @week_options)
@@ -385,6 +581,11 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
       |> Organizations.change_database(params_with_generated_ssh_key(socket, %{}))
 
     {:ok, assign_form(socket, changeset)}
+  end
+
+  @impl true
+  def handle_event("add_traces", _params, socket) do
+    {:noreply, assign(socket, :show_traces_config, true)}
   end
 
   @impl true
@@ -575,6 +776,31 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
         end
     end
   end
+
+  defp trace_config_value(form, key, default_value) do
+    case form.params do
+      %{"trace_config" => config} when is_map(config) ->
+        Map.get(config, key, default_value)
+
+      _ ->
+        case form.data.trace_config do
+          config when is_map(config) -> Map.get(config, key, default_value)
+          _ -> default_value
+        end
+    end
+  end
+
+  defp trace_buckets_value(form) do
+    case trace_config_value(form, "data_buckets", "") do
+      buckets when is_list(buckets) -> Enum.join(buckets, ", ")
+      value -> value
+    end
+  end
+
+  defp trace_secret_placeholder(value) when is_binary(value) and value != "",
+    do: "Stored securely — leave blank to keep"
+
+  defp trace_secret_placeholder(_value), do: "Optional"
 
   defp joined_identifiers_options do
     [

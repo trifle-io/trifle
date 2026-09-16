@@ -68,6 +68,11 @@ Persistent data is stored in named Docker volumes:
 - `redis_data`: Redis data
 - `app_uploads`: Application uploaded files
 
+Set `TRIFLE_TRACES_STORAGE_PATH=/home/app/uploads/traces` to persist complete internal
+background-job trace payloads in `app_uploads`. Leave it blank to retain only searchable
+trace metadata in PostgreSQL. `TRIFLE_TRACES_RETENTION_DAYS` controls both metadata and
+filesystem retention.
+
 ### Health Checks
 
 All services include health checks. Check status with:

@@ -12,6 +12,7 @@ defmodule TrifleApp.ExploreLive do
 
   alias TrifleApp.Components.DashboardWidgets.WidgetView
 
+  alias TrifleApp.Components.DashboardWidgets.ExpandedChart
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.ExploreCore
 
@@ -330,27 +331,12 @@ defmodule TrifleApp.ExploreLive do
                 <% _ -> %>
                   <% chart_payload =
                     Map.get(@timeseries_map || %{}, @expanded_widget.widget_id) %>
-                  <% chart_data = encode_optional_json(chart_payload) %>
-                  <div
+                  <ExpandedChart.content
                     id={"expanded-widget-#{@expanded_widget.widget_id}"}
-                    class="h-[80vh] flex flex-col gap-6 overflow-y-auto"
-                    phx-hook="ExpandedWidgetView"
-                    data-type={@expanded_widget.type}
-                    data-title={@expanded_widget.title}
-                    data-colors={ChartColors.json_palette()}
-                    data-chart={chart_data}
-                    data-visual={nil}
-                    data-text={nil}
-                  >
-                    <div class="flex-1 min-h-[500px]">
-                      <div class="h-full w-full rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/40 p-4">
-                        <div data-role="chart" class="h-full w-full"></div>
-                      </div>
-                    </div>
-                    <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
-                      <div data-role="table-root" class="h-full w-full overflow-auto"></div>
-                    </div>
-                  </div>
+                    type={@expanded_widget.type}
+                    title={@expanded_widget.title}
+                    chart={chart_payload}
+                  />
               <% end %>
             </:body>
           </.app_modal>
@@ -678,14 +664,6 @@ defmodule TrifleApp.ExploreLive do
   defp normalize_value(%Decimal{} = value), do: Decimal.to_float(value)
   defp normalize_value(value) when is_number(value), do: value * 1.0
   defp normalize_value(_), do: 0.0
-
-  defp encode_optional_json(nil), do: nil
-
-  defp encode_optional_json(data) do
-    Jason.encode!(data)
-  rescue
-    _ -> nil
-  end
 
   defp expanded_list_items(%{items: items}) when is_list(items), do: items
   defp expanded_list_items(%{"items" => items}) when is_list(items), do: items

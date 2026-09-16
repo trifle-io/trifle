@@ -33,6 +33,23 @@ config :trifle, :sqlite_object_store,
 
 config :trifle, :request_body_max_bytes, 8_000_000
 
+config :trifle, Trifle.Observability,
+  enabled: true,
+  traces_storage_backend: :none,
+  traces_storage_path: nil,
+  traces_s3: [
+    endpoint: nil,
+    buckets: [],
+    region: "us-east-1",
+    access_key_id: nil,
+    secret_access_key: nil,
+    prefix: "traces"
+  ],
+  traces_retention_days: 7,
+  traces_gzip: true,
+  traces_bump_every: 15,
+  traces_payload_size_limit: 100 * 1024
+
 config :trifle, Trifle.Vault, json_library: Jason
 
 # Configures the endpoint
@@ -148,7 +165,11 @@ config :trifle, Oban,
   ],
   plugins: [
     {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
-    {Oban.Plugins.Cron, crontab: [{"* * * * *", Trifle.Monitors.Jobs.DispatchRunner}]}
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"* * * * *", Trifle.Monitors.Jobs.DispatchRunner},
+       {"17 3 * * *", Trifle.Observability.Jobs.CleanupTraces}
+     ]}
   ]
 
 # Import environment specific config. This must remain at the bottom

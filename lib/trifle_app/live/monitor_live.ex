@@ -868,7 +868,7 @@ defmodule TrifleApp.MonitorLive do
   defp format_path(path) when is_list(path) do
     path
     |> Enum.map(&to_string/1)
-    |> Enum.join(".")
+    |> Trifle.Stats.Path.join()
   end
 
   defp format_path(path), do: path |> to_string()

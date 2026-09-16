@@ -140,6 +140,7 @@ defmodule TrifleApp.Components.FilterBarTest do
     assert html =~ "Quick Timeframes"
     assert html =~ "Granularity"
     refute html =~ "overflow-hidden rounded-2xl"
+    refute html =~ ~s(id="filter-bar-dropdowns-attachment")
   end
 
   test "escape keydown closes the timeframe dropdown", %{conn: conn} do

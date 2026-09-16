@@ -116,7 +116,7 @@ defmodule TrifleApp.Components.DashboardWidgets.List do
   defp display_label(path, widget) do
     case Map.get(widget, "label_strategy") || Map.get(widget, :label_strategy) do
       "full_path" -> path
-      _ -> List.last(String.split(path, ".")) || path
+      _ -> List.last(Trifle.Stats.Path.segments(path)) || path
     end
   end
 

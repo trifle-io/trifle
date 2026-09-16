@@ -18,72 +18,118 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
   alias Trifle.Monitors.Execution
   alias Trifle.Monitors.Jobs.EvaluateMonitor
   alias Trifle.Repo
+  alias Trifle.Traces
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args, scheduled_at: scheduled_at}) do
+    Traces.trace("Dispatch due monitors", head: true)
+
     now =
       args
       |> Map.get("dispatched_at")
       |> parse_scheduled_at(scheduled_at)
 
+    Traces.trace("Dispatch time: #{format_dt(now)}")
+    Traces.trace("Load recent monitor executions", head: true)
+
     reports_last_any = last_execution_map("report")
     reports_last_success = last_execution_map("report", ["ok"])
     alerts_last = last_execution_map("alert")
 
+    Traces.trace("Load active and paused-alert monitors", head: true)
     monitors = Repo.all(monitors_query())
+    Traces.trace("Eligible monitors: #{length(monitors)}")
 
     Logger.debug(fn ->
       "[DispatchRunner] monitors=" <>
         inspect(Enum.map(monitors, &{&1.id, &1.type, &1.status}), limit: :infinity)
     end)
 
-    Enum.each(monitors, fn monitor ->
-      last_attempt =
-        case monitor.type do
-          :report -> Map.get(reports_last_any, monitor.id)
-          :alert -> Map.get(alerts_last, monitor.id)
-          _ -> nil
-        end
+    summary =
+      monitors
+      |> Enum.with_index(1)
+      |> Enum.reduce(%{due: 0, enqueued: 0, skipped: 0, failed: 0}, fn
+        {monitor, position}, summary ->
+          Traces.trace("Monitor #{position} of #{length(monitors)}", head: true)
+          Traces.tag("monitor:#{monitor.id}")
+          Traces.trace("Type: #{monitor.type}; status: #{monitor.status}")
 
-      last_success =
-        case monitor.type do
-          :report -> Map.get(reports_last_success, monitor.id)
-          :alert -> last_attempt
-          _ -> nil
-        end
+          last_attempt =
+            case monitor.type do
+              :report -> Map.get(reports_last_any, monitor.id)
+              :alert -> Map.get(alerts_last, monitor.id)
+              _ -> nil
+            end
 
-      Logger.debug(fn ->
-        "[DispatchRunner] evaluate monitor=#{monitor.id} type=#{monitor.type} last_success=#{format_dt(last_success)} last_attempt=#{format_dt(last_attempt)} now=#{format_dt(now)}"
+          last_success =
+            case monitor.type do
+              :report -> Map.get(reports_last_success, monitor.id)
+              :alert -> last_attempt
+              _ -> nil
+            end
+
+          Logger.debug(fn ->
+            "[DispatchRunner] evaluate monitor=#{monitor.id} type=#{monitor.type} last_success=#{format_dt(last_success)} last_attempt=#{format_dt(last_attempt)} now=#{format_dt(now)}"
+          end)
+
+          schedule_reference =
+            case monitor.type do
+              :report -> last_success
+              _ -> last_success || last_attempt
+            end
+
+          first_run? = monitor.type == :report and is_nil(last_attempt)
+
+          due? =
+            cond do
+              first_run? -> true
+              true -> Schedule.due?(monitor, now, schedule_reference)
+            end
+
+          Logger.debug(fn ->
+            "[DispatchRunner] check monitor=#{monitor.id} type=#{monitor.type} due=#{due?} first_run=#{first_run?} last_success=#{format_dt(last_success)} last_attempt=#{format_dt(last_attempt)} now=#{format_dt(now)}"
+          end)
+
+          Traces.trace(
+            "Schedule reference: #{format_dt(schedule_reference)}; first run: #{first_run?}"
+          )
+
+          Traces.trace("Due for evaluation: #{due?}")
+
+          if due? do
+            Logger.debug(fn ->
+              "[DispatchRunner] enqueue #{monitor.type} monitor=#{monitor.id} at=#{DateTime.to_iso8601(now)}"
+            end)
+
+            Traces.trace("Enqueue monitor evaluation")
+
+            case enqueue_monitor(monitor, now, last_success || last_attempt) do
+              {:ok, job} ->
+                Traces.tag("evaluation-job:#{job.id}")
+                Traces.trace("Evaluation job enqueued")
+
+                summary
+                |> Map.update!(:due, &(&1 + 1))
+                |> Map.update!(:enqueued, &(&1 + 1))
+
+              {:error, _reason} ->
+                Traces.trace("Evaluation job enqueue failed", state: :error)
+                Traces.fail()
+
+                summary
+                |> Map.update!(:due, &(&1 + 1))
+                |> Map.update!(:failed, &(&1 + 1))
+            end
+          else
+            Map.update!(summary, :skipped, &(&1 + 1))
+          end
       end)
 
-      schedule_reference =
-        case monitor.type do
-          :report -> last_success
-          _ -> last_success || last_attempt
-        end
+    Traces.trace("Dispatch summary", head: true)
 
-      first_run? = monitor.type == :report and is_nil(last_attempt)
-
-      due? =
-        cond do
-          first_run? -> true
-          true -> Schedule.due?(monitor, now, schedule_reference)
-        end
-
-      Logger.debug(fn ->
-        "[DispatchRunner] check monitor=#{monitor.id} type=#{monitor.type} due=#{due?} first_run=#{first_run?} last_success=#{format_dt(last_success)} last_attempt=#{format_dt(last_attempt)} now=#{format_dt(now)}"
-      end)
-
-      if due? do
-        Logger.debug(fn ->
-          "[DispatchRunner] enqueue #{monitor.type} monitor=#{monitor.id} at=#{DateTime.to_iso8601(now)}"
-        end)
-
-        enqueue_monitor(monitor, now, last_success || last_attempt)
-      else
-        :ok
-      end
-    end)
+    Traces.trace(
+      "Due: #{summary.due}; enqueued: #{summary.enqueued}; skipped: #{summary.skipped}; failed: #{summary.failed}"
+    )
 
     :ok
   end
@@ -156,7 +202,7 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
           "[DispatchRunner] job=#{job.id} state=#{job.state} scheduled_at=#{inspect(job.scheduled_at)}"
         end)
 
-        :ok
+        {:ok, job}
 
       {:error, %Ecto.Changeset{} = cs} ->
         Logger.warning(

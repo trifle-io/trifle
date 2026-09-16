@@ -1,6 +1,8 @@
 defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
   use TrifleAdmin, :live_component
 
+  alias Trifle.Organizations.Database
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -30,6 +32,12 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
             <dt class="text-sm font-medium text-gray-900 dark:text-white">Driver</dt>
             <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
               <.database_label driver={@database.driver} />
+            </dd>
+          </div>
+          <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-gray-900 dark:text-white">Capabilities</dt>
+            <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+              {if Database.traces_configured?(@database), do: "Stats + Traces", else: "Stats"}
             </dd>
           </div>
 
@@ -145,6 +153,30 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
               </dd>
             </div>
           <% end %>
+
+          <%= if Database.traces_configured?(@database) do %>
+            <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt class="text-sm font-medium text-gray-900 dark:text-white">Trace configuration</dt>
+              <dd class="mt-1 text-sm/6 text-gray-700 dark:text-slate-300 sm:col-span-2 sm:mt-0">
+                <dl class="space-y-2">
+                  <%= for {key, value} <- Enum.sort(@database.trace_config) do %>
+                    <div class="flex gap-2">
+                      <dt class="font-medium">{humanize_config_key(key)}:</dt>
+                      <dd>{format_config_value(value)}</dd>
+                    </div>
+                  <% end %>
+                  <div :if={@database.trace_config["data_driver"] == "s3"} class="flex gap-2">
+                    <dt class="font-medium">S3 credentials:</dt>
+                    <dd>
+                      {if @database.trace_access_key_id,
+                        do: "Stored securely",
+                        else: "Runtime provider"}
+                    </dd>
+                  </div>
+                </dl>
+              </dd>
+            </div>
+          <% end %>
         </dl>
       </div>
 
@@ -213,5 +245,6 @@ defmodule TrifleAdmin.DatabasesLive.DetailsComponent do
   defp format_config_value(true), do: "Enabled"
   defp format_config_value(false), do: "Disabled"
   defp format_config_value(value) when is_binary(value), do: value
+  defp format_config_value(value) when is_list(value), do: Enum.join(value, ", ")
   defp format_config_value(value), do: to_string(value)
 end

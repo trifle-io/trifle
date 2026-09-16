@@ -10,6 +10,19 @@ defmodule Trifle.Organizations.Database do
 
   @drivers ["redis", "postgres", "mongo", "sqlite", "mysql"]
   @connection_methods ["direct", "ssh_tunnel", "connector"]
+  @trace_drivers ["postgres", "mongo"]
+  @trace_data_drivers ["s3", "file"]
+  @trace_config_keys ~w(
+    index_name
+    data_driver
+    data_endpoint
+    data_buckets
+    data_region
+    data_prefix
+    data_path
+    retention_days
+    gzip
+  )
   @pool_relevant_fields [
     :driver,
     :connection_method,
@@ -50,6 +63,10 @@ defmodule Trifle.Organizations.Database do
     field :ssh_passphrase, Trifle.Encrypted.Binary
     field :ssh_host_key_fingerprint, Trifle.Encrypted.Binary
     field :config, :map, default: %{}
+    field :trace_config, :map, default: %{}
+    field :trace_access_key_id, Trifle.Encrypted.Binary
+    field :trace_secret_access_key, Trifle.Encrypted.Binary
+    field :managed_key, :string
     field :granularities, {:array, :string}, default: []
     field :time_zone, :string, default: "UTC"
     field :beginning_of_week, :integer, default: 1
@@ -67,9 +84,26 @@ defmodule Trifle.Organizations.Database do
     timestamps()
   end
 
+  @type t :: %__MODULE__{}
+
   def drivers, do: @drivers
   def connection_methods, do: @connection_methods
+  def trace_drivers, do: @trace_drivers
+  def trace_data_drivers, do: @trace_data_drivers
   def pool_relevant_fields, do: @pool_relevant_fields
+
+  def traces_supported?(driver, connection_method) do
+    driver in @trace_drivers and connection_method in ["direct", "ssh_tunnel"]
+  end
+
+  def traces_configured?(%__MODULE__{trace_config: config}) when is_map(config),
+    do: map_size(config) > 0
+
+  def traces_configured?(_database), do: false
+
+  def capabilities(%__MODULE__{} = database) do
+    if traces_configured?(database), do: [:stats, :traces], else: [:stats]
+  end
 
   def default_port("redis"), do: 6379
   def default_port("postgres"), do: 5432
@@ -166,6 +200,8 @@ defmodule Trifle.Organizations.Database do
 
   @doc false
   def changeset(database, attrs) do
+    attrs = sanitize_trace_secret_attrs(attrs)
+
     database
     |> cast(attrs, [
       :display_name,
@@ -186,6 +222,9 @@ defmodule Trifle.Organizations.Database do
       :ssh_passphrase,
       :ssh_host_key_fingerprint,
       :config,
+      :trace_config,
+      :trace_access_key_id,
+      :trace_secret_access_key,
       :time_zone,
       :beginning_of_week,
       :last_check_at,
@@ -203,12 +242,36 @@ defmodule Trifle.Organizations.Database do
     |> validate_conditional_fields()
     |> validate_redis_database_name()
     |> validate_connection_method_fields()
+    |> normalize_trace_config()
+    |> validate_trace_config()
     |> validate_length(:display_name, min: 1, max: 255)
     |> validate_number(:port, greater_than: 0, less_than: 65536)
     |> validate_number(:ssh_port, greater_than: 0, less_than: 65536)
     |> parse_granularities(sanitize_granularity_attrs(attrs))
     |> validate_timeframe_field(:default_timeframe)
     |> put_default_config()
+    |> unique_constraint(:managed_key, name: :databases_managed_key_unique)
+  end
+
+  @doc false
+  def managed_changeset(database, attrs, managed_key) when is_binary(managed_key) do
+    database
+    |> changeset(attrs)
+    |> put_change(:managed_key, managed_key)
+    |> unique_constraint(:managed_key, name: :databases_managed_key_unique)
+  end
+
+  @doc false
+  def remove_traces_changeset(%__MODULE__{} = database) do
+    database
+    |> change()
+    |> put_change(:trace_config, %{})
+    |> put_change(:trace_access_key_id, nil)
+    |> put_change(:trace_secret_access_key, nil)
+  end
+
+  def mark_check_failed(%__MODULE__{} = database, error) do
+    update_check_status(database, "error", to_string(error))
   end
 
   defp put_default_connection_method(changeset) do
@@ -415,6 +478,252 @@ defmodule Trifle.Organizations.Database do
   end
 
   defp normalize_config_value(_key, value), do: value
+
+  defp sanitize_trace_secret_attrs(attrs) when is_map(attrs) do
+    attrs
+    |> preserve_blank_secret(:trace_access_key_id, "trace_access_key_id")
+    |> preserve_blank_secret(:trace_secret_access_key, "trace_secret_access_key")
+  end
+
+  defp sanitize_trace_secret_attrs(attrs), do: attrs
+
+  defp preserve_blank_secret(attrs, atom_key, string_key) do
+    cond do
+      blank_string?(Map.get(attrs, string_key)) -> Map.delete(attrs, string_key)
+      blank_string?(Map.get(attrs, atom_key)) -> Map.delete(attrs, atom_key)
+      true -> attrs
+    end
+  end
+
+  defp normalize_trace_config(changeset) do
+    case fetch_change(changeset, :trace_config) do
+      {:ok, config} when is_map(config) ->
+        put_change(changeset, :trace_config, normalize_trace_config_map(config))
+
+      {:ok, _invalid} ->
+        put_change(changeset, :trace_config, %{})
+
+      :error ->
+        changeset
+    end
+  end
+
+  defp normalize_trace_config_map(config) do
+    config
+    |> Enum.reduce(%{}, fn {key, value}, normalized ->
+      key = to_string(key)
+
+      if key in @trace_config_keys do
+        case normalize_trace_config_value(key, value) do
+          nil -> normalized
+          normalized_value -> Map.put(normalized, key, normalized_value)
+        end
+      else
+        normalized
+      end
+    end)
+  end
+
+  defp normalize_trace_config_value("data_buckets", value) when is_binary(value) do
+    value
+    |> String.split([",", "\n"], trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> case do
+      [] -> nil
+      buckets -> buckets
+    end
+  end
+
+  defp normalize_trace_config_value("data_buckets", value) when is_list(value) do
+    value
+    |> Enum.map(&normalize_optional_string/1)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      buckets -> buckets
+    end
+  end
+
+  defp normalize_trace_config_value("retention_days", value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {days, ""} -> days
+      _ -> value
+    end
+  end
+
+  defp normalize_trace_config_value("gzip", value) when value in [true, "true", "1", 1],
+    do: true
+
+  defp normalize_trace_config_value("gzip", value) when value in [false, "false", "0", 0],
+    do: false
+
+  defp normalize_trace_config_value(_key, value) when is_binary(value),
+    do: normalize_optional_string(value)
+
+  defp normalize_trace_config_value(_key, value), do: value
+
+  defp validate_trace_config(changeset) do
+    case get_field(changeset, :trace_config) do
+      config when not is_map(config) or map_size(config) == 0 ->
+        changeset
+        |> put_change(:trace_config, %{})
+        |> put_change(:trace_access_key_id, nil)
+        |> put_change(:trace_secret_access_key, nil)
+
+      config ->
+        changeset
+        |> validate_trace_support()
+        |> validate_trace_index_name(config)
+        |> validate_trace_retention(config)
+        |> validate_trace_gzip(config)
+        |> validate_trace_data_driver(config)
+    end
+  end
+
+  defp validate_trace_support(changeset) do
+    driver = get_field(changeset, :driver)
+    connection_method = get_field(changeset, :connection_method)
+
+    if traces_supported?(driver, connection_method) do
+      changeset
+    else
+      add_error(
+        changeset,
+        :trace_config,
+        "is only supported for direct or SSH PostgreSQL and MongoDB databases"
+      )
+    end
+  end
+
+  defp validate_trace_index_name(changeset, config) do
+    case config["index_name"] do
+      value when is_binary(value) ->
+        if Regex.match?(~r/\A[a-zA-Z_][a-zA-Z0-9_]*\z/, value) do
+          changeset
+        else
+          add_error(changeset, :trace_config, "index name must be a safe database identifier")
+        end
+
+      _ ->
+        add_error(changeset, :trace_config, "index name can't be blank")
+    end
+  end
+
+  defp validate_trace_retention(changeset, config) do
+    case config["retention_days"] do
+      days when is_integer(days) and days > 0 and days <= 3650 -> changeset
+      _ -> add_error(changeset, :trace_config, "retention days must be between 1 and 3650")
+    end
+  end
+
+  defp validate_trace_gzip(changeset, config) do
+    if is_boolean(config["gzip"]) do
+      changeset
+    else
+      add_error(changeset, :trace_config, "gzip must be true or false")
+    end
+  end
+
+  defp validate_trace_data_driver(changeset, %{"data_driver" => "s3"} = config) do
+    changeset
+    |> validate_trace_s3_buckets(config)
+    |> validate_trace_s3_region(config)
+    |> validate_trace_s3_prefix(config)
+    |> validate_trace_s3_endpoint(config)
+    |> validate_trace_s3_credentials()
+  end
+
+  defp validate_trace_data_driver(changeset, %{"data_driver" => "file"} = config) do
+    changeset
+    |> validate_trace_file_path(config)
+    |> put_change(:trace_access_key_id, nil)
+    |> put_change(:trace_secret_access_key, nil)
+  end
+
+  defp validate_trace_data_driver(changeset, _config) do
+    add_error(changeset, :trace_config, "payload driver must be S3 or File")
+  end
+
+  defp validate_trace_s3_buckets(changeset, config) do
+    case config["data_buckets"] do
+      [_ | _] -> changeset
+      _ -> add_error(changeset, :trace_config, "S3 buckets can't be blank")
+    end
+  end
+
+  defp validate_trace_s3_region(changeset, config) do
+    if present_string?(config["data_region"]),
+      do: changeset,
+      else: add_error(changeset, :trace_config, "S3 region can't be blank")
+  end
+
+  defp validate_trace_s3_prefix(changeset, config) do
+    if present_string?(config["data_prefix"]),
+      do: changeset,
+      else: add_error(changeset, :trace_config, "S3 prefix can't be blank")
+  end
+
+  defp validate_trace_s3_endpoint(changeset, config) do
+    case config["data_endpoint"] do
+      nil ->
+        changeset
+
+      endpoint ->
+        uri = URI.parse(endpoint)
+
+        if uri.scheme in ["http", "https"] and present_string?(uri.host) do
+          changeset
+        else
+          add_error(changeset, :trace_config, "S3 endpoint must be a valid HTTP(S) URL")
+        end
+    end
+  end
+
+  defp validate_trace_s3_credentials(changeset) do
+    access_key = get_field(changeset, :trace_access_key_id)
+    secret_key = get_field(changeset, :trace_secret_access_key)
+
+    if present_string?(access_key) == present_string?(secret_key) do
+      changeset
+    else
+      add_error(
+        changeset,
+        :trace_access_key_id,
+        "access key ID and secret access key must be provided together"
+      )
+    end
+  end
+
+  defp validate_trace_file_path(changeset, config) do
+    case config["data_path"] do
+      path when is_binary(path) ->
+        expanded = Path.expand(path)
+
+        if Path.type(path) == :absolute and expanded != "/" do
+          changeset
+        else
+          add_error(changeset, :trace_config, "File path must be an absolute non-root path")
+        end
+
+      _ ->
+        add_error(changeset, :trace_config, "File path can't be blank")
+    end
+  end
+
+  defp normalize_optional_string(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_optional_string(_value), do: nil
+
+  defp blank_string?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_string?(_value), do: false
+
+  defp present_string?(value), do: is_binary(value) and String.trim(value) != ""
 
   defp normalize_joined_identifiers(value) do
     case value do
@@ -771,6 +1080,8 @@ defmodule Trifle.Organizations.Database do
           end
         end
 
+      {setup_exists, error_msg} = maybe_check_traces(database, setup_exists, error_msg)
+
       status =
         cond do
           error_msg -> "error"
@@ -813,6 +1124,22 @@ defmodule Trifle.Organizations.Database do
   end
 
   def setup(database) do
+    with {:ok, stats_message} <- setup_stats(database),
+         :ok <- Trifle.Traces.Source.Database.setup(database) do
+      message =
+        if traces_configured?(database) do
+          "#{stats_message}; Trifle Traces index and payload storage configured successfully"
+        else
+          stats_message
+        end
+
+      {:ok, message}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp setup_stats(database) do
     try do
       config = database.config || %{}
 
@@ -1042,6 +1369,17 @@ defmodule Trifle.Organizations.Database do
       end
     rescue
       error -> {:error, "Setup failed: #{Exception.message(error)}"}
+    end
+  end
+
+  defp maybe_check_traces(_database, setup_exists, error_msg)
+       when not is_nil(error_msg) or setup_exists == false,
+       do: {setup_exists, error_msg}
+
+  defp maybe_check_traces(database, true, nil) do
+    case Trifle.Traces.Source.Database.check(database) do
+      {:ok, exists?} -> {exists?, nil}
+      {:error, reason} -> {false, "Trifle Traces check failed: #{reason}"}
     end
   end
 

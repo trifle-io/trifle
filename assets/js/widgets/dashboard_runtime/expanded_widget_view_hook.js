@@ -1,5 +1,9 @@
 import { TIMESERIES_TOOLTIP_RESPONSIVE_CSS, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam } from "./shared/timeseries_annotations";
 
+import { timeseriesTimeFormatters } from "./shared/timeseries_timezone.mjs";
+import { timeseriesLabels, timeseriesTooltipName } from "./shared/timeseries_identity.mjs";
+import { timeseriesAxisIndex, timeseriesSeriesOptions, timeseriesYAxes, timeseriesPointValue, formatTimeseriesValue, timeseriesWeightedAverages, bindTimeseriesAverageLegend } from "./shared/timeseries_axes.mjs";
+
 export const registerExpandedWidgetViewHook = (Hooks, deps) => {
   const {
     echarts,
@@ -311,17 +315,13 @@ Hooks.ExpandedWidgetView = {
       return;
     }
 
+    data = timeseriesWeightedAverages(data);
     const chart = this.ensureChart();
     if (!chart) return;
 
     const theme = this.getTheme();
     const isDarkMode = theme === 'dark';
-    const chartType = String(data.chart_type || 'line').toLowerCase();
-    const isBar = chartType === 'bar';
-    const isArea = chartType === 'area';
-    const isDots = chartType === 'dots';
-    const seriesType = isBar ? 'bar' : isDots ? 'scatter' : 'line';
-    const stacked = !!data.stacked;
+    const timeFormatters = timeseriesTimeFormatters(data.timezone);
     const normalized = !!data.normalized;
     const tooltipHoveredOnly = !!data.hovered_only;
     const bottomPadding = 56;
@@ -331,19 +331,9 @@ Hooks.ExpandedWidgetView = {
     const overlayLabelBackground = isDarkMode ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.92)';
     const overlayLabelText = isDarkMode ? '#F8FAFC' : '#0F172A';
 
+    const seriesLabels = timeseriesLabels(data.series || []);
     const series = (data.series || []).map((s, idx) => {
-      const base = {
-        name: s.name || `Series ${idx + 1}`,
-        type: seriesType,
-        data: Array.isArray(s.data) ? s.data : [],
-        showSymbol: isDots
-      };
-      if (isDots) {
-        base.symbol = 'circle';
-        base.symbolSize = 5;
-      }
-      if (stacked && !isDots) base.stack = 'total';
-      if (isArea) base.areaStyle = { opacity: 0.1 };
+      const base = timeseriesSeriesOptions(s, data, idx);
       const explicitColor =
         typeof s.color === 'string' && s.color.trim() !== '' ? s.color.trim() : null;
       const paletteColor = palette.length ? palette[idx % palette.length] : null;
@@ -351,7 +341,7 @@ Hooks.ExpandedWidgetView = {
       if (color) {
         base.itemStyle = { color };
         base.lineStyle = { color };
-        if (isArea) base.areaStyle = { opacity: 0.1, color };
+        if (base.areaStyle) base.areaStyle = { opacity: 0.1, color };
       }
       return base;
     });
@@ -426,7 +416,7 @@ Hooks.ExpandedWidgetView = {
     };
 
     const seriesBounds = { min: Infinity, max: -Infinity };
-    finalSeries.forEach((s) => {
+    finalSeries.filter((s) => s.yAxisIndex !== 1).forEach((s) => {
       (s.data || []).forEach((point) => {
         updateBounds(seriesBounds, extractPointValue(point));
       });
@@ -446,7 +436,7 @@ Hooks.ExpandedWidgetView = {
       backgroundColor: 'transparent',
       textStyle: { fontFamily: chartFontFamily },
       color: palette.length ? palette : undefined,
-      grid: { top: 12, bottom: bottomPadding, left: 56, right: 24, containLabel: true },
+      grid: { top: 12, bottom: bottomPadding, left: 56, right: series.some(s => s.yAxisIndex === 1) ? 56 : 24, containLabel: true },
       xAxis: {
         type: 'time',
         axisLine: { lineStyle: { color: axisLineColor } },
@@ -454,11 +444,12 @@ Hooks.ExpandedWidgetView = {
           color: textColor,
           margin: 10,
           hideOverlap: true,
+          ...(timeFormatters ? { formatter: timeFormatters.axis } : {}),
           fontFamily: chartFontFamily
         },
         splitLine: { show: false }
       },
-      yAxis,
+      yAxis: timeseriesYAxes(yAxis, data, finalSeries, formatCompactNumber),
       legend: { show: true, type: 'scroll', bottom: 6, textStyle: { color: legendText, fontFamily: chartFontFamily }, data: legendData },
       tooltip: {
         trigger: 'axis',
@@ -472,18 +463,13 @@ Hooks.ExpandedWidgetView = {
           const hovered = tooltipHoveredOnly ? resolveHoveredTimeseriesParam(chart, list) : null;
           const effectiveList = hovered ? [hovered] : list;
           if (!effectiveList.length) return '';
-          const header = escapeTimeseriesTooltipHtml(effectiveList[0].axisValueLabel || '');
-          const formatValue = (val) => {
-            if (val == null) return '-';
-            if (normalized) {
-              const pct = Number(val);
-              return Number.isFinite(pct) ? `${pct.toFixed(2)}%` : '-';
-            }
-            return formatCompactNumber(val);
-          };
+          const header = escapeTimeseriesTooltipHtml(timeFormatters
+            ? timeFormatters.tooltip(effectiveList[0].axisValue, effectiveList[0].axisValueLabel)
+            : effectiveList[0].axisValueLabel || '');
           const lines = effectiveList.map((p) => {
             const raw = Array.isArray(p.value) ? p.value[1] : (p.data && Array.isArray(p.data) ? p.data[1] : p.value);
-            return `${p.marker || ''}${escapeTimeseriesTooltipHtml(p.seriesName || '')}: <strong>${formatValue(raw)}</strong>`;
+            const value = formatTimeseriesValue(raw, (data.series || [])[p.seriesIndex], data, formatCompactNumber);
+            return `${p.marker || ''}${escapeTimeseriesTooltipHtml(timeseriesTooltipName(p, seriesLabels))}: <strong>${escapeTimeseriesTooltipHtml(value)}</strong>`;
           });
           const annotationGroup = annotationGroupForAxisValue(
             annotationGroups,
@@ -537,6 +523,7 @@ Hooks.ExpandedWidgetView = {
     chart.__tsHoveredOnlyHandlers = { hover, globalout, zr };
 
     try { chart.resize(); } catch (_) {}
+    bindTimeseriesAverageLegend(chart, data, updated => this.renderTimeseriesTable(updated));
     this.renderTimeseriesTable(data);
   },
 
@@ -1079,6 +1066,8 @@ Hooks.ExpandedWidgetView = {
       ? data.series.map((series, idx) => ({
           name: series.name || `Series ${idx + 1}`,
           data: series.data || [],
+          unit: data.normalized && timeseriesAxisIndex(series) === 0 ? '%' : series.unit,
+          summary: series.summary,
           color: this.resolveSeriesColor(series && series.color, idx)
         }))
       : [];
@@ -1096,11 +1085,12 @@ Hooks.ExpandedWidgetView = {
     const rows = seriesEntries.map((entry, idx) => {
       const color = entry.color || this.seriesColor(idx);
       const values = this.extractNumericValues(entry.data);
-      const stats = this.computeSeriesStats(values);
+      const stats = { ...this.computeSeriesStats(values), ...(entry.summary || {}) };
 
       return {
         path: String(entry.name || `Series ${idx + 1}`),
         color,
+        unit: entry.unit,
         mean: stats.mean,
         sum: stats.sum,
         max: stats.max,
@@ -1268,12 +1258,20 @@ Hooks.ExpandedWidgetView = {
       minWidth: 108,
       flex: 1,
       comparator: this.summaryNumericComparator.bind(this),
-      valueFormatter: (params) => this.formatSummaryDisplay(params && params.value),
-      tooltipValueGetter: (params) => this.formatSummaryRaw(params && params.value),
+      valueFormatter: (params) => this.formatSummaryDisplay(params && params.value) +
+        this.summaryUnitSuffix(params),
+      tooltipValueGetter: (params) => this.formatSummaryRaw(params && params.value) +
+        this.summaryUnitSuffix(params),
       cellClass: 'aggrid-numeric-cell aggrid-body-cell ag-right-aligned-cell',
       headerClass: 'aggrid-header-cell ag-right-aligned-header',
       headerComponentParams: { lines: [headerName], align: 'right' }
     };
+  },
+
+  summaryUnitSuffix(params) {
+    const unit = params?.data?.unit;
+    if (!Number.isFinite(params?.value) || !unit) return '';
+    return unit === '%' ? '%' : ` ${unit}`;
   },
 
   summaryPathColumn(headerName) {
@@ -1437,14 +1435,7 @@ Hooks.ExpandedWidgetView = {
   extractNumericValues(seriesData) {
     if (!Array.isArray(seriesData)) return [];
     return seriesData
-      .map((point) => {
-        if (Array.isArray(point)) return Number(point[1]);
-        if (point && typeof point === 'object') {
-          if (Array.isArray(point.value)) return Number(point.value[1]);
-          if ('value' in point) return Number(point.value);
-        }
-        return Number(point);
-      })
+      .map(timeseriesPointValue)
       .filter((value) => Number.isFinite(value));
   },
 

@@ -3,7 +3,6 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
 
   alias TrifleApp.Components.DashboardWidgets.{Helpers, LayoutTree, MetricSeries, Registry}
 
-  @wildcard_suffix ".*"
   @derived_group_key "_derived_group"
   @expanded_group_key "_expanded_group"
   @template_group_id_key "_template_group_id"
@@ -31,8 +30,6 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
     value
     |> to_string()
     |> String.trim()
-    |> String.trim_leading(".")
-    |> String.trim_trailing(".")
     |> case do
       "" -> nil
       path -> if valid_group_path?(path), do: path, else: nil
@@ -40,8 +37,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
   end
 
   def terminal_wildcard?(path) when is_binary(path) do
-    String.ends_with?(path, @wildcard_suffix) and
-      not String.contains?(String.trim_trailing(path, @wildcard_suffix), "*")
+    Trifle.Metrics.ValuePath.terminal_wildcard?(path)
   end
 
   def terminal_wildcard?(_path), do: false
@@ -54,7 +50,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
       terminal_wildcard?(path) ->
         valid_path_segments?(path)
 
-      String.contains?(path, "*") ->
+      Trifle.Stats.Path.wildcard?(path) ->
         false
 
       true ->
@@ -66,7 +62,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
 
   defp valid_path_segments?(path) do
     path
-    |> String.split(".")
+    |> Trifle.Stats.Path.segments()
     |> Enum.all?(&(&1 != ""))
   end
 
@@ -168,38 +164,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
   end
 
   defp wildcard_prefixes(path, available_paths) do
-    base = String.trim_trailing(path, @wildcard_suffix)
-
-    available_paths
-    |> Enum.map(&to_string/1)
-    |> Enum.flat_map(fn available_path ->
-      cond do
-        base == "" ->
-          available_path
-          |> String.split(".", parts: 2)
-          |> List.first()
-          |> List.wrap()
-
-        available_path == base ->
-          []
-
-        String.starts_with?(available_path, base <> ".") ->
-          available_path
-          |> String.replace_prefix(base <> ".", "")
-          |> String.split(".", parts: 2)
-          |> List.first()
-          |> case do
-            nil -> []
-            "" -> []
-            segment -> [base <> "." <> segment]
-          end
-
-        true ->
-          []
-      end
-    end)
-    |> Enum.uniq()
-    |> Enum.sort()
+    Trifle.Metrics.ValuePath.child_prefixes(path, available_paths)
   end
 
   defp apply_group_path(group, concrete_path, index, derived?) do
@@ -338,7 +303,8 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
     if concrete_path in [nil, ""] do
       title
     else
-      title <> ": " <> concrete_path
+      label = concrete_path |> Trifle.Stats.Path.segments() |> Enum.join(".")
+      title <> ": " <> label
     end
   end
 

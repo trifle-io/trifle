@@ -1,3 +1,5 @@
+import {pathSegments, pathTextSegments, siblingSegments} from '../utils/stats_path.mjs';
+
 export const registerPathAutocompleteHook = (Hooks, deps = {}) => {
 const PATH_PREVIEW_COLORS = [
   '#14b8a6',
@@ -85,40 +87,27 @@ const pathPreviewColorForIndex = (index) => {
 };
 
 const pathPreviewSiblingComponents = (paths, pathSoFar) => {
-  const prefix = pathSoFar.length > 0 ? `${pathSoFar.join('.')}.` : '';
-
-  return Array.from(
-    new Set(
-      (Array.isArray(paths) ? paths : [])
-        .filter((path) => {
-          if (typeof path !== 'string') return false;
-
-          return (
-            path.startsWith(prefix) &&
-            path.split('.').length > pathSoFar.length
-          );
-        })
-        .map((path) => path.split('.').slice(pathSoFar.length)[0] || '')
-    )
-  ).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  return siblingSegments(Array.isArray(paths) ? paths : [], pathSoFar)
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
 };
 
 const formatAnnotatedPathPreview = (value, allPaths) => {
   const displayPath = String(value ?? '');
   if (!displayPath) return '';
 
-  const components = displayPath.split('.');
+  const components = pathSegments(displayPath);
+  const labels = pathTextSegments(displayPath);
   const pathSoFar = [];
 
   return components
-    .map((component) => {
+    .map((component, componentIndex) => {
       const siblings = pathPreviewSiblingComponents(allPaths, pathSoFar);
       const index = Math.max(siblings.indexOf(component), 0);
       const color = pathPreviewColorForIndex(index);
 
       pathSoFar.push(component);
 
-      return `<span style="color: ${color} !important">${escapePathPreviewHtml(component)}</span>`;
+      return `<span style="color: ${color} !important">${escapePathPreviewHtml(labels[componentIndex])}</span>`;
     })
     .join('<span class="text-slate-400 dark:text-slate-500">.</span>');
 };

@@ -62,6 +62,13 @@ app:
       secretAccessKey: ""
       forcePathStyle: true
       prefix: "sqlite-files"
+  observability:
+    enabled: true # Set false to disable the app's own Oban traces and Stats metrics.
+  traces:
+    # Leave blank for PostgreSQL metadata only.
+    storagePath: "/home/app/uploads/traces"
+    retentionDays: 7
+    gzip: true
 
 # Initial user creation
 initialUser:
@@ -192,6 +199,35 @@ SQLite object storage is configured with `app.sqliteStorage`:
 - `backend: local` keeps files on mounted storage.
 - `backend: s3` stores uploads in S3-compatible object storage and reads via local cache (`cacheRoot`).
 - `objectStore.accessKeyId` and `objectStore.secretAccessKey` are rendered into the app secret and injected as env vars.
+
+Internal observability is enabled by default. Set `app.observability.enabled: false`
+to disable the app's own Oban traces, their Stats metrics, and provisioning of new
+internal database sources. This renders `TRIFLE_OBSERVABILITY_ENABLED` in the app,
+migration job, and initial-user job. An explicit value in
+`app.env.TRIFLE_OBSERVABILITY_ENABLED` takes precedence. Apply with your normal Helm
+upgrade; this is a startup setting, not a live toggle. For non-Helm Kubernetes
+deployments, set the same environment variable on the app and release jobs.
+
+Disabling does not delete existing traces, metrics, or source records, and does not
+affect user-configured sources or their retention cleanup. Existing S3 lifecycle
+rules still apply. Ordinary application logging and third-party integrations are
+configured separately.
+
+When enabled, Trifle's internal background-job traces store searchable metadata in PostgreSQL.
+Set `app.traces.storagePath` to retain the full trace narrative on a filesystem; leave it
+blank for metadata-only traces. Keep the path under `persistence.mountPath` when using the
+chart-managed PVC. With multiple application replicas, the payload path must be backed by
+ReadWriteMany storage so every replica can read traces written by the others; otherwise use
+a single replica or leave filesystem payload storage disabled.
+
+The chart's observability regression checks only render templates; they do not
+access a cluster. With Helm available inside the app container, run from the app root:
+
+```sh
+docker compose exec -T app elixir .devops/kubernetes/helm/test_observability.exs
+```
+
+Set `HELM_BIN` in the container if Helm is not on `PATH`.
 
 ### Autoscaling
 

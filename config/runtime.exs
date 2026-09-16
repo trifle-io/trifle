@@ -113,6 +113,123 @@ projects_enabled =
 
 config :trifle, :projects_enabled, projects_enabled
 
+observability_defaults = Application.get_env(:trifle, Trifle.Observability, [])
+
+observability_enabled =
+  if config_env() == :test do
+    # A development .env must never enable internal telemetry in the test suite.
+    false
+  else
+    case System.get_env("TRIFLE_OBSERVABILITY_ENABLED") do
+      nil ->
+        Keyword.get(observability_defaults, :enabled, true)
+
+      value ->
+        case String.downcase(String.trim(value)) do
+          v when v in ["1", "true", "yes", "on", "enabled"] -> true
+          v when v in ["0", "false", "no", "off", "disabled"] -> false
+          _ -> Keyword.get(observability_defaults, :enabled, true)
+        end
+    end
+  end
+
+traces_storage_path =
+  case System.get_env("TRIFLE_TRACES_STORAGE_PATH") do
+    nil -> Keyword.get(observability_defaults, :traces_storage_path)
+    value -> if String.trim(value) == "", do: nil, else: String.trim(value)
+  end
+
+traces_storage_backend =
+  case System.get_env("TRIFLE_TRACES_STORAGE_BACKEND") do
+    value when is_binary(value) and value != "" ->
+      case String.downcase(String.trim(value)) do
+        "s3" -> :s3
+        "file" -> :file
+        "none" -> :none
+        _ -> Keyword.get(observability_defaults, :traces_storage_backend, :none)
+      end
+
+    _ ->
+      case Keyword.get(observability_defaults, :traces_storage_backend, :none) do
+        :none when is_binary(traces_storage_path) -> :file
+        backend -> backend
+      end
+  end
+
+traces_s3_defaults = Keyword.get(observability_defaults, :traces_s3, [])
+
+traces_s3_buckets =
+  case System.get_env("TRIFLE_TRACES_S3_BUCKETS") do
+    nil ->
+      Keyword.get(traces_s3_defaults, :buckets, [])
+
+    "" ->
+      Keyword.get(traces_s3_defaults, :buckets, [])
+
+    value ->
+      value
+      |> String.split([",", "\n"], trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+  end
+
+traces_s3_value = fn env_name, key, default ->
+  case System.get_env(env_name) do
+    nil -> Keyword.get(traces_s3_defaults, key, default)
+    "" -> Keyword.get(traces_s3_defaults, key, default)
+    value -> String.trim(value)
+  end
+end
+
+traces_s3 = [
+  endpoint: traces_s3_value.("TRIFLE_TRACES_S3_ENDPOINT", :endpoint, nil),
+  buckets: traces_s3_buckets,
+  region: traces_s3_value.("TRIFLE_TRACES_S3_REGION", :region, "us-east-1"),
+  access_key_id: traces_s3_value.("TRIFLE_TRACES_S3_ACCESS_KEY_ID", :access_key_id, nil),
+  secret_access_key:
+    traces_s3_value.("TRIFLE_TRACES_S3_SECRET_ACCESS_KEY", :secret_access_key, nil),
+  prefix: traces_s3_value.("TRIFLE_TRACES_S3_PREFIX", :prefix, "traces")
+]
+
+traces_retention_days =
+  case System.get_env("TRIFLE_TRACES_RETENTION_DAYS") do
+    nil ->
+      Keyword.get(observability_defaults, :traces_retention_days, 7)
+
+    "" ->
+      Keyword.get(observability_defaults, :traces_retention_days, 7)
+
+    value ->
+      case Integer.parse(value) do
+        {days, ""} when days > 0 -> days
+        _ -> Keyword.get(observability_defaults, :traces_retention_days, 7)
+      end
+  end
+
+traces_gzip =
+  case System.get_env("TRIFLE_TRACES_GZIP") do
+    nil ->
+      Keyword.get(observability_defaults, :traces_gzip, true)
+
+    "" ->
+      Keyword.get(observability_defaults, :traces_gzip, true)
+
+    value ->
+      case String.downcase(String.trim(value)) do
+        v when v in ["1", "true", "yes", "on", "enabled"] -> true
+        v when v in ["0", "false", "no", "off", "disabled"] -> false
+        _ -> Keyword.get(observability_defaults, :traces_gzip, true)
+      end
+  end
+
+config :trifle, Trifle.Observability,
+  enabled: observability_enabled,
+  traces_storage_backend: traces_storage_backend,
+  traces_storage_path: traces_storage_path,
+  traces_s3: traces_s3,
+  traces_retention_days: traces_retention_days,
+  traces_gzip: traces_gzip
+
 sqlite_upload_max_bytes =
   case System.get_env("TRIFLE_SQLITE_UPLOAD_MAX_BYTES") do
     nil ->

@@ -52,7 +52,7 @@ defmodule TrifleApp.DatabasesLive do
 
       socket
       |> put_flash(:error, message)
-      |> push_patch(to: ~p"/dbs")
+      |> push_navigate(to: ~p"/dbs")
     end
   end
 
@@ -193,6 +193,9 @@ defmodule TrifleApp.DatabasesLive do
                 </div>
               </div>
               <div class="flex items-center gap-3 pr-3">
+                <span class="inline-flex items-center rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-500/10 dark:text-teal-200 dark:ring-teal-400/30">
+                  {if Database.traces_configured?(database), do: "Stats + Traces", else: "Stats"}
+                </span>
                 <span
                   :if={!access.active?}
                   class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/30"

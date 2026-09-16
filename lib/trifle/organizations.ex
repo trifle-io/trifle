@@ -96,6 +96,7 @@ defmodule Trifle.Organizations do
       end)
       |> case do
         {:ok, %{organization: organization, membership: membership}} ->
+          _ = Trifle.Observability.DatabaseProvisioner.maybe_provision(organization)
           {:ok, organization, membership}
 
         {:error, {:error, %Ecto.Changeset{} = changeset}} ->
@@ -1225,6 +1226,12 @@ defmodule Trifle.Organizations do
     |> Repo.all()
   end
 
+  def list_trace_databases do
+    Database
+    |> Repo.all()
+    |> Enum.filter(&Database.traces_configured?/1)
+  end
+
   def list_databases_by_ids(ids) when is_list(ids) do
     ids = ids |> Enum.uniq() |> Enum.reject(&is_nil/1)
 
@@ -1288,6 +1295,23 @@ defmodule Trifle.Organizations do
     |> notify_database_created()
   end
 
+  @doc false
+  def create_managed_database_for_org(
+        %Organization{} = organization,
+        managed_key,
+        attrs
+      )
+      when is_binary(managed_key) do
+    attrs =
+      attrs
+      |> assign_org_id(organization)
+      |> atomize_keys()
+
+    %Database{}
+    |> Database.managed_changeset(attrs, managed_key)
+    |> Repo.insert()
+  end
+
   def create_database(attrs \\ %{}) do
     %Database{}
     |> database_changeset(attrs)
@@ -1336,6 +1360,12 @@ defmodule Trifle.Organizations do
           error
       end
     end
+  end
+
+  def remove_database_traces(%Database{} = database) do
+    database
+    |> Database.remove_traces_changeset()
+    |> Repo.update()
   end
 
   @doc """

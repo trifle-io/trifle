@@ -114,11 +114,15 @@ export const resolveHoveredTimeseriesParam = (chart, params) => {
     if (!Array.isArray(point) || point.length < 2) return;
 
     const x = point[0];
+    if (point[1] == null || point[1] === '') return;
     const y = Number(point[1]);
     if (!Number.isFinite(y)) return;
 
     try {
-      const pixel = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+      const finder = Number.isInteger(param.seriesIndex)
+        ? { seriesIndex: param.seriesIndex }
+        : { xAxisIndex: 0, yAxisIndex: 0 };
+      const pixel = chart.convertToPixel(finder, [x, y]);
       if (!Array.isArray(pixel) || pixel.length < 2 || !Number.isFinite(pixel[1])) return;
 
       const diff = Math.abs(pixel[1] - pointer.y);

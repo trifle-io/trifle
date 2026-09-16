@@ -35,7 +35,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :print_cell_height, :integer, default: nil
   attr :transponder_info, :map, default: %{}
   attr :loading, :boolean, default: false
+  attr :hide_on_patch, :boolean, default: true
   attr :grid_dom_id, :string, default: nil
+  attr :min_rows, :integer, default: 8
 
   def grid(assigns) do
     assigns =
@@ -83,6 +85,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         style={@print_container_style}
         phx-update="ignore"
         phx-hook="DashboardGrid"
+        data-hide-on-patch={to_string(@hide_on_patch)}
         data-print-mode={if @print_mode, do: "true", else: "false"}
         data-print-cell-height={if @print_cell_height, do: Integer.to_string(@print_cell_height)}
         data-editable={
@@ -91,7 +94,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             else: "false"
         }
         data-cols="12"
-        data-min-rows="8"
+        data-min-rows={@min_rows}
         data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
         data-add-group-btn-id={"dashboard-" <> @dashboard.id <> "-add-group"}
         data-colors={ChartColors.json_palette()}
@@ -1340,27 +1343,12 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
                 </div>
               <% end %>
             <% end %>
-            <button
-              type="button"
-              class="grid-widget-expand inline-flex items-center p-1 rounded group/action"
+            <TrifleApp.DesignSystem.IconButton.icon_button
+              icon="hero-arrows-pointing-out"
+              label="Expand widget"
+              class="grid-widget-expand"
               data-widget-id={@widget_id}
-              title="Expand widget"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-                class="h-4 w-4 text-gray-600 dark:text-slate-300 transition-colors group-hover/action:text-gray-800 dark:group-hover/action:text-slate-100"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                />
-              </svg>
-            </button>
+            />
             <%= if @editable do %>
               <button
                 type="button"
