@@ -128,8 +128,8 @@ app:
   observability:
     enabled: true # Maps to TRIFLE_OBSERVABILITY_ENABLED; restart required.
     indexBackend: "postgres" # postgres | mongo.
-    mongodbUrl: "" # Optional dedicated Mongo URL for internal Stats and trace indexes.
-    mongodbUrlSecretRef: # Or reference an existing Secret instead of putting a URL in values.
+    mongodbUrl: "" # Dedicated URL; Helm stores this in the chart-managed app Secret.
+    mongodbUrlSecretRef: # Optional externally managed Secret instead of mongodbUrl.
       name: ""
       key: "mongodb-url"
     granularities: ["1m", "1h", "1d", "1mo"]
@@ -151,9 +151,9 @@ app:
       buckets: []
       region: "us-east-1"
       prefix: "traces"
-      accessKeyId: "" # Prefer credentialsSecretRef for deployed environments.
+      accessKeyId: "" # Helm stores these credentials in the chart-managed app Secret.
       secretAccessKey: ""
-      credentialsSecretRef:
+      credentialsSecretRef: # Optional externally managed Secret instead of inline credentials.
         name: ""
         accessKeyIdKey: "s3-access-key-id"
         secretAccessKeyKey: "s3-secret-access-key"
