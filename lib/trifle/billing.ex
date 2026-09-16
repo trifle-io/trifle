@@ -960,6 +960,43 @@ defmodule Trifle.Billing do
     end
   end
 
+  @doc """
+  Sets an internal organization's app subscription exemption and refreshes its
+  entitlements atomically. For trusted operator use only; this does not change
+  or cancel Stripe subscriptions, or exempt individual project subscriptions.
+
+  Returns `{:ok, entitlement}` (`nil` when billing is disabled), or an error.
+  """
+  def set_app_subscription_exempt(organization_id, exempt) when is_boolean(exempt) do
+    case Ecto.UUID.cast(organization_id) do
+      {:ok, organization_id} ->
+        try do
+          Trifle.Repo.transaction(fn ->
+            organization =
+              Trifle.Repo.get(Trifle.Organizations.Organization, organization_id) ||
+                Trifle.Repo.rollback(:organization_not_found)
+
+            with {:ok, _organization} <-
+                   organization
+                   |> Ecto.Changeset.change(app_subscription_exempt: exempt)
+                   |> Trifle.Repo.update(),
+                 {:ok, entitlement} <- refresh_entitlements!(organization_id) do
+              entitlement
+            else
+              {:error, reason} -> Trifle.Repo.rollback(reason)
+            end
+          end)
+        after
+          # Refresh can populate the cache inside the transaction. Clear it
+          # after commit or rollback so subsequent readers see persisted state.
+          Trifle.Cache.invalidate({:org_entitlement, organization_id})
+        end
+
+      :error ->
+        {:error, :invalid_organization_id}
+    end
+  end
+
   def refresh_entitlements!(%Trifle.Organizations.Organization{} = organization) do
     refresh_entitlements!(organization.id)
   end
@@ -970,12 +1007,26 @@ defmodule Trifle.Billing do
         {:ok, nil}
 
       _ ->
+        organization = Trifle.Repo.get(Trifle.Organizations.Organization, organization_id)
         app_subscription = get_scope_subscription(organization_id, "app", nil)
         founder_locked = founder_locked?(organization_id, app_subscription)
 
         attrs =
-          case app_subscription do
-            nil ->
+          case {organization, app_subscription} do
+            {%Trifle.Organizations.Organization{app_subscription_exempt: true}, _} ->
+              %{
+                organization_id: organization_id,
+                app_tier: "internal",
+                seat_limit: nil,
+                projects_enabled: true,
+                billing_locked: false,
+                lock_reason: nil,
+                founder_offer_locked: founder_locked,
+                effective_at: now(),
+                metadata: %{"app_subscription_exempt" => true}
+              }
+
+            {_, nil} ->
               %{
                 organization_id: organization_id,
                 app_tier: nil,
@@ -988,7 +1039,7 @@ defmodule Trifle.Billing do
                 metadata: %{}
               }
 
-            %Trifle.Billing.Subscription{} = subscription ->
+            {_, %Trifle.Billing.Subscription{} = subscription} ->
               tier = app_tier(subscription)
               seat_limit = seat_limit_for_subscription(subscription)
               {locked, reason} = subscription_lock_state(subscription)
@@ -1014,9 +1065,10 @@ defmodule Trifle.Billing do
               }
           end
 
-        upsert_entitlement(attrs)
-        sync_project_billing_states(organization_id)
-        {:ok, get_org_entitlement(organization_id)}
+        with {:ok, entitlement} <- upsert_entitlement(attrs) do
+          sync_project_billing_states(organization_id)
+          {:ok, entitlement}
+        end
     end
   end
 

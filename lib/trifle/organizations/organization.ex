@@ -21,6 +21,7 @@ defmodule Trifle.Organizations.Organization do
     field :vat_number, :string
     field :registration_number, :string
     field :metadata, :map, default: %{}
+    field :app_subscription_exempt, :boolean, default: false
     field :address_country, :string, virtual: true
 
     has_many :memberships, Trifle.Organizations.OrganizationMembership

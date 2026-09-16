@@ -11,6 +11,23 @@ defmodule TrifleApp.OrganizationBillingLiveTest do
     on_exit(Trifle.ConfigFixtures.enable_saas_with_projects())
   end
 
+  test "exempt organization shows internal status and hides app purchase controls", %{conn: conn} do
+    user = Trifle.AccountsFixtures.user_fixture()
+    organization = organization_fixture(%{user: user})
+    app_plan_fixture()
+    assert {:ok, _} = Trifle.Billing.set_app_subscription_exempt(organization.id, true)
+
+    {:ok, view, html} = live(log_in_user(conn, user), ~p"/organization/billing")
+    assert html =~ "Internal — subscription exempt"
+    assert html =~ "Project Plans"
+    refute html =~ "No active subscription"
+    refute has_element?(view, "[phx-click='show_plans']")
+
+    # A stale browser event must not reveal the app purchase modal either.
+    html = render_click(view, "show_plans")
+    refute html =~ ~s(action="/organization/billing/checkout/app")
+  end
+
   test "canceled app subscription can be resubscribed from the current plan card", %{conn: conn} do
     user = Trifle.AccountsFixtures.user_fixture()
     organization = organization_fixture(%{user: user})

@@ -66,15 +66,27 @@ defmodule TrifleApp.OrganizationBillingLive do
         </div>
       <% else %>
         <%= if @billing_snapshot do %>
-          <%= if app = @billing_snapshot.app_subscription do %>
-            <.subscription_details
-              subscription={app}
-              plan={@billing_snapshot.app_plan}
-              entitlement={@billing_snapshot.entitlement}
-              seats_used={@billing_snapshot.seats_used}
-            />
+          <%= if @billing_snapshot.organization.app_subscription_exempt do %>
+            <div class="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                Internal — subscription exempt
+              </h2>
+              <p class="mt-2 text-sm text-gray-600 dark:text-slate-300">
+                Your organization can use database sources without an app subscription.
+                Project subscriptions are billed separately.
+              </p>
+            </div>
           <% else %>
-            <.no_subscription />
+            <%= if app = @billing_snapshot.app_subscription do %>
+              <.subscription_details
+                subscription={app}
+                plan={@billing_snapshot.app_plan}
+                entitlement={@billing_snapshot.entitlement}
+                seats_used={@billing_snapshot.seats_used}
+              />
+            <% else %>
+              <.no_subscription />
+            <% end %>
           <% end %>
 
           <div class="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
@@ -106,6 +118,7 @@ defmodule TrifleApp.OrganizationBillingLive do
           </div>
 
           <.app_plans_modal
+            :if={!@billing_snapshot.organization.app_subscription_exempt}
             show={@show_plans_modal}
             tiers={@billing_snapshot.available_app_tiers}
             current_tier={current_app_tier(@billing_snapshot)}

@@ -603,6 +603,35 @@ defmodule TrifleApi.BootstrapControllerTest do
       {:ok, organization: organization, user_token: user_token}
     end
 
+    test "exempt organization can create an active database without a subscription", %{
+      conn: conn,
+      organization: organization,
+      user_token: user_token
+    } do
+      assert {:ok, _} = Trifle.Billing.set_app_subscription_exempt(organization.id, true)
+      file_path = Path.join(System.tmp_dir!(), "bootstrap-exempt-#{Ecto.UUID.generate()}.sqlite")
+      on_exit(fn -> File.rm(file_path) end)
+
+      conn =
+        conn
+        |> auth_user_conn(user_token)
+        |> post(~p"/api/v1/bootstrap/databases", %{
+          "display_name" => "Internal DB",
+          "driver" => "sqlite",
+          "file_path" => file_path
+        })
+
+      assert %{
+               "data" => %{
+                 "source" => %{
+                   "type" => "database",
+                   "active" => true,
+                   "billing_state" => "active"
+                 }
+               }
+             } = json_response(conn, 201)
+    end
+
     test "rejects database creation without an active organization subscription", %{
       conn: conn,
       user_token: user_token

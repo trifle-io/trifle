@@ -28,6 +28,59 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "MySQL"
   end
 
+  test "exempt organization owner can create and use a database without a subscription", %{
+    conn: conn,
+    organization: organization
+  } do
+    assert {:ok, _} = Trifle.Billing.set_app_subscription_exempt(organization.id, true)
+    assert Trifle.Billing.get_scope_subscription(organization.id, "app", nil) == nil
+
+    {:ok, lv, html} = live(conn, ~p"/dbs")
+    assert html =~ "New Database"
+    refute html =~ "Activate subscription"
+
+    lv |> element("a[aria-label='New Database']") |> render_click()
+    assert_patch(lv, ~p"/dbs/new")
+
+    lv
+    |> form("#database-form", database: %{driver: "mysql"})
+    |> render_change()
+
+    lv
+    |> form("#database-form", database: mysql_attrs(%{display_name: "Internal metrics"}))
+    |> render_submit()
+
+    assert_patch(lv, ~p"/dbs")
+    assert [database] = Organizations.list_databases_for_org(organization.id)
+    assert database.display_name == "Internal metrics"
+    assert %{active?: true} = Trifle.Billing.source_access_status(:database, database)
+    assert render(lv) =~ "Internal metrics"
+    refute render(lv) =~ "Subscription required"
+
+    {:ok, _view, _html} = live(conn, ~p"/dbs/#{database.id}/transponders")
+  end
+
+  test "ordinary owner without a subscription cannot open database creation", %{
+    conn: conn,
+    organization: organization
+  } do
+    assert {:ok, _} = Trifle.Billing.refresh_entitlements!(organization.id)
+    assert {:error, {_kind, %{to: "/dbs", flash: flash}}} = live(conn, ~p"/dbs/new")
+    assert flash["error"] =~ "An active organization subscription is required"
+  end
+
+  test "exemption preserves owner-only database creation", %{conn: conn, organization: org} do
+    assert {:ok, _} = Trifle.Billing.set_app_subscription_exempt(org.id, true)
+
+    for role <- ["admin", "member"] do
+      user = Trifle.AccountsFixtures.user_fixture()
+      {:ok, _membership} = Organizations.create_membership(org, user, role)
+      member_conn = conn |> recycle() |> log_in_user(user)
+      assert {:error, {_kind, %{to: "/dbs", flash: flash}}} = live(member_conn, ~p"/dbs/new")
+      assert flash["error"] == "Only organization owners can create databases."
+    end
+  end
+
   test "new database authorization remains owner-only", %{conn: conn, organization: organization} do
     for role <- ["admin", "member"] do
       user = Trifle.AccountsFixtures.user_fixture()
