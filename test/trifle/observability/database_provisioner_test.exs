@@ -37,7 +37,7 @@ defmodule Trifle.Observability.DatabaseProvisionerTest do
     assert database.organization_id == organization.id
     assert database.driver == "postgres"
     assert database.config["table_name"] == "trifle_internal_stats"
-    assert database.trace_config["index_name"] == "trifle_traces"
+    assert database.trace_config["index_name"] == "trifle_internal_traces"
     assert database.trace_config["data_driver"] == "file"
     assert database.trace_config["data_path"] == path
     assert Database.capabilities(database) == [:stats, :traces]

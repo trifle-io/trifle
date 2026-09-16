@@ -238,7 +238,7 @@ defmodule Trifle.Observability.RuntimeConfigTest do
     assert attrs.password == "p@ss"
     assert attrs.auth_database == "admin"
     assert attrs.config["collection_name"] == "trifle_internal_stats"
-    assert attrs.trace_config["index_name"] == "trifle_traces"
+    assert attrs.trace_config["index_name"] == "trifle_internal_traces"
     assert attrs.trace_config["data_driver"] == "s3"
     assert attrs.trace_config["data_buckets"] == ["uploads"]
     assert attrs.trace_config["data_prefix"] == "traces"

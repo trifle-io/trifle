@@ -18,7 +18,7 @@ defmodule Trifle.Observability do
   @mongo_connection Trifle.Observability.Mongo
   @stats_table "trifle_internal_stats"
   @stats_ping_table "trifle_internal_stats_ping"
-  @traces_table "trifle_traces"
+  @traces_table "trifle_internal_traces"
   @default_granularities ["1m", "1h", "1d", "1mo"]
   @default_timeframe "6h"
   @default_granularity "1m"

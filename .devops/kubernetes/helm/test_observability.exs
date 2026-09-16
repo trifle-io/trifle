@@ -145,6 +145,24 @@ defmodule Trifle.Helm.ObservabilityTest do
     end
   end
 
+  test "deployment rolls when the chart-managed Secret changes" do
+    original = render("deployment.yaml", [])
+
+    changed =
+      render("deployment.yaml", [
+        "--set-string",
+        "app.traces.s3.accessKeyId=changed-access-key"
+      ])
+
+    [original_checksum] =
+      Regex.run(~r/checksum\/secret: ([a-f0-9]+)/, original, capture: :all_but_first)
+
+    [changed_checksum] =
+      Regex.run(~r/checksum\/secret: ([a-f0-9]+)/, changed, capture: :all_but_first)
+
+    refute original_checksum == changed_checksum
+  end
+
   defp assert_env(overrides, expected) do
     for template <- @templates do
       rendered = render(template, overrides)
