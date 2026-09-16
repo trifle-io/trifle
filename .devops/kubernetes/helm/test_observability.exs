@@ -36,17 +36,45 @@ defmodule Trifle.Helm.ObservabilityTest do
     assert_env(["--set", "app.observability=null"], "true")
   end
 
+  test "MongoDB indexes and the SQLite object store can be shared by every workload" do
+    overrides = [
+      "--set-string",
+      "app.mongodbUrl=mongodb://user:password@mongo.example:27017/trifle",
+      "--set-string",
+      "app.observability.indexBackend=mongo",
+      "--set-string",
+      "app.traces.storageBackend=s3",
+      "--set",
+      "app.traces.useSqliteObjectStore=true",
+      "--set-string",
+      "app.sqliteStorage.objectStore.endpoint=https://object.example",
+      "--set-string",
+      "app.sqliteStorage.objectStore.bucket=uploads",
+      "--set-string",
+      "app.sqliteStorage.objectStore.accessKeyId=access",
+      "--set-string",
+      "app.sqliteStorage.objectStore.secretAccessKey=secret"
+    ]
+
+    for template <- @templates do
+      rendered = render(template, overrides)
+
+      for variable <- ~w(MONGODB_URL TRIFLE_OBSERVABILITY_INDEX_BACKEND
+                          TRIFLE_TRACES_STORAGE_BACKEND TRIFLE_TRACES_S3_ENDPOINT
+                          TRIFLE_TRACES_S3_BUCKETS TRIFLE_TRACES_S3_ACCESS_KEY_ID
+                          TRIFLE_TRACES_S3_SECRET_ACCESS_KEY) do
+        assert length(Regex.scan(~r/- name: #{variable}\s/, rendered)) == 1
+      end
+
+      assert rendered =~ "key: mongodb-url"
+      assert rendered =~ "key: sqlite-object-store-access-key-id"
+      assert rendered =~ "key: sqlite-object-store-secret-access-key"
+    end
+  end
+
   defp assert_env(overrides, expected) do
     for template <- @templates do
-      {rendered, status} =
-        System.cmd(
-          System.get_env("HELM_BIN", "helm"),
-          ["template", "observability-test", @chart, "--show-only", "templates/#{template}"] ++
-            overrides,
-          stderr_to_stdout: true
-        )
-
-      assert status == 0, rendered
+      rendered = render(template, overrides)
       assert length(Regex.scan(~r/- name: TRIFLE_OBSERVABILITY_ENABLED\s/, rendered)) == 1
 
       assert Regex.run(
@@ -55,5 +83,18 @@ defmodule Trifle.Helm.ObservabilityTest do
                capture: :all_but_first
              ) == [expected]
     end
+  end
+
+  defp render(template, overrides) do
+    {rendered, status} =
+      System.cmd(
+        System.get_env("HELM_BIN", "helm"),
+        ["template", "observability-test", @chart, "--show-only", "templates/#{template}"] ++
+          overrides,
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, rendered
+    rendered
   end
 end

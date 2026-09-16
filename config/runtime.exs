@@ -115,6 +115,19 @@ config :trifle, :projects_enabled, projects_enabled
 
 observability_defaults = Application.get_env(:trifle, Trifle.Observability, [])
 
+observability_index_backend =
+  case System.get_env("TRIFLE_OBSERVABILITY_INDEX_BACKEND") do
+    value when value in ["mongo", "MONGO"] -> :mongo
+    value when value in ["postgres", "POSTGRES"] -> :postgres
+    _ -> Keyword.get(observability_defaults, :index_backend, :postgres)
+  end
+
+observability_mongodb_url =
+  case System.get_env("TRIFLE_OBSERVABILITY_MONGODB_URL") do
+    value when is_binary(value) and value != "" -> String.trim(value)
+    _ -> System.get_env("MONGODB_URL")
+  end
+
 observability_enabled =
   if config_env() == :test do
     # A development .env must never enable internal telemetry in the test suite.
@@ -222,13 +235,32 @@ traces_gzip =
       end
   end
 
+traces_manage_s3_lifecycle =
+  case System.get_env("TRIFLE_TRACES_MANAGE_S3_LIFECYCLE") do
+    nil ->
+      Keyword.get(observability_defaults, :traces_manage_s3_lifecycle, true)
+
+    "" ->
+      Keyword.get(observability_defaults, :traces_manage_s3_lifecycle, true)
+
+    value ->
+      case String.downcase(String.trim(value)) do
+        v when v in ["1", "true", "yes", "on"] -> true
+        v when v in ["0", "false", "no", "off"] -> false
+        _ -> Keyword.get(observability_defaults, :traces_manage_s3_lifecycle, true)
+      end
+  end
+
 config :trifle, Trifle.Observability,
   enabled: observability_enabled,
+  index_backend: observability_index_backend,
+  mongodb_url: observability_mongodb_url,
   traces_storage_backend: traces_storage_backend,
   traces_storage_path: traces_storage_path,
   traces_s3: traces_s3,
   traces_retention_days: traces_retention_days,
-  traces_gzip: traces_gzip
+  traces_gzip: traces_gzip,
+  traces_manage_s3_lifecycle: traces_manage_s3_lifecycle
 
 sqlite_upload_max_bytes =
   case System.get_env("TRIFLE_SQLITE_UPLOAD_MAX_BYTES") do

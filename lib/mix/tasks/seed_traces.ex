@@ -9,7 +9,7 @@ defmodule Mix.Tasks.SeedTraces do
       mix seed_traces --count 100
       mix seed_traces --count 500 --seed 123 --min-lines 50 --max-lines 200
 
-  Uses the app's configured internal Postgres index/Stats and S3 or File storage.
+  Uses the app's configured internal index/Stats database and S3 or File storage.
   Development only. Adds data; never deletes existing traces or runs real jobs.
 
   Options:

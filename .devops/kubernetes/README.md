@@ -64,8 +64,9 @@ app:
       prefix: "sqlite-files"
   observability:
     enabled: true # Set false to disable the app's own Oban traces and Stats metrics.
+    indexBackend: "postgres" # postgres | mongo; Mongo reuses app.mongodbUrl.
   traces:
-    # Leave blank for PostgreSQL metadata only.
+    storageBackend: "file"
     storagePath: "/home/app/uploads/traces"
     retentionDays: 7
     gzip: true
@@ -213,7 +214,31 @@ affect user-configured sources or their retention cleanup. Existing S3 lifecycle
 rules still apply. Ordinary application logging and third-party integrations are
 configured separately.
 
-When enabled, Trifle's internal background-job traces store searchable metadata in PostgreSQL.
+When enabled, Trifle's internal background-job traces store searchable metadata and
+Stats metrics in the database selected by `app.observability.indexBackend`. The default
+is PostgreSQL. Set it to `mongo` to reuse `app.mongodbUrl` for both collections.
+
+Trace payloads can reuse the SQLite S3-compatible object store without duplicating
+credentials:
+
+```yaml
+app:
+  observability:
+    enabled: true
+    indexBackend: mongo
+  traces:
+    storageBackend: s3
+    useSqliteObjectStore: true
+    s3Prefix: traces
+    manageS3Lifecycle: false
+    retentionDays: 7
+```
+
+Set `manageS3Lifecycle: false` when the bucket is shared. Add an object-store lifecycle
+rule for `<retentionDays>/<s3Prefix>/` if trace payloads should expire automatically.
+`app.traces.retentionDays` defaults to `7` and can be overridden in deployment values;
+the default object prefix is `7/traces/`. Update the lifecycle rule when changing it.
+
 Set `app.traces.storagePath` to retain the full trace narrative on a filesystem; leave it
 blank for metadata-only traces. Keep the path under `persistence.mountPath` when using the
 chart-managed PVC. With multiple application replicas, the payload path must be backed by

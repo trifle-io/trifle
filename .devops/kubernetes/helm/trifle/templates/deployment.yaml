@@ -49,6 +49,7 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
             {{- include "trifle.observabilityEnv" . | nindent 12 }}
+            {{- include "trifle.observabilityStorageEnv" . | nindent 12 }}
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
@@ -66,13 +67,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: database-url
-            {{- with .Values.app.mongodbUrl }}
-            - name: MONGODB_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "trifle.fullname" $ }}-secret
-                  key: mongodb-url
-            {{- end }}
             {{- if .Values.app.honeybadger.apiKey }}
             - name: HONEYBADGER_API_KEY
               valueFrom:
@@ -175,18 +169,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "trifle.fullname" . }}-secret
                   key: sqlite-object-store-secret-access-key
-            {{- end }}
-            {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_STORAGE_PATH")) (hasKey $traces "storagePath") }}
-            - name: TRIFLE_TRACES_STORAGE_PATH
-              value: {{ index $traces "storagePath" | quote }}
-            {{- end }}
-            {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_RETENTION_DAYS")) (hasKey $traces "retentionDays") }}
-            - name: TRIFLE_TRACES_RETENTION_DAYS
-              value: {{ index $traces "retentionDays" | quote }}
-            {{- end }}
-            {{- if and (not (hasKey $appEnv "TRIFLE_TRACES_GZIP")) (hasKey $traces "gzip") }}
-            - name: TRIFLE_TRACES_GZIP
-              value: {{ index $traces "gzip" | quote }}
             {{- end }}
             - name: LANG
               value: "en_US.UTF-8"

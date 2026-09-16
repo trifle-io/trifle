@@ -127,15 +127,20 @@ app:
   # The app's own Oban traces and their Stats metrics (not user-configured sources).
   observability:
     enabled: true # Maps to TRIFLE_OBSERVABILITY_ENABLED; restart required.
+    indexBackend: "postgres" # postgres | mongo; Mongo uses app.mongodbUrl.
 
   # Internal Trifle.Traces storage (when observability is enabled).
-  # Metadata is always stored in PostgreSQL.
+  # Metadata uses app.observability.indexBackend.
   # Leave storagePath empty for metadata-only traces, or place it under the
   # persistence mount to retain full trace payloads.
   traces:
+    storageBackend: "" # Empty derives file/none from storagePath; or set s3.
     storagePath: ""
     retentionDays: 7
     gzip: true
+    useSqliteObjectStore: false # Reuse app.sqliteStorage.objectStore endpoint, bucket, and credentials.
+    s3Prefix: "traces" # Separate from the SQLite upload prefix within a shared bucket.
+    manageS3Lifecycle: true # Set false for a bucket with an existing lifecycle policy.
   
   # Environment variables
   env:

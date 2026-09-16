@@ -2,8 +2,8 @@ defmodule Trifle.Observability do
   @moduledoc """
   Configures the application's own Trifle Stats and Trifle Traces storage.
 
-  Trace metadata is kept in PostgreSQL. Trace payloads are written to the
-  configured S3-compatible object store or filesystem path.
+  Trace metadata and Stats metrics use the configured PostgreSQL or MongoDB
+  backend. Trace payloads use S3-compatible object storage or a filesystem.
   """
 
   require Logger
@@ -11,9 +11,11 @@ defmodule Trifle.Observability do
   alias Trifle.Traces.Driver.Data.File, as: FileData
   alias Trifle.Traces.Driver.Data.Null, as: NullData
   alias Trifle.Traces.Driver.Data.S3, as: S3Data
+  alias Trifle.Traces.Driver.Index.Mongo, as: MongoIndex
   alias Trifle.Traces.Driver.Index.Postgres, as: PostgresIndex
 
   @stats_connection Trifle.Observability.StatsPostgres
+  @mongo_connection Trifle.Observability.Mongo
   @stats_table "trifle_internal_stats"
   @stats_ping_table "trifle_internal_stats_ping"
   @traces_table "trifle_traces"
@@ -42,20 +44,18 @@ defmodule Trifle.Observability do
   @doc "Returns and configures the children needed for internal observability."
   def setup do
     if enabled?() do
-      configure_stats()
-      traces_config = configure_traces()
+      options = config()
+      configure_stats(options)
+      traces_config = configure_traces(options)
 
-      [
-        Supervisor.child_spec(
-          {Postgrex, stats_connection_options()},
-          id: @stats_connection
-        ),
-        Supervisor.child_spec(
-          {Trifle.Traces.Oban,
-           config: traces_config, handler_id: {Trifle.Traces.Oban, :trifle_internal}},
-          id: Trifle.Traces.Oban
-        )
-      ]
+      storage_children(options) ++
+        [
+          Supervisor.child_spec(
+            {Trifle.Traces.Oban,
+             config: traces_config, handler_id: {Trifle.Traces.Oban, :trifle_internal}},
+            id: Trifle.Traces.Oban
+          )
+        ]
     else
       []
     end
@@ -114,7 +114,10 @@ defmodule Trifle.Observability do
             [Keyword.get(options, :traces_retention_days, 7)]
           )
 
-        :ok = S3Data.setup!(setup_options)
+        if Keyword.get(options, :traces_manage_s3_lifecycle, true) do
+          :ok = S3Data.setup!(setup_options)
+        end
+
         S3Data.new(driver_options)
     end
   end
@@ -165,42 +168,107 @@ defmodule Trifle.Observability do
   @doc "Builds the editable database source for the application's internal observability data."
   def database_attrs do
     options = config()
-    repo = Trifle.Repo.config()
 
     with true <- enabled?() || {:error, :observability_disabled},
-         host when is_binary(host) and host != "" <- Keyword.get(repo, :hostname),
+         {:ok, connection_attrs} <- database_connection_attrs(options),
          {:ok, trace_attrs} <- trace_database_attrs(options) do
       {:ok,
        %{
          display_name: "Trifle internal observability",
-         driver: "postgres",
          connection_method: "direct",
-         host: host,
-         port: Keyword.get(repo, :port, 5432),
-         database_name: Keyword.get(repo, :database),
-         username: Keyword.get(repo, :username),
-         password: Keyword.get(repo, :password),
-         config: %{
-           "table_name" => @stats_table,
-           "ping_table_name" => @stats_ping_table,
-           "joined_identifiers" => "full",
-           "pool_size" => 5,
-           "pool_timeout" => 15_000,
-           "timeout" => 15_000,
-           "ssl" => Keyword.get(repo, :ssl, false)
-         },
          granularities: ["1m", "1h", "1d", "1w", "1mo"],
          time_zone: "UTC",
          beginning_of_week: 1,
          default_timeframe: "24h",
          default_granularity: "1h"
        }
+       |> Map.merge(connection_attrs)
        |> Map.merge(trace_attrs)}
     else
       {:error, reason} -> {:error, reason}
-      _ -> {:error, :postgres_hostname_unavailable}
     end
   end
+
+  defp database_connection_attrs(options) do
+    case index_backend(options) do
+      :postgres ->
+        repo = Trifle.Repo.config()
+
+        case Keyword.get(repo, :hostname) do
+          host when is_binary(host) and host != "" ->
+            {:ok,
+             %{
+               driver: "postgres",
+               host: host,
+               port: Keyword.get(repo, :port, 5432),
+               database_name: Keyword.get(repo, :database),
+               username: Keyword.get(repo, :username),
+               password: Keyword.get(repo, :password),
+               config: %{
+                 "table_name" => @stats_table,
+                 "ping_table_name" => @stats_ping_table,
+                 "joined_identifiers" => "full",
+                 "pool_size" => 5,
+                 "pool_timeout" => 15_000,
+                 "timeout" => 15_000,
+                 "ssl" => Keyword.get(repo, :ssl, false)
+               }
+             }}
+
+          _ ->
+            {:error, :postgres_hostname_unavailable}
+        end
+
+      :mongo ->
+        mongo_database_attrs(Keyword.get(options, :mongodb_url))
+    end
+  end
+
+  defp mongo_database_attrs(url) when is_binary(url) do
+    uri = URI.parse(url)
+    database = uri.path |> to_string() |> String.trim_leading("/") |> URI.decode()
+
+    if uri.scheme == "mongodb" and is_binary(uri.host) and uri.host != "" and
+         database != "" and not String.contains?(uri.host, ",") do
+      [username, password] =
+        case uri.userinfo do
+          nil ->
+            [nil, nil]
+
+          userinfo ->
+            case String.split(userinfo, ":", parts: 2) do
+              [user, pass] -> [URI.decode(user), URI.decode(pass)]
+              [user] -> [URI.decode(user), nil]
+            end
+        end
+
+      auth_database =
+        uri.query
+        |> to_string()
+        |> URI.decode_query()
+        |> Map.get("authSource")
+
+      {:ok,
+       %{
+         driver: "mongo",
+         host: uri.host,
+         port: uri.port || 27017,
+         database_name: database,
+         username: username,
+         password: password,
+         auth_database: auth_database,
+         config: %{
+           "collection_name" => @stats_table,
+           "joined_identifiers" => "full",
+           "pool_size" => 5
+         }
+       }}
+    else
+      {:error, :mongo_source_url_unavailable}
+    end
+  end
+
+  defp mongo_database_attrs(_), do: {:error, :mongo_source_url_unavailable}
 
   @doc false
   def start_trace_metric(tracer) do
@@ -255,15 +323,21 @@ defmodule Trifle.Observability do
     :ok
   end
 
-  defp configure_stats do
+  defp configure_stats(options) do
     driver =
-      Trifle.Stats.Driver.Postgres.new(
-        @stats_connection,
-        @stats_table,
-        :full,
-        @stats_ping_table,
-        true
-      )
+      case index_backend(options) do
+        :postgres ->
+          Trifle.Stats.Driver.Postgres.new(
+            @stats_connection,
+            @stats_table,
+            :full,
+            @stats_ping_table,
+            true
+          )
+
+        :mongo ->
+          Trifle.Stats.Driver.Mongo.new(@mongo_connection, @stats_table)
+      end
 
     Trifle.Stats.configure(
       driver: driver,
@@ -277,7 +351,12 @@ defmodule Trifle.Observability do
   defp cleanup_internal! do
     if enabled?() do
       traces_config = Trifle.Traces.configuration()
-      deleted = PostgresIndex.cleanup!(traces_config.index_driver)
+
+      deleted =
+        case traces_config.index_driver do
+          %PostgresIndex{} = driver -> PostgresIndex.cleanup!(driver)
+          %MongoIndex{} -> 0
+        end
 
       case traces_config.data_driver do
         %FileData{} = driver -> FileData.cleanup!(driver)
@@ -336,11 +415,9 @@ defmodule Trifle.Observability do
     end
   end
 
-  defp configure_traces do
-    options = config()
-
+  defp configure_traces(options) do
     Trifle.Traces.configure(
-      index_driver: PostgresIndex.new(Trifle.Repo, table_name: @traces_table),
+      index_driver: trace_index_driver(options),
       data_driver: trace_data_driver(options),
       bump_every: Keyword.get(options, :traces_bump_every, 15),
       payload_size_limit: Keyword.get(options, :traces_payload_size_limit, 100 * 1024),
@@ -353,6 +430,45 @@ defmodule Trifle.Observability do
 
   defp config do
     Application.get_env(:trifle, __MODULE__, [])
+  end
+
+  defp index_backend(options) do
+    case Keyword.get(options, :index_backend, :postgres) do
+      backend when backend in [:postgres, :mongo] ->
+        backend
+
+      backend ->
+        raise ArgumentError, "unsupported observability index backend: #{inspect(backend)}"
+    end
+  end
+
+  defp storage_children(options) do
+    case index_backend(options) do
+      :postgres ->
+        [Supervisor.child_spec({Postgrex, stats_connection_options()}, id: @stats_connection)]
+
+      :mongo ->
+        url = Keyword.get(options, :mongodb_url)
+
+        if not is_binary(url) or String.trim(url) == "" do
+          raise ArgumentError, "MONGODB_URL is required for MongoDB observability"
+        end
+
+        [
+          Supervisor.child_spec({Mongo, name: @mongo_connection, url: url}, id: @mongo_connection),
+          {Trifle.Observability.MongoSetup,
+           connection: @mongo_connection,
+           stats_collection: @stats_table,
+           traces_collection: @traces_table}
+        ]
+    end
+  end
+
+  defp trace_index_driver(options) do
+    case index_backend(options) do
+      :postgres -> PostgresIndex.new(Trifle.Repo, table_name: @traces_table)
+      :mongo -> MongoIndex.new(@mongo_connection, collection_name: @traces_table)
+    end
   end
 
   defp metric_key(key) do

@@ -35,6 +35,7 @@ config :trifle, :request_body_max_bytes, 8_000_000
 
 config :trifle, Trifle.Observability,
   enabled: true,
+  index_backend: :postgres,
   traces_storage_backend: :none,
   traces_storage_path: nil,
   traces_s3: [
@@ -47,6 +48,7 @@ config :trifle, Trifle.Observability,
   ],
   traces_retention_days: 7,
   traces_gzip: true,
+  traces_manage_s3_lifecycle: true,
   traces_bump_every: 15,
   traces_payload_size_limit: 100 * 1024
 

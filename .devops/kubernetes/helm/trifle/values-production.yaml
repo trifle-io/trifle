@@ -72,11 +72,16 @@ app:
       prefix: "sqlite-files"
   observability:
     enabled: true # Set false to disable the app's own Oban traces and Stats metrics.
+    indexBackend: "postgres"
   traces:
     # Set to /home/app/uploads/traces to retain full payloads on the app PVC.
+    storageBackend: ""
     storagePath: ""
     retentionDays: 7
     gzip: true
+    useSqliteObjectStore: false
+    s3Prefix: "traces"
+    manageS3Lifecycle: true
   env:
     MIX_ENV: "prod"
     PHX_SERVER: "true"

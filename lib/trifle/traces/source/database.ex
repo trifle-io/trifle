@@ -137,11 +137,23 @@ defmodule Trifle.Traces.Source.Database do
   end
 
   defp setup_data!(database, %{"data_driver" => "s3"} = config) do
-    config
-    |> s3_driver_options(database)
-    |> Keyword.put(:retentions, [config["retention_days"]])
-    |> S3Data.setup!()
+    if manage_s3_lifecycle?(database) do
+      config
+      |> s3_driver_options(database)
+      |> Keyword.put(:retentions, [config["retention_days"]])
+      |> S3Data.setup!()
+    else
+      :ok
+    end
   end
+
+  defp manage_s3_lifecycle?(%Database{managed_key: "internal_trifle_observability"}) do
+    :trifle
+    |> Application.get_env(Trifle.Observability, [])
+    |> Keyword.get(:traces_manage_s3_lifecycle, true)
+  end
+
+  defp manage_s3_lifecycle?(_database), do: true
 
   defp index_exists?(%Database{driver: "postgres"} = database, config) do
     {:ok, connection} =
