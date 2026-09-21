@@ -6,6 +6,14 @@ defmodule TrifleApp.TracesLive.Query do
 
   @fields ~w(source_id reference detail path state tags tag_mode duration_min timeframe granularity from to)
   @range_fields ~w(source_id timeframe from to)
+  @list_fields ~w(reference tags tag_mode duration_min)
+
+  def list_params(params), do: Map.take(params, @list_fields)
+
+  def list_filters_active?(params) do
+    tags(params["tags"]) != [] or not is_nil(blank(params["duration_min"])) or
+      not is_nil(blank(params["reference"]))
+  end
 
   def params(params) do
     params

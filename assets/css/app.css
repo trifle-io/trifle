@@ -253,24 +253,14 @@ input[type="checkbox"] {
   );
 }
 
-/* Reflow whole filter pairs based on panel width, including sidebar changes.
-   Keep at least 18rem for path/tags before putting an 8rem select beside them. */
-.trace-filter-container {
-  container: trace-filters / inline-size;
+/* Reflow list filters with the list width. Activity filters always share a row. */
+.trace-list-filter-container {
+  container: trace-list-filters / inline-size;
 }
 
-@container trace-filters (min-width: 26.75rem) {
-  .trace-filter-pair {
-    grid-template-columns: minmax(18rem, 1fr) 8rem;
-  }
-}
-
-/* Two complete pairs, duration and Apply need this much space in one row.
-   Below it, the default grid keeps the three groups on separate rows. */
-@container trace-filters (min-width: 74rem) {
-  .trace-filter-layout {
-    grid-template-columns: minmax(26.75rem, 1fr) minmax(26.75rem, 1fr) max-content;
-    align-items: end;
+@container trace-list-filters (min-width: 60rem) {
+  .trace-list-filter-fields {
+    grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 1.2fr) minmax(18rem, 1fr);
   }
 }
 

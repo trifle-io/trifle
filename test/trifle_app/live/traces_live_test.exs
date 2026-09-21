@@ -307,7 +307,7 @@ defmodule TrifleApp.TracesLiveTest do
              ~s({"monitor_id":"first"})
            )
 
-    view |> form("#trace-reference", %{reference: "second"}) |> render_submit()
+    view |> form("#trace-list-filters", %{reference: "second"}) |> render_submit()
     render_async(view)
     refute has_element?(view, "#trace-arguments-#{database.id}-first")
 
@@ -320,7 +320,7 @@ defmodule TrifleApp.TracesLiveTest do
     refute_receive {:trace_activity, _}
   end
 
-  test "trace filters attach below FilterBar and retain LiveView updates and submit handling", %{
+  test "activity filters attach below FilterBar and apply on change as well as Enter", %{
     conn: conn,
     database: database
   } do
@@ -330,12 +330,15 @@ defmodule TrifleApp.TracesLiveTest do
     attachment = "#traces-filter-bar-shortcuts.sticky > #traces-filter-bar-attachment"
     assert has_element?(view, "#{attachment} #trace-filters")
     assert has_element?(view, "#{attachment} #trace-paths option[value='jobs/App.Worker']")
+    refute has_element?(view, "#{attachment} #trace-filter-tags")
+    refute has_element?(view, "#{attachment} #trace-filter-duration")
+    refute has_element?(view, "#{attachment} #trace-filters button")
     refute has_element?(view, "#{attachment} #smart_timeframe")
     refute has_element?(view, "#{attachment} #traces-dashboard-grid")
 
     view
     |> form("#{attachment} #trace-filters", %{path: "jobs", state: "warning"})
-    |> render_submit()
+    |> render_change()
 
     render_async(view)
     assert has_element?(view, "#{attachment} #trace-filter-path[value='jobs']")
@@ -349,6 +352,94 @@ defmodule TrifleApp.TracesLiveTest do
              activity_payload(view)["series"]
 
     assert activity_total(view) == 1
+
+    view |> form("#trace-filters", %{path: "requests", state: "running"}) |> render_submit()
+    render_async(view)
+    assert activity_total(view) == 3
+  end
+
+  test "list filters preserve activity filters and do not change the activity chart", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&path=jobs&state=warning")
+    render_async(view)
+    assert_receive {:trace_activity, _}
+    assert_receive {:trace_search, _}
+    chart = activity_payload(view)
+
+    assert has_element?(view, "#trace-list-filters[hidden]")
+    view |> element("#trace-list-filters-toggle") |> render_click()
+    assert has_element?(view, "#trace-list-filters:not([hidden])")
+
+    view
+    |> form("#trace-list-filters", %{
+      tags: "queue:default, scheduled",
+      tag_mode: "all",
+      duration_min: "250"
+    })
+    |> render_submit()
+
+    render_async(view)
+
+    assert_receive {:trace_search, filters}
+    assert filters[:segment] == "jobs"
+    assert filters[:state] == "warning"
+    assert filters[:tags] == %{all: ["queue:default", "scheduled"]}
+    assert filters[:duration_min] == 250
+    assert activity_payload(view) == chart
+    refute_receive {:trace_activity, _}
+    assert has_element?(view, "#trace-list-filters:not([hidden])")
+
+    view |> form("#trace-filters", %{path: "requests", state: "running"}) |> render_change()
+    render_async(view)
+    assert_receive {:trace_search, filters}
+    assert filters[:segment] == "requests"
+    assert filters[:state] == "running"
+    assert filters[:tags] == %{all: ["queue:default", "scheduled"]}
+    assert filters[:duration_min] == 250
+    assert activity_total(view) == 3
+    refute_receive {:trace_activity, _}
+
+    view |> form("#trace-list-filters", %{reference: "  second  "}) |> render_submit()
+    render_async(view)
+    assert has_element?(view, "#trace-detail", "second")
+    assert has_element?(view, "#trace-reference-input[value='second']")
+    assert activity_total(view) == 3
+    refute_receive {:trace_activity, _}
+  end
+
+  test "active list filters expand on navigation but can be manually collapsed", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&tags=queue:default")
+    render_async(view)
+    assert has_element?(view, "#trace-list-filters-toggle[aria-expanded='true']", "(active)")
+    assert has_element?(view, "#trace-list-filters:not([hidden])")
+
+    view |> element("#trace-list-filters-toggle") |> render_click()
+    assert has_element?(view, "#trace-list-filters[hidden]")
+    view |> form("#trace-filters", %{state: "warning"}) |> render_change()
+    render_async(view)
+    assert has_element?(view, "#trace-list-filters[hidden]")
+
+    render_patch(view, ~p"/traces?source_id=#{database.id}&duration_min=0")
+    render_async(view)
+    assert has_element?(view, "#trace-list-filters:not([hidden])")
+
+    view
+    |> form("#trace-list-filters", %{tags: "", duration_min: "", reference: ""})
+    |> render_submit()
+
+    render_async(view)
+    assert has_element?(view, "#trace-list-filters[hidden]")
+    refute has_element?(view, "#trace-list-filters-toggle", "(active)")
+
+    render_patch(view, ~p"/traces?source_id=#{database.id}&reference=first")
+    render_async(view)
+    assert has_element?(view, "#trace-list-filters:not([hidden])")
+    assert has_element?(view, "#trace-reference-input[value='first']")
   end
 
   test "path segments and tags navigate to the filtered list, clearing detail expansion", %{
@@ -410,7 +501,7 @@ defmodule TrifleApp.TracesLiveTest do
     refute has_element?(view, "#trace-detail-footer button[aria-expanded='true']")
 
     view |> element("button[phx-value-section='metadata']") |> render_click()
-    view |> form("#trace-reference", %{reference: "second"}) |> render_submit()
+    view |> form("#trace-list-filters", %{reference: "second"}) |> render_submit()
     render_async(view)
 
     refute has_element?(view, "#trace-detail-footer .trace-footer-panel:not([hidden])")
@@ -453,7 +544,7 @@ defmodule TrifleApp.TracesLiveTest do
     refute has_element?(view, "#trace-entry-101-0")
     refute has_element?(view, "button[phx-click='more_attachments']")
 
-    view |> form("#trace-reference", %{reference: "second"}) |> render_submit()
+    view |> form("#trace-list-filters", %{reference: "second"}) |> render_submit()
     render_async(view)
     assert has_element?(view, "#trace-attachments-second")
     refute has_element?(view, "[data-trace-attachments]:not([hidden])")
@@ -500,11 +591,11 @@ defmodule TrifleApp.TracesLiveTest do
     render_async(view)
     assert_receive {:trace_attachments, "attachments-error", 0}
 
-    view |> form("#trace-reference", %{reference: "slow-attachments"}) |> render_submit()
+    view |> form("#trace-list-filters", %{reference: "slow-attachments"}) |> render_submit()
     render_async(view)
     view |> element("button[phx-value-section='attachments']") |> render_click()
     assert_receive {:slow_attachments, pid}, 1000
-    view |> form("#trace-reference", %{reference: "first"}) |> render_submit()
+    view |> form("#trace-list-filters", %{reference: "first"}) |> render_submit()
     send(pid, :finish)
     render_async(view)
     assert has_element?(view, "#trace-attachments-first")
@@ -543,7 +634,7 @@ defmodule TrifleApp.TracesLiveTest do
     assert has_element?(view, "[data-copy-text]", "<script>part 2</script>")
     view |> element("#trace-detail button[aria-label='Expand detail']") |> render_click()
     assert has_element?(view, "#trace-list.hidden")
-    refute has_element?(view, "#trace-list[class~='md:block']")
+    refute has_element?(view, "#trace-list[class~='lg:block']")
 
     assert has_element?(
              view,
@@ -551,7 +642,7 @@ defmodule TrifleApp.TracesLiveTest do
            )
 
     view |> element("#trace-detail button[aria-label='Restore split view']") |> render_click()
-    assert has_element?(view, "#trace-list[class~='md:block']")
+    assert has_element?(view, "#trace-list[class~='lg:block']")
 
     assert has_element?(
              view,
@@ -652,7 +743,7 @@ defmodule TrifleApp.TracesLiveTest do
     refute_receive {:trace_part, "empty", _}
 
     for {reference, count} <- [{"single", 1}, {"ten", 10}, {"hundred", 100}] do
-      view |> form("#trace-reference", %{reference: reference}) |> render_submit()
+      view |> form("#trace-list-filters", %{reference: reference}) |> render_submit()
       render_async(view)
 
       for part <- 1..count, do: assert_receive({:trace_part, ^reference, ^part})
@@ -699,14 +790,14 @@ defmodule TrifleApp.TracesLiveTest do
     render_async(view)
 
     for action <- [:switch, :close] do
-      view |> form("#trace-reference", %{reference: "controlled"}) |> render_submit()
+      view |> form("#trace-list-filters", %{reference: "controlled"}) |> render_submit()
       assert_receive {:waiting_part, 1, first_pid}, 1000
       send(first_pid, :finish)
       assert_receive {:waiting_part, 2, second_pid}, 1000
       assert has_element?(view, "#trace-entry-1-0")
 
       case action do
-        :switch -> view |> form("#trace-reference", %{reference: "single"}) |> render_submit()
+        :switch -> view |> form("#trace-list-filters", %{reference: "single"}) |> render_submit()
         :close -> view |> element("button[phx-click='close_trace']") |> render_click()
       end
 
@@ -805,12 +896,12 @@ defmodule TrifleApp.TracesLiveTest do
     assert expanded_params["reference"] == "first"
     assert expanded_params["path"] == "jobs"
     assert has_element?(view, "#trace-detail button[aria-label='Restore split view']")
-    refute has_element?(view, "#trace-list[class~='md:block']")
+    refute has_element?(view, "#trace-list[class~='lg:block']")
 
     view |> element("#trace-detail button[aria-label='Restore split view']") |> render_click()
     split_url = assert_patch(view)
     refute Map.has_key?(URI.decode_query(URI.parse(split_url).query), "detail")
-    assert has_element?(view, "#trace-list[class~='md:block']")
+    assert has_element?(view, "#trace-list[class~='lg:block']")
 
     # Browser history sends these URLs through the same handle_params callback.
     render_patch(view, expanded_url)
@@ -829,7 +920,7 @@ defmodule TrifleApp.TracesLiveTest do
     {:ok, reloaded, _} = live(conn, expanded_url)
     render_async(reloaded)
     assert has_element?(reloaded, "#trace-detail button[aria-label='Restore split view']")
-    refute has_element?(reloaded, "#trace-list[class~='md:block']")
+    refute has_element?(reloaded, "#trace-list[class~='lg:block']")
   end
 
   test "an expanded URL without a trace does not leak expansion into later selection", %{
@@ -1049,7 +1140,7 @@ defmodule TrifleApp.TracesLiveTest do
   test "stale detail results cannot replace a newer selection", %{conn: conn, database: database} do
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=slow")
     assert_receive {:slow_detail, pid}, 1000
-    view |> form("#trace-reference", %{reference: "first"}) |> render_submit()
+    view |> form("#trace-list-filters", %{reference: "first"}) |> render_submit()
     send(pid, :finish)
     html = render_async(view)
     assert html =~ "&lt;script&gt;part 1"
@@ -1081,7 +1172,7 @@ defmodule TrifleApp.TracesLiveTest do
     view |> form("#trace-filters", %{state: "warning"}) |> render_submit()
     render_async(view)
     assert [%{"state" => "warning", "color" => "#f97316"}] = activity_payload(view)["series"]
-    view |> form("#trace-filters", %{state: "warning", tags: "queue:default"}) |> render_submit()
+    view |> form("#trace-list-filters", %{tags: "queue:default"}) |> render_submit()
     render_async(view)
     assert [%{"state" => "warning", "color" => "#f97316"}] = activity_payload(view)["series"]
 

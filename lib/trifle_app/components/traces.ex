@@ -13,72 +13,39 @@ defmodule TrifleApp.Components.Traces do
 
   def filters(assigns) do
     ~H"""
-    <section aria-label="Trace filters" class="trace-filter-container">
-      <form id="trace-filters" phx-submit="apply_filters" class="trace-filter-layout grid gap-5">
-        <div class="trace-filter-pair grid min-w-0 gap-x-3 gap-y-5">
-          <.labeled_input
-            id="trace-filter-path"
-            label="Trace path"
-            name="path"
-            value={@params["path"]}
-            list="trace-paths"
-            placeholder="All traces"
-            class="min-w-0"
-            input_class="h-10 text-sm"
-          />
-          <.labeled_select
-            id="trace-filter-state"
-            label="State"
-            name="state"
-            class="w-32 justify-self-end"
-            select_class="h-10 text-sm"
+    <section aria-label="Activity filters" class="trace-filter-container">
+      <form
+        id="trace-filters"
+        phx-change="apply_activity_filters"
+        phx-submit="apply_activity_filters"
+        class="trace-filter-pair grid min-w-0 grid-cols-[minmax(0,1fr)_8rem] gap-3"
+      >
+        <.labeled_input
+          id="trace-filter-path"
+          label="Trace path"
+          name="path"
+          value={@params["path"]}
+          list="trace-paths"
+          placeholder="All traces"
+          phx-debounce="blur"
+          class="min-w-0"
+          input_class="h-10 text-sm"
+        />
+        <.labeled_select
+          id="trace-filter-state"
+          label="State"
+          name="state"
+          class="w-32 justify-self-end"
+          select_class="h-10 text-sm"
+        >
+          <option
+            :for={state <- ["", "running", "success", "warning", "error"]}
+            value={state}
+            selected={(@params["state"] || "") == state}
           >
-            <option
-              :for={state <- ["", "running", "success", "warning", "error"]}
-              value={state}
-              selected={(@params["state"] || "") == state}
-            >
-              {if state == "", do: "Any state", else: String.capitalize(state)}
-            </option>
-          </.labeled_select>
-        </div>
-        <div class="trace-filter-pair grid min-w-0 gap-x-3 gap-y-5">
-          <.labeled_input
-            id="trace-filter-tags"
-            label="Tags (comma-separated)"
-            name="tags"
-            value={@params["tags"]}
-            placeholder="queue:default, scheduled"
-            class="min-w-0"
-            input_class="h-10 text-sm"
-          />
-          <.labeled_select
-            id="trace-filter-tag-mode"
-            label="Match tags"
-            name="tag_mode"
-            class="w-32 justify-self-end"
-            select_class="h-10 text-sm"
-          >
-            <option value="any" selected={@params["tag_mode"] != "all"}>Any</option>
-            <option value="all" selected={@params["tag_mode"] == "all"}>All</option>
-          </.labeled_select>
-        </div>
-        <div class="trace-filter-actions flex flex-wrap items-end justify-between gap-x-3 gap-y-5">
-          <.labeled_input
-            id="trace-filter-duration"
-            label="Min. duration (ms)"
-            type="number"
-            min="0"
-            step="1"
-            name="duration_min"
-            value={@params["duration_min"]}
-            class="w-36 shrink-0"
-            input_class="h-10 text-sm"
-          />
-          <.primary_button class="ml-auto h-10 shrink-0 whitespace-nowrap">
-            Apply filters
-          </.primary_button>
-        </div>
+            {if state == "", do: "Any state", else: String.capitalize(state)}
+          </option>
+        </.labeled_select>
         <datalist id="trace-paths"><option :for={path <- @paths} value={path} /></datalist>
       </form>
     </section>
@@ -201,6 +168,8 @@ defmodule TrifleApp.Components.Traces do
   attr :error, :string, default: nil
   attr :cursor, :string, default: nil
 
+  attr :filters_open, :boolean, default: false
+
   def list(assigns) do
     ~H"""
     <aside
@@ -208,24 +177,87 @@ defmodule TrifleApp.Components.Traces do
       aria-label="Trace list"
       class={[
         "w-full min-h-0 min-w-0 shrink-0 overflow-auto",
-        @selected && "trace-list-split md:w-80 lg:w-96",
+        @selected && "trace-list-split lg:w-96",
         @collapsed && @selected && "hidden",
-        !@collapsed && @selected && "hidden md:block"
+        !@collapsed && @selected && "hidden lg:block"
       ]}
     >
-      <div class="border-b border-slate-200 p-4 dark:border-slate-700">
-        <form id="trace-reference" phx-submit="open_reference" class="flex items-center gap-2">
-          <.labeled_input
-            id="trace-reference-input"
-            label="Trace reference"
-            name="reference"
-            aria-label="Trace reference"
-            placeholder="Open exact reference…"
-            required
-            class="min-w-0 flex-1"
-            input_class="h-10 text-sm"
-          />
-          <button class="text-sm font-medium text-teal-600 dark:text-teal-400">Open</button>
+      <div class="trace-list-filter-container border-b border-slate-200 px-4 py-2 dark:border-slate-700">
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm font-semibold">Traces</span>
+          <button
+            id="trace-list-filters-toggle"
+            type="button"
+            phx-click="toggle_list_filters"
+            aria-expanded={to_string(@filters_open)}
+            aria-controls="trace-list-filters"
+            class={[
+              "inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500",
+              if(Query.list_filters_active?(@params),
+                do: "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+                else: "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              )
+            ]}
+          >
+            <TrifleApp.SidebarIcons.icon name="hero-funnel" class="h-4 w-4 shrink-0" /> Filters
+            <span :if={Query.list_filters_active?(@params)} class="sr-only">(active)</span>
+          </button>
+        </div>
+        <form
+          id="trace-list-filters"
+          phx-submit="apply_list_filters"
+          hidden={!@filters_open}
+          aria-label="Trace list filters"
+          class="pt-4 pb-2"
+        >
+          <div class="trace-list-filter-fields grid items-end gap-5">
+            <.labeled_input
+              id="trace-reference-input"
+              label="Trace reference"
+              name="reference"
+              value={@params["reference"]}
+              aria-label="Trace reference"
+              placeholder="Open exact reference…"
+              class="min-w-0"
+              input_class="h-10 text-sm"
+            />
+            <div class="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] gap-3">
+              <.labeled_input
+                id="trace-filter-tags"
+                label="Tags (comma-separated)"
+                name="tags"
+                value={@params["tags"]}
+                placeholder="queue:default, scheduled"
+                class="min-w-0"
+                input_class="h-10 text-sm"
+              />
+              <.labeled_select
+                id="trace-filter-tag-mode"
+                label="Match tags"
+                name="tag_mode"
+                select_class="h-10 text-sm"
+              >
+                <option value="any" selected={@params["tag_mode"] != "all"}>Any</option>
+                <option value="all" selected={@params["tag_mode"] == "all"}>All</option>
+              </.labeled_select>
+            </div>
+            <div class="flex min-w-0 flex-wrap items-end justify-between gap-3">
+              <.labeled_input
+                id="trace-filter-duration"
+                label="Min. duration (ms)"
+                type="number"
+                min="0"
+                step="1"
+                name="duration_min"
+                value={@params["duration_min"]}
+                class="min-w-0 flex-1"
+                input_class="h-10 text-sm"
+              />
+              <.primary_button class="ml-auto h-10 shrink-0 whitespace-nowrap">
+                Apply filters
+              </.primary_button>
+            </div>
+          </div>
         </form>
       </div>
       <p :if={@error} role="status" class="p-4 text-sm text-amber-700 dark:text-amber-400">
@@ -357,7 +389,7 @@ defmodule TrifleApp.Components.Traces do
       aria-busy={to_string(@loading)}
       class={[
         "relative flex min-w-0 flex-1 flex-col",
-        !@collapsed && "border-slate-200 md:border-l dark:border-slate-700"
+        !@collapsed && "border-slate-200 lg:border-l dark:border-slate-700"
       ]}
     >
       <header
@@ -403,7 +435,7 @@ defmodule TrifleApp.Components.Traces do
               phx-click="toggle_list"
               aria-pressed={to_string(@collapsed)}
               aria-controls="trace-list trace-detail"
-              class="max-md:hidden"
+              class="max-lg:hidden"
             />
             <TrifleApp.DesignSystem.IconButton.icon_button
               icon="hero-x-mark"
@@ -431,12 +463,12 @@ defmodule TrifleApp.Components.Traces do
               class="ml-auto inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1 tabular-nums"
               data-detail-timing
             >
-              <TrifleApp.SidebarIcons.icon name="hero-bolt" class="h-4 w-4 shrink-0" />
               <span class="whitespace-nowrap" title="Started">
                 <span class="sr-only">Started:</span> {time(@record.first_at)}
               </span>
               <span aria-hidden="true">→</span>
-              <span class="whitespace-nowrap" title="Duration">
+              <span class="inline-flex items-center gap-1 whitespace-nowrap" title="Duration">
+                <TrifleApp.SidebarIcons.icon name="hero-bolt" class="h-4 w-4 shrink-0" />
                 <span class="sr-only">Duration:</span> {@record.duration} ms
               </span>
               <span aria-hidden="true">→</span>
@@ -540,7 +572,8 @@ defmodule TrifleApp.Components.Traces do
           class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2"
           data-detail-footer-controls
         >
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1" data-detail-footer-summary>
+          <.entry_counts record={@record} />
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-1" data-detail-sections>
             <.copy_button
               record={@record}
               entries={@entries}
@@ -549,9 +582,6 @@ defmodule TrifleApp.Components.Traces do
               reference={@selected}
               loading={@loading}
             />
-            <.entry_counts record={@record} />
-          </div>
-          <div class="ml-auto flex flex-wrap items-center justify-end gap-1" data-detail-sections>
             <.footer_button
               :if={@record.tags not in [nil, []]}
               panel_id={"trace-tags-#{@source_id}-#{@record.reference}"}
@@ -599,6 +629,7 @@ defmodule TrifleApp.Components.Traces do
       phx-value-section={@section}
       aria-expanded={to_string(@active == @section)}
       aria-controls={@panel_id}
+      title={@label}
       class={[
         "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500",
         if(@active == @section,
@@ -609,7 +640,7 @@ defmodule TrifleApp.Components.Traces do
       ]}
     >
       <TrifleApp.SidebarIcons.icon name={@icon} class="h-4 w-4 shrink-0" />
-      <span>{@label}</span>
+      <span class="sr-only sm:not-sr-only">{@label}</span>
       <span :if={!is_nil(@count)} class="tabular-nums">({@count})</span>
     </button>
     """
@@ -708,7 +739,7 @@ defmodule TrifleApp.Components.Traces do
         class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
       >
         <TrifleApp.SidebarIcons.icon name="hero-clipboard-document" class="h-4 w-4 shrink-0" />
-        <span>Copy trace</span>
+        <span class="sr-only sm:not-sr-only">Copy</span>
       </button>
       <TrifleApp.DesignSystem.IconButton.icon_button
         :if={@kind == "reference"}
@@ -742,7 +773,7 @@ defmodule TrifleApp.Components.Traces do
         class="sr-only"
         data-copy-error-class={
           "absolute z-10 w-56 rounded bg-white p-2 text-xs text-red-600 shadow ring-1 ring-slate-200 dark:bg-slate-800 dark:text-red-400 dark:ring-slate-700 " <>
-            if(@kind == "trace", do: "bottom-full left-0 mb-1", else: "right-0 top-full mt-1")
+            if(@kind == "trace", do: "bottom-full right-0 mb-1", else: "right-0 top-full mt-1")
         }
       >
       </span>

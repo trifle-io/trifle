@@ -32,6 +32,7 @@ defmodule TrifleApp.TracesLive do
        cursor: nil,
        list_error: nil,
        list_loading: false,
+       list_filters_open: false,
        record: nil,
        entries: [],
        part: 0,
@@ -71,11 +72,19 @@ defmodule TrifleApp.TracesLive do
       list_changed = range_changed or old.filters != query.filters
       detail_changed = source_changed or old.reference != query.reference
 
+      list_filters_changed =
+        source_changed or Query.list_params(old.params) != Query.list_params(params)
+
       socket =
         assign(socket,
           source: source,
           query: query,
           params: params,
+          list_filters_open:
+            if(list_filters_changed,
+              do: Query.list_filters_active?(params),
+              else: socket.assigns.list_filters_open
+            ),
           query_error: nil,
           collapsed: query.detail_expanded
         )
@@ -104,13 +113,16 @@ defmodule TrifleApp.TracesLive do
   end
 
   @impl true
-  def handle_event("apply_filters", params, socket) do
-    params = Map.take(params, ~w(path state tags tag_mode duration_min))
-    patch(socket, Map.merge(socket.assigns.params, params))
+  def handle_event("apply_activity_filters", params, socket) do
+    apply_scoped_filters(socket, Map.take(params, ~w(path state)))
   end
 
-  def handle_event("open_reference", %{"reference" => reference}, socket),
-    do: patch(socket, Map.put(socket.assigns.params, "reference", String.trim(reference)))
+  def handle_event("apply_list_filters", params, socket) do
+    apply_scoped_filters(socket, Query.list_params(params))
+  end
+
+  def handle_event("toggle_list_filters", _, socket),
+    do: {:noreply, assign(socket, :list_filters_open, !socket.assigns.list_filters_open)}
 
   def handle_event("close_trace", _, socket),
     do: patch(socket, Map.drop(socket.assigns.params, ["reference", "detail"]))
@@ -449,6 +461,16 @@ defmodule TrifleApp.TracesLive do
        Application.get_env(:trifle, :trace_reader, Reader)}
 
   defp patch(socket, params), do: {:noreply, push_patch(socket, to: Query.url(params))}
+
+  defp apply_scoped_filters(socket, filters) do
+    filters = Map.new(filters, fn {key, value} -> {key, String.trim(value)} end)
+    params = Map.merge(socket.assigns.params, filters)
+
+    if params == socket.assigns.params,
+      do: {:noreply, socket},
+      else: patch(socket, params)
+  end
+
   defp source_id(nil), do: nil
   defp source_id(source), do: Source.id(source)
   defp date_input(date), do: date |> DateTime.to_naive() |> NaiveDateTime.to_iso8601()
@@ -514,6 +536,7 @@ defmodule TrifleApp.TracesLive do
                 loading={@list_loading}
                 error={@list_error}
                 cursor={@cursor}
+                filters_open={@list_filters_open}
               />
               <View.detail
                 params={@params}

@@ -9,6 +9,7 @@ defmodule TrifleApp.Components.TracesTest do
     params = %{
       "path" => "jobs/App.Worker",
       "state" => "warning",
+      "reference" => "first",
       "tags" => "queue:default, scheduled",
       "tag_mode" => "all",
       "duration_min" => "250"
@@ -18,8 +19,9 @@ defmodule TrifleApp.Components.TracesTest do
       render_component(&Traces.filters/1, params: params, paths: ["jobs", "jobs/App.Worker"])
       |> Floki.parse_document!()
 
-    fields = Floki.find(doc, "#trace-filters input, #trace-filters select")
-    assert length(fields) == 5
+    doc = doc ++ trace_list(%{}, params: params, filters_open: true)
+    fields = Floki.find(doc, "form input, form select")
+    assert length(fields) == 6
 
     for field <- fields do
       [id] = Floki.attribute(field, "id")
@@ -49,34 +51,34 @@ defmodule TrifleApp.Components.TracesTest do
     assert Floki.attribute(doc, "#trace-filter-duration", "type") == ["number"]
     assert Floki.attribute(doc, "#trace-filter-duration", "min") == ["0"]
     assert Floki.attribute(doc, "#trace-filter-duration", "step") == ["1"]
-    assert Floki.attribute(doc, "#trace-filters", "phx-submit") == ["apply_filters"]
+    assert Floki.attribute(doc, "#trace-filters", "phx-submit") == ["apply_activity_filters"]
+    assert Floki.attribute(doc, "#trace-filters", "phx-change") == ["apply_activity_filters"]
+    assert Floki.attribute(doc, "#trace-filter-path", "phx-debounce") == ["blur"]
+    assert Floki.attribute(doc, "#trace-list-filters", "phx-submit") == ["apply_list_filters"]
+    assert Floki.attribute(doc, "#trace-list-filters", "phx-change") == []
   end
 
-  test "responsive layout keeps related filters grouped with duration left and Apply right" do
+  test "activity has only path and state, with list filters and Apply grouped in the list" do
     doc = render_component(&Traces.filters/1, params: %{}, paths: []) |> Floki.parse_document!()
 
-    assert Floki.find(doc, ".trace-filter-container > form.trace-filter-layout") != []
-
-    groups = Floki.find(doc, "#trace-filters > div")
-
-    assert Enum.map(groups, fn group ->
-             Floki.attribute(Floki.find(group, "input, select"), "name")
-           end) == [["path", "state"], ["tags", "tag_mode"], ["duration_min"]]
-
-    assert length(Floki.find(doc, "#trace-filters > .trace-filter-pair")) == 2
-
-    assert Floki.find(doc, ".trace-filter-actions.justify-between button.ml-auto") |> Floki.text() =~
-             "Apply filters"
-
-    assert Floki.find(doc, ".trace-filter-actions > div:first-child #trace-filter-duration") != []
-
-    assert Floki.find(
-             doc,
-             ".trace-filter-actions button[type='submit'].ml-auto.h-10.rounded-lg.shadow-sm"
-           ) != []
+    assert Floki.find(doc, ".trace-filter-container > form.trace-filter-pair") != []
 
     assert Floki.attribute(doc, "#trace-filters input, #trace-filters select", "name") ==
-             ["path", "state", "tags", "tag_mode", "duration_min"]
+             ["path", "state"]
+
+    assert Floki.find(doc, "#trace-filters button") == []
+
+    list = trace_list(%{}, filters_open: true)
+
+    assert Floki.attribute(list, "#trace-list-filters input, #trace-list-filters select", "name") ==
+             ["reference", "tags", "tag_mode", "duration_min"]
+
+    assert Floki.find(list, "#trace-list-filters button[type='submit']")
+           |> Floki.text()
+           |> String.trim() == "Apply filters"
+
+    assert Floki.find(list, ".trace-list-filter-fields") != []
+    assert Floki.find(list, "#trace-filter-path, #trace-filter-state") == []
   end
 
   test "trace filters retain their unfiltered defaults" do
@@ -84,7 +86,14 @@ defmodule TrifleApp.Components.TracesTest do
 
     assert Floki.attribute(doc, "#trace-filter-path", "placeholder") == ["All traces"]
     assert Floki.attribute(doc, "#trace-filter-state option[selected]", "value") == [""]
-    assert Floki.attribute(doc, "#trace-filter-tag-mode option[selected]", "value") == ["any"]
+    list = trace_list(%{})
+    assert Floki.attribute(list, "#trace-filter-tag-mode option[selected]", "value") == ["any"]
+    assert Floki.find(list, "#trace-list-filters[hidden]") != []
+
+    assert Floki.find(
+             list,
+             "#trace-list-filters-toggle[aria-expanded='false'][aria-controls='trace-list-filters']"
+           ) != []
   end
 
   test "reference lookup uses the concise floating label" do
@@ -106,8 +115,8 @@ defmodule TrifleApp.Components.TracesTest do
     assert Floki.attribute(doc, "#trace-reference-input", "aria-label") == ["Trace reference"]
     assert Floki.find(doc, "#trace-list h2") == []
     refute Floki.text(doc) =~ "newest first"
-    assert Floki.find(doc, "#trace-reference-input[name='reference'][required]") != []
-    assert Floki.attribute(doc, "#trace-reference", "phx-submit") == ["open_reference"]
+    assert Floki.find(doc, "#trace-reference-input[name='reference']:not([required])") != []
+    assert Floki.attribute(doc, "#trace-list-filters", "phx-submit") == ["apply_list_filters"]
   end
 
   test "the unselected list has full width and only selected traces enable the split layout" do
@@ -130,11 +139,9 @@ defmodule TrifleApp.Components.TracesTest do
       assert Floki.find(doc, "#trace-list button[phx-click='close_trace']") == []
 
       if selected do
-        assert "md:w-80" in classes
         assert "lg:w-96" in classes
         refute "border-r" in classes
       else
-        refute "md:w-80" in classes
         refute "lg:w-96" in classes
         refute "border-r" in classes
         refute "hidden" in classes
@@ -207,7 +214,7 @@ defmodule TrifleApp.Components.TracesTest do
         assert Floki.attribute(button, "path", "stroke-linecap") == ["round"]
         assert Floki.attribute(button, "path", "stroke-linejoin") == ["round"]
         [class] = Floki.attribute(button, "class")
-        assert String.split(class) -- ["max-md:hidden", "disabled:opacity-50"] == widget_classes
+        assert String.split(class) -- ["max-lg:hidden", "disabled:opacity-50"] == widget_classes
       end
 
       assert Floki.attribute(doc, "button[phx-click='toggle_list']", "aria-pressed") == [
@@ -263,13 +270,13 @@ defmodule TrifleApp.Components.TracesTest do
       assert length(Floki.find(doc, "#trace-detail-header [data-detail-actions] button")) == 2
       assert Floki.find(doc, "#trace-detail-header [data-copy-kind='trace']") == []
 
-      assert Floki.find(doc, "[data-detail-footer-summary] [data-copy-button]")
+      assert Floki.find(doc, "[data-detail-sections] [data-copy-button]")
              |> Floki.text()
-             |> String.trim() == "Copy trace"
+             |> String.trim() == "Copy"
 
       assert Floki.find(
                doc,
-               "[data-detail-footer-summary] > [data-copy-kind='trace'] + [data-entry-counts]"
+               "[data-detail-sections] > [data-copy-kind='trace'] + button[phx-value-section='tags']"
              ) != []
 
       assert Floki.find(
@@ -445,12 +452,12 @@ defmodule TrifleApp.Components.TracesTest do
 
       for target <- ["[data-copy-button]", "[data-copy-success]"] do
         assert Floki.attribute(control, "#{target} path", "d") ==
-                 Floki.attribute(doc, "[data-detail-footer-summary] #{target} path", "d")
+                 Floki.attribute(doc, "[data-detail-sections] #{target} path", "d")
       end
 
       assert Floki.attribute(
                doc,
-               "[data-detail-footer-summary] [data-copy-ready]",
+               "[data-detail-sections] [data-copy-ready]",
                "data-copy-ready"
              ) ==
                [to_string(!loading)]
@@ -550,8 +557,8 @@ defmodule TrifleApp.Components.TracesTest do
 
       timing = Floki.find(doc, "[data-detail-timing]")
 
-      assert Floki.find(doc, "[data-detail-timing] > svg:first-child.h-4.w-4") != []
-      assert Floki.find(timing, "[title='Duration'] svg") == []
+      assert Floki.find(timing, "[title='Started'] svg") == []
+      assert Floki.find(timing, "[title='Duration'] svg.h-4.w-4") != []
 
       assert Floki.attribute(timing, "svg path", "d") == [
                "m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"
@@ -1043,7 +1050,7 @@ defmodule TrifleApp.Components.TracesTest do
              "M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"
            ]
 
-    for button <- Floki.find(doc, "[data-detail-sections] button") do
+    for button <- Floki.find(doc, "[data-detail-sections] button[aria-controls]") do
       assert Floki.attribute(button, "svg", "class") == ["h-4 w-4 shrink-0"]
       assert Floki.attribute(button, "svg", "stroke-width") == ["1.5"]
       assert Floki.attribute(button, "aria-expanded") == ["false"]
