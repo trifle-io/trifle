@@ -174,12 +174,14 @@ defmodule Trifle.DatabasePools.RedisPoolSupervisor do
                    host: endpoint.host,
                    port: endpoint.port || 6379,
                    password: database.password,
+                   username: database.username,
                    database: redis_database,
                    socket_opts: socket_options(),
                    # Additional Redix options for reliability
                    sync_connect: true,
                    exit_on_disconnection: true
                  ]
+                 |> Trifle.Networking.DatabaseTLS.redis(database)
                ]}
           }
         end

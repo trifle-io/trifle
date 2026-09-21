@@ -27,6 +27,13 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
       >
         <:header title={@title} subtitle="Configure Trifle Stats and optional Trifle Traces storage" />
 
+        <p
+          :if={@database.connection_method == "unconfigured"}
+          class="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200"
+        >
+          Private Connector was retired. Choose and test a Tailscale connection to reconnect this source.
+        </p>
+
         <.form_field field={@form[:display_name]} label="Display Name" required />
 
         <.form_field
@@ -44,7 +51,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
               field={@form[:connection_method]}
               type="select"
               label="Connection Method"
-              options={connection_method_options(@available_connectors)}
+              options={connection_method_options(@selected_connection_method)}
             />
 
             <%= if @selected_connection_method == "direct" do %>
@@ -103,19 +110,19 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
               <% end %>
             <% end %>
 
-            <%= if @selected_connection_method == "connector" do %>
+            <%= if @selected_connection_method == "tailscale" do %>
               <div class="mt-4">
-                <%= if Enum.empty?(@available_connectors) do %>
+                <%= if Enum.empty?(@available_network_connections) do %>
                   <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                    Create a private connector before selecting this connection method.
+                    Create a Tailscale connection before selecting this connection method.
                   </div>
                 <% else %>
                   <.form_field
-                    field={@form[:organization_connector_id]}
+                    field={@form[:network_connection_id]}
                     type="select"
-                    label="Private Connector"
-                    options={connector_options(@available_connectors)}
-                    prompt="Choose a connector..."
+                    label="Tailscale"
+                    options={network_connection_options(@available_network_connections)}
+                    prompt="Choose a connection..."
                   />
                 <% end %>
               </div>
@@ -417,6 +424,18 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
               <% else %>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div class="sm:col-span-2">
+                    <.form_field
+                      field={@form[:trace_network_connection_id]}
+                      type="select"
+                      label="Storage network"
+                      prompt="Direct / public S3"
+                      options={network_connection_options(@available_network_connections)}
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Choose a Tailscale connection for a private S3 endpoint. Filesystem paths must be local to Trifle.
+                    </p>
+                  </div>
+                  <div class="sm:col-span-2">
                     <label class="block text-sm font-medium text-gray-900 dark:text-white">
                       Endpoint <span class="font-normal text-gray-500">(Optional for AWS)</span>
                     </label>
@@ -535,7 +554,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
               Trifle Traces <span class="font-normal text-gray-500">(Unavailable)</span>
             </h3>
             <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
-              Traces currently require a direct or SSH PostgreSQL or MongoDB connection. Private Connector remains Stats-only.
+              Traces currently require a direct or SSH PostgreSQL or MongoDB connection. Choose PostgreSQL or MongoDB for Traces.
             </p>
           </div>
         <% end %>
@@ -566,7 +585,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
       |> ensure_sqlite_upload()
       |> assign(assigns)
       |> assign(:generated_ssh_key, nil)
-      |> assign(:available_connectors, available_connectors(database))
+      |> assign(:available_network_connections, available_network_connections(database))
       |> assign(:selected_driver, selected_driver)
       |> assign(:selected_connection_method, selected_connection_method)
       |> assign(:show_traces_config, Database.traces_configured?(database))
@@ -747,7 +766,9 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
-  defp config_field_type("ssl", driver) when driver in ["postgres", "mysql"], do: :boolean
+  defp config_field_type("ssl", driver) when driver in ["postgres", "mysql", "mongo", "redis"],
+    do: :boolean
+
   defp config_field_type("joined_identifiers", _), do: :joined_identifiers
   defp config_field_type("pool_size", _), do: :integer
   defp config_field_type("pool_timeout", _), do: :integer
@@ -975,7 +996,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
 
   defp selected_connection_method(socket, params, _selected_driver) do
     case Map.get(params, "connection_method") do
-      value when value in ["direct", "ssh_tunnel", "connector"] ->
+      value when value in ["direct", "ssh_tunnel", "tailscale"] ->
         value
 
       _ ->
@@ -985,32 +1006,38 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
     end
   end
 
-  defp connection_method_options(_connectors) do
-    [
-      {"Direct + IP allowlist", "direct"},
-      {"SSH tunnel", "ssh_tunnel"},
-      {"Private Connector", "connector"}
-    ]
+  defp connection_method_options(selected) do
+    pending =
+      if selected == "unconfigured",
+        do: [{"Choose a connection method", "unconfigured"}],
+        else: []
+
+    pending ++
+      [
+        {"Direct + IP allowlist", "direct"},
+        {"SSH tunnel", "ssh_tunnel"},
+        {"Tailscale", "tailscale"}
+      ]
   end
 
-  defp connector_options(connectors) do
-    Enum.map(connectors, fn connector ->
+  defp network_connection_options(connections) do
+    Enum.map(connections, fn connection ->
       label =
-        case connector.hostname do
-          value when is_binary(value) and value != "" -> "#{connector.name} (#{value})"
-          _ -> connector.name
+        case connection.hostname do
+          value when is_binary(value) and value != "" -> "#{connection.name} (#{value})"
+          _ -> connection.name
         end
 
-      {label, connector.id}
+      {label, connection.id}
     end)
   end
 
-  defp available_connectors(%Database{organization_id: organization_id})
+  defp available_network_connections(%Database{organization_id: organization_id})
        when is_binary(organization_id) do
-    Organizations.list_connectors_for_org(organization_id)
+    Trifle.Organizations.NetworkConnections.list(organization_id)
   end
 
-  defp available_connectors(_database), do: []
+  defp available_network_connections(_database), do: []
 
   defp maybe_ensure_generated_ssh_key(socket, "ssh_tunnel") do
     cond do

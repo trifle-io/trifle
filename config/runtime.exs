@@ -49,6 +49,12 @@ deployment_mode =
 
 config :trifle, :deployment_mode, deployment_mode
 
+config :trifle, Trifle.Networking.Gateway,
+  url: System.get_env("TRIFLE_GATEWAY_URL"),
+  ca_file: System.get_env("TRIFLE_GATEWAY_CA_FILE"),
+  cert_file: System.get_env("TRIFLE_GATEWAY_CERT_FILE"),
+  key_file: System.get_env("TRIFLE_GATEWAY_KEY_FILE")
+
 cloud_egress_ips =
   case System.get_env("TRIFLE_CLOUD_EGRESS_IPS") do
     nil ->

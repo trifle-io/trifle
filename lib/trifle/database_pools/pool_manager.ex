@@ -19,7 +19,8 @@ defmodule Trifle.DatabasePools.PoolManager do
       Trifle.DatabasePools.RedisPoolSupervisor.stop_redis_pool(database_id),
       Trifle.DatabasePools.SqlitePoolSupervisor.stop_sqlite_pool(database_id),
       Trifle.DatabasePools.MySQLPoolSupervisor.stop_mysql_pool(database_id),
-      Trifle.Networking.SSHTunnelSupervisor.stop_tunnel(database_id)
+      Trifle.Networking.SSHTunnelSupervisor.stop_tunnel(database_id),
+      Trifle.Networking.Forwarder.stop(database_id)
     ]
 
     # Return :ok if all succeeded, or list of any errors

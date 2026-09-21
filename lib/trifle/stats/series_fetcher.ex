@@ -9,15 +9,12 @@ defmodule Trifle.Stats.SeriesFetcher do
   - Handling both system keys and specific keys
   """
 
-  alias Trifle.Organizations.Database
-  alias Trifle.Stats.ConnectorValues
   alias Trifle.Stats.Source
 
   require Logger
 
   @default_chunk_size 720
   @default_progressive_concurrency 1
-  @connector_progressive_concurrency 10
   @transponder_timeout 300_000
 
   # Public API
@@ -304,34 +301,25 @@ defmodule Trifle.Stats.SeriesFetcher do
     fetcher.(key, chunk_from, chunk_to, granularity, config)
   end
 
-  defp default_progressive_concurrency(%Source{
-         module: Trifle.Stats.Source.Database,
-         record: %Database{connection_method: "connector"}
-       }) do
-    @connector_progressive_concurrency
-  end
-
   defp default_progressive_concurrency(_source), do: @default_progressive_concurrency
 
   defp normalize_progressive_concurrency(value) when is_integer(value) do
     value
     |> max(1)
-    |> min(@connector_progressive_concurrency)
+    |> min(10)
   end
 
   defp normalize_progressive_concurrency(_value), do: @default_progressive_concurrency
 
-  defp raw_stats_fetcher(
-         %Source{
-           module: Trifle.Stats.Source.Database,
-           record: %Database{connection_method: "connector"} = database
-         },
-         opts
-       ) do
-    connector_opts = Keyword.take(opts, [:connector_timeout])
-
+  defp raw_stats_fetcher(%Source{module: Trifle.Stats.Source.Database, record: database}, _opts)
+       when database.connection_method in ["tailscale", "unconfigured"] do
     fn key, from, to, granularity, _config ->
-      ConnectorValues.fetch_values(database, key, from, to, granularity, connector_opts)
+      try do
+        config = Trifle.Organizations.Database.connected_stats_config(database)
+        {:ok, Trifle.Stats.values(key, from, to, granularity, config)}
+      rescue
+        error -> {:error, Exception.message(error)}
+      end
     end
   end
 

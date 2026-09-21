@@ -38,7 +38,7 @@ defmodule Trifle.Organizations.DatabaseTest do
     end
 
     test "includes secure connection methods" do
-      assert Database.connection_methods() == ["direct", "ssh_tunnel", "connector"]
+      assert Database.connection_methods() == ["direct", "ssh_tunnel", "tailscale"]
     end
   end
 
@@ -123,25 +123,23 @@ defmodule Trifle.Organizations.DatabaseTest do
 
       refute unsupported.valid?
 
-      assert {"is only supported for direct or SSH PostgreSQL and MongoDB databases", _} =
+      assert {"is only supported for direct, SSH or Tailscale PostgreSQL and MongoDB databases",
+              _} =
                unsupported.errors[:trace_config]
     end
 
-    test "keeps the private connector Stats-only" do
+    test "supports traces through Tailscale" do
       changeset =
         Database.changeset(
           %Database{},
           postgres_attrs(%{
-            connection_method: "connector",
-            organization_connector_id: Ecto.UUID.generate(),
+            connection_method: "tailscale",
+            network_connection_id: Ecto.UUID.generate(),
             trace_config: file_trace_config()
           })
         )
 
-      refute changeset.valid?
-
-      assert {"is only supported for direct or SSH PostgreSQL and MongoDB databases", _} =
-               changeset.errors[:trace_config]
+      assert changeset.valid?
     end
 
     test "requires S3 credentials to be provided as a pair" do
@@ -341,15 +339,15 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert get_field(changeset, :ssh_port) == 22
     end
 
-    test "requires an organization connector when connector connection method is selected" do
+    test "requires a network connection when Tailscale connection method is selected" do
       changeset =
         Database.changeset(
           %Database{},
-          mysql_attrs(%{connection_method: "connector"})
+          mysql_attrs(%{connection_method: "tailscale"})
         )
 
       refute changeset.valid?
-      assert {"can't be blank", _} = changeset.errors[:organization_connector_id]
+      assert {"can't be blank", _} = changeset.errors[:network_connection_id]
     end
 
     test "clears ssh fields when connection method is not ssh tunnel" do
@@ -433,44 +431,44 @@ defmodule Trifle.Organizations.DatabaseTest do
       assert database.config["joined_identifiers"] == "full"
     end
 
-    test "creates connector-connected database with a connector from the same organization" do
+    test "creates Tailscale-connected database with a network connection from the same organization" do
       organization = organization_fixture()
 
-      {connector, _token} =
-        organization_connector_with_token_fixture(%{organization: organization})
+      connection =
+        network_connection_fixture(%{organization: organization})
 
       assert {:ok, database} =
                Organizations.create_database_for_org(
                  organization,
                  mysql_attrs(%{
-                   connection_method: "connector",
-                   organization_connector_id: connector.id
+                   connection_method: "tailscale",
+                   network_connection_id: connection.id
                  })
                  |> Map.delete(:organization_id)
                )
 
-      assert database.connection_method == "connector"
-      assert database.organization_connector_id == connector.id
+      assert database.connection_method == "tailscale"
+      assert database.network_connection_id == connection.id
     end
 
-    test "rejects connector-connected database with a connector from another organization" do
+    test "rejects Tailscale-connected database with a network connection from another organization" do
       organization = organization_fixture()
       other_organization = organization_fixture(%{name: "other organization"})
 
-      {connector, _token} =
-        organization_connector_with_token_fixture(%{organization: other_organization})
+      connection =
+        network_connection_fixture(%{organization: other_organization})
 
       assert {:error, changeset} =
                Organizations.create_database_for_org(
                  organization,
                  mysql_attrs(%{
-                   connection_method: "connector",
-                   organization_connector_id: connector.id
+                   connection_method: "tailscale",
+                   network_connection_id: connection.id
                  })
                  |> Map.delete(:organization_id)
                )
 
-      assert {"is not available", _} = changeset.errors[:organization_connector_id]
+      assert {"is not available", _} = changeset.errors[:network_connection_id]
     end
   end
 

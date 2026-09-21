@@ -155,6 +155,7 @@ defmodule Trifle.DatabasePools.PostgresPoolSupervisor do
           socket_options: socket_options()
         ]
         |> maybe_put_ssl_options(db_config)
+        |> Trifle.Networking.DatabaseTLS.postgres(database)
 
       {:ok, {Postgrex, config}}
     end

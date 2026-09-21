@@ -62,11 +62,11 @@ defmodule TrifleApp.OrganizationLive.Navigation do
         </.link>
 
         <.link
-          navigate={~p"/organization/connectors"}
-          class={tab_link_classes(@active_tab == :connectors)}
+          navigate={~p"/organization/connections"}
+          class={tab_link_classes(@active_tab == :connections)}
         >
           <svg
-            class={tab_icon_classes(@active_tab == :connectors)}
+            class={tab_icon_classes(@active_tab == :connections)}
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -79,7 +79,7 @@ defmodule TrifleApp.OrganizationLive.Navigation do
               d="M5.25 14.25h13.5m-13.5 0A2.25 2.25 0 0 1 3 12V6.75A2.25 2.25 0 0 1 5.25 4.5h13.5A2.25 2.25 0 0 1 21 6.75V12a2.25 2.25 0 0 1-2.25 2.25m-13.5 0v3A2.25 2.25 0 0 0 7.5 19.5h9A2.25 2.25 0 0 0 18.75 17.25v-3M8.25 9h.008v.008H8.25V9Zm3.75 0h.008v.008H12V9Zm3.75 0h.008v.008h-.008V9Z"
             />
           </svg>
-          <span class="hidden sm:block">Connectors</span>
+          <span class="hidden sm:block">Connections</span>
         </.link>
 
         <.link navigate={~p"/organization/sso"} class={tab_link_classes(@active_tab == :sso)}>

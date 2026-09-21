@@ -1,0 +1,29 @@
+# Merge with the deployment's compose file after generating certificates.
+# docker compose -f docker-compose.yml -f .devops/docker/network-gateway/compose.yaml up -d
+services:
+  network-gateway:
+    image: trifle/network-gateway:${TRIFLE_GATEWAY_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      TRIFLE_GATEWAY_STATE_KEY: ${TRIFLE_GATEWAY_STATE_KEY:?Set a base64-encoded 32-byte state encryption key}
+      TRIFLE_GATEWAY_TLS_CERT: /certs/server.crt
+      TRIFLE_GATEWAY_TLS_KEY: /certs/server.key
+      TRIFLE_GATEWAY_CLIENT_CA: /certs/ca.crt
+    volumes:
+      - trifle_gateway_state:/data
+      - ${TRIFLE_GATEWAY_CERTS_DIR:?Set an absolute certificate directory}/server.crt:/certs/server.crt:ro
+      - ${TRIFLE_GATEWAY_CERTS_DIR}/server.key:/certs/server.key:ro
+      - ${TRIFLE_GATEWAY_CERTS_DIR}/ca.crt:/certs/ca.crt:ro
+    # No host ports. Only App containers on this private network can connect.
+  app:
+    environment:
+      TRIFLE_GATEWAY_URL: https://network-gateway:8443
+      TRIFLE_GATEWAY_CA_FILE: /gateway-certs/ca.crt
+      TRIFLE_GATEWAY_CERT_FILE: /gateway-certs/client.crt
+      TRIFLE_GATEWAY_KEY_FILE: /gateway-certs/client.key
+    volumes:
+      - ${TRIFLE_GATEWAY_CERTS_DIR}/client.crt:/gateway-certs/client.crt:ro
+      - ${TRIFLE_GATEWAY_CERTS_DIR}/client.key:/gateway-certs/client.key:ro
+      - ${TRIFLE_GATEWAY_CERTS_DIR}/ca.crt:/gateway-certs/ca.crt:ro
+volumes:
+  trifle_gateway_state:

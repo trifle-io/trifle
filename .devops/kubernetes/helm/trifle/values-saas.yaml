@@ -1,0 +1,7 @@
+# Layer over values.yaml (and before your environment-specific overrides).
+app:
+  deploymentMode: saas
+
+# Exactly one persistent gateway, independent of App replicas and autoscaling.
+networkGateway:
+  enabled: true

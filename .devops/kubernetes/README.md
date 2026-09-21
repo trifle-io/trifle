@@ -37,6 +37,18 @@ This directory contains Kubernetes deployment configurations for Trifle using He
 
 ## Configuration
 
+### Tailscale network gateway
+
+Self-hosted defaults leave `networkGateway.enabled: false`. SaaS deployments layer
+`helm/trifle/values-saas.yaml` before environment overrides to enable one shared
+gateway, independently of App replicas or autoscaling. Helm creates and preserves
+the private mTLS credentials, encryption key and persistent state volume. Set
+`networkGateway.image.tag` to the published release version alongside `image.tag`.
+Self-hosted operators can opt in with `networkGateway.enabled: true`.
+
+See [gateway deployment and routing](../../docs/network-gateway.md#deploy-with-helm)
+for storage, externally managed Secrets, upgrade behavior and certificate renewal.
+
 ### Basic Configuration
 
 Create a `values-prod.yaml` file:

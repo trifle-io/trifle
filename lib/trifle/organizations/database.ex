@@ -2,14 +2,13 @@ defmodule Trifle.Organizations.Database do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Trifle.Organizations.{ConnectorJob, OrganizationConnector}
   alias Trifle.Timeframe
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
   @drivers ["redis", "postgres", "mongo", "sqlite", "mysql"]
-  @connection_methods ["direct", "ssh_tunnel", "connector"]
+  @connection_methods ["direct", "ssh_tunnel", "tailscale"]
   @trace_drivers ["postgres", "mongo"]
   @trace_data_drivers ["s3", "file"]
   @trace_config_keys ~w(
@@ -40,7 +39,11 @@ defmodule Trifle.Organizations.Database do
     :ssh_public_key,
     :ssh_passphrase,
     :ssh_host_key_fingerprint,
-    :organization_connector_id,
+    :network_connection_id,
+    :trace_network_connection_id,
+    :trace_config,
+    :trace_access_key_id,
+    :trace_secret_access_key,
     :config
   ]
 
@@ -78,7 +81,8 @@ defmodule Trifle.Organizations.Database do
     field :last_error, :string
 
     belongs_to :organization, Trifle.Organizations.Organization
-    belongs_to :organization_connector, Trifle.Organizations.OrganizationConnector
+    belongs_to :network_connection, Trifle.Organizations.NetworkConnection
+    belongs_to :trace_network_connection, Trifle.Organizations.NetworkConnection
     has_many :database_tokens, Trifle.Organizations.DatabaseToken
 
     timestamps()
@@ -93,7 +97,7 @@ defmodule Trifle.Organizations.Database do
   def pool_relevant_fields, do: @pool_relevant_fields
 
   def traces_supported?(driver, connection_method) do
-    driver in @trace_drivers and connection_method in ["direct", "ssh_tunnel"]
+    driver in @trace_drivers and connection_method in ["direct", "ssh_tunnel", "tailscale"]
   end
 
   def traces_configured?(%__MODULE__{trace_config: config}) when is_map(config),
@@ -135,6 +139,7 @@ defmodule Trifle.Organizations.Database do
       "pool_timeout" => 5000,
       "timeout" => 5000,
       "prefix" => "trifle_stats",
+      "ssl" => false,
       "expire_after" => nil
     }
   end
@@ -156,6 +161,7 @@ defmodule Trifle.Organizations.Database do
       "pool_timeout" => 5000,
       "timeout" => 5000,
       "collection_name" => "trifle_stats",
+      "ssl" => false,
       "expire_after" => nil,
       "joined_identifiers" => "full"
     }
@@ -233,7 +239,8 @@ defmodule Trifle.Organizations.Database do
       :default_timeframe,
       :default_granularity,
       :organization_id,
-      :organization_connector_id
+      :network_connection_id,
+      :trace_network_connection_id
     ])
     |> validate_required([:display_name, :driver, :beginning_of_week, :organization_id])
     |> validate_inclusion(:driver, @drivers)
@@ -244,6 +251,7 @@ defmodule Trifle.Organizations.Database do
     |> validate_connection_method_fields()
     |> normalize_trace_config()
     |> validate_trace_config()
+    |> validate_trace_network()
     |> validate_length(:display_name, min: 1, max: 255)
     |> validate_number(:port, greater_than: 0, less_than: 65536)
     |> validate_number(:ssh_port, greater_than: 0, less_than: 65536)
@@ -268,6 +276,7 @@ defmodule Trifle.Organizations.Database do
     |> put_change(:trace_config, %{})
     |> put_change(:trace_access_key_id, nil)
     |> put_change(:trace_secret_access_key, nil)
+    |> put_change(:trace_network_connection_id, nil)
   end
 
   def mark_check_failed(%__MODULE__{} = database, error) do
@@ -345,12 +354,12 @@ defmodule Trifle.Organizations.Database do
       {"sqlite", method} when method != "direct" ->
         changeset
         |> clear_ssh_fields()
-        |> clear_connector_fields()
+        |> clear_network_fields()
         |> add_error(:connection_method, "must be direct for SQLite databases")
 
       {_, "ssh_tunnel"} ->
         changeset
-        |> clear_connector_fields()
+        |> clear_network_fields()
         |> maybe_put_default_ssh_port()
         |> validate_required([
           :ssh_host,
@@ -361,25 +370,25 @@ defmodule Trifle.Organizations.Database do
           :ssh_host_key_fingerprint
         ])
 
-      {_, "connector"} ->
+      {_, "tailscale"} ->
         changeset
         |> clear_ssh_fields()
-        |> validate_required([:organization_connector_id])
-        |> assoc_constraint(:organization_connector)
+        |> validate_required([:network_connection_id])
+        |> assoc_constraint(:network_connection)
         |> check_constraint(:connection_method,
-          name: :chk_databases_connector_required,
-          message: "requires a Trifle private connector"
+          name: :databases_tailscale_connection_required,
+          message: "requires a Tailscale connection"
         )
 
       _ ->
         changeset
         |> clear_ssh_fields()
-        |> clear_connector_fields()
+        |> clear_network_fields()
     end
   end
 
-  defp clear_connector_fields(changeset) do
-    put_change(changeset, :organization_connector_id, nil)
+  defp clear_network_fields(changeset) do
+    put_change(changeset, :network_connection_id, nil)
   end
 
   defp clear_ssh_fields(changeset) do
@@ -581,6 +590,25 @@ defmodule Trifle.Organizations.Database do
     end
   end
 
+  defp validate_trace_network(changeset) do
+    config = get_field(changeset, :trace_config) || %{}
+    connection_id = get_field(changeset, :trace_network_connection_id)
+
+    cond do
+      config["data_driver"] != "s3" ->
+        put_change(changeset, :trace_network_connection_id, nil)
+
+      is_nil(connection_id) ->
+        changeset
+
+      config["data_endpoint"] in [nil, ""] ->
+        add_error(changeset, :trace_config, "requires an endpoint for Tailscale payload storage")
+
+      true ->
+        assoc_constraint(changeset, :trace_network_connection)
+    end
+  end
+
   defp validate_trace_support(changeset) do
     driver = get_field(changeset, :driver)
     connection_method = get_field(changeset, :connection_method)
@@ -591,7 +619,7 @@ defmodule Trifle.Organizations.Database do
       add_error(
         changeset,
         :trace_config,
-        "is only supported for direct or SSH PostgreSQL and MongoDB databases"
+        "is only supported for direct, SSH or Tailscale PostgreSQL and MongoDB databases"
       )
     end
   end
@@ -818,11 +846,13 @@ defmodule Trifle.Organizations.Database do
     put_change(changeset, :granularities, parsed_granularities)
   end
 
-  def stats_config(%__MODULE__{connection_method: "connector"} = database) do
-    stats_metadata_config(database)
-  end
+  def stats_config(%__MODULE__{connection_method: method} = database)
+      when method in ["tailscale", "unconfigured"],
+      do: stats_metadata_config(database)
 
-  def stats_config(database) do
+  def stats_config(database), do: connected_stats_config(database)
+
+  def connected_stats_config(database) do
     driver = get_or_create_driver(database)
 
     # Use database granularities if available, otherwise use defaults
@@ -958,12 +988,18 @@ defmodule Trifle.Organizations.Database do
   end
 
   # Helper functions for URL building (still used in setup/check functions)
-  defp build_redis_url(database) do
+  defp redis_options(database) do
     endpoint = database_endpoint!(database)
-    url = "redis://"
-    url = if database.password, do: "#{url}:#{database.password}@", else: url
-    url = "#{url}#{endpoint.host}:#{endpoint.port || default_port("redis")}"
-    url
+
+    [
+      host: endpoint.host,
+      port: endpoint.port || 6379,
+      username: database.username,
+      password: database.password,
+      database: String.to_integer(database.database_name || "0"),
+      sync_connect: true
+    ]
+    |> Trifle.Networking.DatabaseTLS.redis(database)
   end
 
   defp build_mongo_url(database) do
@@ -1013,6 +1049,7 @@ defmodule Trifle.Organizations.Database do
       timeout: 5000
     ]
     |> maybe_put_postgres_ssl_options(config)
+    |> Trifle.Networking.DatabaseTLS.postgres(database)
   end
 
   defp maybe_put_postgres_ssl_options(options, %{"ssl" => true}),
@@ -1036,6 +1073,7 @@ defmodule Trifle.Organizations.Database do
       ssl: mysql_ssl_enabled?(config),
       ssl_opts: []
     ]
+    |> Trifle.Networking.DatabaseTLS.mysql(database)
   end
 
   defp mysql_ssl_enabled?(%{"ssl" => true}), do: true
@@ -1052,8 +1090,8 @@ defmodule Trifle.Organizations.Database do
   def check_status(database) do
     try do
       {setup_exists, error_msg} =
-        if database.connection_method == "connector" do
-          connector_exists?(database)
+        if database.connection_method in ["unconfigured", "connector"] do
+          {false, "Private Connector was retired. Configure a Tailscale connection."}
         else
           case database.driver do
             "redis" ->
@@ -1119,7 +1157,7 @@ defmodule Trifle.Organizations.Database do
     }
 
     database
-    |> changeset(attrs)
+    |> change(attrs)
     |> Trifle.Repo.update()
   end
 
@@ -1201,9 +1239,7 @@ defmodule Trifle.Organizations.Database do
 
         "redis" ->
           # Redis doesn't need table creation, just verify connection works
-          url = build_redis_url(database)
-
-          case Redix.start_link(url) do
+          case Redix.start_link(redis_options(database)) do
             {:ok, conn} ->
               # Test the connection by setting and deleting a test key
               test_key = "#{config["prefix"] || "trifle_stats"}::setup_test"
@@ -1228,9 +1264,9 @@ defmodule Trifle.Organizations.Database do
           # Build MongoDB connection URL
           url = build_mongo_url(database)
           require Logger
-          Logger.info("MongoDB setup attempting to connect to: #{url}")
+          Logger.info("MongoDB setup connecting to database #{database.id}")
 
-          case Mongo.start_link(url: url) do
+          case Mongo.start_link(Trifle.Networking.DatabaseTLS.mongo([url: url], database)) do
             {:ok, conn} ->
               Logger.info("MongoDB setup connection successful")
               collection_name = config["collection_name"] || "trifle_stats"
@@ -1401,7 +1437,7 @@ defmodule Trifle.Organizations.Database do
   end
 
   defp build_driver_for_check(database) do
-    stats_config(database).driver
+    connected_stats_config(database).driver
   end
 
   defp redis_exists?(driver) do
@@ -1422,7 +1458,12 @@ defmodule Trifle.Organizations.Database do
     require Logger
     Logger.info("MongoDB status check looking for collection: #{collection_name}")
 
-    case Mongo.start_link(url: url, pool_size: 1, timeout: 2000, pool_timeout: 2000) do
+    case Mongo.start_link(
+           Trifle.Networking.DatabaseTLS.mongo(
+             [url: url, pool_size: 1, timeout: 2000, pool_timeout: 2000],
+             database
+           )
+         ) do
       {:ok, conn} ->
         Logger.info("MongoDB status check connection successful")
         # Mongo.show_collections returns a Stream, so we need to enumerate it
@@ -1613,109 +1654,6 @@ defmodule Trifle.Organizations.Database do
       {:error, _reason} ->
         false
     end
-  end
-
-  defp connector_exists?(database) do
-    with {:ok, payload} <- connector_tcp_check_payload(database),
-         {:ok, connector} <- connector_for_database(database),
-         {:ok, job} <-
-           Trifle.Organizations.enqueue_connector_job(connector, "database_tcp_check", payload),
-         {:ok, completed_job} <- await_connector_job(connector, job) do
-      connector_check_result(completed_job, database)
-    else
-      {:error, message} when is_binary(message) -> {false, message}
-      {:error, reason} -> {false, inspect(reason)}
-    end
-  end
-
-  defp connector_tcp_check_payload(database) do
-    host = database.host || ""
-    host = host |> to_string() |> String.trim()
-    port = database.port || default_port(database.driver)
-
-    cond do
-      host == "" ->
-        {:error, "Database host is required for Private Connector checks"}
-
-      not is_integer(port) ->
-        {:error, "Database port is required for Private Connector checks"}
-
-      true ->
-        {:ok,
-         %{
-           "database_id" => database.id,
-           "driver" => database.driver,
-           "host" => host,
-           "port" => port,
-           "timeout_seconds" => 10
-         }}
-    end
-  end
-
-  defp connector_for_database(%{organization_connector_id: nil}) do
-    {:error, "Private Connector is not selected"}
-  end
-
-  defp connector_for_database(database) do
-    case Trifle.Repo.get_by(OrganizationConnector,
-           id: database.organization_connector_id,
-           organization_id: database.organization_id
-         ) do
-      %OrganizationConnector{} = connector -> {:ok, connector}
-      nil -> {:error, "Private Connector is not available"}
-    end
-  end
-
-  defp await_connector_job(connector, job) do
-    deadline = System.monotonic_time(:millisecond) + 25_000
-    await_connector_job(connector.id, job.id, deadline)
-  end
-
-  defp await_connector_job(connector_id, job_id, deadline) do
-    case Trifle.Repo.get_by(ConnectorJob, id: job_id, organization_connector_id: connector_id) do
-      %ConnectorJob{status: status} = job when status in ["ok", "error"] ->
-        {:ok, job}
-
-      %ConnectorJob{} ->
-        if System.monotonic_time(:millisecond) >= deadline do
-          {:error, "Timed out waiting for Private Connector to check database reachability"}
-        else
-          Process.sleep(250)
-          await_connector_job(connector_id, job_id, deadline)
-        end
-
-      nil ->
-        {:error, "Private Connector check job was not found"}
-    end
-  end
-
-  defp connector_check_result(%ConnectorJob{status: "ok", result: %{} = result}, database) do
-    case Map.get(result, "reachable") || Map.get(result, :reachable) do
-      true ->
-        {true, nil}
-
-      _ ->
-        error =
-          Map.get(result, "error") ||
-            Map.get(result, :error) ||
-            "Private Connector could not reach #{database.host}:#{database.port || default_port(database.driver)}"
-
-        {false, error}
-    end
-  end
-
-  defp connector_check_result(%ConnectorJob{status: "ok"}, database) do
-    {false,
-     "Private Connector returned an invalid check result for #{database.host}:#{database.port || default_port(database.driver)}"}
-  end
-
-  defp connector_check_result(%ConnectorJob{status: "error", error: error}, _database)
-       when is_binary(error) and error != "" do
-    {false, error}
-  end
-
-  defp connector_check_result(%ConnectorJob{status: "error"}, _database) do
-    {false, "Private Connector check failed"}
   end
 
   defp convert_postgres_error_to_friendly_message(error, database) do

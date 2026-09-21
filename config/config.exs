@@ -7,6 +7,9 @@
 # General application configuration
 import Config
 
+# Applies to HTTP requests and LiveView event logs, including enrollment forms.
+config :phoenix, :filter_parameters, ["password", "auth_key"]
+
 config :trifle,
   ecto_repos: [Trifle.Repo]
 
@@ -174,6 +177,7 @@ config :trifle, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"* * * * *", Trifle.Monitors.Jobs.DispatchRunner},
+       {"* * * * *", Trifle.Networking.RefreshConnections},
        {"17 3 * * *", Trifle.Observability.Jobs.CleanupTraces}
      ]}
   ]

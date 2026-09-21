@@ -45,6 +45,16 @@ spec:
               containerPort: {{ .Values.app.port }}
               protocol: TCP
           env:
+            {{- if .Values.networkGateway.enabled }}
+            - name: TRIFLE_GATEWAY_URL
+              value: "https://{{ include "trifle.networkGatewayName" . }}:8443"
+            - name: TRIFLE_GATEWAY_CA_FILE
+              value: /gateway-certs/ca.crt
+            - name: TRIFLE_GATEWAY_CERT_FILE
+              value: /gateway-certs/client.crt
+            - name: TRIFLE_GATEWAY_KEY_FILE
+              value: /gateway-certs/client.key
+            {{- end }}
             {{- range $key, $value := $appEnv }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -380,10 +390,17 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.persistence.enabled }}
+          {{- if or .Values.persistence.enabled .Values.networkGateway.enabled }}
           volumeMounts:
+            {{- if .Values.persistence.enabled }}
             - name: uploads
               mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- if .Values.networkGateway.enabled }}
+            - name: gateway-certs
+              mountPath: /gateway-certs
+              readOnly: true
+            {{- end }}
           {{- end }}
         {{- if $mongoSidecar }}
         - name: mongo
@@ -402,8 +419,13 @@ spec:
           {{- end }}
         {{- end }}
 
-      {{- if or .Values.persistence.enabled $mongoSidecar }}
+      {{- if or .Values.persistence.enabled $mongoSidecar .Values.networkGateway.enabled }}
       volumes:
+        {{- if .Values.networkGateway.enabled }}
+        - name: gateway-certs
+          secret:
+            secretName: {{ include "trifle.networkGatewayClientSecret" . }}
+        {{- end }}
         {{- if .Values.persistence.enabled }}
         - name: uploads
           persistentVolumeClaim:

@@ -8,6 +8,18 @@ on:
     branches: [main]
 
 jobs:
+  network-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: network-gateway/go.mod
+          cache-dependency-path: network-gateway/go.sum
+      - name: Test network gateway
+        working-directory: network-gateway
+        run: go test -race ./...
+
   test:
     runs-on: ubuntu-latest
 
@@ -55,6 +67,19 @@ jobs:
 
       - name: Fetch dependencies
         run: docker compose exec -T -e MIX_ENV=test app mix deps.get
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Check Helm deployments
+        run: |
+          docker cp "$(command -v helm)" "$(docker compose ps -q app):/tmp/helm"
+          docker compose exec -T app /tmp/helm lint .devops/kubernetes/helm/trifle
+          docker compose exec -T app /tmp/helm lint .devops/kubernetes/helm/trifle -f .devops/kubernetes/helm/trifle/values-saas.yaml
+          docker compose exec -T -e HELM_BIN=/tmp/helm app ruby .devops/kubernetes/helm/test_network_gateway.rb
+          docker compose exec -T -e HELM_BIN=/tmp/helm app elixir .devops/kubernetes/helm/test_observability.exs
 
       - name: Run tests
         run: docker compose exec -T -e MIX_ENV=test app mix test

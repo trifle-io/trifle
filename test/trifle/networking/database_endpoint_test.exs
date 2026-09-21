@@ -27,10 +27,10 @@ defmodule Trifle.Networking.DatabaseEndpointTest do
     assert {:ok, %{host: nil, port: nil, via: :local}} = DatabaseEndpoint.resolve(database)
   end
 
-  test "rejects connector connection method until connector routing is implemented" do
+  test "rejects retired connector sources without falling back to direct" do
     database = %Database{connection_method: "connector", driver: "postgres"}
 
-    assert {:error, :connector_connection_not_implemented} = DatabaseEndpoint.resolve(database)
+    assert {:error, :connection_setup_required} = DatabaseEndpoint.resolve(database)
   end
 
   test "rejects legacy agent connection method" do

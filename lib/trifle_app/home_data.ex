@@ -14,10 +14,9 @@ defmodule TrifleApp.HomeData do
   @activity_window_seconds 86_400
   @preferred_granularities ["10m", "15m", "30m", "1h"]
   @default_granularity "1h"
-  @default_connector_timeout 15_000
   @default_source_timeout 20_000
   @default_max_concurrency 4
-  @default_fetch_opts [transponders: :none, connector_timeout: @default_connector_timeout]
+  @default_fetch_opts [transponders: :none]
 
   def recent_dashboard_visits(user, membership, limit \\ @recent_limit) do
     Organizations.list_recent_dashboard_visits_for_membership(user, membership, limit)

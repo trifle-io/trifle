@@ -28,6 +28,39 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "MySQL"
   end
 
+  test "retired connector sources require an explicit connection choice", %{
+    conn: conn,
+    organization: org
+  } do
+    database =
+      database_fixture(%{
+        organization: org,
+        driver: "postgres",
+        host: "100.64.0.7",
+        port: 5432,
+        database_name: "metrics",
+        username: "trifle",
+        password: "secret"
+      })
+
+    database =
+      database |> Ecto.Changeset.change(connection_method: "unconfigured") |> Repo.update!()
+
+    assert {:error, checked, message} = Database.check_status(database)
+    assert checked.connection_method == "unconfigured"
+    assert message =~ "Private Connector was retired"
+    {:ok, view, _} = live(conn, ~p"/dbs/#{database.id}/settings")
+    view |> element("button[phx-click=edit]") |> render_click()
+
+    assert has_element?(
+             view,
+             "option[value=unconfigured][selected]",
+             "Choose a connection method"
+           )
+
+    assert render(view) =~ "Private Connector was retired"
+  end
+
   test "exempt organization owner can create and use a database without a subscription", %{
     conn: conn,
     organization: organization
@@ -102,7 +135,7 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Connection Method"
     assert html =~ "Direct + IP allowlist"
     assert html =~ "SSH tunnel"
-    assert html =~ "Private Connector"
+    assert html =~ "Tailscale"
     assert html =~ "Allowlist Trifle Cloud egress"
   end
 
@@ -129,19 +162,18 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Retention days"
   end
 
-  test "Private Connector remains Stats-only", %{conn: conn} do
+  test "Tailscale supports Traces", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/dbs/new")
 
     html =
       lv
       |> element("#database-form")
       |> render_change(%{
-        "database" => %{"driver" => "postgres", "connection_method" => "connector"}
+        "database" => %{"driver" => "postgres", "connection_method" => "tailscale"}
       })
 
     assert html =~ "Trifle Traces"
-    assert html =~ "Unavailable"
-    assert html =~ "Private Connector remains Stats-only"
+    assert html =~ "Add Traces"
   end
 
   test "S3 secret access key validation errors render beside the field", %{conn: conn} do
@@ -181,17 +213,19 @@ defmodule TrifleApp.DatabasesLiveTest do
     refute html =~ "not a string"
   end
 
-  test "private connector method prompts for connector creation when none exist", %{conn: conn} do
+  test "Tailscale connection method prompts for network connection creation when none exist", %{
+    conn: conn
+  } do
     {:ok, lv, _html} = live(conn, ~p"/dbs/new")
 
     html =
       lv
       |> element("#database-form")
       |> render_change(%{
-        "database" => %{"driver" => "mysql", "connection_method" => "connector"}
+        "database" => %{"driver" => "mysql", "connection_method" => "tailscale"}
       })
 
-    assert html =~ "Create a private connector before selecting this connection method."
+    assert html =~ "Create a Tailscale connection before selecting this connection method."
   end
 
   test "ssh tunnel method shows bastion fields and generated public key", %{conn: conn} do
@@ -210,22 +244,22 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "ssh-rsa"
   end
 
-  test "private connector method appears when the organization has a connector", %{
+  test "Tailscale connection method appears when the organization has a network connection", %{
     conn: conn,
     organization: organization
   } do
-    {connector, _token} = organization_connector_with_token_fixture(%{organization: organization})
+    connection = network_connection_fixture(%{organization: organization})
     {:ok, lv, _html} = live(conn, ~p"/dbs/new")
 
     html =
       lv
       |> element("#database-form")
       |> render_change(%{
-        "database" => %{"driver" => "mysql", "connection_method" => "connector"}
+        "database" => %{"driver" => "mysql", "connection_method" => "tailscale"}
       })
 
-    assert html =~ "Private Connector"
-    assert html =~ connector.name
+    assert html =~ "Tailscale"
+    assert html =~ connection.name
   end
 
   test "new database form shows sqlite upload field when sqlite driver selected", %{conn: conn} do
