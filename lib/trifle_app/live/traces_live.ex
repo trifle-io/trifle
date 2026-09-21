@@ -41,7 +41,7 @@ defmodule TrifleApp.TracesLive do
        preview_loading: false,
        preview_error: nil,
        attachments: [],
-       attachments_open: false,
+       footer_section: nil,
        attachments_requested: false,
        attachments_loading: false,
        attachments_error: nil,
@@ -153,10 +153,12 @@ defmodule TrifleApp.TracesLive do
 
   def handle_event("retry_detail", _, socket), do: {:noreply, load_detail(socket)}
 
-  def handle_event("toggle_attachments", _, socket) do
-    socket = assign(socket, :attachments_open, !socket.assigns.attachments_open)
+  def handle_event("toggle_footer_section", %{"section" => section}, socket)
+      when section in ~w(tags attachments metadata) do
+    active = if socket.assigns.footer_section == section, do: nil, else: section
+    socket = assign(socket, :footer_section, active)
 
-    if socket.assigns.attachments_open && socket.assigns.record &&
+    if active == "attachments" && socket.assigns.record &&
          !socket.assigns.attachments_requested,
        do: {:noreply, load_attachments(socket)},
        else: {:noreply, socket}
@@ -387,7 +389,7 @@ defmodule TrifleApp.TracesLive do
         preview_loading: false,
         preview_error: nil,
         attachments: [],
-        attachments_open: false,
+        footer_section: nil,
         attachments_requested: false,
         attachments_loading: false,
         attachments_error: nil,
@@ -528,7 +530,7 @@ defmodule TrifleApp.TracesLive do
                 preview_loading={@preview_loading}
                 preview_error={@preview_error}
                 attachments={@attachments}
-                attachments_open={@attachments_open}
+                footer_section={@footer_section}
                 attachments_requested={@attachments_requested}
                 attachments_loading={@attachments_loading}
                 attachments_error={@attachments_error}

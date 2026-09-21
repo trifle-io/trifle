@@ -49,11 +49,12 @@ defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
              ".traces-content > [aria-label=\"Trace activity\"] > .mb-6 {\n  margin-bottom: 0;"
   end
 
-  test "native sticky header and list size themselves without JavaScript offsets" do
+  test "native sticky controls leave room for entries without JavaScript offsets" do
     source = File.read!(@source_path)
     assert source =~ ".trace-detail-header {"
     assert source =~ ".trace-detail-header {\n  top: 0;"
-    assert source =~ "max-height: max(8rem, calc(100cqh - 5rem));"
+    assert source =~ "max-height: max(6rem, 35cqh);"
+    assert source =~ ".trace-footer-panel {\n  max-height: min(24rem, 40cqh);\n  overflow: auto;"
     assert source =~ ".trace-list-split {\n  position: sticky;\n  top: 0;"
     assert source =~ "max-height: 100cqh;"
     refute source =~ "--trace-header-top"

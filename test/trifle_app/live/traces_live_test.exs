@@ -381,6 +381,42 @@ defmodule TrifleApp.TracesLiveTest do
     end
   end
 
+  test "footer buttons switch panels, collapse on repeat clicks and reset for a new trace", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=first")
+    render_async(view)
+
+    assert has_element?(view, "#trace-detail-footer")
+    refute has_element?(view, "#trace-detail-footer .trace-footer-panel:not([hidden])")
+
+    for section <- ~w(tags metadata attachments tags) do
+      view |> element("button[phx-value-section='#{section}']") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "button[phx-value-section='#{section}'][aria-expanded='true']")
+      doc = view |> render() |> Floki.parse_document!()
+      [panel_id] = Floki.attribute(doc, "button[phx-value-section='#{section}']", "aria-controls")
+
+      assert length(Floki.find(doc, "#trace-detail-footer .trace-footer-panel:not([hidden])")) ==
+               1
+
+      assert has_element?(view, "##{panel_id}:not([hidden])")
+    end
+
+    view |> element("button[phx-value-section='tags']") |> render_click()
+    refute has_element?(view, "#trace-detail-footer .trace-footer-panel:not([hidden])")
+    refute has_element?(view, "#trace-detail-footer button[aria-expanded='true']")
+
+    view |> element("button[phx-value-section='metadata']") |> render_click()
+    view |> form("#trace-reference", %{reference: "second"}) |> render_submit()
+    render_async(view)
+
+    refute has_element?(view, "#trace-detail-footer .trace-footer-panel:not([hidden])")
+    refute has_element?(view, "#trace-detail-footer button[aria-expanded='true']")
+  end
+
   test "attachments are fetched lazily, paginated independently and reset for a new trace", %{
     conn: conn,
     database: database
@@ -388,12 +424,12 @@ defmodule TrifleApp.TracesLiveTest do
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=many")
     render_async(view)
     refute_receive {:trace_attachments, _, _}
-    refute has_element?(view, "[data-trace-attachments][open]")
+    refute has_element?(view, "[data-trace-attachments]:not([hidden])")
 
-    view |> element("[data-trace-attachments] summary") |> render_click()
+    view |> element("button[phx-value-section='attachments']") |> render_click()
     render_async(view)
     assert_receive {:trace_attachments, "many", 0}
-    assert has_element?(view, "[data-trace-attachments][open]")
+    assert has_element?(view, "[data-trace-attachments]:not([hidden])")
     assert has_element?(view, "[data-trace-attachments] a[href*='part=1']", "many-0.txt")
 
     assert has_element?(
@@ -404,10 +440,10 @@ defmodule TrifleApp.TracesLiveTest do
 
     refute has_element?(view, "#trace-entry-101-0")
 
-    view |> element("[data-trace-attachments] summary") |> render_click()
-    refute has_element?(view, "[data-trace-attachments][open]")
-    view |> element("[data-trace-attachments] summary") |> render_click()
-    assert has_element?(view, "[data-trace-attachments][open]")
+    view |> element("button[phx-value-section='attachments']") |> render_click()
+    refute has_element?(view, "[data-trace-attachments]:not([hidden])")
+    view |> element("button[phx-value-section='attachments']") |> render_click()
+    assert has_element?(view, "[data-trace-attachments]:not([hidden])")
     refute_receive {:trace_attachments, _, _}
     view |> element("button[phx-click='more_attachments']") |> render_click()
     render_async(view)
@@ -420,7 +456,7 @@ defmodule TrifleApp.TracesLiveTest do
     view |> form("#trace-reference", %{reference: "second"}) |> render_submit()
     render_async(view)
     assert has_element?(view, "#trace-attachments-second")
-    refute has_element?(view, "[data-trace-attachments][open]")
+    refute has_element?(view, "[data-trace-attachments]:not([hidden])")
     refute has_element?(view, "[data-trace-attachments] a")
     refute_receive {:trace_attachments, _, _}
   end
@@ -431,16 +467,16 @@ defmodule TrifleApp.TracesLiveTest do
   } do
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=slow-attachments")
     render_async(view)
-    view |> element("[data-trace-attachments] summary") |> render_click()
+    view |> element("button[phx-value-section='attachments']") |> render_click()
     assert_receive {:slow_attachments, pid}, 1000
-    assert has_element?(view, "[data-trace-attachments][open]")
-    view |> element("[data-trace-attachments] summary") |> render_click()
+    assert has_element?(view, "[data-trace-attachments]:not([hidden])")
+    view |> element("button[phx-value-section='attachments']") |> render_click()
     send(pid, :finish)
     render_async(view)
     assert has_element?(view, "[data-trace-attachments] a", "slow-attachments-0.txt")
-    refute has_element?(view, "[data-trace-attachments][open]")
-    view |> element("[data-trace-attachments] summary") |> render_click()
-    assert has_element?(view, "[data-trace-attachments][open]")
+    refute has_element?(view, "[data-trace-attachments]:not([hidden])")
+    view |> element("button[phx-value-section='attachments']") |> render_click()
+    assert has_element?(view, "[data-trace-attachments]:not([hidden])")
     refute_receive {:slow_attachments, _}
   end
 
@@ -450,7 +486,7 @@ defmodule TrifleApp.TracesLiveTest do
   } do
     {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=attachments-error")
     render_async(view)
-    view |> element("[data-trace-attachments] summary") |> render_click()
+    view |> element("button[phx-value-section='attachments']") |> render_click()
     render_async(view)
     assert_receive {:trace_attachments, "attachments-error", 0}
 
@@ -466,7 +502,7 @@ defmodule TrifleApp.TracesLiveTest do
 
     view |> form("#trace-reference", %{reference: "slow-attachments"}) |> render_submit()
     render_async(view)
-    view |> element("[data-trace-attachments] summary") |> render_click()
+    view |> element("button[phx-value-section='attachments']") |> render_click()
     assert_receive {:slow_attachments, pid}, 1000
     view |> form("#trace-reference", %{reference: "first"}) |> render_submit()
     send(pid, :finish)

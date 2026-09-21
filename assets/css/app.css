@@ -338,11 +338,17 @@ input[type="checkbox"] {
   container: trace-entries / inline-size;
 }
 
-/* Container units use the actual available height below FilterBar. Large open
-   sections can scroll without covering every log row. No JS measurements. */
+/* Bound both sticky controls to the scrollport below FilterBar, leaving room
+   for log rows even with a long path or an expanded footer panel. */
 .trace-detail-header {
   top: 0;
-  max-height: max(8rem, calc(100cqh - 5rem));
+  max-height: max(6rem, 35cqh);
+}
+
+.trace-footer-panel {
+  max-height: min(24rem, 40cqh);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .trace-entry {

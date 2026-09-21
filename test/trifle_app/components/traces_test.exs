@@ -132,7 +132,7 @@ defmodule TrifleApp.Components.TracesTest do
       if selected do
         assert "md:w-80" in classes
         assert "lg:w-96" in classes
-        assert "border-r" in classes
+        refute "border-r" in classes
       else
         refute "md:w-80" in classes
         refute "lg:w-96" in classes
@@ -142,7 +142,7 @@ defmodule TrifleApp.Components.TracesTest do
     end
   end
 
-  test "detail actions use accessible copy, expand and close icons aligned on the right" do
+  test "detail actions use accessible expand and close icons aligned on the right" do
     [widget_button] =
       activity(expanded: false)
       |> Floki.parse_document!()
@@ -169,32 +169,27 @@ defmodule TrifleApp.Components.TracesTest do
         |> Floki.parse_document!()
 
       action = if collapsed, do: "Restore split view", else: "Expand detail"
-      buttons = Floki.find(doc, "#trace-detail-header > [data-detail-actions] button")
+      buttons = Floki.find(doc, "#trace-detail-header [data-detail-actions] button")
       [actions_class] = Floki.attribute(doc, "[data-detail-actions]", "class")
-      assert "absolute" in String.split(actions_class)
-      assert "right-4" in String.split(actions_class)
-      assert "top-4" in String.split(actions_class)
+      assert "shrink-0" in String.split(actions_class)
+      assert Floki.find(doc, "[data-detail-heading].items-center > [data-detail-actions]") != []
+      refute "absolute" in String.split(actions_class)
       refute "border-b" in String.split(actions_class)
 
       assert Floki.attribute(buttons, "aria-label") == [
-               "Copy loaded trace text",
                action,
                "Close detail"
              ]
 
       assert Floki.attribute(buttons, "title") == [
-               "Copy loaded trace text",
                action,
                "Close detail"
              ]
 
       assert Floki.text(buttons) |> String.trim() == ""
-      assert length(Floki.find(buttons, "svg[aria-hidden='true']")) == 3
+      assert length(Floki.find(buttons, "svg[aria-hidden='true']")) == 2
 
-      assert Floki.find(
-               doc,
-               "[phx-hook='TraceCopy'][data-copy-ready='false'] [data-copy-button][disabled]"
-             ) != []
+      assert Floki.find(doc, "[data-copy-kind='trace']") == []
 
       assert Floki.find(doc, "[data-copy-text]") == []
 
@@ -238,7 +233,7 @@ defmodule TrifleApp.Components.TracesTest do
     end
   end
 
-  test "sticky detail header keeps its actions, arguments and sections together in both layouts" do
+  test "slim sticky header and footer keep content between them in both layouts" do
     for collapsed <- [false, true], loading <- [false, true] do
       doc =
         detail(%{meta: %{"id" => 42}, tags: ["queue:default"]},
@@ -259,17 +254,51 @@ defmodule TrifleApp.Components.TracesTest do
       for selector <- [
             "[data-detail-actions]",
             "h2",
-            "[data-trace-arguments]",
+            "[data-detail-reference]",
+            "[data-detail-timing]"
+          ] do
+        assert Floki.find(doc, "#trace-detail-header #{selector}") != []
+      end
+
+      assert length(Floki.find(doc, "#trace-detail-header [data-detail-actions] button")) == 2
+      assert Floki.find(doc, "#trace-detail-header [data-copy-kind='trace']") == []
+
+      assert Floki.find(doc, "[data-detail-footer-summary] [data-copy-button]")
+             |> Floki.text()
+             |> String.trim() == "Copy trace"
+
+      assert Floki.find(
+               doc,
+               "[data-detail-footer-summary] > [data-copy-kind='trace'] + [data-entry-counts]"
+             ) != []
+
+      assert Floki.find(
+               doc,
+               "[data-detail-summary] > [data-detail-reference] + [data-detail-timing]"
+             ) != []
+
+      assert Floki.find(doc, "#trace-detail-header [data-trace-arguments]") == []
+      assert Floki.find(doc, ".trace-entry-body [data-trace-arguments]") != []
+      assert Floki.find(doc, "#trace-detail-header .trace-entry-body") == []
+
+      assert Floki.find(
+               doc,
+               "#trace-detail.flex-col > .trace-entry-body.flex-1 + #trace-detail-footer.sticky.bottom-0"
+             ) != []
+
+      for selector <- [
+            "[data-entry-counts]",
             "[data-trace-tags]",
             "[data-trace-attachments]",
             "#trace-metadata-first"
           ] do
-        assert Floki.find(doc, "#trace-detail-header > #{selector}") != []
+        assert Floki.find(doc, "#trace-detail-footer #{selector}") != []
+        assert Floki.find(doc, "#trace-detail-header #{selector}") == []
       end
 
-      assert length(Floki.find(doc, "#trace-detail-header > [data-detail-actions] button")) == 3
-      assert Floki.find(doc, "#trace-detail-header .trace-entry-body") == []
-      assert Floki.find(doc, "#trace-detail > .trace-entry-body") != []
+      assert length(Floki.find(doc, "#trace-detail-footer .trace-footer-panel[hidden]")) == 3
+      assert length(Floki.find(doc, "[data-detail-sections] button[aria-expanded='false']")) == 3
+      assert Floki.find(doc, "#trace-detail-footer summary") == []
     end
   end
 
@@ -304,10 +333,10 @@ defmodule TrifleApp.Components.TracesTest do
     assert Floki.find(doc, "[data-copy-status][role='status'][aria-live='polite']") != []
     assert Floki.find(doc, "[data-copy-success].hidden svg") != []
     [class] = Floki.attribute(doc, "#trace-detail-header h2", "class")
-    assert "md:pr-28" in String.split(class)
+    assert "min-w-0" in String.split(class)
   end
 
-  test "arguments below the reference support Ruby positional and Oban named arguments" do
+  test "arguments in the scrolling content support Ruby positional and Oban named arguments" do
     for arguments <- [
           [42, %{"region" => "eu", "nested" => [false, nil, 0]}],
           %{"monitor_id" => "monitor-42", "options" => %{"limit" => 10}},
@@ -315,7 +344,7 @@ defmodule TrifleApp.Components.TracesTest do
         ] do
       meta = arguments
       doc = detail(%{meta: meta})
-      [section] = Floki.find(doc, "#trace-detail-header > [data-trace-arguments]")
+      [section] = Floki.find(doc, ".trace-entry-body [data-trace-arguments]")
       [preview] = Floki.find(section, "[data-arguments-preview]")
 
       assert Floki.text(preview) |> Jason.decode!() == arguments
@@ -324,7 +353,7 @@ defmodule TrifleApp.Components.TracesTest do
 
       assert Floki.find(
                doc,
-               "#trace-detail-header > div + [data-trace-arguments] + div [data-detail-timing]"
+               ".trace-entry-body > div:has([data-trace-arguments]) + ol.trace-entries"
              ) != []
     end
   end
@@ -416,10 +445,14 @@ defmodule TrifleApp.Components.TracesTest do
 
       for target <- ["[data-copy-button]", "[data-copy-success]"] do
         assert Floki.attribute(control, "#{target} path", "d") ==
-                 Floki.attribute(doc, "[data-detail-actions] #{target} path", "d")
+                 Floki.attribute(doc, "[data-detail-footer-summary] #{target} path", "d")
       end
 
-      assert Floki.attribute(doc, "[data-detail-actions] [data-copy-ready]", "data-copy-ready") ==
+      assert Floki.attribute(
+               doc,
+               "[data-detail-footer-summary] [data-copy-ready]",
+               "data-copy-ready"
+             ) ==
                [to_string(!loading)]
     end
   end
@@ -512,8 +545,8 @@ defmodule TrifleApp.Components.TracesTest do
 
       assert Floki.find(doc, "[data-entry-counts] .text-teal-500") == []
       assert Floki.find(doc, "[data-entry-counts] [data-trace-metadata='entries']") == []
-      assert Floki.find(doc, "[data-trace-attachments] summary") |> Floki.text() =~ "(4)"
-      assert Floki.find(doc, "[data-trace-attachments] summary svg.h-4.w-4") != []
+      assert Floki.find(doc, "button[phx-value-section='attachments']") |> Floki.text() =~ "(4)"
+      assert Floki.find(doc, "button[phx-value-section='attachments'] svg.h-4.w-4") != []
 
       timing = Floki.find(doc, "[data-detail-timing]")
 
@@ -538,10 +571,10 @@ defmodule TrifleApp.Components.TracesTest do
 
       refute Floki.text(doc) =~ "Metadata, context and counters"
 
-      assert Floki.find(doc, "#trace-metadata-first > summary") |> Floki.text() |> String.trim() ==
+      assert Floki.find(doc, "#trace-metadata-first-toggle") |> Floki.text() |> String.trim() ==
                "Metadata"
 
-      assert Floki.find(doc, "#trace-metadata-first[open]") == []
+      assert Floki.find(doc, "#trace-metadata-first:not([hidden])") == []
     end
   end
 
@@ -552,11 +585,11 @@ defmodule TrifleApp.Components.TracesTest do
       doc =
         detail(%{counters: %{types: %{raw: raw_count, media: 0}}},
           attachments_requested: true,
-          attachments_open: true,
+          footer_section: "attachments",
           entries: [%{entry: %{type: :raw, state: :success, message: result}, part: 1, row: 0}]
         )
 
-      assert Floki.find(doc, "[data-trace-attachments] summary") |> Floki.text() =~ "(0)"
+      assert Floki.find(doc, "button[phx-value-section='attachments']") |> Floki.text() =~ "(0)"
 
       assert Floki.find(doc, "[data-trace-attachments] p") |> Floki.text() |> String.trim() ==
                "No stored attachments."
@@ -737,7 +770,7 @@ defmodule TrifleApp.Components.TracesTest do
       doc =
         detail(%{},
           entries: [%{part: 1, row: 0, entry: entry}],
-          attachments_open: true,
+          footer_section: "attachments",
           attachments_requested: true,
           attachments: [%{name: "report.txt", part: 1, row: 0, size: bytes}]
         )
@@ -839,7 +872,7 @@ defmodule TrifleApp.Components.TracesTest do
       doc =
         detail(%{},
           entries: [%{part: 1, row: 0, entry: entry}],
-          attachments_open: true,
+          footer_section: "attachments",
           attachments_requested: true,
           attachments: [attachment]
         )
@@ -962,18 +995,21 @@ defmodule TrifleApp.Components.TracesTest do
     assert query["tag_mode"] == "any"
     refute Map.has_key?(query, "reference")
     assert Floki.find(doc, "script, urgent") == []
-    assert Floki.find(doc, "h2.pr-20") != []
+    assert Floki.find(doc, "[data-detail-heading] > h2.min-w-0") != []
   end
 
   test "tags start collapsed with a count and keep large sets wrapped and scrollable" do
     tags = Enum.map(1..100, &"tag:#{&1}")
     doc = detail(%{tags: tags})
-    [section] = Floki.find(doc, "details[data-trace-tags]")
+    [section] = Floki.find(doc, "section[data-trace-tags]")
     assert Floki.attribute(section, "id") == ["trace-tags-source-first"]
-    assert Floki.attribute(section, "open") == []
-    assert Floki.find(section, "summary svg.h-4.w-4") != []
-    assert Floki.find(section, "summary .tabular-nums") |> Floki.text() == "(100)"
-    assert Floki.find(section, "div.flex-wrap.max-h-72.overflow-y-auto") != []
+    assert Floki.attribute(section, "hidden") == ["hidden"]
+    assert Floki.find(doc, "#trace-tags-source-first-toggle svg.h-4.w-4") != []
+
+    assert Floki.find(doc, "#trace-tags-source-first-toggle .tabular-nums") |> Floki.text() ==
+             "(100)"
+
+    assert Floki.find(doc, ".trace-footer-panel[data-trace-tags] > div.flex-wrap") != []
     assert Floki.attribute(section, "[data-trace-tag]", "data-trace-tag") == tags
 
     for link <- Floki.find(section, "[data-trace-tag]") do
@@ -984,43 +1020,49 @@ defmodule TrifleApp.Components.TracesTest do
 
     other = detail(%{reference: "second", tags: tags})
 
-    assert Floki.attribute(other, "details[data-trace-tags]", "id") == [
+    assert Floki.attribute(other, "section[data-trace-tags]", "id") == [
              "trace-tags-source-second"
            ]
 
-    assert Floki.find(other, "details[data-trace-tags][open]") == []
+    assert Floki.find(other, "section[data-trace-tags]:not([hidden])") == []
 
     for empty <- [[], nil] do
       assert detail(%{tags: empty}) |> Floki.find("[data-trace-tags]") == []
     end
   end
 
-  test "metadata uses the supplied icon and matches the other collapsed section headings" do
+  test "footer buttons share icons and accessible panel controls without chevrons" do
     doc = detail(%{tags: ["queue:default"]})
     [section] = Floki.find(doc, "#trace-metadata-first")
-    assert Floki.attribute(section, "open") == []
-    assert Floki.find(section, "summary") |> Floki.text() |> String.trim() == "Metadata"
-    assert Floki.find(section, "summary > span.inline-flex.items-center.gap-1.align-middle") != []
+    assert Floki.attribute(section, "hidden") == ["hidden"]
 
-    assert Floki.attribute(section, "summary svg path", "d") == [
+    assert Floki.find(doc, "#trace-metadata-first-toggle") |> Floki.text() |> String.trim() ==
+             "Metadata"
+
+    assert Floki.attribute(doc, "#trace-metadata-first-toggle svg path", "d") == [
              "M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"
            ]
 
-    for selector <- ["#trace-metadata-first", "[data-trace-tags]", "[data-trace-attachments]"] do
-      assert Floki.attribute(doc, "#{selector} summary svg", "class") == ["h-4 w-4 shrink-0"]
-      assert Floki.attribute(doc, "#{selector} summary svg", "stroke-width") == ["1.5"]
-
-      assert Floki.attribute(doc, "#{selector} summary", "class") == [
-               "cursor-pointer text-slate-500 dark:text-slate-400"
-             ]
+    for button <- Floki.find(doc, "[data-detail-sections] button") do
+      assert Floki.attribute(button, "svg", "class") == ["h-4 w-4 shrink-0"]
+      assert Floki.attribute(button, "svg", "stroke-width") == ["1.5"]
+      assert Floki.attribute(button, "aria-expanded") == ["false"]
+      [panel_id] = Floki.attribute(button, "aria-controls")
+      [button_id] = Floki.attribute(button, "id")
+      assert Floki.attribute(doc, "##{panel_id}", "aria-labelledby") == [button_id]
+      assert Floki.find(doc, "##{panel_id}[hidden]") != []
+      assert length(Floki.find(button, "svg")) == 1
     end
   end
 
   test "attachments start collapsed and render download links by persisted part and row" do
     initial = detail(%{})
-    assert Floki.find(initial, "[data-trace-attachments][open]") == []
+    assert Floki.find(initial, "[data-trace-attachments]:not([hidden])") == []
 
-    assert Floki.find(initial, "[data-trace-attachments] summary[phx-click='toggle_attachments']") !=
+    assert Floki.find(
+             initial,
+             "button[phx-click='toggle_footer_section'][phx-value-section='attachments']"
+           ) !=
              []
 
     assert Floki.find(initial, "[data-trace-attachments] a") == []

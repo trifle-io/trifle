@@ -208,8 +208,7 @@ defmodule TrifleApp.Components.Traces do
       aria-label="Trace list"
       class={[
         "w-full min-h-0 min-w-0 shrink-0 overflow-auto",
-        @selected &&
-          "trace-list-split border-r border-slate-200 dark:border-slate-700 md:w-80 lg:w-96",
+        @selected && "trace-list-split md:w-80 lg:w-96",
         @collapsed && @selected && "hidden",
         !@collapsed && @selected && "hidden md:block"
       ]}
@@ -342,7 +341,7 @@ defmodule TrifleApp.Components.Traces do
   attr :preview_error, :string, default: nil
   attr :params, :map, default: %{}
   attr :attachments, :list, default: []
-  attr :attachments_open, :boolean, default: false
+  attr :footer_section, :string, default: nil
   attr :attachments_requested, :boolean, default: false
   attr :attachments_loading, :boolean, default: false
   attr :attachments_error, :string, default: nil
@@ -356,11 +355,14 @@ defmodule TrifleApp.Components.Traces do
       id="trace-detail"
       aria-label="Trace detail"
       aria-busy={to_string(@loading)}
-      class="relative min-w-0 flex-1"
+      class={[
+        "relative flex min-w-0 flex-1 flex-col",
+        !@collapsed && "border-slate-200 md:border-l dark:border-slate-700"
+      ]}
     >
       <header
         id="trace-detail-header"
-        class="trace-detail-header sticky z-20 overflow-auto border-b border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+        class="trace-detail-header sticky z-20 shrink-0 overflow-auto border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-700 dark:bg-slate-900"
       >
         <div
           :if={@loading}
@@ -376,39 +378,8 @@ defmodule TrifleApp.Components.Traces do
             <% end %>
           </span>
         </div>
-        <div class="absolute right-4 top-4 flex items-center gap-1" data-detail-actions>
-          <.copy_button
-            record={@record}
-            entries={@entries}
-            part={@part}
-            source_id={@source_id}
-            reference={@selected}
-            loading={@loading}
-          />
-          <TrifleApp.DesignSystem.IconButton.icon_button
-            icon={if @collapsed, do: "hero-arrows-pointing-in", else: "hero-arrows-pointing-out"}
-            size="md"
-            label={if @collapsed, do: "Restore split view", else: "Expand detail"}
-            phx-click="toggle_list"
-            aria-pressed={to_string(@collapsed)}
-            aria-controls="trace-list trace-detail"
-            class="max-md:hidden"
-          />
-          <TrifleApp.DesignSystem.IconButton.icon_button
-            icon="hero-x-mark"
-            size="md"
-            label="Close detail"
-            phx-click="close_trace"
-          />
-        </div>
-        <div
-          :if={!@record}
-          class="min-h-[4rem] p-4 pr-24 text-sm text-slate-500 md:pr-32 dark:text-slate-400"
-        >
-          {if @loading, do: "Loading trace…", else: "Trace detail"}
-        </div>
-        <%= if @record do %>
-          <h2 class="flex min-w-0 items-start gap-2 pr-20 text-base font-semibold md:pr-28">
+        <div class="flex min-w-0 items-center justify-between gap-3" data-detail-heading>
+          <h2 :if={@record} class="flex min-w-0 items-center gap-2 text-base font-semibold">
             <.state_icon state={@record.state} />
             <span class="min-w-0 [overflow-wrap:anywhere]" data-trace-path={@record.key}>
               <.link
@@ -421,18 +392,45 @@ defmodule TrifleApp.Components.Traces do
               >{part.label}</.link>
             </span>
           </h2>
-          <div class="mt-1 flex items-center gap-1 pr-20 text-xs text-slate-500 md:pr-28 dark:text-slate-400">
-            <span class="min-w-0 [overflow-wrap:anywhere]">{@record.reference}</span>
-            <.copy_control
-              id={"trace-reference-copy-#{@source_id}-#{@record.reference}"}
-              text={@record.reference}
-              kind="reference"
-              size="sm"
+          <div :if={!@record} class="min-w-0 text-sm text-slate-500 dark:text-slate-400">
+            {if @loading, do: "Loading trace…", else: "Trace detail"}
+          </div>
+          <div class="flex shrink-0 items-center gap-1" data-detail-actions>
+            <TrifleApp.DesignSystem.IconButton.icon_button
+              icon={if @collapsed, do: "hero-arrows-pointing-in", else: "hero-arrows-pointing-out"}
+              size="md"
+              label={if @collapsed, do: "Restore split view", else: "Expand detail"}
+              phx-click="toggle_list"
+              aria-pressed={to_string(@collapsed)}
+              aria-controls="trace-list trace-detail"
+              class="max-md:hidden"
+            />
+            <TrifleApp.DesignSystem.IconButton.icon_button
+              icon="hero-x-mark"
+              size="md"
+              label="Close detail"
+              phx-click="close_trace"
             />
           </div>
-          <.arguments id={"trace-arguments-#{@source_id}-#{@record.reference}"} meta={@record.meta} />
-          <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums text-slate-500 dark:text-slate-400">
-            <span class="inline-flex flex-wrap items-center gap-x-2 gap-y-1" data-detail-timing>
+        </div>
+        <%= if @record do %>
+          <div
+            class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
+            data-detail-summary
+          >
+            <div class="flex min-w-0 max-w-full items-center gap-1" data-detail-reference>
+              <span class="min-w-0 [overflow-wrap:anywhere]">{@record.reference}</span>
+              <.copy_control
+                id={"trace-reference-copy-#{@source_id}-#{@record.reference}"}
+                text={@record.reference}
+                kind="reference"
+                size="sm"
+              />
+            </div>
+            <span
+              class="ml-auto inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1 tabular-nums"
+              data-detail-timing
+            >
               <TrifleApp.SidebarIcons.icon name="hero-bolt" class="h-4 w-4 shrink-0" />
               <span class="whitespace-nowrap" title="Started">
                 <span class="sr-only">Started:</span> {time(@record.first_at)}
@@ -447,64 +445,21 @@ defmodule TrifleApp.Components.Traces do
               </span>
             </span>
           </div>
-          <.entry_counts record={@record} />
-          <details
-            :if={@record.tags not in [nil, []]}
-            id={"trace-tags-#{@source_id}-#{@record.reference}"}
-            class="mt-3 text-sm"
-            data-trace-tags
-          >
-            <summary class="cursor-pointer text-slate-500 dark:text-slate-400">
-              <span class="inline-flex items-center gap-1 align-middle">
-                <TrifleApp.SidebarIcons.icon name="hero-tag" class="h-4 w-4 shrink-0" />
-                <span>Tags</span>
-                <span class="tabular-nums">({length(@record.tags)})</span>
-              </span>
-            </summary>
-            <div
-              class="mt-2 flex max-h-72 flex-wrap gap-2 overflow-y-auto p-1"
-              aria-label="Trace tags"
-            >
-              <.link
-                :for={tag <- @record.tags}
-                patch={Query.tag_url(@params, tag)}
-                title={"Filter traces by tag: #{tag}"}
-                data-trace-tag={tag}
-                class="inline-flex min-w-0 max-w-full items-start gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                <TrifleApp.SidebarIcons.icon name="hero-tag" class="h-4 w-4 shrink-0" />
-                <span class="min-w-0 [overflow-wrap:anywhere]">{tag}</span>
-              </.link>
-            </div>
-          </details>
-          <.attachments_section
-            record={@record}
-            source_id={@source_id}
-            attachments={@attachments}
-            open={@attachments_open}
-            requested={@attachments_requested}
-            loading={@attachments_loading}
-            error={@attachments_error}
-            next_part={@attachments_next_part}
-          />
-          <details id={"trace-metadata-#{@record.reference}"} class="mt-3 text-sm">
-            <summary class="cursor-pointer text-slate-500 dark:text-slate-400">
-              <span class="inline-flex items-center gap-1 align-middle">
-                <TrifleApp.SidebarIcons.icon name="trace-metadata" class="h-4 w-4 shrink-0" />
-                <span>Metadata</span>
-              </span>
-            </summary>
-            <pre class="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-all text-xs">{json(%{meta: @record.meta, context: @record.context, counters: @record.counters})}</pre>
-          </details>
-          <p :if={to_string(@record.state) == "running"} class="mt-3 text-xs text-slate-500">
-            Running · stored content only. Refresh manually for updates.
-          </p>
         <% end %>
       </header>
       <div :if={@error} role="status" class="p-4 text-sm text-amber-700 dark:text-amber-400">
         {@error} <button phx-click="retry_detail" class="ml-2 underline">Retry</button>
       </div>
-      <div class="trace-entry-body pb-4">
+      <div class="trace-entry-body flex-1 pb-4">
+        <div :if={@record} class="px-4">
+          <.arguments id={"trace-arguments-#{@source_id}-#{@record.reference}"} meta={@record.meta} />
+          <p
+            :if={to_string(@record.state) == "running"}
+            class="py-2 text-xs text-slate-500 dark:text-slate-400"
+          >
+            Running · stored content only. Refresh manually for updates.
+          </p>
+        </div>
         <.entry_list
           entries={@entries}
           total={if @record, do: @record.length || 0, else: 0}
@@ -536,7 +491,127 @@ defmodule TrifleApp.Components.Traces do
           Load next part ({@part}/{@record.parts} loaded)
         </button>
       </div>
+      <footer
+        :if={@record}
+        id="trace-detail-footer"
+        aria-label="Trace details and line states"
+        class="trace-detail-footer sticky bottom-0 z-20 shrink-0 border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+      >
+        <section
+          :if={@record.tags not in [nil, []]}
+          id={"trace-tags-#{@source_id}-#{@record.reference}"}
+          hidden={@footer_section != "tags"}
+          aria-labelledby={"trace-tags-#{@source_id}-#{@record.reference}-toggle"}
+          class="trace-footer-panel p-4"
+          data-trace-tags
+        >
+          <div class="flex flex-wrap gap-2" aria-label="Trace tags">
+            <.link
+              :for={tag <- @record.tags}
+              patch={Query.tag_url(@params, tag)}
+              title={"Filter traces by tag: #{tag}"}
+              data-trace-tag={tag}
+              class="inline-flex min-w-0 max-w-full items-start gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              <TrifleApp.SidebarIcons.icon name="hero-tag" class="h-4 w-4 shrink-0" />
+              <span class="min-w-0 [overflow-wrap:anywhere]">{tag}</span>
+            </.link>
+          </div>
+        </section>
+        <.attachments_section
+          record={@record}
+          source_id={@source_id}
+          attachments={@attachments}
+          open={@footer_section == "attachments"}
+          requested={@attachments_requested}
+          loading={@attachments_loading}
+          error={@attachments_error}
+          next_part={@attachments_next_part}
+        />
+        <section
+          id={"trace-metadata-#{@record.reference}"}
+          hidden={@footer_section != "metadata"}
+          aria-labelledby={"trace-metadata-#{@record.reference}-toggle"}
+          class="trace-footer-panel p-4"
+        >
+          <pre class="whitespace-pre-wrap break-all text-xs">{json(%{meta: @record.meta, context: @record.context, counters: @record.counters})}</pre>
+        </section>
+        <div
+          class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2"
+          data-detail-footer-controls
+        >
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1" data-detail-footer-summary>
+            <.copy_button
+              record={@record}
+              entries={@entries}
+              part={@part}
+              source_id={@source_id}
+              reference={@selected}
+              loading={@loading}
+            />
+            <.entry_counts record={@record} />
+          </div>
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-1" data-detail-sections>
+            <.footer_button
+              :if={@record.tags not in [nil, []]}
+              panel_id={"trace-tags-#{@source_id}-#{@record.reference}"}
+              section="tags"
+              label="Tags"
+              icon="hero-tag"
+              count={length(@record.tags)}
+              active={@footer_section}
+            />
+            <.footer_button
+              panel_id={"trace-attachments-#{@record.reference}"}
+              section="attachments"
+              label="Attachments"
+              icon="hero-paper-clip"
+              count={counter(@record, :types, :media)}
+              active={@footer_section}
+            />
+            <.footer_button
+              panel_id={"trace-metadata-#{@record.reference}"}
+              section="metadata"
+              label="Metadata"
+              icon="trace-metadata"
+              active={@footer_section}
+            />
+          </div>
+        </div>
+      </footer>
     </section>
+    """
+  end
+
+  attr :panel_id, :string, required: true
+  attr :section, :string, required: true
+  attr :label, :string, required: true
+  attr :icon, :string, required: true
+  attr :count, :integer, default: nil
+  attr :active, :string, default: nil
+
+  defp footer_button(assigns) do
+    ~H"""
+    <button
+      id={@panel_id <> "-toggle"}
+      type="button"
+      phx-click="toggle_footer_section"
+      phx-value-section={@section}
+      aria-expanded={to_string(@active == @section)}
+      aria-controls={@panel_id}
+      class={[
+        "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500",
+        if(@active == @section,
+          do: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100",
+          else:
+            "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        )
+      ]}
+    >
+      <TrifleApp.SidebarIcons.icon name={@icon} class="h-4 w-4 shrink-0" />
+      <span>{@label}</span>
+      <span :if={!is_nil(@count)} class="tabular-nums">({@count})</span>
+    </button>
     """
   end
 
@@ -603,6 +678,7 @@ defmodule TrifleApp.Components.Traces do
       id={"trace-copy-#{@source_id}-#{@reference}"}
       text={if @record, do: CopyText.format(@record, @entries, @part)}
       ready={!is_nil(@record) && !@loading}
+      size="sm"
     />
     """
   end
@@ -622,7 +698,20 @@ defmodule TrifleApp.Components.Traces do
       data-copy-kind={@kind}
       data-copy-ready={to_string(@ready)}
     >
+      <button
+        :if={@kind == "trace"}
+        type="button"
+        aria-label="Copy loaded trace text"
+        title="Copy loaded trace text"
+        data-copy-button
+        disabled={!@ready}
+        class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+      >
+        <TrifleApp.SidebarIcons.icon name="hero-clipboard-document" class="h-4 w-4 shrink-0" />
+        <span>Copy trace</span>
+      </button>
       <TrifleApp.DesignSystem.IconButton.icon_button
+        :if={@kind == "reference"}
         icon="hero-clipboard-document"
         size={@size}
         label={if @kind == "reference", do: "Copy trace reference", else: "Copy loaded trace text"}
@@ -632,7 +721,10 @@ defmodule TrifleApp.Components.Traces do
       />
       <span
         data-copy-success
-        class="pointer-events-none absolute inset-0 hidden items-center justify-center"
+        class={[
+          "pointer-events-none absolute hidden items-center justify-center",
+          if(@kind == "trace", do: "inset-y-0 left-2 w-4", else: "inset-0")
+        ]}
         aria-hidden="true"
       >
         <TrifleApp.SidebarIcons.icon
@@ -648,7 +740,10 @@ defmodule TrifleApp.Components.Traces do
         role="status"
         aria-live="polite"
         class="sr-only"
-        data-copy-error-class="absolute right-0 top-full z-10 mt-1 w-56 rounded bg-white p-2 text-xs text-red-600 shadow ring-1 ring-slate-200 dark:bg-slate-800 dark:text-red-400 dark:ring-slate-700"
+        data-copy-error-class={
+          "absolute z-10 w-56 rounded bg-white p-2 text-xs text-red-600 shadow ring-1 ring-slate-200 dark:bg-slate-800 dark:text-red-400 dark:ring-slate-700 " <>
+            if(@kind == "trace", do: "bottom-full left-0 mb-1", else: "right-0 top-full mt-1")
+        }
       >
       </span>
       <pre :if={!is_nil(@text)} data-copy-text class="hidden" aria-hidden="true">{@text}</pre>
@@ -841,7 +936,7 @@ defmodule TrifleApp.Components.Traces do
   def entry_counts(assigns) do
     ~H"""
     <dl
-      class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs tabular-nums text-slate-500 dark:text-slate-400"
+      class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs tabular-nums text-slate-500 dark:text-slate-400"
       data-entry-counts
     >
       <.metadata_item
@@ -871,23 +966,14 @@ defmodule TrifleApp.Components.Traces do
 
   def attachments_section(assigns) do
     ~H"""
-    <details
+    <section
       id={"trace-attachments-#{@record.reference}"}
-      open={@open}
-      class="mt-3 text-sm"
+      hidden={!@open}
+      aria-labelledby={"trace-attachments-#{@record.reference}-toggle"}
+      class="trace-footer-panel p-4 text-sm"
       data-trace-attachments
     >
-      <summary
-        phx-click="toggle_attachments"
-        class="cursor-pointer text-slate-500 dark:text-slate-400"
-      >
-        <span class="inline-flex items-center gap-1 align-middle">
-          <TrifleApp.SidebarIcons.icon name="hero-paper-clip" class="h-4 w-4 shrink-0" />
-          <span>Attachments</span>
-          <span class="tabular-nums">({counter(@record, :types, :media)})</span>
-        </span>
-      </summary>
-      <ul :if={@attachments != []} class="mt-2 space-y-2">
+      <ul :if={@attachments != []} class="space-y-2">
         <li
           :for={attachment <- @attachments}
           class="flex flex-wrap items-start gap-x-2 gap-y-1 text-xs"
@@ -925,7 +1011,7 @@ defmodule TrifleApp.Components.Traces do
       >
         Load more attachments
       </button>
-    </details>
+    </section>
     """
   end
 
