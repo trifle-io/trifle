@@ -39,8 +39,9 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 2. **Builds assets** with Node.js/Elixir on GitHub Actions
 3. **Builds application image** with pre-compiled assets
 4. **Builds network gateway image** from `network-gateway`
-5. **Multi-platform**: AMD64 and ARM64
-6. **Security scanning**: Trivy vulnerability checks (shows in build logs)
+5. **Stages images** as OCI archives: App on AMD64, gateway on AMD64 and ARM64
+6. **Security scanning**: Trivy scans the staged App and both gateway architectures; critical vulnerabilities block release publication
+7. **Publishes scanned artifacts** only after all scans succeed, preserving image digests without rebuilding
 
 ### Environment Build (`build-environment-image.yml`)
 **Triggers**:

@@ -472,6 +472,30 @@ defmodule Trifle.Organizations.DatabaseTest do
     end
   end
 
+  test "network selections without an organization are invalid rather than queried with nil" do
+    attrs =
+      postgres_attrs(%{connection_method: "tailscale", trace_config: s3_trace_config()})
+      |> Map.delete(:organization_id)
+
+    connection_id = Ecto.UUID.generate()
+
+    changeset =
+      Organizations.change_database(
+        %Database{},
+        Map.merge(attrs, %{
+          network_connection_id: connection_id,
+          trace_network_connection_id: connection_id
+        })
+      )
+
+    assert "is not available" in errors_on(changeset).network_connection_id
+    assert "is not available" in errors_on(changeset).trace_network_connection_id
+
+    blank = Organizations.change_database(%Database{})
+    refute Keyword.has_key?(blank.errors, :network_connection_id)
+    refute Keyword.has_key?(blank.errors, :trace_network_connection_id)
+  end
+
   describe "beginning_of_week_for/1" do
     test "maps stored integer to expected weekday atom" do
       database = %Database{beginning_of_week: 1}

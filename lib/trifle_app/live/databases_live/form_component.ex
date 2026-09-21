@@ -1035,6 +1035,7 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
   defp available_network_connections(%Database{organization_id: organization_id})
        when is_binary(organization_id) do
     Trifle.Organizations.NetworkConnections.list(organization_id)
+    |> Enum.filter(& &1.enabled)
   end
 
   defp available_network_connections(_database), do: []

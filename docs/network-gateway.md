@@ -141,7 +141,7 @@ Do not set process-wide Tailscale authentication variables. Enrollment belongs t
 - **Reauthorize** uses a fresh key and a higher configuration generation to enroll a new device. Update grants/approval if required, and remove the previous device from Tailscale.
 - **Delete** requires reassigning sources first and disables the gateway node before deleting the App record. Disabled generation tombstones remain encrypted in gateway state to reject stale requests.
 - Restarting the gateway restores nodes from encrypted state without bootstrap keys. Existing sockets close; database pools reconnect on subsequent queries. Routes are registered again by App as needed. This version has no gateway HA.
-- The private `/v1/status` response reports Tailscale state and active stream count. Logs include connection/source IDs and dial duration, never SQL, credentials, trace bodies or enrollment URLs. The process has a global limit of 4096 concurrent streams. Health probes check the listener; source checks determine whether a customer destination is reachable.
+- The private `/v1/status` response reports Tailscale state and active stream count. Logs include connection/source IDs and dial duration, never SQL, credentials, trace bodies or enrollment URLs. The process allows at most 4096 concurrent streams globally and 256 per connection. Health probes check the listener; source checks determine whether a customer destination is reachable.
 - A denied/unavailable route fails closed. Check device approval, expiry, grants, subnet approval, database listener and TLS hostname. Trifle does not retry a private destination through the App's normal network.
 
 ## Breaking upgrade from Private Connector

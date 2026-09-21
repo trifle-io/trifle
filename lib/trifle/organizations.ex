@@ -1412,6 +1412,9 @@ defmodule Trifle.Organizations do
         nil ->
           acc
 
+        _id when is_nil(org_id) ->
+          Ecto.Changeset.add_error(acc, field, "is not available")
+
         id ->
           if Repo.exists?(
                from n in NetworkConnection, where: n.id == ^id and n.organization_id == ^org_id

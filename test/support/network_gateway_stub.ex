@@ -1,18 +1,24 @@
 defmodule Trifle.NetworkGatewayStub do
   def configure(connection) do
     notify({:configure, connection})
-    Application.get_env(:trifle, :gateway_stub_configure, {:ok, %{}})
+
+    case Application.get_env(:trifle, :gateway_stub_configure, {:ok, %{}}) do
+      function when is_function(function, 1) -> function.(connection)
+      result -> result
+    end
   end
 
-  def status(_connection),
-    do:
-      {:ok,
-       Application.get_env(:trifle, :gateway_stub_status, %{
-         "state" => "Running",
-         "enrolled" => true,
-         "hostname" => "trifle.test.ts.net",
-         "ips" => ["100.64.0.5"]
-       })}
+  def status(connection) do
+    case Application.get_env(:trifle, :gateway_stub_status, %{
+           "state" => "Running",
+           "enrolled" => true,
+           "hostname" => "trifle.test.ts.net",
+           "ips" => ["100.64.0.5"]
+         }) do
+      function when is_function(function, 1) -> function.(connection)
+      status -> {:ok, status}
+    end
+  end
 
   def put_route(route),
     do:

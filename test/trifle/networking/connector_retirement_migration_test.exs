@@ -67,6 +67,13 @@ defmodule Trifle.Networking.ConnectorRetirementMigrationTest do
           MigrationRepo.query!(
             "ALTER TABLE databases DROP CONSTRAINT chk_databases_connection_method_allowed"
           )
+
+          for method <- ["old_tunnel", "", "DIRECT", "direct", "ssh_tunnel", "unconfigured", nil] do
+            MigrationRepo.query!(
+              "INSERT INTO databases (id, display_name, connection_method, pool_version, last_check_status) VALUES ($1, $2, $3, 9, 'ok')",
+              [Ecto.UUID.dump!(Ecto.UUID.generate()), "method:#{inspect(method)}", method]
+            )
+          end
         end
 
         Code.require_file(
@@ -98,8 +105,28 @@ defmodule Trifle.Networking.ConnectorRetirementMigrationTest do
                  ]
                } =
                  MigrationRepo.query!(
-                   "SELECT display_name, host, password, config, trace_config, connection_method, pool_version, last_check_status, network_connection_id, trace_network_connection_id FROM databases"
+                   "SELECT display_name, host, password, config, trace_config, connection_method, pool_version, last_check_status, network_connection_id, trace_network_connection_id FROM databases WHERE display_name = 'Private metrics'"
                  )
+
+        if repaired? do
+          for method <- ["old_tunnel", "", "DIRECT"] do
+            assert %{rows: [["unconfigured", 10, "error", error]]} =
+                     MigrationRepo.query!(
+                       "SELECT connection_method, pool_version, last_check_status, last_error FROM databases WHERE display_name = $1",
+                       ["method:#{inspect(method)}"]
+                     )
+
+            assert error =~ "Private Connector was retired"
+          end
+
+          for method <- ["direct", "ssh_tunnel", "unconfigured", nil] do
+            assert %{rows: [[^method, 9, "ok", nil]]} =
+                     MigrationRepo.query!(
+                       "SELECT connection_method, pool_version, last_check_status, last_error FROM databases WHERE display_name = $1",
+                       ["method:#{inspect(method)}"]
+                     )
+          end
+        end
 
         assert %{rows: [[nil, nil]]} =
                  MigrationRepo.query!(

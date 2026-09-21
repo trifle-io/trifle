@@ -44,38 +44,46 @@ defmodule Trifle.Organizations.NetworkConnections do
   end
 
   def refresh(%NetworkConnection{} = connection) do
-    # Serialize lifecycle changes across App replicas. Never send a stale
-    # generation/credential to the gateway after another replica disconnects.
-    transact(connection, fn current ->
-      with {:ok, _} <- client().configure(current),
-           {:ok, status} <- client().status(current) do
-        state = status["state"]
+    # Do not hold a database connection/row lock during network requests.
+    # The gateway rejects stale generations; the second transaction prevents a
+    # late response from overwriting a disconnect or new enrollment credential.
+    with {:ok, snapshot} <- Repo.transaction(fn -> lock_connection(connection) end) do
+      attrs = refresh_attributes(snapshot)
 
-        attrs = %{
-          status: status_name(state),
-          hostname: status["hostname"],
-          addresses: status["ips"] || [],
+      transact(snapshot, fn current ->
+        if current.generation == snapshot.generation do
+          current |> Changeset.change(attrs) |> Repo.update()
+        else
+          {:ok, current}
+        end
+      end)
+    end
+  end
+
+  defp refresh_attributes(connection) do
+    with {:ok, _} <- client().configure(connection),
+         {:ok, status} <- client().status(connection) do
+      state = status["state"]
+
+      attrs = %{
+        status: status_name(state),
+        hostname: status["hostname"],
+        addresses: status["ips"] || [],
+        checked_at: now(),
+        last_error: nil
+      }
+
+      if status["enrolled"] == true and state == "Running",
+        do: Map.put(attrs, :auth_key, nil),
+        else: attrs
+    else
+      {:error, reason} ->
+        %{
+          status: "error",
           checked_at: now(),
-          last_error: nil
+          last_error: error_message(reason)
         }
-
-        attrs =
-          if status["enrolled"] == true and state == "Running",
-            do: Map.put(attrs, :auth_key, nil),
-            else: attrs
-
-        current |> Changeset.change(attrs) |> Repo.update()
-      else
-        {:error, reason} ->
-          current
-          |> Changeset.change(%{
-            status: "error",
-            checked_at: now(),
-            last_error: error_message(reason)
-          })
-          |> Repo.update()
-      end
-    end)
+    end
   end
 
   def reauthorize(connection, auth_key) do
@@ -151,12 +159,7 @@ defmodule Trifle.Organizations.NetworkConnections do
   defp transact(connection, fun) do
     result =
       Repo.transaction(fn ->
-        current =
-          Repo.one!(
-            from n in NetworkConnection,
-              where: n.id == ^connection.id and n.organization_id == ^connection.organization_id,
-              lock: "FOR UPDATE"
-          )
+        current = lock_connection(connection)
 
         case fun.(current) do
           {:ok, result} -> result
@@ -175,6 +178,14 @@ defmodule Trifle.Organizations.NetworkConnections do
     end
 
     result
+  end
+
+  defp lock_connection(connection) do
+    Repo.one(
+      from n in NetworkConnection,
+        where: n.id == ^connection.id and n.organization_id == ^connection.organization_id,
+        lock: "FOR UPDATE"
+    ) || Repo.rollback(:network_connection_unavailable)
   end
 
   defp status_name("Running"), do: "online"

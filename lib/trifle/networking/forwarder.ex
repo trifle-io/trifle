@@ -198,7 +198,7 @@ defmodule Trifle.Networking.Forwarder do
       {:ssl_error, ^upstream, _} ->
         :ok
     after
-      300_000 -> :ok
+      3_600_000 -> :ok
     end
   end
 

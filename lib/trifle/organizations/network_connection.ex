@@ -24,8 +24,8 @@ defmodule Trifle.Organizations.NetworkConnection do
   def changeset(connection, attrs) do
     connection
     |> cast(attrs, [:name, :auth_key])
-    |> update_change(:name, &String.trim/1)
-    |> update_change(:auth_key, &String.trim/1)
+    |> update_change(:name, &trim/1)
+    |> update_change(:auth_key, &trim/1)
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 160)
     |> validate_format(:auth_key, ~r/\Atskey-auth-[A-Za-z0-9_-]+\z/,
@@ -33,4 +33,7 @@ defmodule Trifle.Organizations.NetworkConnection do
     )
     |> unique_constraint([:organization_id, :name])
   end
+
+  defp trim(nil), do: nil
+  defp trim(value) when is_binary(value), do: String.trim(value)
 end

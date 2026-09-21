@@ -32,7 +32,7 @@ defmodule Trifle.Repo.Migrations.ReplaceConnectorsWithNetworkConnections do
       organization_connector_id = NULL, pool_version = pool_version + 1,
       last_check_status = 'error',
       last_error = 'Private Connector was retired. Configure a Tailscale connection.'
-    WHERE connection_method = 'connector'
+    WHERE connection_method NOT IN ('direct', 'ssh_tunnel', 'tailscale', 'unconfigured')
     """
 
     create constraint(:databases, :chk_databases_connection_method_allowed,

@@ -32,6 +32,8 @@ jobs:
     outputs:
       app_tag: ${{ steps.image_tag.outputs.version }}
       is_tag_build: ${{ steps.image_tag.outputs.is_tag_build }}
+      app_tags: ${{ steps.meta-app.outputs.tags }}
+      gateway_tags: ${{ steps.meta-gateway.outputs.tags }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -196,14 +198,15 @@ jobs:
           CMD ["./bin/trifle", "start"]
           EOF
 
-      - name: Build and push app image
+      - name: Build app image without publishing
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: .
           file: ./Dockerfile.production
           platforms: linux/amd64
-          push: ${{ steps.image_tag.outputs.is_tag_build == 'true' }}
-          tags: ${{ steps.meta-app.outputs.tags }}
+          push: false
+          outputs: type=oci,dest=${{ runner.temp }}/app.tar
+          tags: ${{ env.APP_IMAGE_NAME }}:staged
           labels: ${{ steps.meta-app.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -219,44 +222,84 @@ jobs:
             type=ref,event=pr
             type=raw,value=latest,enable=${{ steps.image_tag.outputs.is_tag_build == 'true' }}
 
-      - name: Build and push network gateway image
+      - name: Build network gateway image without publishing
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: network-gateway
           file: ./.devops/docker/network-gateway/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ steps.image_tag.outputs.is_tag_build == 'true' }}
-          tags: ${{ steps.meta-gateway.outputs.tags }}
+          push: false
+          outputs: type=oci,dest=${{ runner.temp }}/network-gateway.tar
+          tags: ${{ env.GATEWAY_IMAGE_NAME }}:staged
           labels: ${{ steps.meta-gateway.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Stage release images for scanning and publication
+        if: steps.image_tag.outputs.is_tag_build == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-images
+          path: |
+            ${{ runner.temp }}/app.tar
+            ${{ runner.temp }}/network-gateway.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
   security-scan:
     if: needs.build-app.outputs.is_tag_build == 'true'
     needs: [build-app]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
     steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+      - name: Download staged release images
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          name: release-images
+          path: ${{ runner.temp }}/release-images
+
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Select platform images for Trivy
+        env:
+          IMAGE_DIRECTORY: ${{ runner.temp }}/release-images
+          IMAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          # Trivy's OCI layout reader does not select a platform from an index.
+          # Extract one manifest with its original blobs for each scan.
+          skopeo --override-os linux --override-arch amd64 copy --preserve-digests \
+            "oci-archive:$IMAGE_DIRECTORY/app.tar" "oci:$IMAGE_DIRECTORY/app:scan"
+          skopeo --override-os linux --override-arch "${IMAGE_PLATFORM#linux/}" copy --preserve-digests \
+            "oci-archive:$IMAGE_DIRECTORY/network-gateway.tar" "oci:$IMAGE_DIRECTORY/network-gateway:scan"
 
       - name: Run Trivy vulnerability scanner
+        if: matrix.platform == 'linux/amd64'
         uses: aquasecurity/trivy-action@314ff8b43182423b84c50b1670b0e10f858f2d98
         with:
-          image-ref: '${{ env.APP_IMAGE_NAME }}:${{ needs.build-app.outputs.app_tag }}'
+          input: '${{ runner.temp }}/release-images/app'
           format: 'table'
           output: 'trivy-results.txt'
+          severity: CRITICAL
+          exit-code: '1'
           skip-version-check: true
 
       - name: Run Trivy vulnerability scanner for gateway
         uses: aquasecurity/trivy-action@314ff8b43182423b84c50b1670b0e10f858f2d98
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
-          image-ref: '${{ env.GATEWAY_IMAGE_NAME }}:${{ needs.build-app.outputs.app_tag }}'
+          input: '${{ runner.temp }}/release-images/network-gateway'
           format: 'table'
           output: 'trivy-gateway-results.txt'
+          severity: CRITICAL
+          exit-code: '1'
           skip-version-check: true
 
       - name: Display security scan results
@@ -282,7 +325,7 @@ jobs:
         if: false  # Disabled for now - requires GitHub Advanced Security
         uses: aquasecurity/trivy-action@314ff8b43182423b84c50b1670b0e10f858f2d98
         with:
-          image-ref: '${{ env.APP_IMAGE_NAME }}:${{ needs.build-app.outputs.app_tag }}'
+          input: '${{ runner.temp }}/release-images/app'
           format: 'sarif'
           output: 'trivy-results.sarif'
           skip-version-check: true
@@ -293,25 +336,43 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: Check for critical vulnerabilities
-        if: always()
-        run: |
-          SCAN_FILES=""
-          if [ -f trivy-results.txt ]; then
-            SCAN_FILES="${SCAN_FILES} trivy-results.txt"
-          fi
-          if [ -f trivy-gateway-results.txt ]; then
-            SCAN_FILES="${SCAN_FILES} trivy-gateway-results.txt"
-          fi
+  publish-release:
+    if: needs.build-app.outputs.is_tag_build == 'true' && needs.security-scan.result == 'success'
+    needs: [build-app, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download scanned release images
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-images
+          path: ${{ runner.temp }}/release-images
 
-          if [ -n "${SCAN_FILES}" ]; then
-            if grep -q "CRITICAL" ${SCAN_FILES}; then
-              echo "⚠️  CRITICAL vulnerabilities found!"
-              echo "Please review the security scan results above."
-              echo "Continuing build - review and fix vulnerabilities in production."
-              # Don't fail the build for now - just warn
-              # exit 1
-            else
-              echo "✅ No critical vulnerabilities found."
-            fi
-          fi
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish the scanned images without rebuilding
+        env:
+          APP_TAGS: ${{ needs.build-app.outputs.app_tags }}
+          GATEWAY_TAGS: ${{ needs.build-app.outputs.gateway_tags }}
+          IMAGE_DIRECTORY: ${{ runner.temp }}/release-images
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            skopeo copy --all --preserve-digests --authfile "$HOME/.docker/config.json" \
+              "oci-archive:$IMAGE_DIRECTORY/app.tar" "docker://$tag"
+          done <<< "$APP_TAGS"
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            skopeo copy --all --preserve-digests --authfile "$HOME/.docker/config.json" \
+              "oci-archive:$IMAGE_DIRECTORY/network-gateway.tar" "docker://$tag"
+          done <<< "$GATEWAY_TAGS"

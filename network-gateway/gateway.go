@@ -181,7 +181,7 @@ func (g *gateway) configure(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]bool{"accepted": true})
 		return
 	}
-	if c.Enabled && (!exists || !old.Enabled || request.AuthKey != "") && request.AuthKey == "" {
+	if c.Enabled && (!exists || !old.Enabled || c.Generation > old.Generation) && request.AuthKey == "" {
 		http.Error(w, "fresh enrollment key required", 422)
 		return
 	}
@@ -316,7 +316,13 @@ func (g *gateway) openStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "route unavailable", 409)
 		return
 	}
-	if len(g.streams) >= 4096 {
+	connectionStreams := 0
+	for s := range g.streams {
+		if s.route.connection() == v.connection() {
+			connectionStreams++
+		}
+	}
+	if len(g.streams) >= 4096 || connectionStreams >= 256 {
 		g.mu.Unlock()
 		http.Error(w, "gateway stream limit reached", 503)
 		return

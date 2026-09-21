@@ -68,6 +68,93 @@ defmodule Trifle.Organizations.NetworkConnectionsTest do
              "[FILTERED]"
   end
 
+  test "blank names and enrollment keys produce invalid changesets without raising" do
+    connection = network_connection_fixture()
+
+    for blank <- [nil, "", "   "] do
+      changeset = NetworkConnection.changeset(connection, %{name: blank})
+      assert errors_on(changeset).name == ["can't be blank"]
+
+      assert {:error, changeset} = NetworkConnections.reauthorize(connection, blank)
+      assert errors_on(changeset).auth_key == ["can't be blank"]
+      assert Repo.reload!(connection).generation == 1
+    end
+  end
+
+  test "refresh makes both gateway requests outside database transactions" do
+    Application.put_env(:trifle, :gateway_stub_configure, fn _connection ->
+      refute Repo.in_transaction?()
+      {:ok, %{}}
+    end)
+
+    Application.put_env(:trifle, :gateway_stub_status, fn _connection ->
+      refute Repo.in_transaction?()
+      {:ok, %{"state" => "Running", "enrolled" => true}}
+    end)
+
+    assert {:ok, %{status: "online"}} = NetworkConnections.refresh(network_connection_fixture())
+  end
+
+  for operation <- [:reauthorize, :disconnect, :delete] do
+    @tag operation: operation
+    test "a late refresh cannot overwrite #{operation}", %{operation: operation} do
+      connection = network_connection_fixture()
+      owner = self()
+
+      Application.put_env(:trifle, :gateway_stub_status, fn _connection ->
+        send(owner, {:status_waiting, self()})
+
+        receive do
+          :finish_status -> {:ok, %{"state" => "Running", "enrolled" => true}}
+        after
+          5_000 -> {:error, :test_timeout}
+        end
+      end)
+
+      refresh = Task.async(fn -> NetworkConnections.refresh(connection) end)
+      assert_receive {:status_waiting, gateway_caller}
+
+      result =
+        case operation do
+          :reauthorize -> NetworkConnections.reauthorize(connection, "tskey-auth-new-key")
+          :disconnect -> NetworkConnections.disconnect(connection)
+          :delete -> NetworkConnections.delete(connection)
+        end
+
+      assert {:ok, updated} = result
+      send(gateway_caller, :finish_status)
+
+      if operation == :delete do
+        assert {:error, :network_connection_unavailable} = Task.await(refresh)
+      else
+        assert {:ok, ^updated} = Task.await(refresh)
+        assert Repo.reload!(connection) == updated
+      end
+    end
+  end
+
+  test "a late gateway error cannot overwrite a new enrollment" do
+    connection = network_connection_fixture()
+    owner = self()
+
+    Application.put_env(:trifle, :gateway_stub_configure, fn _connection ->
+      send(owner, {:configure_waiting, self()})
+
+      receive do
+        :finish_configure -> {:error, :gateway_unavailable}
+      after
+        5_000 -> {:error, :test_timeout}
+      end
+    end)
+
+    refresh = Task.async(fn -> NetworkConnections.refresh(connection) end)
+    assert_receive {:configure_waiting, gateway_caller}
+    assert {:ok, updated} = NetworkConnections.reauthorize(connection, "tskey-auth-new-key")
+    send(gateway_caller, :finish_configure)
+    assert {:ok, ^updated} = Task.await(refresh)
+    assert Repo.reload!(connection).last_error == nil
+  end
+
   test "organization lookup cannot reach another organization's connection" do
     connection = network_connection_fixture()
 

@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -176,7 +177,7 @@ func TestRouteChangesAndDisconnectCancelStreams(t *testing.T) {
 	if code := request(t, s, config, "PUT", "/v1/routes", changed); code != 200 {
 		t.Fatal(code)
 	}
-	if _, err := reader.ReadByte(); err == nil {
+	if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
 		t.Fatal("old stream survived route change")
 	}
 	client.Close()
@@ -186,7 +187,7 @@ func TestRouteChangesAndDisconnectCancelStreams(t *testing.T) {
 	client, reader = openTestStream(t, s, config, changed)
 	reader.ReadString('\n')
 	configureTest(t, s, config, orgA, 2, false)
-	if _, err := reader.ReadByte(); err == nil {
+	if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
 		t.Fatal("stream survived disconnect")
 	}
 	client.Close()
@@ -218,6 +219,60 @@ func TestUnregisteredOrTamperedDestinationsAreRejected(t *testing.T) {
 	}
 	if code := request(t, s, config, "PUT", "/v1/connections", map[string]any{"organization_id": "../escape", "id": connID, "generation": 1}); code != 400 {
 		t.Fatal(code)
+	}
+}
+
+func TestHigherEnabledGenerationRequiresFreshAuthKey(t *testing.T) {
+	_, s, config := testGateway(t)
+	configureTest(t, s, config, orgA, 1, true)
+	payload := map[string]any{"organization_id": orgA, "id": connID, "generation": 2, "hostname": "trifle-test", "enabled": true}
+	if code := request(t, s, config, "PUT", "/v1/connections", payload); code != 422 {
+		t.Fatal("generation rotated without enrollment key", code)
+	}
+	payload["generation"] = 1
+	if code := request(t, s, config, "POST", "/v1/status", payload); code != 200 {
+		t.Fatal("rejected rotation changed the existing node", code)
+	}
+}
+
+func TestStreamAdmissionLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		own, other int
+		allowed    bool
+	}{
+		{"below connection limit", 255, 0, true},
+		{"connection limit", 256, 0, false},
+		{"another organization has the same connection ID", 0, 256, true},
+		{"below process limit", 0, 4095, true},
+		{"process limit", 0, 4096, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g, s, config := testGateway(t)
+			configureTest(t, s, config, orgA, 1, true)
+			route := testRoute(orgA)
+			if code := request(t, s, config, "PUT", "/v1/routes", route); code != 200 {
+				t.Fatal(code)
+			}
+			g.mu.Lock()
+			for i := 0; i < tc.own+tc.other; i++ {
+				occupied := route
+				if i >= tc.own {
+					occupied.OrganizationID = orgB
+				}
+				g.streams[&stream{route: occupied, cancel: func() {}}] = struct{}{}
+			}
+			g.mu.Unlock()
+			if tc.allowed {
+				client, reader := openTestStream(t, s, config, route)
+				if _, err := reader.ReadString('\n'); err != nil {
+					t.Fatal(err)
+				}
+				client.Close()
+			} else if code := request(t, s, config, "POST", "/v1/streams", route); code != 503 {
+				t.Fatal("stream limit not enforced", code)
+			}
+		})
 	}
 }
 

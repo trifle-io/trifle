@@ -274,6 +274,38 @@ defmodule TrifleApp.DatabasesLiveTest do
     assert html =~ "Beginning of Week"
   end
 
+  test "database and storage selectors exclude disabled connections but retain pending approvals",
+       %{
+         conn: conn,
+         organization: organization
+       } do
+    pending = network_connection_fixture(%{organization: organization, name: "Pending network"})
+
+    approval =
+      network_connection_fixture(%{organization: organization, name: "Awaiting approval"})
+
+    approval |> Ecto.Changeset.change(status: "approval_required") |> Repo.update!()
+    disabled = network_connection_fixture(%{organization: organization, name: "Disabled network"})
+    disabled |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+
+    {:ok, lv, _html} = live(conn, ~p"/dbs/new")
+
+    lv
+    |> element("#database-form")
+    |> render_change(%{
+      "database" => %{"driver" => "postgres", "connection_method" => "tailscale"}
+    })
+
+    lv |> element("button[phx-click=add_traces]") |> render_click()
+
+    for field <- ~w(network_connection_id trace_network_connection_id) do
+      selector = "select[name='database[#{field}]']"
+      assert has_element?(lv, "#{selector} option[value='#{pending.id}']")
+      assert has_element?(lv, "#{selector} option[value='#{approval.id}']")
+      refute has_element?(lv, "#{selector} option[value='#{disabled.id}']")
+    end
+  end
+
   test "mysql database is rendered as supported in databases list", %{
     conn: conn,
     organization: organization
