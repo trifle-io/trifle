@@ -9,7 +9,7 @@ defmodule TrifleApp.HomeDataTest do
   alias Trifle.Stats.Series
   alias TrifleApp.HomeData
 
-  test "source_activity uses a bounded connector timeout and summarizes counts" do
+  test "source_activity summarizes counts" do
     user = user_fixture()
     organization = organization_fixture(%{user: user})
     app_entitlement_fixture(organization)
@@ -34,6 +34,5 @@ defmodule TrifleApp.HomeDataTest do
 
     assert_received {:fetch, _source, "__system__key__", "1h", opts}
     assert opts[:transponders] == :none
-    assert opts[:connector_timeout] == 15_000
   end
 end

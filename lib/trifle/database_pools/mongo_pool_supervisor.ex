@@ -156,7 +156,7 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
         backoff_min: 500
       ]
 
-      {:ok, {Mongo, config}}
+      {:ok, {Mongo, Trifle.Networking.DatabaseTLS.mongo(config, database)}}
     end
   end
 

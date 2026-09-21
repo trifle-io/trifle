@@ -1,6 +1,31 @@
 # Default values for trifle
 replicaCount: 2
 
+# Disabled for self-hosted installs; values-saas.yaml enables one shared gateway.
+# Credentials are entered per organization in the App, never via TS_AUTHKEY.
+networkGateway:
+  enabled: false
+  image:
+    repository: trifle/network-gateway
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Leave all three empty for Helm to create and preserve private credentials.
+  # Set all three to use externally managed Secrets (required for GitOps rendering).
+  stateKeySecret: ""
+  serverTLSSecret: ""
+  clientTLSSecret: ""
+  storageClass: ""
+  storageSize: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
 image:
   repository: trifle/app
   pullPolicy: IfNotPresent

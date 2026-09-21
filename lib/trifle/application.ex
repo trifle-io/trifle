@@ -31,6 +31,9 @@ defmodule Trifle.Application do
           Trifle.DatabasePools.MySQLPoolSupervisor,
           {Registry, keys: :unique, name: Trifle.Networking.SSHTunnelRegistry},
           Trifle.Networking.SSHTunnelSupervisor,
+          {Registry, keys: :unique, name: Trifle.Networking.ForwarderRegistry},
+          {DynamicSupervisor,
+           strategy: :one_for_one, name: Trifle.Networking.ForwarderSupervisor},
           # Start the PubSub system
           {Phoenix.PubSub, name: Trifle.PubSub},
           Trifle.Chat.RunnerRegistry,

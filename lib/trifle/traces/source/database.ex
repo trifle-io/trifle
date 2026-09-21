@@ -212,6 +212,19 @@ defmodule Trifle.Traces.Source.Database do
         secret_access_key: database.trace_secret_access_key
       )
 
+    client =
+      if database.trace_network_connection_id do
+        case Trifle.Networking.Tailscale.s3_options(database) do
+          {:ok, options} ->
+            Keyword.put(client, :http_opts, options)
+
+          {:error, reason} ->
+            raise "Unable to connect to private trace storage: #{inspect(reason)}"
+        end
+      else
+        client
+      end
+
     [
       buckets: config["data_buckets"],
       prefix: config["data_prefix"],

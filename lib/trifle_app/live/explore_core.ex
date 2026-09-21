@@ -972,6 +972,10 @@ defmodule TrifleApp.ExploreCore do
   end
 
   # Progress message handling
+  def handle_async(:data_task, {:ok, {:error, error}}, socket) do
+    handle_async(:data_task, {:error, error}, socket)
+  end
+
   def handle_async(:data_task, {:ok, data}, socket) do
     # Handle both single system stats and dual system+key stats
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time

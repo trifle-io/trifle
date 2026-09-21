@@ -167,7 +167,7 @@ defmodule Trifle.DatabasePools.MySQLPoolSupervisor do
         queue_interval: 5000
       ]
 
-      {:ok, {MyXQL, config}}
+      {:ok, {MyXQL, Trifle.Networking.DatabaseTLS.mysql(config, database)}}
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule Trifle.Organizations.Attrs do
   @moduledoc """
   Shared attrs-normalization helpers used across the Organizations
-  sub-contexts (connectors, databases, transponders, dashboards, ...).
+  sub-contexts (network connections, databases, transponders, dashboards, ...).
   """
 
   alias Trifle.Organizations.Organization

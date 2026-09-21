@@ -81,7 +81,7 @@ defmodule TrifleApp.Router do
       live "/organization/sso", OrganizationSSOLive, :show
       live "/organization/delivery", OrganizationDeliveryLive, :show
       live "/organization/tokens", OrganizationTokensLive, :index
-      live "/organization/connectors", OrganizationConnectorsLive, :index
+      live "/organization/connections", OrganizationNetworkConnectionsLive, :index
       live "/organization/billing", OrganizationBillingLive, :show
       live "/dbs", DatabasesLive, :index
       live "/dbs/new", DatabasesLive, :new

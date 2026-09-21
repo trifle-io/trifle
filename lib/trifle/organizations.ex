@@ -19,7 +19,7 @@ defmodule Trifle.Organizations do
     Project,
     ProjectCluster,
     ProjectClusterAccess,
-    OrganizationConnector,
+    NetworkConnection,
     Organization,
     OrganizationMembership,
     OrganizationInvitation,
@@ -27,7 +27,6 @@ defmodule Trifle.Organizations do
   }
 
   alias Trifle.Organizations.Attrs
-  alias Trifle.Organizations.Connectors
   alias Trifle.Organizations.Dashboards
   alias Trifle.Organizations.DashboardTemplates
   alias Trifle.Organizations.InvitationNotifier
@@ -1165,26 +1164,6 @@ defmodule Trifle.Organizations do
   defdelegate delete_project_token(project_token), to: Tokens
   defdelegate change_project_token(project_token, attrs \\ %{}), to: Tokens
 
-  ## Organization connectors
-
-  defdelegate list_connectors_for_org(org_or_id), to: Connectors
-  defdelegate get_connector_for_org!(org_or_id, id), to: Connectors
-  defdelegate get_connector_for_org(organization_id, id), to: Connectors
-  defdelegate create_connector_for_org(organization), to: Connectors
-  defdelegate create_connector_for_org(organization, attrs), to: Connectors
-  defdelegate change_connector(connector), to: Connectors
-  defdelegate change_connector(connector, attrs), to: Connectors
-  defdelegate delete_connector(connector), to: Connectors
-  defdelegate get_connector_auth(token), to: Connectors
-  defdelegate record_connector_heartbeat(connector), to: Connectors
-  defdelegate record_connector_heartbeat(connector, attrs), to: Connectors
-  defdelegate touch_connector_poll(connector), to: Connectors
-  defdelegate enqueue_connector_job(connector, type), to: Connectors
-  defdelegate enqueue_connector_job(connector, type, payload), to: Connectors
-  defdelegate list_pending_connector_jobs(connector), to: Connectors
-  defdelegate list_pending_connector_jobs(connector, limit), to: Connectors
-  defdelegate complete_connector_job(connector, job_id, attrs), to: Connectors
-
   ## Database tokens
 
   defdelegate list_database_tokens, to: Tokens
@@ -1341,6 +1320,12 @@ defmodule Trifle.Organizations do
       end)
       |> case do
         {:ok, updated_database} ->
+          Phoenix.PubSub.broadcast(
+            Trifle.PubSub,
+            "network-source:#{database.id}",
+            :source_changed
+          )
+
           maybe_cleanup_replaced_sqlite_file(database, updated_database)
           {:ok, updated_database}
 
@@ -1365,7 +1350,15 @@ defmodule Trifle.Organizations do
   def remove_database_traces(%Database{} = database) do
     database
     |> Database.remove_traces_changeset()
+    |> Ecto.Changeset.change(pool_version: (database.pool_version || 1) + 1)
     |> Repo.update()
+    |> tap(fn
+      {:ok, _} ->
+        Phoenix.PubSub.broadcast(Trifle.PubSub, "network-source:#{database.id}", :source_changed)
+
+      _ ->
+        :ok
+    end)
   end
 
   @doc """
@@ -1384,6 +1377,7 @@ defmodule Trifle.Organizations do
     |> Repo.transaction()
     |> case do
       {:ok, %{database: deleted_database}} ->
+        Phoenix.PubSub.broadcast(Trifle.PubSub, "network-source:#{database.id}", :source_changed)
         _ = Trifle.DatabasePools.PoolManager.stop_all_pools_for_database(deleted_database.id)
         maybe_cleanup_deleted_sqlite_file(deleted_database)
         {:ok, deleted_database}
@@ -1406,34 +1400,31 @@ defmodule Trifle.Organizations do
   defp database_changeset(%Database{} = database, attrs) do
     database
     |> Database.changeset(attrs)
-    |> validate_database_connector_scope()
+    |> validate_database_network_scope()
   end
 
-  defp validate_database_connector_scope(%Ecto.Changeset{} = changeset) do
-    connection_method = Ecto.Changeset.get_field(changeset, :connection_method)
-    organization_id = Ecto.Changeset.get_field(changeset, :organization_id)
-    organization_connector_id = Ecto.Changeset.get_field(changeset, :organization_connector_id)
+  defp validate_database_network_scope(changeset) do
+    org_id = Ecto.Changeset.get_field(changeset, :organization_id)
 
-    cond do
-      connection_method != "connector" ->
-        changeset
+    Enum.reduce([:network_connection_id, :trace_network_connection_id], changeset, fn field,
+                                                                                      acc ->
+      case Ecto.Changeset.get_field(acc, field) do
+        nil ->
+          acc
 
-      not is_binary(organization_connector_id) or not is_binary(organization_id) ->
-        changeset
+        _id when is_nil(org_id) ->
+          Ecto.Changeset.add_error(acc, field, "is not available")
 
-      connector_belongs_to_org?(organization_connector_id, organization_id) ->
-        changeset
-
-      true ->
-        Ecto.Changeset.add_error(changeset, :organization_connector_id, "is not available")
-    end
-  end
-
-  defp connector_belongs_to_org?(connector_id, organization_id) do
-    from(a in OrganizationConnector,
-      where: a.id == ^connector_id and a.organization_id == ^organization_id
-    )
-    |> Repo.exists?()
+        id ->
+          if Repo.exists?(
+               from n in NetworkConnection, where: n.id == ^id and n.organization_id == ^org_id
+             ) do
+            acc
+          else
+            Ecto.Changeset.add_error(acc, field, "is not available")
+          end
+      end
+    end)
   end
 
   @doc """

@@ -561,7 +561,7 @@ defmodule TrifleApp.Layouts do
       {:organization, TrifleApp.OrganizationTokensLive} ->
         true
 
-      {:organization, TrifleApp.OrganizationConnectorsLive} ->
+      {:organization, TrifleApp.OrganizationNetworkConnectionsLive} ->
         true
 
       {:organization, TrifleApp.OrganizationBillingLive} ->

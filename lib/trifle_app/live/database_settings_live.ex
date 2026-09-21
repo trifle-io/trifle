@@ -540,7 +540,8 @@ defmodule TrifleApp.DatabaseSettingsLive do
   defp status_text(_), do: "Unknown"
 
   defp connection_method_label("ssh_tunnel"), do: "SSH tunnel"
-  defp connection_method_label("connector"), do: "Private connector"
+  defp connection_method_label("tailscale"), do: "Tailscale"
+  defp connection_method_label("unconfigured"), do: "Connection setup required"
   defp connection_method_label(_), do: "Direct"
 
   defp database_identifier_label(%Database{driver: "sqlite"}), do: "Database file"

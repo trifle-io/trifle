@@ -10,8 +10,16 @@ defmodule Trifle.Networking.DatabaseEndpoint do
     {:error, :agent_connection_not_supported}
   end
 
-  def resolve(%Database{connection_method: "connector"}) do
-    {:error, :connector_connection_not_implemented}
+  def resolve(%Database{connection_method: method})
+      when method in ["connector", "unconfigured"] do
+    {:error, :connection_setup_required}
+  end
+
+  def resolve(%Database{connection_method: "tailscale"} = database) do
+    case Trifle.Networking.Tailscale.database_endpoint(database) do
+      {:error, :stale_forwarder} -> Trifle.Networking.Tailscale.database_endpoint(database)
+      result -> result
+    end
   end
 
   def resolve(%Database{connection_method: "direct", driver: "sqlite"}) do
