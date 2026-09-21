@@ -3,6 +3,7 @@ defmodule Trifle.Organizations.NetworkConnections do
   import Ecto.Query
   alias Ecto.Changeset
   alias Trifle.Repo
+  alias Trifle.Traces
   alias Trifle.Organizations.{Database, NetworkConnection, Organization}
 
   def client, do: Application.get_env(:trifle, :network_gateway_client, Trifle.Networking.Gateway)
@@ -44,16 +45,25 @@ defmodule Trifle.Organizations.NetworkConnections do
   end
 
   def refresh(%NetworkConnection{} = connection) do
+    Traces.trace("Load current connection generation")
     # Do not hold a database connection/row lock during network requests.
     # The gateway rejects stale generations; the second transaction prevents a
     # late response from overwriting a disconnect or new enrollment credential.
     with {:ok, snapshot} <- Repo.transaction(fn -> lock_connection(connection) end) do
+      Traces.trace("Refresh generation: #{snapshot.generation}")
       attrs = refresh_attributes(snapshot)
+
+      Traces.trace("Save refreshed connection state")
 
       transact(snapshot, fn current ->
         if current.generation == snapshot.generation do
+          Traces.trace("Connection generation is unchanged; applying refresh")
           current |> Changeset.change(attrs) |> Repo.update()
         else
+          Traces.trace("Connection generation changed; keeping newer configuration",
+            state: :warning
+          )
+
           {:ok, current}
         end
       end)
@@ -61,8 +71,8 @@ defmodule Trifle.Organizations.NetworkConnections do
   end
 
   defp refresh_attributes(connection) do
-    with {:ok, _} <- client().configure(connection),
-         {:ok, status} <- client().status(connection) do
+    with {:ok, _} <- refresh_gateway(:configure, connection),
+         {:ok, status} <- refresh_gateway(:status, connection) do
       state = status["state"]
 
       attrs = %{
@@ -73,7 +83,13 @@ defmodule Trifle.Organizations.NetworkConnections do
         last_error: nil
       }
 
-      if status["enrolled"] == true and state == "Running",
+      clear_auth_key? = status["enrolled"] == true and state == "Running"
+
+      Traces.trace(
+        "Gateway status: #{attrs.status}; enrolled: #{status["enrolled"] == true}; clear stored auth key: #{clear_auth_key?}"
+      )
+
+      if clear_auth_key?,
         do: Map.put(attrs, :auth_key, nil),
         else: attrs
     else
@@ -83,6 +99,28 @@ defmodule Trifle.Organizations.NetworkConnections do
           checked_at: now(),
           last_error: error_message(reason)
         }
+    end
+  end
+
+  defp refresh_gateway(operation, connection) do
+    Traces.trace(
+      if(operation == :configure,
+        do: "Configure gateway connection",
+        else: "Read gateway connection status"
+      ),
+      head: true
+    )
+
+    # Gateway payloads can contain enrollment keys. Record only the operation
+    # outcome and the same safe error message shown in the connection UI.
+    case apply(client(), operation, [connection]) do
+      {:ok, _} = result ->
+        Traces.trace("Gateway #{operation} succeeded")
+        result
+
+      {:error, reason} = error ->
+        Traces.trace("Gateway #{operation} failed: #{error_message(reason)}", state: :error)
+        error
     end
   end
 
