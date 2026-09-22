@@ -33,6 +33,7 @@ defmodule TrifleApp.MonitorLive do
   }
 
   alias TrifleApp.Components.DataTable
+  alias TrifleApp.Components.SegmentFilters
 
   alias TrifleApp.DesignSystem.ChartColors
   alias TrifleApp.MonitorComponents
@@ -154,6 +155,29 @@ defmodule TrifleApp.MonitorLive do
   def handle_event("delete_monitor", _params, socket) do
     delete_monitor(socket, socket.assigns.monitor)
   end
+
+  def handle_event("update_segment_filters", %{"segments" => params}, socket) do
+    {values, segments} =
+      DashboardSegments.compute_state(
+        socket.assigns.monitor_segments,
+        params,
+        socket.assigns.segment_values
+      )
+
+    if values == socket.assigns.segment_values do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(:segment_values, values)
+       |> assign(:monitor_segments, segments)
+       |> assign(:resolved_key, resolve_monitor_key(socket.assigns.monitor, values, segments))
+       |> handle_filter_change(%{})
+       |> publish_chat_page_context()}
+    end
+  end
+
+  def handle_event("update_segment_filters", _params, socket), do: {:noreply, socket}
 
   def handle_event("show_execution_details", %{"id" => id}, socket) do
     execution = find_execution(socket.assigns.executions, id)
@@ -2698,7 +2722,15 @@ defmodule TrifleApp.MonitorLive do
         loading_progress={@loading_progress}
         transponding={@transponding}
         show_transponding_status={false}
-      />
+      >
+        <:attachment :if={@monitor_segments != [] && @monitor_source_status == :available}>
+          <SegmentFilters.filters
+            id="monitor-segments-form"
+            segments={@monitor_segments}
+            values={@segment_values}
+          />
+        </:attachment>
+      </.live_component>
 
       <div
         :if={@monitor_source_status != :available}

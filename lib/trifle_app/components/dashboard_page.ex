@@ -18,6 +18,7 @@ defmodule TrifleApp.Components.DashboardPage do
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DataTable
   alias TrifleApp.Components.DashboardPayload
+  alias TrifleApp.Components.SegmentFilters
   alias TrifleApp.Components.DashboardWidgets.EditorIcons
   alias TrifleApp.Components.DashboardWidgets.WidgetEditor
   alias TrifleApp.Components.DashboardWidgets.WidgetView
@@ -395,7 +396,15 @@ defmodule TrifleApp.Components.DashboardPage do
             loading_chunks={@loading_chunks}
             loading_progress={@loading_progress}
             transponding={@transponding}
-          />
+          >
+            <:attachment :if={!@print_mode && (@dashboard_segments || []) != []}>
+              <SegmentFilters.filters
+                id="dashboard-segments-form"
+                segments={@dashboard_segments}
+                values={@segment_values || %{}}
+              />
+            </:attachment>
+          </.live_component>
         <% end %>
         <%= if @dashboard_source_status != :available do %>
           <div class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -404,83 +413,6 @@ defmodule TrifleApp.Components.DashboardPage do
               {dashboard_source_message(@dashboard_source_status)}
             </p>
           </div>
-        <% end %>
-        <% segment_definitions = @dashboard_segments || [] %>
-        <%= if !@print_mode and segment_definitions != [] do %>
-          <form
-            id="dashboard-segments-form"
-            class="mb-6 flex justify-center"
-            phx-change="update_segment_filters"
-            phx-submit="update_segment_filters"
-          >
-            <div class="flex flex-wrap items-center justify-center gap-4">
-              <%= for segment <- segment_definitions do %>
-                <% segment_name = segment["name"] %>
-                <% label = segment["label"] || segment_name || "Segment" %>
-                <% current_value = Map.get(@segment_values || %{}, segment_name, "") %>
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-slate-300">
-                  <span>{label}:</span>
-                  <%= if segment["type"] == "text" do %>
-                    <input
-                      type="text"
-                      name={"segments[#{segment_name}]"}
-                      value={current_value}
-                      placeholder={segment["placeholder"] || ""}
-                      phx-debounce="500"
-                      class="w-56 rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
-                    />
-                  <% else %>
-                    <% groups = segment["groups"] || [] %>
-                    <% has_items = Enum.any?(groups, fn group -> (group["items"] || []) != [] end) %>
-                    <div class="grid grid-cols-1">
-                      <select
-                        name={"segments[#{segment_name}]"}
-                        class="col-start-1 row-start-1 w-56 appearance-none rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-1.5 pr-8 pl-3"
-                      >
-                        <%= for group <- groups do %>
-                          <% group_label = group["label"] %>
-                          <%= if group_label && group_label != "" do %>
-                            <optgroup label={group_label}>
-                              <%= for item <- group["items"] || [] do %>
-                                <% option_value = item["value"] || "" %>
-                                <option value={option_value} selected={option_value == current_value}>
-                                  {item["label"] || option_value}
-                                </option>
-                              <% end %>
-                            </optgroup>
-                          <% else %>
-                            <%= for item <- group["items"] || [] do %>
-                              <% option_value = item["value"] || "" %>
-                              <option value={option_value} selected={option_value == current_value}>
-                                {item["label"] || option_value}
-                              </option>
-                            <% end %>
-                          <% end %>
-                        <% end %>
-                        <%= if !has_items do %>
-                          <option value="" selected={current_value in [nil, ""]} disabled>
-                            No options configured
-                          </option>
-                        <% end %>
-                      </select>
-                      <svg
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        aria-hidden="true"
-                        class="pointer-events-none col-start-1 row-start-1 mr-2 h-5 w-5 self-center justify-self-end text-gray-500 dark:text-slate-400 sm:h-4 sm:w-4"
-                      >
-                        <path
-                          d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
-                          clip-rule="evenodd"
-                          fill-rule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                  <% end %>
-                </label>
-              <% end %>
-            </div>
-          </form>
         <% end %>
         <% export_params =
           build_url_params(%{

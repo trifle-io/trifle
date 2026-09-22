@@ -76,7 +76,92 @@ defmodule TrifleApp.DashboardLiveTest do
     {:ok, view, html} = live(conn, ~p"/dashboards/#{dashboard.id}")
 
     assert has_element?(view, "#smart_timeframe")
+    refute has_element?(view, "#dashboard_filter_bar-attachment")
     refute html =~ "top: 33%;"
+  end
+
+  test "segment filters attach to the filter bar and keep change, submit and URL selections", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, dashboard} =
+      Organizations.update_dashboard(dashboard, %{
+        key: "requests.(region).(service)",
+        segments: [
+          %{
+            "name" => "region",
+            "label" => "Region",
+            "type" => "select",
+            "default_value" => "eu",
+            "groups" => [
+              %{
+                "label" => "Regions",
+                "items" => [
+                  %{"value" => "eu", "label" => "Europe"},
+                  %{"value" => "us", "label" => "US"}
+                ]
+              }
+            ]
+          },
+          %{
+            "name" => "service",
+            "label" => "Service",
+            "type" => "text",
+            "default_value" => "api",
+            "placeholder" => "Service name"
+          }
+        ]
+      })
+
+    {:ok, view, _} = live(conn, ~p"/dashboards/#{dashboard.id}?segments[region]=us")
+    render_async(view)
+
+    attachment = "#dashboard_filter_bar-shortcuts.sticky > #dashboard_filter_bar-attachment"
+    assert has_element?(view, "#{attachment} #dashboard-segments-form")
+
+    assert has_element?(
+             view,
+             "#{attachment} optgroup[label='Regions'] option[value='us'][selected]"
+           )
+
+    assert has_element?(view, "#{attachment} input[value='api'][placeholder='Service name']")
+
+    view
+    |> form("#dashboard-segments-form", %{segments: %{region: "eu", service: "worker"}})
+    |> render_change()
+
+    assert %{"segments" => %{"region" => "eu", "service" => "worker"}} =
+             view
+             |> assert_patch()
+             |> URI.parse()
+             |> Map.fetch!(:query)
+             |> Plug.Conn.Query.decode()
+
+    render_async(view)
+    assert has_element?(view, "#{attachment} option[value='eu'][selected]")
+    assert has_element?(view, "#{attachment} input[value='worker']")
+
+    view
+    |> form("#dashboard-segments-form", %{segments: %{region: "us", service: ""}})
+    |> render_submit()
+
+    assert %{"segments" => %{"region" => "us", "service" => ""}} =
+             view
+             |> assert_patch()
+             |> URI.parse()
+             |> Map.fetch!(:query)
+             |> Plug.Conn.Query.decode()
+
+    render_async(view)
+    assert has_element?(view, "#{attachment} input[value='']")
+
+    assert Organizations.get_dashboard_for_membership!(membership, dashboard.id).segments ==
+             dashboard.segments
+
+    {:ok, print_view, _} = live(conn, ~p"/dashboards/#{dashboard.id}?print=1")
+    refute has_element?(print_view, "#dashboard_filter_bar-attachment")
+    refute has_element?(print_view, "#dashboard-segments-form")
   end
 
   test "system templates keep dashboard configuration available but disable layout editing", %{
