@@ -59,7 +59,8 @@ defmodule Trifle.Traces.ReaderTest do
       duration: 30,
       tags: ["default", "scheduled"],
       parts: 2,
-      length: 3
+      length: 3,
+      bucket_name: "bucket"
     }
 
     Postgres.create(config.index_driver, record)
@@ -348,7 +349,8 @@ defmodule Trifle.Traces.ReaderTest do
     assert %{text: nil} = Reader.preview(%{name: "image.png", body: "not displayed"})
   end
 
-  test "reads compressed S3 parts and attachments without provisioning or writing", ctx do
+  test "reads compressed S3 parts and attachments from the recorded bucket after configuration changes",
+       ctx do
     alias Trifle.Traces.Driver.Data.{S3, Encoding}
     prefix = "7/traces/jobs/App.Worker/reader-test/"
 
@@ -358,8 +360,13 @@ defmodule Trifle.Traces.ReaderTest do
       {"bucket", prefix <> "artifacts/report.txt"} => "S3 text"
     }
 
-    data = S3.new(buckets: ["bucket"], adapter: S3Adapter, client: objects, gzip: true)
+    data =
+      S3.new(buckets: ["replacement-bucket"], adapter: S3Adapter, client: objects, gzip: true)
+
     opts = [configuration: fn _ -> %{ctx.config | data_driver: data} end]
+
+    assert {:ok, %TraceRecord{bucket_name: "bucket"}} =
+             Reader.detail(ctx.membership, ctx.database.id, ctx.record.reference, opts)
 
     assert {:ok, [%{entry: %{type: :media, size: 7}}]} =
              Reader.part(ctx.membership, ctx.database.id, ctx.record.reference, 1, opts)

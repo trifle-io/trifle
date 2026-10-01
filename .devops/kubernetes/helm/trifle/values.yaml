@@ -173,7 +173,7 @@ app:
     gzip: true
     s3:
       endpoint: ""
-      buckets: []
+      buckets: [] # Existing bucket names; each new trace records its selected name.
       region: "us-east-1"
       prefix: "traces"
       accessKeyId: "" # Helm stores these credentials in the chart-managed app Secret.

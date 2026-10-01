@@ -29,7 +29,7 @@ defmodule Trifle.Repo.Migrations.CreateInternalObservability do
       add :last_at, :utc_datetime_usec, null: false
       add :retention, :integer, null: false
       add :expires_at, :utc_datetime_usec, null: false
-      add :bucket_id, :integer, null: false, default: 0
+      add :bucket_name, :text
     end
 
     execute(

@@ -178,7 +178,7 @@ defmodule Trifle.Traces.Source.Database do
       reference: reference,
       key: @probe_key,
       retention: config["retention_days"],
-      bucket_id: Driver.call(driver, :generate_bucket_id)
+      bucket_name: Driver.call(driver, :generate_bucket_name)
     }
 
     entries = [

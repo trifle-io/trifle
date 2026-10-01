@@ -213,7 +213,7 @@ defmodule Trifle.Observability.RuntimeConfigTest do
 
     System.put_env("TRIFLE_TRACES_STORAGE_BACKEND", "s3")
     System.put_env("TRIFLE_TRACES_S3_ENDPOINT", "https://object.example")
-    System.put_env("TRIFLE_TRACES_S3_BUCKETS", "uploads")
+    System.put_env("TRIFLE_TRACES_S3_BUCKETS", " uploads-a, uploads-b, ,\n uploads-c \n")
     System.put_env("TRIFLE_TRACES_S3_REGION", "eu-central")
     System.put_env("TRIFLE_TRACES_S3_ACCESS_KEY_ID", "access")
     System.put_env("TRIFLE_TRACES_S3_SECRET_ACCESS_KEY", "secret")
@@ -224,7 +224,7 @@ defmodule Trifle.Observability.RuntimeConfigTest do
     assert config[:index_backend] == :mongo
     assert config[:mongodb_url] == System.fetch_env!("MONGODB_URL")
     assert config[:traces_storage_backend] == :s3
-    assert config[:traces_s3][:buckets] == ["uploads"]
+    assert config[:traces_s3][:buckets] == ["uploads-a", "uploads-b", "uploads-c"]
     assert config[:traces_s3][:prefix] == "traces"
     refute config[:traces_manage_s3_lifecycle]
 
@@ -240,7 +240,7 @@ defmodule Trifle.Observability.RuntimeConfigTest do
     assert attrs.config["collection_name"] == "trifle_internal_stats"
     assert attrs.trace_config["index_name"] == "trifle_internal_traces"
     assert attrs.trace_config["data_driver"] == "s3"
-    assert attrs.trace_config["data_buckets"] == ["uploads"]
+    assert attrs.trace_config["data_buckets"] == ["uploads-a", "uploads-b", "uploads-c"]
     assert attrs.trace_config["data_prefix"] == "traces"
 
     assert [mongo_child, {Trifle.Observability.MongoSetup, _}, traces_child] =

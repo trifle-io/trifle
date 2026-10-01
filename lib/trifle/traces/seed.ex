@@ -313,7 +313,7 @@ defmodule Trifle.Traces.Seed do
         %{kind: kind, filename: name, bytes: File.stat!(path).size, synthetic: true}
       end)
 
-      Traces.artifact(name, path)
+      Traces.artifact(name, path, cleanup: false)
       %{artifact: name, stored: true}
     end)
   end

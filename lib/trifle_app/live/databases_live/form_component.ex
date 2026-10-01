@@ -453,9 +453,12 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
                     <input
                       name="database[trace_config][data_buckets]"
                       value={trace_buckets_value(@form)}
-                      placeholder="trifle-traces"
+                      placeholder="traces-a,traces-b"
                       class="mt-2 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:text-sm"
                     />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Enter one or more existing bucket names, separated by commas.
+                    </p>
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-900 dark:text-white">

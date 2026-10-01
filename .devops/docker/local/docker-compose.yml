@@ -5,7 +5,7 @@ services:
     image: redis:latest
     restart: unless-stopped
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio
@@ -18,7 +18,7 @@ services:
     volumes:
       - trifle_minio_data:/data
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z
     depends_on:
       - minio
     restart: "no"
@@ -76,6 +76,7 @@ services:
       TRIFLE_TRACES_S3_PREFIX: ${TRIFLE_TRACES_S3_PREFIX:-traces}
       TRIFLE_TRACES_RETENTION_DAYS: ${TRIFLE_TRACES_RETENTION_DAYS:-7}
       TRIFLE_TRACES_GZIP: ${TRIFLE_TRACES_GZIP:-true}
+      TRIFLE_TRACES_MANAGE_S3_LIFECYCLE: ${TRIFLE_TRACES_MANAGE_S3_LIFECYCLE:-true}
     ports:
       - 4000:4000
     volumes:

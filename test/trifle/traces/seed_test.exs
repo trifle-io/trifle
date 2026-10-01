@@ -126,6 +126,18 @@ defmodule Trifle.Traces.SeedTest do
   end
 
   test "media matches scenario paths on every cycle, independently of showcase frequency", ctx do
+    fixtures = Seed.options!([])
+    root = Path.join(System.tmp_dir!(), "trifle-seed-media-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    sources =
+      for kind <- [:screenshot, :video], into: [] do
+        path = Path.join(root, Path.basename(fixtures[kind]))
+        File.cp!(fixtures[kind], path)
+        {kind, path}
+      end
+
     for frequency <- [1, 10_000] do
       summary =
         Seed.run(ctx.config, ctx.stats,
@@ -133,7 +145,9 @@ defmodule Trifle.Traces.SeedTest do
           large_every: frequency,
           min_lines: 0,
           max_lines: 0,
-          max_delay_ms: 0
+          max_delay_ms: 0,
+          screenshot: sources[:screenshot],
+          video: sources[:video]
         )
 
       records =
@@ -172,6 +186,10 @@ defmodule Trifle.Traces.SeedTest do
             assert media == []
             assert record.context.scenario.media == nil
         end
+      end
+
+      for {kind, path} <- sources do
+        assert File.read!(path) == File.read!(fixtures[kind])
       end
     end
   end

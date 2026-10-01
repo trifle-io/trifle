@@ -70,7 +70,9 @@ The first trace always includes showcase and multipart features. Use `--count 13
 or more to cover the complete path cycle, including both media scenarios. Media
 selection does not depend on `--large-every`. Line limits apply to extra text
 rows, not the structural/block rows. Media files are copied into each matching
-trace, so use small fixtures (custom files are limited to 20 MiB each).
+trace, so use small fixtures (custom files are limited to 20 MiB each). Seeding
+attaches these reusable files with `cleanup: false`, retaining both bundled and
+custom source files after wrapup.
 Seeding is sequential and can issue many Postgres/S3 writes for multipart traces.
 
 ```sh

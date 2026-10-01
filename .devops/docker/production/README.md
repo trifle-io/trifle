@@ -73,6 +73,21 @@ background-job trace payloads in `app_uploads`. Leave it blank to retain only se
 trace metadata in PostgreSQL. `TRIFLE_TRACES_RETENTION_DAYS` controls both metadata and
 filesystem retention.
 
+For S3-compatible payloads, set `TRIFLE_TRACES_STORAGE_BACKEND=s3` and
+`TRIFLE_TRACES_S3_BUCKETS=traces-a,traces-b`, with the endpoint, region, prefix,
+and credentials for those existing buckets. Set `TRIFLE_TRACES_MANAGE_S3_LIFECYCLE=false`
+if lifecycle rules are managed separately. A trace records its chosen bucket name;
+reordering the configured list only affects new traces. Uploaded attachment sources
+are removed at successful wrapup; reusable files should use `cleanup: false`.
+
+When upgrading from positional bucket IDs, run the release migrations before
+starting the updated app. They add nullable text `bucket_name` to existing app
+trace tables and retain legacy `bucket_id` values without translating them.
+Historical S3 payloads need their actual bucket names populated separately to be
+read with the new library; the current bucket list cannot reliably reconstruct
+the original mapping. External PostgreSQL trace indexes need the same column
+added by their owner. MongoDB needs no column migration.
+
 ### Health Checks
 
 All services include health checks. Check status with:

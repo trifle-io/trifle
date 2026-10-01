@@ -73,7 +73,7 @@ defmodule Trifle.ObservabilityTest do
 
     assert %S3Data{
              adapter: FakeS3,
-             buckets: ["trifle-traces"],
+             buckets: ["traces-a", "traces-b"],
              prefix: "internal",
              gzip: true,
              client: ^test_pid
@@ -85,14 +85,49 @@ defmodule Trifle.ObservabilityTest do
                traces_s3: [
                  adapter: FakeS3,
                  client: test_pid,
-                 buckets: ["trifle-traces"],
+                 buckets: ["traces-a", "traces-b"],
                  prefix: "internal"
                ]
              )
 
-    assert_receive {:put_lifecycle, "trifle-traces", [rule]}
+    assert_receive {:put_lifecycle, "traces-a", [rule]}
+    assert_receive {:put_lifecycle, "traces-b", [^rule]}
     assert rule.id == "trifle-traces-14d"
     assert rule.filter.prefix == "14/internal/"
+  end
+
+  test "configured filesystem storage cleans uploaded sources after successful wrapup" do
+    root =
+      Path.join(System.tmp_dir!(), "trifle-trace-upload-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf!(root) end)
+    source = Path.join(root, "source.txt")
+    File.write!(source, "report")
+
+    data =
+      Trifle.Observability.trace_data_driver(
+        traces_storage_backend: :file,
+        traces_storage_path: Path.join(root, "storage"),
+        traces_gzip: true
+      )
+
+    config =
+      Trifle.Traces.Configuration.new(
+        index_driver: Trifle.Traces.Driver.Index.Memory.new(),
+        data_driver: data,
+        bump_every: 0
+      )
+
+    {:ok, tracer} = Trifle.Traces.start_tracer("jobs/upload", config: config)
+    Trifle.Traces.artifact("public.txt", source, tracer: tracer)
+    assert File.exists?(source)
+    final = Trifle.Traces.wrapup(tracer: tracer)
+
+    refute File.exists?(source)
+    record = Trifle.Traces.find(final.reference, config: config)
+    assert record.bucket_name == nil
+    assert Trifle.Traces.read_artifact(record, "public.txt", config: config) == "report"
   end
 
   test "builds ExAws client overrides for an S3-compatible endpoint" do

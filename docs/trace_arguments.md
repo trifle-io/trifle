@@ -25,4 +25,7 @@ Production always uses the GitHub dependency.
 
 After pushing the plugin, remove this local override, recreate the app container,
 run `mix deps.update trifle_traces` inside the app container to update `mix.lock`,
-and restart Phoenix. Commit/release the plugin before deploying the app changes.
+and restart Phoenix. The app can use a pushed Git commit before the library is
+released; commit the updated lockfile with the app changes. When adopting the
+bucket-name update, run the app's release migrations before startup. They add
+nullable text `bucket_name` to app trace tables without backfilling legacy indices.
