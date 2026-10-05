@@ -87,14 +87,12 @@ No requirement to provision a Hex package, create repositories, publish packages
 App commands must run inside its container:
 
 ```sh
-docker compose exec -T -e MIX_ENV=test \
-  -e TRIFLE_STATS_PATH=/workspaces/trifle_stats app mix test
+docker compose exec -T -e MIX_ENV=test app mix test
 docker compose exec -T app node --test assets/test/stats_path_test.mjs
-docker compose exec -T -e MIX_ENV=test \
-  -e TRIFLE_STATS_PATH=/workspaces/trifle_stats app mix assets.build
+docker compose exec -T -e MIX_ENV=test app mix assets.build
 ```
 
-The app override only applies in dev/test. To verify the fetched app Git dependency, use `docker compose exec -T -e MIX_ENV=test app env -u TRIFLE_STATS_PATH mix test`. CLI local verification uses a temporary Go workspace containing `trifle-cli` and `trifle_stats_go`; no `replace` directive was written to go.mod. Use `GOWORK=off go test ./...` to verify the pinned fetched dependency without a local workspace override.
+The temporary app SDK path overrides were removed after the plugin changes were pushed. App checks now use the Git dependencies pinned in `mix.lock` in every environment. CLI local verification uses a temporary Go workspace containing `trifle-cli` and `trifle_stats_go`; no `replace` directive was written to go.mod. Use `GOWORK=off go test ./...` to verify the pinned fetched dependency without a local workspace override.
 
 Check fixture parity from docs-trifle-io with `ruby contracts/check_stats_paths.rb`.
 

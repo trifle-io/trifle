@@ -1,5 +1,5 @@
 defmodule Trifle.ObservabilityTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Trifle.Traces.Driver.Data.File, as: FileData
   alias Trifle.Traces.Driver.Data.Null, as: NullData
@@ -10,6 +10,34 @@ defmodule Trifle.ObservabilityTest do
       send(test_pid, {:put_lifecycle, bucket, rules})
       :ok
     end
+  end
+
+  test "passes the internal Stats configuration to Traces without lifecycle hooks" do
+    previous = Application.get_env(:trifle, Trifle.Observability)
+    previous_stats = Application.get_env(:trifle_stats, :global_config)
+    previous_traces = Application.get_env(:trifle_traces, :configuration)
+
+    on_exit(fn ->
+      Application.put_env(:trifle, Trifle.Observability, previous)
+      Application.put_env(:trifle_stats, :global_config, previous_stats)
+      Application.put_env(:trifle_traces, :configuration, previous_traces)
+    end)
+
+    Application.put_env(:trifle, Trifle.Observability,
+      enabled: true,
+      index_backend: :mongo,
+      mongodb_url: "mongodb://mongo/trifle_test",
+      traces_storage_backend: :none,
+      granularities: ["10m", "1h"]
+    )
+
+    children = Trifle.Observability.setup()
+    config = Trifle.Traces.configuration()
+    assert config.stats_config == Trifle.Stats.Configuration.get_global()
+    assert config.stats_config.driver.collection_name == "trifle_internal_stats"
+    assert config.stats_config.granularities == ["10m", "1h"]
+    assert config.callbacks == %{liftoff: [], bump: [], wrapup: []}
+    assert Enum.any?(children, &match?(%{id: Trifle.Traces.Oban}, &1))
   end
 
   test "derives a named Postgrex connection from the Ecto Repo options" do

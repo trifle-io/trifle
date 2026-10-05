@@ -1,7 +1,7 @@
 defmodule Trifle.Observability.TraceMetricsTest do
   use ExUnit.Case, async: false
 
-  alias Trifle.{Observability, Stats, Traces}
+  alias Trifle.{Stats, Traces}
   alias Trifle.Stats.Driver.Sqlite
   alias Trifle.Traces.Configuration
 
@@ -32,19 +32,21 @@ defmodule Trifle.Observability.TraceMetricsTest do
     %{stats_config: config}
   end
 
-  for state <- [:success, :warning, :error] do
-    test "Oban #{state} wrapup records a short job key without changing values", %{
+  for state <- [:success, :warning, :error], mode <- [:live, :deferred] do
+    test "Oban #{mode} #{state} wrapup records native activity metrics", %{
       stats_config: stats_config
     } do
       state = unquote(state)
+      mode = unquote(mode)
       parent = self()
 
       config =
         Configuration.new(
           index_driver: Traces.Driver.Index.Memory.new(),
           data_driver: Traces.Driver.Data.Memory.new(),
-          on_liftoff: &Observability.start_trace_metric/1,
-          on_wrapup: &Observability.record_trace/1
+          stats_config: stats_config,
+          default_mode: mode,
+          bump_every: 0
         )
         |> Configuration.add_callback(:wrapup, &send(parent, {:wrapped, &1}))
 
@@ -56,12 +58,21 @@ defmodule Trifle.Observability.TraceMetricsTest do
       Traces.Oban.handle_event([:oban, :job, :start], %{}, %{job: job}, options)
       Traces.trace("Executing the job")
 
+      assert %{values: []} =
+               Stats.values(@metric_key, from, DateTime.utc_now(), "1h", stats_config,
+                 skip_blanks: true
+               )
+
       finish_job(state, job, options)
 
       assert_receive {:wrapped, tracer}
       assert tracer.key == "jobs/#{@worker}"
       assert tracer.state == state
+      assert tracer.mode == mode
       assert tracer.meta == args
+      record = Traces.Tracer.trace_record(tracer)
+      assert record.length == length(Traces.payload(record, config: config))
+      assert record.length > 0
       assert Traces.find(tracer.reference, config: config).meta == args
 
       assert Traces.find(tracer.reference, config: config).context == %{
@@ -80,13 +91,14 @@ defmodule Trifle.Observability.TraceMetricsTest do
       assert Map.drop(values, ["duration"]) == %{
                "count" => 1,
                "states" => %{to_string(state) => 1},
-               "entries" => %{"count" => length(tracer.data)}
+               "entries" => %{"count" => record.length}
              }
 
       assert %{"count" => 1, "sum" => duration, "square" => square, "states" => states} =
                values["duration"]
 
       assert duration >= 0
+      assert duration == record.duration
       assert square == duration * duration
 
       assert states == %{
@@ -100,33 +112,45 @@ defmodule Trifle.Observability.TraceMetricsTest do
     end
   end
 
-  test "durations use a dedicated sample count and preserve timing across bumps", %{
-    stats_config: config
+  test "records native durations and counts across live bumps and deferred wrapup", %{
+    stats_config: stats_config
   } do
     from = DateTime.utc_now()
 
-    tracer = %{
-      key: @metric_key,
-      reference: "timed",
-      bumped_at: System.monotonic_time(:millisecond) - 125,
-      state: :success,
-      data: []
-    }
+    records =
+      for mode <- [:live, :deferred] do
+        config =
+          Configuration.new(
+            index_driver: Traces.Driver.Index.Memory.new(),
+            data_driver: Traces.Driver.Data.Memory.new(),
+            stats_config: stats_config,
+            bump_every: 0
+          )
 
-    Observability.start_trace_metric(tracer)
-    Observability.record_trace(%{tracer | bumped_at: System.monotonic_time(:millisecond)})
-    assert Process.get({Observability, :trace_started_at, "timed"}) == nil
-
-    # Existing traces that did not run the start callback still add an event, not
-    # a fake duration observation that would bias the average toward zero.
-    Observability.record_trace(%{tracer | reference: "old", state: :warning})
+        {:ok, tracer} = Traces.start_tracer(@metric_key, config: config, mode: mode)
+        Traces.trace("first step", tracer: tracer)
+        Process.sleep(5)
+        Traces.trace("second step", tracer: tracer)
+        final = Traces.wrapup(tracer: tracer)
+        record = Traces.Tracer.trace_record(final)
+        assert record.duration >= 5
+        assert record.length == 3
+        record
+      end
 
     assert %{values: [values]} =
-             Stats.values(@metric_key, from, DateTime.utc_now(), "1h", config, skip_blanks: true)
+             Stats.values(@metric_key, from, DateTime.utc_now(), "1h", stats_config,
+               skip_blanks: true
+             )
 
     assert values["count"] == 2
-    assert values["duration"]["count"] == 1
-    assert values["duration"]["sum"] >= 125
+    assert values["entries"]["count"] == 6
+    assert values["duration"]["count"] == 2
+    assert values["duration"]["sum"] == Enum.sum(Enum.map(records, & &1.duration))
+
+    assert values["duration"]["square"] ==
+             Enum.sum(Enum.map(records, &(&1.duration * &1.duration)))
+
     assert Map.keys(values["duration"]["states"]) == ["success"]
   end
 

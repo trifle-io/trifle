@@ -49,8 +49,8 @@ defmodule Trifle.Observability do
   def setup do
     if enabled?() do
       options = config()
-      configure_stats(options)
-      traces_config = configure_traces(options)
+      stats_config = configure_stats(options)
+      traces_config = configure_traces(options, stats_config)
 
       storage_children(options) ++
         [
@@ -276,50 +276,6 @@ defmodule Trifle.Observability do
   defp mongo_database_attrs(_), do: {:error, :mongo_source_url_unavailable}
 
   @doc false
-  def start_trace_metric(tracer) do
-    # Lifecycle callbacks execute in the trace's own GenServer. Preserve its initial
-    # monotonic timestamp before subsequent bumps replace bumped_at.
-    Process.put({__MODULE__, :trace_started_at, tracer.reference}, tracer.bumped_at)
-    :ok
-  end
-
-  @doc false
-  def record_trace(tracer) do
-    started_at = Process.delete({__MODULE__, :trace_started_at, tracer.reference})
-
-    values = %{
-      count: 1,
-      states: %{to_string(tracer.state) => 1},
-      entries: %{count: length(tracer.data || [])}
-    }
-
-    values =
-      if is_integer(started_at) do
-        duration = max(System.monotonic_time(:millisecond) - started_at, 0)
-        sample = %{count: 1, sum: duration, square: duration * duration}
-
-        Map.put(values, :duration, Map.put(sample, :states, %{to_string(tracer.state) => sample}))
-      else
-        # A trace already in flight during a configuration update has no start
-        # sample. Keep its event count, without inventing a zero duration.
-        values
-      end
-
-    Trifle.Stats.track(metric_key(tracer.key), DateTime.utc_now(), values)
-  rescue
-    error ->
-      Logger.warning(
-        "Failed to record internal trace metric: " <> Exception.format_banner(:error, error)
-      )
-
-      :ok
-  catch
-    kind, reason ->
-      Logger.warning("Failed to record internal trace metric: #{kind}: #{inspect(reason)}")
-      :ok
-  end
-
-  @doc false
   def trace_error(error, _tracer, phase) do
     Logger.warning(
       "Trifle.Traces #{phase} persistence failed: " <> Exception.format_banner(:error, error)
@@ -468,7 +424,7 @@ defmodule Trifle.Observability do
     end
   end
 
-  defp configure_traces(options) do
+  defp configure_traces(options, stats_config) do
     Trifle.Traces.configure(
       index_driver: trace_index_driver(options),
       data_driver: trace_data_driver(options),
@@ -476,8 +432,7 @@ defmodule Trifle.Observability do
       payload_size_limit: Keyword.get(options, :traces_payload_size_limit, 100 * 1024),
       retention: Keyword.get(options, :traces_retention_days, 7),
       error_handler: &trace_error/3,
-      on_liftoff: &start_trace_metric/1,
-      on_wrapup: &record_trace/1
+      stats_config: stats_config
     )
   end
 
@@ -522,10 +477,6 @@ defmodule Trifle.Observability do
       :postgres -> PostgresIndex.new(Trifle.Repo, table_name: @traces_table)
       :mongo -> MongoIndex.new(@mongo_connection, collection_name: @traces_table)
     end
-  end
-
-  defp metric_key(key) do
-    to_string(key)
   end
 
   defp normalize_path(path) when path in [nil, ""], do: nil

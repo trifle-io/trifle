@@ -15,17 +15,22 @@ Raw Metadata and clipboard text retain the complete stored arguments.
 There is no conversion of historical development records. New jobs use the new
 format; arguments omitted from earlier traces cannot be recovered.
 
-## Testing unreleased plugin changes locally
+## Updating the plugins
 
-The development compose file mounts the sibling `trifle_traces` checkout at
-`/workspaces/trifle_traces`. Set `TRIFLE_TRACES_PATH=/workspaces/trifle_traces` in
-the ignored `.env.local` to use it for development and tests. Recreate the app
-container after changing this environment setting and start Phoenix again.
-Production always uses the GitHub dependency.
+Development, tests, and production use the GitHub dependencies pinned in
+`mix.lock`. The temporary local SDK path overrides have been removed. After
+pushing plugin changes, update the dependencies inside the app container:
 
-After pushing the plugin, remove this local override, recreate the app container,
-run `mix deps.update trifle_traces` inside the app container to update `mix.lock`,
-and restart Phoenix. The app can use a pushed Git commit before the library is
-released; commit the updated lockfile with the app changes. When adopting the
-bucket-name update, run the app's release migrations before startup. They add
-nullable text `bucket_name` to app trace tables without backfilling legacy indices.
+```sh
+docker compose -f .devops/docker/local/docker-compose.yml exec -T app \
+  mix deps.update trifle_stats trifle_traces
+```
+
+Commit the updated lockfile with the app changes and restart Phoenix and workers.
+The app can use a pushed Git commit before the library is released. Traces
+receives the internal Stats configuration through `stats_config`; the library
+records activity at wrapup without application lifecycle callbacks.
+
+When adopting the bucket-name update, run the app's release migrations before
+startup. They add nullable text `bucket_name` to app trace tables without
+backfilling legacy indices.
