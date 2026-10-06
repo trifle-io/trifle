@@ -129,16 +129,7 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
   end
 
   defp mongo_pool_spec(database, connection_name) do
-    # Build MongoDB URL from database config
-    # Extract pool_size from config
     db_config = database.config || %{}
-
-    pool_size =
-      case db_config["pool_size"] do
-        nil -> 5
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
 
     with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
       url = build_mongo_url(database, endpoint)
@@ -147,18 +138,30 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
       config = [
         name: connection_name,
         url: url,
-        pool_size: pool_size,
-        timeout: 5000,
-        pool_timeout: 5000,
+        pool_size: positive_integer(db_config["pool_size"], 5),
+        timeout: positive_integer(db_config["timeout"], 5000),
+        pool_timeout: positive_integer(db_config["pool_timeout"], 5000),
         # MongoDB-specific options
         idle_interval: 5000,
         backoff_max: 1000,
         backoff_min: 500
       ]
 
-      {:ok, {Mongo, Trifle.Networking.DatabaseTLS.mongo(config, database)}}
+      client = Application.get_env(:trifle, :mongo_pool_client, Mongo)
+      {:ok, {client, Trifle.Networking.DatabaseTLS.mongo(config, database)}}
     end
   end
+
+  defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
+
+  defp positive_integer(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} when number > 0 -> number
+      _ -> default
+    end
+  end
+
+  defp positive_integer(_value, default), do: default
 
   defp build_mongo_url(database, endpoint) do
     # Handle authentication

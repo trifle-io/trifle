@@ -2,6 +2,7 @@ defmodule Trifle.Traces.ReaderTest do
   use Trifle.DataCase, async: false
   import Trifle.OrganizationsFixtures
   import Trifle.BillingFixtures
+  import ExUnit.CaptureLog
   alias Trifle.Organizations
   alias Trifle.Traces.{Reader, Configuration, TraceRecord}
   alias Trifle.Traces.Driver.Index.Postgres
@@ -202,6 +203,43 @@ defmodule Trifle.Traces.ReaderTest do
       assert {:error, :unavailable} =
                Reader.attachments(membership, ctx.database.id, ctx.record.reference, 0, opts)
     end
+  end
+
+  test "storage failures log their cause, operation, source and elapsed time", ctx do
+    for failure <- [:raise, :exit] do
+      opts = [
+        configuration: fn _ ->
+          case failure do
+            :raise -> raise Mongo.Error, message: "query timed out after 5000ms"
+            :exit -> exit({:timeout, {GenServer, :call, [:mongo, :checkout_session, 60_000]}})
+          end
+        end
+      ]
+
+      log =
+        capture_log(fn ->
+          assert {:error, :storage_unavailable} =
+                   Reader.search(ctx.membership, ctx.database.id, [], opts)
+        end)
+
+      assert log =~ "[Traces.Reader] operation=search source_id=#{ctx.database.id}"
+      assert log =~ ~r/elapsed_ms=\d+/
+
+      if failure == :raise do
+        assert log =~ "Mongo.Error"
+        assert log =~ "query timed out after 5000ms"
+      else
+        assert log =~ "time out"
+        assert log =~ "checkout_session"
+      end
+    end
+  end
+
+  test "expected missing trace results do not log storage failures", ctx do
+    assert capture_log(fn ->
+             assert {:error, :not_found} =
+                      Reader.detail(ctx.membership, ctx.database.id, "missing", ctx.opts)
+           end) == ""
   end
 
   test "oversized recorded attachments are rejected before reading their bodies", ctx do

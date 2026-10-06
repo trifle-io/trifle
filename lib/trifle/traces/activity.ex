@@ -1,29 +1,40 @@
 defmodule Trifle.Traces.Activity do
   @moduledoc "Trace path/state activity from Stats counters; parent rollups are never stored."
 
+  require Logger
+
   alias Trifle.Stats.Source
   alias Trifle.Traces.Reader
 
   @states ~w(success warning error running)
 
   def fetch(membership, id, from, to, granularity, opts \\ []) do
+    started = System.monotonic_time(:millisecond)
     fetcher = Keyword.get(opts, :fetch_series, &Source.fetch_series/6)
 
-    with {:ok, source} <- Reader.source(membership, id) do
-      fetch = fn key ->
-        fetcher.(source, key, from, to, granularity,
-          transponders: :none,
-          progressive_concurrency: 1
-        )
-      end
+    try do
+      with {:ok, source} <- Reader.source(membership, id) do
+        fetch = fn key ->
+          fetcher.(source, key, from, to, granularity,
+            transponders: :none,
+            progressive_concurrency: 1
+          )
+        end
 
-      with {:ok, catalog} <- read(fetch, "__system__key__"),
-           {:ok, metrics} <- fetch_metrics(catalog_keys(catalog), fetch) do
-        {:ok, %{catalog: catalog, metrics: metrics}}
+        with {:ok, catalog} <- read(fetch, "__system__key__", id),
+             {:ok, metrics} <- fetch_metrics(catalog_keys(catalog), fetch, id) do
+          {:ok, %{catalog: catalog, metrics: metrics}}
+        end
       end
+    rescue
+      error ->
+        log_failure(id, nil, started, :error, error, __STACKTRACE__)
+        {:error, :storage_unavailable}
+    catch
+      kind, reason ->
+        log_failure(id, nil, started, kind, reason, __STACKTRACE__)
+        {:error, :storage_unavailable}
     end
-  rescue
-    _ -> {:error, :storage_unavailable}
   end
 
   def build(input, path \\ nil, state \\ nil) do
@@ -142,9 +153,11 @@ defmodule Trifle.Traces.Activity do
     end
   end
 
-  defp fetch_metrics(keys, fetch) do
+  defp fetch_metrics(keys, fetch, id) do
+    started = System.monotonic_time(:millisecond)
+
     keys
-    |> Task.async_stream(fn key -> {key, read(fetch, key)} end,
+    |> Task.async_stream(fn key -> {key, read(fetch, key, id)} end,
       max_concurrency: 4,
       timeout: 60_000,
       on_timeout: :kill_task,
@@ -154,20 +167,44 @@ defmodule Trifle.Traces.Activity do
       {:ok, {key, {:ok, series}}}, {:ok, metrics} ->
         {:cont, {:ok, Map.put(metrics, key, series)}}
 
-      _, _ ->
+      {:ok, {_key, {:error, _}}}, _ ->
+        {:halt, {:error, :storage_unavailable}}
+
+      {:exit, reason}, _ ->
+        log_failure(id, nil, started, :exit, reason, [])
         {:halt, {:error, :storage_unavailable}}
     end)
   end
 
-  defp read(fetch, key) do
-    case fetch.(key) do
-      {:ok, %{series: series}} -> {:ok, series}
-      _ -> {:error, :storage_unavailable}
+  defp read(fetch, key, id) do
+    started = System.monotonic_time(:millisecond)
+
+    try do
+      case fetch.(key) do
+        {:ok, %{series: series}} ->
+          {:ok, series}
+
+        result ->
+          log_failure(id, key, started, :error, result, [])
+          {:error, :storage_unavailable}
+      end
+    rescue
+      error ->
+        log_failure(id, key, started, :error, error, __STACKTRACE__)
+        {:error, :storage_unavailable}
+    catch
+      kind, reason ->
+        log_failure(id, key, started, kind, reason, __STACKTRACE__)
+        {:error, :storage_unavailable}
     end
-  rescue
-    _ -> {:error, :storage_unavailable}
-  catch
-    _, _ -> {:error, :storage_unavailable}
+  end
+
+  defp log_failure(id, key, started, kind, reason, stacktrace) do
+    Logger.warning(fn ->
+      "[Traces.Activity] source_id=#{id} metric_key=#{inspect(key)} " <>
+        "elapsed_ms=#{System.monotonic_time(:millisecond) - started}\n" <>
+        Exception.format(kind, reason, stacktrace)
+    end)
   end
 
   defp catalog_keys(catalog) do

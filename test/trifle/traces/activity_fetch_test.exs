@@ -2,6 +2,7 @@ defmodule Trifle.Traces.ActivityFetchTest do
   use Trifle.DataCase
   import Trifle.OrganizationsFixtures
   import Trifle.BillingFixtures
+  import ExUnit.CaptureLog
   alias Trifle.Traces.Activity
 
   setup do
@@ -105,5 +106,41 @@ defmodule Trifle.Traces.ActivityFetchTest do
              Activity.fetch(context.membership, Ecto.UUID.generate(), nil, nil, "1h",
                fetch_series: fetcher
              )
+  end
+
+  test "failed metric reads log the original failure with the metric and source", context do
+    at = ~U[2026-09-01 00:00:00Z]
+
+    for failure <- [:return, :raise, :exit] do
+      fetcher = fn _, key, _, _, _, _ ->
+        if key == "__system__key__" do
+          {:ok, %{series: %{at: [at], values: [%{"keys" => %{"jobs/a" => 1}}]}}}
+        else
+          case failure do
+            :return -> {:error, :connection_timeout}
+            :raise -> raise Mongo.Error, message: "query timed out after 5000ms"
+            :exit -> exit(:connection_timeout)
+          end
+        end
+      end
+
+      log =
+        capture_log(fn ->
+          assert {:error, :storage_unavailable} =
+                   Activity.fetch(context.membership, context.database.id, at, at, "1h",
+                     fetch_series: fetcher
+                   )
+        end)
+
+      assert log =~ "[Traces.Activity] source_id=#{context.database.id} metric_key=\"jobs/a\""
+      assert log =~ ~r/elapsed_ms=\d+/
+
+      if failure == :raise do
+        assert log =~ "Mongo.Error"
+        assert log =~ "query timed out after 5000ms"
+      else
+        assert log =~ "connection_timeout"
+      end
+    end
   end
 end

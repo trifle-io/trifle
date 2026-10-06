@@ -1,6 +1,8 @@
 defmodule Trifle.Traces.Reader do
   @moduledoc "Organization-scoped, read-only access to trace indexes and payload stores."
 
+  require Logger
+
   alias Trifle.Organizations
   alias Trifle.Organizations.Database
   alias Trifle.Stats.Source
@@ -26,17 +28,17 @@ defmodule Trifle.Traces.Reader do
   def source(_, _), do: {:error, :unavailable}
 
   def search(membership, id, filters, opts \\ []) do
-    read(membership, id, opts, fn config ->
+    read(membership, id, :search, opts, fn config ->
       filters |> Keyword.put(:limit, 20) |> Keyword.put(:config, config) |> Trifle.Traces.search()
     end)
   end
 
   def detail(membership, id, reference, opts \\ []) do
-    read(membership, id, opts, &find!(&1, reference))
+    read(membership, id, :detail, opts, &find!(&1, reference))
   end
 
   def part(membership, id, reference, part, opts \\ []) do
-    read(membership, id, opts, fn config ->
+    read(membership, id, :part, opts, fn config ->
       record = find!(config, reference)
       entries = read_part!(config, record, part)
       Enum.with_index(entries, fn entry, row -> %{entry: entry, part: part, row: row} end)
@@ -45,7 +47,7 @@ defmodule Trifle.Traces.Reader do
 
   # Scan only a bounded batch of parts; never read attachment bodies to list them.
   def attachments(membership, id, reference, after_part \\ 0, opts \\ []) do
-    read(membership, id, opts, fn config ->
+    read(membership, id, :attachments, opts, fn config ->
       record = find!(config, reference)
 
       unless is_integer(after_part) and after_part >= 0 and after_part <= record.parts,
@@ -77,7 +79,7 @@ defmodule Trifle.Traces.Reader do
 
   # A download is addressed by an entry, never by a caller-supplied object name.
   def artifact(membership, id, reference, part, row, opts \\ []) do
-    read(membership, id, opts, fn config ->
+    read(membership, id, :artifact, opts, fn config ->
       record = find!(config, reference)
       entries = read_part!(config, record, part)
       entry = if is_integer(row) and row >= 0, do: Enum.at(entries, row)
@@ -111,17 +113,39 @@ defmodule Trifle.Traces.Reader do
     end
   end
 
-  defp read(membership, id, opts, fun) do
-    with {:ok, source} <- source(membership, id) do
-      provider = Keyword.get(opts, :configuration, &Trifle.Traces.Source.Database.configuration/1)
-      {:ok, fun.(provider.(source.record))}
+  defp read(membership, id, operation, opts, fun) do
+    started = System.monotonic_time(:millisecond)
+
+    try do
+      with {:ok, source} <- source(membership, id) do
+        provider =
+          Keyword.get(opts, :configuration, &Trifle.Traces.Source.Database.configuration/1)
+
+        {:ok, fun.(provider.(source.record))}
+      end
+    rescue
+      error ->
+        log_failure(id, operation, started, :error, error, __STACKTRACE__)
+        {:error, :storage_unavailable}
+    catch
+      :not_found ->
+        {:error, :not_found}
+
+      :too_large ->
+        {:error, :too_large}
+
+      kind, reason ->
+        log_failure(id, operation, started, kind, reason, __STACKTRACE__)
+        {:error, :storage_unavailable}
     end
-  rescue
-    _ -> {:error, :storage_unavailable}
-  catch
-    :not_found -> {:error, :not_found}
-    :too_large -> {:error, :too_large}
-    _, _ -> {:error, :storage_unavailable}
+  end
+
+  defp log_failure(id, operation, started, kind, reason, stacktrace) do
+    Logger.warning(fn ->
+      "[Traces.Reader] operation=#{operation} source_id=#{id} " <>
+        "elapsed_ms=#{System.monotonic_time(:millisecond) - started}\n" <>
+        Exception.format(kind, reason, stacktrace)
+    end)
   end
 
   defp max_artifact_bytes do
