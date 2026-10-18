@@ -371,6 +371,15 @@ defmodule Trifle.Accounts do
     |> Repo.update()
   end
 
+  @doc """
+  Saves the user's preferred trace timestamp view.
+  """
+  def update_user_trace_timestamp_mode(%User{} = user, attrs) do
+    user
+    |> User.trace_timestamp_mode_changeset(attrs)
+    |> Repo.update()
+  end
+
   ## Session
 
   @doc """

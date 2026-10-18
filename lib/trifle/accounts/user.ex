@@ -13,6 +13,7 @@ defmodule Trifle.Accounts.User do
     field :confirmed_at, :naive_datetime
     field :is_admin, :boolean, default: false
     field :theme, :string, default: "system"
+    field :trace_timestamp_mode, :string, default: "raw"
 
     timestamps()
   end
@@ -181,6 +182,16 @@ defmodule Trifle.Accounts.User do
     user
     |> cast(attrs, [:theme])
     |> validate_inclusion(:theme, ~w(light dark system), message: "is not a valid theme")
+  end
+
+  @doc """
+  A user changeset for the preferred trace timestamp view.
+  """
+  def trace_timestamp_mode_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:trace_timestamp_mode], empty_values: [])
+    |> validate_required([:trace_timestamp_mode])
+    |> validate_inclusion(:trace_timestamp_mode, ~w(raw diff diff_header))
   end
 
   def profile_changeset(user, attrs) do

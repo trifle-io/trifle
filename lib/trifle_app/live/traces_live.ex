@@ -1,6 +1,7 @@
 defmodule TrifleApp.TracesLive do
   use TrifleApp, :live_view
 
+  alias Trifle.Accounts
   alias Trifle.Stats.Source
   alias Trifle.Traces.{Activity, Reader}
   alias TrifleApp.TracesLive.{Query, Timestamps}
@@ -37,7 +38,7 @@ defmodule TrifleApp.TracesLive do
        entries: [],
        expanded_returns: %{},
        part: 0,
-       timestamp_mode: "raw",
+       timestamp_mode: socket.assigns.current_user.trace_timestamp_mode,
        detail_error: nil,
        detail_loading: false,
        previews: %{},
@@ -167,10 +168,19 @@ defmodule TrifleApp.TracesLive do
 
   def handle_event("retry_detail", _, socket), do: {:noreply, load_detail(socket)}
 
-  def handle_event("cycle_timestamp_mode", _, socket),
-    do:
-      {:noreply,
-       assign(socket, :timestamp_mode, Timestamps.next_mode(socket.assigns.timestamp_mode))}
+  def handle_event("cycle_timestamp_mode", _, socket) do
+    mode = Timestamps.next_mode(socket.assigns.timestamp_mode)
+
+    case Accounts.update_user_trace_timestamp_mode(socket.assigns.current_user, %{
+           trace_timestamp_mode: mode
+         }) do
+      {:ok, user} ->
+        {:noreply, assign(socket, current_user: user, timestamp_mode: mode)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not save timestamp view. Please try again.")}
+    end
+  end
 
   def handle_event("toggle_return", %{"part" => part, "row" => row}, socket)
       when is_binary(part) and is_binary(row) do

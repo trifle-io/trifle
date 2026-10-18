@@ -4,6 +4,7 @@ defmodule TrifleApp.TracesLiveTest do
   import Trifle.OrganizationsFixtures
   import Trifle.BillingFixtures
   alias Trifle.Organizations
+  alias Trifle.Accounts
   alias Trifle.Traces.TraceRecord
 
   defmodule FakeReader do
@@ -261,7 +262,7 @@ defmodule TrifleApp.TracesLiveTest do
         }
       })
 
-    %{conn: log_in_user(conn, user), database: database, organization: org}
+    %{conn: log_in_user(conn, user), user: user, database: database, organization: org}
   end
 
   test "list and detail share sibling colors from all known paths, not just visible traces", %{
@@ -604,9 +605,10 @@ defmodule TrifleApp.TracesLiveTest do
     refute has_element?(view, ".trace-entries pre", "private-return")
   end
 
-  test "timestamp control cycles modes locally and a new visit defaults to raw", %{
+  test "timestamp control saves each mode for the user and restores it on new visits", %{
     conn: conn,
-    database: database
+    database: database,
+    user: user
   } do
     url = ~p"/traces?source_id=#{database.id}&reference=timestamp-modes"
     {:ok, view, _} = live(conn, url)
@@ -624,6 +626,7 @@ defmodule TrifleApp.TracesLiveTest do
     assert has_element?(view, "#trace-entry-2-0 .trace-entry-timestamp", "3s")
     assert has_element?(view, "#trace-entry-2-2 .trace-entry-timestamp", "200ms")
     assert has_element?(view, "#trace-entry-1-0 .trace-entry-timestamp", "0ms")
+    assert Accounts.get_user!(user.id).trace_timestamp_mode == "diff"
 
     view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
     assert has_element?(view, "button[data-timestamp-mode='diff_header']", "Diff Head")
@@ -631,10 +634,12 @@ defmodule TrifleApp.TracesLiveTest do
     assert has_element?(view, "#trace-entry-2-2 .trace-entry-timestamp", "500ms")
     refute has_element?(view, "#trace-entry-1-2 .trace-entry-timestamp")
     refute has_element?(view, "#trace-entry-2-1 .trace-entry-timestamp")
+    assert Accounts.get_user!(user.id).trace_timestamp_mode == "diff_header"
 
     view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
     assert has_element?(view, "button[data-timestamp-mode='raw']", "Full")
     assert has_element?(view, "#trace-entry-1-0 time", "2023-11-14 22:13:20 UTC")
+    assert Accounts.get_user!(user.id).trace_timestamp_mode == "raw"
 
     refute_receive {:trace_activity, _}
     refute_receive {:trace_search, _}
@@ -644,7 +649,33 @@ defmodule TrifleApp.TracesLiveTest do
     view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
     {:ok, fresh, _} = live(conn, url)
     render_async(fresh)
-    assert has_element?(fresh, "button[data-timestamp-mode='raw']", "Full")
+    assert has_element?(fresh, "button[data-timestamp-mode='diff']", "Diff")
+    assert has_element?(fresh, "#trace-entry-2-0 .trace-entry-timestamp", "3s")
+
+    fresh |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
+    {:ok, restored, _} = live(conn, url)
+    render_async(restored)
+    assert has_element?(restored, "button[data-timestamp-mode='diff_header']", "Diff Head")
+    assert has_element?(restored, "#trace-entry-2-0 .trace-entry-timestamp", "3s500ms")
+  end
+
+  test "timestamp preference follows the user to another login session", %{
+    conn: conn,
+    database: database,
+    user: user
+  } do
+    {:ok, _} =
+      Accounts.update_user_trace_timestamp_mode(user, %{trace_timestamp_mode: "diff_header"})
+
+    another_session = build_conn() |> log_in_user(user)
+    url = ~p"/traces?source_id=#{database.id}&reference=timestamp-modes"
+
+    for session <- [conn, another_session] do
+      {:ok, view, _} = live(session, url)
+      render_async(view)
+      assert has_element?(view, "button[data-timestamp-mode='diff_header']", "Diff Head")
+      assert has_element?(view, "#trace-entry-2-0 .trace-entry-timestamp", "3s500ms")
+    end
   end
 
   test "metadata shows record details and the selected source's storage path", %{

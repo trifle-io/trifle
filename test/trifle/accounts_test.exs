@@ -520,6 +520,52 @@ defmodule Trifle.AccountsTest do
     end
   end
 
+  describe "update_user_trace_timestamp_mode/2" do
+    test "defaults to Full and persists each supported mode" do
+      user = user_fixture()
+      assert Accounts.get_user!(user.id).trace_timestamp_mode == "raw"
+
+      for mode <- ~w(diff diff_header raw) do
+        user = Accounts.get_user!(user.id)
+
+        assert {:ok, updated} =
+                 Accounts.update_user_trace_timestamp_mode(user, %{trace_timestamp_mode: mode})
+
+        assert updated.trace_timestamp_mode == mode
+        assert Accounts.get_user!(user.id).trace_timestamp_mode == mode
+      end
+    end
+
+    test "rejects blank and unsupported modes without changing the preference" do
+      user = user_fixture()
+
+      for mode <- [nil, "", "full", "unknown"] do
+        assert {:error, changeset} =
+                 Accounts.update_user_trace_timestamp_mode(user, %{trace_timestamp_mode: mode})
+
+        assert errors_on(changeset).trace_timestamp_mode != []
+        assert Accounts.get_user!(user.id).trace_timestamp_mode == "raw"
+      end
+    end
+
+    test "updates only the chosen user's timestamp preference" do
+      user = user_fixture()
+      other = user_fixture()
+
+      assert {:ok, updated} =
+               Accounts.update_user_trace_timestamp_mode(user, %{
+                 trace_timestamp_mode: "diff_header",
+                 theme: "dark",
+                 is_admin: true
+               })
+
+      assert updated.trace_timestamp_mode == "diff_header"
+      assert updated.theme == user.theme
+      assert updated.is_admin == user.is_admin
+      assert Accounts.get_user!(other.id).trace_timestamp_mode == "raw"
+    end
+  end
+
   describe "inspect/2 for the User module" do
     test "does not include password" do
       refute inspect(%User{password: "123456"}) =~ "password: \"123456\""
