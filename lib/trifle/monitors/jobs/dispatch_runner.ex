@@ -52,6 +52,7 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
         {monitor, position}, summary ->
           Traces.trace("Monitor #{position} of #{length(monitors)}", head: true)
           Traces.tag("monitor:#{monitor.id}")
+          Traces.trace("Monitor configuration", fn -> monitor end)
           Traces.trace("Type: #{monitor.type}; status: #{monitor.status}")
 
           last_attempt =

@@ -35,6 +35,7 @@ defmodule TrifleApp.TracesLive do
        list_filters_open: false,
        record: nil,
        entries: [],
+       expanded_returns: %{},
        part: 0,
        timestamp_mode: "raw",
        detail_error: nil,
@@ -170,6 +171,29 @@ defmodule TrifleApp.TracesLive do
     do:
       {:noreply,
        assign(socket, :timestamp_mode, Timestamps.next_mode(socket.assigns.timestamp_mode))}
+
+  def handle_event("toggle_return", %{"part" => part, "row" => row}, socket)
+      when is_binary(part) and is_binary(row) do
+    with {part, ""} <- Integer.parse(part),
+         {row, ""} <- Integer.parse(row),
+         %{entry: entry} <-
+           Enum.find(socket.assigns.entries, &(&1.part == part && &1.row == row)),
+         "raw" <- to_string(Reader.field(entry, :type)) do
+      key = {part, row}
+      expanded = socket.assigns.expanded_returns
+
+      expanded =
+        if Map.has_key?(expanded, key),
+          do: Map.delete(expanded, key),
+          else: Map.put(expanded, key, true)
+
+      {:noreply, assign(socket, :expanded_returns, expanded)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_return", _, socket), do: {:noreply, socket}
 
   def handle_event("toggle_footer_section", %{"section" => section}, socket)
       when section in ~w(tags attachments metadata) do
@@ -401,6 +425,7 @@ defmodule TrifleApp.TracesLive do
       assign(socket,
         record: nil,
         entries: [],
+        expanded_returns: %{},
         part: 0,
         detail_error: nil,
         previews: %{},
@@ -549,6 +574,7 @@ defmodule TrifleApp.TracesLive do
                 record={@record}
                 path_colors={@path_colors}
                 entries={@entries}
+                expanded_returns={@expanded_returns}
                 selected={@query.reference}
                 collapsed={@collapsed}
                 loading={@detail_loading}

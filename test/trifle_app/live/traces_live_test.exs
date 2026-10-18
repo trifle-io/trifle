@@ -31,6 +31,25 @@ defmodule TrifleApp.TracesLiveTest do
     def detail(_, _, "missing"), do: {:error, :not_found}
     def detail(_, _, reference), do: {:ok, record(reference)}
 
+    def part(_, _, reference, n) when reference in ["returns", "other-returns"] do
+      send(Application.fetch_env!(:trifle, :trace_test_pid), {:trace_part, reference, n})
+
+      {:ok,
+       [
+         %{
+           part: n,
+           row: 0,
+           entry: %{
+             at: 1_700_000_000 + n,
+             type: :raw,
+             state: :success,
+             message: "↳ " <> String.duplicate("private-return-#{n} <script>data</script> ", 50)
+           }
+         },
+         %{part: n, row: 1, entry: %{type: :text, state: :success, message: "plain row"}}
+       ]}
+    end
+
     def part(_, _, "timestamp-modes", n) do
       send(Application.fetch_env!(:trifle, :trace_test_pid), {:trace_part, "timestamp-modes", n})
 
@@ -134,7 +153,12 @@ defmodule TrifleApp.TracesLiveTest do
             "part-error" -> 12
             _ -> 2
           end,
-        length: if(reference == "timestamp-modes", do: 6, else: 2)
+        length:
+          case reference do
+            "timestamp-modes" -> 6
+            ref when ref in ["returns", "other-returns"] -> 4
+            _ -> 2
+          end
       }
   end
 
@@ -327,7 +351,7 @@ defmodule TrifleApp.TracesLiveTest do
 
     assert has_element?(
              view,
-             "#trace-arguments-#{database.id}-first [data-arguments-preview]",
+             "#trace-detail-header #trace-arguments-#{database.id}-first [data-arguments-preview]",
              ~s({"monitor_id":"first"})
            )
 
@@ -337,7 +361,7 @@ defmodule TrifleApp.TracesLiveTest do
 
     assert has_element?(
              view,
-             "#trace-arguments-#{database.id}-second [data-arguments-preview]",
+             "#trace-detail-header #trace-arguments-#{database.id}-second [data-arguments-preview]",
              ~s({"monitor_id":"second"})
            )
 
@@ -530,6 +554,54 @@ defmodule TrifleApp.TracesLiveTest do
 
     refute has_element?(view, "#trace-detail-footer .trace-footer-panel:not([hidden])")
     refute has_element?(view, "#trace-detail-footer button[aria-expanded='true']")
+  end
+
+  test "large return rows expand independently and reset when selecting a different trace", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=returns")
+    render_async(view)
+    first = "#trace-entry-1-0"
+    second = "#trace-entry-2-0"
+
+    assert has_element?(view, "#{first} button[aria-expanded='false']", "Expand")
+    assert has_element?(view, "#{second} button[aria-expanded='false']", "Expand")
+    refute has_element?(view, ".trace-entries pre", "private-return")
+    assert has_element?(view, "[data-copy-kind='trace'] [data-copy-text]", "private-return-1")
+
+    # Unloaded entries and ordinary text rows cannot create return disclosures.
+    render_click(view, "toggle_return", %{"part" => "99", "row" => "0"})
+    render_click(view, "toggle_return", %{"part" => "1", "row" => "1"})
+    render_click(view, "toggle_return", %{"part" => "invalid", "row" => "0"})
+    assert has_element?(view, "#{first} button[aria-expanded='false']")
+
+    view |> element("#{first} button[phx-click='toggle_return']") |> render_click()
+
+    assert has_element?(
+             view,
+             "#{first} [data-return-content]:not([hidden]) pre",
+             "private-return-1"
+           )
+
+    assert has_element?(view, "#{first} button[aria-expanded='true']", "Collapse")
+    assert has_element?(view, "#{second} button[aria-expanded='false']")
+    refute has_element?(view, ".trace-entries script")
+
+    view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
+    assert has_element?(view, "#{first} [data-return-content] pre", "private-return-1")
+
+    view |> element("#{second} button[phx-click='toggle_return']") |> render_click()
+    view |> element("#{first} button[phx-click='toggle_return']") |> render_click()
+    assert has_element?(view, "#{first} [data-return-content][hidden]")
+    refute has_element?(view, "#{first} pre")
+    assert has_element?(view, "#{second} [data-return-content] pre", "private-return-2")
+
+    view |> form("#trace-list-filters", %{reference: "other-returns"}) |> render_submit()
+    render_async(view)
+    assert has_element?(view, "#{first} button[aria-expanded='false']")
+    assert has_element?(view, "#{second} button[aria-expanded='false']")
+    refute has_element?(view, ".trace-entries pre", "private-return")
   end
 
   test "timestamp control cycles modes locally and a new visit defaults to raw", %{

@@ -5,6 +5,7 @@ defmodule Trifle.Observability.JobsTracingTest do
 
   alias Trifle.Accounts.User
   alias Trifle.Billing.Jobs.ProcessStripeEvent
+  alias Trifle.Monitors.Monitor
   alias Trifle.Monitors.Jobs.{DispatchRunner, EvaluateMonitor}
   alias Trifle.Observability.Jobs.CleanupTraces
   alias Trifle.SystemNotifications.Jobs.{Deliver, Dispatch}
@@ -36,6 +37,45 @@ defmodule Trifle.Observability.JobsTracingTest do
     assert trace.key == "jobs/Trifle.Monitors.Jobs.DispatchRunner"
     assert_message(trace, "Eligible monitors: 0")
     assert_message(trace, "Due: 0; enqueued: 0; skipped: 0; failed: 0")
+  end
+
+  test "monitor dispatch records the loaded monitor as a raw return after its iteration header" do
+    user = Trifle.AccountsFixtures.user_fixture()
+    organization = Trifle.OrganizationsFixtures.organization_fixture(%{user: user})
+
+    monitor =
+      Repo.insert!(%Monitor{
+        organization_id: organization.id,
+        user_id: user.id,
+        name: "Latency watch",
+        description: "Checks the configured API latency series",
+        type: :alert,
+        alert_metric_key: "latency.p95",
+        alert_metric_path: "$.api",
+        alert_timeframe: "15m",
+        alert_granularity: "5m"
+      })
+
+    {result, trace} =
+      capture_trace(DispatchRunner, fn ->
+        DispatchRunner.perform(job(%{}, scheduled_at: ~U[2026-10-19 12:01:00Z]))
+      end)
+
+    assert result == :ok
+    assert_message(trace, "Monitor 1 of 1")
+    assert_message(trace, "Due: 0; enqueued: 0; skipped: 1; failed: 0")
+    [returned_monitor] = Enum.filter(trace.data, &(&1.type == :raw))
+    assert returned_monitor.message =~ "%Trifle.Monitors.Monitor{"
+    assert returned_monitor.message =~ monitor.id
+    assert returned_monitor.message =~ monitor.name
+    assert returned_monitor.message =~ ~s(alert_granularity: "5m")
+    assert returned_monitor.message =~ ~s(alert_timeframe: "15m")
+    assert String.length(returned_monitor.message) > 240
+
+    header_index = Enum.find_index(trace.data, &(&1.message == "Monitor 1 of 1"))
+    return_index = Enum.find_index(trace.data, &(&1 == returned_monitor))
+    type_index = Enum.find_index(trace.data, &(&1.message == "Type: alert; status: active"))
+    assert header_index < return_index and return_index < type_index
   end
 
   test "monitor evaluation traces a missing monitor as a warning" do

@@ -284,8 +284,12 @@ defmodule TrifleApp.Components.TracesTest do
                "[data-detail-summary] > [data-detail-reference] + [data-detail-timing]"
              ) != []
 
-      assert Floki.find(doc, "#trace-detail-header [data-trace-arguments]") == []
-      assert Floki.find(doc, ".trace-entry-body [data-trace-arguments]") != []
+      assert Floki.find(
+               doc,
+               "#trace-detail-header > [data-detail-summary] + [data-trace-arguments]"
+             ) != []
+
+      assert Floki.find(doc, ".trace-entry-body [data-trace-arguments]") == []
       assert Floki.find(doc, "#trace-detail-header .trace-entry-body") == []
 
       assert Floki.find(
@@ -343,7 +347,7 @@ defmodule TrifleApp.Components.TracesTest do
     assert "min-w-0" in String.split(class)
   end
 
-  test "arguments in the scrolling content support Ruby positional and Oban named arguments" do
+  test "arguments below the reference in the header support Ruby positional and Oban named arguments" do
     for arguments <- [
           [42, %{"region" => "eu", "nested" => [false, nil, 0]}],
           %{"monitor_id" => "monitor-42", "options" => %{"limit" => 10}},
@@ -351,7 +355,7 @@ defmodule TrifleApp.Components.TracesTest do
         ] do
       meta = arguments
       doc = detail(%{meta: meta})
-      [section] = Floki.find(doc, ".trace-entry-body [data-trace-arguments]")
+      [section] = Floki.find(doc, "#trace-detail-header [data-trace-arguments]")
       [preview] = Floki.find(section, "[data-arguments-preview]")
 
       assert Floki.text(preview) |> Jason.decode!() == arguments
@@ -360,8 +364,10 @@ defmodule TrifleApp.Components.TracesTest do
 
       assert Floki.find(
                doc,
-               ".trace-entry-body > div:has([data-trace-arguments]) + ol.trace-entries"
+               "#trace-detail-header > [data-detail-summary]:has([data-detail-reference]) + [data-trace-arguments]"
              ) != []
+
+      assert Floki.find(doc, ".trace-entry-body > ol.trace-entries") != []
     end
   end
 
@@ -710,6 +716,76 @@ defmodule TrifleApp.Components.TracesTest do
       assert Floki.find(doc, "[data-trace-attachments] a") == []
       refute Floki.find(doc, "[data-trace-attachments]") |> Floki.text() =~ "raw"
       assert Floki.find(doc, "#trace-entry-1-0 pre") |> Floki.text() == result
+    end
+  end
+
+  test "large raw returns start collapsed without a payload preview and expand as escaped text" do
+    message = "↳ " <> String.duplicate("東京👩🏽‍💻 <script>private return</script>\n", 100)
+
+    for entry <- [
+          %{type: :raw, state: :success, message: message, level: 2},
+          %{"type" => "raw", "state" => "success", "message" => message, "level" => 2}
+        ] do
+      entries = [%{part: 2, row: 3, entry: entry}]
+      doc = detail(%{}, entries: entries)
+      [row] = Floki.find(doc, "#trace-entry-2-3")
+      [toggle] = Floki.find(row, "button[phx-click='toggle_return'][aria-expanded='false']")
+      [content_id] = Floki.attribute(toggle, "aria-controls")
+
+      assert Floki.attribute(toggle, "phx-value-part") == ["2"]
+      assert Floki.attribute(toggle, "phx-value-row") == ["3"]
+      assert Floki.attribute(toggle, "aria-label") == ["Expand return value"]
+      assert Floki.find(row, "##{content_id}[hidden]") != []
+      assert Floki.find(row, "pre") == []
+      assert Floki.find(row, "[data-return-value]") |> Floki.text() |> String.trim() == "Expand"
+      refute Floki.text(row) =~ "private return"
+
+      assert Floki.find(doc, "[data-copy-kind='trace'] [data-copy-text]") |> Floki.text() =~
+               message
+
+      expanded = detail(%{}, entries: entries, expanded_returns: %{{2, 3} => true})
+      assert Floki.find(expanded, "##{content_id}:not([hidden]) pre") |> Floki.text() == message
+
+      assert Floki.find(expanded, "[data-return-value] button") |> Floki.text() |> String.trim() ==
+               "Collapse"
+
+      assert length(:binary.matches(Floki.text(Floki.find(expanded, "[data-return-value]")), "↳")) ==
+               1
+
+      assert Floki.find(
+               expanded,
+               "button[aria-expanded='true'][aria-label='Collapse return value']"
+             ) != []
+
+      assert Floki.find(expanded, ".trace-entry-message script") == []
+
+      assert Floki.find(expanded, "#trace-entry-2-3 .trace-entry-message")
+             |> Floki.attribute("style") ==
+               ["--trace-entry-indent: 2rem;"]
+    end
+  end
+
+  test "only raw values over 240 characters or three lines are collapsed" do
+    for {message, collapsible} <- [
+          {String.duplicate("界", 240), false},
+          {String.duplicate("界", 241), true},
+          {"↳ first\nsecond\nthird", false},
+          {"↳ first\r\nsecond\r\nthird\r\nfourth", true},
+          {"↳ first\rsecond\rthird\rfourth", true}
+        ],
+        type <- [:raw, :text, :head] do
+      doc =
+        detail(%{}, entries: [%{part: 1, row: 0, entry: %{type: type, message: message}}])
+
+      row = Floki.find(doc, "#trace-entry-1-0")
+
+      if type == :raw && collapsible do
+        assert Floki.find(row, "button[phx-click='toggle_return']") != []
+        assert Floki.find(row, "pre") == []
+      else
+        assert Floki.find(row, "button[phx-click='toggle_return']") == []
+        assert Floki.find(row, "pre") |> Floki.text() == message
+      end
     end
   end
 

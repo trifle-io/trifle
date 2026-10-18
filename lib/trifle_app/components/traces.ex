@@ -364,6 +364,7 @@ defmodule TrifleApp.Components.Traces do
   attr :path_colors, :map, required: true
   attr :entries, :list, required: true
   attr :selected, :string, default: nil
+  attr :expanded_returns, :map, default: %{}
   attr :collapsed, :boolean, required: true
   attr :loading, :boolean, required: true
   attr :error, :string, default: nil
@@ -480,23 +481,22 @@ defmodule TrifleApp.Components.Traces do
               </span>
             </span>
           </div>
+          <.arguments id={"trace-arguments-#{@source_id}-#{@record.reference}"} meta={@record.meta} />
         <% end %>
       </header>
       <div :if={@error} role="status" class="p-4 text-sm text-amber-700 dark:text-amber-400">
         {@error} <button phx-click="retry_detail" class="ml-2 underline">Retry</button>
       </div>
       <div class="trace-entry-body flex-1 pb-4">
-        <div :if={@record} class="px-4">
-          <.arguments id={"trace-arguments-#{@source_id}-#{@record.reference}"} meta={@record.meta} />
-          <p
-            :if={to_string(@record.state) == "running"}
-            class="py-2 text-xs text-slate-500 dark:text-slate-400"
-          >
-            Running · stored content only. Refresh manually for updates.
-          </p>
-        </div>
+        <p
+          :if={@record && to_string(@record.state) == "running"}
+          class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400"
+        >
+          Running · stored content only. Refresh manually for updates.
+        </p>
         <.entry_list
           entries={@entries}
+          expanded_returns={@expanded_returns}
           total={if @record, do: @record.length || 0, else: 0}
           reference={@selected}
           source_id={@source_id}
@@ -802,6 +802,7 @@ defmodule TrifleApp.Components.Traces do
 
   attr :entries, :list, required: true
   attr :total, :integer, default: 0
+  attr :expanded_returns, :map, default: %{}
   attr :reference, :string, required: true
   attr :source_id, :string, required: true
   attr :previews, :map, default: %{}
@@ -887,10 +888,11 @@ defmodule TrifleApp.Components.Traces do
               <% end %>
             <% end %>
           <% else %>
-            <pre class={[
-              "whitespace-pre-wrap [overflow-wrap:anywhere]",
-              to_string(Reader.field(item.entry, :type)) == "head" && "font-semibold"
-            ]}>{text(Reader.field(item.entry, :message))}</pre>
+            <.entry_text
+              id={"trace-return-#{@source_id}-#{@reference}-#{item.part}-#{item.row}"}
+              item={item}
+              expanded={Map.has_key?(@expanded_returns, {item.part, item.row})}
+            />
           <% end %>
         </div>
         <.dynamic_tag
@@ -906,6 +908,47 @@ defmodule TrifleApp.Components.Traces do
         </.dynamic_tag>
       </li>
     </ol>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :item, :map, required: true
+  attr :expanded, :boolean, default: false
+
+  defp entry_text(assigns) do
+    message = text(Reader.field(assigns.item.entry, :message))
+    type = to_string(Reader.field(assigns.item.entry, :type))
+
+    collapsible =
+      type == "raw" &&
+        (String.length(message) > 240 ||
+           length(String.split(message, ~r/\r\n|\r|\n/, parts: 4)) > 3)
+
+    assigns = assign(assigns, message: message, heading: type == "head", collapsible: collapsible)
+
+    ~H"""
+    <pre
+      :if={!@collapsible}
+      class={["whitespace-pre-wrap [overflow-wrap:anywhere]", @heading && "font-semibold"]}
+    >{@message}</pre>
+    <div :if={@collapsible} class="min-w-0" data-return-value>
+      <button
+        id={@id <> "-toggle"}
+        type="button"
+        phx-click="toggle_return"
+        phx-value-part={@item.part}
+        phx-value-row={@item.row}
+        aria-expanded={to_string(@expanded)}
+        aria-controls={@id <> "-content"}
+        aria-label={if @expanded, do: "Collapse return value", else: "Expand return value"}
+        class="rounded-sm font-sans text-teal-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:text-teal-400"
+      >
+        {if @expanded, do: "Collapse", else: "Expand"}
+      </button>
+      <div id={@id <> "-content"} hidden={!@expanded} data-return-content>
+        <pre :if={@expanded} class="whitespace-pre-wrap [overflow-wrap:anywhere]">{@message}</pre>
+      </div>
+    </div>
     """
   end
 
