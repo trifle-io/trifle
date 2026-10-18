@@ -508,6 +508,29 @@ defmodule TrifleApp.TracesLiveTest do
     refute has_element?(view, "#trace-detail-footer button[aria-expanded='true']")
   end
 
+  test "metadata shows record details and the selected source's storage path", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces?source_id=#{database.id}&reference=first")
+    render_async(view)
+    view |> element("button[phx-value-section='metadata']") |> render_click()
+
+    metadata =
+      view
+      |> element("#trace-metadata-first:not([hidden]) pre")
+      |> render()
+      |> Floki.parse_document!()
+      |> Floki.text()
+      |> Jason.decode!()
+
+    assert metadata["parts"] == 2
+    assert metadata["length"] == 2
+    assert metadata["storage"]["driver"] == "file"
+    assert metadata["storage"]["path"] == "/tmp/trace-ui-test/7/jobs/App.Worker/first/"
+    assert metadata["storage"]["part_file_pattern"] == "data_{part}.json"
+  end
+
   test "attachments are fetched lazily, paginated independently and reset for a new trace", %{
     conn: conn,
     database: database

@@ -379,6 +379,7 @@ defmodule TrifleApp.Components.Traces do
   attr :attachments_error, :string, default: nil
   attr :attachments_next_part, :any, default: nil
   attr :show_entry_timestamps, :boolean, default: true
+  attr :trace_config, :map, default: %{}
 
   def detail(assigns) do
     ~H"""
@@ -566,7 +567,7 @@ defmodule TrifleApp.Components.Traces do
           aria-labelledby={"trace-metadata-#{@record.reference}-toggle"}
           class="trace-footer-panel p-4"
         >
-          <pre class="whitespace-pre-wrap break-all text-xs">{json(%{meta: @record.meta, context: @record.context, counters: @record.counters})}</pre>
+          <pre class="whitespace-pre-wrap break-all text-xs">{json(TrifleApp.TracesLive.Metadata.build(@record, @trace_config))}</pre>
         </section>
         <div
           class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2"

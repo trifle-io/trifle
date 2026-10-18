@@ -585,6 +585,112 @@ defmodule TrifleApp.Components.TracesTest do
     end
   end
 
+  test "metadata includes the full trace record and its recorded S3 bucket location" do
+    config = %{
+      "data_driver" => "s3",
+      "data_buckets" => ["replacement-bucket", "another-bucket"],
+      "data_prefix" => "payloads/traces",
+      "gzip" => true,
+      "retention_days" => 30,
+      "data_access_key_id" => "private-access-key",
+      "data_secret_access_key" => "private-secret-key"
+    }
+
+    doc =
+      detail(
+        %{
+          bucket_name: "original-bucket",
+          parts: 3,
+          retention: 7,
+          expires_at: ~U[2026-09-21 10:00:00Z],
+          meta: [42, %{"name" => "<script>input</script>"}],
+          context: %{queue: "default"},
+          counters: %{types: %{text: 12}}
+        },
+        trace_config: config,
+        footer_section: "metadata"
+      )
+
+    [panel] = Floki.find(doc, "#trace-metadata-first:not([hidden])")
+    metadata = panel |> Floki.find("pre") |> Floki.text() |> Jason.decode!()
+
+    assert %{
+             "reference" => "first",
+             "key" => "jobs/App.Worker",
+             "state" => "success",
+             "tags" => [],
+             "duration" => 125,
+             "length" => 12,
+             "parts" => 3,
+             "first_at" => "2026-09-14T10:00:00Z",
+             "last_at" => "2026-09-14T10:00:01Z",
+             "retention" => 7,
+             "expires_at" => "2026-09-21T10:00:00Z",
+             "bucket_name" => "original-bucket",
+             "meta" => [42, %{"name" => "<script>input</script>"}],
+             "context" => %{"queue" => "default"},
+             "counters" => %{"types" => %{"text" => 12}}
+           } = metadata
+
+    assert metadata["storage"] == %{
+             "driver" => "s3",
+             "path" => "s3://original-bucket/7/payloads/traces/jobs/App.Worker/first/",
+             "part_file_pattern" => "data_{part}.json.gz",
+             "artifacts_path" =>
+               "s3://original-bucket/7/payloads/traces/jobs/App.Worker/first/artifacts/",
+             "gzip" => true
+           }
+
+    refute Floki.text(panel) =~ "replacement-bucket"
+    refute Floki.text(panel) =~ "private-access-key"
+    refute Floki.text(panel) =~ "private-secret-key"
+    assert Floki.find(panel, "script") == []
+  end
+
+  test "metadata resolves local file locations for compressed and uncompressed parts" do
+    for gzip <- [false, true] do
+      doc =
+        detail(%{retention: 14, parts: 0},
+          trace_config: %{
+            "data_driver" => "file",
+            "data_path" => "/var/lib/trifle/traces/",
+            "gzip" => gzip
+          }
+        )
+
+      metadata = doc |> Floki.find("#trace-metadata-first pre") |> Floki.text() |> Jason.decode!()
+
+      assert metadata["parts"] == 0
+      assert metadata["bucket_name"] == nil
+
+      assert metadata["storage"] == %{
+               "driver" => "file",
+               "path" => "/var/lib/trifle/traces/14/jobs/App.Worker/first/",
+               "part_file_pattern" =>
+                 if(gzip, do: "data_{part}.json.gz", else: "data_{part}.json"),
+               "artifacts_path" => "/var/lib/trifle/traces/14/jobs/App.Worker/first/artifacts/",
+               "gzip" => gzip
+             }
+    end
+  end
+
+  test "metadata leaves S3 locations unknown when the trace has no recorded bucket" do
+    doc =
+      detail(%{bucket_name: nil},
+        trace_config: %{
+          "data_driver" => "s3",
+          "data_buckets" => ["configured-bucket"],
+          "data_prefix" => "traces",
+          "gzip" => false
+        }
+      )
+
+    metadata = doc |> Floki.find("#trace-metadata-first pre") |> Floki.text() |> Jason.decode!()
+    assert metadata["storage"]["path"] == nil
+    assert metadata["storage"]["artifacts_path"] == nil
+    refute Floki.text(doc) =~ "s3://configured-bucket"
+  end
+
   test "raw block results stay inline and never count as attachments" do
     for raw_count <- [1, 2] do
       result = "↳ %{state: :success}"

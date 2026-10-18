@@ -549,6 +549,7 @@ defmodule TrifleApp.TracesLive do
                 error={@detail_error}
                 part={@part}
                 source_id={Source.id(@source)}
+                trace_config={@source.record.trace_config}
                 previews={@previews}
                 preview_loading={@preview_loading}
                 preview_error={@preview_error}
