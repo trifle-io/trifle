@@ -40,6 +40,26 @@ defmodule TrifleApp.Format do
     end
   end
 
+  @doc """
+  Formats milliseconds as a compact duration, omitting zero units:
+  "1d5h2m40s300ms", "30s", or "0ms".
+  """
+  def duration_ms(nil), do: nil
+  def duration_ms(0), do: "0ms"
+
+  def duration_ms(milliseconds) when is_integer(milliseconds) and milliseconds < 0,
+    do: "-" <> duration_ms(-milliseconds)
+
+  def duration_ms(milliseconds) when is_integer(milliseconds) do
+    [{"d", 86_400_000}, {"h", 3_600_000}, {"m", 60_000}, {"s", 1_000}, {"ms", 1}]
+    |> Enum.map_reduce(milliseconds, fn {unit, size}, remaining ->
+      value = div(remaining, size)
+      {if(value > 0, do: "#{value}#{unit}", else: ""), rem(remaining, size)}
+    end)
+    |> elem(0)
+    |> Enum.join()
+  end
+
   defp pad_two(value) when value < 10, do: "0#{value}"
   defp pad_two(value), do: Integer.to_string(value)
 end

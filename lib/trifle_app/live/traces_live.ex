@@ -3,7 +3,7 @@ defmodule TrifleApp.TracesLive do
 
   alias Trifle.Stats.Source
   alias Trifle.Traces.{Activity, Reader}
-  alias TrifleApp.TracesLive.Query
+  alias TrifleApp.TracesLive.{Query, Timestamps}
   alias TrifleApp.Components.Traces, as: View
   alias TrifleApp.DesignSystem.PathColors
 
@@ -36,6 +36,7 @@ defmodule TrifleApp.TracesLive do
        record: nil,
        entries: [],
        part: 0,
+       timestamp_mode: "raw",
        detail_error: nil,
        detail_loading: false,
        previews: %{},
@@ -164,6 +165,11 @@ defmodule TrifleApp.TracesLive do
   end
 
   def handle_event("retry_detail", _, socket), do: {:noreply, load_detail(socket)}
+
+  def handle_event("cycle_timestamp_mode", _, socket),
+    do:
+      {:noreply,
+       assign(socket, :timestamp_mode, Timestamps.next_mode(socket.assigns.timestamp_mode))}
 
   def handle_event("toggle_footer_section", %{"section" => section}, socket)
       when section in ~w(tags attachments metadata) do
@@ -550,6 +556,7 @@ defmodule TrifleApp.TracesLive do
                 part={@part}
                 source_id={Source.id(@source)}
                 trace_config={@source.record.trace_config}
+                timestamp_mode={@timestamp_mode}
                 previews={@previews}
                 preview_loading={@preview_loading}
                 preview_error={@preview_error}

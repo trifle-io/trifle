@@ -31,6 +31,30 @@ defmodule TrifleApp.TracesLiveTest do
     def detail(_, _, "missing"), do: {:error, :not_found}
     def detail(_, _, reference), do: {:ok, record(reference)}
 
+    def part(_, _, "timestamp-modes", n) do
+      send(Application.fetch_env!(:trifle, :trace_test_pid), {:trace_part, "timestamp-modes", n})
+
+      rows =
+        case n do
+          1 -> [{:text, 0}, {:head, 1}, {:text, 1.5}]
+          2 -> [{:head, 4.5}, {:text, 4.8}, {:text, 5}]
+        end
+
+      {:ok,
+       Enum.with_index(rows, fn {type, offset}, row ->
+         %{
+           part: n,
+           row: row,
+           entry: %{
+             at: 1_700_000_000 + offset,
+             type: type,
+             state: :success,
+             message: "row #{row}"
+           }
+         }
+       end)}
+    end
+
     def part(_, _, reference, n) do
       pid = Application.fetch_env!(:trifle, :trace_test_pid)
       send(pid, {:trace_part, reference, n})
@@ -110,7 +134,7 @@ defmodule TrifleApp.TracesLiveTest do
             "part-error" -> 12
             _ -> 2
           end,
-        length: 2
+        length: if(reference == "timestamp-modes", do: 6, else: 2)
       }
   end
 
@@ -506,6 +530,49 @@ defmodule TrifleApp.TracesLiveTest do
 
     refute has_element?(view, "#trace-detail-footer .trace-footer-panel:not([hidden])")
     refute has_element?(view, "#trace-detail-footer button[aria-expanded='true']")
+  end
+
+  test "timestamp control cycles modes locally and a new visit defaults to raw", %{
+    conn: conn,
+    database: database
+  } do
+    url = ~p"/traces?source_id=#{database.id}&reference=timestamp-modes"
+    {:ok, view, _} = live(conn, url)
+    render_async(view)
+
+    assert has_element?(view, "button[data-timestamp-mode='raw']", "Full")
+    assert has_element?(view, "#trace-entry-1-0 time", "2023-11-14 22:13:20 UTC")
+    assert_receive {:trace_activity, _}
+    assert_receive {:trace_search, _}
+    assert_receive {:trace_part, "timestamp-modes", 1}
+    assert_receive {:trace_part, "timestamp-modes", 2}
+
+    view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
+    assert has_element?(view, "button[data-timestamp-mode='diff']", "Diff")
+    assert has_element?(view, "#trace-entry-2-0 .trace-entry-timestamp", "3s")
+    assert has_element?(view, "#trace-entry-2-2 .trace-entry-timestamp", "200ms")
+    assert has_element?(view, "#trace-entry-1-0 .trace-entry-timestamp", "0ms")
+
+    view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
+    assert has_element?(view, "button[data-timestamp-mode='diff_header']", "Diff Head")
+    assert has_element?(view, "#trace-entry-2-0 .trace-entry-timestamp", "3s500ms")
+    assert has_element?(view, "#trace-entry-2-2 .trace-entry-timestamp", "500ms")
+    refute has_element?(view, "#trace-entry-1-2 .trace-entry-timestamp")
+    refute has_element?(view, "#trace-entry-2-1 .trace-entry-timestamp")
+
+    view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
+    assert has_element?(view, "button[data-timestamp-mode='raw']", "Full")
+    assert has_element?(view, "#trace-entry-1-0 time", "2023-11-14 22:13:20 UTC")
+
+    refute_receive {:trace_activity, _}
+    refute_receive {:trace_search, _}
+    refute_receive {:trace_part, _, _}
+    refute_receive {_ref, {:patch, _topic, _opts}}
+
+    view |> element("button[phx-click='cycle_timestamp_mode']") |> render_click()
+    {:ok, fresh, _} = live(conn, url)
+    render_async(fresh)
+    assert has_element?(fresh, "button[data-timestamp-mode='raw']", "Full")
   end
 
   test "metadata shows record details and the selected source's storage path", %{

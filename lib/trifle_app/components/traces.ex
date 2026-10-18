@@ -4,6 +4,7 @@ defmodule TrifleApp.Components.Traces do
   alias Trifle.Traces.Reader
   alias TrifleApp.TracesLive.Query
   alias TrifleApp.TracesLive.CopyText
+  alias TrifleApp.TracesLive.Timestamps
   alias TrifleApp.Components.DashboardWidgets.{ExpandedChart, WidgetView}
   alias TrifleApp.DesignSystem.PathColors
   alias TrifleApp.DesignSystem.TraceStates
@@ -379,6 +380,7 @@ defmodule TrifleApp.Components.Traces do
   attr :attachments_error, :string, default: nil
   attr :attachments_next_part, :any, default: nil
   attr :show_entry_timestamps, :boolean, default: true
+  attr :timestamp_mode, :string, default: "raw", values: ~w(raw diff diff_header)
   attr :trace_config, :map, default: %{}
 
   def detail(assigns) do
@@ -501,6 +503,7 @@ defmodule TrifleApp.Components.Traces do
           previews={@previews}
           preview_loading={@preview_loading}
           show_timestamps={@show_entry_timestamps}
+          timestamp_mode={@timestamp_mode}
         />
         <p :if={@preview_loading} role="status" class="px-4 py-3 text-sm text-slate-500">
           Loading attachment…
@@ -583,6 +586,20 @@ defmodule TrifleApp.Components.Traces do
               reference={@selected}
               loading={@loading}
             />
+            <button
+              :if={@show_entry_timestamps}
+              type="button"
+              phx-click="cycle_timestamp_mode"
+              data-timestamp-mode={@timestamp_mode}
+              aria-label={
+                "Timestamp mode: #{Timestamps.label(@timestamp_mode)}. Switch to #{Timestamps.label(Timestamps.next_mode(@timestamp_mode))}."
+              }
+              title={Timestamps.description(@timestamp_mode) <> ". Click to change timestamp mode."}
+              class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              <TrifleApp.SidebarIcons.icon name="hero-clock" class="h-4 w-4 shrink-0" />
+              <span>{Timestamps.label(@timestamp_mode)}</span>
+            </button>
             <.footer_button
               :if={@record.tags not in [nil, []]}
               panel_id={"trace-tags-#{@source_id}-#{@record.reference}"}
@@ -790,11 +807,16 @@ defmodule TrifleApp.Components.Traces do
   attr :previews, :map, default: %{}
   attr :preview_loading, :boolean, default: false
   attr :show_timestamps, :boolean, default: true
+  attr :timestamp_mode, :string, default: "raw", values: ~w(raw diff diff_header)
 
   def entry_list(assigns) do
     # Number persisted entries, not wrapped display lines, across all loaded parts.
     line_width = max(2, String.length(to_string(max(assigns.total, length(assigns.entries)))))
-    assigns = assign(assigns, :line_width, line_width)
+
+    assigns =
+      assigns
+      |> assign(:line_width, line_width)
+      |> assign(:rows, Timestamps.rows(assigns.entries, assigns.timestamp_mode))
 
     ~H"""
     <ol
@@ -803,9 +825,10 @@ defmodule TrifleApp.Components.Traces do
       role="list"
       style={"--trace-line-width: #{@line_width}ch;"}
       data-show-timestamps={to_string(@show_timestamps)}
+      data-timestamp-mode={@timestamp_mode}
     >
       <li
-        :for={{item, number} <- Enum.with_index(@entries, 1)}
+        :for={{item, number, elapsed} <- @rows}
         id={"trace-entry-#{item.part}-#{item.row}"}
         data-entry-state={Reader.field(item.entry, :state)}
         class="trace-entry grid items-start gap-x-3 border-b border-slate-100 px-4 py-0.5 dark:border-slate-800"
@@ -870,13 +893,17 @@ defmodule TrifleApp.Components.Traces do
             ]}>{text(Reader.field(item.entry, :message))}</pre>
           <% end %>
         </div>
-        <time
-          :if={@show_timestamps}
+        <.dynamic_tag
+          :if={@show_timestamps && (@timestamp_mode == "raw" || elapsed)}
+          tag_name={if @timestamp_mode == "raw", do: "time", else: "span"}
           class="trace-entry-timestamp select-none max-w-full text-right font-sans tabular-nums text-slate-400 [overflow-wrap:anywhere] dark:text-slate-500"
-          datetime={iso_time(Reader.field(item.entry, :at))}
+          title={if @timestamp_mode != "raw", do: time(Reader.field(item.entry, :at))}
+          {if @timestamp_mode == "raw",
+            do: %{datetime: iso_time(Reader.field(item.entry, :at))},
+            else: %{}}
         >
-          {time(Reader.field(item.entry, :at))}
-        </time>
+          {if @timestamp_mode == "raw", do: time(Reader.field(item.entry, :at)), else: elapsed}
+        </.dynamic_tag>
       </li>
     </ol>
     """
@@ -1150,6 +1177,7 @@ defmodule TrifleApp.Components.Traces do
   end
 
   defp iso_time(%DateTime{} = date), do: DateTime.to_iso8601(date)
+  defp iso_time(value) when is_float(value), do: Timestamps.iso8601(value)
 
   defp iso_time(value) when is_integer(value) do
     case DateTime.from_unix(value, :second) do
@@ -1164,10 +1192,17 @@ defmodule TrifleApp.Components.Traces do
   defp time(%DateTime{} = date), do: Calendar.strftime(date, "%Y-%m-%d %H:%M:%S %Z")
 
   defp time(value) when is_integer(value) do
-    # Ruby and Elixir trace payload entries store Unix seconds, unlike charts.
+    # Legacy Ruby and Elixir trace payload entries store whole Unix seconds.
     case DateTime.from_unix(value, :second) do
       {:ok, date} -> time(date)
       _ -> "—"
+    end
+  end
+
+  defp time(value) when is_float(value) do
+    case Timestamps.iso8601(value) do
+      nil -> "—"
+      timestamp -> timestamp |> String.replace("T", " ") |> String.replace_suffix("Z", " UTC")
     end
   end
 

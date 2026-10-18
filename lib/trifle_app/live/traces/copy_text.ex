@@ -1,6 +1,7 @@
 defmodule TrifleApp.TracesLive.CopyText do
   @moduledoc false
   alias Trifle.Traces.Reader
+  alias TrifleApp.TracesLive.Timestamps
 
   # Only the entries supplied by the view are copied. Never read storage here.
   def format(record, entries, loaded_parts) do
@@ -47,6 +48,7 @@ defmodule TrifleApp.TracesLive.CopyText do
   end
 
   defp timestamp(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp timestamp(value) when is_float(value), do: Timestamps.iso8601(value) || "—"
 
   defp timestamp(value) when is_integer(value) do
     case DateTime.from_unix(value, :second) do

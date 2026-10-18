@@ -32,4 +32,24 @@ defmodule TrifleApp.FormatTest do
       assert Format.duration_seconds(600) == "10m00s"
     end
   end
+
+  describe "duration_ms/1" do
+    test "combines days through milliseconds and omits zero units" do
+      for {milliseconds, expected} <- [
+            {104_560_300, "1d5h2m40s300ms"},
+            {86_400_000, "1d"},
+            {3_600_300, "1h300ms"},
+            {60_000, "1m"},
+            {30_000, "30s"},
+            {1_005, "1s5ms"},
+            {300, "300ms"},
+            {0, "0ms"},
+            {-60_300, "-1m300ms"}
+          ] do
+        assert Format.duration_ms(milliseconds) == expected
+      end
+
+      assert Format.duration_ms(nil) == nil
+    end
+  end
 end

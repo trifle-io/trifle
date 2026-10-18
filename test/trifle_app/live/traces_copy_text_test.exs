@@ -50,6 +50,19 @@ defmodule TrifleApp.TracesLive.CopyTextTest do
     assert :binary.match(text, "[success/head] Start") < :binary.match(text, "[success/raw]")
   end
 
+  test "copied entries preserve millisecond timestamps alongside legacy second timestamps" do
+    record = %TraceRecord{reference: "precision", key: "jobs/timestamps"}
+
+    entries =
+      Enum.map([1_700_000_000, 1_700_000_000.123456], fn at ->
+        %{entry: %{type: :text, at: at, message: "working"}}
+      end)
+
+    text = CopyText.format(record, entries, 1)
+    assert text =~ "2023-11-14T22:13:20Z [success/text] working"
+    assert text =~ "2023-11-14T22:13:20.123Z [success/text] working"
+  end
+
   test "empty or partially loaded traces are explicitly identified without fabricating entries" do
     record = %TraceRecord{reference: "empty", key: "jobs/empty", parts: 5}
     text = CopyText.format(record, [], 0)

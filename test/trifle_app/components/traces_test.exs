@@ -276,7 +276,7 @@ defmodule TrifleApp.Components.TracesTest do
 
       assert Floki.find(
                doc,
-               "[data-detail-sections] > [data-copy-kind='trace'] + button[phx-value-section='tags']"
+               "[data-detail-sections] > [data-copy-kind='trace'] + button[phx-click='cycle_timestamp_mode'] + button[phx-value-section='tags']"
              ) != []
 
       assert Floki.find(
@@ -1002,6 +1002,97 @@ defmodule TrifleApp.Components.TracesTest do
       assert Floki.find(doc, "script") == []
       assert Floki.find(doc, "button[phx-click='preview']") != []
     end
+  end
+
+  test "timestamp modes show raw times, row differences, or header boundaries beside the same content" do
+    entries =
+      Enum.with_index(
+        [{:text, 0}, {:head, 1}, {:text, 2}, {:head, 31}, {:raw, 32}, {:text, 32.3}],
+        fn {type, offset}, index ->
+          %{
+            part: div(index, 3) + 1,
+            row: rem(index, 3),
+            entry: %{type: type, at: 1_700_000_000 + offset, message: "row #{index}"}
+          }
+        end
+      )
+
+    raw = detail(%{}, entries: entries)
+    assert Floki.find(raw, "[data-copy-kind='trace'] + button[data-timestamp-mode='raw']") != []
+
+    assert Floki.find(raw, "button[phx-click='cycle_timestamp_mode']")
+           |> Floki.text()
+           |> String.trim() == "Full"
+
+    assert Floki.attribute(raw, "button[phx-click='cycle_timestamp_mode'] svg path", "d") ==
+             ["M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"]
+
+    assert Floki.find(raw, "#trace-entry-1-0 time") |> Floki.text() |> String.trim() ==
+             "2023-11-14 22:13:20 UTC"
+
+    for {mode, label, expected} <- [
+          {"diff", "Diff", ["0ms", "1s", "1s", "29s", "1s", "300ms"]},
+          {"diff_header", "Diff Head", ["0ms", "1s", "30s", "1s300ms"]}
+        ] do
+      doc = detail(%{}, entries: entries, timestamp_mode: mode)
+      assert Floki.attribute(doc, ".trace-entries", "data-timestamp-mode") == [mode]
+
+      assert Floki.find(doc, "button[phx-click='cycle_timestamp_mode']")
+             |> Floki.text()
+             |> String.trim() == label
+
+      assert Enum.map(
+               Floki.find(doc, ".trace-entry-timestamp"),
+               &(Floki.text(&1) |> String.trim())
+             ) ==
+               expected
+
+      assert Floki.find(doc, ".trace-entry-timestamp[datetime]") == []
+
+      assert Floki.attribute(doc, "#trace-entry-2-0 .trace-entry-timestamp", "title") ==
+               ["2023-11-14 22:13:51 UTC"]
+
+      assert Floki.find(doc, ".trace-entry-message") |> Floki.text() ==
+               Floki.find(raw, ".trace-entry-message") |> Floki.text()
+
+      assert Floki.find(doc, "[data-copy-kind='trace'] [data-copy-text]") |> Floki.text() ==
+               Floki.find(raw, "[data-copy-kind='trace'] [data-copy-text]") |> Floki.text()
+
+      if mode == "diff_header" do
+        assert Floki.find(doc, "#trace-entry-1-2 .trace-entry-timestamp") == []
+        assert Floki.find(doc, "#trace-entry-2-1 .trace-entry-timestamp") == []
+      end
+    end
+  end
+
+  test "fractional row timestamps show milliseconds in raw mode and preserve subsecond differences" do
+    entries =
+      Enum.with_index([1_700_000_000, 1_700_000_000.125456, 1_700_000_000.425456], fn at, row ->
+        %{part: 1, row: row, entry: %{type: :text, at: at, message: "row #{row}"}}
+      end)
+
+    raw = detail(%{}, entries: entries)
+
+    assert Floki.find(raw, "#trace-entry-1-0 time") |> Floki.text() |> String.trim() ==
+             "2023-11-14 22:13:20 UTC"
+
+    assert Floki.find(raw, "#trace-entry-1-1 time") |> Floki.text() |> String.trim() ==
+             "2023-11-14 22:13:20.125 UTC"
+
+    assert Floki.attribute(raw, "#trace-entry-1-1 time", "datetime") ==
+             ["2023-11-14T22:13:20.125Z"]
+
+    assert Floki.find(raw, "[data-copy-kind='trace'] [data-copy-text]") |> Floki.text() =~
+             "2023-11-14T22:13:20.125Z [success/text] row 1"
+
+    diff = detail(%{}, entries: entries, timestamp_mode: "diff")
+
+    assert Floki.find(diff, "#trace-entry-1-2 .trace-entry-timestamp")
+           |> Floki.text()
+           |> String.trim() == "300ms"
+
+    assert Floki.attribute(diff, "#trace-entry-1-2 .trace-entry-timestamp", "title") ==
+             ["2023-11-14 22:13:20.425 UTC"]
   end
 
   test "timestamps can be omitted independently while media previews and downloads stay intact" do
