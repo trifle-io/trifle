@@ -932,19 +932,22 @@ defmodule TrifleApp.Components.Traces do
       class={["whitespace-pre-wrap [overflow-wrap:anywhere]", @heading && "font-semibold"]}
     >{@message}</pre>
     <div :if={@collapsible} class="min-w-0" data-return-value>
-      <button
-        id={@id <> "-toggle"}
-        type="button"
-        phx-click="toggle_return"
-        phx-value-part={@item.part}
-        phx-value-row={@item.row}
-        aria-expanded={to_string(@expanded)}
-        aria-controls={@id <> "-content"}
-        aria-label={if @expanded, do: "Collapse return value", else: "Expand return value"}
-        class="rounded-sm font-sans text-teal-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:text-teal-400"
-      >
-        {if @expanded, do: "Collapse", else: "Expand"}
-      </button>
+      <div class="flex flex-wrap items-center gap-x-2">
+        <button
+          id={@id <> "-toggle"}
+          type="button"
+          phx-click="toggle_return"
+          phx-value-part={@item.part}
+          phx-value-row={@item.row}
+          aria-expanded={to_string(@expanded)}
+          aria-controls={@id <> "-content"}
+          aria-label={if @expanded, do: "Collapse return value", else: "Expand return value"}
+          class="rounded-sm font-sans text-teal-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:text-teal-400"
+        >
+          {if @expanded, do: "Collapse", else: "Expand"}
+        </button>
+        <.size_label bytes={byte_size(@message)} label="Content size" data-content-size />
+      </div>
       <div id={@id <> "-content"} hidden={!@expanded} data-return-content>
         <pre :if={@expanded} class="whitespace-pre-wrap [overflow-wrap:anywhere]">{@message}</pre>
       </div>
@@ -1120,29 +1123,39 @@ defmodule TrifleApp.Components.Traces do
   attr :bytes, :any, default: nil
 
   def attachment_size(assigns) do
+    ~H"""
+    <.size_label bytes={@bytes} label="Attachment size" data-attachment-size />
+    """
+  end
+
+  attr :bytes, :any, default: nil
+  attr :label, :string, required: true
+  attr :rest, :global
+
+  defp size_label(assigns) do
     bytes = if is_integer(assigns.bytes) and assigns.bytes >= 0, do: assigns.bytes
 
     assigns =
       assigns
       |> assign(:bytes, bytes)
-      |> assign(:label, format_attachment_size(bytes))
+      |> assign(:size, format_size(bytes))
 
     ~H"""
     <span
-      data-attachment-size
       data-size-bytes={@bytes}
-      title={if is_nil(@bytes), do: "Attachment size was not recorded", else: "#{@bytes} bytes"}
-      aria-label={"Attachment size: #{@label}"}
+      title={if is_nil(@bytes), do: "#{@label} was not recorded", else: "#{@bytes} bytes"}
+      aria-label={"#{@label}: #{@size}"}
       class="shrink-0 whitespace-nowrap font-sans tabular-nums text-slate-500 dark:text-slate-400"
+      {@rest}
     >
-      {@label}
+      {@size}
     </span>
     """
   end
 
-  defp format_attachment_size(nil), do: "Size unknown"
+  defp format_size(nil), do: "Size unknown"
 
-  defp format_attachment_size(bytes) do
+  defp format_size(bytes) do
     units = [
       {1_099_511_627_776, "TiB"},
       {1_073_741_824, "GiB"},

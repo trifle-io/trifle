@@ -737,7 +737,12 @@ defmodule TrifleApp.Components.TracesTest do
       assert Floki.attribute(toggle, "aria-label") == ["Expand return value"]
       assert Floki.find(row, "##{content_id}[hidden]") != []
       assert Floki.find(row, "pre") == []
-      assert Floki.find(row, "[data-return-value]") |> Floki.text() |> String.trim() == "Expand"
+      assert Floki.text(toggle) |> String.trim() == "Expand"
+      [size] = Floki.find(row, "button + [data-content-size]")
+      assert String.trim(Floki.text(size)) == "5.3 KiB"
+      assert Floki.attribute(size, "data-size-bytes") == [to_string(byte_size(message))]
+      assert Floki.attribute(size, "title") == ["#{byte_size(message)} bytes"]
+      assert Floki.attribute(size, "aria-label") == ["Content size: 5.3 KiB"]
       refute Floki.text(row) =~ "private return"
 
       assert Floki.find(doc, "[data-copy-kind='trace'] [data-copy-text]") |> Floki.text() =~
@@ -745,6 +750,7 @@ defmodule TrifleApp.Components.TracesTest do
 
       expanded = detail(%{}, entries: entries, expanded_returns: %{{2, 3} => true})
       assert Floki.find(expanded, "##{content_id}:not([hidden]) pre") |> Floki.text() == message
+      assert Floki.find(expanded, "[data-content-size]") == [size]
 
       assert Floki.find(expanded, "[data-return-value] button") |> Floki.text() |> String.trim() ==
                "Collapse"

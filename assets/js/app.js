@@ -47,6 +47,7 @@ import { registerStatusHooks } from "./hooks/status_hooks";
 import { registerFilterBarShortcutsHook } from "./hooks/filter_bar_shortcuts_hook";
 import { getOrCreateTabId, registerSidebarAlpineComponents } from "./alpine/sidebar";
 import { initializeThemeManager } from "./theme_manager";
+import { registerLiveLoading } from "./live_loading.mjs";
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
@@ -107,10 +108,9 @@ let liveSocket = new LiveSocket("/live", Socket, {
   }
 })
 
-// Show progress bar on live navigation and form submits
+// Share one delayed progress bar across navigation and LiveView actions.
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
-window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+registerLiveLoading({topbar, liveSocket})
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
