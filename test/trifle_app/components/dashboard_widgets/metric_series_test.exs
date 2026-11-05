@@ -28,6 +28,23 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
     assert timeline =~ "positive integer constant"
     assert timeline =~ ~s(aria-invalid="true")
     assert timeline =~ ~s(aria-describedby="widget-series-error-formula-help-1")
+    assert timeline =~ ~s(phx-hook="FunctionAutocomplete")
+    assert timeline =~ ~s(role="combobox")
+    assert timeline =~ ~s(role="listbox")
+    assert timeline =~ ~s(aria-controls="widget-series-expression-formula-help-1-suggestions")
+
+    function_names = fn html ->
+      html
+      |> Floki.parse_fragment!()
+      |> Floki.find("[data-functions]")
+      |> Floki.attribute("data-functions")
+      |> hd()
+      |> Jason.decode!()
+      |> Enum.map(& &1["name"])
+    end
+
+    assert "moving_avg" in function_names.(timeline)
+    assert "sqrt" in function_names.(timeline)
 
     category =
       render_component(&MetricSeriesEditor.editor/1,
@@ -36,6 +53,8 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
 
     refute category =~ "moving_median(a, n)"
     assert category =~ "requires timeline data"
+    refute "moving_avg" in function_names.(category)
+    assert "mean" in function_names.(category)
 
     valid =
       render_component(&MetricSeriesEditor.editor/1,
@@ -48,6 +67,14 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
 
     refute valid =~ ~s(aria-invalid="true")
     refute valid =~ ~s(role="alert")
+
+    compact =
+      render_component(&MetricSeriesEditor.editor/1,
+        widget: %{"id" => "monitor-source", "type" => "timeseries", "series" => rows},
+        layout: "compact"
+      )
+
+    assert "ewma" in function_names.(compact)
   end
 
   test "normalize_widget drops synthetic blank rows for persisted widgets" do

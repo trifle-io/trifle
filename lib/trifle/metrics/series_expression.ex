@@ -9,7 +9,24 @@ defmodule Trifle.Metrics.SeriesExpression do
   alias Trifle.Metrics.SeriesFunctions
   alias Trifle.Stats.Transponder.ExpressionEngine
 
-  @scalar_functions ~w(sum mean avg min max sqrt)
+  @scalar_functions [
+    %{name: "sum", signature: "sum(a, b, ...)", description: "Sum of the inputs at each point."},
+    %{
+      name: "mean",
+      signature: "mean(a, b, ...)",
+      description: "Mean of the inputs at each point."
+    },
+    %{name: "avg", signature: "avg(a, b, ...)", description: "Alias for mean."},
+    %{name: "min", signature: "min(a, b, ...)", description: "Smallest input at each point."},
+    %{name: "max", signature: "max(a, b, ...)", description: "Largest input at each point."},
+    %{name: "sqrt", signature: "sqrt(a)", description: "Square root of each input value."}
+  ]
+  @scalar_names Enum.map(@scalar_functions, & &1.name)
+
+  def functions(context \\ :timeline) do
+    temporal = if context == :timeline, do: SeriesFunctions.all(), else: []
+    Enum.map(@scalar_functions ++ temporal, &Map.take(&1, [:name, :signature, :description]))
+  end
 
   def parse(expression, prior_count, context \\ :timeline) do
     paths = List.duplicate("path", prior_count)
@@ -47,7 +64,7 @@ defmodule Trifle.Metrics.SeriesExpression do
     case SeriesFunctions.fetch(name) do
       nil ->
         cond do
-          name not in @scalar_functions ->
+          name not in @scalar_names ->
             {:error, %{message: "Unknown function #{name}."}}
 
           name == "sqrt" and length(args) != 1 ->

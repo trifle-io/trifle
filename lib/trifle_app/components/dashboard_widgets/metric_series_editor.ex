@@ -49,6 +49,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       assigns
       |> assign(:widget, widget)
       |> assign(:rows, rows)
+      |> assign(:functions_json, Jason.encode!(SeriesExpression.functions(context)))
       |> assign(
         :timeline_functions,
         if(context == :timeline, do: SeriesFunctions.all(), else: [])
@@ -114,6 +115,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                       field_prefix={@field_prefix}
                       path_options={@path_options}
                       path_placeholder={@path_placeholder}
+                      functions_json={@functions_json}
                     />
                   </div>
                 </div>
@@ -152,6 +154,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                         field_prefix={@field_prefix}
                         path_options={@path_options}
                         path_placeholder={@path_placeholder}
+                        functions_json={@functions_json}
                       />
                     </div>
                   </div>
@@ -357,6 +360,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
   attr :field_prefix, :string, required: true
   attr :path_options, :list, default: []
   attr :path_placeholder, :string, default: "metrics.total"
+  attr :functions_json, :string, required: true
 
   defp series_value_input(assigns) do
     ~H"""
@@ -379,19 +383,42 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
           value=""
         />
       <% else %>
-        <input
-          type="text"
-          name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
-          value={@row["expression"]}
-          data-role="series-expression"
-          aria-invalid={if @row["expression_error"], do: "true", else: "false"}
-          aria-describedby={
-            if @row["expression_error"], do: "widget-series-error-#{@widget_id}-#{@row["index"]}"
-          }
-          class={joined_input_classes()}
-          placeholder="a / b"
-          spellcheck="false"
-        />
+        <div
+          id={"widget-series-expression-#{@widget_id}-#{@row["index"]}-wrapper"}
+          phx-hook="FunctionAutocomplete"
+          data-functions={@functions_json}
+          class="relative h-full"
+        >
+          <input
+            id={"widget-series-expression-#{@widget_id}-#{@row["index"]}"}
+            type="text"
+            name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
+            value={@row["expression"]}
+            data-role="series-expression"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="false"
+            aria-controls={"widget-series-expression-#{@widget_id}-#{@row["index"]}-suggestions"}
+            aria-label={"Formula #{ @row["row_letter"]}"}
+            aria-invalid={if @row["expression_error"], do: "true", else: "false"}
+            aria-describedby={
+              if @row["expression_error"], do: "widget-series-error-#{@widget_id}-#{@row["index"]}"
+            }
+            class={joined_input_classes()}
+            placeholder="a / b"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div
+            id={"widget-series-expression-#{@widget_id}-#{@row["index"]}-suggestions"}
+            data-role="function-suggestions"
+            role="listbox"
+            aria-label="Functions"
+            phx-update="ignore"
+            class="absolute left-0 right-0 top-full z-50 mt-1 hidden max-h-60 min-w-64 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800"
+          >
+          </div>
+        </div>
         <input
           type="hidden"
           name={input_name(@field_scope, @field_prefix, "path", @row["index"])}
