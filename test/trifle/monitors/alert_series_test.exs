@@ -84,4 +84,24 @@ defmodule Trifle.Monitors.AlertSeriesTest do
     assert Enum.map(target.points, & &1.value) == [10.0, 14.0]
     assert Enum.map(target.data, fn [_ts, value] -> value end) == [10.0, nil, 14.0]
   end
+
+  test "monitor source formulas can smooth a hidden source before alert evaluation" do
+    stats =
+      Series.new(%{
+        at: Enum.map(0..2, &DateTime.add(~U[2025-01-01 00:00:00Z], &1 * 60, :second)),
+        values: [%{"orders" => 10}, %{"orders" => 20}, %{"orders" => 30}]
+      })
+
+    monitor = %Monitor{
+      id: "monitor-smoothing",
+      alert_metric_key: "sales",
+      alert_series: [
+        %{"kind" => "path", "path" => "orders", "visible" => false},
+        %{"kind" => "expression", "expression" => "moving_avg(a, 2)", "label" => "Average"}
+      ]
+    }
+
+    [target] = AlertSeries.resolved_final_targets(stats, monitor)
+    assert Enum.map(target.points, & &1.value) == [10, 15, 25]
+  end
 end

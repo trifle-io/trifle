@@ -5,6 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
   import TrifleApp.Components.PathInput, only: [path_autocomplete_input: 1]
 
+  alias Trifle.Metrics.{SeriesExpression, SeriesFunctions}
   alias TrifleApp.Components.DashboardWidgets.{GroupExpansion, MetricSeries, SeriesColorSelector}
 
   attr :widget, :map, required: true
@@ -21,7 +22,26 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
 
   def editor(assigns) do
     widget = Map.get(assigns, :widget, %{})
-    rows = MetricSeries.rows_for_form(widget, Map.get(assigns, :path_options, []))
+    type = widget["type"] || widget[:type] || widget["widget_type"] || widget[:widget_type]
+
+    context =
+      if to_string(type) in ~w(category list distribution heatmap), do: :category, else: :timeline
+
+    rows =
+      widget
+      |> MetricSeries.rows_for_form(Map.get(assigns, :path_options, []))
+      |> Enum.map(fn row ->
+        error =
+          if MetricSeries.expression_row?(row) and MetricSeries.row_expression(row) != "" do
+            case SeriesExpression.parse(MetricSeries.row_expression(row), row["index"], context) do
+              {:error, %{message: message}} -> message
+              _ -> nil
+            end
+          end
+
+        Map.put(row, "expression_error", error)
+      end)
+
     widget_id = Map.get(assigns, :editor_id) || widget_id(widget)
     group_path = GroupExpansion.normalize_group_path(Map.get(assigns, :group_path))
 
@@ -29,6 +49,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
       assigns
       |> assign(:widget, widget)
       |> assign(:rows, rows)
+      |> assign(
+        :timeline_functions,
+        if(context == :timeline, do: SeriesFunctions.all(), else: [])
+      )
       |> assign(:widget_id, widget_id)
       |> assign(:event_name, Map.get(assigns, :event_name))
       |> assign(:field_prefix, Map.get(assigns, :field_prefix))
@@ -143,6 +167,14 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
                 />
               </div>
             <% end %>
+            <p
+              :if={row["expression_error"]}
+              id={"widget-series-error-#{@widget_id}-#{row["index"]}"}
+              role="alert"
+              class="text-xs text-rose-600 dark:text-rose-400"
+            >
+              {row["expression_error"]}
+            </p>
           </div>
         <% end %>
       </div>
@@ -159,6 +191,21 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
         {@path_help ||
           "Use * to expand dynamic keys such as breakdown.*. Formula rows reference previous rows as a, b, c."}
       </p>
+      <details class="text-xs text-gray-500 dark:text-slate-400">
+        <summary class="cursor-pointer">Formula reference</summary>
+        <div class="mt-2 space-y-2">
+          <p>
+            Reference earlier rows as a, b, c. Combine +, -, *, / and parentheses with sum(a, b), mean(a, b), min(a, b), max(a, b), sqrt(a).
+          </p>
+          <p :for={function <- @timeline_functions}>
+            <code>{function.signature}</code> — {function.description}
+          </p>
+          <p :if={@timeline_functions != []}>
+            For example: moving_avg(a * 10, 5). Windows use available buckets and preserve gaps.
+            Each wildcard series is calculated separately. Results depend on the selected range and granularity.
+          </p>
+        </div>
+      </details>
     </div>
     """
   end
@@ -337,6 +384,10 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEditor do
           name={input_name(@field_scope, @field_prefix, "expression", @row["index"])}
           value={@row["expression"]}
           data-role="series-expression"
+          aria-invalid={if @row["expression_error"], do: "true", else: "false"}
+          aria-describedby={
+            if @row["expression_error"], do: "widget-series-error-#{@widget_id}-#{@row["index"]}"
+          }
           class={joined_input_classes()}
           placeholder="a / b"
           spellcheck="false"

@@ -2,6 +2,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   @moduledoc false
 
   alias Decimal, as: D
+  alias Trifle.Metrics.SeriesExpression
   alias Trifle.Stats.Series
   alias Trifle.Stats.Transponder.ExpressionEngine
   alias TrifleApp.Components.DashboardWidgets.MetricSeries
@@ -268,10 +269,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     expression = MetricSeries.row_expression(row)
     shape = expression_shape(prior_rows)
 
+    parsed = SeriesExpression.parse(expression, prior_count, shape)
+
     entries =
       with true <- prior_count > 0,
            false <- expression == "",
-           {:ok, ast} <- ExpressionEngine.parse(expression, placeholder_paths(prior_count)) do
+           {:ok, ast} <- parsed do
         vars = ExpressionEngine.allowed_vars(prior_count)
         keys = candidate_binding_keys(prior_rows)
 
@@ -288,29 +291,12 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
             |> Enum.uniq()
             |> Enum.sort_by(&sample_sort_key/1)
 
-          samples =
-            Enum.reduce(sample_keys, %{}, fn sample_key, sample_acc ->
-              env =
-                vars
-                |> Enum.zip(row_entries)
-                |> Enum.into(%{}, fn {var, entry} ->
-                  value =
-                    case entry do
-                      nil -> nil
-                      %{samples: samples_map} -> Map.get(samples_map, sample_key)
-                    end
+          bindings =
+            vars
+            |> Enum.zip(row_entries)
+            |> Map.new(fn {var, entry} -> {var, if(entry, do: entry.samples, else: %{})} end)
 
-                  {var, value}
-                end)
-
-              case ExpressionEngine.evaluate(ast, env) do
-                {:ok, value} ->
-                  Map.put(sample_acc, sample_key, normalize_number(value))
-
-                _ ->
-                  maybe_preserve_empty_timeline_sample(sample_acc, sample_key, shape)
-              end
-            end)
+          samples = SeriesExpression.evaluate(ast, sample_keys, bindings)
 
           if sample_map_has_values?(samples) do
             Map.put(acc, key, %{
@@ -326,7 +312,13 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
         _ -> %{}
       end
 
-    resolved_row(row, index, shape, entries)
+    error =
+      case parsed do
+        {:error, error} -> error
+        _ -> nil
+      end
+
+    resolved_row(row, index, shape, entries) |> Map.put(:error, error)
   end
 
   defp timeline_entries_to_series(resolved, widget) do
@@ -469,8 +461,6 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     end
   end
 
-  defp placeholder_paths(count), do: Enum.map(1..count, &Integer.to_string/1)
-
   defp resolved_row(row, index, shape, entries) do
     %{
       row: row,
@@ -512,12 +502,6 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
 
   defp expression_shape([first | _rest]), do: first.shape
   defp expression_shape(_), do: :timeline
-
-  defp maybe_preserve_empty_timeline_sample(samples, sample_key, :timeline) do
-    Map.put(samples, sample_key, nil)
-  end
-
-  defp maybe_preserve_empty_timeline_sample(samples, _sample_key, _shape), do: samples
 
   defp sample_map_has_values?(samples) when is_map(samples) do
     Enum.any?(samples, fn {_sample_key, value} -> not is_nil(value) end)

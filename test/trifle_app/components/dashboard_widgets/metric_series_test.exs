@@ -7,10 +7,48 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesTest do
 
   alias TrifleApp.Components.DashboardWidgets.{
     MetricSeries,
+    MetricSeriesEditor,
     SeriesAliases,
     TableEditor,
     TimeseriesEditor
   }
+
+  test "formula reference and validation follow the widget evaluation context" do
+    rows = [
+      %{"kind" => "path", "path" => "orders"},
+      %{"kind" => "expression", "expression" => "moving_avg(a, 0)"}
+    ]
+
+    timeline =
+      render_component(&MetricSeriesEditor.editor/1,
+        widget: %{"id" => "formula-help", "type" => "timeseries", "series" => rows}
+      )
+
+    assert timeline =~ "moving_median(a, n)"
+    assert timeline =~ "positive integer constant"
+    assert timeline =~ ~s(aria-invalid="true")
+    assert timeline =~ ~s(aria-describedby="widget-series-error-formula-help-1")
+
+    category =
+      render_component(&MetricSeriesEditor.editor/1,
+        widget: %{"id" => "formula-help", "type" => "category", "series" => rows}
+      )
+
+    refute category =~ "moving_median(a, n)"
+    assert category =~ "requires timeline data"
+
+    valid =
+      render_component(&MetricSeriesEditor.editor/1,
+        widget: %{
+          "id" => "formula-help",
+          "type" => "table",
+          "series" => [hd(rows), %{"kind" => "expression", "expression" => "ewma(a, 0.3)"}]
+        }
+      )
+
+    refute valid =~ ~s(aria-invalid="true")
+    refute valid =~ ~s(role="alert")
+  end
 
   test "normalize_widget drops synthetic blank rows for persisted widgets" do
     widget = %{

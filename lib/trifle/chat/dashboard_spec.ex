@@ -15,7 +15,7 @@ defmodule Trifle.Chat.DashboardSpec do
         path:
           "Required when kind=path or kind=nested. Wildcards such as breakdown.* are allowed in path rows. Nested rows resolve under a widget group path prefix.",
         expression:
-          "Required when kind=expression. Uses the transponder expression syntax and can reference previous rows as a, b, c.",
+          "Required when kind=expression. References previous rows as a, b, c using arithmetic and scalar functions. Timeline widgets (timeseries, table, kpi) also support moving_avg(a, n), moving_median(a, n), ewma(a, alpha), trend_line(a).",
         label: "Optional display label.",
         visible: "Optional boolean. Hidden rows still evaluate and can feed later expressions.",
         color_selector: "Optional row color selector such as default.* or default.2."
@@ -444,6 +444,7 @@ defmodule Trifle.Chat.DashboardSpec do
     - A nested row looks like `{"kind":"nested","path":"count","visible":true}` and is only for widgets inside a group with a path prefix.
     - An expression row looks like `{"kind":"expression","expression":"a / b","visible":true}`.
     - Expression rows can reference previous rows as `a`, `b`, `c`, and hidden rows still evaluate and can feed visible rows.
+    - Timeline widgets (`timeseries`, `table`, `kpi`) support `moving_avg(a, n)`, `moving_median(a, n)`, `ewma(a, alpha)`, and `trend_line(a)`, including nested formulas. Window n must be a positive integer constant; alpha must be a constant with 0 < alpha <= 1. Rolling windows include the current bucket, use partial windows at the start, and preserve gaps. Wildcard bindings are calculated independently. These functions are unavailable for category, list, distribution, and heatmap widgets.
     - Use only documented field names. `chart` and `style` are invalid widget fields; use `chart_type`.
     - Category widgets default to `bar`. If you want a pie or donut, use `type: "category"` and set `chart_type` to `pie` or `donut` explicitly.
     - Distribution and heatmap widgets are for histograms/buckets, not pie or donut charts.

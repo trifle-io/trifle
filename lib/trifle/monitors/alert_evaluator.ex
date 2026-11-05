@@ -546,17 +546,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
     end)
   end
 
-  defp median(values) do
-    sorted = Enum.sort(values)
-    len = length(sorted)
-    mid = div(len, 2)
-
-    if rem(len, 2) == 1 do
-      Enum.at(sorted, mid)
-    else
-      (Enum.at(sorted, mid - 1) + Enum.at(sorted, mid)) / 2
-    end
-  end
+  defp median(values), do: Trifle.Metrics.Statistics.median(values)
 
   defp maybe_fill_missing(points, %Alert{} = alert) do
     if treat_nil_as_zero?(alert) do
