@@ -53,6 +53,23 @@ defmodule TrifleApp.MonitorLiveTest do
     assert html =~ "Not set"
   end
 
+  test "a range over the point limit shows the message instead of crashing", %{
+    conn: conn,
+    monitor: monitor,
+    database: database
+  } do
+    {:ok, _} = Organizations.setup_database(database)
+    Application.put_env(:trifle, :series_max_points, 2)
+    on_exit(fn -> Application.delete_env(:trifle, :series_max_points) end)
+
+    {:ok, view, _html} = live(conn, ~p"/monitors/#{monitor.id}")
+
+    html = render_async(view, 5_000)
+
+    assert html =~ "more than 2 data points"
+    assert Process.alive?(view.pid)
+  end
+
   test "renders the shared filter bar without the old insights overlay shell", %{
     conn: conn,
     monitor: monitor

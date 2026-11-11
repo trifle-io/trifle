@@ -1903,4 +1903,130 @@ defmodule TrifleApp.DashboardLiveTest do
     assert widget["type"] == "text"
     refute Map.has_key?(widget, "series_aliases")
   end
+
+  describe "point limit" do
+    setup do
+      Application.put_env(:trifle, :series_max_points, 10)
+      on_exit(fn -> Application.delete_env(:trifle, :series_max_points) end)
+    end
+
+    # The dashboard defaults to 24h at 1m: 1441 points against a limit of 10.
+    test "a range over the limit shows the message instead of crashing", %{
+      conn: conn,
+      dashboard: dashboard
+    } do
+      {:ok, view, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+
+      html = render_async(view, 5_000)
+
+      assert html =~ "more than 10 data points"
+      assert html =~ "Choose a shorter timeframe or a coarser granularity"
+      assert Process.alive?(view.pid)
+    end
+
+    test "a public dashboard over the limit shows the message instead of crashing", %{
+      conn: conn,
+      dashboard: dashboard
+    } do
+      {:ok, dashboard} = Organizations.generate_dashboard_public_token(dashboard)
+
+      {:ok, view, _html} =
+        live(
+          Phoenix.ConnTest.build_conn(),
+          ~p"/d/#{dashboard.id}?token=#{dashboard.access_token}"
+        )
+
+      _ = conn
+      html = render_async(view, 5_000)
+
+      assert html =~ "more than 10 data points"
+      assert Process.alive?(view.pid)
+    end
+  end
+
+  describe "widget payload rendering" do
+    # Counts how many times the grid encodes widget payloads inside the LiveView
+    # process while `fun` runs. Encoding is the expensive part of a re-render and
+    # every encoded payload is also sent to the browser again.
+    defp payload_encodes(lv, fun) do
+      pid = lv.pid
+      :erlang.trace_pattern({WidgetView, :widget_payload, 2}, true, [:local])
+      :erlang.trace(pid, true, [:call])
+
+      try do
+        fun.()
+        # A synchronous call makes sure the event (and its render) has finished.
+        _ = render(lv)
+      after
+        :erlang.trace(pid, false, [:call])
+        :erlang.trace_pattern({WidgetView, :widget_payload, 2}, false, [:local])
+      end
+
+      collect_trace_calls(0)
+    end
+
+    defp collect_trace_calls(count) do
+      receive do
+        {:trace, _pid, :call, {WidgetView, :widget_payload, _args}} ->
+          collect_trace_calls(count + 1)
+      after
+        50 -> count
+      end
+    end
+
+    test "events that do not touch widgets do not re-encode or re-send widget payloads", %{
+      conn: conn,
+      dashboard: dashboard
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+      _ = render_async(lv)
+
+      # Before the grid's inputs were tracked, each of the widget-editor events
+      # below re-encoded every widget on the dashboard.
+      for {event, params} <- [
+            {"open_dashboard_payload_modal", %{}},
+            {"close_dashboard_payload_modal", %{}},
+            {"open_widget_editor", %{"id" => "widget-1"}},
+            {"widget_editor_change", %{"widget_id" => "widget-1", "title" => "Typing"}},
+            {"widget_editor_change", %{"widget_id" => "widget-1", "title" => "Typing more"}},
+            {"close_widget_editor", %{}}
+          ] do
+        encodes = payload_encodes(lv, fn -> render_hook(lv, event, params) end)
+
+        assert encodes == 0,
+               "#{event} re-encoded #{encodes} widget payload(s) although no widget changed"
+      end
+    end
+
+    test "typing a dashboard name in configure does not re-encode widget payloads", %{
+      conn: conn,
+      dashboard: dashboard
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/dashboards/#{dashboard.id}/configure")
+      _ = render_async(lv)
+
+      for value <- ["N", "Ne", "New"] do
+        encodes =
+          payload_encodes(lv, fn -> render_hook(lv, "update_temp_name", %{"value" => value}) end)
+
+        assert encodes == 0
+      end
+    end
+
+    test "widget payloads are still encoded when the data is reloaded", %{
+      conn: conn,
+      dashboard: dashboard
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/dashboards/#{dashboard.id}")
+      _ = render_async(lv)
+
+      encodes =
+        payload_encodes(lv, fn ->
+          render_hook(lv, "reload_data", %{})
+          _ = render_async(lv)
+        end)
+
+      assert encodes > 0
+    end
+  end
 end

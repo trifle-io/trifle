@@ -509,6 +509,12 @@ defmodule TrifleApp.MonitorLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
+  # The task's own return value arrives wrapped in `{:ok, _}`, so a failed fetch
+  # is `{:ok, {:error, _}}`.
+  def handle_async(:monitor_data_task, {:ok, {:error, error}}, socket) do
+    handle_async(:monitor_data_task, {:error, error}, socket)
+  end
+
   def handle_async(:monitor_data_task, {:ok, result}, socket) do
     load_duration =
       case socket.assigns[:load_start_time] do
@@ -560,7 +566,10 @@ defmodule TrifleApp.MonitorLive do
       |> assign(:load_duration_microseconds, load_duration)
       |> reset_monitor_widget_datasets()
       |> assign_monitor_alerts()
-      |> put_flash(:error, "Failed to load monitor data: #{inspect(error)}")
+      |> put_flash(
+        :error,
+        "Failed to load monitor data: #{Trifle.Stats.SeriesFetcher.error_text(error)}"
+      )
 
     export_params = build_monitor_export_params(socket.assigns)
 

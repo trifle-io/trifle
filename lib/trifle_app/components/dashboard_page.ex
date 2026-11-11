@@ -414,30 +414,13 @@ defmodule TrifleApp.Components.DashboardPage do
             </p>
           </div>
         <% end %>
-        <% export_params =
-          build_url_params(%{
-            granularity: @granularity,
-            smart_timeframe_input: @smart_timeframe_input,
-            use_fixed_display: @use_fixed_display,
-            from: @from,
-            to: @to,
-            segment_values: @segment_values
-          })
-          |> then(fn params ->
-            cond do
-              is_binary(@resolved_key) and @resolved_key != "" ->
-                Map.put(params, "key", @resolved_key)
-
-              true ->
-                params
-            end
-          end) %>
-
-        <% root_grid_items = WidgetView.root_grid_items(@dashboard) %>
-        <% grid_items = WidgetView.grid_items(@dashboard) %>
-        <% has_grid_items = root_grid_items != [] %>
-        <% text_items = WidgetView.text_items(grid_items) %>
-
+        <%!--
+          Everything passed to the grid is written as an expression over assigns,
+          not as a template-local variable. LiveView cannot track locals, so a
+          local here made the grid re-run (re-encoding and re-sending every widget
+          payload) whenever anything on the page changed, such as a keystroke in
+          the widget editor.
+        --%>
         <WidgetView.grid
           dashboard={@dashboard}
           stats={@stats}
@@ -446,8 +429,8 @@ defmodule TrifleApp.Components.DashboardPage do
           can_edit_dashboard={@can_edit_dashboard_layout}
           is_public_access={@is_public_access}
           public_token={@public_token}
-          grid_items={root_grid_items}
-          text_items={text_items}
+          grid_items={WidgetView.root_grid_items(@dashboard)}
+          text_items={WidgetView.text_items(WidgetView.grid_items(@dashboard))}
           kpi_values={@widget_kpi_values || %{}}
           kpi_visuals={@widget_kpi_visuals || %{}}
           timeseries={@widget_timeseries || %{}}
@@ -458,7 +441,17 @@ defmodule TrifleApp.Components.DashboardPage do
           distribution={@widget_distribution || %{}}
           annotation_groups={@source_annotation_groups || []}
           transponder_info={@transponder_info || %{}}
-          export_params={export_params}
+          export_params={
+            dashboard_export_params(
+              @granularity,
+              @smart_timeframe_input,
+              @use_fixed_display,
+              @from,
+              @to,
+              @segment_values,
+              @resolved_key
+            )
+          }
           loading={@loading}
         />
 
@@ -1831,7 +1824,7 @@ defmodule TrifleApp.Components.DashboardPage do
         
     <!-- Dashboard Content -->
         <div class="flex-1 relative">
-          <%= if !has_grid_items do %>
+          <%= if WidgetView.root_grid_items(@dashboard) == [] do %>
             <!-- Empty state in white panel -->
             <div class="bg-white dark:bg-slate-800 rounded-lg shadow relative">
               <div class="p-6">
@@ -1918,7 +1911,17 @@ defmodule TrifleApp.Components.DashboardPage do
             load_duration_microseconds={@load_duration_microseconds}
             show_export_dropdown={@show_export_dropdown}
             dashboard={@dashboard}
-            export_params={export_params}
+            export_params={
+              dashboard_export_params(
+                @granularity,
+                @smart_timeframe_input,
+                @use_fixed_display,
+                @from,
+                @to,
+                @segment_values,
+                @resolved_key
+              )
+            }
             show_error_modal={@show_error_modal}
             annotation_count={@source_annotation_count || 0}
           />
@@ -1930,6 +1933,33 @@ defmodule TrifleApp.Components.DashboardPage do
       <% end %>
     </div>
     """
+  end
+
+  # Query parameters describing the current view, used for export links. Takes the
+  # individual assigns (not `assigns`) so LiveView re-evaluates it only when one
+  # of them changes.
+  defp dashboard_export_params(
+         granularity,
+         smart_timeframe_input,
+         use_fixed_display,
+         from,
+         to,
+         segment_values,
+         resolved_key
+       ) do
+    params =
+      build_url_params(%{
+        granularity: granularity,
+        smart_timeframe_input: smart_timeframe_input,
+        use_fixed_display: use_fixed_display,
+        from: from,
+        to: to,
+        segment_values: segment_values
+      })
+
+    if is_binary(resolved_key) and resolved_key != "",
+      do: Map.put(params, "key", resolved_key),
+      else: params
   end
 
   defp group_sources_for_select(sources) do

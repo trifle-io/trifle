@@ -14,7 +14,18 @@ defmodule Trifle.Stats.SeriesFetcher do
   require Logger
 
   @default_chunk_size 720
-  @default_progressive_concurrency 1
+  # Chunks of a long range are loaded a few at a time. SQLite sources have a
+  # single connection, so they stay serial.
+  @default_progressive_concurrency 3
+  @serial_progressive_concurrency 1
+  # When a range is loaded in chunks, a chunk that takes longer than this is
+  # treated as failed rather than waited on forever. A range small enough to
+  # load in one query has no deadline here; the driver's own timeout applies.
+  @chunk_timeout_ms 120_000
+  # Upper bound on points in one request. A year at one-minute granularity is
+  # over half a million points (hundreds of sequential queries); nobody can read
+  # such a chart, and the request would tie up the source for minutes.
+  @default_max_points 100_000
   @transponder_timeout 300_000
 
   # Public API
@@ -84,12 +95,87 @@ defmodule Trifle.Stats.SeriesFetcher do
 
     fetcher = raw_stats_fetcher(source, opts)
 
-    with {:ok, raw_stats} <- fetch_raw_stats(key, from, to, granularity, config, opts, fetcher),
+    with {:ok, timeline} <- bounded_timeline(from, to, granularity, config),
+         {:ok, raw_stats} <-
+           fetch_raw_stats(key, from, to, granularity, config, opts, fetcher, timeline),
          {:ok, result} <-
            apply_transponders_to_stats(raw_stats, transponders, opts[:progress_callback]) do
       {:ok, result}
     end
   end
+
+  @doc """
+  Largest number of points a single series request may cover
+  (`config :trifle, :series_max_points`, default #{@default_max_points}).
+  """
+  def max_points do
+    case Application.get_env(:trifle, :series_max_points, @default_max_points) do
+      value when is_integer(value) and value > 0 -> value
+      _ -> @default_max_points
+    end
+  end
+
+  @doc """
+  Builds the timeline for a request, giving up as soon as it passes
+  `max_points/0`.
+
+  Returns `{:ok, timeline}` or `{:error, {:point_limit_exceeded, message}}`; the
+  message is written for the person or API client who made the request.
+
+  The count cannot be derived from the length of the range: `trifle_stats`
+  realigns to the bucket boundary after every step, so a granularity that does
+  not divide its parent unit (59m, 7h) yields up to twice as many points as
+  range / bucket length. This walks the same steps as
+  `Trifle.Stats.Nocturnal.timeline/1`, which has no bound of its own.
+  """
+  def bounded_timeline(%DateTime{} = from, %DateTime{} = to, granularity, config) do
+    alias Trifle.Stats.Nocturnal
+
+    limit = max_points()
+    parser = Nocturnal.Parser.new(granularity)
+    offset = parser.offset
+    unit = parser.unit
+
+    first = from |> Nocturnal.new(config) |> Nocturnal.floor(offset, unit)
+    last = to |> Nocturnal.new(config) |> Nocturnal.floor(offset, unit)
+
+    timeline =
+      first
+      |> Stream.unfold(fn current ->
+        if DateTime.compare(current, last) == :gt do
+          nil
+        else
+          next =
+            current
+            |> Nocturnal.new(config)
+            |> Nocturnal.add(offset, unit)
+            |> Nocturnal.new(config)
+            |> Nocturnal.floor(offset, unit)
+
+          {current, next}
+        end
+      end)
+      |> Enum.take(limit + 1)
+
+    if length(timeline) > limit do
+      {:error,
+       {:point_limit_exceeded,
+        "This range covers more than #{limit} data points at #{granularity} granularity. " <>
+          "Choose a shorter timeframe or a coarser granularity."}}
+    else
+      {:ok, timeline}
+    end
+  end
+
+  @doc """
+  Text for a failed fetch, for showing to the person who asked. Messages written
+  for the reader (the point limit, a chunk timeout) are returned as they are,
+  however the caller tagged them; any other term is internal and is inspected.
+  """
+  def error_text(message) when is_binary(message), do: message
+  def error_text({_tag, message}) when is_binary(message), do: message
+  def error_text({_tag, {_inner_tag, message}}) when is_binary(message), do: message
+  def error_text(other), do: inspect(other)
 
   @doc """
   Fetches database system overview (all keys) with progressive loading.
@@ -144,10 +230,8 @@ defmodule Trifle.Stats.SeriesFetcher do
     length(timeline) > (chunk_size || @default_chunk_size)
   end
 
-  defp fetch_raw_stats(key, from, to, granularity, config, opts, fetcher) do
-    timeline = if opts[:progressive], do: generate_timeline(from, to, granularity, config)
-
-    if timeline && timeline_exceeds_chunk_size?(timeline, opts[:chunk_size]) do
+  defp fetch_raw_stats(key, from, to, granularity, config, opts, fetcher, timeline) do
+    if opts[:progressive] && timeline_exceeds_chunk_size?(timeline, opts[:chunk_size]) do
       fetch_stats_progressive(
         key,
         timeline,
@@ -194,28 +278,16 @@ defmodule Trifle.Stats.SeriesFetcher do
       |> Enum.with_index(1)
 
     loaded_chunks =
-      if concurrency == 1 do
-        load_chunks_serial(
-          chunk_entries,
-          key,
-          granularity,
-          config,
-          progress_callback,
-          fetcher,
-          total_chunks
-        )
-      else
-        load_chunks_concurrent(
-          chunk_entries,
-          key,
-          granularity,
-          config,
-          progress_callback,
-          fetcher,
-          total_chunks,
-          concurrency
-        )
-      end
+      load_chunks(
+        chunk_entries,
+        key,
+        granularity,
+        config,
+        progress_callback,
+        fetcher,
+        total_chunks,
+        concurrency
+      )
 
     results =
       loaded_chunks
@@ -233,25 +305,9 @@ defmodule Trifle.Stats.SeriesFetcher do
     end
   end
 
-  defp load_chunks_serial(
-         chunk_entries,
-         key,
-         granularity,
-         config,
-         progress_callback,
-         fetcher,
-         total_chunks
-       ) do
-    Enum.map(chunk_entries, fn {chunk, chunk_index} ->
-      if progress_callback do
-        progress_callback.({:chunk_progress, chunk_index, total_chunks})
-      end
-
-      {chunk_index, load_chunk(key, chunk, granularity, config, fetcher)}
-    end)
-  end
-
-  defp load_chunks_concurrent(
+  # Serial loading (concurrency 1) goes through the same path so the per-chunk
+  # deadline applies to it too.
+  defp load_chunks(
          chunk_entries,
          key,
          granularity,
@@ -269,7 +325,8 @@ defmodule Trifle.Stats.SeriesFetcher do
         end,
         max_concurrency: concurrency,
         ordered: false,
-        timeout: :infinity
+        timeout: @chunk_timeout_ms,
+        on_timeout: :kill_task
       )
       |> Enum.reduce({[], 0}, fn
         {:ok, {chunk_index, chunk_result}}, {acc, completed} ->
@@ -288,11 +345,19 @@ defmodule Trifle.Stats.SeriesFetcher do
             progress_callback.({:chunk_progress, completed, total_chunks})
           end
 
-          {[{completed, {:error, reason}} | acc], completed}
+          {[{completed, {:error, chunk_exit_error(reason)}} | acc], completed}
       end)
 
     loaded_chunks
   end
+
+  defp chunk_exit_error(:timeout) do
+    {:chunk_timeout,
+     "Part of this range took longer than #{div(@chunk_timeout_ms, 1000)} seconds to load. " <>
+       "Try a shorter timeframe or a coarser granularity."}
+  end
+
+  defp chunk_exit_error(reason), do: reason
 
   defp load_chunk(key, chunk, granularity, config, fetcher) do
     chunk_from = List.first(chunk)
@@ -300,6 +365,9 @@ defmodule Trifle.Stats.SeriesFetcher do
 
     fetcher.(key, chunk_from, chunk_to, granularity, config)
   end
+
+  defp default_progressive_concurrency(%Source{record: %{driver: "sqlite"}}),
+    do: @serial_progressive_concurrency
 
   defp default_progressive_concurrency(_source), do: @default_progressive_concurrency
 

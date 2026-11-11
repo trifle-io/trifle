@@ -1098,7 +1098,7 @@ defmodule TrifleApp.ExploreCore do
      |> assign(loading_progress: nil)
      |> assign(transponding: false)
      |> assign(load_duration_microseconds: load_duration)
-     |> put_flash(:error, "Failed to load data: #{inspect(error)}")}
+     |> put_flash(:error, "Failed to load data: #{Trifle.Stats.SeriesFetcher.error_text(error)}")}
   end
 
   def handle_async(:data_task, {:exit, reason}, socket) do
@@ -1154,23 +1154,32 @@ defmodule TrifleApp.ExploreCore do
        fn ->
          if key && key != "" do
            # Load both system key (no transponders) and specific key (with transponders)
-           case {Source.fetch_series(
-                   source,
-                   "__system__key__",
-                   from,
-                   to,
-                   granularity,
-                   progress_callback: progress_callback,
-                   transponders: :none
-                 ),
-                 Source.fetch_series(
-                   source,
-                   key,
-                   from,
-                   to,
-                   granularity,
-                   progress_callback: progress_callback
-                 )} do
+           # The two reads are independent, so the overview loads alongside the
+           # selected key instead of before it.
+           system_task =
+             Task.async(fn ->
+               Source.fetch_series(
+                 source,
+                 "__system__key__",
+                 from,
+                 to,
+                 granularity,
+                 progress_callback: progress_callback,
+                 transponders: :none
+               )
+             end)
+
+           key_fetch =
+             Source.fetch_series(
+               source,
+               key,
+               from,
+               to,
+               granularity,
+               progress_callback: progress_callback
+             )
+
+           case {Task.await(system_task, :infinity), key_fetch} do
              {{:ok, system_result}, {:ok, key_result}} ->
                %{
                  system: system_result.series,

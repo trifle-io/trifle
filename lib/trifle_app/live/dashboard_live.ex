@@ -2051,10 +2051,15 @@ defmodule TrifleApp.DashboardLive do
 
     database = database_from_source(source)
 
+    # The source list feeds the configure form and source switching, which only
+    # exist once the socket is connected; the static first render skips the lookup.
     sources =
       case membership do
-        %OrganizationMembership{} = member -> Source.list_for_membership(member)
-        _ -> []
+        %OrganizationMembership{} = member ->
+          if connected?(socket), do: Source.list_for_membership(member), else: []
+
+        _ ->
+          []
       end
 
     sources = ensure_source_in_list(sources, source)
@@ -2887,6 +2892,26 @@ defmodule TrifleApp.DashboardLive do
     end
   end
 
+  # The task's own return value arrives wrapped in `{:ok, _}`, so a failed fetch
+  # is `{:ok, {:error, _}}`; this clause has to come before the success one.
+  def handle_async(:dashboard_data_task, {:ok, {:error, error}}, socket) do
+    load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
+
+    {:noreply,
+     socket
+     |> assign(loading: false)
+     |> assign(loading_chunks: false)
+     |> assign(loading_progress: nil)
+     |> assign(transponding: false)
+     |> assign(stats: nil)
+     |> assign(load_duration_microseconds: load_duration)
+     |> reset_widget_datasets()
+     |> put_flash(
+       :error,
+       "Failed to load dashboard data: #{Trifle.Stats.SeriesFetcher.error_text(error)}"
+     )}
+  end
+
   def handle_async(:dashboard_data_task, {:ok, result}, socket) do
     # Calculate load duration
     load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
@@ -2915,21 +2940,6 @@ defmodule TrifleApp.DashboardLive do
       |> maybe_refresh_widget_workspace_preview()
 
     {:noreply, socket}
-  end
-
-  def handle_async(:dashboard_data_task, {:error, error}, socket) do
-    load_duration = System.monotonic_time(:microsecond) - socket.assigns.load_start_time
-
-    {:noreply,
-     socket
-     |> assign(loading: false)
-     |> assign(loading_chunks: false)
-     |> assign(loading_progress: nil)
-     |> assign(transponding: false)
-     |> assign(stats: nil)
-     |> assign(load_duration_microseconds: load_duration)
-     |> reset_widget_datasets()
-     |> put_flash(:error, "Failed to load dashboard data: #{inspect(error)}")}
   end
 
   def handle_async(:dashboard_data_task, {:exit, reason}, socket) do

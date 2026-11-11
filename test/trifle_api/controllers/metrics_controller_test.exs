@@ -150,6 +150,32 @@ defmodule TrifleApi.MetricsControllerTest do
       assert %{fetch_series: 1, track: 0} = Trifle.MetricsMock.calls()
     end
 
+    test "explains a request over the point limit instead of returning 500", %{
+      conn: conn,
+      database_token: token,
+      database: database
+    } do
+      Trifle.MetricsMock.stub_fetch_series(fn _source, _key, _from, _to, _granularity, _opts ->
+        {:error, {:point_limit_exceeded, "This range covers more than 10 data points."}}
+      end)
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, database.id)
+        |> get(~p"/api/v1/metrics", %{
+          key: "metrics.total",
+          from: "2026-01-01T00:00:00Z",
+          to: "2026-01-02T00:00:00Z",
+          granularity: "1m"
+        })
+
+      assert %{"errors" => %{"detail" => detail, "code" => "point_limit_exceeded"}} =
+               json_response(conn, 422)
+
+      assert detail =~ "more than 10 data points"
+    end
+
     test "rejects inactive database sources after billing is removed", %{
       conn: conn,
       database_token: token,
@@ -173,6 +199,36 @@ defmodule TrifleApi.MetricsControllerTest do
                }
              } =
                json_response(conn, 403)
+    end
+  end
+
+  describe "POST /api/v1/metrics/query" do
+    test "explains a request over the point limit instead of returning 500", %{
+      conn: conn,
+      database_token: token,
+      database: database
+    } do
+      Application.put_env(:trifle, :series_max_points, 10)
+      on_exit(fn -> Application.delete_env(:trifle, :series_max_points) end)
+
+      conn =
+        conn
+        |> api_conn()
+        |> auth_conn(token, database.id)
+        |> post(~p"/api/v1/metrics/query", %{
+          mode: "aggregate",
+          key: "metrics.total",
+          value_path: "count",
+          aggregator: "sum",
+          from: "2026-01-01T00:00:00Z",
+          to: "2026-01-02T00:00:00Z",
+          granularity: "1m"
+        })
+
+      assert %{"errors" => %{"error" => message, "code" => "point_limit_exceeded"}} =
+               json_response(conn, 422)
+
+      assert message =~ "more than 10 data points"
     end
   end
 

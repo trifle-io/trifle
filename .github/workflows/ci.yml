@@ -84,6 +84,19 @@ jobs:
       - name: Run tests
         run: docker compose exec -T -e MIX_ENV=test app mix test
 
+      # Includes the check that the trimmed ECharts build renders the same as the
+      # full library; the Elixir suite does not cover it.
+      # Runs on the runner: the app image has no Node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run asset tests
+        working-directory: assets
+        run: |
+          npm ci --no-audit --no-fund
+          node --test test/*.mjs
+
       - name: Shutdown
         if: always()
         run: docker compose down -v

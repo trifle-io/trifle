@@ -31,6 +31,11 @@ defmodule TrifleApi.MetricsController do
         |> put_status(:bad_request)
         |> render("400.json")
 
+      {:error, {:point_limit_exceeded, message}} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{errors: %{detail: message, code: "point_limit_exceeded"}})
+
       {:error, _reason} ->
         conn
         |> put_status(:internal_server_error)
