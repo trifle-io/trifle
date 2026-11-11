@@ -1116,4 +1116,28 @@ defmodule Trifle.Integrations do
   defp to_map(map) when is_map(map), do: map
   defp to_map(list) when is_list(list), do: Map.new(list)
   defp to_map(other), do: other
+
+  @doc """
+  Encrypts Slack bot tokens that were stored before the column was encrypted.
+
+  Safe to run any number of times; rows that are already encrypted are skipped.
+  Returns the number of rows rewritten.
+  """
+  def encrypt_legacy_slack_tokens do
+    import Ecto.Query, only: [from: 2]
+
+    from(i in "slack_installations", select: {i.id, i.bot_access_token})
+    |> Repo.all()
+    |> Enum.reject(fn {_id, raw} ->
+      is_nil(raw) or Trifle.Encrypted.MigratingBinary.encrypted?(raw)
+    end)
+    |> Enum.map(fn {id, raw} ->
+      {:ok, ciphertext} = Trifle.Vault.encrypt(raw)
+
+      Repo.update_all(from(i in "slack_installations", where: i.id == ^id),
+        set: [bot_access_token: ciphertext]
+      )
+    end)
+    |> length()
+  end
 end

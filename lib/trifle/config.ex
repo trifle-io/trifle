@@ -90,19 +90,29 @@ defmodule Trifle.Config do
     }
   end
 
+  @doc """
+  Largest request body accepted on ordinary routes (`:request_body_max_bytes`).
+  """
   @spec request_body_max_bytes() :: pos_integer()
   def request_body_max_bytes do
-    configured =
-      case Application.get_env(
-             :trifle,
-             :request_body_max_bytes,
-             @default_request_body_max_bytes
-           ) do
-        value when is_integer(value) and value > 0 -> value
-        _ -> @default_request_body_max_bytes
-      end
+    case Application.get_env(
+           :trifle,
+           :request_body_max_bytes,
+           @default_request_body_max_bytes
+         ) do
+      value when is_integer(value) and value > 0 -> value
+      _ -> @default_request_body_max_bytes
+    end
+  end
 
-    max(configured, sqlite_upload_max_bytes())
+  @doc """
+  Largest request body accepted on routes that take a SQLite file upload. Sized
+  for the upload limit plus base64 overhead (a file sent inside JSON grows by a
+  third), never below the ordinary limit.
+  """
+  @spec upload_request_body_max_bytes() :: pos_integer()
+  def upload_request_body_max_bytes do
+    max(request_body_max_bytes(), div(sqlite_upload_max_bytes() * 4, 3) + 1_000_000)
   end
 
   defp normalize_deployment_mode(:saas), do: :saas

@@ -199,6 +199,12 @@ defmodule TrifleApp.UserAuth do
     end
   end
 
+  # Makes the client IP available to LiveView event handlers (connect info can only
+  # be read during mount). Used for rate limiting on unauthenticated pages.
+  def on_mount(:assign_client_ip, _params, _session, socket) do
+    {:cont, Phoenix.Component.assign(socket, :client_ip, Trifle.RateLimit.client_ip(socket))}
+  end
+
   def on_mount(:redirect_if_user_is_authenticated, _params, session, socket) do
     socket = mount_current_user(session, socket)
 
@@ -273,6 +279,23 @@ defmodule TrifleApp.UserAuth do
       |> put_flash(:error, "You must log in to access this page.")
       |> maybe_store_return_to()
       |> redirect(to: ~p"/users/log_in")
+      |> halt()
+    end
+  end
+
+  @doc """
+  Used for routes that require a platform administrator.
+
+  Must run after `require_authenticated_user/2`. Non-admins are redirected
+  away so the admin console is not reachable by regular accounts.
+  """
+  def require_admin_user(conn, _opts) do
+    if match?(%Accounts.User{is_admin: true}, conn.assigns[:current_user]) do
+      conn
+    else
+      conn
+      |> put_flash(:error, "Administrator access is required.")
+      |> redirect(to: signed_in_path(conn))
       |> halt()
     end
   end

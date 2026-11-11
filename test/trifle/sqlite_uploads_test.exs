@@ -403,4 +403,135 @@ defmodule Trifle.SqliteUploadsTest do
 
     assert reason == "Unable to resolve organization for upload"
   end
+
+  describe "organization scoping" do
+    setup do
+      previous_mode = Application.get_env(:trifle, :deployment_mode)
+      Application.put_env(:trifle, :deployment_mode, :saas)
+
+      on_exit(fn ->
+        if is_nil(previous_mode),
+          do: Application.delete_env(:trifle, :deployment_mode),
+          else: Application.put_env(:trifle, :deployment_mode, previous_mode)
+      end)
+
+      {:ok, org_id: Ecto.UUID.generate(), other_org_id: Ecto.UUID.generate()}
+    end
+
+    test "re-roots arbitrary server paths under the organization folder", %{org_id: org_id} do
+      root = Path.expand(Trifle.Config.sqlite_upload_root())
+      org_root = Path.join([root, "organization_#{org_id}", "sqlite", "manual"])
+
+      assert {:ok, scoped} = SqliteUploads.scope_file_path("/etc/secrets/app.sqlite", org_id)
+      assert scoped == Path.join(org_root, "etc/secrets/app.sqlite")
+
+      assert {:ok, traversal} = SqliteUploads.scope_file_path("../../../etc/passwd", org_id)
+      assert traversal == Path.join(org_root, "etc/passwd")
+
+      assert {:ok, relative} = SqliteUploads.scope_file_path("metrics.sqlite", org_id)
+      assert relative == Path.join(org_root, "metrics.sqlite")
+
+      for path <- [scoped, traversal, relative] do
+        assert SqliteUploads.organization_path?(path, org_id)
+      end
+    end
+
+    test "keeps paths already inside the organization and re-roots other tenants' paths", %{
+      org_id: org_id,
+      other_org_id: other_org_id
+    } do
+      root = Path.expand(Trifle.Config.sqlite_upload_root())
+      own = Path.join([root, "organization_#{org_id}", "sqlite", "a.sqlite"])
+      foreign = Path.join([root, "organization_#{other_org_id}", "sqlite", "a.sqlite"])
+
+      assert {:ok, ^own} = SqliteUploads.scope_file_path(own, org_id)
+
+      assert {:ok, rerooted} = SqliteUploads.scope_file_path(foreign, org_id)
+      refute rerooted == foreign
+      assert SqliteUploads.organization_path?(rerooted, org_id)
+      refute SqliteUploads.organization_path?(foreign, org_id)
+
+      # A nested folder named after this organization inside another tenant's folder
+      # does not make the path ours.
+      sneaky =
+        Path.join([root, "organization_#{other_org_id}", "organization_#{org_id}", "a.sqlite"])
+
+      refute SqliteUploads.organization_path?(sneaky, org_id)
+    end
+
+    test "object keys must live under the organization prefix", %{
+      org_id: org_id,
+      other_org_id: other_org_id
+    } do
+      assert SqliteUploads.organization_object_key?(
+               "sqlite-files/organization_#{org_id}/sqlite/a.sqlite",
+               org_id
+             )
+
+      refute SqliteUploads.organization_object_key?(
+               "sqlite-files/organization_#{other_org_id}/sqlite/a.sqlite",
+               org_id
+             )
+
+      refute SqliteUploads.organization_object_key?(
+               "sqlite-files/organization_#{org_id}/../organization_#{other_org_id}/a.sqlite",
+               org_id
+             )
+
+      refute SqliteUploads.organization_object_key?("sqlite-files/a.sqlite", org_id)
+    end
+
+    test "refuses to open another organization's file or object", %{
+      org_id: org_id,
+      other_org_id: other_org_id
+    } do
+      root = Path.expand(Trifle.Config.sqlite_upload_root())
+      foreign = Path.join([root, "organization_#{other_org_id}", "sqlite", "a.sqlite"])
+
+      assert {:error, message} =
+               SqliteUploads.resolve_database_path(%{
+                 organization_id: org_id,
+                 file_path: foreign,
+                 config: %{}
+               })
+
+      assert message =~ "outside this organization"
+
+      assert {:error, _} =
+               SqliteUploads.resolve_database_path(%{
+                 organization_id: org_id,
+                 file_path: "/etc/passwd",
+                 config: %{}
+               })
+
+      assert {:error, _} =
+               SqliteUploads.resolve_database_path(%{
+                 organization_id: org_id,
+                 file_path: foreign,
+                 config: %{
+                   "sqlite_storage" => %{
+                     "backend" => "s3",
+                     "object_key" => "sqlite-files/organization_#{other_org_id}/sqlite/a.sqlite"
+                   }
+                 }
+               })
+    end
+
+    test "does not delete another organization's file", %{
+      org_id: org_id,
+      other_org_id: other_org_id
+    } do
+      root = Path.expand(Trifle.Config.sqlite_upload_root())
+      foreign = Path.join([root, "organization_#{other_org_id}", "sqlite", "keep.sqlite"])
+      File.mkdir_p!(Path.dirname(foreign))
+      File.write!(foreign, "data")
+      on_exit(fn -> File.rm_rf(Path.join(root, "organization_#{other_org_id}")) end)
+
+      assert :ok = SqliteUploads.delete_managed_upload(foreign, %{}, org_id)
+      assert File.exists?(foreign)
+
+      assert :ok = SqliteUploads.delete_managed_upload(foreign, %{}, other_org_id)
+      refute File.exists?(foreign)
+    end
+  end
 end

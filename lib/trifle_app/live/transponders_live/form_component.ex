@@ -9,6 +9,7 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
   alias TrifleApp.PathSuggestions
 
   @path_refresh_ttl_ms 60_000
+  @path_retry_backoff_ms 10_000
 
   def render(assigns) do
     ~H"""
@@ -36,6 +37,7 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
           type="text"
           label="Key Pattern"
           placeholder="e.g., customer::(.*)::orders"
+          debounce="500"
         />
         <%= if hint = path_status_message(@path_fetch_state) do %>
           <p class={"-mt-2 mb-4 text-xs #{path_hint_class(elem(hint, 1))}"}>
@@ -362,11 +364,19 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     cond do
       force? -> {:ok, fingerprint}
       last_fingerprint != fingerprint -> {:ok, fingerprint}
-      match?({:error, _}, state) -> {:ok, fingerprint}
-      state == :empty -> {:ok, fingerprint}
+      state == :loading -> :skip
+      retry_path_fetch?(state, socket.assigns[:path_fetch_last_checked]) -> {:ok, fingerprint}
       stale_path_fetch?(last_checked) -> {:ok, fingerprint}
       true -> :skip
     end
+  end
+
+  # After a failed or empty sample, wait before asking the source again instead of
+  # retrying on every form change (a down database would otherwise be hit per keystroke).
+  defp retry_path_fetch?(state, last_checked) do
+    (match?({:error, _}, state) or state == :empty) and
+      (is_nil(last_checked) or
+         System.monotonic_time(:millisecond) - last_checked > @path_retry_backoff_ms)
   end
 
   defp stale_path_fetch?(nil), do: true
@@ -379,26 +389,53 @@ defmodule TrifleApp.TranspondersLive.FormComponent do
     "#{Source.type(source)}:#{Source.id(source)}:#{key}"
   end
 
+  # Sampling reads from the customer's database, which can be slow or down. It runs
+  # in a task so the form stays responsive; the result is applied in handle_async/3.
   defp do_refresh_path_options(socket, source, key, fingerprint) do
-    case PathSuggestions.sample_options(source, key) do
-      {:ok, %{options: options, meta: meta}} ->
-        state = if Enum.empty?(options), do: :empty, else: {:ready, meta}
+    socket
+    |> assign(:path_options, [])
+    |> assign(:path_fetch_fingerprint, fingerprint)
+    |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+    # Stop the previous sample first: reusing the name only ignores its result,
+    # the query itself would keep running against the customer's database.
+    |> cancel_async(:path_options)
+    |> start_async(:path_options, fn ->
+      {fingerprint, PathSuggestions.sample_options(source, key)}
+    end)
+  end
 
-        socket
-        |> assign(:path_options, options)
-        |> assign(:path_fetch_state, state)
-        |> assign(:path_fetch_meta, meta)
-        |> assign(:path_fetch_fingerprint, fingerprint)
-        |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
-
-      {:error, reason} ->
-        socket
-        |> assign(:path_options, [])
-        |> assign(:path_fetch_state, {:error, reason})
-        |> assign(:path_fetch_meta, %{})
-        |> assign(:path_fetch_fingerprint, fingerprint)
-        |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+  def handle_async(:path_options, {:ok, {fingerprint, result}}, socket) do
+    # A newer source/key may have been requested while this one was in flight.
+    if fingerprint == socket.assigns[:path_fetch_fingerprint] do
+      {:noreply, apply_path_options_result(socket, result)}
+    else
+      {:noreply, socket}
     end
+  end
+
+  # A task cancelled because a newer one replaced it; nothing to report.
+  def handle_async(:path_options, {:exit, {:shutdown, :cancel}}, socket), do: {:noreply, socket}
+
+  def handle_async(:path_options, {:exit, reason}, socket) do
+    {:noreply, apply_path_options_result(socket, {:error, {:exit, reason}})}
+  end
+
+  defp apply_path_options_result(socket, {:ok, %{options: options, meta: meta}}) do
+    state = if Enum.empty?(options), do: :empty, else: {:ready, meta}
+
+    socket
+    |> assign(:path_options, options)
+    |> assign(:path_fetch_meta, meta)
+    |> assign(:path_fetch_state, state)
+    |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
+  end
+
+  defp apply_path_options_result(socket, {:error, reason}) do
+    socket
+    |> assign(:path_options, [])
+    |> assign(:path_fetch_meta, %{})
+    |> assign(:path_fetch_state, {:error, reason})
+    |> assign(:path_fetch_last_checked, System.monotonic_time(:millisecond))
   end
 
   defp path_status_message(:missing_source),

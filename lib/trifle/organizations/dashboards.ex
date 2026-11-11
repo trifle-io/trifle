@@ -666,24 +666,60 @@ defmodule Trifle.Organizations.Dashboards do
   end
 
   def list_dashboard_tree_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
-    top_groups = list_dashboard_groups_for_membership(membership, nil)
-
-    Enum.map(top_groups, fn group ->
-      build_group_tree_for_membership(user, membership, group)
-    end)
+    dashboard_index_for_membership(user, membership).groups_tree
   end
 
-  defp build_group_tree_for_membership(
-         %User{} = user,
-         %OrganizationMembership{} = membership,
-         %DashboardGroup{} = group
-       ) do
-    children = list_dashboard_groups_for_membership(membership, group.id)
+  @doc """
+  Everything the dashboards index needs, loaded in a fixed number of queries.
+
+  Groups and visible dashboards are each fetched once for the whole organization
+  and the tree is assembled in memory, so the cost no longer grows with the number
+  (or nesting depth) of groups.
+
+  Returns a map with:
+
+    * `:groups_tree` - nested `%{group:, children:, dashboards:}` nodes, top level first
+    * `:ungrouped_dashboards` - visible dashboards without a group
+    * `:dashboards_count` - visible dashboards, grouped or not
+    * `:dashboard_groups_count` - all groups in the organization
+  """
+  def dashboard_index_for_membership(%User{} = user, %OrganizationMembership{} = membership) do
+    groups =
+      Repo.all(
+        from(g in DashboardGroup,
+          where: g.organization_id == ^membership.organization_id,
+          order_by: [asc: g.position]
+        )
+      )
+
+    dashboards =
+      user
+      |> dashboards_base_query(membership)
+      |> Repo.all()
+      |> resolve_dashboards_preserving_unresolved()
+
+    groups_by_parent = Enum.group_by(groups, & &1.parent_group_id)
+    dashboards_by_group = Enum.group_by(dashboards, & &1.group_id)
 
     %{
+      groups_tree:
+        groups_by_parent
+        |> Map.get(nil, [])
+        |> Enum.map(&build_group_tree_node(&1, groups_by_parent, dashboards_by_group)),
+      ungrouped_dashboards: Map.get(dashboards_by_group, nil, []),
+      dashboards_count: length(dashboards),
+      dashboard_groups_count: length(groups)
+    }
+  end
+
+  defp build_group_tree_node(%DashboardGroup{} = group, groups_by_parent, dashboards_by_group) do
+    %{
       group: group,
-      children: Enum.map(children, &build_group_tree_for_membership(user, membership, &1)),
-      dashboards: list_dashboards_for_membership(user, membership, group.id)
+      children:
+        groups_by_parent
+        |> Map.get(group.id, [])
+        |> Enum.map(&build_group_tree_node(&1, groups_by_parent, dashboards_by_group)),
+      dashboards: Map.get(dashboards_by_group, group.id, [])
     }
   end
 

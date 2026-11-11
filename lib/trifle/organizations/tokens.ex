@@ -1,21 +1,20 @@
 defmodule Trifle.Organizations.Tokens do
   @moduledoc """
-  API tokens across all scopes: organization API tokens (auth, permission
-  checks, source grants, caching, last-used tracking), project tokens, and
-  database tokens.
+  Organization API tokens: authentication, permission checks, per-source grants,
+  the `manage` capability, caching and last-used tracking.
+
+  These are the only API tokens. A token lists the projects and databases it may
+  read or write in its permissions; the older per-project and per-database tokens
+  were migrated into this model and removed.
   """
 
   import Ecto.Query, warn: false
 
   alias Trifle.Accounts.User
   alias Trifle.Organizations
-  alias Trifle.Organizations.Database
-  alias Trifle.Organizations.DatabaseToken
   alias Trifle.Organizations.Organization
   alias Trifle.Organizations.OrganizationApiToken
   alias Trifle.Organizations.OrganizationMembership
-  alias Trifle.Organizations.Project
-  alias Trifle.Organizations.ProjectToken
   alias Trifle.Organizations.TokenCache
   alias Trifle.Organizations.TokenTouchThrottle
   alias Trifle.Repo
@@ -57,7 +56,7 @@ defmodule Trifle.Organizations.Tokens do
   end
 
   def update_organization_api_token(%OrganizationApiToken{} = token, attrs) do
-    attrs = normalize_organization_api_token_update_attrs(attrs)
+    attrs = normalize_organization_api_token_update_attrs(token, attrs)
 
     token
     |> OrganizationApiToken.changeset(attrs)
@@ -93,6 +92,40 @@ defmodule Trifle.Organizations.Tokens do
   def bind_organization_api_token_to_organization(_token, _organization_id),
     do: {:error, :invalid_organization_id}
 
+  @doc """
+  Deletes a user's organization API tokens and evicts them from the auth cache.
+
+  Options:
+
+    * `:organization_id` - only tokens of that organization (default: all)
+    * `:only_managing` - only tokens with the `manage` capability, i.e. CLI login
+      sessions, leaving data (ingest/read) tokens in place
+
+  Returns the number of tokens deleted.
+  """
+  def revoke_organization_api_tokens_for_user(user_id, opts \\ []) do
+    query = from(t in OrganizationApiToken, where: t.user_id == ^user_id)
+
+    query =
+      case Keyword.get(opts, :organization_id) do
+        nil -> query
+        organization_id -> from(t in query, where: t.organization_id == ^organization_id)
+      end
+
+    tokens =
+      query
+      |> Repo.all()
+      |> Enum.filter(fn token ->
+        not Keyword.get(opts, :only_managing, false) or token_can_manage?(token)
+      end)
+
+    ids = Enum.map(tokens, & &1.id)
+    {count, _} = Repo.delete_all(from(t in OrganizationApiToken, where: t.id in ^ids))
+    Enum.each(tokens, &TokenCache.invalidate(&1.token_hash))
+
+    count
+  end
+
   def delete_organization_api_token(%OrganizationApiToken{} = token) do
     case Repo.delete(token) do
       {:ok, deleted} ->
@@ -105,7 +138,7 @@ defmodule Trifle.Organizations.Tokens do
   end
 
   def change_organization_api_token(%OrganizationApiToken{} = token, attrs \\ %{}) do
-    attrs = normalize_organization_api_token_update_attrs(attrs)
+    attrs = normalize_organization_api_token_update_attrs(token, attrs)
     OrganizationApiToken.changeset(token, attrs)
   end
 
@@ -292,8 +325,26 @@ defmodule Trifle.Organizations.Tokens do
       |> token_permissions_value("sources")
       |> normalize_token_sources()
 
-    %{"wildcard" => wildcard, "sources" => sources}
+    manage = permission_boolean(token_permissions_value(permissions, "manage"))
+
+    %{"wildcard" => wildcard, "sources" => sources, "manage" => manage}
   end
+
+  @doc """
+  Whether the token may call organization-management API endpoints (token CRUD,
+  database/project bootstrap, source listing).
+
+  This is deliberately separate from data access (`wildcard` / `sources`): an
+  ingestion or read token must never be able to mint or widen other tokens,
+  regardless of the role of the user who created it.
+  """
+  def token_can_manage?(%OrganizationApiToken{} = token) do
+    token.permissions
+    |> normalize_token_permissions()
+    |> Map.get("manage", false)
+  end
+
+  def token_can_manage?(_token), do: false
 
   defp prepare_organization_api_token_attrs(%User{} = user, attrs, token_value) do
     attrs = attrs || %{}
@@ -317,7 +368,7 @@ defmodule Trifle.Organizations.Tokens do
     |> maybe_put_token_metadata(:expires_at, token_metadata_value(attrs, :expires_at))
   end
 
-  defp normalize_organization_api_token_update_attrs(attrs) do
+  defp normalize_organization_api_token_update_attrs(%OrganizationApiToken{} = token, attrs) do
     attrs = attrs || %{}
 
     protected_keys = [
@@ -359,7 +410,19 @@ defmodule Trifle.Organizations.Tokens do
     if is_nil(permissions) do
       attrs
     else
-      Map.put(attrs, :permissions, normalize_token_permissions(permissions))
+      normalized = normalize_token_permissions(permissions)
+
+      # Callers that only edit data access (the web form, source auto-grants) do not
+      # send "manage"; keep the token's existing management capability in that case
+      # instead of silently dropping it.
+      normalized =
+        if is_nil(token_permissions_value(permissions, "manage")) do
+          Map.put(normalized, "manage", token_can_manage?(token))
+        else
+          normalized
+        end
+
+      Map.put(attrs, :permissions, normalized)
     end
   end
 
@@ -370,8 +433,19 @@ defmodule Trifle.Organizations.Tokens do
     end
   end
 
+  # Looks the key up as a string, then as an atom. Uses fetch so an explicit
+  # `false` is returned as `false` and not mistaken for a missing key.
   defp token_permissions_value(%{} = map, key) do
-    Map.get(map, key) || Map.get(map, String.to_atom(key))
+    case Map.fetch(map, key) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        case Map.fetch(map, String.to_existing_atom(key)) do
+          {:ok, value} -> value
+          :error -> nil
+        end
+    end
   rescue
     ArgumentError -> nil
   end
@@ -457,258 +531,4 @@ defmodule Trifle.Organizations.Tokens do
 
   defp maybe_put_token_metadata_update(updates, _key, nil), do: updates
   defp maybe_put_token_metadata_update(updates, key, value), do: Keyword.put(updates, key, value)
-
-  @doc """
-  Returns the list of project_tokens.
-
-  ## Examples
-
-      iex> list_project_tokens()
-      [%ProjectToken{}, ...]
-
-  """
-  def list_project_tokens do
-    Repo.all(ProjectToken)
-  end
-
-  def list_projects_project_tokens(%Project{} = project) do
-    query =
-      from(
-        pt in ProjectToken,
-        where: pt.project_id == ^project.id
-      )
-
-    Repo.all(query)
-  end
-
-  @doc """
-  Gets a single project_token.
-
-  Raises `Ecto.NoResultsError` if the Project token does not exist.
-
-  ## Examples
-
-      iex> get_project_token!(123)
-      %ProjectToken{}
-
-      iex> get_project_token!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_project_token!(id), do: Repo.get!(ProjectToken, id)
-
-  def get_project_by_token(token) when is_binary(token) do
-    with %ProjectToken{} = record <- Repo.get_by(ProjectToken, token: token),
-         record <- Repo.preload(record, :project),
-         {:ok, _id} <-
-           Phoenix.Token.verify(TrifleWeb.Endpoint, "project auth", record.token,
-             max_age: 86400 * 365
-           ),
-         %Project{} = project <- record.project do
-      {:ok, project, record}
-    else
-      _ ->
-        {:error, :not_found}
-    end
-  end
-
-  @doc """
-  Creates a project_token.
-
-  ## Examples
-
-      iex> create_project_token(%{field: value})
-      {:ok, %ProjectToken{}}
-
-      iex> create_project_token(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_project_token(attrs \\ %{}) do
-    %ProjectToken{}
-    |> ProjectToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def create_projects_project_token(attrs \\ %{}, %Project{} = project) do
-    attrs = Map.put(attrs, "project", project)
-
-    %ProjectToken{}
-    |> ProjectToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a project_token.
-
-  ## Examples
-
-      iex> update_project_token(project_token, %{field: new_value})
-      {:ok, %ProjectToken{}}
-
-      iex> update_project_token(project_token, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_project_token(%ProjectToken{} = project_token, attrs) do
-    project_token
-    |> ProjectToken.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a project_token.
-
-  ## Examples
-
-      iex> delete_project_token(project_token)
-      {:ok, %ProjectToken{}}
-
-      iex> delete_project_token(project_token)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_project_token(%ProjectToken{} = project_token) do
-    Repo.delete(project_token)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking project_token changes.
-
-  ## Examples
-
-      iex> change_project_token(project_token)
-      %Ecto.Changeset{data: %ProjectToken{}}
-
-  """
-  def change_project_token(%ProjectToken{} = project_token, attrs \\ %{}) do
-    ProjectToken.changeset(project_token, attrs)
-  end
-
-  @doc """
-  Returns the list of database_tokens.
-
-  ## Examples
-
-      iex> list_database_tokens()
-      [%DatabaseToken{}, ...]
-
-  """
-  def list_database_tokens do
-    Repo.all(DatabaseToken)
-  end
-
-  def list_databases_database_tokens(%Database{} = database) do
-    query =
-      from(
-        dt in DatabaseToken,
-        where: dt.database_id == ^database.id
-      )
-
-    Repo.all(query)
-  end
-
-  @doc """
-  Gets a single database_token.
-
-  Raises `Ecto.NoResultsError` if the Database token does not exist.
-
-  ## Examples
-
-      iex> get_database_token!(123)
-      %DatabaseToken{}
-
-      iex> get_database_token!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_database_token!(id), do: Repo.get!(DatabaseToken, id)
-
-  def get_database_by_token(token) when is_binary(token) do
-    with %DatabaseToken{} = record <- Repo.get_by(DatabaseToken, token: token),
-         record <- Repo.preload(record, :database),
-         {:ok, _id} <-
-           Phoenix.Token.verify(TrifleWeb.Endpoint, "database auth", record.token,
-             max_age: 86400 * 365
-           ),
-         %Database{} = database <- record.database do
-      {:ok, database, record}
-    else
-      _ ->
-        {:error, :not_found}
-    end
-  end
-
-  @doc """
-  Creates a database_token.
-
-  ## Examples
-
-      iex> create_database_token(%{field: value})
-      {:ok, %DatabaseToken{}}
-
-      iex> create_database_token(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_database_token(attrs \\ %{}) do
-    %DatabaseToken{}
-    |> DatabaseToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def create_databases_database_token(attrs \\ %{}, %Database{} = database) do
-    attrs = Map.put(attrs, "database", database)
-
-    %DatabaseToken{}
-    |> DatabaseToken.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a database_token.
-
-  ## Examples
-
-      iex> update_database_token(database_token, %{field: new_value})
-      {:ok, %DatabaseToken{}}
-
-      iex> update_database_token(database_token, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_database_token(%DatabaseToken{} = database_token, attrs) do
-    database_token
-    |> DatabaseToken.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a database_token.
-
-  ## Examples
-
-      iex> delete_database_token(database_token)
-      {:ok, %DatabaseToken{}}
-
-      iex> delete_database_token(database_token)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_database_token(%DatabaseToken{} = database_token) do
-    Repo.delete(database_token)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking database_token changes.
-
-  ## Examples
-
-      iex> change_database_token(database_token)
-      %Ecto.Changeset{data: %DatabaseToken{}}
-
-  """
-  def change_database_token(%DatabaseToken{} = database_token, attrs \\ %{}) do
-    DatabaseToken.changeset(database_token, attrs)
-  end
 end

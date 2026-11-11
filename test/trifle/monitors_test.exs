@@ -416,6 +416,115 @@ defmodule Trifle.MonitorsTest do
     end
   end
 
+  describe "tenant boundaries on update" do
+    test "a monitor cannot be moved to another organization", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      {:ok, other_org, _} =
+        Organizations.create_organization_with_owner(
+          %{name: "Other Org"},
+          AccountsFixtures.user_fixture()
+        )
+
+      assert {:ok, updated} =
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 "name" => "Renamed",
+                 "organization_id" => other_org.id
+               })
+
+      assert updated.name == "Renamed"
+      assert updated.organization_id == membership.organization_id
+    end
+
+    test "a monitor cannot be linked to another organization's dashboard", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+
+      stranger = AccountsFixtures.user_fixture()
+
+      {:ok, other_org, other_membership} =
+        Organizations.create_organization_with_owner(%{name: "Stranger Org"}, stranger)
+
+      app_entitlement_fixture(other_org)
+
+      {:ok, other_db} =
+        Organizations.create_database_for_org(other_org, %{
+          display_name: "Theirs",
+          driver: "sqlite",
+          file_path: "theirs.sqlite"
+        })
+
+      {:ok, foreign_dashboard} =
+        Organizations.create_dashboard_for_membership(stranger, other_membership, %{
+          "name" => "Theirs",
+          "key" => "k",
+          "source_type" => "database",
+          "source_id" => other_db.id
+        })
+
+      assert {:error, %Ecto.Changeset{}} =
+               Monitors.update_monitor_for_membership(monitor, membership, %{
+                 "dashboard_id" => foreign_dashboard.id,
+                 "source_type" => "database",
+                 "source_id" => database.id
+               })
+
+      assert Repo.get!(Monitor, monitor.id).dashboard_id == monitor.dashboard_id
+    end
+  end
+
+  describe "DispatchRunner.last_execution_map/3" do
+    alias Trifle.Monitors.Jobs.DispatchRunner
+
+    test "returns the newest execution per monitor, filtered by kind and status", %{
+      user: user,
+      membership: membership,
+      database: database
+    } do
+      monitor = monitor_fixture(user, membership, database)
+      other = monitor_fixture(user, membership, database, %{"name" => "Other"})
+      silent = monitor_fixture(user, membership, database, %{"name" => "Silent"})
+
+      at = fn minutes -> DateTime.add(~U[2026-01-01 00:00:00.000000Z], minutes, :minute) end
+
+      for {mon, status, kind, minutes} <- [
+            {monitor, "ok", "alert", 1},
+            {monitor, "ok", "alert", 5},
+            {monitor, "error", "alert", 9},
+            {monitor, "ok", "report", 30},
+            {other, "ok", "alert", 3}
+          ] do
+        {:ok, _} =
+          Monitors.create_execution(mon, %{
+            status: status,
+            triggered_at: at.(minutes),
+            details: %{"kind" => kind}
+          })
+      end
+
+      ids = [monitor.id, other.id, silent.id]
+
+      assert DispatchRunner.last_execution_map(ids, "alert") ==
+               %{monitor.id => at.(9), other.id => at.(3)}
+
+      assert DispatchRunner.last_execution_map(ids, "alert", ["ok"]) ==
+               %{monitor.id => at.(5), other.id => at.(3)}
+
+      assert DispatchRunner.last_execution_map(ids, "report") == %{monitor.id => at.(30)}
+
+      # Only the monitors asked for are looked up.
+      assert DispatchRunner.last_execution_map([other.id], "alert") == %{other.id => at.(3)}
+      assert DispatchRunner.last_execution_map([], "alert") == %{}
+    end
+  end
+
   defp monitor_fixture(user, membership, database, attrs \\ %{}) do
     defaults = %{
       "name" => "Latency Watch",

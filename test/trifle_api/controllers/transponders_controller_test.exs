@@ -29,7 +29,7 @@ defmodule TrifleApi.TranspondersControllerTest do
     project_subscription_fixture(project)
 
     database_token =
-      create_scoped_token!(user, organization.id, :database, database.id, true, false)
+      create_scoped_token!(user, organization.id, :database, database.id, true, true)
 
     read_project_token =
       create_scoped_token!(user, organization.id, :project, project.id, true, false)
@@ -118,7 +118,7 @@ defmodule TrifleApi.TranspondersControllerTest do
   end
 
   describe "PUT /api/v1/transponders/:id" do
-    test "allows read-only project tokens", %{
+    test "rejects read-only project tokens", %{
       conn: conn,
       project: project,
       read_project_token: token
@@ -135,9 +135,9 @@ defmodule TrifleApi.TranspondersControllerTest do
         |> auth_conn(token, project.id)
         |> put(~p"/api/v1/transponders/#{transponder.id}", %{"name" => "Updated"})
 
-      assert %{"data" => data} = json_response(conn, 200)
-      assert data["id"] == transponder.id
-      assert data["name"] == "Updated"
+      assert json_response(conn, 403)
+
+      assert Trifle.Repo.get!(Trifle.Organizations.Transponder, transponder.id).name == "Total"
     end
 
     test "updates transponders for project tokens", %{

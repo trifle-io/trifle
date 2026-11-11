@@ -78,7 +78,24 @@ defmodule TrifleApp.ProjectSettingsLive do
   end
 
   def handle_event("save", %{"project" => project_params}, socket) do
-    case Organizations.update_project(socket.assigns.project, project_params) do
+    membership = socket.assigns.current_membership
+
+    result =
+      if membership && Organizations.membership_admin?(membership) do
+        Organizations.update_project(socket.assigns.project, project_params)
+      else
+        {:error, :forbidden}
+      end
+
+    case result do
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Only organization owners and admins can change project settings."
+         )}
+
       {:ok, project} ->
         project_cluster = fetch_project_cluster(project)
         changeset = Organizations.change_project(project)

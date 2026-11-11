@@ -2,12 +2,22 @@ defmodule TrifleApi.DashboardsController do
   use TrifleApi, :controller
 
   alias Ecto.NoResultsError
+  alias TrifleApi.TokenScope
   alias Trifle.Organizations
   alias Trifle.Organizations.Dashboard
   alias Trifle.Organizations.DashboardTemplateRef
   alias TrifleApi.AuthContext
 
-  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
+  # Reads need a read grant, changes a write grant, on the source in the header...
+  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :read} when action in [:index, :show])
+
+  plug(
+    TrifleApi.Plugs.AuthenticateBySourceToken,
+    %{mode: :write} when action in [:create, :update, :delete]
+  )
+
+  # ...and each dashboard is additionally checked against the token's grants for
+  # the source that dashboard points at (TokenScope).
 
   def index(conn, _params) do
     with {:ok, %{user: user, membership: membership}} <- AuthContext.resolve_membership(conn) do
@@ -15,6 +25,7 @@ defmodule TrifleApi.DashboardsController do
         user
         |> Organizations.list_all_dashboards_for_membership(membership)
         |> Enum.filter(&visible_to_org?/1)
+        |> then(&TokenScope.filter(conn, &1, :read))
 
       render(conn, "index.json", dashboards: dashboards)
     else
@@ -25,7 +36,8 @@ defmodule TrifleApi.DashboardsController do
   def show(conn, %{"id" => id}) do
     with {:ok, %{membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, dashboard} <- fetch_dashboard(membership, id),
-         :ok <- ensure_visible(dashboard) do
+         :ok <- ensure_visible(dashboard),
+         :ok <- ensure_token_scope(conn, dashboard, :read) do
       render(conn, "show.json", dashboard: dashboard)
     else
       {:error, :not_found} -> render_not_found(conn)
@@ -37,6 +49,8 @@ defmodule TrifleApi.DashboardsController do
   def create(conn, params) do
     with {:ok, %{user: user, membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, attrs} <- dashboard_attrs(params, :create),
+         attrs = TokenScope.put_default_source(conn, attrs),
+         :ok <- TokenScope.authorize_attrs(conn, attrs),
          {:ok, %Dashboard{} = dashboard} <-
            Organizations.create_dashboard_for_membership(user, membership, attrs) do
       conn
@@ -45,6 +59,9 @@ defmodule TrifleApi.DashboardsController do
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         render_changeset(conn, changeset)
+
+      {:error, :forbidden} ->
+        render_forbidden(conn)
 
       _ ->
         render_unauthorized(conn)
@@ -55,7 +72,9 @@ defmodule TrifleApi.DashboardsController do
     with {:ok, %{membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, dashboard} <- fetch_dashboard(membership, id),
          :ok <- ensure_visible(dashboard),
+         :ok <- ensure_token_scope(conn, dashboard, :write),
          {:ok, attrs} <- dashboard_attrs(params, :update),
+         :ok <- authorize_new_source(conn, attrs),
          :ok <- validate_payload_version(dashboard, attrs),
          {:ok, %Dashboard{} = updated} <-
            Organizations.update_dashboard_for_membership(dashboard, membership, attrs) do
@@ -78,6 +97,7 @@ defmodule TrifleApi.DashboardsController do
     with {:ok, %{membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, dashboard} <- fetch_dashboard(membership, id),
          :ok <- ensure_visible(dashboard),
+         :ok <- ensure_token_scope(conn, dashboard, :write),
          {:ok, %Dashboard{} = deleted} <-
            Organizations.delete_dashboard_for_membership(dashboard, membership) do
       render(conn, "show.json", dashboard: deleted)
@@ -95,6 +115,19 @@ defmodule TrifleApi.DashboardsController do
       {:ok, Organizations.get_dashboard_for_membership!(membership, id)}
     rescue
       NoResultsError -> {:error, :not_found}
+    end
+  end
+
+  # Out-of-scope dashboards look like missing ones, same as invisible ones.
+  defp ensure_token_scope(conn, dashboard, mode) do
+    if TokenScope.permits_record?(conn, dashboard, mode), do: :ok, else: {:error, :forbidden}
+  end
+
+  # Re-pointing a dashboard at another source needs write access to that source too.
+  defp authorize_new_source(conn, attrs) do
+    case TokenScope.authorize_attrs(conn, attrs) do
+      :ok -> :ok
+      {:error, :forbidden} -> {:error, :unauthorized}
     end
   end
 

@@ -3,6 +3,7 @@ defmodule Trifle.Networking.DatabaseEndpoint do
   Resolves the host and port that database drivers should connect to.
   """
 
+  alias Trifle.Networking.HostGuard
   alias Trifle.Networking.SSHTunnelSupervisor
   alias Trifle.Organizations.Database
 
@@ -27,7 +28,10 @@ defmodule Trifle.Networking.DatabaseEndpoint do
   end
 
   def resolve(%Database{connection_method: "ssh_tunnel"} = database) do
-    with {:ok, endpoint} <- SSHTunnelSupervisor.start_tunnel(database) do
+    # The SSH server is what this node dials; the database behind it is reached
+    # from the customer's side of the tunnel.
+    with :ok <- guard_host(database, database.ssh_host),
+         {:ok, endpoint} <- SSHTunnelSupervisor.start_tunnel(database) do
       {:ok,
        endpoint
        |> Map.put(:via, :ssh_tunnel)
@@ -37,15 +41,22 @@ defmodule Trifle.Networking.DatabaseEndpoint do
   end
 
   def resolve(%Database{connection_method: "direct"} = database) do
-    {:ok,
-     %{
-       host: database.host,
-       port: database.port || Database.default_port(database.driver),
-       via: :direct
-     }}
+    with :ok <- guard_host(database, database.host) do
+      {:ok,
+       %{
+         host: database.host,
+         port: database.port || Database.default_port(database.driver),
+         via: :direct
+       }}
+    end
   end
 
   def resolve(%Database{}) do
     {:error, :unsupported_connection_method}
   end
+
+  # Databases the platform manages itself (internal observability) legitimately
+  # live on the internal network; only tenant-supplied hosts are restricted.
+  defp guard_host(%Database{managed_key: key}, _host) when is_binary(key), do: :ok
+  defp guard_host(%Database{}, host), do: HostGuard.check(host)
 end

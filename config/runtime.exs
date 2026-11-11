@@ -550,8 +550,18 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # DATABASE_SSL=true encrypts the connection to the application database.
+  # DATABASE_SSL_VERIFY=false keeps encryption but skips certificate checks (for
+  # providers with self-signed certificates).
+  repo_ssl =
+    cond do
+      System.get_env("DATABASE_SSL") not in ~w(true 1) -> false
+      System.get_env("DATABASE_SSL_VERIFY") in ~w(false 0) -> [verify: :verify_none]
+      true -> true
+    end
+
   config :trifle, Trifle.Repo,
-    # ssl: true,
+    ssl: repo_ssl,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
@@ -983,3 +993,40 @@ if google_client_id && google_client_secret do
     client_secret: google_client_secret,
     redirect_uri: google_redirect_uri
 end
+
+# Rate limiting (Trifle.RateLimit). Set RATE_LIMIT_CLIENT_IP_HEADER (for example
+# "x-forwarded-for") only when the app is reachable exclusively through a proxy
+# you control; RATE_LIMIT_TRUSTED_PROXIES is how many such proxies sit in front.
+if config_env() != :test do
+  rate_limit_header =
+    case System.get_env("RATE_LIMIT_CLIENT_IP_HEADER") do
+      value when value in [nil, ""] -> nil
+      value -> String.downcase(String.trim(value))
+    end
+
+  rate_limit_proxies =
+    case Integer.parse(System.get_env("RATE_LIMIT_TRUSTED_PROXIES") || "1") do
+      {count, ""} when count > 0 -> count
+      _ -> 1
+    end
+
+  config :trifle, Trifle.RateLimit,
+    enabled: System.get_env("RATE_LIMIT_ENABLED", "true") not in ["false", "0"],
+    client_ip_header: rate_limit_header,
+    trusted_proxies: rate_limit_proxies
+end
+
+# SSRF guard for tenant-supplied hosts (Trifle.Networking.HostGuard). Unset: private
+# targets are refused in SaaS mode and allowed when self-hosted.
+case System.get_env("ALLOW_PRIVATE_NETWORK_TARGETS") do
+  value when value in ["true", "1"] -> config :trifle, :allow_private_network_targets, true
+  value when value in ["false", "0"] -> config :trifle, :allow_private_network_targets, false
+  _ -> :ok
+end
+
+# HTTPS enforcement, HSTS and Secure cookies (TrifleWeb.Plugs.ForceSSL). Enable when
+# the app is only reachable through a TLS-terminating proxy.
+config :trifle, :force_ssl, System.get_env("FORCE_SSL") in ~w(true 1)
+
+# Keep Chrome's renderer sandbox on for exports where the host supports it.
+config :trifle, :chrome_sandbox, System.get_env("CHROME_SANDBOX") in ~w(true 1)

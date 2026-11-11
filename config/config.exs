@@ -8,7 +8,20 @@
 import Config
 
 # Applies to HTTP requests and LiveView event logs, including enrollment forms.
-config :phoenix, :filter_parameters, ["password", "auth_key"]
+# Matching is by substring of the parameter name, so "token" also covers
+# "access_token", "bot_access_token", "sqlite_storage_token", and so on.
+config :phoenix, :filter_parameters, [
+  "password",
+  "passphrase",
+  "secret",
+  "token",
+  "auth_key",
+  "private_key",
+  "api_key",
+  "access_key",
+  "authorization",
+  "sqlite_file"
+]
 
 config :trifle,
   ecto_repos: [Trifle.Repo]
@@ -19,6 +32,8 @@ config :trifle, :projects_enabled, nil
 
 # Short-TTL cache for billing entitlement lookups; 0 disables caching.
 config :trifle, :billing_entitlement_cache_ttl_ms, 60_000
+# How long a successful per-project ingest/billing check is reused (0 disables).
+config :trifle, :billing_ingest_access_cache_ttl_ms, 10_000
 
 config :trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024
 config :trifle, :sqlite_upload_root, Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")

@@ -77,13 +77,55 @@ defmodule TrifleApp.OrganizationSSOLive.GoogleComponent do
                 :if={Enum.any?(@sso_info.domains)}
                 class="mt-3 space-y-2 rounded-md border border-gray-200 dark:border-slate-700 px-3 py-3"
               >
-                <%= for domain <- @sso_info.domains do %>
-                  <li class="flex items-center gap-2 text-sm text-gray-800 dark:text-slate-200">
-                    <.icon
-                      name="hero-globe-alt-mini"
-                      class="h-4 w-4 text-teal-500 dark:text-teal-300"
-                    />
-                    {domain}
+                <%= for record <- @sso_info.domain_records do %>
+                  <li class="text-sm text-gray-800 dark:text-slate-200">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <.icon
+                        name="hero-globe-alt-mini"
+                        class="h-4 w-4 text-teal-500 dark:text-teal-300"
+                      />
+                      <span>{record.domain}</span>
+                      <%= if Trifle.Organizations.OrganizationSSODomain.verified?(record) do %>
+                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                          Verified
+                        </span>
+                      <% else %>
+                        <span class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                          Not verified
+                        </span>
+                        <.secondary_button
+                          :if={@can_manage}
+                          type="button"
+                          phx-click="verify_sso_domain"
+                          phx-value-id={record.id}
+                          phx-disable-with="Checking..."
+                        >
+                          Verify
+                        </.secondary_button>
+                      <% end %>
+                    </div>
+                    <div
+                      :if={!Trifle.Organizations.OrganizationSSODomain.verified?(record)}
+                      class="mt-2 space-y-1 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-slate-900/40 dark:text-slate-300"
+                    >
+                      <p>
+                        Sign-in for this domain stays off until you prove you own it. Add this DNS TXT record, then choose Verify:
+                      </p>
+                      <p>
+                        Name:
+                        <code class="break-all">
+                          {Trifle.Organizations.OrganizationSSODomain.verification_record_name(record)}
+                        </code>
+                      </p>
+                      <p>
+                        Value:
+                        <code class="break-all">
+                          {Trifle.Organizations.OrganizationSSODomain.verification_record_value(
+                            record
+                          )}
+                        </code>
+                      </p>
+                    </div>
                   </li>
                 <% end %>
               </ul>

@@ -6,7 +6,13 @@ defmodule TrifleApi.TranspondersController do
   alias Trifle.Organizations.Transponder
   alias Trifle.Stats.Source
 
-  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
+  # Reads need a read grant, changes a write grant, on the source in the header.
+  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :read} when action in [:index, :show])
+
+  plug(
+    TrifleApi.Plugs.AuthenticateBySourceToken,
+    %{mode: :write} when action in [:create, :update, :delete]
+  )
 
   def index(%{assigns: %{current_source: %Source{} = source}} = conn, _params) do
     render(conn, "index.json", transponders: list_transponders(source))

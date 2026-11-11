@@ -11,21 +11,17 @@ defmodule TrifleApp.DashboardsLive do
   def mount(
         _params,
         _session,
-        %{assigns: %{current_user: user, current_membership: membership}} = socket
+        %{assigns: %{current_user: _user, current_membership: membership}} = socket
       ) do
     {:ok,
      socket
      |> assign(:page_title, "Dashboards")
-     |> assign(:dashboards_count, Organizations.count_dashboards_for_membership(user, membership))
-     |> assign(
-       :dashboard_groups_count,
-       Organizations.count_dashboard_groups_for_membership(membership)
-     )
-     |> assign(:groups_tree, Organizations.list_dashboard_tree_for_membership(user, membership))
-     |> assign(
-       :ungrouped_dashboards,
-       Organizations.list_dashboards_for_membership(user, membership, nil)
-     )
+     # The tree and counts are loaded in handle_params/3 (refresh_tree/1), which
+     # always runs right after mount; loading them here as well doubled the work.
+     |> assign(:dashboards_count, 0)
+     |> assign(:dashboard_groups_count, 0)
+     |> assign(:groups_tree, [])
+     |> assign(:ungrouped_dashboards, [])
      |> assign(:editing_group_id, nil)
      |> assign(:collapsed_groups, MapSet.new())
      |> assign(:current_membership, membership)
@@ -355,17 +351,7 @@ defmodule TrifleApp.DashboardsLive do
     user = socket.assigns.current_user
     membership = socket.assigns.current_membership
 
-    socket
-    |> assign(:dashboards_count, Organizations.count_dashboards_for_membership(user, membership))
-    |> assign(
-      :dashboard_groups_count,
-      Organizations.count_dashboard_groups_for_membership(membership)
-    )
-    |> assign(:groups_tree, Organizations.list_dashboard_tree_for_membership(user, membership))
-    |> assign(
-      :ungrouped_dashboards,
-      Organizations.list_dashboards_for_membership(user, membership, nil)
-    )
+    assign(socket, Organizations.dashboard_index_for_membership(user, membership))
   end
 
   defp gravatar_url(email) do

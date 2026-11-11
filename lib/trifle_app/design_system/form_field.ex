@@ -35,6 +35,10 @@ defmodule TrifleApp.DesignSystem.FormField do
   attr :min, :string, default: nil
   attr :step, :string, default: nil
 
+  attr :debounce, :string,
+    default: nil,
+    doc: "phx-debounce value for text inputs and textareas, e.g. \"300\" or \"blur\""
+
   def form_field(assigns) do
     assigns = assign(assigns, :input_id, assigns.id || assigns.field.id)
 
@@ -119,6 +123,7 @@ defmodule TrifleApp.DesignSystem.FormField do
               maxlength={@maxlength}
               min={@min}
               step={@step}
+              phx-debounce={@debounce}
               class={[
                 "block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm",
                 @field.errors != [] && "border-red-400 focus:border-red-400 focus:ring-red-400",

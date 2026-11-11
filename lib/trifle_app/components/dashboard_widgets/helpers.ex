@@ -354,27 +354,41 @@ defmodule TrifleApp.Components.DashboardWidgets.Helpers do
     ]
   end
 
+  defp text_widget_tag_regex, do: ~r/<\s*(\/?)\s*([a-zA-Z0-9:-]+)([^<>]*)>/
+
+  # Splits the markup into complete tags and everything in between. Complete tags
+  # are rebuilt from the allow-list; in the text between them every remaining "<"
+  # is escaped. That second step matters: an unterminated tag such as
+  # `<img src=x onerror=...` never matches the tag regex, and left as-is the
+  # browser would complete it with the next ">" from the surrounding template.
+  # After this pass the only "<" in the output belong to tags emitted here.
   defp sanitize_text_widget_tags(html) do
-    Regex.replace(~r/<\s*(\/?)\s*([a-zA-Z0-9:-]+)([^>]*)>/, html, fn _full,
-                                                                     closing,
-                                                                     raw_tag,
-                                                                     attrs ->
-      tag =
-        raw_tag
-        |> to_string()
-        |> String.downcase()
-
-      cond do
-        !MapSet.member?(@allowed_text_widget_tags, tag) ->
-          ""
-
-        closing == "/" ->
-          if MapSet.member?(@void_text_widget_tags, tag), do: "", else: "</#{tag}>"
-
-        true ->
-          "<#{tag}#{sanitize_text_widget_attrs(tag, attrs)}>"
+    text_widget_tag_regex()
+    |> Regex.split(html, include_captures: true)
+    |> Enum.map_join(fn part ->
+      case Regex.run(text_widget_tag_regex(), part) do
+        [^part, closing, raw_tag, attrs] -> rebuild_text_widget_tag(closing, raw_tag, attrs)
+        _ -> String.replace(part, "<", "&lt;")
       end
     end)
+  end
+
+  defp rebuild_text_widget_tag(closing, raw_tag, attrs) do
+    tag =
+      raw_tag
+      |> to_string()
+      |> String.downcase()
+
+    cond do
+      !MapSet.member?(@allowed_text_widget_tags, tag) ->
+        ""
+
+      closing == "/" ->
+        if MapSet.member?(@void_text_widget_tags, tag), do: "", else: "</#{tag}>"
+
+      true ->
+        "<#{tag}#{sanitize_text_widget_attrs(tag, attrs)}>"
+    end
   end
 
   defp sanitize_text_widget_attrs(tag, attrs_raw) do

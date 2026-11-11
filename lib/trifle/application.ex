@@ -40,6 +40,8 @@ defmodule Trifle.Application do
           Trifle.Cache,
           Trifle.Organizations.TokenCache,
           Trifle.Organizations.TokenTouchThrottle,
+          TrifleApp.Exporters.ChromeLimiter,
+          Trifle.RateLimit,
           # Start Finch
           {Finch, name: Trifle.Finch},
           {Oban, Application.fetch_env!(:trifle, Oban)},

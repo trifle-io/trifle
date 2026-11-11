@@ -69,6 +69,12 @@ defmodule TrifleApp.GoogleAuthController do
               "We couldn't determine your email domain. Please contact support."
             )
 
+          {:error, :seat_limit_reached} ->
+            oauth_failure(
+              conn,
+              "Your organization has no free seats on its plan. Ask an administrator to upgrade or free a seat."
+            )
+
           {:error, %Ecto.Changeset{} = changeset} ->
             oauth_failure(
               conn,

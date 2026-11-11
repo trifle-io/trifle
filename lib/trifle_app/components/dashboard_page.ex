@@ -711,6 +711,7 @@ defmodule TrifleApp.Components.DashboardPage do
                       name="name"
                       value={@temp_name || @dashboard.name}
                       phx-keyup="update_temp_name"
+                      phx-debounce="300"
                       class="w-full block rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-teal-500 focus:ring-teal-500 dark:bg-slate-700 dark:text-white sm:text-sm"
                       placeholder="Dashboard name"
                     />

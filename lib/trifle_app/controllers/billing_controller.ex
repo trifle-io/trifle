@@ -9,6 +9,9 @@ defmodule TrifleApp.BillingController do
   plug :ensure_saas_mode
   plug :require_authenticated_user
 
+  # Changing the plan or opening the payment portal is for owners and admins.
+  plug :require_billing_manager when action in [:portal, :checkout_project, :checkout_app]
+
   def success(conn, _params) do
     conn
     |> put_flash(:info, "Billing updated.")
@@ -132,6 +135,24 @@ defmodule TrifleApp.BillingController do
     end
   end
 
+  defp require_billing_manager(conn, _opts) do
+    case fetch_membership(conn) do
+      {:ok, membership} ->
+        if Organizations.membership_admin?(membership) do
+          conn
+        else
+          conn
+          |> put_flash(:error, "Only organization owners and admins can manage billing.")
+          |> redirect(to: ~p"/organization/billing")
+          |> halt()
+        end
+
+      # Left to the action, which reports the missing membership.
+      {:error, :membership_required} ->
+        conn
+    end
+  end
+
   defp fetch_membership(conn) do
     case conn.assigns[:current_membership] ||
            Organizations.get_membership_for_user(conn.assigns.current_user) do
@@ -191,6 +212,8 @@ defmodule TrifleApp.BillingController do
   defp not_found(conn) do
     conn
     |> put_status(:not_found)
+    # No app layout: it needs a LiveView socket and would crash here.
+    |> put_layout(false)
     |> put_view(html: TrifleApp.ErrorHTML)
     |> render("404.html")
     |> halt()

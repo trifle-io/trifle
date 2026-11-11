@@ -15,7 +15,11 @@ defmodule Trifle.Organizations.OrganizationInvitation do
     belongs_to :organization, Organization
     field :email, :string
     field :role, :string, default: "member"
-    field :token, :string
+    # The link token is a bearer credential: only its hash is stored. `token`
+    # is present on the struct right after it is generated (create or refresh),
+    # which is when the email is sent, and is never read back from the database.
+    field :token, :string, virtual: true, redact: true
+    field :token_hash, :binary, redact: true
     field :status, :string, default: "pending"
     field :expires_at, :utc_datetime
     belongs_to :invited_by, User, foreign_key: :invited_by_user_id
@@ -33,7 +37,6 @@ defmodule Trifle.Organizations.OrganizationInvitation do
       :organization_id,
       :email,
       :role,
-      :token,
       :status,
       :expires_at,
       :invited_by_user_id,
@@ -45,15 +48,32 @@ defmodule Trifle.Organizations.OrganizationInvitation do
     |> validate_inclusion(:status, @statuses)
     |> ensure_token()
     |> ensure_expiration()
-    |> unique_constraint(:token)
+    |> unique_constraint(:token_hash)
   end
 
+  @doc """
+  Issues a fresh link: new token, new expiry, back to pending. The previous
+  link stops working.
+  """
+  def refresh_changeset(invitation) do
+    invitation
+    |> change(status: "pending", expires_at: default_expiration())
+    |> put_new_token()
+    |> unique_constraint(:token_hash)
+  end
+
+  def hash_token(token) when is_binary(token), do: :crypto.hash(:sha256, token)
+
   defp ensure_token(changeset) do
-    case get_field(changeset, :token) do
-      nil -> put_change(changeset, :token, generate_token())
-      "" -> put_change(changeset, :token, generate_token())
-      _ -> changeset
-    end
+    if get_field(changeset, :token_hash), do: changeset, else: put_new_token(changeset)
+  end
+
+  defp put_new_token(changeset) do
+    token = generate_token()
+
+    changeset
+    |> put_change(:token, token)
+    |> put_change(:token_hash, hash_token(token))
   end
 
   defp ensure_expiration(changeset) do

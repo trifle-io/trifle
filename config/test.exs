@@ -72,3 +72,11 @@ config :trifle, Trifle.Observability, enabled: false
 # Tests write entitlements directly via Repo fixtures, bypassing cache
 # invalidation — disable the cache so billing state changes are always visible.
 config :trifle, :billing_entitlement_cache_ttl_ms, 0
+config :trifle, :billing_ingest_access_cache_ttl_ms, 0
+
+# Rate limits are off in tests by default; tests that exercise them turn them on.
+config :trifle, Trifle.RateLimit, enabled: false
+
+# Local databases live on the Docker network / localhost; allow them as targets.
+# In production this defaults to off in SaaS mode (see Trifle.Networking.HostGuard).
+config :trifle, :allow_private_network_targets, true

@@ -168,7 +168,7 @@ defmodule TrifleApp.UserSettingsLive do
               for={@password_form}
               phx-submit="update_password"
               phx-change="validate_password"
-              action={~p"/users/log_in?_action=password_updated"}
+              action={~p"/users/settings/password"}
               method="post"
               phx-trigger-action={@trigger_submit}
               layout="simple"
@@ -176,8 +176,6 @@ defmodule TrifleApp.UserSettingsLive do
             >
               <div class="px-4 py-6 sm:p-8">
                 <div class="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-8">
-                  <input type="hidden" name="user[email]" value={@current_email} />
-
                   <div class="col-span-full">
                     <.form_field
                       field={@password_form[:password]}
@@ -342,17 +340,16 @@ defmodule TrifleApp.UserSettingsLive do
     user_params = Map.delete(user_params, "current_password")
     user = Accounts.get_user!(socket.assigns.current_user.id)
 
-    case Accounts.update_user_password(user, password, user_params) do
-      {:ok, user} ->
-        password_form =
-          user
-          |> Accounts.change_user_password(user_params)
-          |> to_form()
+    # Only validate here. The change itself is made by the form's HTTP submit
+    # (UserSessionController.update_password), which swaps the session cookie in
+    # the same response. Changing the password from this socket would leave the
+    # old session alive until a second request replaced it.
+    changeset = Accounts.validate_user_password_change(user, password, user_params)
 
-        {:noreply, assign(socket, trigger_submit: true, password_form: password_form)}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, password_form: to_form(changeset))}
+    if changeset.valid? do
+      {:noreply, assign(socket, trigger_submit: true, password_form: to_form(changeset))}
+    else
+      {:noreply, assign(socket, password_form: to_form(Map.put(changeset, :action, :update)))}
     end
   end
 

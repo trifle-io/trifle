@@ -35,6 +35,7 @@ defmodule Trifle.MixProject do
     [
       {:bcrypt_elixir, "~> 3.0"},
       {:cachex, "~> 4.0"},
+      {:hammer, "~> 7.5"},
       {:phoenix, "~> 1.8.0"},
       {:phoenix_ecto, "~> 4.6"},
       {:ecto_sql, "~> 3.12"},
@@ -64,9 +65,15 @@ defmodule Trifle.MixProject do
       {:slugy, "~> 4.1.1"},
       {:tzdata, "~> 1.1.1"},
       {:timex, "~>3.7.11"},
+      # Pinned to exact commits so `mix deps.update` cannot pull unreviewed code.
+      # To upgrade: change the ref to the new commit and run `mix deps.get`.
       {:trifle_stats,
-       git: "https://github.com/trifle-io/trifle_stats.git", branch: "main", override: true},
-      {:trifle_traces, git: "https://github.com/trifle-io/trifle_traces.git", branch: "main"},
+       git: "https://github.com/trifle-io/trifle_stats.git",
+       ref: "3a8a913aed720020e4df9038e7ebbdbf7b5df47f",
+       override: true},
+      {:trifle_traces,
+       git: "https://github.com/trifle-io/trifle_traces.git",
+       ref: "03358e04046485fc8a043bb4cbaee6bdacd0e323"},
       {:mongodb_driver, "~> 1.2.0"},
       {:myxql, "~> 0.7.0"},
       {:redix, "~> 1.3.0"},

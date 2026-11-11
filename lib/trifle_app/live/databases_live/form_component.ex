@@ -188,8 +188,8 @@ defmodule TrifleApp.DatabasesLive.FormComponent do
           <.form_field
             field={@form[:file_path]}
             label="Database File Path"
-            placeholder="e.g., /path/to/database.sqlite"
-            help_text="Optional fallback for manual server-side paths. Uploaded file is used when provided."
+            placeholder="e.g., metrics/database.sqlite"
+            help_text="Optional. Uploaded file is used when provided. Manual paths are stored inside your organization's SQLite folder on the server."
           />
         <% end %>
 

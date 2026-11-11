@@ -189,7 +189,9 @@ defmodule TrifleApp.Exports.LayoutStore do
   end
 
   defp decode_layout(binary) when is_binary(binary) do
-    {:ok, :erlang.binary_to_term(binary)}
+    # :safe refuses terms that would create new atoms or function references, so
+    # a tampered row cannot smuggle code or exhaust the atom table.
+    {:ok, :erlang.binary_to_term(binary, [:safe])}
   rescue
     exception ->
       Logger.warning("LayoutStore decode failed: #{inspect(exception)}")

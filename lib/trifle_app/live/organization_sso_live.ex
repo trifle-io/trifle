@@ -3,6 +3,7 @@ defmodule TrifleApp.OrganizationSSOLive do
 
   alias Ecto.Changeset
   alias Trifle.Organizations
+  alias Trifle.Organizations.OrganizationSSODomain
   alias TrifleApp.OrganizationLive.Navigation
   alias TrifleApp.OrganizationSSOLive.GoogleComponent
 
@@ -99,7 +100,7 @@ defmodule TrifleApp.OrganizationSSOLive do
             type="textarea"
             field={@google_sso_form[:domains]}
             label="Allowed Google Workspace domains"
-            help_text="Enter one domain per line, e.g. example.com. Domains must be unique across all organizations."
+            help_text="Enter one domain per line, e.g. example.com. Each new domain must be verified with a DNS record before it takes effect."
             class="min-h-[120px]"
           />
 
@@ -169,6 +170,48 @@ defmodule TrifleApp.OrganizationSSOLive do
     end
   end
 
+  def handle_event("verify_sso_domain", %{"id" => id}, %{assigns: assigns} = socket) do
+    with true <- assigns.can_manage,
+         :ok <-
+           Trifle.RateLimit.check(:connection_test, {:user, assigns.current_user.id}),
+         %OrganizationSSODomain{} = domain <-
+           Organizations.get_sso_domain_for_org(assigns.organization, id),
+         {:ok, verified} <- Organizations.verify_sso_domain(domain) do
+      {:noreply,
+       socket
+       |> assign(:sso_info, google_sso_info(assigns.organization))
+       |> put_flash(:info, "#{verified.domain} is verified.")}
+    else
+      {:error, :record_not_found} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The TXT record was not found yet. DNS changes can take a while to appear; check the record and try again."
+         )}
+
+      {:error, :already_verified_elsewhere} ->
+        {:noreply,
+         put_flash(socket, :error, "This domain is already verified by another organization.")}
+
+      {:error, {:rate_limited, retry_after_ms}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Too many checks. Try again in #{Trifle.RateLimit.retry_after_text(retry_after_ms)}."
+         )}
+
+      false ->
+        {:noreply,
+         put_flash(socket, :error, "Only organization admins can manage Google SSO settings.")}
+
+      _ ->
+        {:noreply,
+         put_flash(socket, :error, "Could not find that domain. Refresh and try again.")}
+    end
+  end
+
   defp load_sso_state(socket, membership) do
     organization =
       membership.organization || Organizations.get_organization!(membership.organization_id)
@@ -203,10 +246,16 @@ defmodule TrifleApp.OrganizationSSOLive do
       organization_id: org_id,
       credentials_present?: !!credentials_present?,
       configured?:
-        credentials_present? && match?(%{enabled: true}, provider) && Enum.any?(domains),
+        credentials_present? && match?(%{enabled: true}, provider) &&
+          Enum.any?((provider && provider.domains) || [], &OrganizationSSODomain.verified?/1),
       enabled: match?(%{enabled: true}, provider),
       auto_provision: match?(%{auto_provision_members: true}, provider),
       domains: domains,
+      domain_records:
+        case provider do
+          %{} = p -> Enum.sort_by(p.domains || [], & &1.domain)
+          _ -> []
+        end,
       redirect_uri: redirect_uri,
       provider: provider
     }

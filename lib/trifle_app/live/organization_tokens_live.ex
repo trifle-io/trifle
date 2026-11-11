@@ -722,10 +722,14 @@ defmodule TrifleApp.OrganizationTokensLive do
         end
       end)
 
-    Organizations.normalize_token_permissions(%{
+    # The form edits data access only. Leaving "manage" out (rather than sending
+    # false) keeps whatever the token already has when it is updated.
+    %{
       "wildcard" => %{"read" => wildcard_read, "write" => wildcard_write},
       "sources" => source_permissions
-    })
+    }
+    |> Organizations.normalize_token_permissions()
+    |> Map.delete("manage")
   end
 
   defp normalize_name(value) when is_binary(value) do

@@ -91,7 +91,42 @@ defmodule Trifle.Billing.Access do
     source_inactive_reason(reason)
   end
 
+  @doc """
+  Whether metrics may be ingested for (or read from) the project.
+
+  This runs on every API request for a project. A positive answer is remembered
+  for a few seconds (`:billing_ingest_access_cache_ttl_ms`) so the subscription and
+  usage rows are not re-read per request. Only `:ok` is cached: a denial is always
+  re-checked, so access opens the moment a subscription becomes active, and is
+  withdrawn at most one TTL after it lapses.
+  """
   def ingest_allowed?(%Project{} = project) do
+    ttl_ms = ingest_access_cache_ttl_ms()
+    cache_key = {:project_ingest_allowed, project.id}
+
+    cond do
+      not Billing.enabled?() ->
+        :ok
+
+      ttl_ms <= 0 ->
+        check_ingest_allowed(project)
+
+      Trifle.Cache.get(cache_key) == {:ok, true} ->
+        :ok
+
+      true ->
+        with :ok <- check_ingest_allowed(project) do
+          Trifle.Cache.put(cache_key, true, ttl_ms)
+          :ok
+        end
+    end
+  end
+
+  defp ingest_access_cache_ttl_ms do
+    Application.get_env(:trifle, :billing_ingest_access_cache_ttl_ms, 10_000)
+  end
+
+  defp check_ingest_allowed(%Project{} = project) do
     if Billing.enabled?() do
       with :ok <- app_access_allowed_for_org_id(project.organization_id),
            %Subscription{} = subscription <-
@@ -112,7 +147,7 @@ defmodule Trifle.Billing.Access do
     if Billing.enabled?() do
       case Billing.get_org_entitlement(organization_id) do
         %Entitlement{billing_locked: true, lock_reason: reason} when is_binary(reason) ->
-          {:error, String.to_atom(reason)}
+          {:error, lock_reason_atom(reason)}
 
         %Entitlement{billing_locked: true} ->
           {:error, :billing_locked}
@@ -128,18 +163,41 @@ defmodule Trifle.Billing.Access do
     end
   end
 
+  # Lock reasons are a small known set; fall back to the generic reason rather
+  # than creating an atom from stored text.
+  defp lock_reason_atom(reason) do
+    String.to_existing_atom(reason)
+  rescue
+    ArgumentError -> :billing_locked
+  end
+
   def allowed_to_create_project?(%Organization{} = organization) do
     app_access_allowed_for_org_id(organization.id)
   end
 
-  def allowed_to_add_member?(%Organization{} = organization) do
-    with :ok <- app_access_allowed_for_org_id(organization.id),
-         %Entitlement{} = entitlement <- Billing.get_org_entitlement(organization.id),
-         :ok <- ensure_seat_available(organization.id, entitlement) do
-      :ok
+  @doc """
+  Whether the organization's plan has room for one more member.
+
+  Only the seat limit is checked here; a lapsed subscription does not stop people
+  joining (they are blocked elsewhere). With billing disabled, or no seat limit on
+  the plan, the answer is always `:ok`.
+
+  Options:
+
+    * `:include_pending_invitations` - also count outstanding, unexpired
+      invitations as taken seats. Used when sending an invitation, so an
+      organization cannot hand out more invitations than it has seats for.
+  """
+  def allowed_to_add_member?(organization, opts \\ [])
+
+  def allowed_to_add_member?(%Organization{} = organization, opts) do
+    if Billing.enabled?() do
+      case Billing.get_org_entitlement(organization.id) do
+        %Entitlement{} = entitlement -> ensure_seat_available(organization.id, entitlement, opts)
+        _ -> :ok
+      end
     else
-      nil -> {:error, :billing_required}
-      {:error, reason} -> {:error, reason}
+      :ok
     end
   end
 
@@ -251,11 +309,11 @@ defmodule Trifle.Billing.Access do
     end
   end
 
-  defp ensure_seat_available(_organization_id, %Entitlement{seat_limit: nil}), do: :ok
+  defp ensure_seat_available(_organization_id, %Entitlement{seat_limit: nil}, _opts), do: :ok
 
-  defp ensure_seat_available(organization_id, %Entitlement{seat_limit: seat_limit})
+  defp ensure_seat_available(organization_id, %Entitlement{seat_limit: seat_limit}, opts)
        when is_integer(seat_limit) and seat_limit > 0 do
-    current_member_count =
+    members =
       Repo.one(
         from(m in OrganizationMembership,
           where: m.organization_id == ^organization_id,
@@ -263,14 +321,28 @@ defmodule Trifle.Billing.Access do
         )
       )
 
-    if current_member_count < seat_limit do
+    pending =
+      if Keyword.get(opts, :include_pending_invitations, false) do
+        Repo.one(
+          from(i in Trifle.Organizations.OrganizationInvitation,
+            where:
+              i.organization_id == ^organization_id and i.status == "pending" and
+                i.expires_at > ^DateTime.utc_now(),
+            select: count(i.id)
+          )
+        )
+      else
+        0
+      end
+
+    if members + pending < seat_limit do
       :ok
     else
       {:error, :seat_limit_reached}
     end
   end
 
-  defp ensure_seat_available(_, _), do: :ok
+  defp ensure_seat_available(_, _, _), do: :ok
 
   defp ensure_project_usage_below_limit(%Project{} = project, %Subscription{} = subscription) do
     case project_hard_limit(subscription) do

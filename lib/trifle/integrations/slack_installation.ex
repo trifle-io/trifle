@@ -18,7 +18,7 @@ defmodule Trifle.Integrations.SlackInstallation do
     field :team_domain, :string
     field :reference, :string
     field :bot_user_id, :string
-    field :bot_access_token, :string
+    field :bot_access_token, Trifle.Encrypted.MigratingBinary, redact: true
     field :scope, :string
     field :settings, :map, default: %{}
     field :last_channel_sync_at, :utc_datetime_usec

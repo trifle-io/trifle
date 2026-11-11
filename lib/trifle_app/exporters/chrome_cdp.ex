@@ -9,6 +9,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
   """
 
   alias TrifleApp.Exporters.ChromeExporter
+  alias TrifleApp.Exporters.ChromeLimiter
   alias TrifleApp.Exporters.ExportLog
   require Logger
 
@@ -58,20 +59,20 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       "[chrome_cdp #{log_label}] start=pdf target=#{ExportLog.summarize_url(url)} theme=#{inspect(theme)} viewport=#{w}x#{h} timeout_ms=#{timeout_ms}"
     )
 
-    with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
-         _ = Logger.debug("[chrome_cdp #{log_label}] chrome_binary=#{chrome}"),
-         {:ok, state} <- launch_chrome(chrome, w, h, log_context),
-         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme, log_context),
-         # Apply normalization early
-         _ = normalize_background(page_ws, theme),
-         _ = log_theme_state(page_ws, "pdf-after-normalize"),
-         _ = set_background_override(page_ws),
-         :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
-         _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base),
-         _ <- clear_background_override(page_ws) do
-      _ = close(page_ws)
-      _ = kill_chrome(state)
+    capture = fn page_ws ->
+      # Apply normalization early
+      with _ = normalize_background(page_ws, theme),
+           _ = log_theme_state(page_ws, "pdf-after-normalize"),
+           _ = set_background_override(page_ws),
+           :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
+           _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
+           {:ok, pdf_b64} <- page_print_to_pdf(page_ws, pdf_base),
+           _ <- clear_background_override(page_ws) do
+        {:ok, pdf_b64}
+      end
+    end
+
+    with {:ok, pdf_b64} <- with_page(url, theme, {w, h}, log_context, opts, capture) do
       bytes = div(byte_size(pdf_b64) * 3, 4)
 
       Logger.info(
@@ -155,6 +156,25 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
+  defp terminate_os_process(nil), do: :ok
+
+  defp terminate_os_process(os_pid) when is_integer(os_pid) do
+    case System.find_executable("kill") do
+      nil ->
+        :ok
+
+      kill ->
+        _ = System.cmd(kill, ["-TERM", Integer.to_string(os_pid)], stderr_to_stdout: true)
+
+        # Give Chrome a moment to shut its child processes down, then make sure.
+        Process.sleep(200)
+        _ = System.cmd(kill, ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+        :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
   # no-op placeholder (kept for potential future tuning)
 
   def export_png(url, opts \\ []) do
@@ -170,20 +190,20 @@ defmodule TrifleApp.Exporters.ChromeCDP do
       "[chrome_cdp #{log_label}] start=png target=#{ExportLog.summarize_url(url)} theme=#{inspect(theme)} viewport=#{w}x#{h} timeout_ms=#{timeout_ms}"
     )
 
-    with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
-         _ = Logger.debug("[chrome_cdp #{log_label}] chrome_binary=#{chrome}"),
-         {:ok, state} <- launch_chrome(chrome, w, h, log_context),
-         {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme, log_context),
-         _ = normalize_background(page_ws, theme),
-         _ = log_theme_state(page_ws, "png-after-normalize"),
-         _ = set_background_override(page_ws),
-         :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
-         _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
-         clip <- expand_viewport_to_content(page_ws, capture_scale),
-         {:ok, png_b64} <- page_capture_screenshot(page_ws, clip),
-         _ <- clear_background_override(page_ws) do
-      _ = close(page_ws)
-      _ = kill_chrome(state)
+    capture = fn page_ws ->
+      with _ = normalize_background(page_ws, theme),
+           _ = log_theme_state(page_ws, "png-after-normalize"),
+           _ = set_background_override(page_ws),
+           :ok <- wait_until_ready(page_ws, timeout_ms, log_context),
+           _ = __MODULE__.WS.call(page_ws, "Emulation.setEmulatedMedia", %{media: "screen"}),
+           clip <- expand_viewport_to_content(page_ws, capture_scale),
+           {:ok, png_b64} <- page_capture_screenshot(page_ws, clip),
+           _ <- clear_background_override(page_ws) do
+        {:ok, png_b64}
+      end
+    end
+
+    with {:ok, png_b64} <- with_page(url, theme, {w, h}, log_context, opts, capture) do
       bytes = div(byte_size(png_b64) * 3, 4)
 
       Logger.info(
@@ -201,26 +221,65 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     end
   end
 
+  # --- Chrome lifecycle ---
+
+  # Runs `fun.(page_ws)` against a freshly launched browser with `url` loaded.
+  #
+  # Exports are throttled through ChromeLimiter, and the browser, its page socket
+  # and its profile directory are torn down in `after` blocks so they are released
+  # on every path: success, an `{:error, _}` return, a raise or an exit.
+  #
+  # Callers that already hold a slot (ChromeExporter takes one before it signs the
+  # short-lived layout URL) pass `limiter_held: true` so a second slot is not taken.
+  defp with_page(url, theme, {w, h}, log_context, opts, fun) do
+    log_label = ExportLog.label(log_context)
+    throttle = if Keyword.get(opts, :limiter_held, false), do: & &1.(), else: &ChromeLimiter.run/1
+
+    throttle.(fn ->
+      with {:ok, chrome} <- ChromeExporter.find_chrome_binary(),
+           _ = Logger.debug("[chrome_cdp #{log_label}] chrome_binary=#{chrome}"),
+           {:ok, state} <- launch_chrome(chrome, w, h, log_context) do
+        try do
+          with {:ok, page_ws} <- open_page_ws_with_theme(state, url, theme, log_context) do
+            try do
+              fun.(page_ws)
+            after
+              _ = close(page_ws)
+            end
+          end
+        after
+          _ = kill_chrome(state)
+        end
+      end
+    end)
+  end
+
   # --- Chrome launch + discovery ---
 
   defp launch_chrome(chrome_bin, w, h, log_context) do
     profile_dir = Path.join(System.tmp_dir!(), unique("trifle_cdp_profile"))
     File.mkdir_p!(profile_dir)
 
-    args = [
-      "--headless=new",
-      "--disable-gpu",
-      "--no-sandbox",
-      "--hide-scrollbars",
-      "--disable-crash-reporter",
-      "--no-crashpad",
-      "--disable-logging",
-      "--log-level=3",
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=0",
-      "--user-data-dir=#{profile_dir}",
-      "--window-size=#{w},#{h}"
-    ]
+    # Chrome's sandbox cannot start as root or without user namespaces, which is
+    # the usual situation in a container, so it is off by default. Where the host
+    # supports it, set CHROME_SANDBOX=true to keep the renderer sandboxed.
+    sandbox_args =
+      if Application.get_env(:trifle, :chrome_sandbox, false), do: [], else: ["--no-sandbox"]
+
+    args =
+      ["--headless=new", "--disable-gpu"] ++
+        sandbox_args ++
+        [
+          "--hide-scrollbars",
+          "--disable-crash-reporter",
+          "--no-crashpad",
+          "--disable-logging",
+          "--log-level=3",
+          "--remote-debugging-address=127.0.0.1",
+          "--remote-debugging-port=0",
+          "--user-data-dir=#{profile_dir}",
+          "--window-size=#{w},#{h}"
+        ]
 
     log_label = ExportLog.label(log_context)
     launch_started_ms = ExportLog.monotonic_now_ms()
@@ -258,7 +317,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
              }}
 
           {:error, reason} ->
-            _ = File.rm_rf(profile_dir)
+            _ = kill_chrome(%{port_ref: port_ref, profile_dir: profile_dir})
 
             Logger.error(
               "[chrome_cdp #{log_label}] launch_chrome ws_failed reason=#{inspect(reason)}"
@@ -268,7 +327,7 @@ defmodule TrifleApp.Exporters.ChromeCDP do
         end
 
       {:error, reason} ->
-        _ = File.rm_rf(profile_dir)
+        _ = kill_chrome(%{port_ref: port_ref, profile_dir: profile_dir})
 
         Logger.error(
           "[chrome_cdp #{log_label}] launch_chrome no_devtools reason=#{inspect(reason)} elapsed_ms=#{ExportLog.since_ms(launch_started_ms)}"
@@ -845,12 +904,22 @@ defmodule TrifleApp.Exporters.ChromeCDP do
     :ok
   end
 
+  # Closing the port only closes Chrome's stdin, which headless Chrome ignores, so
+  # the browser would keep running. Read the OS pid first and signal it directly.
   defp kill_chrome(%{port_ref: port_ref, profile_dir: profile_dir}) do
+    os_pid =
+      case Port.info(port_ref, :os_pid) do
+        {:os_pid, pid} when is_integer(pid) -> pid
+        _ -> nil
+      end
+
     try do
       Port.close(port_ref)
     rescue
       _ -> :ok
     end
+
+    terminate_os_process(os_pid)
 
     # Best-effort cleanup of profile dir
     _ = File.rm_rf(profile_dir)

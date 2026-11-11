@@ -1878,7 +1878,8 @@ defmodule Trifle.Monitors.TestDelivery do
         try do
           String.to_existing_atom(normalized)
         rescue
-          ArgumentError -> String.to_atom(normalized)
+          # Unknown names stay unknown; never create atoms from input.
+          ArgumentError -> nil
         end
 
       true ->

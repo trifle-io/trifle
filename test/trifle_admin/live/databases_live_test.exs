@@ -10,6 +10,7 @@ defmodule TrifleAdmin.DatabasesLiveTest do
 
   setup %{conn: conn} do
     user = Trifle.AccountsFixtures.user_fixture()
+    {:ok, user} = Trifle.Accounts.update_user_admin_status(user.id, true)
     organization = organization_fixture(%{user: user})
 
     {:ok, conn: log_in_user(conn, user), organization: organization}

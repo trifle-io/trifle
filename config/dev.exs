@@ -125,3 +125,7 @@ config :trifle, Trifle.Vault,
 #   time_zone: "Europe/Bratislava",
 #   time_zone_database: Tzdata.TimeZoneDatabase,
 #   beginning_of_week: :monday
+
+# Local databases live on the Docker network / localhost; allow them as targets.
+# In production this defaults to off in SaaS mode (see Trifle.Networking.HostGuard).
+config :trifle, :allow_private_network_targets, true

@@ -77,19 +77,33 @@ defmodule TrifleApp.UserConfirmationInstructionsLive do
   end
 
   def handle_event("send_instructions", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_user_confirmation_instructions(
-        user,
-        &url(~p"/users/confirm/#{&1}")
-      )
+    case Trifle.RateLimit.check_all([
+           {:email_send, {:ip, socket.assigns[:client_ip]}},
+           {:email_send, email}
+         ]) do
+      :ok ->
+        if user = Accounts.get_user_by_email(email) do
+          Accounts.deliver_user_confirmation_instructions(
+            user,
+            &url(~p"/users/confirm/#{&1}")
+          )
+        end
+
+        info =
+          "If your email is in our system and it has not been confirmed yet, you will receive an email with instructions shortly."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, info)
+         |> redirect(to: ~p"/")}
+
+      {:error, {:rate_limited, retry_after_ms}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Too many attempts. Try again in #{Trifle.RateLimit.retry_after_text(retry_after_ms)}."
+         )}
     end
-
-    info =
-      "If your email is in our system and it has not been confirmed yet, you will receive an email with instructions shortly."
-
-    {:noreply,
-     socket
-     |> put_flash(:info, info)
-     |> redirect(to: ~p"/")}
   end
 end

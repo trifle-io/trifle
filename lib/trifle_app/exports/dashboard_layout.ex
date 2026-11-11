@@ -6,6 +6,7 @@ defmodule TrifleApp.Exports.DashboardLayout do
 
   alias Trifle.Exports.Series, as: SeriesExport
   alias Trifle.Organizations
+  alias Trifle.Organizations.OrganizationMembership
   alias Trifle.Stats.Source
   alias TrifleApp.Components.DashboardWidgets.{LayoutTree, WidgetData, WidgetView}
   alias TrifleApp.Exports.Layout
@@ -64,26 +65,38 @@ defmodule TrifleApp.Exports.DashboardLayout do
   end
 
   @doc """
-  Builds a layout for the dashboard ID by fetching the record.
+  Builds a layout for the dashboard ID, scoped to the given membership.
+
+  The dashboard is looked up through `Organizations.get_dashboard_for_membership!/2`,
+  so dashboards from other organizations (or ones the member cannot view) return
+  `{:error, %Ecto.NoResultsError{}}` exactly like a missing record.
   """
-  @spec build_from_id(String.t(), opts()) :: {:ok, Layout.t()} | {:error, term()}
-  def build_from_id(dashboard_id, opts \\ []) do
-    dashboard = Organizations.get_dashboard!(dashboard_id)
+  @spec build_from_id(OrganizationMembership.t(), String.t(), opts()) ::
+          {:ok, Layout.t()} | {:error, term()}
+  def build_from_id(%OrganizationMembership{} = membership, dashboard_id, opts \\ []) do
+    dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
     do_build(dashboard, opts)
   rescue
     e in Ecto.NoResultsError -> {:error, e}
+    _e in Ecto.Query.CastError -> {:error, %Ecto.NoResultsError{}}
   end
 
   @doc """
-  Builds a layout for a specific widget by fetching the dashboard record.
+  Builds a layout for a specific widget, scoped to the given membership.
   """
-  @spec build_widget_from_id(String.t(), String.t(), opts()) ::
+  @spec build_widget_from_id(OrganizationMembership.t(), String.t(), String.t(), opts()) ::
           {:ok, Layout.t()} | {:error, term()}
-  def build_widget_from_id(dashboard_id, widget_id, opts \\ []) do
-    dashboard = Organizations.get_dashboard!(dashboard_id)
+  def build_widget_from_id(
+        %OrganizationMembership{} = membership,
+        dashboard_id,
+        widget_id,
+        opts \\ []
+      ) do
+    dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
     build_widget(dashboard, widget_id, opts)
   rescue
     e in Ecto.NoResultsError -> {:error, e}
+    _e in Ecto.Query.CastError -> {:error, %Ecto.NoResultsError{}}
   end
 
   defp dashboard_source(dashboard), do: Organizations.resolve_dashboard_source(dashboard)

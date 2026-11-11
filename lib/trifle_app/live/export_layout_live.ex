@@ -59,9 +59,24 @@ defmodule TrifleApp.ExportLayoutLive do
 
   attr :layout, Layout, required: true
 
-  defp layout_content(%{layout: %Layout{render: %{module: module}} = layout}) do
+  # The render target comes from a stored layout. Only components that export
+  # layouts are known to use may be invoked, whatever the stored value says.
+  @allowed_renders [{TrifleApp.Components.DashboardWidgets.WidgetView, :grid}]
+
+  defp layout_content(%{layout: %Layout{render: %{module: module}} = layout})
+       when is_atom(module) do
     function = layout.render.function || :render
 
+    if {module, function} in @allowed_renders do
+      render_layout(layout, module, function)
+    else
+      Phoenix.HTML.raw("<!-- Unsupported render spec -->")
+    end
+  end
+
+  defp layout_content(_assigns), do: Phoenix.HTML.raw("<!-- Missing render spec -->")
+
+  defp render_layout(layout, module, function) do
     render_assigns =
       layout.render.assigns
       |> Map.put_new(:current_user, nil)
@@ -70,8 +85,6 @@ defmodule TrifleApp.ExportLayoutLive do
 
     apply(module, function, [render_assigns])
   end
-
-  defp layout_content(_assigns), do: Phoenix.HTML.raw("<!-- Missing render spec -->")
 
   defp theme_root_class(:dark), do: "dark text-slate-100"
   defp theme_root_class(_), do: "text-slate-900"

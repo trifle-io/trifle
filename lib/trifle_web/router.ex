@@ -15,10 +15,13 @@ defmodule TrifleWeb.Router do
   end
 
   scope "/admin", TrifleAdmin, as: :admin do
-    pipe_through [:admin_browser, :require_authenticated_user]
+    pipe_through [:admin_browser, :require_authenticated_user, :require_admin_user]
 
     live_session :admin_authenticated,
-      on_mount: [{TrifleApp.UserAuth, :ensure_authenticated}] do
+      on_mount: [
+        {TrifleApp.UserAuth, :ensure_authenticated},
+        {TrifleApp.UserAuth, :ensure_admin}
+      ] do
       live "/", AdminLive, :index
       live "/organizations", OrganizationsLive, :index
       live "/organizations/:id/show", OrganizationsLive, :show
@@ -55,7 +58,7 @@ defmodule TrifleWeb.Router do
   end
 
   scope "/admin" do
-    pipe_through [:admin_browser, :require_authenticated_user]
+    pipe_through [:admin_browser, :require_authenticated_user, :require_admin_user]
 
     forward "/oban", TrifleWeb.ObanDashboardRouter
   end

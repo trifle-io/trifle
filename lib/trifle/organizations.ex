@@ -230,11 +230,29 @@ defmodule Trifle.Organizations do
   end
 
   def update_membership_role(%OrganizationMembership{} = membership, role) do
-    update_membership(membership, %{role: role})
+    with {:ok, updated} <- update_membership(membership, %{role: role}) do
+      # Open LiveViews hold the old role in their assigns; make them reconnect.
+      Trifle.Accounts.disconnect_user_sessions(membership.user_id)
+      {:ok, updated}
+    end
   end
 
+  @doc """
+  Removes a member from their organization.
+
+  Access ends with the membership: the API tokens that person created in this
+  organization are revoked (they know the token values), and their open LiveView
+  sessions are disconnected so no page keeps working on stale permissions.
+  """
   def remove_member(%OrganizationMembership{} = membership) do
-    Repo.delete(membership)
+    with {:ok, deleted} <- Repo.delete(membership) do
+      revoke_organization_api_tokens_for_user(membership.user_id,
+        organization_id: membership.organization_id
+      )
+
+      Trifle.Accounts.disconnect_user_sessions(membership.user_id)
+      {:ok, deleted}
+    end
   end
 
   def remove_member(%Organization{} = organization, %User{} = user) do
@@ -380,7 +398,7 @@ defmodule Trifle.Organizations do
 
   def get_invitation_by_token(token) when is_binary(token) do
     OrganizationInvitation
-    |> Repo.get_by(token: token)
+    |> Repo.get_by(token_hash: OrganizationInvitation.hash_token(token))
     |> case do
       nil ->
         nil
@@ -394,7 +412,7 @@ defmodule Trifle.Organizations do
 
   def get_invitation_by_token!(token) when is_binary(token) do
     OrganizationInvitation
-    |> Repo.get_by!(token: token)
+    |> Repo.get_by!(token_hash: OrganizationInvitation.hash_token(token))
     |> Repo.preload([:organization, :invited_by, :accepted_user])
     |> maybe_mark_invitation_expired()
   end
@@ -442,23 +460,42 @@ defmodule Trifle.Organizations do
       |> Map.put("organization_id", organization.id)
       |> Map.put("invited_by_user_id", invited_by && invited_by.id)
 
-    %OrganizationInvitation{}
-    |> OrganizationInvitation.changeset(attrs)
-    |> Repo.insert()
-    |> tap(fn
-      {:ok, invitation} ->
-        InvitationNotifier.deliver_invitation(invitation)
-        notify_invitation_created(invitation)
+    # Outstanding invitations hold a seat, so an organization cannot invite more
+    # people than its plan allows.
+    with :ok <-
+           Trifle.Billing.Access.allowed_to_add_member?(organization,
+             include_pending_invitations: true
+           ) do
+      %OrganizationInvitation{}
+      |> OrganizationInvitation.changeset(attrs)
+      |> Repo.insert()
+      |> tap(fn
+        {:ok, invitation} ->
+          InvitationNotifier.deliver_invitation(invitation)
+          notify_invitation_created(invitation)
 
-      _ ->
-        :ok
-    end)
+        _ ->
+          :ok
+      end)
+    end
+  end
+
+  @doc """
+  Adds `user` to `organization` unless the plan's seat limit is reached.
+
+  Use this (not `create_membership/4`) whenever someone joins an existing
+  organization: accepting an invitation, SSO auto-provisioning.
+  """
+  def join_organization(%Organization{} = organization, %User{} = user, role, invited_by \\ nil) do
+    with :ok <- Trifle.Billing.Access.allowed_to_add_member?(organization) do
+      create_membership(organization, user, role, invited_by)
+    end
   end
 
   def refresh_invitation(%OrganizationInvitation{status: status} = invitation)
       when status in ["pending", "expired"] do
     invitation
-    |> OrganizationInvitation.changeset(%{token: nil, expires_at: nil, status: "pending"})
+    |> OrganizationInvitation.refresh_changeset()
     |> Repo.update()
     |> tap(fn
       {:ok, updated_invitation} -> InvitationNotifier.deliver_invitation(updated_invitation)
@@ -492,6 +529,8 @@ defmodule Trifle.Organizations do
   defdelegate upsert_google_sso_provider(organization, attrs), to: SSO
   defdelegate find_google_sso_provider_for_domain(domain), to: SSO
   defdelegate ensure_membership_for_sso(user, provider, email), to: SSO
+  defdelegate verify_sso_domain(domain), to: SSO
+  defdelegate get_sso_domain_for_org(organization, domain_id), to: SSO
 
   def accept_invitation(%OrganizationInvitation{} = invitation, %User{} = user) do
     invitation = Repo.preload(invitation, [:organization, :invited_by])
@@ -502,7 +541,7 @@ defmodule Trifle.Organizations do
         |> Multi.run(:membership, fn _repo, _changes ->
           case existing_membership do
             nil ->
-              create_membership(
+              join_organization(
                 invitation.organization,
                 user,
                 invitation.role,
@@ -540,6 +579,10 @@ defmodule Trifle.Organizations do
       invitation_expired?(invitation) ->
         {:error, :expired}
 
+      # The link alone is not enough: it must be used by the person it was sent to.
+      not same_email?(invitation.email, user.email) ->
+        {:error, :email_mismatch}
+
       true ->
         case get_membership_for_user(user) do
           nil ->
@@ -554,6 +597,11 @@ defmodule Trifle.Organizations do
         end
     end
   end
+
+  defp same_email?(a, b) when is_binary(a) and is_binary(b),
+    do: String.downcase(String.trim(a)) == String.downcase(String.trim(b))
+
+  defp same_email?(_a, _b), do: false
 
   defp maybe_mark_invitation_expired(
          %OrganizationInvitation{} = invitation,
@@ -576,7 +624,12 @@ defmodule Trifle.Organizations do
   defp atomize_keys(attrs), do: Attrs.atomize_keys(attrs)
 
   defp maybe_cleanup_replaced_sqlite_file(
-         %Database{driver: "sqlite", file_path: old_path, config: old_config},
+         %Database{
+           driver: "sqlite",
+           file_path: old_path,
+           config: old_config,
+           organization_id: organization_id
+         },
          %Database{file_path: new_path, config: new_config}
        ) do
     old_storage = SqliteUploads.extract_storage_metadata(old_config || %{})
@@ -590,7 +643,7 @@ defmodule Trifle.Organizations do
         :ok
 
       true ->
-        maybe_delete_sqlite_file(old_path, old_config)
+        maybe_delete_sqlite_file(old_path, old_config, organization_id)
     end
   end
 
@@ -599,15 +652,17 @@ defmodule Trifle.Organizations do
   defp maybe_cleanup_deleted_sqlite_file(%Database{
          driver: "sqlite",
          file_path: path,
-         config: config
+         config: config,
+         organization_id: organization_id
        }) do
-    maybe_delete_sqlite_file(path, config)
+    maybe_delete_sqlite_file(path, config, organization_id)
   end
 
   defp maybe_cleanup_deleted_sqlite_file(_database), do: :ok
 
-  defp maybe_delete_sqlite_file(path, config) when is_binary(path) and path != "" do
-    case SqliteUploads.delete_managed_upload(path, config || %{}) do
+  defp maybe_delete_sqlite_file(path, config, organization_id)
+       when is_binary(path) and path != "" do
+    case SqliteUploads.delete_managed_upload(path, config || %{}, organization_id) do
       :ok ->
         :ok
 
@@ -617,7 +672,7 @@ defmodule Trifle.Organizations do
     end
   end
 
-  defp maybe_delete_sqlite_file(_path, _config), do: :ok
+  defp maybe_delete_sqlite_file(_path, _config, _organization_id), do: :ok
 
   ## Project clusters
 
@@ -956,9 +1011,19 @@ defmodule Trifle.Organizations do
   """
   def update_project(%Project{} = project, attrs) do
     project
-    |> Project.changeset(attrs)
+    |> Project.changeset(drop_protected_project_attrs(attrs))
     |> Repo.update()
   end
+
+  # Ownership, cluster placement and billing state are never editable through a
+  # settings update: they are set at creation or by billing (billing_changeset/2).
+  @protected_project_keys ~w(organization_id project_cluster_id billing_required billing_state user_id)
+
+  defp drop_protected_project_attrs(attrs) when is_map(attrs) do
+    Map.reject(attrs, fn {key, _value} -> to_string(key) in @protected_project_keys end)
+  end
+
+  defp drop_protected_project_attrs(attrs), do: attrs
 
   @doc """
   Deletes a project.
@@ -1067,6 +1132,7 @@ defmodule Trifle.Organizations do
   defdelegate update_organization_api_token(token, attrs), to: Tokens
   defdelegate bind_organization_api_token_to_organization(token, organization_id), to: Tokens
   defdelegate delete_organization_api_token(token), to: Tokens
+  defdelegate revoke_organization_api_tokens_for_user(user_id, opts \\ []), to: Tokens
   defdelegate change_organization_api_token(token, attrs \\ %{}), to: Tokens
   defdelegate get_api_token_auth(token), to: Tokens
   defdelegate touch_organization_api_token(token, attrs \\ %{}), to: Tokens
@@ -1153,28 +1219,7 @@ defmodule Trifle.Organizations do
   end
 
   defdelegate normalize_token_permissions(permissions), to: Tokens
-
-  defdelegate list_project_tokens, to: Tokens
-  defdelegate list_projects_project_tokens(project), to: Tokens
-  defdelegate get_project_token!(id), to: Tokens
-  defdelegate get_project_by_token(token), to: Tokens
-  defdelegate create_project_token(attrs \\ %{}), to: Tokens
-  defdelegate create_projects_project_token(attrs \\ %{}, project), to: Tokens
-  defdelegate update_project_token(project_token, attrs), to: Tokens
-  defdelegate delete_project_token(project_token), to: Tokens
-  defdelegate change_project_token(project_token, attrs \\ %{}), to: Tokens
-
-  ## Database tokens
-
-  defdelegate list_database_tokens, to: Tokens
-  defdelegate list_databases_database_tokens(database), to: Tokens
-  defdelegate get_database_token!(id), to: Tokens
-  defdelegate get_database_by_token(token), to: Tokens
-  defdelegate create_database_token(attrs \\ %{}), to: Tokens
-  defdelegate create_databases_database_token(attrs \\ %{}, database), to: Tokens
-  defdelegate update_database_token(database_token, attrs), to: Tokens
-  defdelegate delete_database_token(database_token), to: Tokens
-  defdelegate change_database_token(database_token, attrs \\ %{}), to: Tokens
+  defdelegate token_can_manage?(token), to: Tokens
 
   ## Database functions
 
@@ -1263,15 +1308,85 @@ defmodule Trifle.Organizations do
   Creates a database within an organization.
   """
   def create_database_for_org(%Organization{} = organization, attrs \\ %{}) do
-    attrs =
-      attrs
-      |> assign_org_id(organization)
-      |> atomize_keys()
+    attrs
+    |> assign_org_id(organization)
+    |> atomize_keys()
+    |> insert_database()
+  end
 
-    %Database{}
-    |> database_changeset(attrs)
-    |> Repo.insert()
-    |> notify_database_created()
+  # Single insert path for tenant databases, so the per-organization cap holds
+  # however the database is created (browser form, bootstrap API, context call).
+  defp insert_database(attrs) do
+    changeset = database_changeset(%Database{}, attrs)
+    organization_id = Ecto.Changeset.get_field(changeset, :organization_id)
+
+    result =
+      if is_binary(organization_id) and not is_nil(max_databases_per_organization()) do
+        insert_database_within_cap(changeset, organization_id)
+      else
+        Repo.insert(changeset)
+      end
+
+    notify_database_created(result)
+  end
+
+  # Counting and inserting must not interleave between requests, or several
+  # creates that each see "one seat left" would all succeed. A transaction-scoped
+  # advisory lock keyed on the organization makes concurrent creates for the same
+  # organization run one after another; other organizations are not blocked.
+  defp insert_database_within_cap(changeset, organization_id) do
+    Repo.transaction(fn ->
+      Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        "database_cap:" <> organization_id
+      ])
+
+      case ensure_database_capacity(organization_id) do
+        :ok ->
+          case Repo.insert(changeset) do
+            {:ok, database} -> database
+            {:error, failed_changeset} -> Repo.rollback(failed_changeset)
+          end
+
+        {:error, limit} ->
+          Repo.rollback(
+            Ecto.Changeset.add_error(
+              changeset,
+              :display_name,
+              "cannot be added: this organization already has the maximum of #{limit} databases"
+            )
+          )
+      end
+    end)
+  end
+
+  # Each database can hold a connection pool and SSH tunnel, so the number a
+  # tenant may register is bounded. Platform-managed databases are not counted.
+  # `config :trifle, :max_databases_per_organization, n` (nil: no cap; the default
+  # is 100 in SaaS mode and no cap when self-hosted).
+  defp ensure_database_capacity(organization_id) do
+    case max_databases_per_organization() do
+      nil ->
+        :ok
+
+      limit ->
+        count =
+          Repo.one(
+            from(d in Database,
+              where: d.organization_id == ^organization_id and is_nil(d.managed_key),
+              select: count(d.id)
+            )
+          )
+
+        if count < limit, do: :ok, else: {:error, limit}
+    end
+  end
+
+  defp max_databases_per_organization do
+    case Application.get_env(:trifle, :max_databases_per_organization, :default) do
+      :default -> if Trifle.Config.saas_mode?(), do: 100, else: nil
+      limit when is_integer(limit) and limit > 0 -> limit
+      _ -> nil
+    end
   end
 
   @doc false
@@ -1292,10 +1407,7 @@ defmodule Trifle.Organizations do
   end
 
   def create_database(attrs \\ %{}) do
-    %Database{}
-    |> database_changeset(attrs)
-    |> Repo.insert()
-    |> notify_database_created()
+    insert_database(attrs)
   end
 
   @doc """
@@ -1633,6 +1745,7 @@ defmodule Trifle.Organizations do
     to: Dashboards
 
   defdelegate list_dashboard_tree_for_membership(user, membership), to: Dashboards
+  defdelegate dashboard_index_for_membership(user, membership), to: Dashboards
   defdelegate get_dashboard_for_membership!(membership, id), to: Dashboards
   defdelegate create_dashboard_for_membership(user, membership, attrs \\ %{}), to: Dashboards
   defdelegate create_dashboard_group_for_membership(membership, attrs \\ %{}), to: Dashboards

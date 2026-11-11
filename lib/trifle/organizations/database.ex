@@ -49,26 +49,28 @@ defmodule Trifle.Organizations.Database do
 
   schema "databases" do
     field :display_name, :string
+    # Credential fields are `redact: true` so they never appear in `inspect/1`
+    # output (crash reports, error trackers, logs).
     field :driver, :string
     field :connection_method, :string, default: "direct"
     field :host, :string
     field :port, :integer
-    field :database_name, Trifle.Encrypted.Binary
+    field :database_name, Trifle.Encrypted.Binary, redact: true
     field :file_path, :string
-    field :username, Trifle.Encrypted.Binary
-    field :password, Trifle.Encrypted.Binary
-    field :auth_database, Trifle.Encrypted.Binary
-    field :ssh_host, Trifle.Encrypted.Binary
+    field :username, Trifle.Encrypted.Binary, redact: true
+    field :password, Trifle.Encrypted.Binary, redact: true
+    field :auth_database, Trifle.Encrypted.Binary, redact: true
+    field :ssh_host, Trifle.Encrypted.Binary, redact: true
     field :ssh_port, :integer
-    field :ssh_username, Trifle.Encrypted.Binary
-    field :ssh_private_key, Trifle.Encrypted.Binary
+    field :ssh_username, Trifle.Encrypted.Binary, redact: true
+    field :ssh_private_key, Trifle.Encrypted.Binary, redact: true
     field :ssh_public_key, :string
-    field :ssh_passphrase, Trifle.Encrypted.Binary
-    field :ssh_host_key_fingerprint, Trifle.Encrypted.Binary
+    field :ssh_passphrase, Trifle.Encrypted.Binary, redact: true
+    field :ssh_host_key_fingerprint, Trifle.Encrypted.Binary, redact: true
     field :config, :map, default: %{}
     field :trace_config, :map, default: %{}
-    field :trace_access_key_id, Trifle.Encrypted.Binary
-    field :trace_secret_access_key, Trifle.Encrypted.Binary
+    field :trace_access_key_id, Trifle.Encrypted.Binary, redact: true
+    field :trace_secret_access_key, Trifle.Encrypted.Binary, redact: true
     field :managed_key, :string
     field :granularities, {:array, :string}, default: []
     field :time_zone, :string, default: "UTC"
@@ -83,7 +85,6 @@ defmodule Trifle.Organizations.Database do
     belongs_to :organization, Trifle.Organizations.Organization
     belongs_to :network_connection, Trifle.Organizations.NetworkConnection
     belongs_to :trace_network_connection, Trifle.Organizations.NetworkConnection
-    has_many :database_tokens, Trifle.Organizations.DatabaseToken
 
     timestamps()
   end
@@ -205,8 +206,12 @@ defmodule Trifle.Organizations.Database do
   end
 
   @doc false
-  def changeset(database, attrs) do
+  def changeset(database, attrs, opts \\ []) do
     attrs = sanitize_trace_secret_attrs(attrs)
+    # Platform-managed databases (internal observability) may use internal hosts
+    # and local trace storage; tenant databases may not.
+    managed? = Keyword.get(opts, :managed, false) or is_binary(database.managed_key)
+    attrs = keep_existing_organization(database, attrs)
 
     database
     |> cast(attrs, [
@@ -258,13 +263,145 @@ defmodule Trifle.Organizations.Database do
     |> parse_granularities(sanitize_granularity_attrs(attrs))
     |> validate_timeframe_field(:default_timeframe)
     |> put_default_config()
+    |> scope_sqlite_storage()
+    |> validate_network_targets(managed?)
     |> unique_constraint(:managed_key, name: :databases_managed_key_unique)
+  end
+
+  # A database belongs to the organization it was created in for good. Once the
+  # record has an owner, any `organization_id` in the submitted attributes is
+  # dropped, so an edit can never move it (and its credentials) to another tenant.
+  defp keep_existing_organization(%{organization_id: organization_id}, attrs)
+       when is_binary(organization_id) and is_map(attrs) do
+    Map.drop(attrs, [:organization_id, "organization_id"])
+  end
+
+  defp keep_existing_organization(_database, attrs), do: attrs
+
+  # Tenant-supplied network targets must be public hosts (see HostGuard). Only the
+  # text is checked here, so this is cheap enough to run on every form change;
+  # DNS is checked when the connection is opened.
+  defp validate_network_targets(changeset, true), do: changeset
+
+  defp validate_network_targets(changeset, false) do
+    changeset
+    |> validate_public_host(:host, "direct")
+    |> validate_public_host(:ssh_host, "ssh_tunnel")
+    |> validate_tenant_trace_storage()
+  end
+
+  defp validate_public_host(changeset, field, connection_method) do
+    host = get_field(changeset, field)
+
+    with true <- get_field(changeset, :connection_method) == connection_method,
+         true <- get_field(changeset, :driver) != "sqlite",
+         true <- is_binary(host) and host != "",
+         true <- field_changed?(changeset, field),
+         {:error, reason} <- Trifle.Networking.HostGuard.check_literal(host) do
+      add_error(changeset, field, Trifle.Networking.HostGuard.message(reason))
+    else
+      _ -> changeset
+    end
+  end
+
+  # Re-validate when the host or the way it is reached changes; untouched legacy
+  # rows can still be edited in other respects.
+  defp field_changed?(changeset, field) do
+    Map.has_key?(changeset.changes, field) or Map.has_key?(changeset.changes, :connection_method) or
+      is_nil(changeset.data.id)
+  end
+
+  defp validate_tenant_trace_storage(changeset) do
+    config = get_field(changeset, :trace_config)
+
+    cond do
+      not Map.has_key?(changeset.changes, :trace_config) or not is_map(config) ->
+        changeset
+
+      not Trifle.Networking.HostGuard.enforced?() ->
+        changeset
+
+      config["data_driver"] == "file" ->
+        add_error(
+          changeset,
+          :trace_config,
+          "File storage for traces is not available here. Use S3-compatible storage"
+        )
+
+      config["data_driver"] == "s3" and is_binary(config["data_endpoint"]) and
+          is_nil(get_field(changeset, :trace_network_connection_id)) ->
+        host = URI.parse(config["data_endpoint"]).host
+
+        case Trifle.Networking.HostGuard.check_literal(host) do
+          :ok ->
+            changeset
+
+          {:error, reason} ->
+            add_error(
+              changeset,
+              :trace_config,
+              "S3 endpoint " <> Trifle.Networking.HostGuard.message(reason)
+            )
+        end
+
+      true ->
+        changeset
+    end
+  end
+
+  # In a multi-tenant deployment a SQLite source may only point at files inside
+  # its own organization's storage. `file_path` is re-rooted under the
+  # organization folder and a hand-written `config.sqlite_storage.object_key`
+  # for another organization is rejected. See `Trifle.SqliteUploads.scope_file_path/2`.
+  defp scope_sqlite_storage(changeset) do
+    organization_id = get_field(changeset, :organization_id)
+
+    if get_field(changeset, :driver) == "sqlite" and is_binary(organization_id) and
+         Trifle.Config.saas_mode?() do
+      changeset
+      |> scope_sqlite_file_path(organization_id)
+      |> validate_sqlite_object_key(organization_id)
+    else
+      changeset
+    end
+  end
+
+  defp scope_sqlite_file_path(changeset, organization_id) do
+    case get_change(changeset, :file_path) do
+      path when is_binary(path) and path != "" ->
+        case Trifle.SqliteUploads.scope_file_path(path, organization_id) do
+          {:ok, scoped} -> put_change(changeset, :file_path, scoped)
+          {:error, message} -> add_error(changeset, :file_path, message)
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp validate_sqlite_object_key(changeset, organization_id) do
+    storage =
+      changeset
+      |> get_field(:config)
+      |> Trifle.SqliteUploads.extract_storage_metadata()
+
+    case storage do
+      %{"object_key" => object_key} when is_binary(object_key) and object_key != "" ->
+        if Trifle.SqliteUploads.organization_object_key?(object_key, organization_id) do
+          changeset
+        else
+          add_error(changeset, :file_path, "SQLite file is outside this organization's storage")
+        end
+
+      _ ->
+        changeset
+    end
   end
 
   @doc false
   def managed_changeset(database, attrs, managed_key) when is_binary(managed_key) do
     database
-    |> changeset(attrs)
+    |> changeset(attrs, managed: true)
     |> put_change(:managed_key, managed_key)
     |> unique_constraint(:managed_key, name: :databases_managed_key_unique)
   end
@@ -1002,29 +1139,16 @@ defmodule Trifle.Organizations.Database do
     |> Trifle.Networking.DatabaseTLS.redis(database)
   end
 
-  defp build_mongo_url(database) do
+  # Options for a one-off MongoDB connection (setup, status check). Built by the
+  # same module as the pooled connection, so credentials are encoded and discovery
+  # is restricted identically on every path.
+  defp mongo_options!(database, extra \\ []) do
     endpoint = database_endpoint!(database)
-    url = "mongodb://"
 
-    url =
-      if database.username && database.password do
-        "#{url}#{database.username}:#{database.password}@"
-      else
-        url
-      end
-
-    url =
-      "#{url}#{endpoint.host}:#{endpoint.port || default_port("mongo")}/#{database.database_name}"
-
-    # Add authSource parameter if auth_database is specified
-    url =
-      if database.auth_database && database.auth_database != "" do
-        "#{url}?authSource=#{database.auth_database}"
-      else
-        url
-      end
-
-    url
+    case Trifle.Networking.MongoConnection.options(database, endpoint, extra) do
+      {:ok, options} -> options
+      {:error, reason} -> raise "Unable to build MongoDB connection: #{inspect(reason)}"
+    end
   end
 
   defp database_endpoint!(database) do
@@ -1261,12 +1385,10 @@ defmodule Trifle.Organizations.Database do
           end
 
         "mongo" ->
-          # Build MongoDB connection URL
-          url = build_mongo_url(database)
           require Logger
           Logger.info("MongoDB setup connecting to database #{database.id}")
 
-          case Mongo.start_link(Trifle.Networking.DatabaseTLS.mongo([url: url], database)) do
+          case Mongo.start_link(mongo_options!(database)) do
             {:ok, conn} ->
               Logger.info("MongoDB setup connection successful")
               collection_name = config["collection_name"] || "trifle_stats"
@@ -1451,7 +1573,6 @@ defmodule Trifle.Organizations.Database do
 
   defp mongo_exists_direct?(database) do
     # Direct MongoDB check without creating a driver
-    url = build_mongo_url(database)
     config = database.config || %{}
     collection_name = config["collection_name"] || "trifle_stats"
 
@@ -1459,10 +1580,7 @@ defmodule Trifle.Organizations.Database do
     Logger.info("MongoDB status check looking for collection: #{collection_name}")
 
     case Mongo.start_link(
-           Trifle.Networking.DatabaseTLS.mongo(
-             [url: url, pool_size: 1, timeout: 2000, pool_timeout: 2000],
-             database
-           )
+           mongo_options!(database, pool_size: 1, timeout: 2000, pool_timeout: 2000)
          ) do
       {:ok, conn} ->
         Logger.info("MongoDB status check connection successful")

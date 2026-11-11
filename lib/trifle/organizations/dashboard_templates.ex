@@ -381,9 +381,15 @@ defmodule Trifle.Organizations.DashboardTemplates do
       end)
       |> Enum.uniq()
 
-    from(t in DashboardTemplate, where: t.id in ^user_ids)
-    |> Repo.all()
-    |> Map.new(&{&1.id, &1})
+    case user_ids do
+      [] ->
+        %{}
+
+      ids ->
+        from(t in DashboardTemplate, where: t.id in ^ids)
+        |> Repo.all()
+        |> Map.new(&{&1.id, &1})
+    end
   end
 
   defp resolve_dashboard_from_map(dashboard, templates_by_id) do

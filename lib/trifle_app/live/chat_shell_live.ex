@@ -1367,6 +1367,21 @@ defmodule TrifleApp.ChatShellLive do
       socket.assigns.sending ->
         {:noreply, socket}
 
+      # Each message costs LLM tokens on the shared key; cap it per user.
+      match?(
+        {:error, _},
+        Trifle.RateLimit.check(
+          :chat_message,
+          {:user, socket.assigns[:current_user] && socket.assigns.current_user.id}
+        )
+      ) ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "You're sending messages faster than the assistant allows. Give it a few minutes and try again."
+         )}
+
       not match?(%Session{}, socket.assigns.session) ->
         {:noreply,
          put_flash(socket, :error, "Chat session is unavailable. Try resetting the chat.")}

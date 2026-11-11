@@ -34,8 +34,11 @@ defmodule Trifle.Organizations.SSO do
 
   def google_sso_enabled?(%Organization{} = organization) do
     case get_sso_provider_for_org(organization, :google) do
-      %OrganizationSSOProvider{enabled: true, domains: [_ | _]} -> true
-      _ -> false
+      %OrganizationSSOProvider{enabled: true, domains: domains} ->
+        Enum.any?(domains, &OrganizationSSODomain.verified?/1)
+
+      _ ->
+        false
     end
   end
 
@@ -80,7 +83,7 @@ defmodule Trifle.Organizations.SSO do
       domains = normalize_domains(Map.get(attrs, "domains", []))
 
       with :ok <- replace_provider_domains(provider, domains) do
-        Repo.preload(provider, :domains)
+        Repo.preload(provider, :domains, force: true)
       else
         {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback({:changeset, changeset})
         {:error, reason} -> Repo.rollback(reason)
@@ -98,8 +101,9 @@ defmodule Trifle.Organizations.SSO do
     from(p in OrganizationSSOProvider,
       join: d in OrganizationSSODomain,
       on: d.organization_sso_provider_id == p.id,
+      # Only a domain whose ownership was proven routes sign-ins to an organization.
       where:
-        p.provider == :google and p.enabled == true and
+        p.provider == :google and p.enabled == true and not is_nil(d.verified_at) and
           fragment("lower(?) = ?", d.domain, ^normalized),
       preload: [:organization]
     )
@@ -121,9 +125,10 @@ defmodule Trifle.Organizations.SSO do
         with {:domain, domain} when is_binary(domain) <- {:domain, domain},
              %OrganizationSSOProvider{} = provider <- find_google_sso_provider_for_domain(domain),
              true <- provider.auto_provision_members do
-          case Organizations.create_membership(provider.organization, user) do
+          case Organizations.join_organization(provider.organization, user, "member") do
             {:ok, membership} -> {:ok, membership}
             {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
+            {:error, reason} -> {:error, reason}
           end
         else
           {:domain, _} -> {:error, :invalid_email_domain}
@@ -136,22 +141,22 @@ defmodule Trifle.Organizations.SSO do
 
   def ensure_membership_for_sso(_, _, _), do: {:error, :unsupported_provider}
 
-  defp replace_provider_domains(%OrganizationSSOProvider{} = provider, []) do
-    Repo.delete_all(
-      from d in OrganizationSSODomain,
-        where: d.organization_sso_provider_id == ^provider.id
-    )
-
-    :ok
-  end
-
+  # Keeps existing rows (and their verification state) for domains that stay,
+  # removes the ones dropped from the list and adds new, unverified ones.
   defp replace_provider_domains(%OrganizationSSOProvider{} = provider, domains) do
-    Repo.delete_all(
-      from d in OrganizationSSODomain,
-        where: d.organization_sso_provider_id == ^provider.id
-    )
+    existing =
+      Repo.all(
+        from d in OrganizationSSODomain, where: d.organization_sso_provider_id == ^provider.id
+      )
 
-    Enum.reduce_while(domains, :ok, fn domain, :ok ->
+    existing_names = Enum.map(existing, &normalize_domain(&1.domain))
+    removed_ids = for d <- existing, normalize_domain(d.domain) not in domains, do: d.id
+
+    Repo.delete_all(from d in OrganizationSSODomain, where: d.id in ^removed_ids)
+
+    domains
+    |> Enum.reject(&(&1 in existing_names))
+    |> Enum.reduce_while(:ok, fn domain, :ok ->
       %OrganizationSSODomain{}
       |> OrganizationSSODomain.changeset(%{
         organization_sso_provider_id: provider.id,
@@ -163,6 +168,85 @@ defmodule Trifle.Organizations.SSO do
         {:error, %Ecto.Changeset{} = changeset} -> {:halt, {:error, changeset}}
       end
     end)
+  end
+
+  @doc """
+  Checks DNS for the domain's verification record and, when present, marks the
+  domain verified.
+
+  The organization publishes a TXT record named
+  `_trifle-verification.<domain>` with the value `trifle-verification=<token>`.
+  Verifying a domain discards other organizations' unverified claims on it.
+
+  Returns `{:ok, domain}`, `{:error, :record_not_found}` or
+  `{:error, :already_verified_elsewhere}`.
+  """
+  def verify_sso_domain(%OrganizationSSODomain{} = domain) do
+    cond do
+      OrganizationSSODomain.verified?(domain) ->
+        {:ok, domain}
+
+      verification_record_present?(domain) ->
+        domain
+        |> OrganizationSSODomain.verified_changeset()
+        |> Repo.update()
+        |> case do
+          {:ok, verified} ->
+            Repo.delete_all(
+              from d in OrganizationSSODomain,
+                where:
+                  d.id != ^verified.id and is_nil(d.verified_at) and
+                    fragment("lower(?) = ?", d.domain, ^normalize_domain(verified.domain))
+            )
+
+            {:ok, verified}
+
+          {:error, %Ecto.Changeset{}} ->
+            {:error, :already_verified_elsewhere}
+        end
+
+      true ->
+        {:error, :record_not_found}
+    end
+  end
+
+  def get_sso_domain_for_org(%Organization{} = organization, domain_id) do
+    with {:ok, id} <- Ecto.UUID.cast(domain_id) do
+      from(d in OrganizationSSODomain,
+        join: p in OrganizationSSOProvider,
+        on: p.id == d.organization_sso_provider_id,
+        where: d.id == ^id and p.organization_id == ^organization.id
+      )
+      |> Repo.one()
+    else
+      :error -> nil
+    end
+  end
+
+  defp verification_record_present?(%OrganizationSSODomain{} = domain) do
+    expected = OrganizationSSODomain.verification_record_value(domain)
+
+    domain
+    |> OrganizationSSODomain.verification_record_name()
+    |> txt_lookup()
+    |> Enum.any?(&(String.trim(&1) == expected))
+  end
+
+  # TXT lookups are replaceable in config so tests do not depend on real DNS:
+  #   config :trifle, :sso_txt_resolver, fn name -> ["value", ...] end
+  defp txt_lookup(name) do
+    case Application.get_env(:trifle, :sso_txt_resolver) do
+      resolver when is_function(resolver, 1) ->
+        resolver.(name)
+
+      _ ->
+        name
+        |> String.to_charlist()
+        |> :inet_res.lookup(:in, :txt, timeout: 5_000)
+        |> Enum.map(fn parts -> parts |> Enum.map(&to_string/1) |> Enum.join() end)
+    end
+  rescue
+    _ -> []
   end
 
   defp normalize_domains(domains) when is_list(domains) do

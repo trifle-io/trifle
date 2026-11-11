@@ -16,7 +16,7 @@
         This invitation has expired. Please contact the organization admin for a new invite.
       </div>
     <% else %>
-      <form action={~p"/invitations/#{@invitation.token}/accept"} method="post" class="space-y-4">
+      <form action={~p"/invitations/#{@token}/accept"} method="post" class="space-y-4">
         <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
         <p class="text-sm text-gray-600 dark:text-slate-300">
           Accepting will add you as a <strong>{String.capitalize(@invitation.role)}</strong>

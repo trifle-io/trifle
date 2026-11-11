@@ -335,4 +335,86 @@ defmodule Trifle.IntegrationsTest do
       "permissions" => Keyword.get(opts, :permissions, "52224")
     }
   end
+
+  describe "Slack bot token storage" do
+    import Ecto.Query, only: [from: 2]
+
+    defp raw_token(installation) do
+      {:ok, id} = Ecto.UUID.dump(installation.id)
+
+      Trifle.Repo.one(
+        from(i in "slack_installations", where: i.id == ^id, select: i.bot_access_token)
+      )
+    end
+
+    defp slack_installation!(token) do
+      user = Trifle.AccountsFixtures.user_fixture()
+
+      {:ok, organization, _} =
+        Trifle.Organizations.create_organization_with_owner(
+          %{name: "Slack Org #{System.unique_integer([:positive])}"},
+          user
+        )
+
+      %Trifle.Integrations.SlackInstallation{}
+      |> Trifle.Integrations.SlackInstallation.changeset(%{
+        organization_id: organization.id,
+        team_id: "T#{System.unique_integer([:positive])}",
+        team_name: "Team",
+        reference: "ref-#{System.unique_integer([:positive])}",
+        bot_access_token: token
+      })
+      |> Trifle.Repo.insert!()
+    end
+
+    test "is encrypted at rest and never shown by inspect" do
+      installation = slack_installation!("xoxb-secret-value")
+
+      raw = raw_token(installation)
+      refute raw == "xoxb-secret-value"
+      refute String.contains?(raw, "xoxb")
+      assert Trifle.Encrypted.MigratingBinary.encrypted?(raw)
+
+      reloaded = Trifle.Repo.get!(Trifle.Integrations.SlackInstallation, installation.id)
+      assert reloaded.bot_access_token == "xoxb-secret-value"
+      refute inspect(reloaded) =~ "xoxb-secret-value"
+    end
+
+    test "legacy plaintext rows stay readable and can be encrypted in bulk" do
+      installation = slack_installation!("xoxb-new")
+      {:ok, id} = Ecto.UUID.dump(installation.id)
+
+      # Simulate a row written before the column was encrypted.
+      Trifle.Repo.update_all(from(i in "slack_installations", where: i.id == ^id),
+        set: [bot_access_token: "xoxb-legacy-plain"]
+      )
+
+      reloaded = Trifle.Repo.get!(Trifle.Integrations.SlackInstallation, installation.id)
+      assert reloaded.bot_access_token == "xoxb-legacy-plain"
+
+      assert Trifle.Integrations.encrypt_legacy_slack_tokens() == 1
+      assert Trifle.Integrations.encrypt_legacy_slack_tokens() == 0
+
+      refute raw_token(installation) == "xoxb-legacy-plain"
+
+      assert Trifle.Repo.get!(Trifle.Integrations.SlackInstallation, installation.id).bot_access_token ==
+               "xoxb-legacy-plain"
+    end
+  end
+
+  test "database credentials are redacted from inspect output" do
+    database = %Trifle.Organizations.Database{
+      host: "db.example.com",
+      username: "admin-user",
+      password: "hunter2-password",
+      ssh_private_key: "-----BEGIN KEY-----"
+    }
+
+    output = inspect(database)
+
+    assert output =~ "db.example.com"
+    refute output =~ "hunter2-password"
+    refute output =~ "admin-user"
+    refute output =~ "BEGIN KEY"
+  end
 end

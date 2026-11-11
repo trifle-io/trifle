@@ -29,6 +29,48 @@ defmodule TrifleApi.BootstrapController do
          ]
   )
 
+  # Unauthenticated credential endpoints: limit per client, and per account for login.
+  plug(TrifleWeb.Plugs.RateLimit, [policy: :api_auth] when action in [:login, :signup])
+
+  plug(
+    TrifleWeb.Plugs.RateLimit,
+    [policy: :login_account, by: {:param, ["email"]}] when action == :login
+  )
+
+  plug(
+    TrifleWeb.Plugs.RateLimit,
+    [policy: :api_manage, by: {:assign, :current_api_token}]
+    when action in [
+           :create_organization,
+           :list_sources,
+           :create_database,
+           :setup_database,
+           :create_project,
+           :list_tokens,
+           :create_token,
+           :update_token,
+           :delete_token
+         ]
+  )
+
+  # Management endpoints need a token with the "manage" capability (issued by
+  # password login/signup, or explicitly granted by another managing token).
+  # Without this, authorization would rest only on the role of the user who created
+  # the token, letting a leaked ingest-only token mint a full-access one.
+  plug(
+    :require_manage_token
+    when action in [
+           :list_sources,
+           :create_database,
+           :setup_database,
+           :create_project,
+           :list_tokens,
+           :create_token,
+           :update_token,
+           :delete_token
+         ]
+  )
+
   def signup(conn, params) do
     with :ok <- ensure_registration_enabled(),
          {:ok, attrs} <- signup_attrs(params),
@@ -717,12 +759,33 @@ defmodule TrifleApi.BootstrapController do
       payload
       |> Map.get("permissions")
       |> Organizations.normalize_token_permissions()
+      |> maybe_apply_manage(payload)
       |> maybe_apply_wildcard(payload)
       |> maybe_apply_legacy_source_grant(payload, membership)
       |> maybe_apply_grants(payload, membership)
 
     permissions
   end
+
+  # "manage" is only set when the caller sends it explicitly (top-level, or inside
+  # "permissions"); new tokens are data-only by default.
+  defp maybe_apply_manage(permissions, payload) do
+    nested = payload |> Map.get("permissions") |> nested_manage()
+
+    cond do
+      Map.has_key?(payload, "manage") ->
+        Map.put(permissions, "manage", parse_bool(Map.get(payload, "manage")))
+
+      not is_nil(nested) ->
+        Map.put(permissions, "manage", parse_bool(nested))
+
+      true ->
+        Map.delete(permissions, "manage")
+    end
+  end
+
+  defp nested_manage(%{} = permissions), do: Map.get(permissions, "manage")
+  defp nested_manage(_), do: nil
 
   defp maybe_apply_wildcard(permissions, payload) do
     wildcard_read = Map.get(payload, "wildcard_read")
@@ -820,6 +883,7 @@ defmodule TrifleApi.BootstrapController do
     Enum.any?(
       [
         "permissions",
+        "manage",
         "wildcard_read",
         "wildcard_write",
         "source_type",
@@ -949,9 +1013,26 @@ defmodule TrifleApi.BootstrapController do
     end
   end
 
+  defp require_manage_token(conn, _opts) do
+    if Organizations.token_can_manage?(conn.assigns[:current_api_token]) do
+      conn
+    else
+      conn
+      |> render_error(
+        :forbidden,
+        "This token cannot manage the organization. Sign in again (or use a token with the manage permission)."
+      )
+      |> halt()
+    end
+  end
+
+  # Tokens issued from a password login or signup are the CLI's management
+  # credential; they start with no data access and gain per-source grants as
+  # sources are created.
   defp organization_token_attrs(conn, params) do
     %{
       name: token_name(params),
+      permissions: %{"manage" => true},
       created_by: token_created_by(conn, params),
       created_from: token_created_from(conn, params)
     }

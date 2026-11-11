@@ -11,12 +11,27 @@ defmodule TrifleApp.ExportController do
   alias Ecto.NoResultsError
   require Logger
 
+  # Exports launch a headless browser or run large queries; cap them per user.
+  plug TrifleWeb.Plugs.RateLimit, policy: :export, by: :user
+
+  # Dashboard exports are tenant data: every dashboard lookup below goes through the
+  # caller's organization membership, never a bare id.
+  plug :require_membership
+       when action in [
+              :dashboard_pdf,
+              :dashboard_png,
+              :dashboard_widget_pdf,
+              :dashboard_widget_png,
+              :dashboard_csv,
+              :dashboard_json
+            ]
+
   def dashboard_pdf(conn, %{"id" => id} = params) do
     export_params =
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
 
     with {:ok, layout} <-
-           DashboardLayout.build_from_id(id,
+           DashboardLayout.build_from_id(conn.assigns.current_membership, id,
              params: export_params,
              theme: :light,
              viewport: %{width: 1920, height: 1080}
@@ -58,7 +73,7 @@ defmodule TrifleApp.ExportController do
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
 
     with {:ok, layout} <-
-           DashboardLayout.build_from_id(id,
+           DashboardLayout.build_from_id(conn.assigns.current_membership, id,
              params: export_params,
              theme: theme,
              viewport: %{width: 1366, height: 900}
@@ -92,6 +107,7 @@ defmodule TrifleApp.ExportController do
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
 
     case TrifleApp.Exports.DashboardLayout.build_widget_from_id(
+           conn.assigns.current_membership,
            id,
            widget_id,
            params: export_params,
@@ -143,6 +159,7 @@ defmodule TrifleApp.ExportController do
       Map.take(params, ["timeframe", "granularity", "from", "to", "segments", "key"])
 
     case TrifleApp.Exports.DashboardLayout.build_widget_from_id(
+           conn.assigns.current_membership,
            id,
            widget_id,
            params: export_params,
@@ -184,7 +201,7 @@ defmodule TrifleApp.ExportController do
   end
 
   def dashboard_csv(conn, %{"id" => id} = params) do
-    with {:ok, export} <- fetch_series_for_export(id, params) do
+    with {:ok, export} <- fetch_series_for_export(conn.assigns.current_membership, id, params) do
       csv = SeriesExport.to_csv(export)
       filename = params["filename"] || default_filename("dashboard", id, ".csv")
 
@@ -208,7 +225,7 @@ defmodule TrifleApp.ExportController do
   end
 
   def dashboard_json(conn, %{"id" => id} = params) do
-    with {:ok, export} <- fetch_series_for_export(id, params) do
+    with {:ok, export} <- fetch_series_for_export(conn.assigns.current_membership, id, params) do
       json = SeriesExport.to_json(export)
       filename = params["filename"] || default_filename("dashboard", id, ".json")
 
@@ -402,8 +419,20 @@ defmodule TrifleApp.ExportController do
     end
   end
 
-  defp fetch_series_for_export(dashboard_id, params) do
-    dashboard = Organizations.get_dashboard!(dashboard_id)
+  defp require_membership(conn, _opts) do
+    case conn.assigns[:current_membership] do
+      %Organizations.OrganizationMembership{} ->
+        conn
+
+      _ ->
+        conn
+        |> send_resp(404, "Dashboard not found")
+        |> halt()
+    end
+  end
+
+  defp fetch_series_for_export(membership, dashboard_id, params) do
+    dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
 
     with {:ok, source} <- Organizations.resolve_dashboard_source(dashboard) do
       config = Source.stats_config(source)
@@ -432,6 +461,7 @@ defmodule TrifleApp.ExportController do
     end
   rescue
     e in NoResultsError -> {:error, e}
+    _e in Ecto.Query.CastError -> {:error, %NoResultsError{}}
   end
 
   defp resolved_key_from_params(dashboard, params) do
@@ -544,6 +574,9 @@ defmodule TrifleApp.ExportController do
 
   defp dashboard_error_message(:chrome_not_found), do: "Chrome binary not found"
 
+  defp dashboard_error_message(:export_busy),
+    do: "Too many exports are running right now. Please try again in a moment."
+
   defp dashboard_error_message({:error, reason}),
     do: "Dashboard export failed: #{inspect(reason)}"
 
@@ -559,9 +592,14 @@ defmodule TrifleApp.ExportController do
     do: "Monitor source is inactive and cannot be used"
 
   defp monitor_error_message(:chrome_not_found), do: "Chrome binary not found"
+
+  defp monitor_error_message(:export_busy),
+    do: "Too many exports are running right now. Please try again in a moment."
+
   defp monitor_error_message({:error, reason}), do: "Monitor export failed: #{inspect(reason)}"
   defp monitor_error_message(reason), do: "Monitor export failed: #{inspect(reason)}"
 
+  defp widget_error_message(%NoResultsError{}), do: "Dashboard not found"
   defp widget_error_message(:widget_not_found), do: "Widget not found"
   defp widget_error_message(:no_widgets), do: "Widget not found"
   defp widget_error_message(:source_not_configured), do: "Dashboard source is not configured"
@@ -571,12 +609,18 @@ defmodule TrifleApp.ExportController do
     do: "Dashboard source is inactive and cannot be used"
 
   defp widget_error_message(:chrome_not_found), do: "Chrome binary not found"
+
+  defp widget_error_message(:export_busy),
+    do: "Too many exports are running right now. Please try again in a moment."
+
   defp widget_error_message({:error, reason}), do: "Widget export failed: #{inspect(reason)}"
   defp widget_error_message(reason), do: "Widget export failed: #{inspect(reason)}"
 
+  defp error_status(%NoResultsError{}), do: 404
   defp error_status({:error, _}), do: 500
   defp error_status({:source_inactive, _reason}), do: 403
   defp error_status(:chrome_not_found), do: 500
+  defp error_status(:export_busy), do: 503
   defp error_status(:source_not_found), do: 404
   defp error_status(:no_widgets), do: 400
   defp error_status(:no_data), do: 400

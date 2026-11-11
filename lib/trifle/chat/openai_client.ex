@@ -55,7 +55,12 @@ defmodule Trifle.Chat.OpenAIClient do
         {:ok, response}
 
       {:ok, %Finch.Response{status: status, body: response_body}} ->
-        Logger.error("OpenAI request failed with status #{status}: #{response_body}")
+        # The body can echo parts of the prompt (customer data); log only the
+        # provider's error type and a short message.
+        Logger.error(
+          "OpenAI request failed with status #{status}: #{error_summary(response_body)}"
+        )
+
         {:error, {:http_error, status, response_body}}
 
       {:error, reason} ->
@@ -115,4 +120,18 @@ defmodule Trifle.Chat.OpenAIClient do
   end
 
   defp get_config_value(_config, _key, default), do: default
+
+  defp error_summary(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, %{"error" => %{} = error}} ->
+        type = error["type"] || error["code"] || "error"
+        message = error["message"] |> to_string() |> String.slice(0, 200)
+        "#{type}: #{message}"
+
+      _ ->
+        "unparseable error body (#{byte_size(body)} bytes)"
+    end
+  end
+
+  defp error_summary(_body), do: "no error body"
 end

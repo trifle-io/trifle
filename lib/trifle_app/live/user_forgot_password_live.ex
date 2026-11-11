@@ -70,19 +70,33 @@ defmodule TrifleApp.UserForgotPasswordLive do
   end
 
   def handle_event("send_email", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_user_reset_password_instructions(
-        user,
-        &url(~p"/users/reset_password/#{&1}")
-      )
+    case Trifle.RateLimit.check_all([
+           {:email_send, {:ip, socket.assigns[:client_ip]}},
+           {:email_send, email}
+         ]) do
+      :ok ->
+        if user = Accounts.get_user_by_email(email) do
+          Accounts.deliver_user_reset_password_instructions(
+            user,
+            &url(~p"/users/reset_password/#{&1}")
+          )
+        end
+
+        info =
+          "If your email is in our system, you will receive instructions to reset your password shortly."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, info)
+         |> redirect(to: ~p"/")}
+
+      {:error, {:rate_limited, retry_after_ms}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Too many attempts. Try again in #{Trifle.RateLimit.retry_after_text(retry_after_ms)}."
+         )}
     end
-
-    info =
-      "If your email is in our system, you will receive instructions to reset your password shortly."
-
-    {:noreply,
-     socket
-     |> put_flash(:info, info)
-     |> redirect(to: ~p"/")}
   end
 end

@@ -1,5 +1,11 @@
 defmodule Trifle.Organizations.TokenCache do
-  @moduledoc false
+  @moduledoc """
+  Node-local cache of authenticated organization API tokens.
+
+  Every API request authenticates through this cache, so reads and writes go
+  straight to a public ETS table from the calling process. The GenServer only
+  owns the table, evicts expired rows and relays invalidations to other nodes.
+  """
 
   use GenServer
 
@@ -16,18 +22,46 @@ defmodule Trifle.Organizations.TokenCache do
   end
 
   def get(token_hash) when is_binary(token_hash) do
-    GenServer.call(__MODULE__, {:get, token_hash})
+    now = System.system_time(:millisecond)
+
+    case :ets.lookup(@table, token_hash) do
+      [{^token_hash, payload, expires_at}] when expires_at > now ->
+        {:ok, payload}
+
+      [{^token_hash, _payload, _expires_at}] ->
+        :ets.delete(@table, token_hash)
+        :error
+
+      _ ->
+        :error
+    end
+  rescue
+    # Table not created yet (cache process not started): behave as a miss.
+    ArgumentError -> :error
   end
 
   def put(token_hash, payload, ttl_ms)
       when is_binary(token_hash) and is_integer(ttl_ms) and ttl_ms > 0 do
-    GenServer.call(__MODULE__, {:put, token_hash, payload, ttl_ms})
+    expires_at = System.system_time(:millisecond) + ttl_ms
+    :ets.insert(@table, {token_hash, payload, expires_at})
     :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   def invalidate(token_hash) when is_binary(token_hash) do
+    # Drop the local entry before returning, so a read right after an update never
+    # sees the stale token; the cast only relays the invalidation to other nodes.
+    delete_local(token_hash)
     GenServer.cast(__MODULE__, {:invalidate, token_hash})
     :ok
+  end
+
+  defp delete_local(token_hash) do
+    :ets.delete(@table, token_hash)
+    :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   @impl true
@@ -35,7 +69,13 @@ defmodule Trifle.Organizations.TokenCache do
     table =
       case :ets.whereis(@table) do
         :undefined ->
-          :ets.new(@table, [:set, :private, :named_table, read_concurrency: true])
+          :ets.new(@table, [
+            :set,
+            :public,
+            :named_table,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
 
         existing ->
           existing
@@ -46,34 +86,6 @@ defmodule Trifle.Organizations.TokenCache do
     Process.send_after(self(), :evict, @eviction_interval_ms)
 
     {:ok, Map.put(state, :table, table)}
-  end
-
-  @impl true
-  def handle_call({:get, token_hash}, _from, %{table: table} = state)
-      when is_binary(token_hash) do
-    now = System.system_time(:millisecond)
-
-    result =
-      case :ets.lookup(table, token_hash) do
-        [{^token_hash, payload, expires_at}] when expires_at > now ->
-          {:ok, payload}
-
-        [{^token_hash, _payload, _expires_at}] ->
-          :ets.delete(table, token_hash)
-          :error
-
-        _ ->
-          :error
-      end
-
-    {:reply, result, state}
-  end
-
-  def handle_call({:put, token_hash, payload, ttl_ms}, _from, %{table: table} = state)
-      when is_binary(token_hash) and is_integer(ttl_ms) and ttl_ms > 0 do
-    expires_at = System.system_time(:millisecond) + ttl_ms
-    :ets.insert(table, {token_hash, payload, expires_at})
-    {:reply, :ok, state}
   end
 
   @impl true

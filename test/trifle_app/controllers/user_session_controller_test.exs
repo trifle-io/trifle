@@ -72,19 +72,18 @@ defmodule TrifleApp.UserSessionControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Account created successfully"
     end
 
-    test "login following password update", %{conn: conn, user: user} do
+    # The password-change flow no longer signs in through this action; it has its
+    # own endpoint (see TrifleApp.PasswordChangeTest). A leftover "_action" value
+    # is treated as an ordinary sign-in.
+    test "an unknown _action is an ordinary sign-in", %{conn: conn, user: user} do
       conn =
-        conn
-        |> post(~p"/users/log_in", %{
+        post(conn, ~p"/users/log_in", %{
           "_action" => "password_updated",
-          "user" => %{
-            "email" => user.email,
-            "password" => valid_user_password()
-          }
+          "user" => %{"email" => user.email, "password" => valid_user_password()}
         })
 
-      assert redirected_to(conn) == ~p"/users/settings"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Password updated successfully"
+      assert get_session(conn, :user_token)
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Welcome back"
     end
 
     test "redirects to login page with invalid credentials", %{conn: conn} do

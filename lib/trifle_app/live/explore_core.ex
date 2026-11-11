@@ -1587,7 +1587,9 @@ defmodule TrifleApp.ExploreCore do
       "" -> nil
       "database" -> :database
       "project" -> :project
-      other -> String.to_atom(other)
+      # Only these two source types exist. Never mint atoms from request input:
+      # atoms are not garbage collected.
+      _other -> nil
     end
   rescue
     ArgumentError -> nil
@@ -2016,6 +2018,7 @@ defmodule TrifleApp.ExploreCore do
                       placeholder="Search keys..."
                       value={@key_search_filter}
                       phx-keyup="filter_keys"
+                      phx-debounce="200"
                       class="block w-64 rounded-md border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-xs !pl-9"
                     />
                     <div class="absolute inset-y-0 left-2 flex items-center">

@@ -33,7 +33,6 @@ defmodule Trifle.Organizations.Project do
     belongs_to :organization, Trifle.Organizations.Organization
     belongs_to :project_cluster, Trifle.Organizations.ProjectCluster
     belongs_to :user, Trifle.Accounts.User
-    has_many :project_tokens, Trifle.Organizations.ProjectToken
 
     timestamps()
   end

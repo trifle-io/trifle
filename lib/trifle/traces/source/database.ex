@@ -203,7 +203,27 @@ defmodule Trifle.Traces.Source.Database do
     end
   end
 
+  # A tenant's S3 endpoint must be a public host unless it is reached through a
+  # Tailscale network connection (routed by the gateway) or the database is one
+  # the platform manages itself.
+  defp guard_trace_endpoint!(%Database{managed_key: key}, _endpoint) when is_binary(key), do: :ok
+
+  defp guard_trace_endpoint!(%Database{trace_network_connection_id: id}, _endpoint)
+       when not is_nil(id),
+       do: :ok
+
+  defp guard_trace_endpoint!(%Database{}, endpoint) when is_binary(endpoint) do
+    case Trifle.Networking.HostGuard.check(URI.parse(endpoint).host) do
+      :ok -> :ok
+      {:error, _reason} -> raise "Trace storage endpoint is not reachable from here"
+    end
+  end
+
+  defp guard_trace_endpoint!(%Database{}, _endpoint), do: :ok
+
   defp s3_driver_options(%Database{} = database, config) do
+    guard_trace_endpoint!(database, config["data_endpoint"])
+
     client =
       Trifle.Observability.s3_client_options(
         endpoint: config["data_endpoint"],

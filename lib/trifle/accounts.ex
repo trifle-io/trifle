@@ -119,10 +119,69 @@ defmodule Trifle.Accounts do
     if user.confirmed_at do
       {:ok, user}
     else
-      user
-      |> User.confirm_changeset()
-      |> Repo.update()
+      # Nobody has proven they own this address until now. Whoever registered the
+      # account may not be the person signing in with SSO, so their password,
+      # sessions and API tokens must not survive the hand-over.
+      with {:ok, user} <- user |> User.confirm_changeset() |> Repo.update() do
+        revoke_all_credentials(user)
+      end
     end
+  end
+
+  @doc """
+  Makes every existing way into the account unusable: replaces the password with
+  a random one, deletes sessions and email tokens, and revokes API tokens.
+  """
+  def revoke_all_credentials(%User{} = user) do
+    random_password =
+      @sso_generated_password_length
+      |> :crypto.strong_rand_bytes()
+      |> Base.url_encode64(padding: false)
+
+    result =
+      user
+      |> Ecto.Changeset.change(hashed_password: Bcrypt.hash_pwd_salt(random_password))
+      |> Repo.update()
+
+    with {:ok, user} <- result do
+      disconnect_user_sessions(user.id)
+      Repo.delete_all(UserToken.user_and_contexts_query(user, :all))
+      Repo.delete_all(from(t in UserApiToken, where: t.user_id == ^user.id))
+      Trifle.Organizations.revoke_organization_api_tokens_for_user(user.id)
+      {:ok, user}
+    end
+  end
+
+  @doc """
+  Forces the user's open LiveView sessions to reconnect, so they remount with
+  current membership and permissions. Does not log anyone out.
+  """
+  def disconnect_user_sessions(user_id) do
+    user_id |> session_topics() |> disconnect_sessions()
+  end
+
+  defp session_topics(user_id) do
+    from(t in UserToken, where: t.user_id == ^user_id and t.context == "session", select: t.token)
+    |> Repo.all()
+    |> Enum.map(&session_topic/1)
+  end
+
+  defp session_topic(token) when is_binary(token),
+    do: "users_sessions:#{Base.url_encode64(token)}"
+
+  defp disconnect_sessions(topics) do
+    Enum.each(topics, &TrifleWeb.Endpoint.broadcast(&1, "disconnect", %{}))
+    :ok
+  end
+
+  # A password change or reset ends every password-derived session: browser
+  # sessions (deleted by the callers), personal API tokens and CLI logins
+  # (organization tokens with the manage capability). Data tokens used by
+  # services keep working.
+  defp revoke_password_derived_tokens(%User{} = user) do
+    Repo.delete_all(from(t in UserApiToken, where: t.user_id == ^user.id))
+    Trifle.Organizations.revoke_organization_api_tokens_for_user(user.id, only_managing: true)
+    :ok
   end
 
   defp create_user_for_sso(email, name) do
@@ -296,6 +355,17 @@ defmodule Trifle.Accounts do
   end
 
   @doc """
+  Checks a password change without applying it: the new password's rules and the
+  current password. Returns the changeset; `valid?` tells whether
+  `update_user_password/3` would succeed.
+  """
+  def validate_user_password_change(user, current_password, attrs) do
+    user
+    |> User.password_changeset(attrs, hash_password: false)
+    |> User.validate_current_password(current_password)
+  end
+
+  @doc """
   Updates the user password.
 
   ## Examples
@@ -308,6 +378,14 @@ defmodule Trifle.Accounts do
 
   """
   def update_user_password(user, password, attrs) do
+    # Captured before the session rows are deleted: open LiveViews are addressed
+    # by their session token and must be told to disconnect, otherwise a page
+    # that was already open would stay authenticated after the password change.
+    # Every session is disconnected, including the one making the change: the
+    # change is performed by an HTTP request (UserSessionController), which
+    # issues that browser a fresh session in the same response.
+    session_topics = session_topics(user.id)
+
     changeset =
       user
       |> User.password_changeset(attrs)
@@ -318,8 +396,13 @@ defmodule Trifle.Accounts do
     |> Ecto.Multi.delete_all(:tokens, UserToken.user_and_contexts_query(user, :all))
     |> Repo.transaction()
     |> case do
-      {:ok, %{user: user}} -> {:ok, user}
-      {:error, :user, changeset, _} -> {:error, changeset}
+      {:ok, %{user: user}} ->
+        disconnect_sessions(session_topics)
+        revoke_password_derived_tokens(user)
+        {:ok, user}
+
+      {:error, :user, changeset, _} ->
+        {:error, changeset}
     end
   end
 
@@ -578,13 +661,23 @@ defmodule Trifle.Accounts do
 
   """
   def reset_user_password(user, attrs) do
+    # Captured before the session rows are deleted: open LiveViews are addressed
+    # by their session token and must be told to disconnect, otherwise a page
+    # that was already open would stay authenticated after the password change.
+    session_topics = session_topics(user.id)
+
     Ecto.Multi.new()
     |> Ecto.Multi.update(:user, User.password_changeset(user, attrs))
     |> Ecto.Multi.delete_all(:tokens, UserToken.user_and_contexts_query(user, :all))
     |> Repo.transaction()
     |> case do
-      {:ok, %{user: user}} -> {:ok, user}
-      {:error, :user, changeset, _} -> {:error, changeset}
+      {:ok, %{user: user}} ->
+        disconnect_sessions(session_topics)
+        revoke_password_derived_tokens(user)
+        {:ok, user}
+
+      {:error, :user, changeset, _} ->
+        {:error, changeset}
     end
   end
 

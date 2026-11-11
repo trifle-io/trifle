@@ -54,7 +54,9 @@ defmodule TrifleApp.DashboardLive do
     dashboard = Organizations.get_dashboard_for_membership!(membership, dashboard_id)
     current_user = socket.assigns.current_user
 
-    if current_user do
+    # mount/3 runs for the static render and again when the socket connects; count
+    # the visit once.
+    if current_user && connected?(socket) do
       Organizations.record_dashboard_visit(current_user, membership, dashboard)
     end
 
@@ -2931,7 +2933,7 @@ defmodule TrifleApp.DashboardLive do
   end
 
   def handle_async(:dashboard_data_task, {:exit, reason}, socket) do
-    IO.inspect(reason, label: "Dashboard data fetch failed")
+    Logger.error("Dashboard data fetch failed: #{inspect(reason)}")
     {:noreply, assign(socket, loading: false)}
   end
 
@@ -3060,8 +3062,6 @@ defmodule TrifleApp.DashboardLive do
           transponder_errors: transponder_errors
         }
 
-        # Debug logging to help troubleshoot
-        IO.inspect(result, label: "Dashboard summary stats")
         result
 
       %{dashboard: %{key: _key}, resolved_key: resolved_key}
@@ -3077,22 +3077,9 @@ defmodule TrifleApp.DashboardLive do
           transponder_errors: []
         }
 
-        IO.inspect(result, label: "Dashboard summary stats (no data)")
         result
 
-      assigns ->
-        IO.inspect(
-          %{
-            has_dashboard: Map.has_key?(assigns, :dashboard),
-            dashboard_key: assigns[:dashboard][:key],
-            resolved_key: Map.get(assigns, :resolved_key),
-            has_stats: Map.has_key?(assigns, :stats),
-            stats_nil: is_nil(assigns[:stats]),
-            has_transponder_results: Map.has_key?(assigns, :transponder_results)
-          },
-          label: "Dashboard summary stats conditions"
-        )
-
+      _assigns ->
         nil
     end
   end
@@ -3386,7 +3373,9 @@ defmodule TrifleApp.DashboardLive do
       "" -> nil
       "database" -> :database
       "project" -> :project
-      other -> String.to_atom(other)
+      # Only these two source types exist. Never mint atoms from request input:
+      # atoms are not garbage collected.
+      _other -> nil
     end
   rescue
     ArgumentError -> nil

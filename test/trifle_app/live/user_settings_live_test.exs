@@ -94,7 +94,6 @@ defmodule TrifleApp.UserSettingsLiveTest do
       form =
         form(lv, "#password_form", %{
           "user" => %{
-            "email" => user.email,
             "password" => new_password,
             "password_confirmation" => new_password,
             "current_password" => password

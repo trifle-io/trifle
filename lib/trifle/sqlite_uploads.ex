@@ -95,14 +95,153 @@ defmodule Trifle.SqliteUploads do
 
   def delete_managed_file(_), do: :ok
 
-  def delete_managed_upload(path, config \\ %{}) do
-    remote_result = maybe_delete_remote_object(config)
-    local_result = delete_managed_file(path)
+  @doc """
+  Deletes a managed SQLite upload (remote object + local file).
+
+  When `organization_id` is given, nothing outside that organization's storage is
+  touched: a path or object key that belongs to another organization is skipped.
+  """
+  def delete_managed_upload(path, config \\ %{}, organization_id \\ nil) do
+    remote_result =
+      if object_key_allowed?(config, organization_id),
+        do: maybe_delete_remote_object(config),
+        else: :ok
+
+    local_result =
+      if is_nil(organization_id) or organization_path?(path, organization_id),
+        do: delete_managed_file(path),
+        else: :ok
 
     case {remote_result, local_result} do
       {{:error, remote_reason}, _} -> {:error, remote_reason}
       {_, {:error, local_reason}} -> {:error, local_reason}
       _ -> :ok
+    end
+  end
+
+  @doc """
+  Scopes a user-supplied SQLite `file_path` to the organization's own storage.
+
+  Tenants must never choose where on the server a SQLite file is opened or
+  created. A path that already lives inside the organization's managed folder
+  (an upload or a cached object) is kept; anything else is re-rooted below
+  `<upload_root>/organization_<id>/sqlite/manual/`, dropping `.`/`..` segments,
+  so `/etc/app.sqlite` becomes `.../organization_<id>/sqlite/manual/etc/app.sqlite`.
+  """
+  def scope_file_path(":memory:", _organization_id), do: {:ok, ":memory:"}
+
+  def scope_file_path(path, organization_id) when is_binary(path) do
+    with {:ok, organization_id} <- validate_organization_id(organization_id) do
+      trimmed = String.trim(path)
+
+      cond do
+        trimmed == "" ->
+          {:error, "SQLite file path can't be blank"}
+
+        String.contains?(trimmed, <<0>>) ->
+          {:error, "SQLite file path is invalid"}
+
+        organization_path?(trimmed, organization_id) ->
+          {:ok, Path.expand(trimmed)}
+
+        true ->
+          segments =
+            ~r{[\\/]+}
+            |> Regex.split(trimmed, trim: true)
+            |> Enum.reject(&(&1 in ["", ".", ".."]))
+
+          case segments do
+            [] ->
+              {:error, "SQLite file path is invalid"}
+
+            segments ->
+              {:ok,
+               Path.join([
+                 Path.expand(Trifle.Config.sqlite_upload_root()),
+                 organization_segment(organization_id),
+                 "sqlite",
+                 "manual" | segments
+               ])}
+          end
+      end
+    end
+  end
+
+  def scope_file_path(_path, _organization_id), do: {:error, "SQLite file path is invalid"}
+
+  @doc """
+  True when `path` is inside one of the managed roots *and* inside the folder of
+  the given organization (the first `organization_*` segment below the root).
+  """
+  def organization_path?(path, organization_id)
+      when is_binary(path) and path != "" and is_binary(organization_id) do
+    expanded_path = Path.expand(path)
+
+    Enum.any?(managed_roots(), fn root ->
+      path_under_root?(expanded_path, root) and
+        expanded_path
+        |> Path.relative_to(root)
+        |> Path.split()
+        |> owning_organization_segment() == organization_segment(organization_id)
+    end)
+  end
+
+  def organization_path?(_path, _organization_id), do: false
+
+  @doc """
+  True when the object key is stored under the given organization's prefix.
+  """
+  def organization_object_key?(object_key, organization_id)
+      when is_binary(object_key) and is_binary(organization_id) do
+    segments = Regex.split(~r{[\\/]+}, object_key, trim: true)
+
+    not Enum.any?(segments, &(&1 in [".", ".."])) and
+      owning_organization_segment(segments) == organization_segment(organization_id)
+  end
+
+  def organization_object_key?(_object_key, _organization_id), do: false
+
+  defp organization_segment(organization_id), do: "organization_#{organization_id}"
+
+  defp owning_organization_segment(segments) do
+    Enum.find(segments, &String.starts_with?(&1, "organization_"))
+  end
+
+  defp object_key_allowed?(_config, nil), do: true
+
+  defp object_key_allowed?(config, organization_id) do
+    case extract_storage_metadata(normalize_map(config)) do
+      %{"object_key" => object_key} when is_binary(object_key) and object_key != "" ->
+        organization_object_key?(object_key, organization_id)
+
+      _ ->
+        true
+    end
+  end
+
+  # Defense in depth for rows written before paths were scoped on save: in a
+  # multi-tenant deployment a database may only open files/objects that belong to
+  # its own organization. Self-hosted installs keep operator-chosen paths working.
+  defp authorize_database_storage(database, path, storage_metadata) do
+    organization_id = fetch_key(database, :organization_id)
+
+    cond do
+      not Trifle.Config.saas_mode?() ->
+        :ok
+
+      not is_binary(organization_id) ->
+        :ok
+
+      match?(%{"backend" => "s3", "object_key" => key} when is_binary(key), storage_metadata) ->
+        if organization_object_key?(storage_metadata["object_key"], organization_id),
+          do: :ok,
+          else: {:error, "SQLite file is outside this organization's storage"}
+
+      organization_path?(path, organization_id) ->
+        :ok
+
+      true ->
+        {:error, "SQLite file is outside this organization's storage"}
     end
   end
 
@@ -114,14 +253,16 @@ defmodule Trifle.SqliteUploads do
       path when is_binary(path) and path != "" ->
         storage_metadata = database |> database_config() |> extract_storage_metadata()
 
-        case storage_metadata do
-          %{"backend" => "s3", "object_key" => object_key} when is_binary(object_key) ->
-            ensure_cached_object(object_key, storage_metadata)
+        with :ok <- authorize_database_storage(database, path, storage_metadata) do
+          case storage_metadata do
+            %{"backend" => "s3", "object_key" => object_key} when is_binary(object_key) ->
+              ensure_cached_object(object_key, storage_metadata)
 
-          _ ->
-            with :ok <- ensure_parent_directory(path) do
-              {:ok, path}
-            end
+            _ ->
+              with :ok <- ensure_parent_directory(path) do
+                {:ok, path}
+              end
+          end
         end
 
       _ ->

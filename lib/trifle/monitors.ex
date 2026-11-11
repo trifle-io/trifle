@@ -162,7 +162,8 @@ defmodule Trifle.Monitors do
 
     monitor = %Monitor{organization_id: membership.organization_id}
 
-    with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor) do
+    with {:ok, attrs} <- ensure_source_reference(attrs, membership, monitor),
+         :ok <- ensure_dashboard_in_organization(attrs, membership, monitor) do
       monitor
       |> Monitor.changeset(stringify_keys(attrs))
       |> Repo.insert()
@@ -186,9 +187,15 @@ defmodule Trifle.Monitors do
 
       true ->
         can_manage? = can_manage_monitor?(monitor, membership)
-        attrs = normalize_monitor_attrs(attrs)
+
+        # A monitor never changes organization; ignore any attempt to move it.
+        attrs =
+          attrs
+          |> normalize_monitor_attrs()
+          |> Map.drop([:organization_id, "organization_id"])
 
         with {:ok, attrs} <- maybe_ensure_source_reference(attrs, membership, monitor),
+             :ok <- ensure_dashboard_in_organization(attrs, membership, monitor),
              {:ok, sanitized_attrs} <- sanitize_monitor_update_attrs(attrs, can_manage?) do
           monitor
           |> Monitor.changeset(stringify_keys(sanitized_attrs))
@@ -814,6 +821,28 @@ defmodule Trifle.Monitors do
 
       {:error, message} ->
         {:error, source_error_changeset(monitor, attrs, message)}
+    end
+  end
+
+  # A monitor may only be linked to a dashboard of its own organization, however
+  # its source was chosen.
+  defp ensure_dashboard_in_organization(attrs, %OrganizationMembership{} = membership, monitor) do
+    case fetch_attr(attrs, :dashboard_id) do
+      id when is_binary(id) and id != "" ->
+        with {:ok, uuid} <- Ecto.UUID.cast(id),
+             true <-
+               Repo.exists?(
+                 from(d in Trifle.Organizations.Dashboard,
+                   where: d.id == ^uuid and d.organization_id == ^membership.organization_id
+                 )
+               ) do
+          :ok
+        else
+          _ -> {:error, source_error_changeset(monitor, attrs, "Dashboard could not be found")}
+        end
+
+      _ ->
+        :ok
     end
   end
 

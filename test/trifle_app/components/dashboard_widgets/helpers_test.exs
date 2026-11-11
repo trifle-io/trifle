@@ -233,4 +233,33 @@ defmodule TrifleApp.Components.DashboardWidgets.HelpersTest do
     assert String.contains?(sanitized, "Hello world")
     refute String.contains?(sanitized, "<img")
   end
+
+  test "escapes unterminated tags so the surrounding markup cannot complete them" do
+    for html <- [
+          "<img src=x onerror=alert(1)//",
+          "<p>ok</p><svg onload=alert(1)",
+          "<<img src=x onerror=alert(1)>",
+          "<scr<b>ipt>alert(1)</scr</b>ipt>",
+          "text <a href=\"https://example.com\" onmouseover=alert(1)"
+        ] do
+      sanitized = Helpers.sanitize_text_widget_html(html)
+
+      # Every "<" left in the output must start a tag emitted by the sanitizer.
+      stray =
+        ~r/<(?!\/?(?:[a-z0-9]+)(?:\s[^<>]*)?>)/
+        |> Regex.scan(sanitized)
+
+      assert stray == [], "stray < in #{inspect(sanitized)} (from #{inspect(html)})"
+      refute sanitized =~ ~r/<[^>]*\bon[a-z]+\s*=/i
+      refute String.contains?(sanitized, "<img")
+      refute String.contains?(sanitized, "<svg")
+      refute String.contains?(sanitized, "<script")
+    end
+  end
+
+  test "keeps allowed markup and plain comparisons readable" do
+    sanitized = Helpers.sanitize_text_widget_html("<p>a < b and <strong>c</strong></p>")
+
+    assert sanitized == "<p>a &lt; b and <strong>c</strong></p>"
+  end
 end

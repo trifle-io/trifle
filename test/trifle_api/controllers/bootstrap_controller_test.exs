@@ -106,7 +106,8 @@ defmodule TrifleApi.BootstrapControllerTest do
       {:ok, _token_record, user_token} =
         Organizations.create_organization_api_token(user, %{
           name: "Bootstrap",
-          organization_id: organization.id
+          organization_id: organization.id,
+          permissions: %{"manage" => true}
         })
 
       {:ok, organization: organization, user_token: user_token}
@@ -313,7 +314,8 @@ defmodule TrifleApi.BootstrapControllerTest do
         {:ok, _token_record, member_token} =
           Organizations.create_organization_api_token(member, %{
             name: "Member bootstrap",
-            organization_id: organization.id
+            organization_id: organization.id,
+            permissions: %{"manage" => true}
           })
 
         conn =
@@ -564,6 +566,119 @@ defmodule TrifleApi.BootstrapControllerTest do
     end
   end
 
+  describe "tokens without the manage permission" do
+    setup %{user: user} do
+      {:ok, organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Scoped Inc"}, user)
+
+      app_entitlement_fixture(organization)
+
+      # Created by an owner, with full data access, but not a management token.
+      {:ok, token_record, ingest_token} =
+        Organizations.create_organization_api_token(user, %{
+          name: "Ingest",
+          organization_id: organization.id,
+          permissions: %{"wildcard" => %{"read" => true, "write" => true}}
+        })
+
+      {:ok, organization: organization, ingest_token: ingest_token, token_record: token_record}
+    end
+
+    test "cannot list, mint, widen or delete tokens", %{
+      conn: conn,
+      ingest_token: ingest_token,
+      token_record: token_record
+    } do
+      requests = [
+        fn c -> get(c, ~p"/api/v1/bootstrap/tokens") end,
+        fn c ->
+          post(c, ~p"/api/v1/bootstrap/tokens", %{
+            "name" => "Escalated",
+            "wildcard_read" => true,
+            "wildcard_write" => true,
+            "manage" => true
+          })
+        end,
+        fn c -> put(c, ~p"/api/v1/bootstrap/tokens/#{token_record.id}", %{"manage" => true}) end,
+        fn c -> delete(c, ~p"/api/v1/bootstrap/tokens/#{token_record.id}") end,
+        fn c -> get(c, ~p"/api/v1/bootstrap/sources") end,
+        fn c -> post(c, ~p"/api/v1/bootstrap/databases", %{"display_name" => "x"}) end
+      ]
+
+      for request <- requests do
+        response = conn |> auth_user_conn(ingest_token) |> request.()
+        assert %{"errors" => %{"detail" => detail}} = json_response(response, 403)
+        assert detail =~ "cannot manage"
+      end
+
+      refute Organizations.token_can_manage?(Repo.get!(OrganizationApiToken, token_record.id))
+    end
+
+    test "can still read its own identity", %{conn: conn, ingest_token: ingest_token} do
+      conn = conn |> auth_user_conn(ingest_token) |> get(~p"/api/v1/bootstrap/me")
+      assert %{"data" => %{"user" => _}} = json_response(conn, 200)
+    end
+  end
+
+  describe "manage permission lifecycle" do
+    test "login issues a managing token; tokens it creates are data-only unless asked", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, organization, _membership} =
+        Organizations.create_organization_with_owner(%{name: "Lifecycle Inc"}, user)
+
+      app_entitlement_fixture(organization)
+
+      login_conn =
+        post(conn, ~p"/api/v1/bootstrap/login", %{
+          "email" => user.email,
+          "password" => Trifle.AccountsFixtures.valid_user_password()
+        })
+
+      assert %{"data" => %{"token" => %{"value" => login_token}}} = json_response(login_conn, 201)
+      assert {:ok, %{token: login_record}} = Organizations.get_api_token_auth(login_token)
+      assert Organizations.token_can_manage?(login_record)
+
+      plain_conn =
+        build_conn()
+        |> api_conn()
+        |> auth_user_conn(login_token)
+        |> post(~p"/api/v1/bootstrap/tokens", %{"name" => "Plain", "wildcard_read" => true})
+
+      assert %{"data" => %{"token" => %{"permissions" => plain_permissions, "id" => plain_id}}} =
+               json_response(plain_conn, 201)
+
+      assert plain_permissions["manage"] == false
+
+      managing_conn =
+        build_conn()
+        |> api_conn()
+        |> auth_user_conn(login_token)
+        |> post(~p"/api/v1/bootstrap/tokens", %{"name" => "Second CLI", "manage" => true})
+
+      assert %{"data" => %{"token" => %{"permissions" => %{"manage" => true}}}} =
+               json_response(managing_conn, 201)
+
+      # Editing only data access must not flip the management capability either way.
+      update_conn =
+        build_conn()
+        |> api_conn()
+        |> auth_user_conn(login_token)
+        |> put(~p"/api/v1/bootstrap/tokens/#{plain_id}", %{"wildcard_write" => true})
+
+      assert %{"data" => %{"token" => %{"permissions" => %{"manage" => false}}}} =
+               json_response(update_conn, 200)
+
+      {:ok, _} =
+        Organizations.update_organization_api_token(login_record, %{
+          permissions: %{"wildcard" => %{"read" => true, "write" => false}}
+        })
+
+      assert Organizations.token_can_manage?(Repo.get!(OrganizationApiToken, login_record.id))
+    end
+  end
+
   describe "authenticated bootstrap endpoints without membership" do
     test "POST /api/v1/bootstrap/organizations creates organization for users without membership",
          %{
@@ -597,7 +712,8 @@ defmodule TrifleApi.BootstrapControllerTest do
       {:ok, _token_record, user_token} =
         Organizations.create_organization_api_token(user, %{
           name: "Bootstrap",
-          organization_id: organization.id
+          organization_id: organization.id,
+          permissions: %{"manage" => true}
         })
 
       {:ok, organization: organization, user_token: user_token}

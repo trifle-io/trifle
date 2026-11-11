@@ -87,7 +87,16 @@ defmodule TrifleApp.Exporters.ChromeExporter do
   # Public helper to obtain Chrome path for debug flows
   def chrome_path, do: find_chrome_binary()
 
-  defp export_layout(:pdf, layout, opts) do
+  # Take an export slot first, then build and sign the layout URL. The signed URL
+  # is short-lived; signing it before queueing could let it expire while waiting
+  # for a slot, and the export would start against a dead link.
+  defp export_layout(kind, layout, opts) when kind in [:pdf, :png] do
+    TrifleApp.Exporters.ChromeLimiter.run(fn ->
+      do_export_layout(kind, layout, Keyword.put(opts, :limiter_held, true))
+    end)
+  end
+
+  defp do_export_layout(:pdf, layout, opts) do
     opts =
       Keyword.put_new(
         opts,
@@ -134,7 +143,7 @@ defmodule TrifleApp.Exporters.ChromeExporter do
     end
   end
 
-  defp export_layout(:png, layout, opts) do
+  defp do_export_layout(:png, layout, opts) do
     opts =
       Keyword.put_new(opts, :window_size, window_size_from_layout(layout, @default_window_size))
       |> maybe_put_widget_png_scale(layout)

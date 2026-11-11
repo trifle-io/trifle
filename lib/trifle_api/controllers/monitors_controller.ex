@@ -2,17 +2,31 @@ defmodule TrifleApi.MonitorsController do
   use TrifleApi, :controller
 
   alias Ecto.Multi
+  alias TrifleApi.TokenScope
   alias Ecto.NoResultsError
   alias Trifle.Monitors
   alias Trifle.Monitors.Monitor
   alias Trifle.Repo
   alias TrifleApi.AuthContext
 
-  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :any})
+  # Reads need a read grant, changes a write grant, on the source in the header...
+  plug(TrifleApi.Plugs.AuthenticateBySourceToken, %{mode: :read} when action in [:index, :show])
+
+  plug(
+    TrifleApi.Plugs.AuthenticateBySourceToken,
+    %{mode: :write} when action in [:create, :update, :delete]
+  )
+
+  # ...and each monitor is additionally checked against the token's grants for the
+  # source that monitor reads from (TokenScope).
 
   def index(conn, _params) do
     with {:ok, %{user: user, membership: membership}} <- AuthContext.resolve_membership(conn) do
-      monitors = Monitors.list_monitors_for_membership(user, membership)
+      monitors =
+        user
+        |> Monitors.list_monitors_for_membership(membership)
+        |> then(&TokenScope.filter(conn, &1, :read))
+
       render(conn, "index.json", monitors: monitors)
     else
       _ -> render_unauthorized(conn)
@@ -21,7 +35,8 @@ defmodule TrifleApi.MonitorsController do
 
   def show(conn, %{"id" => id}) do
     with {:ok, %{membership: membership}} <- AuthContext.resolve_membership(conn),
-         {:ok, monitor} <- fetch_monitor(membership, id) do
+         {:ok, monitor} <- fetch_monitor(membership, id),
+         :ok <- ensure_token_scope(conn, monitor, :read) do
       render(conn, "show.json", monitor: monitor)
     else
       {:error, :not_found} -> render_not_found(conn)
@@ -33,6 +48,8 @@ defmodule TrifleApi.MonitorsController do
   def create(conn, params) do
     with {:ok, %{user: user, membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, attrs, alerts} <- monitor_attrs(params),
+         attrs = TokenScope.put_default_source(conn, attrs),
+         :ok <- TokenScope.authorize_attrs(conn, attrs),
          {:ok, monitor} <- create_monitor_with_alerts(user, membership, attrs, alerts) do
       conn
       |> put_status(:created)
@@ -61,7 +78,9 @@ defmodule TrifleApi.MonitorsController do
   def update(conn, %{"id" => id} = params) do
     with {:ok, %{membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, monitor} <- fetch_monitor(membership, id),
+         :ok <- ensure_token_scope(conn, monitor, :write),
          {:ok, attrs, alerts} <- monitor_attrs(params),
+         :ok <- TokenScope.authorize_attrs(conn, attrs),
          {:ok, updated} <- update_monitor_with_alerts(monitor, membership, attrs, alerts) do
       render(conn, "show.json", monitor: updated)
     else
@@ -91,6 +110,7 @@ defmodule TrifleApi.MonitorsController do
   def delete(conn, %{"id" => id}) do
     with {:ok, %{membership: membership}} <- AuthContext.resolve_membership(conn),
          {:ok, monitor} <- fetch_monitor(membership, id),
+         :ok <- ensure_token_scope(conn, monitor, :write),
          {:ok, %Monitor{} = deleted} <-
            Monitors.delete_monitor_for_membership(monitor, membership) do
       render(conn, "show.json", monitor: deleted)
@@ -100,6 +120,11 @@ defmodule TrifleApi.MonitorsController do
       {:error, :forbidden} -> render_forbidden(conn)
       _ -> render_unauthorized(conn)
     end
+  end
+
+  # A monitor outside the token's sources is reported as missing.
+  defp ensure_token_scope(conn, monitor, mode) do
+    if TokenScope.permits_record?(conn, monitor, mode), do: :ok, else: {:error, :not_found}
   end
 
   defp fetch_monitor(membership, id) do

@@ -138,7 +138,18 @@ defmodule TrifleApp.UserRegistrationLive do
   def handle_event("save", %{"user" => user_params}, socket) do
     attrs = enforce_invitation_email(socket.assigns.invitation, user_params)
 
-    case Accounts.register_user(attrs) do
+    with :ok <- Trifle.RateLimit.check(:signup, {:ip, socket.assigns[:client_ip]}) do
+      Accounts.register_user(attrs)
+    end
+    |> case do
+      {:error, {:rate_limited, retry_after_ms}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Too many sign-up attempts. Try again in #{Trifle.RateLimit.retry_after_text(retry_after_ms)}."
+         )}
+
       {:ok, user} ->
         {:ok, _} =
           Accounts.deliver_user_confirmation_instructions(

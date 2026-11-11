@@ -35,6 +35,25 @@ defmodule Trifle.Cache do
     end
   end
 
+  @doc """
+  Reads a value written with `put/3`. Returns `{:ok, value}` or `:error` on a
+  miss (or when the cache is unavailable).
+  """
+  def get(key) do
+    case Cachex.get(@cache, key) do
+      {:ok, {:cached, value}} -> {:ok, value}
+      _other -> :error
+    end
+  end
+
+  @doc """
+  Stores `value` under `key` for `ttl_ms`. Failures are ignored.
+  """
+  def put(key, value, ttl_ms) when is_integer(ttl_ms) and ttl_ms > 0 do
+    _ = Cachex.put(@cache, key, {:cached, value}, expire: ttl_ms)
+    :ok
+  end
+
   def invalidate(key) do
     Cachex.del(@cache, key)
     :ok

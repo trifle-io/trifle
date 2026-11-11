@@ -191,7 +191,7 @@ defmodule TrifleApp.OrganizationUsersLive do
                           class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-500/10 dark:focus:ring-offset-slate-800"
                           phx-click="remove_member"
                           phx-value-id={member.id}
-                          data-confirm="Are you sure you want to remove this member?"
+                          data-confirm="Remove this member? They lose access immediately and any API tokens they created in this organization are revoked."
                           data-tooltip="Remove member"
                           aria-label="Remove member"
                         >
@@ -373,7 +373,22 @@ defmodule TrifleApp.OrganizationUsersLive do
         if is_binary(value), do: String.trim(value), else: value
       end)
 
-    case Organizations.create_invitation(organization, params, user) do
+    result =
+      if owner_change_allowed?(socket.assigns.current_membership, nil, params["role"]) do
+        Organizations.create_invitation(organization, params, user)
+      else
+        {:error, :owner_required}
+      end
+
+    case result do
+      {:error, :owner_required} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Only an organization owner can grant, change or remove the owner role."
+         )}
+
       {:ok, _invitation} ->
         {:noreply,
          socket
@@ -383,13 +398,22 @@ defmodule TrifleApp.OrganizationUsersLive do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :invitation_form, to_form(changeset))}
+
+      {:error, :seat_limit_reached} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Your plan's seat limit is reached (pending invitations count). Remove a member, cancel an invitation, or upgrade the plan to invite more people."
+         )}
     end
   end
 
   def handle_event("invite_member", _params, socket), do: {:noreply, socket}
 
   def handle_event("resend_invitation", %{"id" => invitation_id}, socket) do
-    with %OrganizationInvitation{} = invitation <-
+    with true <- socket.assigns.can_manage,
+         %OrganizationInvitation{} = invitation <-
            find_invitation(socket.assigns.pending_invitations, invitation_id),
          {:ok, _} <- Organizations.refresh_invitation(invitation) do
       {:noreply, refresh_pending_invitations(socket, "Invitation refreshed for another 3 days.")}
@@ -399,7 +423,8 @@ defmodule TrifleApp.OrganizationUsersLive do
   end
 
   def handle_event("cancel_invitation", %{"id" => invitation_id}, socket) do
-    with %OrganizationInvitation{} = invitation <-
+    with true <- socket.assigns.can_manage,
+         %OrganizationInvitation{} = invitation <-
            find_invitation(socket.assigns.pending_invitations, invitation_id),
          {:ok, _} <- Organizations.cancel_invitation(invitation) do
       {:noreply, refresh_pending_invitations(socket, "Invitation cancelled")}
@@ -421,6 +446,7 @@ defmodule TrifleApp.OrganizationUsersLive do
     with true <- socket.assigns.can_manage,
          {:ok, %OrganizationMembership{} = target} <- fetch_membership(organization, member_id),
          false <- target.id == current_membership.id and role != target.role,
+         :ok <- ensure_owner_change_allowed(current_membership, target.role, role),
          :ok <- ensure_owner_count_allows_role_change(members, target, role) do
       case Organizations.update_membership_role(target, role) do
         {:ok, _membership} ->
@@ -435,6 +461,14 @@ defmodule TrifleApp.OrganizationUsersLive do
 
       {:error, :last_owner} ->
         {:noreply, socket |> put_flash(:error, "An organization must have at least one owner")}
+
+      {:error, :owner_required} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Only an organization owner can grant, change or remove the owner role."
+         )}
 
       {:error, :wrong_organization} ->
         {:noreply,
@@ -462,6 +496,7 @@ defmodule TrifleApp.OrganizationUsersLive do
     with true <- socket.assigns.can_manage,
          {:ok, %OrganizationMembership{} = target} <- fetch_membership(organization, member_id),
          false <- target.id == current_membership.id,
+         :ok <- ensure_owner_change_allowed(current_membership, target.role, nil),
          :ok <- ensure_owner_count_allows_removal(members, target) do
       case Organizations.remove_member(target) do
         {:ok, _} -> {:noreply, refresh_members(socket, "Member removed")}
@@ -470,6 +505,14 @@ defmodule TrifleApp.OrganizationUsersLive do
     else
       false ->
         {:noreply, socket |> put_flash(:error, "You cannot remove yourself")}
+
+      {:error, :owner_required} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Only an organization owner can grant, change or remove the owner role."
+         )}
 
       {:error, :last_owner} ->
         {:noreply, socket |> put_flash(:error, "An organization must have at least one owner")}
@@ -485,6 +528,20 @@ defmodule TrifleApp.OrganizationUsersLive do
       _ ->
         {:noreply, socket}
     end
+  end
+
+  # The owner role sits above admin: only an owner may hand it out, take it away
+  # or remove someone who holds it. Admins manage members and admins.
+  defp owner_change_allowed?(%OrganizationMembership{role: "owner"}, _current_role, _new_role),
+    do: true
+
+  defp owner_change_allowed?(_membership, current_role, new_role),
+    do: current_role != "owner" and new_role != "owner"
+
+  defp ensure_owner_change_allowed(membership, current_role, new_role) do
+    if owner_change_allowed?(membership, current_role, new_role),
+      do: :ok,
+      else: {:error, :owner_required}
   end
 
   defp load_users_state(socket, %OrganizationMembership{} = membership) do

@@ -11,16 +11,19 @@ defmodule TrifleWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+  # :peer_data and :x_headers let LiveViews resolve the client IP for rate limiting.
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [:peer_data, :x_headers, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
-  # You should set gzip to true if you are running phx.digest
-  # when deploying your static files in production.
+  # `mix phx.digest` (part of assets.deploy) writes a .gz next to every static file;
+  # with gzip enabled Plug.Static serves it to clients that accept it and falls back
+  # to the plain file otherwise (e.g. in dev, where no .gz exists).
   plug Plug.Static,
     at: "/",
     from: :trifle,
-    gzip: false,
+    gzip: true,
     only: TrifleApp.static_paths()
 
   # Code reloading can be explicitly enabled under the
@@ -36,6 +39,7 @@ defmodule TrifleWeb.Endpoint do
     param_key: "request_logger",
     cookie_key: "request_logger"
 
+  plug TrifleWeb.Plugs.ForceSSL
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 

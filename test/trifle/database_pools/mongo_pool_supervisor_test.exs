@@ -108,4 +108,39 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisorTest do
       assert options[:pool_timeout] == 5000
     end
   end
+
+  describe "topology discovery" do
+    setup do
+      previous = Application.get_env(:trifle, :allow_private_network_targets)
+      on_exit(fn -> Application.put_env(:trifle, :allow_private_network_targets, previous) end)
+      :ok
+    end
+
+    defp options_for(db) do
+      db = %{db | id: Ecto.UUID.generate()}
+      on_exit(fn -> MongoPoolSupervisor.stop_mongo_pool(db.id) end)
+      assert {:ok, connection} = MongoPoolSupervisor.start_mongo_pool(db)
+      Agent.get(connection, & &1)
+    end
+
+    test "is off for tenant databases when internal hosts are refused", %{database: db} do
+      Application.put_env(:trifle, :allow_private_network_targets, false)
+
+      # A public address, so the host guard lets the seed through without DNS.
+      assert options_for(%{db | host: "8.8.8.8"})[:type] == :single
+    end
+
+    test "stays on for platform-managed databases", %{database: db} do
+      Application.put_env(:trifle, :allow_private_network_targets, false)
+
+      options = options_for(%{db | host: "8.8.8.8", managed_key: "internal_trifle_observability"})
+      refute options[:type] == :single
+    end
+
+    test "stays on where private targets are allowed", %{database: db} do
+      Application.put_env(:trifle, :allow_private_network_targets, true)
+
+      refute options_for(db)[:type] == :single
+    end
+  end
 end

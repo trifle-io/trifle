@@ -132,12 +132,7 @@ defmodule Trifle.DatabasePools.PostgresPoolSupervisor do
     # Extract pool_size from config
     db_config = database.config || %{}
 
-    pool_size =
-      case db_config["pool_size"] do
-        nil -> 5
-        val when is_integer(val) -> val
-        val when is_binary(val) -> String.to_integer(val)
-      end
+    pool_size = Trifle.DatabasePools.Limits.pool_size(db_config["pool_size"])
 
     with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
       config =

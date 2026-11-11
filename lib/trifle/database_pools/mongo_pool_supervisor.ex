@@ -131,24 +131,22 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
   defp mongo_pool_spec(database, connection_name) do
     db_config = database.config || %{}
 
-    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database) do
-      url = build_mongo_url(database, endpoint)
-
-      # Build connection config from database record
-      config = [
-        name: connection_name,
-        url: url,
-        pool_size: positive_integer(db_config["pool_size"], 5),
-        timeout: positive_integer(db_config["timeout"], 5000),
-        pool_timeout: positive_integer(db_config["pool_timeout"], 5000),
-        # MongoDB-specific options
-        idle_interval: 5000,
-        backoff_max: 1000,
-        backoff_min: 500
-      ]
-
+    # URL encoding, TLS and topology restrictions live in MongoConnection, shared
+    # with the setup and status-check connections.
+    with {:ok, endpoint} <- Trifle.Networking.DatabaseEndpoint.resolve(database),
+         {:ok, config} <-
+           Trifle.Networking.MongoConnection.options(database, endpoint,
+             name: connection_name,
+             pool_size: Trifle.DatabasePools.Limits.pool_size(db_config["pool_size"]),
+             timeout: positive_integer(db_config["timeout"], 5000),
+             pool_timeout: positive_integer(db_config["pool_timeout"], 5000),
+             # MongoDB-specific options
+             idle_interval: 5000,
+             backoff_max: 1000,
+             backoff_min: 500
+           ) do
       client = Application.get_env(:trifle, :mongo_pool_client, Mongo)
-      {:ok, {client, Trifle.Networking.DatabaseTLS.mongo(config, database)}}
+      {:ok, {client, config}}
     end
   end
 
@@ -162,32 +160,6 @@ defmodule Trifle.DatabasePools.MongoPoolSupervisor do
   end
 
   defp positive_integer(_value, default), do: default
-
-  defp build_mongo_url(database, endpoint) do
-    # Handle authentication
-    auth_part =
-      if database.username && database.password do
-        "#{encode_uri_component(database.username)}:#{encode_uri_component(database.password)}@"
-      else
-        ""
-      end
-
-    # Build full URL
-    port = database.port || 27017
-    db_name = encode_uri_component(database.database_name || "admin")
-
-    # Add authSource parameter if auth_database is specified
-    auth_source_param =
-      if database.auth_database && database.auth_database != "" do
-        "?authSource=#{encode_uri_component(database.auth_database)}"
-      else
-        ""
-      end
-
-    "mongodb://#{auth_part}#{endpoint.host}:#{endpoint.port || port}/#{db_name}#{auth_source_param}"
-  end
-
-  defp encode_uri_component(value), do: value |> to_string() |> URI.encode_www_form()
 
   defp extract_database_id(pool_name) when is_atom(pool_name) do
     pool_name

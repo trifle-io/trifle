@@ -8,7 +8,11 @@ defmodule TrifleApp.InvitationController do
   alias Trifle.Organizations.OrganizationInvitation
   alias TrifleApp.RegistrationConfig
 
+  plug TrifleWeb.Plugs.RateLimit, policy: :invitation
   plug :put_root_layout, html: {TrifleApp.Layouts, :page}
+  # The app layout (sidebar) only works inside a LiveView: it needs @socket. This
+  # page is rendered by a controller, so it uses the standalone page layout alone.
+  plug :put_layout, false
   plug :require_authenticated_user when action in [:accept]
 
   def show(conn, %{"token" => token}) do
@@ -48,6 +52,22 @@ defmodule TrifleApp.InvitationController do
         |> put_flash(:error, "This invitation cannot be accepted.")
         |> redirect(to: ~p"/")
 
+      {:error, :email_mismatch} ->
+        conn
+        |> put_flash(
+          :error,
+          "This invitation was sent to a different email address. Sign in with that address, or ask for an invitation to this one."
+        )
+        |> redirect(to: ~p"/")
+
+      {:error, :seat_limit_reached} ->
+        conn
+        |> put_flash(
+          :error,
+          "This organization has no free seats on its plan. Ask an owner to upgrade or free a seat, then open the invitation again."
+        )
+        |> redirect(to: ~p"/")
+
       {:error, %Changeset{} = changeset} ->
         conn
         |> put_flash(:error, "Could not accept invitation: #{changeset_error(changeset)}")
@@ -73,9 +93,12 @@ defmodule TrifleApp.InvitationController do
     )
   end
 
-  defp maybe_require_login(conn, invitation, _token) do
+  # The stored invitation only has the token's hash, so the form posts back to
+  # the token that came in the URL.
+  defp maybe_require_login(conn, invitation, token) do
     render(conn, :show,
       invitation: invitation,
+      token: token,
       expired?: Organizations.invitation_expired?(invitation)
     )
   end

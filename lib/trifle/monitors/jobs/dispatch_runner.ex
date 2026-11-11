@@ -30,15 +30,18 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
       |> parse_scheduled_at(scheduled_at)
 
     Traces.trace("Dispatch time: #{format_dt(now)}")
-    Traces.trace("Load recent monitor executions", head: true)
-
-    reports_last_any = last_execution_map("report")
-    reports_last_success = last_execution_map("report", ["ok"])
-    alerts_last = last_execution_map("alert")
-
     Traces.trace("Load active and paused-alert monitors", head: true)
     monitors = Repo.all(monitors_query())
     Traces.trace("Eligible monitors: #{length(monitors)}")
+
+    Traces.trace("Load recent monitor executions", head: true)
+
+    report_ids = for %Monitor{type: :report, id: id} <- monitors, do: id
+    alert_ids = for %Monitor{type: :alert, id: id} <- monitors, do: id
+
+    reports_last_any = last_execution_map(report_ids, "report")
+    reports_last_success = last_execution_map(report_ids, "report", ["ok"])
+    alerts_last = last_execution_map(alert_ids, "alert")
 
     Logger.debug(fn ->
       "[DispatchRunner] monitors=" <>
@@ -154,21 +157,43 @@ defmodule Trifle.Monitors.Jobs.DispatchRunner do
     )
   end
 
-  defp last_execution_map(kind, statuses \\ nil) when is_binary(kind) do
-    base_query =
+  @doc """
+  Latest execution time per monitor for the given execution kind.
+
+  This runs every minute, so it must not grow with execution history. Instead of
+  aggregating the whole `monitor_executions` table, it does one index seek per
+  eligible monitor (newest row first) on
+  `monitor_executions_monitor_kind_triggered_index`. The `details->>'kind'`
+  expression is written literally so it matches that index.
+  """
+  def last_execution_map(monitor_ids, kind, statuses \\ nil)
+
+  def last_execution_map([], _kind, _statuses), do: %{}
+
+  def last_execution_map(monitor_ids, kind, statuses)
+      when is_list(monitor_ids) and is_binary(kind) do
+    latest =
       from(e in Execution,
-        where: fragment("?->>? = ?", e.details, "kind", ^kind)
+        where: e.monitor_id == parent_as(:monitor).id,
+        where: fragment("(?->>'kind') = ?", e.details, ^kind),
+        order_by: [desc: e.triggered_at],
+        limit: 1,
+        select: %{triggered_at: e.triggered_at}
       )
 
-    query =
+    latest =
       case statuses do
-        list when is_list(list) and list != [] -> where(base_query, [e], e.status in ^list)
-        _ -> base_query
+        list when is_list(list) and list != [] -> where(latest, [e], e.status in ^list)
+        _ -> latest
       end
 
-    query
-    |> group_by([e], e.monitor_id)
-    |> select([e], {e.monitor_id, max(e.triggered_at)})
+    from(m in Monitor,
+      as: :monitor,
+      where: m.id in ^monitor_ids,
+      inner_lateral_join: e in subquery(latest),
+      on: true,
+      select: {m.id, e.triggered_at}
+    )
     |> Repo.all()
     |> Map.new()
   end

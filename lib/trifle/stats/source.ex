@@ -232,7 +232,9 @@ defmodule Trifle.Stats.Source do
       "" -> nil
       "database" -> :database
       "project" -> :project
-      other -> String.to_atom(other)
+      # Only these two source types exist. Never mint atoms from request input:
+      # atoms are not garbage collected.
+      _other -> nil
     end
   rescue
     ArgumentError -> nil
