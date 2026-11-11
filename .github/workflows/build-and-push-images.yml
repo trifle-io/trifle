@@ -28,7 +28,10 @@ env:
 
 jobs:
   build-app:
-    runs-on: ubuntu-latest
+    # Pinned: `ubuntu-latest` moved to Ubuntu 26.04, which the pinned
+    # erlef/setup-beam release cannot map to a prebuilt OTP ("ImageOS ... ubuntu26").
+    # Move this forward together with a setup-beam version that supports the new image.
+    runs-on: ubuntu-24.04
     outputs:
       app_tag: ${{ steps.image_tag.outputs.version }}
       is_tag_build: ${{ steps.image_tag.outputs.is_tag_build }}
