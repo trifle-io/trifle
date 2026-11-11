@@ -124,6 +124,8 @@ defmodule Trifle.Organizations.DashboardIndexTest do
 
     stranger = user_fixture()
     other_org = organization_fixture(%{user: stranger, name: "Other Org"})
+    # Needed in SaaS mode, where a source is only usable with an active subscription.
+    app_entitlement_fixture(other_org)
     other_membership = Organizations.get_membership_for_user(stranger)
     other_db = database_fixture(%{organization: other_org})
     group!(other_membership, "Theirs")

@@ -514,7 +514,20 @@ defmodule Trifle.Organizations.DatabaseTest do
                Organizations.update_database(database, %{file_path: new_file_path})
 
       assert updated_database.pool_version == 2
-      assert updated_database.file_path == new_file_path
+
+      # In SaaS mode a manual SQLite path is stored inside the organization's own
+      # folder; self-hosted keeps the path as given.
+      expected_path =
+        if Trifle.Config.saas_mode?() do
+          {:ok, scoped} =
+            Trifle.SqliteUploads.scope_file_path(new_file_path, database.organization_id)
+
+          scoped
+        else
+          new_file_path
+        end
+
+      assert updated_database.file_path == expected_path
     end
 
     test "does not increment pool_version for non-connection fields" do
