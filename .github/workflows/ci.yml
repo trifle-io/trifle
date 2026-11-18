@@ -96,7 +96,10 @@ jobs:
         working-directory: assets
         run: |
           npm ci --no-audit --no-fund
-          node --test test/*.mjs
+          # One test bundles a hook with esbuild. Mix installs it inside the app
+          # image only; keep this version equal to `config :esbuild` in config.exs.
+          npm install --no-audit --no-fund --no-save --prefix "$RUNNER_TEMP/esbuild" esbuild@0.17.11
+          ESBUILD_BIN="$RUNNER_TEMP/esbuild/node_modules/.bin/esbuild" node --test test/*.mjs
 
       - name: Shutdown
         if: always()

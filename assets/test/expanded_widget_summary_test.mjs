@@ -11,7 +11,10 @@ import {fileURLToPath} from 'node:url';
 // same esbuild binary installed by Mix, then load it without mounting a DOM.
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const architecture = process.arch === 'x64' ? '64' : process.arch;
-const esbuild = join(root, '_build', `esbuild-${process.platform}-${architecture}`);
+// CI runs these tests outside the app image, where Mix has installed nothing;
+// it points ESBUILD_BIN at the same esbuild version instead.
+const esbuild = process.env.ESBUILD_BIN ||
+  join(root, '_build', `esbuild-${process.platform}-${architecture}`);
 const temporary = mkdtempSync(join(tmpdir(), 'trifle-summary-test-'));
 let registerExpandedWidgetViewHook;
 try {
