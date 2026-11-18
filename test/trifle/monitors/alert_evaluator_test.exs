@@ -279,6 +279,40 @@ defmodule Trifle.Monitors.AlertEvaluatorTest do
   end
 
   describe "evaluate_points/4" do
+    test "never evaluates a lone unfinished bucket unless explicitly included" do
+      alert = %Alert{
+        analysis_strategy: :threshold,
+        settings: %Settings{threshold_direction: :above, threshold_value: 100.0}
+      }
+
+      series = build_series([150.0])
+
+      assert {:error, :no_data} = AlertEvaluator.evaluate(alert, series, "metric")
+
+      assert {:ok, result} =
+               AlertEvaluator.evaluate(alert, series, "metric", exclude_recent: false)
+
+      assert result.triggered?
+    end
+
+    test "excludes an unfinished breach while evaluating the completed bucket" do
+      alert = %Alert{
+        analysis_strategy: :threshold,
+        settings: %Settings{
+          threshold_direction: :above,
+          threshold_value: 100.0,
+          treat_nil_as_zero: true
+        }
+      }
+
+      series = build_series([150.0, nil, 200.0])
+
+      assert {:ok, result} = AlertEvaluator.evaluate(alert, series, "metric")
+      refute result.triggered?
+      assert result.latest_point.value == 0.0
+      assert result.latest_point.at == Enum.at(series.series.at, 1)
+    end
+
     test "evaluates resolved expression output points" do
       alert =
         %Alert{

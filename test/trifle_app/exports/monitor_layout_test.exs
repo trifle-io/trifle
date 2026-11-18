@@ -198,6 +198,63 @@ defmodule TrifleApp.Exports.MonitorLayoutTest do
     assert Enum.map(data, fn [_ts, value] -> value end) == [10.0, nil, 14.0]
   end
 
+  test "alert overlays evaluate missing completed buckets using each alert's zero-fill setting" do
+    stats =
+      Series.new(%{
+        at: Enum.map(0..3, &DateTime.add(~U[2025-01-01 00:00:00Z], &1 * 60, :second)),
+        values: [%{"orders" => 150.0}, %{"orders" => 50.0}, %{}, %{}]
+      })
+
+    monitor = %Monitor{
+      id: "monitor-missing",
+      type: :alert,
+      alert_metric_key: "sales",
+      alert_series: [%{"kind" => "path", "path" => "orders"}],
+      alerts: [
+        %Alert{
+          id: "above",
+          analysis_strategy: :threshold,
+          settings: %Settings{
+            threshold_direction: :above,
+            threshold_value: 100.0,
+            treat_nil_as_zero: true
+          }
+        },
+        %Alert{
+          id: "below",
+          analysis_strategy: :threshold,
+          settings: %Settings{
+            threshold_direction: :below,
+            threshold_value: 10.0,
+            treat_nil_as_zero: true
+          }
+        },
+        %Alert{
+          id: "without-fill",
+          analysis_strategy: :threshold,
+          settings: %Settings{
+            threshold_direction: :below,
+            threshold_value: 10.0,
+            treat_nil_as_zero: false
+          }
+        }
+      ]
+    }
+
+    {datasets, evaluations} = MonitorLayout.inject_alert_overlay(%{}, monitor, stats)
+
+    refute evaluations["above"].triggered?
+    assert evaluations["below"].triggered?
+    refute evaluations["without-fill"].triggered?
+    assert evaluations["below"].latest_point.value == 0.0
+    assert evaluations["below"].latest_point.at == Enum.at(stats.series.at, 2)
+
+    for {_, dataset} <- datasets.timeseries do
+      assert [%{data: data}] = dataset.series
+      assert Enum.map(data, &List.last/1) == [150.0, 50.0, nil, nil]
+    end
+  end
+
   test "alert_dashboard logs and skips widget groups when stats are missing" do
     monitor = %Monitor{
       id: "monitor-1",

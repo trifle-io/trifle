@@ -12,7 +12,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
 
   @single_binding :__single_binding__
 
-  def resolve_timeline_rows(%Series{} = series_struct, widget) do
+  def resolve_timeline_rows(%Series{} = series_struct, widget, opts \\ []) do
     rows = widget |> MetricSeries.normalize_widget() |> Map.get("series", [])
     available_paths = MetricSeries.available_paths(series_struct)
 
@@ -21,7 +21,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     |> Enum.reduce([], fn {row, index}, acc ->
       resolved =
         case MetricSeries.row_kind(row) do
-          "expression" -> resolve_expression_row(Enum.reverse(acc), row, index)
+          "expression" -> resolve_expression_row(Enum.reverse(acc), row, index, opts)
           _ -> resolve_timeline_path_row(series_struct, row, index, available_paths)
         end
 
@@ -264,10 +264,11 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
     end
   end
 
-  defp resolve_expression_row(prior_rows, row, index) do
+  defp resolve_expression_row(prior_rows, row, index, opts \\ []) do
     prior_count = length(prior_rows)
     expression = MetricSeries.row_expression(row)
     shape = expression_shape(prior_rows)
+    preserve_missing? = Keyword.get(opts, :preserve_missing, false)
 
     parsed = SeriesExpression.parse(expression, prior_count, shape)
 
@@ -298,7 +299,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
 
           samples = SeriesExpression.evaluate(ast, sample_keys, bindings)
 
-          if sample_map_has_values?(samples) do
+          if sample_map_has_values?(samples) or (preserve_missing? and map_size(samples) > 0) do
             Map.put(acc, key, %{
               name: expression_entry_name(row, index, key),
               source_path: "__expression__.#{index}.#{binding_key_string(key)}",

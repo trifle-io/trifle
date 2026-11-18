@@ -104,36 +104,35 @@ defmodule Trifle.Monitors.AlertEvaluator do
   @spec evaluate_points(Alert.t(), String.t() | nil, list(), keyword()) ::
           {:ok, result()} | evaluation_error
   def evaluate_points(%Alert{} = alert, path, points, opts \\ []) when is_list(points) do
-    points = sort_points(points)
+    points =
+      points
+      |> sort_points()
+      |> maybe_trim_recent(Keyword.get(opts, :exclude_recent, true))
+      |> maybe_fill_missing(alert)
 
     if Enum.empty?(points) do
       {:error, :no_data}
     else
-      points = maybe_fill_missing(points, alert)
-
-      exclude_recent? = Keyword.get(opts, :exclude_recent, true)
-      effective_points = maybe_trim_recent(points, exclude_recent?)
-
       window =
         opts
         |> Keyword.get(:window)
         |> normalize_window(alert)
 
-      latest_point = List.last(effective_points) || List.last(points)
+      latest_point = List.last(points)
       resolved_path = path |> to_string() |> String.trim()
 
       case alert.analysis_strategy || :threshold do
         :threshold ->
-          evaluate_threshold(alert, resolved_path, effective_points, window)
+          evaluate_threshold(alert, resolved_path, points, window)
 
         :range ->
-          evaluate_range(alert, resolved_path, effective_points, window)
+          evaluate_range(alert, resolved_path, points, window)
 
         :hampel ->
-          evaluate_hampel(alert, resolved_path, effective_points, window)
+          evaluate_hampel(alert, resolved_path, points, window)
 
         :cusum ->
-          evaluate_cusum(alert, resolved_path, effective_points, window)
+          evaluate_cusum(alert, resolved_path, points, window)
 
         unsupported ->
           {:error, {:unsupported_strategy, unsupported}}
@@ -150,12 +149,7 @@ defmodule Trifle.Monitors.AlertEvaluator do
 
   defp maybe_trim_recent(points, false), do: points
 
-  defp maybe_trim_recent(points, true) do
-    case Enum.drop(points, -1) do
-      [] -> points
-      trimmed -> trimmed
-    end
-  end
+  defp maybe_trim_recent(points, true), do: Enum.drop(points, -1)
 
   defp maybe_add_series(series, point, value) when is_number(value) do
     case point_timestamp(point) do

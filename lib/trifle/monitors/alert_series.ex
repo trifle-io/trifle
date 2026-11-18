@@ -231,7 +231,8 @@ defmodule Trifle.Monitors.AlertSeries do
   def resolved_final_targets(%Series{} = stats, %Monitor{} = monitor) do
     widget = source_widget(monitor)
 
-    case MetricSeriesEvaluator.resolve_timeline_rows(stats, widget) |> List.last() do
+    case MetricSeriesEvaluator.resolve_timeline_rows(stats, widget, preserve_missing: true)
+         |> List.last() do
       %{entries: entries, row: row, index: row_index} when is_map(entries) ->
         entries
         |> Enum.sort_by(fn {binding_key, entry} ->
@@ -244,9 +245,6 @@ defmodule Trifle.Monitors.AlertSeries do
             |> Map.get(:samples, %{})
             |> samples_to_points()
 
-          points =
-            Enum.reject(chart_points, &is_nil(Map.get(&1, :value)))
-
           %{
             index: emitted_index,
             row_index: row_index,
@@ -258,7 +256,7 @@ defmodule Trifle.Monitors.AlertSeries do
               row
               |> MetricSeries.row_color_selector()
               |> Helpers.resolve_series_color(emitted_index),
-            points: points,
+            points: chart_points,
             data:
               Enum.map(chart_points, fn point ->
                 [Map.get(point, :ts), Map.get(point, :value)]

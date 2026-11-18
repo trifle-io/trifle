@@ -77,4 +77,23 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluatorTest do
     assert formula.entries == %{}
     assert formula.error.message =~ "requires timeline data"
   end
+
+  test "missing formula samples can be preserved for alert evaluation" do
+    widget = %{
+      "series" => [
+        %{"kind" => "path", "path" => "hosts.two"},
+        %{"kind" => "expression", "expression" => "a / 0"}
+      ]
+    }
+
+    [_, formula] = MetricSeriesEvaluator.resolve_timeline_rows(stats(), widget)
+    assert formula.entries == %{}
+
+    [_, formula] =
+      MetricSeriesEvaluator.resolve_timeline_rows(stats(), widget, preserve_missing: true)
+
+    [entry] = Map.values(formula.entries)
+    assert map_size(entry.samples) == 3
+    assert Enum.all?(entry.samples, fn {_, value} -> is_nil(value) end)
+  end
 end
