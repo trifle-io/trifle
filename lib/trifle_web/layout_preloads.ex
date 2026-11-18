@@ -1,9 +1,12 @@
 defmodule TrifleWeb.LayoutPreloads do
   use Phoenix.Component
 
+  # Per-request CSP nonce (TrifleWeb.Plugs.ContentSecurityPolicy); nil when CSP is off.
+  attr :nonce, :string, default: nil
+
   def preload_scripts(assigns) do
     ~H"""
-    <script>
+    <script nonce={@nonce}>
       (function () {
         try {
           var storage = window.localStorage;
@@ -46,7 +49,7 @@ defmodule TrifleWeb.LayoutPreloads do
         }
       })();
     </script>
-    <script>
+    <script nonce={@nonce}>
       (function () {
         var clientState = null;
         var adminState = null;
@@ -80,7 +83,7 @@ defmodule TrifleWeb.LayoutPreloads do
         window.__TRIFLE_SIDEBAR_PRELOAD__ = preload;
       })();
     </script>
-    <script>
+    <script nonce={@nonce}>
       (function () {
         var storageKey = 'dashboard_group_collapsed_default';
         var styleId = 'trifle-dashboard-groups-preload';

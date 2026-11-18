@@ -61,6 +61,8 @@ defmodule TrifleApi.MetricsController do
              untracked
            ),
          :ok <- normalize_write_result(result) do
+      Trifle.Billing.UsageRecorder.record(current_project)
+
       conn
       |> put_status(:created)
       |> render("created.json")

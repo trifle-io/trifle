@@ -32,7 +32,7 @@ defmodule TrifleApp.UserRegistrationLiveTest do
 
       assert result =~ "Create account"
       assert result =~ "must have the @ sign and no spaces"
-      assert result =~ "should be at least 6 character"
+      assert result =~ "should be at least 12 character"
     end
   end
 

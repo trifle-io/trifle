@@ -22,7 +22,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import Sortable from "sortablejs"
-import * as echarts from "./echarts.mjs"
+import { createChartsLoader } from "./charts_loader.mjs"
 import { GridStack } from "gridstack"
 import "./components/delivery_selector"
 import { registerDashboardRuntimeHooks } from "./widgets/dashboard_runtime"
@@ -54,6 +54,10 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 
 
 let Hooks = {}
+
+// The chart library lives in its own bundle; see ./charts_loader.mjs.
+const chartsLoader = createChartsLoader({ window, document })
+const echarts = chartsLoader.echarts
 
 
 registerDashboardRuntimeHooks(Hooks, {
@@ -96,6 +100,11 @@ registerStatusHooks(Hooks);
 registerFilterBarShortcutsHook(Hooks);
 registerSidebarAlpineComponents();
 
+// Hooks that draw charts must not mount before the chart bundle has run.
+;["DashboardGrid", "ExpandedWidgetView", "DatabaseExploreChart", "HomeSparkline"].forEach((name) => {
+  if (Hooks[name]) Hooks[name] = chartsLoader.guardHook(Hooks[name])
+})
+
 
 
 let liveSocket = new LiveSocket("/live", Socket, {
@@ -114,8 +123,8 @@ let liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 registerLiveLoading({topbar, liveSocket})
 
-// connect if there are any LiveViews on the page
-liveSocket.connect()
+// connect if there are any LiveViews on the page, once the chart bundle is in
+chartsLoader.connectWhenReady(() => liveSocket.connect())
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

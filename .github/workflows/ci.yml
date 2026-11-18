@@ -79,6 +79,7 @@ jobs:
           docker compose exec -T app /tmp/helm lint .devops/kubernetes/helm/trifle
           docker compose exec -T app /tmp/helm lint .devops/kubernetes/helm/trifle -f .devops/kubernetes/helm/trifle/values-saas.yaml
           docker compose exec -T -e HELM_BIN=/tmp/helm app ruby .devops/kubernetes/helm/test_network_gateway.rb
+          docker compose exec -T -e HELM_BIN=/tmp/helm app ruby .devops/kubernetes/helm/test_app_policies.rb
           docker compose exec -T -e HELM_BIN=/tmp/helm app elixir .devops/kubernetes/helm/test_observability.exs
 
       - name: Run tests

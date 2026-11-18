@@ -206,3 +206,17 @@ Explicit app.env overrides take precedence, without duplicate env entries.
 {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/* History retention settings; explicit app.env entries take precedence. */}}
+{{- define "trifle.retentionEnv" -}}
+{{- $appEnv := .Values.app.env | default (dict) -}}
+{{- $retention := .Values.app.retention | default (dict) -}}
+{{- if and (not (hasKey $appEnv "MONITOR_EXECUTION_RETENTION_DAYS")) (hasKey $retention "monitorExecutionDays") }}
+- name: MONITOR_EXECUTION_RETENTION_DAYS
+  value: {{ index $retention "monitorExecutionDays" | toString | quote }}
+{{- end }}
+{{- if and (not (hasKey $appEnv "OBAN_JOB_RETENTION_DAYS")) (hasKey $retention "obanJobDays") }}
+- name: OBAN_JOB_RETENTION_DAYS
+  value: {{ index $retention "obanJobDays" | toString | quote }}
+{{- end }}
+{{- end -}}

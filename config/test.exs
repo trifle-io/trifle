@@ -73,6 +73,8 @@ config :trifle, Trifle.Observability, enabled: false
 # invalidation — disable the cache so billing state changes are always visible.
 config :trifle, :billing_entitlement_cache_ttl_ms, 0
 config :trifle, :billing_ingest_access_cache_ttl_ms, 0
+# Tests flush usage counts by hand.
+config :trifle, :billing_usage_flush_interval_ms, 0
 
 # Rate limits are off in tests by default; tests that exercise them turn them on.
 config :trifle, Trifle.RateLimit, enabled: false

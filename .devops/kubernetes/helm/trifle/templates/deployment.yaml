@@ -61,6 +61,7 @@ spec:
             {{- end }}
             {{- include "trifle.observabilityEnv" . | nindent 12 }}
             {{- include "trifle.observabilityStorageEnv" . | nindent 12 }}
+            {{- include "trifle.retentionEnv" . | nindent 12 }}
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:

@@ -274,6 +274,34 @@ defmodule TrifleApi.MetricsControllerTest do
       assert %{fetch_series: 0, track: 0} = Trifle.MetricsMock.calls()
     end
 
+    test "a successful write counts one event against the project's usage", %{
+      conn: conn,
+      write_project_token: token,
+      project: project
+    } do
+      :ets.delete_all_objects(Trifle.Billing.UsageRecorder)
+
+      conn
+      |> api_conn()
+      |> auth_conn(token, project.id)
+      |> post(~p"/api/v1/metrics", %{
+        key: "events",
+        at: DateTime.utc_now() |> DateTime.to_iso8601(),
+        values: %{count: 1}
+      })
+      |> json_response(201)
+
+      # A rejected write is not counted.
+      conn
+      |> api_conn()
+      |> auth_conn(token, project.id)
+      |> post(~p"/api/v1/metrics", %{key: "events", values: %{count: 1}})
+      |> json_response(400)
+
+      assert [{_key, 1}] = :ets.tab2list(Trifle.Billing.UsageRecorder)
+      :ets.delete_all_objects(Trifle.Billing.UsageRecorder)
+    end
+
     test "tracks metrics by default and forwards untracked", %{
       conn: conn,
       write_project_token: token,

@@ -203,50 +203,119 @@ defmodule Trifle.Billing.Access do
 
   ## Usage recording and limits
 
-  def record_project_event_usage!(project, increment \\ 1)
+  @doc """
+  Adds `increment` events to the project's usage for the billing period that
+  contains `received_at` (default: now), and locks the project when that takes
+  it to its plan's hard limit.
 
-  def record_project_event_usage!(%Project{} = project, increment)
+  The increment, the lock and the project state change happen in one
+  transaction: either all of it is stored or none, so a caller that retries
+  after an exception cannot count the same events twice.
+
+  Events received before the subscription's current period started (a batch
+  held in memory across a renewal) are added to the period they belong to and
+  never lock the project; if that period has no usage row they are not counted.
+
+  Returns `{:ok, usage}`, `{:ok, :not_counted}`, `:ok` (billing disabled) or
+  `{:error, reason}`.
+  """
+  def record_project_event_usage!(project, increment \\ 1, received_at \\ nil)
+
+  def record_project_event_usage!(%Project{} = project, increment, received_at)
       when is_integer(increment) and increment > 0 do
     if Billing.enabled?() do
       case Billing.get_scope_subscription(project.organization_id, "project", project.id) do
         %Subscription{} = subscription ->
-          {period_start, period_end} = usage_period(subscription)
-          hard_limit = project_hard_limit(subscription)
-          tier_key = project_tier_key(subscription)
+          {period_start, _period_end} = usage_period(subscription)
 
-          attrs = %{
-            project_id: project.id,
-            period_start: period_start,
-            period_end: period_end,
-            events_count: increment,
-            tier_key: tier_key,
-            hard_limit: hard_limit,
-            locked_at: nil
-          }
-
-          Repo.insert(
-            ProjectUsage.changeset(%ProjectUsage{}, attrs),
-            on_conflict: [
-              inc: [events_count: increment],
-              set: [
-                period_end: period_end,
-                tier_key: tier_key,
-                hard_limit: hard_limit,
-                updated_at: DateTime.truncate(DateTime.utc_now(), :second)
-              ]
-            ],
-            conflict_target: [:project_id, :period_start]
-          )
-
-          usage = Repo.get_by!(ProjectUsage, project_id: project.id, period_start: period_start)
-
-          maybe_mark_usage_locked(usage)
+          if received_before?(received_at, period_start) do
+            record_usage_for_past_period(project, increment, received_at, period_start)
+          else
+            record_usage_for_current_period(project, subscription, increment)
+          end
 
         nil ->
           {:error, :project_subscription_required}
       end
     else
       :ok
+    end
+  end
+
+  defp received_before?(%DateTime{} = received_at, %DateTime{} = period_start),
+    do: DateTime.compare(received_at, period_start) == :lt
+
+  defp received_before?(_received_at, _period_start), do: false
+
+  defp record_usage_for_current_period(project, subscription, increment) do
+    {period_start, period_end} = usage_period(subscription)
+    hard_limit = project_hard_limit(subscription)
+    tier_key = project_tier_key(subscription)
+
+    attrs = %{
+      project_id: project.id,
+      period_start: period_start,
+      period_end: period_end,
+      events_count: increment,
+      tier_key: tier_key,
+      hard_limit: hard_limit,
+      locked_at: nil
+    }
+
+    Repo.transaction(fn ->
+      upsert =
+        Repo.insert(
+          ProjectUsage.changeset(%ProjectUsage{}, attrs),
+          on_conflict: [
+            inc: [events_count: increment],
+            set: [
+              period_end: period_end,
+              tier_key: tier_key,
+              hard_limit: hard_limit,
+              updated_at: DateTime.truncate(DateTime.utc_now(), :second)
+            ]
+          ],
+          conflict_target: [:project_id, :period_start]
+        )
+
+      with {:ok, _} <- upsert,
+           %ProjectUsage{} = usage <-
+             Repo.get_by(ProjectUsage, project_id: project.id, period_start: period_start),
+           {:ok, usage} <- maybe_mark_usage_locked(usage) do
+        # Lets a caller tell "failed before anything could be committed" from
+        # "failed while committing" (see Trifle.Billing.UsageRecorder).
+        Process.put(:usage_recording_reached_commit, true)
+        usage
+      else
+        {:error, reason} -> Repo.rollback(reason)
+        nil -> Repo.rollback(:usage_row_missing)
+      end
+    end)
+  end
+
+  # The row of the period the events were received in: the latest one that
+  # started at or before they arrived and before the current period.
+  defp record_usage_for_past_period(project, increment, received_at, current_period_start) do
+    past =
+      from(u in ProjectUsage,
+        where:
+          u.project_id == ^project.id and u.period_start < ^current_period_start and
+            u.period_start <= ^received_at,
+        order_by: [desc: u.period_start],
+        limit: 1,
+        select: u.id
+      )
+
+    case Repo.one(past) do
+      nil ->
+        {:ok, :not_counted}
+
+      id ->
+        Repo.update_all(from(u in ProjectUsage, where: u.id == ^id),
+          inc: [events_count: increment]
+        )
+
+        {:ok, :not_counted_in_current_period}
     end
   end
 
@@ -360,6 +429,7 @@ defmodule Trifle.Billing.Access do
     end
   end
 
+  # Runs inside the caller's transaction.
   defp maybe_mark_usage_locked(%ProjectUsage{} = usage) do
     cond do
       usage.hard_limit == nil ->
@@ -372,23 +442,24 @@ defmodule Trifle.Billing.Access do
         {:ok, usage}
 
       true ->
-        case Repo.update(ProjectUsage.changeset(usage, %{locked_at: now()})) do
-          {:ok, updated_usage} ->
-            case Repo.get(Project, usage.project_id) do
-              %Project{} = project ->
-                project
-                |> Ecto.Changeset.change(billing_state: "locked")
-                |> Repo.update()
-
-              _ ->
-                :ok
-            end
-
-            {:ok, updated_usage}
-
-          error ->
-            error
+        with {:ok, updated_usage} <-
+               Repo.update(ProjectUsage.changeset(usage, %{locked_at: now()})),
+             :ok <- mark_project_locked(usage.project_id) do
+          {:ok, updated_usage}
         end
+    end
+  end
+
+  defp mark_project_locked(project_id) do
+    case Repo.get(Project, project_id) do
+      %Project{} = project ->
+        case project |> Ecto.Changeset.change(billing_state: "locked") |> Repo.update() do
+          {:ok, _project} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      _ ->
+        :ok
     end
   end
 

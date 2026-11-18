@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <TrifleWeb.LayoutPreloads.preload_scripts />
+    <TrifleWeb.LayoutPreloads.preload_scripts nonce={assigns[:csp_nonce]} />
     <.live_title suffix=" | Trifle">
       {page_title}
     </.live_title>
@@ -29,7 +29,7 @@
       id="favicon-16"
     />
     <link rel="manifest" href={~p"/favicon_dark/site.webmanifest"} id="webmanifest" />
-    <script>
+    <script nonce={assigns[:csp_nonce]}>
       (function() {
         function setFavicons(theme) {
           var d = theme === 'dark' ? 'favicon_light' : 'favicon_dark';
@@ -48,6 +48,14 @@
     <!-- Load main app CSS -->
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
 
+    <%!-- Chart library, fetched in parallel with app.js and run by it (assets/js/charts_loader.mjs). --%>
+    <link
+      rel="preload"
+      as="script"
+      id="trifle-charts-bundle"
+      phx-track-static
+      href={~p"/assets/charts.js"}
+    />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>
     <script defer src="https://unpkg.com/alpinejs@3.10.5/dist/cdn.min.js">

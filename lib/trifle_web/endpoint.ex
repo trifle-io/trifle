@@ -1,13 +1,19 @@
 defmodule TrifleWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :trifle
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session is stored in the cookie, encrypted and signed with keys derived
+  # from SECRET_KEY_BASE, so its contents can be neither read nor changed by the
+  # browser.
+  #
+  # There is deliberately no :max_age: without it this is a browser-session
+  # cookie, which is what makes "Keep me logged in" meaningful (that uses its own
+  # 60-day cookie, see TrifleApp.UserAuth). The session token inside is also
+  # checked against the database and expires there after 60 days.
   @session_options [
     store: :cookie,
     key: "_trifle_key",
     signing_salt: "VtYmEb7T",
+    encryption_salt: "pZ4wQe1N",
     same_site: "Lax"
   ]
 
@@ -17,13 +23,16 @@ defmodule TrifleWeb.Endpoint do
 
   # Serve at "/" the static files from "priv/static" directory.
   #
-  # `mix phx.digest` (part of assets.deploy) writes a .gz next to every static file;
-  # with gzip enabled Plug.Static serves it to clients that accept it and falls back
-  # to the plain file otherwise (e.g. in dev, where no .gz exists).
+  # `mix phx.digest` (part of assets.deploy) writes a .gz next to every static
+  # file, and Plug.Static serves it to clients that accept gzip. That is only
+  # safe where the .gz files are produced by the same build as the plain files,
+  # i.e. in releases. With code reloading (dev) the watchers rewrite app.js but
+  # not app.js.gz, so a leftover .gz from an old `phx.digest` run would be served
+  # instead of the current file.
   plug Plug.Static,
     at: "/",
     from: :trifle,
-    gzip: true,
+    gzip: not code_reloading?,
     only: TrifleApp.static_paths()
 
   # Code reloading can be explicitly enabled under the

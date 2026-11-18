@@ -41,7 +41,7 @@ defmodule TrifleApp.UserResetPasswordLiveTest do
         |> element("#reset_password_form")
         |> render_change(user: %{"password" => "short", "password_confirmation" => "mismatch"})
 
-      assert result =~ "should be at least 6 character"
+      assert result =~ "should be at least 12 character"
       assert result =~ "does not match password"
     end
   end
@@ -80,7 +80,7 @@ defmodule TrifleApp.UserResetPasswordLiveTest do
         |> render_submit()
 
       assert result =~ "Reset Password"
-      assert result =~ "should be at least 6 character(s)"
+      assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
     end
   end

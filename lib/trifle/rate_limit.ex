@@ -34,10 +34,14 @@ defmodule Trifle.RateLimit do
 
   ## Scope
 
-  Counters are kept in ETS, so limits are **per node**. With N nodes behind a load
-  balancer a client can do up to N times the configured rate. That is fine for
-  blunting brute force and abuse; for exact cross-node limits switch the backend to
-  Redis (`hammer_backend_redis`) — only the `use Hammer` line below changes.
+  By default counters are kept in ETS, so limits are **per node**: with N nodes
+  behind a load balancer a client can do up to N times the configured rate. Set
+
+      config :trifle, Trifle.RateLimit, backend: :redis, redis_url: "redis://..."
+
+  (`RATE_LIMIT_BACKEND=redis`, `RATE_LIMIT_REDIS_URL`) to keep them in Redis and
+  make every limit exact across nodes. If Redis cannot be reached, counting falls
+  back to the local node until it returns. See `Trifle.RateLimit.RedisBackend`.
 
   ## Client IP behind a proxy
 
@@ -54,6 +58,8 @@ defmodule Trifle.RateLimit do
   """
 
   use Hammer, backend: :ets
+
+  require Logger
 
   @default_policies %{
     # Interactive credential endpoints, per client IP.
@@ -76,7 +82,12 @@ defmodule Trifle.RateLimit do
     # Headless-browser exports, per user.
     export: {20, :timer.minutes(1)},
     # Outbound connection tests against customer databases, per user.
-    connection_test: {30, :timer.minutes(1)}
+    connection_test: {30, :timer.minutes(1)},
+    # Browser Content-Security-Policy violation reports, per client IP.
+    csp_report: {30, :timer.minutes(1)},
+    # Distinct CSP violations written to the log, for the whole node. Also bounds
+    # the de-duplication entries the report endpoint can create.
+    csp_report_log: {200, :timer.hours(1)}
   }
 
   @type policy :: atom()
@@ -114,7 +125,21 @@ defmodule Trifle.RateLimit do
   end
 
   defp count_hit(key, window_ms, limit) do
-    case hit(key, window_ms, limit) do
+    result =
+      if Trifle.RateLimit.RedisBackend.configured?() do
+        case Trifle.RateLimit.RedisBackend.hit(key, window_ms, limit) do
+          {:error, reason} ->
+            warn_redis_unavailable(reason)
+            hit(key, window_ms, limit)
+
+          result ->
+            result
+        end
+      else
+        hit(key, window_ms, limit)
+      end
+
+    case result do
       {:allow, _count} -> :ok
       {:deny, retry_after_ms} -> {:error, {:rate_limited, retry_after_ms}}
     end
@@ -122,6 +147,20 @@ defmodule Trifle.RateLimit do
     # The limiter must never take the application down with it: if its table is
     # missing (not started), let the request through.
     ArgumentError -> :ok
+  end
+
+  # At most one line a minute, however many requests hit the fallback.
+  defp warn_redis_unavailable(reason) do
+    now = System.monotonic_time(:second)
+    last = :persistent_term.get({__MODULE__, :redis_warned_at}, nil)
+
+    if is_nil(last) or now - last >= 60 do
+      :persistent_term.put({__MODULE__, :redis_warned_at}, now)
+
+      Logger.warning(
+        "[RateLimit] Redis backend unavailable (#{inspect(reason)}); counting per node until it returns"
+      )
+    end
   end
 
   @doc "Checks several `{policy, subject}` pairs; stops at the first denial."

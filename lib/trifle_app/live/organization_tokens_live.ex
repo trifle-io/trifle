@@ -23,11 +23,13 @@ defmodule TrifleApp.OrganizationTokensLive do
       |> assign(:new_wildcard_read, false)
       |> assign(:new_wildcard_write, false)
       |> assign(:new_grants, %{})
+      |> assign(:new_manage, false)
       |> assign(:edit_token, nil)
       |> assign(:edit_error, nil)
       |> assign(:edit_wildcard_read, false)
       |> assign(:edit_wildcard_write, false)
       |> assign(:edit_grants, %{})
+      |> assign(:edit_manage, false)
       |> assign(:edit_unknown_source_permissions, %{})
 
     cond do
@@ -81,8 +83,16 @@ defmodule TrifleApp.OrganizationTokensLive do
                 <li class="px-4 py-4 sm:px-6">
                   <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p class="text-sm font-medium text-gray-900 dark:text-white">
-                        {token_display_name(token)}
+                      <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                        <span>{token_display_name(token)}</span>
+                        <span
+                          :if={Organizations.token_can_manage?(token)}
+                          data-role="token-manage-badge"
+                          title="This token can manage the organization through the API"
+                          class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-200"
+                        >
+                          Manages organization
+                        </span>
                       </p>
                       <%= if wildcard_enabled?(token) do %>
                         <div class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400">
@@ -303,6 +313,28 @@ defmodule TrifleApp.OrganizationTokensLive do
                   </table>
                 </div>
 
+                <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-slate-700">
+                  <input type="hidden" name="token[manage]" value="false" />
+                  <input
+                    type="checkbox"
+                    name="token[manage]"
+                    value="true"
+                    checked={@new_manage}
+                    class="mt-0.5"
+                  />
+                  <span>
+                    <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Organization management
+                    </span>
+                    <span class="block text-xs text-gray-500 dark:text-slate-400">
+                      Lets this token create, change and delete tokens, sources and members
+                      through the API, as the person who created it. It stops working when
+                      that person changes their password or leaves. Tokens that only send or
+                      read metrics do not need it.
+                    </span>
+                  </span>
+                </label>
+
                 <div class="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
@@ -446,6 +478,28 @@ defmodule TrifleApp.OrganizationTokensLive do
                     </tbody>
                   </table>
                 </div>
+
+                <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-slate-700">
+                  <input type="hidden" name="token[manage]" value="false" />
+                  <input
+                    type="checkbox"
+                    name="token[manage]"
+                    value="true"
+                    checked={@edit_manage}
+                    class="mt-0.5"
+                  />
+                  <span>
+                    <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                      Organization management
+                    </span>
+                    <span class="block text-xs text-gray-500 dark:text-slate-400">
+                      Lets this token create, change and delete tokens, sources and members
+                      through the API, as the person who created it. It stops working when
+                      that person changes their password or leaves. Tokens that only send or
+                      read metrics do not need it.
+                    </span>
+                  </span>
+                </label>
 
                 <div class="flex justify-end gap-2 pt-2">
                   <button
@@ -722,14 +776,14 @@ defmodule TrifleApp.OrganizationTokensLive do
         end
       end)
 
-    # The form edits data access only. Leaving "manage" out (rather than sending
-    # false) keeps whatever the token already has when it is updated.
+    # "manage" is sent explicitly (true or false) so unticking it on an existing
+    # token removes the capability.
     %{
       "wildcard" => %{"read" => wildcard_read, "write" => wildcard_write},
-      "sources" => source_permissions
+      "sources" => source_permissions,
+      "manage" => checkbox_enabled?(Map.get(params, "manage"))
     }
     |> Organizations.normalize_token_permissions()
-    |> Map.delete("manage")
   end
 
   defp normalize_name(value) when is_binary(value) do
@@ -747,6 +801,7 @@ defmodule TrifleApp.OrganizationTokensLive do
     |> assign(:new_wildcard_read, false)
     |> assign(:new_wildcard_write, false)
     |> assign(:new_grants, %{})
+    |> assign(:new_manage, false)
   end
 
   defp reset_edit_form(socket) do
@@ -755,6 +810,7 @@ defmodule TrifleApp.OrganizationTokensLive do
     |> assign(:edit_wildcard_read, false)
     |> assign(:edit_wildcard_write, false)
     |> assign(:edit_grants, %{})
+    |> assign(:edit_manage, false)
     |> assign(:edit_unknown_source_permissions, %{})
   end
 
@@ -769,6 +825,7 @@ defmodule TrifleApp.OrganizationTokensLive do
     |> assign(:edit_wildcard_read, checkbox_enabled?(Map.get(wildcard, "read")))
     |> assign(:edit_wildcard_write, checkbox_enabled?(Map.get(wildcard, "write")))
     |> assign(:edit_grants, source_grants_for_form(source_permissions, sources))
+    |> assign(:edit_manage, Organizations.token_can_manage?(token))
     |> assign(
       :edit_unknown_source_permissions,
       unknown_source_permissions(source_permissions, sources)
@@ -783,6 +840,7 @@ defmodule TrifleApp.OrganizationTokensLive do
     |> assign(:new_wildcard_read, checkbox_enabled?(Map.get(params, "wildcard_read")))
     |> assign(:new_wildcard_write, checkbox_enabled?(Map.get(params, "wildcard_write")))
     |> assign(:new_grants, normalize_grants_form(Map.get(params, "grants", %{})))
+    |> assign(:new_manage, checkbox_enabled?(Map.get(params, "manage")))
   end
 
   defp assign_form_state(socket, _), do: socket
@@ -792,6 +850,7 @@ defmodule TrifleApp.OrganizationTokensLive do
     |> assign(:edit_wildcard_read, checkbox_enabled?(Map.get(params, "wildcard_read")))
     |> assign(:edit_wildcard_write, checkbox_enabled?(Map.get(params, "wildcard_write")))
     |> assign(:edit_grants, normalize_grants_form(Map.get(params, "grants", %{})))
+    |> assign(:edit_manage, checkbox_enabled?(Map.get(params, "manage")))
   end
 
   defp assign_edit_form_state(socket, _), do: socket

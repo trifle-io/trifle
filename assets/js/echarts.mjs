@@ -68,3 +68,8 @@ echarts.use([
 ]);
 
 export * from "echarts/core";
+
+// Internal time helpers used by shared/timeseries_timezone.mjs to format axis
+// labels and tooltips exactly as ECharts does, in another timezone.
+import * as timeUtil from "echarts/lib/util/time.js"
+export { timeUtil }

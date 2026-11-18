@@ -10,6 +10,7 @@ defmodule TrifleApp.Router do
     plug :put_root_layout, {TrifleApp.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug TrifleWeb.Plugs.ContentSecurityPolicy
     plug :fetch_current_user
   end
 
@@ -128,6 +129,13 @@ defmodule TrifleApp.Router do
 
     get "/integrations/slack/oauth/callback", Integrations.SlackController, :callback
     get "/integrations/discord/oauth/callback", Integrations.DiscordController, :callback
+  end
+
+  # Browser Content-Security-Policy violation reports.
+  scope "/", TrifleApp do
+    pipe_through [:api]
+
+    post "/csp-report", CspReportController, :create
   end
 
   scope "/webhooks", TrifleApp do

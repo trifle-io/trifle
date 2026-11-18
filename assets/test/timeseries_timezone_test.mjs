@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as echarts from 'echarts';
+import * as timeUtil from 'echarts/lib/util/time.js';
 import {timeseriesTimeFormatters} from '../js/widgets/dashboard_runtime/shared/timeseries_timezone.mjs';
+
+// In the browser the chart bundle provides this (js/charts.js).
+globalThis.TrifleECharts = {timeUtil};
 
 test('widgets without a source timezone keep existing defaults', () => {
   for (const timezone of [undefined, null, '', 'Invalid/Timezone']) {

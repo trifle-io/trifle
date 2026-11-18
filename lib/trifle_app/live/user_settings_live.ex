@@ -159,7 +159,7 @@ defmodule TrifleApp.UserSettingsLive do
             <div class="px-4 sm:px-0">
               <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">Password</h2>
               <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
-                Update your password to keep your account secure. Use a strong password with at least 8 characters.
+                Update your password to keep your account secure. Use a strong password with at least 12 characters.
               </p>
             </div>
 
@@ -183,7 +183,7 @@ defmodule TrifleApp.UserSettingsLive do
                       label="New password"
                       required
                       placeholder="Enter your new password"
-                      help_text="Must be at least 8 characters long"
+                      help_text="Must be at least 12 characters long"
                     />
                   </div>
 

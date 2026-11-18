@@ -34,6 +34,8 @@ config :trifle, :projects_enabled, nil
 config :trifle, :billing_entitlement_cache_ttl_ms, 60_000
 # How long a successful per-project ingest/billing check is reused (0 disables).
 config :trifle, :billing_ingest_access_cache_ttl_ms, 10_000
+# How often counted ingest events are written to billing_project_usage.
+config :trifle, :billing_usage_flush_interval_ms, 10_000
 
 config :trifle, :sqlite_upload_max_bytes, 100 * 1024 * 1024
 config :trifle, :sqlite_upload_root, Path.join(System.tmp_dir!(), "trifle_sqlite_uploads")
@@ -101,7 +103,7 @@ config :esbuild,
   version: "0.17.11",
   default: [
     args:
-      ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+      ~w(js/app.js js/charts.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
@@ -188,12 +190,14 @@ config :trifle, Oban,
     billing: 1
   ],
   plugins: [
+    # max_age is replaced at runtime from OBAN_JOB_RETENTION_DAYS (config/runtime.exs).
     {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
     {Oban.Plugins.Cron,
      crontab: [
        {"* * * * *", Trifle.Monitors.Jobs.DispatchRunner},
        {"* * * * *", Trifle.Networking.RefreshConnections},
-       {"17 3 * * *", Trifle.Observability.Jobs.CleanupTraces}
+       {"17 3 * * *", Trifle.Observability.Jobs.CleanupTraces},
+       {"41 3 * * *", Trifle.Monitors.Jobs.PruneExecutions}
      ]}
   ]
 

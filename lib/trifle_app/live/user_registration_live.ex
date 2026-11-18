@@ -72,7 +72,7 @@ defmodule TrifleApp.UserRegistrationLive do
               label="Password"
               required
               placeholder="Create a strong password"
-              help_text="Must be at least 8 characters long"
+              help_text="Must be at least 12 characters long"
             />
 
             <:actions>

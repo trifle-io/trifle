@@ -7,7 +7,9 @@ defmodule Trifle.Billing do
   defdelegate app_access_allowed_for_org_id(organization_id), to: Trifle.Billing.Access
   defdelegate allowed_to_create_project?(organization), to: Trifle.Billing.Access
   defdelegate allowed_to_add_member?(organization), to: Trifle.Billing.Access
-  defdelegate record_project_event_usage!(project, increment \\ 1), to: Trifle.Billing.Access
+
+  defdelegate record_project_event_usage!(project, increment \\ 1, received_at \\ nil),
+    to: Trifle.Billing.Access
 
   defp upsert_subscription(nil, attrs) do
     Trifle.Repo.insert(

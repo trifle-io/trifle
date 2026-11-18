@@ -1010,10 +1010,20 @@ if config_env() != :test do
       _ -> 1
     end
 
+  # RATE_LIMIT_BACKEND=redis keeps the counters in Redis so limits hold across
+  # app nodes; the default (ets) counts per node.
+  rate_limit_backend =
+    case System.get_env("RATE_LIMIT_BACKEND") do
+      "redis" -> :redis
+      _ -> :ets
+    end
+
   config :trifle, Trifle.RateLimit,
     enabled: System.get_env("RATE_LIMIT_ENABLED", "true") not in ["false", "0"],
     client_ip_header: rate_limit_header,
-    trusted_proxies: rate_limit_proxies
+    trusted_proxies: rate_limit_proxies,
+    backend: rate_limit_backend,
+    redis_url: System.get_env("RATE_LIMIT_REDIS_URL") || System.get_env("REDIS_URL")
 end
 
 # SSRF guard for tenant-supplied hosts (Trifle.Networking.HostGuard). Unset: private
@@ -1023,6 +1033,53 @@ case System.get_env("ALLOW_PRIVATE_NETWORK_TARGETS") do
   value when value in ["false", "0"] -> config :trifle, :allow_private_network_targets, false
   _ -> :ok
 end
+
+# Data retention.
+#   MONITOR_EXECUTION_RETENTION_DAYS  monitor run history (default 30, 0 = keep all)
+#   OBAN_JOB_RETENTION_DAYS           finished background jobs (default 7)
+retention_days = fn name, default ->
+  case Integer.parse(System.get_env(name) || "") do
+    {days, ""} when days >= 0 -> days
+    _ -> default
+  end
+end
+
+config :trifle,
+       :monitor_execution_retention_days,
+       retention_days.("MONITOR_EXECUTION_RETENTION_DAYS", 30)
+
+if config_env() != :test do
+  oban_config = Application.get_env(:trifle, Oban, [])
+  oban_job_days = max(retention_days.("OBAN_JOB_RETENTION_DAYS", 7), 1)
+
+  plugins =
+    case Keyword.get(oban_config, :plugins) do
+      plugins when is_list(plugins) ->
+        Enum.map(plugins, fn
+          {Oban.Plugins.Pruner, opts} ->
+            {Oban.Plugins.Pruner, Keyword.put(opts, :max_age, oban_job_days * 86_400)}
+
+          other ->
+            other
+        end)
+
+      other ->
+        other
+    end
+
+  config :trifle, Oban, Keyword.put(oban_config, :plugins, plugins)
+end
+
+# Content-Security-Policy (TrifleWeb.Plugs.ContentSecurityPolicy): report_only
+# (default) logs what the full policy would block, enforce blocks it, off sends no
+# header. Do not enforce before the reports are quiet; see the plug's moduledoc.
+config :trifle,
+       :csp_mode,
+       (case System.get_env("CSP_MODE") do
+          "enforce" -> :enforce
+          "off" -> :off
+          _ -> :report_only
+        end)
 
 # HTTPS enforcement, HSTS and Secure cookies (TrifleWeb.Plugs.ForceSSL). Enable when
 # the app is only reachable through a TLS-terminating proxy.

@@ -26,6 +26,48 @@ networkGateway:
     limits:
       memory: 1Gi
 
+# Egress NetworkPolicy for the app pods. Narrows where a customer-supplied database
+# host can lead, as a second layer behind the app's own host check (which cannot
+# see a DNS answer that changes between its check and the driver's connection).
+#
+# Off by default: it needs a CNI that enforces NetworkPolicy (Calico, Cilium, ...)
+# and an allow-list for the private services the app itself uses. Before enabling,
+# list every in-cluster or private-network dependency below; anything else on a
+# private address stops working. The bundled PostgreSQL, the network gateway and
+# other pods of this release are always allowed.
+#
+# What it does not cover (NetworkPolicy cannot):
+#   - other containers in the app pod (the Mongo sidecar) and the pod's own
+#     loopback: traffic inside a pod is never filtered
+#   - on most CNIs, the node the pod runs on (kubelet and host-network services)
+# IPv6: only IPv4 is allowed out. On a dual-stack cluster, add IPv6 rules under
+# extraRules or IPv6 destinations are unreachable.
+networkPolicy:
+  egress:
+    enabled: false
+    # Ranges the app may not reach unless a rule below allows it. Public addresses
+    # (Stripe, OpenAI, object storage, customers' public databases) stay reachable.
+    blockedCidrs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - 169.254.0.0/16
+      - 127.0.0.0/8
+    # DNS on port 53 is allowed to pods in any namespace. A node-local DNS cache
+    # is not a pod address: list it here, e.g. ["169.254.20.10/32"], or name
+    # resolution fails once the policy is on.
+    dnsCidrs: []
+    # Namespaces the app may reach on any port, e.g. ["mongo"] for a MongoDB
+    # running in the "mongo" namespace.
+    allowNamespaces: []
+    # Private addresses the app may reach, e.g. a managed PostgreSQL:
+    #   - cidr: 10.20.0.15/32
+    #     ports: [5432]        # optional; all ports when omitted
+    allowCidrs: []
+    # Raw NetworkPolicy egress rules appended as they are.
+    extraRules: []
+
 image:
   repository: trifle/app
   pullPolicy: IfNotPresent
@@ -184,6 +226,15 @@ app:
         secretAccessKeyKey: "s3-secret-access-key"
     manageS3Lifecycle: true # Set false for a bucket with an existing lifecycle policy.
   
+  # How long history is kept. A daily job deletes older rows.
+  retention:
+    # Monitor run history (MONITOR_EXECUTION_RETENTION_DAYS). Each monitor's latest
+    # run and latest successful run are kept regardless. 0 keeps everything.
+    monitorExecutionDays: 30
+    # Finished background jobs (OBAN_JOB_RETENTION_DAYS). These are only useful for
+    # debugging; every monitor adds one per minute, so keep this short.
+    obanJobDays: 7
+
   # Environment variables
   env:
     MIX_ENV: "prod"

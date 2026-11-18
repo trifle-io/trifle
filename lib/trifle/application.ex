@@ -42,6 +42,10 @@ defmodule Trifle.Application do
           Trifle.Organizations.TokenTouchThrottle,
           TrifleApp.Exporters.ChromeLimiter,
           Trifle.RateLimit,
+          # Only starts when RATE_LIMIT_BACKEND=redis.
+          Trifle.RateLimit.RedisBackend,
+          # After Repo and Cache: flushes pending usage counts on shutdown.
+          Trifle.Billing.UsageRecorder,
           # Start Finch
           {Finch, name: Trifle.Finch},
           {Oban, Application.fetch_env!(:trifle, Oban)},

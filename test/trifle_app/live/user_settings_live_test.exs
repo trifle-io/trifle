@@ -129,7 +129,7 @@ defmodule TrifleApp.UserSettingsLiveTest do
         })
 
       assert result =~ "Update Password"
-      assert result =~ "should be at least 6 character(s)"
+      assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
     end
 
@@ -148,7 +148,7 @@ defmodule TrifleApp.UserSettingsLiveTest do
         |> render_submit()
 
       assert result =~ "Update Password"
-      assert result =~ "should be at least 6 character(s)"
+      assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
       assert result =~ "is not valid"
     end
