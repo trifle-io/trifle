@@ -129,8 +129,13 @@ export function compactChartOptions(payload, dark = false, size = {width: 120, h
     }},
     xAxis: {type: 'time', show: axes, splitNumber: 2, axisLine: {show: true, lineStyle: {color: axisColor}}, axisTick: {show: false}, axisLabel: {fontSize: 10, lineHeight: 12, color: labelColor, hideOverlap: true, margin: payload.compact ? 4 : 6, ...(timeFormatters ? {formatter: timeFormatters.axis} : {})}, splitLine: {show: false}},
     yAxis: {type: 'value', show: axes, min: 0, minInterval: 1, splitNumber: 2, axisLine: {show: true, lineStyle: {color: axisColor}}, axisTick: {show: false}, axisLabel: {show: payload.y_labels !== false, fontSize: 10, color: labelColor, hideOverlap: true, margin: 5, formatter: compactNumber}, splitLine: {show: axes, lineStyle: {color: axisColor, opacity: 0.35, type: 'dashed'}}},
-    series: (payload.series || []).map((s, i) => ({name: s.name, type: (s.chart_type || payload.chart_type) === 'bar' ? 'bar' : 'line', stack: payload.stacked ? 'activity' : undefined,
-      data: s.data, showSymbol: false, connectNulls: false, lineStyle: {width: 1.5}, itemStyle: {color: s.color || ['#14b8a6','#f59e0b','#f43f5e','#6366f1','#94a3b8'][i % 5]}, areaStyle: (s.chart_type || payload.chart_type) === 'area' ? {opacity: 0.15} : undefined}))};
+    series: (payload.series || []).map((s, i) => {
+      const type = String(s.chart_type || payload.chart_type || 'line').toLowerCase();
+      const dots = type === 'dots';
+      return {name: s.name, type: type === 'bar' ? 'bar' : dots ? 'scatter' : 'line', stack: payload.stacked && !dots ? 'activity' : undefined,
+        data: s.data, showSymbol: dots, ...(dots ? {symbol: 'circle', symbolSize: 5} : {}),
+        connectNulls: false, lineStyle: {width: 1.5}, itemStyle: {color: s.color || ['#14b8a6','#f59e0b','#f43f5e','#6366f1','#94a3b8'][i % 5]}, areaStyle: type === 'area' ? {opacity: 0.15} : undefined};
+    })};
 }
 
 // The standalone overview uses the same options as the dashboard renderer.

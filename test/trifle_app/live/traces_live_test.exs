@@ -368,18 +368,24 @@ defmodule TrifleApp.TracesLiveTest do
       refute_receive {:trace_activity, _}
     end
 
-    for page <- [2, 3, 4] do
-      view
-      |> element("button[phx-click='overview_page'][phx-value-page='#{page}']")
-      |> render_click()
+    first_page = render(view) |> overview_payloads() |> Enum.map(& &1["title"])
 
-      html = render_async(view)
-      expected_size = if page == 4, do: 15, else: 30
+    remaining_pages =
+      for page <- [2, 3, 4] do
+        view
+        |> element("button[phx-click='overview_page'][phx-value-page='#{page}']")
+        |> render_click()
 
-      assert length(overview_payloads(html)) == expected_size
+        payloads = render_async(view) |> overview_payloads()
+        expected_size = if page == 4, do: 15, else: 30
 
-      refute_receive {:trace_activity, _}
-    end
+        assert length(payloads) == expected_size
+        refute_receive {:trace_activity, _}
+        Enum.map(payloads, & &1["title"])
+      end
+
+    assert Enum.frequencies(first_page ++ List.flatten(remaining_pages)) ==
+             Map.new(1..105, &{"jobs/worker-#{&1}", 1})
   end
 
   test "overview honors path and state filters without refetching Stats", %{

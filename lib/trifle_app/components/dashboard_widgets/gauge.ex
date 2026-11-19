@@ -18,9 +18,11 @@ defmodule TrifleApp.Components.DashboardWidgets.Gauge do
 
   def dataset(stats, widget) do
     resolved = MetricSeriesEvaluator.resolve_timeline_rows(stats, widget)
-    entry = MetricSeriesEvaluator.primary_kpi_entry(resolved)
+    selected = MetricSeriesEvaluator.primary_kpi_binding(resolved)
 
-    if entry do
+    if selected do
+      {binding_key, entry} = selected
+
       counts =
         if widget["gauge_count_path"] not in [nil, ""] do
           count_widget = %{
@@ -32,7 +34,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Gauge do
           count_entry =
             stats
             |> MetricSeriesEvaluator.resolve_timeline_rows(count_widget)
-            |> MetricSeriesEvaluator.primary_kpi_entry()
+            |> MetricSeriesEvaluator.primary_kpi_entry(binding_key)
 
           if count_entry, do: count_entry.samples, else: %{}
         end

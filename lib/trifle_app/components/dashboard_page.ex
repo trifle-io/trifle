@@ -2060,7 +2060,7 @@ defmodule TrifleApp.Components.DashboardPage do
     [
       {"KPI", "kpi"},
       {"Timeseries", "timeseries"},
-      {"Gauge", "gauge"},
+      # {"Gauge", "gauge"},
       {"Category", "category"},
       {"Distribution", "distribution"},
       {"Heatmap", "heatmap"},

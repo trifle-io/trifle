@@ -33,6 +33,7 @@ export const options = {
   comparison_gauge_zero: compactChartOptions({presentation: 'gauge', gauge: {latest: 0, average: 0}}),
   state_sparkline_with_axes: compactChartOptions({presentation: 'sparkline', axes: true, y_labels: false, chart_type: 'bar', stacked: true, series: [{name: 'Success', data: timeData(24, 3)}]}),
   state_sparkline: compactChartOptions({presentation: 'sparkline', chart_type: 'bar', stacked: true, series: [{name: 'Success', data: timeData(24, 3)}]}),
+  dots_sparkline: compactChartOptions({presentation: 'sparkline', chart_type: 'dots', series: [{name: 'Events', data: timeData(24, 3)}]}),
   timeseries_line_with_overlays: {
     animation: false,
     textStyle: font,

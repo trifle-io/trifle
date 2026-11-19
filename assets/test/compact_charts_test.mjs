@@ -76,6 +76,27 @@ test('activity tooltip escapes job names and formats source timezone', () => {
   assert.ok(!html.includes('<script>'));
 });
 
+test('compact chart types preserve line, area and bar behavior and render Dots as visible scatter', () => {
+  const data = [[1, 2], [2, 3]];
+  for (const [chart_type, expected] of [['line', 'line'], ['area', 'line'], ['bar', 'bar'], ['dots', 'scatter'], ['Dots', 'scatter']]) {
+    const options = compactChartOptions({presentation: 'sparkline', chart_type, stacked: true, series: [{name: 'Events', data}]});
+    const [series] = options.series;
+    const dots = expected === 'scatter';
+    assert.equal(series.type, expected);
+    assert.equal(series.showSymbol, dots);
+    assert.equal(series.stack, dots ? undefined : 'activity');
+    assert.deepEqual(series.areaStyle, chart_type === 'area' ? {opacity: 0.15} : undefined);
+    assert.deepEqual(series.data, data);
+    if (dots) {
+      assert.equal(series.symbol, 'circle');
+      assert.equal(series.symbolSize, 5);
+    }
+  }
+  const mixed = compactChartOptions({presentation: 'sparkline', chart_type: 'bar', series: [{chart_type: 'dots', data}]}).series[0];
+  assert.equal(mixed.type, 'scatter');
+  assert.equal(mixed.showSymbol, true);
+});
+
 test('compact tooltips escape the chart frame, follow the pointer and stay inside the viewport', () => {
   const saved = globalThis.window;
   globalThis.window = {innerWidth: 1000, innerHeight: 700};
