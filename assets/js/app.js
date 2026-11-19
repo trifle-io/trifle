@@ -1,3 +1,4 @@
+import { registerCompactChartHook } from "./widgets/dashboard_runtime/shared/compact_charts.mjs"
 // If you want to use Phoenix channels, run `mix help phx.gen.channel`
 // to get started and then uncomment the line below.
 // import "./user_socket.js"
@@ -60,6 +61,7 @@ const chartsLoader = createChartsLoader({ window, document })
 const echarts = chartsLoader.echarts
 
 
+registerCompactChartHook(Hooks, {echarts, withChartOpts});
 registerDashboardRuntimeHooks(Hooks, {
   echarts,
   GridStack,
@@ -101,7 +103,7 @@ registerFilterBarShortcutsHook(Hooks);
 registerSidebarAlpineComponents();
 
 // Hooks that draw charts must not mount before the chart bundle has run.
-;["DashboardGrid", "ExpandedWidgetView", "DatabaseExploreChart", "HomeSparkline"].forEach((name) => {
+;["CompactChart", "DashboardGrid", "ExpandedWidgetView", "DatabaseExploreChart", "HomeSparkline"].forEach((name) => {
   if (Hooks[name]) Hooks[name] = chartsLoader.guardHook(Hooks[name])
 })
 

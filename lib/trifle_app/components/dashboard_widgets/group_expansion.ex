@@ -224,6 +224,7 @@ defmodule TrifleApp.Components.DashboardWidgets.GroupExpansion do
     if MetricSeries.metric_widget?(child) do
       child
       |> MetricSeries.normalize_widget()
+      |> TrifleApp.Components.DashboardWidgets.Gauge.prefix_count_path(concrete_path)
       |> Map.update("series", [], fn rows ->
         Enum.map(rows, &prefix_series_row(&1, concrete_path))
       end)

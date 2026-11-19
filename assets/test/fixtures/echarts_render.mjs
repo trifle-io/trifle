@@ -1,3 +1,4 @@
+import { compactChartOptions } from "../../js/widgets/dashboard_runtime/shared/compact_charts.mjs";
 // Renders a fixed set of chart options to SVG strings with either the full
 // ECharts build or the app's trimmed build, and prints them as JSON.
 //
@@ -24,6 +25,15 @@ const font = { fontFamily: "sans-serif" };
 // One entry per option shape the app builds. Keep in step with the renderers in
 // assets/js/widgets and the hooks in assets/js/app.js.
 export const options = {
+  success_proportion: compactChartOptions({presentation: 'proportion', segments: [{name: 'Success', value: 50, color: '#14b8a6'}, {name: 'Other states', value: 50}]}),
+  state_proportion: compactChartOptions({presentation: 'proportion', segments: [{name: 'Success', value: 50, color: '#14b8a6'}, {name: 'Error', value: 50, color: '#ef4444'}]}),
+  state_pie_proportion: compactChartOptions({presentation: 'proportion', layout: 'pie', segments: [{name: 'Success', value: 50, color: '#14b8a6'}, {name: 'Error', value: 25, color: '#ef4444'}, {name: 'Warning', value: 25, color: '#f97316'}]}),
+  empty_proportion: compactChartOptions({presentation: 'proportion', segments: []}),
+  comparison_gauge: compactChartOptions({presentation: 'gauge', gauge: {latest: 125, average: 100, unit: 'ms'}}),
+  comparison_gauge_zero: compactChartOptions({presentation: 'gauge', gauge: {latest: 0, average: 0}}),
+  state_sparkline_with_axes: compactChartOptions({presentation: 'sparkline', axes: true, y_labels: false, chart_type: 'bar', stacked: true, series: [{name: 'Success', data: timeData(24, 3)}]}),
+  state_sparkline: compactChartOptions({presentation: 'sparkline', chart_type: 'bar', stacked: true, series: [{name: 'Success', data: timeData(24, 3)}]}),
+  dots_sparkline: compactChartOptions({presentation: 'sparkline', chart_type: 'dots', series: [{name: 'Events', data: timeData(24, 3)}]}),
   timeseries_line_with_overlays: {
     animation: false,
     textStyle: font,

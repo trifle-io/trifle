@@ -128,16 +128,27 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator do
   end
 
   def primary_kpi_entry(rows) when is_list(rows) do
+    case primary_kpi_binding(rows) do
+      nil -> nil
+      {_binding_key, entry} -> entry
+    end
+  end
+
+  def primary_kpi_entry(rows, binding_key) when is_list(rows) do
+    rows
+    |> visible_rows()
+    |> Enum.find_value(fn resolved ->
+      Map.get(resolved.entries, binding_key) || Map.get(resolved.entries, @single_binding)
+    end)
+  end
+
+  def primary_kpi_binding(rows) when is_list(rows) do
     rows
     |> visible_rows()
     |> Enum.find_value(fn resolved ->
       resolved.entries
       |> sorted_entries(nil, default_mode: "alpha")
       |> List.first()
-      |> case do
-        nil -> nil
-        {_binding_key, entry} -> entry
-      end
     end)
   end
 

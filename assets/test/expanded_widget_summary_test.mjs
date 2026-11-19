@@ -63,3 +63,54 @@ test('summary cells and tooltips attach percent signs without a space', () => {
     assert.equal(column.tooltipValueGetter({value, data: {unit: '%'}}), '');
   }
 });
+
+test('trace overview puts measurements in rows and timestamps in columns', () => {
+  const view = hook();
+  view.seriesColor = () => '#000';
+  let rows, columns;
+  view.renderSummaryGrid = (data, defs) => { rows = data; columns = defs; };
+  view.renderTimeseriesTable({
+    presentation: 'trace_overview', timezone: 'Asia/Dubai', states: ['success', 'error'],
+    points: [
+      {at: 0, count: 5, states: {success: 4, error: 1}, duration: 12.3456789, lines: 0},
+      {at: 3600000, count: 0, states: {success: 0, error: 0}, duration: null, lines: null}
+    ]
+  });
+  assert.deepEqual(columns.map(column => column.field), ['path', 'point_0', 'point_1']);
+  assert.match(columns[1].headerName, /04:00:00/);
+  assert.match(columns[2].headerName, /05:00:00/);
+  assert.match(columns[1].headerTooltip, /Asia\/Dubai/);
+  assert.equal(columns[0].pinned, 'left');
+  assert.equal(rows.find(row => row.path === 'Success').point_0, 4);
+  assert.equal(rows.find(row => row.path === 'Error').point_0, 1);
+  assert.equal(rows.find(row => row.path === 'Avg lines').point_0, 0);
+  assert.equal(rows.find(row => row.path === 'Avg duration (ms)').point_1, null);
+  assert.equal(columns[1].valueFormatter({value: 12.3456789}), '12.3456789');
+  assert.equal(columns[1].valueFormatter({value: 0}), '0');
+  assert.equal(columns[1].valueFormatter({value: null}), '—');
+});
+
+test('long trace timelines have bounded columns and every raw bucket remains reachable', () => {
+  const view = hook();
+  view.seriesColor = () => '#000';
+  let rows, columns;
+  view.renderSummaryGrid = (data, defs) => { rows = data; columns = defs; };
+  const data = {presentation: 'trace_overview', states: [],
+    points: Array.from({length: 1440}, (_, index) => ({at: index * 600000, count: index}))};
+  view.renderTimeseriesTable(data);
+  const seen = [];
+  for (let page = 0; page < 30; page++) {
+    assert.equal(columns.length, 49);
+    const traces = rows.find(row => row.path === 'Traces');
+    columns.slice(1).forEach(column => seen.push(traces[column.field]));
+    view.changeTraceTablePage(1);
+  }
+  assert.deepEqual(seen, Array.from({length: 1440}, (_, index) => index));
+  assert.equal(view.traceTablePage, 29);
+  view.changeTraceTablePage(-100);
+  assert.equal(view.traceTablePage, 0);
+  view.changeTraceTablePage(100);
+  view.renderTimeseriesTable({...data, points: data.points.slice(0, 3)});
+  assert.equal(view.traceTablePage, 0);
+  assert.equal(columns.length, 4);
+});

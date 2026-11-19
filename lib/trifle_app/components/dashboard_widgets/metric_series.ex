@@ -5,7 +5,7 @@ defmodule TrifleApp.Components.DashboardWidgets.MetricSeries do
   alias Trifle.Stats.Transponder.ExpressionEngine
   alias TrifleApp.Components.DashboardWidgets.Helpers
 
-  @metric_widget_types ~w[kpi timeseries category table list distribution heatmap]
+  @metric_widget_types ~w[kpi gauge timeseries category table list distribution heatmap]
 
   def metric_widget?(type_or_widget) do
     type_or_widget

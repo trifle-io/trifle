@@ -1207,6 +1207,7 @@ Hooks.DashboardGrid = {
     switch (kind) {
       case 'kpi-visual':
         return this._sparklines;
+      case 'gauge':
       case 'timeseries':
         return this._tsCharts;
       case 'category':
@@ -1248,7 +1249,7 @@ Hooks.DashboardGrid = {
       }
       return;
     }
-    if (type === 'timeseries') {
+    if (type === 'timeseries' || type === 'gauge') {
       const payload = registry.timeseries && registry.timeseries[normalizedId];
       if (payload) {
         this._render_timeseries([payload]);
@@ -2580,6 +2581,7 @@ Hooks.DashboardGrid = {
         this._lastKpiValues = this._deepClone(this._sortedWidgetValues(registry.kpiValues));
         this._lastKpiVisuals = this._deepClone(this._sortedWidgetValues(registry.kpiVisuals));
         break;
+      case 'gauge':
       case 'timeseries':
         this._lastTimeseries = this._deepClone(this._sortedWidgetValues(registry.timeseries));
         break;
@@ -2646,7 +2648,7 @@ Hooks.DashboardGrid = {
       return;
     }
 
-    if (type === 'timeseries') {
+    if (type === 'timeseries' || type === 'gauge') {
       if (payload) {
         registry.timeseries[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
       } else {
@@ -2768,7 +2770,7 @@ Hooks.DashboardGrid = {
   },
 
   _widgetSupportsLoadingState(type) {
-    return ['kpi', 'timeseries', 'category', 'table', 'list', 'distribution', 'heatmap'].includes(type);
+    return ['kpi', 'gauge', 'timeseries', 'category', 'table', 'list', 'distribution', 'heatmap'].includes(type);
   },
 
   _syncWidgetRefreshIndicator(content, state) {
@@ -2823,6 +2825,7 @@ Hooks.DashboardGrid = {
     switch (type) {
       case 'kpi':
         return !!body.querySelector('.kpi-wrap');
+      case 'gauge':
       case 'timeseries':
         return !!body.querySelector('.ts-chart') || hasMeaningfulText;
       case 'category':
@@ -2876,6 +2879,7 @@ Hooks.DashboardGrid = {
         if (!value && !visual) return undefined;
         return this._deepClone({ value: value || null, visual: visual || null });
       }
+      case 'gauge':
       case 'timeseries':
         return registry.timeseries && registry.timeseries[normalizedId]
           ? this._deepClone(registry.timeseries[normalizedId])

@@ -29,7 +29,7 @@ test("rendering with the trimmed build produces no ECharts warnings", () => {
 
 for (const name of Object.keys(full.rendered)) {
   test(`${name} renders the same with the trimmed build`, () => {
-    assert.ok(full.rendered[name].includes("<path"), "fixture drew nothing with the full build");
+    assert.match(full.rendered[name], /<(?:path|circle)\b/, "fixture drew nothing with the full build");
     assert.equal(trimmed.rendered[name], full.rendered[name]);
   });
 }

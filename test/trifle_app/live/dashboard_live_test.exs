@@ -810,6 +810,60 @@ defmodule TrifleApp.DashboardLiveTest do
     refute Map.has_key?(widget, "color")
   end
 
+  test "gauge editor saves series, weighting, units and scale", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _} = live(conn, ~p"/dashboards/#{dashboard.id}")
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+    render_click(view, "set_widget_type", %{"widget_id" => "widget-1", "type" => "gauge"})
+    assert has_element?(view, "input[name='gauge_count_path']")
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "gauge",
+      "widget_title" => "Duration",
+      "gauge_count_path" => "duration.count",
+      "gauge_unit" => "ms",
+      "gauge_max" => "1000",
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "duration.sum"}
+    })
+
+    [widget] =
+      Organizations.get_dashboard_for_membership!(membership, dashboard.id).payload["grid"]
+
+    assert widget["type"] == "gauge"
+    assert widget["unit"] == "ms"
+    assert widget["gauge_max"] == "1000"
+    assert widget["gauge_count_path"] == "duration.count"
+    assert hd(widget["series"])["path"] == "duration.sum"
+  end
+
+  test "timeseries saves compact sparkline presentation", %{
+    conn: conn,
+    dashboard: dashboard,
+    membership: membership
+  } do
+    {:ok, view, _} = live(conn, ~p"/dashboards/#{dashboard.id}")
+    render_click(view, "open_widget_editor", %{"id" => "widget-1"})
+
+    render_submit(view, "save_widget", %{
+      "widget_id" => "widget-1",
+      "widget_type" => "timeseries",
+      "widget_title" => "Activity",
+      "ts_sparkline" => "true",
+      "widget_series_kind" => %{"0" => "path"},
+      "widget_series_path" => %{"0" => "count"}
+    })
+
+    [widget] =
+      Organizations.get_dashboard_for_membership!(membership, dashboard.id).payload["grid"]
+
+    assert widget["sparkline"] == true
+  end
+
   test "saves metric widgets with series rows and drops legacy path fields", %{
     conn: conn,
     dashboard: dashboard,

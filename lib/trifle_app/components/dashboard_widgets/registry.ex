@@ -7,6 +7,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
     Types.Group,
     Types.Kpi,
     Types.Timeseries,
+    Types.Gauge,
     Types.Category,
     Types.Table,
     Types.Text,

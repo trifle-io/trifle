@@ -2060,6 +2060,7 @@ defmodule TrifleApp.Components.DashboardPage do
     [
       {"KPI", "kpi"},
       {"Timeseries", "timeseries"},
+      # {"Gauge", "gauge"},
       {"Category", "category"},
       {"Distribution", "distribution"},
       {"Heatmap", "heatmap"},
@@ -2072,6 +2073,9 @@ defmodule TrifleApp.Components.DashboardPage do
   attr :type, :string, required: true
 
   defp widget_type_icon(%{type: "kpi"} = assigns),
+    do: ~H|<EditorIcons.kpi_icon class="h-5 w-5 md:h-6 md:w-6" />|
+
+  defp widget_type_icon(%{type: "gauge"} = assigns),
     do: ~H|<EditorIcons.kpi_icon class="h-5 w-5 md:h-6 md:w-6" />|
 
   defp widget_type_icon(%{type: "timeseries"} = assigns),

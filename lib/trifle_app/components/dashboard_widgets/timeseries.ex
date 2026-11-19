@@ -3,6 +3,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
 
   alias Trifle.Stats.Series
   alias TrifleApp.Components.DashboardWidgets.MetricSeriesEvaluator
+  alias TrifleApp.Components.DashboardWidgets.Registry
   require Logger
 
   @spec datasets(Series.t() | nil, list()) :: list()
@@ -11,10 +12,12 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
   def datasets(series_struct, grid_items) do
     items =
       grid_items
-      |> Enum.filter(fn item ->
-        String.downcase(to_string(item["type"] || "")) == "timeseries"
+      |> Enum.filter(&(Registry.widget_type(&1) in ["timeseries", "gauge"]))
+      |> Enum.map(fn item ->
+        if Registry.widget_type(item) == "gauge",
+          do: TrifleApp.Components.DashboardWidgets.Gauge.dataset(series_struct, item),
+          else: dataset(series_struct, item)
       end)
-      |> Enum.map(&dataset(series_struct, &1))
       |> Enum.reject(&is_nil/1)
 
     Logger.debug(fn ->
@@ -100,6 +103,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
 
     %{
       id: id,
+      presentation: if(item["sparkline"] == true, do: "sparkline", else: "standard"),
       chart_type: chart_type,
       stacked: stacked,
       normalized: normalized,

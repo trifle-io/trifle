@@ -181,6 +181,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     case assigns.widget_type do
       "kpi" -> render_kpi_body(assigns)
       "timeseries" -> render_timeseries_body(assigns)
+      "gauge" -> render_timeseries_body(assigns)
       "category" -> render_category_body(assigns)
       "table" -> render_table_body(assigns)
       "text" -> render_text_body(assigns)
@@ -1686,15 +1687,25 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp dynamic_widget?(widget_type),
     do:
-      widget_type in ["kpi", "timeseries", "category", "table", "list", "distribution", "heatmap"]
+      widget_type in [
+        "kpi",
+        "gauge",
+        "timeseries",
+        "category",
+        "table",
+        "list",
+        "distribution",
+        "heatmap"
+      ]
 
   defp widget_has_renderable_data?("kpi", datasets) do
     present_dataset?(Map.get(datasets, :kpi_value)) ||
       present_dataset?(Map.get(datasets, :kpi_visual))
   end
 
-  defp widget_has_renderable_data?("timeseries", datasets),
-    do: present_dataset?(Map.get(datasets, :timeseries))
+  defp widget_has_renderable_data?(type, datasets)
+       when type in ["timeseries", "gauge"],
+       do: present_dataset?(Map.get(datasets, :timeseries))
 
   defp widget_has_renderable_data?("category", datasets),
     do: present_dataset?(Map.get(datasets, :category))

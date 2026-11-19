@@ -4,7 +4,7 @@ defmodule TrifleApp.TracesLive.Query do
   alias Trifle.Stats.Source
   alias TrifleApp.TimeframeParsing
 
-  @fields ~w(source_id reference detail path state tags tag_mode duration_min timeframe granularity from to)
+  @fields ~w(source_id reference detail path state tags tag_mode duration_min timeframe granularity from to jobs_sort jobs_direction jobs_size jobs_page jobs_collapsed)
   @range_fields ~w(source_id timeframe from to)
   @list_fields ~w(reference tags tag_mode duration_min)
 
@@ -131,7 +131,10 @@ defmodule TrifleApp.TracesLive.Query do
     end
   end
 
-  def url(params), do: "/traces?" <> URI.encode_query(params)
+  def url(params) do
+    route = if params["_view"] == "overview", do: "/traces/overview", else: "/traces"
+    route <> "?" <> URI.encode_query(Map.delete(params, "_view"))
+  end
 
   def path_url(params, path), do: filtered_url(params, %{"path" => path})
   def tag_url(params, tag), do: filtered_url(params, %{"tags" => tag, "tag_mode" => "any"})
@@ -140,6 +143,7 @@ defmodule TrifleApp.TracesLive.Query do
     params
     |> Map.drop(["reference", "detail"])
     |> Map.merge(filters)
+    |> Map.delete("jobs_page")
     |> url()
   end
 end

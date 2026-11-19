@@ -60,6 +60,31 @@ defmodule TrifleApp.Format do
     |> Enum.join()
   end
 
+  @doc "Formats milliseconds as a rounded value and adaptive unit for compact chart labels."
+  def compact_duration_ms(nil), do: %{value: "—", unit: "ms"}
+
+  def compact_duration_ms(%Decimal{} = milliseconds),
+    do: milliseconds |> Decimal.to_float() |> compact_duration_ms()
+
+  def compact_duration_ms(milliseconds) when is_number(milliseconds) do
+    units = [{"ms", 1}, {"s", 1_000}, {"m", 60_000}, {"h", 3_600_000}, {"d", 86_400_000}]
+    magnitude = abs(milliseconds)
+    index = Enum.count(tl(units), fn {_, size} -> magnitude >= size end)
+    {_, size} = Enum.at(units, index)
+    rounded = Float.round(magnitude / size, 1)
+
+    index =
+      case Enum.at(units, index + 1) do
+        {_, next_size} when rounded >= next_size / size -> index + 1
+        _ -> index
+      end
+
+    {unit, size} = Enum.at(units, index)
+    rounded = Float.round(milliseconds / size, 1)
+    value = if rounded == trunc(rounded), do: to_string(trunc(rounded)), else: to_string(rounded)
+    %{value: value, unit: unit}
+  end
+
   defp pad_two(value) when value < 10, do: "0#{value}"
   defp pad_two(value), do: Integer.to_string(value)
 end

@@ -1,3 +1,4 @@
+import { compactChartOptions } from "../shared/compact_charts.mjs";
 import { ANNOTATION_POPOVER_Z_INDEX, TIMESERIES_TOOLTIP_RESPONSIVE_CSS, TIMESERIES_TOOLTIP_Z_INDEX, annotationGroupsForItem, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam, timestampMs } from "../shared/timeseries_annotations";
 
 import { timeseriesTimeFormatters } from "../shared/timeseries_timezone.mjs";
@@ -40,7 +41,8 @@ export const createDashboardGridTimeseriesRendererMethods = ({
       const initTheme = isDarkMode ? 'dark' : undefined;
       const tooltipHoveredOnly = !!it.hovered_only;
       const ensureInit = () => {
-        const syncGroup = this._tsSyncGroupForWidget(it.id);
+        if (!container.isConnected) return;
+        const syncGroup = it.presentation === 'gauge' ? null : this._tsSyncGroupForWidget(it.id);
         if (this._shouldDeferViewportRender(container)) {
           container.dataset.renderPending = '1';
           return;
@@ -61,6 +63,13 @@ export const createDashboardGridTimeseriesRendererMethods = ({
           if (chart.group !== syncGroup) {
             chart.group = syncGroup;
           }
+        }
+        if (it.presentation === 'gauge' || it.presentation === 'sparkline') {
+          chart.setOption(compactChartOptions(it, isDarkMode, undefined, container), {notMerge: true});
+          container.dataset.echartsReady = '1';
+          chart.resize();
+          this._scheduleReadyMark();
+          return;
         }
         const timeFormatters = timeseriesTimeFormatters(it.timezone);
         const normalized = !!it.normalized;

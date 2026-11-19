@@ -3,7 +3,7 @@ defmodule TrifleApp.TracesLive do
 
   alias Trifle.Accounts
   alias Trifle.Stats.Source
-  alias Trifle.Traces.{Activity, Reader}
+  alias Trifle.Traces.{Activity, Overview, Reader}
   alias TrifleApp.TracesLive.{Query, Timestamps}
   alias TrifleApp.Components.Traces, as: View
   alias TrifleApp.DesignSystem.PathColors
@@ -24,11 +24,21 @@ defmodule TrifleApp.TracesLive do
        params: %{},
        query_error: nil,
        tokens: %{},
+       overview: nil,
+       overview_params: %{},
+       overview_state: nil,
+       overview_rows: nil,
+       overview_controls: nil,
        activity_input: nil,
+       activity_version: 0,
+       activity_scope: nil,
        activity: Activity.build(nil),
        activity_error: nil,
        activity_loading: false,
        expanded_widget: nil,
+       expanded_overview_row: nil,
+       path_colors: %{},
+       path_color_paths: [],
        traces: [],
        cursor: nil,
        list_error: nil,
@@ -57,6 +67,12 @@ defmodule TrifleApp.TracesLive do
   @impl true
   def handle_params(params, _uri, socket) do
     params = Query.params(params)
+
+    params =
+      if socket.assigns.live_action == :overview,
+        do: Map.put(params, "_view", "overview"),
+        else: params
+
     id = params["source_id"] || List.first(socket.assigns.sources) |> source_id()
     params = if id, do: Map.put(params, "source_id", id), else: params
 
@@ -78,11 +94,15 @@ defmodule TrifleApp.TracesLive do
       list_filters_changed =
         source_changed or Query.list_params(old.params) != Query.list_params(params)
 
+      retain_activity = socket.assigns.source && Source.id(socket.assigns.source) == id
+
       socket =
         assign(socket,
           source: source,
           query: query,
           params: params,
+          overview_params: Map.drop(params, ["reference", "detail"]),
+          overview_state: query.filters[:state],
           list_filters_open:
             if(list_filters_changed,
               do: Query.list_filters_active?(params),
@@ -92,7 +112,11 @@ defmodule TrifleApp.TracesLive do
           collapsed: query.detail_expanded
         )
 
-      socket = if activity_changed, do: load_activity(socket), else: rebuild_activity(socket)
+      socket =
+        if activity_changed,
+          do: load_activity(socket, !retain_activity),
+          else: rebuild_activity(socket)
+
       socket = if list_changed, do: load_list(socket, false), else: socket
       socket = if detail_changed, do: load_detail(socket), else: socket
       {:noreply, socket}
@@ -108,6 +132,7 @@ defmodule TrifleApp.TracesLive do
            query: nil,
            collapsed: false,
            expanded_widget: nil,
+           expanded_overview_row: nil,
            activity_loading: false,
            list_loading: false,
            detail_loading: false
@@ -116,6 +141,29 @@ defmodule TrifleApp.TracesLive do
   end
 
   @impl true
+  def handle_event("overview_controls", params, socket) do
+    patch(
+      socket,
+      socket.assigns.params
+      |> Map.merge(Map.take(params, ~w(jobs_sort jobs_direction jobs_size)))
+      |> Map.delete("jobs_page")
+    )
+  end
+
+  def handle_event("overview_page", %{"page" => page}, socket),
+    do: patch(socket, Map.put(socket.assigns.params, "jobs_page", page))
+
+  def handle_event("toggle_overview", _, socket),
+    do:
+      patch(
+        socket,
+        Map.put(
+          socket.assigns.params,
+          "jobs_collapsed",
+          to_string(socket.assigns.params["jobs_collapsed"] != "true")
+        )
+      )
+
   def handle_event("apply_activity_filters", params, socket) do
     apply_scoped_filters(socket, Map.take(params, ~w(path state)))
   end
@@ -148,10 +196,19 @@ defmodule TrifleApp.TracesLive do
      assign(socket, expanded_widget: if(socket.assigns.source, do: "trace-activity", else: nil))}
   end
 
+  def handle_event("expand_widget", %{"id" => id}, socket) do
+    rows = if socket.assigns.overview, do: socket.assigns.overview.rows, else: []
+
+    if socket.assigns.live_action == :overview &&
+         Enum.any?(rows, &(TrifleApp.Components.TraceOverview.widget_id(&1.path) == id)),
+       do: {:noreply, socket |> assign(expanded_widget: id) |> update_expanded_overview()},
+       else: {:noreply, socket}
+  end
+
   def handle_event("expand_widget", _, socket), do: {:noreply, socket}
 
   def handle_event("close_expanded_widget", _, socket),
-    do: {:noreply, assign(socket, expanded_widget: nil)}
+    do: {:noreply, assign(socket, expanded_widget: nil, expanded_overview_row: nil)}
 
   def handle_event("load_more", _, socket) do
     if socket.assigns.cursor && !socket.assigns.list_loading,
@@ -302,23 +359,35 @@ defmodule TrifleApp.TracesLive do
   end
 
   defp finish(:activity, {:ok, input}, socket),
-    do: socket |> assign(activity_input: input, activity_loading: false) |> rebuild_activity()
-
-  defp finish(:activity, {:error, _}, socket),
     do:
-      assign(socket,
+      socket
+      |> assign(
+        activity_input: input,
         activity_loading: false,
-        activity_error: "Activity is unavailable. Refresh to retry."
+        activity_version: socket.assigns.activity_version + 1
       )
+      |> rebuild_activity()
+
+  defp finish(:activity, {:error, _}, socket) do
+    message =
+      if socket.assigns.live_action == :overview && socket.assigns.overview &&
+           socket.assigns.overview.rows != [],
+         do: "Activity could not be refreshed. Showing the last available values.",
+         else: "Activity is unavailable. Refresh to retry."
+
+    assign(socket, activity_loading: false, activity_error: message)
+  end
 
   defp finish(:list, {:ok, {result, append}}, socket) do
     traces = if append, do: socket.assigns.traces ++ result.traces, else: result.traces
 
-    assign(socket,
+    socket
+    |> assign(
       traces: Enum.uniq_by(traces, & &1.reference),
       cursor: result.cursor,
       list_loading: false
     )
+    |> update_path_colors()
   end
 
   defp finish(:list, {:error, _}, socket),
@@ -329,7 +398,7 @@ defmodule TrifleApp.TracesLive do
       )
 
   defp finish(:detail, {:ok, record}, socket) do
-    socket = assign(socket, record: record, detail_loading: false)
+    socket = socket |> assign(record: record, detail_loading: false) |> update_path_colors()
     if record.parts > 0, do: load_part(socket, 1), else: socket
   end
 
@@ -388,31 +457,128 @@ defmodule TrifleApp.TracesLive do
         attachments_error: "Attachments could not be loaded."
       )
 
-  defp load_activity(socket) do
+  defp load_activity(socket, reset?) do
     {membership, id, _} = context(socket)
     q = socket.assigns.query
     activity = Application.get_env(:trifle, :trace_activity, Activity)
 
+    socket =
+      if reset? do
+        socket
+        |> assign(
+          activity_input: nil,
+          activity_version: socket.assigns.activity_version + 1,
+          expanded_widget: nil,
+          expanded_overview_row: nil
+        )
+        |> rebuild_activity()
+      else
+        socket
+      end
+
     socket
-    |> assign(
-      activity_input: nil,
-      activity: Activity.build(nil),
-      activity_error: nil,
-      activity_loading: true
-    )
+    |> assign(activity_error: nil, activity_loading: true)
     |> task(:activity, fn -> activity.fetch(membership, id, q.from, q.to, q.granularity) end)
   end
 
-  defp rebuild_activity(socket),
-    do:
-      assign(socket,
-        activity:
+  defp rebuild_activity(socket) do
+    q = socket.assigns.query
+    state = q.filters[:state]
+    scope = {socket.assigns.activity_version, q.path, state, socket.assigns.live_action}
+    changed? = socket.assigns.activity_scope != scope
+
+    socket =
+      if changed? do
+        activity =
           Activity.build(
             socket.assigns.activity_input,
-            socket.assigns.query.path,
-            socket.assigns.query.filters[:state]
+            q.path,
+            if(socket.assigns.live_action == :overview, do: nil, else: state)
           )
-      )
+
+        assign(socket, activity: activity, activity_scope: scope, overview_rows: nil)
+      else
+        socket
+      end
+
+    socket =
+      if socket.assigns.live_action == :overview do
+        controls = Overview.controls(socket.assigns.params)
+
+        if changed? || controls != socket.assigns.overview_controls do
+          if controls.collapsed do
+            assign(socket,
+              overview_controls: controls,
+              overview:
+                Overview.collapsed(
+                  socket.assigns.activity_input,
+                  q.path,
+                  state,
+                  socket.assigns.params,
+                  socket.assigns.activity
+                )
+            )
+          else
+            rows =
+              socket.assigns.overview_rows ||
+                Overview.prepare(
+                  socket.assigns.activity_input,
+                  q.path,
+                  state,
+                  socket.assigns.activity
+                )
+
+            assign(socket,
+              overview_rows: rows,
+              overview_controls: controls,
+              overview: Overview.paginate(rows, socket.assigns.params)
+            )
+          end
+        else
+          socket
+        end
+      else
+        socket
+      end
+
+    socket = if changed?, do: update_path_colors(socket), else: socket
+    if changed?, do: update_expanded_overview(socket), else: socket
+  end
+
+  defp update_expanded_overview(socket) do
+    row =
+      if socket.assigns.live_action == :overview && socket.assigns.expanded_widget do
+        Enum.find(
+          socket.assigns.overview_rows || [],
+          &(TrifleApp.Components.TraceOverview.widget_id(&1.path) ==
+              socket.assigns.expanded_widget)
+        )
+      end
+
+    expanded =
+      if row,
+        do:
+          Overview.expand(
+            row,
+            socket.assigns.activity_input,
+            socket.assigns.query.filters[:state],
+            socket.assigns.activity
+          )
+
+    assign(socket, expanded_overview_row: expanded)
+  end
+
+  defp update_path_colors(socket) do
+    paths = socket.assigns.activity.paths ++ Enum.map(socket.assigns.traces, & &1.key)
+    paths = if socket.assigns.record, do: [socket.assigns.record.key | paths], else: paths
+    paths = paths |> Enum.uniq() |> Enum.sort()
+
+    if paths == socket.assigns.path_color_paths do
+      socket
+    else
+      assign(socket, path_color_paths: paths, path_colors: PathColors.build(paths, "/"))
+    end
+  end
 
   defp load_list(socket, append) do
     {membership, id, reader} = context(socket)
@@ -501,7 +667,19 @@ defmodule TrifleApp.TracesLive do
       {socket.assigns.current_membership, Source.id(socket.assigns.source),
        Application.get_env(:trifle, :trace_reader, Reader)}
 
-  defp patch(socket, params), do: {:noreply, push_patch(socket, to: Query.url(params))}
+  defp patch(socket, params) do
+    params =
+      if socket.assigns.live_action == :overview,
+        do: Map.put(params, "_view", "overview"),
+        else: params
+
+    changed =
+      Map.take(params, ~w(source_id path state timeframe granularity from to)) !=
+        Map.take(socket.assigns.params, ~w(source_id path state timeframe granularity from to))
+
+    params = if changed, do: Map.delete(params, "jobs_page"), else: params
+    {:noreply, push_patch(socket, to: Query.url(params))}
+  end
 
   defp apply_scoped_filters(socket, filters) do
     filters = Map.new(filters, fn {key, value} -> {key, String.trim(value)} end)
@@ -518,12 +696,6 @@ defmodule TrifleApp.TracesLive do
 
   @impl true
   def render(assigns) do
-    # Include unfiltered activity paths, paginated rows and direct-link details.
-    # Every surface receives the same sibling colors, even when only one row is visible.
-    paths = assigns.activity.paths ++ Enum.map(assigns.traces, & &1.key)
-    paths = if assigns.record, do: [assigns.record.key | paths], else: paths
-    assigns = assign(assigns, :path_colors, PathColors.build(paths, "/"))
-
     ~H"""
     <div
       id="traces-root"
@@ -555,7 +727,18 @@ defmodule TrifleApp.TracesLive do
         </.live_component>
         <div class="traces-scrollport">
           <div class="traces-content">
+            <TrifleApp.Components.TraceOverview.content
+              :if={@live_action == :overview}
+              overview={@overview}
+              params={@overview_params}
+              path_colors={@path_colors}
+              loading={@activity_loading}
+              error={@activity_error}
+              timezone={@query.config.time_zone}
+              state={@overview_state}
+            />
             <View.activity
+              :if={@live_action != :overview}
               activity={@activity}
               path={@query.path}
               state={@query.filters[:state]}
@@ -607,6 +790,12 @@ defmodule TrifleApp.TracesLive do
           </div>
         </div>
         <%!-- Keep the fixed modal outside size containment and the scrollport. --%>
+        <TrifleApp.Components.TraceOverview.expanded
+          :if={@expanded_overview_row}
+          row={@expanded_overview_row}
+          timezone={@query.config.time_zone}
+          path_colors={@path_colors}
+        />
         <View.activity
           :if={@expanded_widget == "trace-activity"}
           activity={@activity}
