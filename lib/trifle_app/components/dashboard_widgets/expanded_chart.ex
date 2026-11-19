@@ -25,6 +25,21 @@ defmodule TrifleApp.Components.DashboardWidgets.ExpandedChart do
           <div id={@id <> "-chart"} data-role="chart" phx-update="ignore" class="h-full w-full"></div>
         </div>
       </div>
+      <nav
+        :if={@type == "trace_overview"}
+        id={@id <> "-timeline-controls"}
+        data-role="timeline-controls"
+        aria-label="Raw values timeframe"
+        phx-update="ignore"
+        hidden
+        class="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-600 dark:text-slate-300"
+      >
+        <span data-role="timeline-range" aria-live="polite"></span>
+        <button type="button" data-timeline-page="-1" class="disabled:opacity-40">
+          Previous points
+        </button>
+        <button type="button" data-timeline-page="1" class="disabled:opacity-40">Next points</button>
+      </nav>
       <div class="flex-1 min-h-[300px] rounded-lg border border-gray-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900/60 overflow-auto">
         <div
           id={@id <> "-summary"}

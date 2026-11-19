@@ -90,6 +90,17 @@ defmodule Trifle.Traces.OverviewTest do
     assert hd(filtered.points).lines_sum == 90
   end
 
+  test "cached summaries omit expanded points and can be paginated independently" do
+    activity = Trifle.Traces.Activity.build(input())
+    [row] = rows = Overview.prepare(input(), nil, nil, activity)
+    refute Map.has_key?(row, :points)
+    assert Overview.paginate(rows, %{"jobs_size" => "3"}).rows == rows
+    assert Overview.expand(row, input(), nil, activity).points != []
+    collapsed = Overview.collapsed(input(), nil, nil, %{"jobs_collapsed" => "true"}, activity)
+    assert collapsed.rows == []
+    assert collapsed.total == 1
+  end
+
   test "matches exact and child paths on segment boundaries without parent rollups" do
     base = input()
     metric = base.metrics["jobs/a"]

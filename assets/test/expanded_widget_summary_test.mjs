@@ -89,3 +89,28 @@ test('trace overview puts measurements in rows and timestamps in columns', () =>
   assert.equal(columns[1].valueFormatter({value: 0}), '0');
   assert.equal(columns[1].valueFormatter({value: null}), '—');
 });
+
+test('long trace timelines have bounded columns and every raw bucket remains reachable', () => {
+  const view = hook();
+  view.seriesColor = () => '#000';
+  let rows, columns;
+  view.renderSummaryGrid = (data, defs) => { rows = data; columns = defs; };
+  const data = {presentation: 'trace_overview', states: [],
+    points: Array.from({length: 1440}, (_, index) => ({at: index * 600000, count: index}))};
+  view.renderTimeseriesTable(data);
+  const seen = [];
+  for (let page = 0; page < 30; page++) {
+    assert.equal(columns.length, 49);
+    const traces = rows.find(row => row.path === 'Traces');
+    columns.slice(1).forEach(column => seen.push(traces[column.field]));
+    view.changeTraceTablePage(1);
+  }
+  assert.deepEqual(seen, Array.from({length: 1440}, (_, index) => index));
+  assert.equal(view.traceTablePage, 29);
+  view.changeTraceTablePage(-100);
+  assert.equal(view.traceTablePage, 0);
+  view.changeTraceTablePage(100);
+  view.renderTimeseriesTable({...data, points: data.points.slice(0, 3)});
+  assert.equal(view.traceTablePage, 0);
+  assert.equal(columns.length, 4);
+});

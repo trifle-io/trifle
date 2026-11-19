@@ -5,7 +5,6 @@ import { createDashboardGridDistributionRendererMethods } from "./dashboard_grid
 import { createDashboardGridTableRendererMethods } from "./dashboard_grid_renderers/table";
 import { createDashboardGridTextRendererMethods } from "./dashboard_grid_renderers/text";
 import { createDashboardGridListRendererMethods } from "./dashboard_grid_renderers/list";
-import { createTraceOverviewRendererMethods } from "./dashboard_grid_renderers/trace_overview";
 import { createGridPageLoadingHandlers } from "./shared/grid_page_loading.mjs";
 
 const readDashboardAnnotationsCookie = () => {
@@ -78,7 +77,6 @@ export const registerDashboardGridHook = (Hooks, deps) => {
   });
   const textRendererMethods = createDashboardGridTextRendererMethods({ sanitizeRichHtml });
   const listRendererMethods = createDashboardGridListRendererMethods();
-  const traceOverviewMethods = createTraceOverviewRendererMethods({echarts, withChartOpts});
 
 Hooks.DashboardGrid = {
   mounted() {
@@ -262,10 +260,6 @@ Hooks.DashboardGrid = {
     this._applyResponsiveGrid = () => {
       if (printMode) return;
       if (!this.grid) return;
-      if (this.el.dataset.compact === 'true') {
-        this._scheduleCompactLayout();
-        return;
-      }
       const oneCol = window.innerWidth < 1024; // MD and below
       if (oneCol !== this._isOneCol) {
         try {
@@ -641,9 +635,6 @@ Hooks.DashboardGrid = {
   },
 
   destroyed() {
-    Object.keys(this._traceOverviewCharts || {}).forEach(id => this._disposeTraceOverview(id));
-    this._compactGridObserver?.disconnect();
-    if (this._compactLayoutRaf) cancelAnimationFrame(this._compactLayoutRaf);
     if (this.el) {
       this.el.classList.remove('opacity-100');
       this.el.classList.add('opacity-0', 'pointer-events-none');
@@ -800,7 +791,7 @@ Hooks.DashboardGrid = {
     const customCellHeight = parseInt(this.el.dataset.printCellHeight || '', 10);
     const resolvedCellHeight = (this.el.dataset.printMode === 'true' && customCellHeight > 0)
       ? customCellHeight
-      : this.el.dataset.compact === 'true' ? 16 : 80;
+      : 80;
 
     this._cellHeight = resolvedCellHeight;
     this._nestedCellHeight = Math.max(60, resolvedCellHeight);
@@ -824,8 +815,7 @@ Hooks.DashboardGrid = {
       column: nested ? metrics.cols : 12,
       minRow: nested ? metrics.rows : this.minRows,
       float: true,
-      margin: this.el.dataset.compact === 'true' ? 4 : 5,
-      animate: this.el.dataset.compact !== 'true',
+      margin: 5,
       disableOneColumnMode: true,
       styleInHead: true,
       cellHeight: nested ? metrics.cellHeight : this._cellHeight,
@@ -1217,7 +1207,6 @@ Hooks.DashboardGrid = {
     switch (kind) {
       case 'kpi-visual':
         return this._sparklines;
-      case 'trace_overview':
       case 'gauge':
       case 'timeseries':
         return this._tsCharts;
@@ -1260,7 +1249,7 @@ Hooks.DashboardGrid = {
       }
       return;
     }
-    if (type === 'timeseries' || type === 'gauge' || type === 'trace_overview') {
+    if (type === 'timeseries' || type === 'gauge') {
       const payload = registry.timeseries && registry.timeseries[normalizedId];
       if (payload) {
         this._render_timeseries([payload]);
@@ -2125,7 +2114,6 @@ Hooks.DashboardGrid = {
   ...tableRendererMethods,
   ...textRendererMethods,
   ...listRendererMethods,
-  ...traceOverviewMethods,
   addGridItemEl(item) {
     if (item && item.type === 'group') {
       this._appendGroupElement(this.el, item);
@@ -2593,7 +2581,6 @@ Hooks.DashboardGrid = {
         this._lastKpiValues = this._deepClone(this._sortedWidgetValues(registry.kpiValues));
         this._lastKpiVisuals = this._deepClone(this._sortedWidgetValues(registry.kpiVisuals));
         break;
-      case 'trace_overview':
       case 'gauge':
       case 'timeseries':
         this._lastTimeseries = this._deepClone(this._sortedWidgetValues(registry.timeseries));
@@ -2661,12 +2648,11 @@ Hooks.DashboardGrid = {
       return;
     }
 
-    if (type === 'timeseries' || type === 'gauge' || type === 'trace_overview') {
+    if (type === 'timeseries' || type === 'gauge') {
       if (payload) {
         registry.timeseries[normalizedId] = Object.assign({}, payload, { id: payload.id || normalizedId });
       } else {
         delete registry.timeseries[normalizedId];
-        this._disposeTraceOverview(normalizedId);
         if (this._tsSeriesData) {
           delete this._tsSeriesData[normalizedId];
         }
@@ -2784,7 +2770,7 @@ Hooks.DashboardGrid = {
   },
 
   _widgetSupportsLoadingState(type) {
-    return ['kpi', 'trace_overview', 'gauge', 'timeseries', 'category', 'table', 'list', 'distribution', 'heatmap'].includes(type);
+    return ['kpi', 'gauge', 'timeseries', 'category', 'table', 'list', 'distribution', 'heatmap'].includes(type);
   },
 
   _syncWidgetRefreshIndicator(content, state) {
@@ -2839,7 +2825,6 @@ Hooks.DashboardGrid = {
     switch (type) {
       case 'kpi':
         return !!body.querySelector('.kpi-wrap');
-      case 'trace_overview':
       case 'gauge':
       case 'timeseries':
         return !!body.querySelector('.ts-chart') || hasMeaningfulText;
@@ -2894,7 +2879,6 @@ Hooks.DashboardGrid = {
         if (!value && !visual) return undefined;
         return this._deepClone({ value: value || null, visual: visual || null });
       }
-      case 'trace_overview':
       case 'gauge':
       case 'timeseries':
         return registry.timeseries && registry.timeseries[normalizedId]

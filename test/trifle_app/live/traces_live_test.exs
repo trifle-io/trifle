@@ -241,6 +241,17 @@ defmodule TrifleApp.TracesLiveTest do
     end
   end
 
+  defmodule ControlledActivity do
+    def fetch(a, b, c, d, e) do
+      send(Application.fetch_env!(:trifle, :trace_test_pid), {:waiting_activity, self()})
+
+      receive do
+        :finish -> FakeActivity.fetch(a, b, c, d, e)
+        :fail -> {:error, :storage_unavailable}
+      end
+    end
+  end
+
   setup %{conn: conn} do
     previous =
       for key <- [:trace_reader, :trace_activity, :trace_test_pid],
@@ -290,11 +301,11 @@ defmodule TrifleApp.TracesLiveTest do
     {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
     html = render_async(view)
     assert html =~ "Overview"
-    assert has_element?(view, "#trace-overview .grid-stack-item", "jobs/App.Worker")
+    assert has_element?(view, "#trace-overview article", "jobs/App.Worker")
 
     assert has_element?(
              view,
-             "#trace-overview .job-overview-status-circle[data-tooltip='Success rate: 33.3%'][tabindex='0']"
+             "#trace-overview .job-overview-status-circle[data-tooltip^='Success rate: 33.3%'][tabindex='0']"
            )
 
     assert has_element?(
@@ -346,20 +357,20 @@ defmodule TrifleApp.TracesLiveTest do
     {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
     html = render_async(view)
 
-    assert length(overview_payloads(html)) == 9
+    assert length(overview_cards(html)) == 9
 
     assert_receive {:trace_activity, _}
 
     for size <- [3, 15, 30] do
       view |> form("#trace-overview form", %{jobs_size: to_string(size)}) |> render_change()
       html = render_async(view)
-      payloads = overview_payloads(html)
+      payloads = overview_cards(html)
       assert length(payloads) == size
 
       assert Enum.all?(payloads, fn payload ->
                length(
                  Floki.find(
-                   Floki.parse_fragment!(payload["payload"]["html"]),
+                   Floki.parse_fragment!(payload["html"]),
                    "[data-compact-chart]"
                  )
                ) == 6
@@ -368,7 +379,7 @@ defmodule TrifleApp.TracesLiveTest do
       refute_receive {:trace_activity, _}
     end
 
-    first_page = render(view) |> overview_payloads() |> Enum.map(& &1["title"])
+    first_page = render(view) |> overview_cards() |> Enum.map(& &1["title"])
 
     remaining_pages =
       for page <- [2, 3, 4] do
@@ -376,7 +387,7 @@ defmodule TrifleApp.TracesLiveTest do
         |> element("button[phx-click='overview_page'][phx-value-page='#{page}']")
         |> render_click()
 
-        payloads = render_async(view) |> overview_payloads()
+        payloads = render_async(view) |> overview_cards()
         expected_size = if page == 4, do: 15, else: 30
 
         assert length(payloads) == expected_size
@@ -396,11 +407,102 @@ defmodule TrifleApp.TracesLiveTest do
     render_async(view)
     assert_receive {:trace_activity, _}
     view |> form("#trace-filters", %{path: "jobs", state: "error"}) |> render_submit()
-    [payload] = overview_payloads(render_async(view))
+    [payload] = overview_cards(render_async(view))
     assert payload["title"] == "jobs/App.Worker"
-    assert payload["payload"]["html"] =~ "Available with Any state."
+    assert payload["html"] =~ "Available with Any state."
     refute_receive {:trace_activity, _}
     assert_patch(view) =~ "/traces/overview?"
+  end
+
+  test "refresh retains the cards, chart identities and expanded view until new data arrives", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    before = render_async(view)
+    [card | _] = overview_cards(before)
+
+    view
+    |> element("button[phx-click='expand_widget'][phx-value-id='#{card["id"]}']")
+    |> render_click()
+
+    Application.put_env(:trifle, :trace_activity, ControlledActivity)
+
+    send(view.pid, {:filter_bar, {:filter_changed, %{reload: true}}})
+    assert_receive {:waiting_activity, fetcher}
+    during = render(view)
+    assert overview_cards(during) == overview_cards(before)
+    assert has_element?(view, "#job-overview-body[aria-busy='true']")
+
+    assert has_element?(
+             view,
+             "#trace-overview .grid-widget-refresh-indicator[aria-label='Refreshing overview']"
+           )
+
+    assert has_element?(view, "#traces-overview-expanded-widget")
+
+    send(fetcher, :finish)
+    render_async(view)
+    assert has_element?(view, "#job-overview-body[aria-busy='false']")
+    refute has_element?(view, "#trace-overview [data-role='widget-refresh-indicator']")
+    assert has_element?(view, "#traces-overview-expanded-widget")
+
+    send(view.pid, {:filter_bar, {:filter_changed, %{reload: true}}})
+    assert_receive {:waiting_activity, failed_fetcher}
+    send(failed_fetcher, :fail)
+    html = render_async(view)
+    assert overview_cards(html) == overview_cards(before)
+
+    assert has_element?(
+             view,
+             "#trace-overview [role='alert']",
+             "Showing the last available values"
+           )
+  end
+
+  test "presentation controls reuse summaries and collapsed refresh defers their preparation", %{
+    conn: conn,
+    database: database
+  } do
+    alias Trifle.Traces.Overview
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    render_async(view)
+    pid = view.pid
+    :erlang.trace_pattern({Overview, :prepare, 4}, true, [])
+    on_exit(fn -> :erlang.trace_pattern({Overview, :prepare, 4}, false, []) end)
+    :erlang.trace(pid, true, [:call])
+
+    view |> form("#trace-overview form", %{jobs_sort: "name", jobs_size: "3"}) |> render_change()
+    render_async(view)
+    view |> element("#trace-list a[href*='reference=first']") |> render_click()
+    render_async(view)
+    render_click(view, "toggle_overview")
+    send(pid, {:filter_bar, {:filter_changed, %{reload: true}}})
+    render_async(view)
+    refute_receive {:trace, ^pid, :call, {Overview, :prepare, _}}
+
+    render_click(view, "toggle_overview")
+    assert_receive {:trace, ^pid, :call, {Overview, :prepare, _}}
+    refute_receive {:trace, ^pid, :call, {Overview, :prepare, _}}
+  end
+
+  test "unrelated trace actions do not resend overview chart payloads", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    render_async(view)
+
+    for action <- [
+          fn -> render_click(view, "toggle_list_filters") end,
+          fn -> view |> element("#trace-list a[href*='reference=first']") |> render_click() end
+        ] do
+      diffs = capture_diffs(view, action) |> Jason.encode!()
+      refute diffs =~ "comparison_colors"
+      refute diffs =~ "outline_color"
+      refute diffs =~ "y_labels"
+      refute diffs =~ "data-trace-overview-widget"
+    end
   end
 
   test "overview widgets expand through the dashboard modal without fetching again", %{
@@ -408,7 +510,7 @@ defmodule TrifleApp.TracesLiveTest do
     database: database
   } do
     {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
-    [payload | _] = overview_payloads(render_async(view))
+    [payload | _] = overview_cards(render_async(view))
     assert_receive {:trace_activity, _}
 
     render_click(view, "expand_widget", %{"id" => payload["id"]})
@@ -422,13 +524,42 @@ defmodule TrifleApp.TracesLiveTest do
     refute has_element?(view, "#traces-overview-expanded-widget")
   end
 
-  # GridStack owns the ignored visible DOM. LiveView transports subsequent
-  # pagination/filter updates through these hidden widget data elements.
-  defp overview_payloads(html) do
+  defp overview_cards(html) do
     html
     |> Floki.parse_document!()
-    |> Floki.attribute("#trace-overview [phx-hook='DashboardWidgetData']", "data-widget-payload")
-    |> Enum.map(&Jason.decode!/1)
+    |> Floki.find("#traces-overview-grid > article")
+    |> Enum.map(fn card ->
+      %{
+        "id" => Floki.attribute(card, "id") |> hd(),
+        "title" => Floki.attribute(card, "[data-trace-path]", "data-trace-path") |> hd(),
+        "html" => Floki.raw_html(card)
+      }
+    end)
+  end
+
+  defp capture_diffs(view, action) do
+    :erlang.trace(view.pid, true, [:send])
+    action.()
+    render_async(view)
+    :erlang.trace(view.pid, false, [:send])
+    delivered = :erlang.trace_delivered(view.pid)
+    assert_receive {:trace_delivered, _, ^delivered}
+    collect_diffs([])
+  end
+
+  defp collect_diffs(diffs) do
+    receive do
+      {:trace, _, :send, %Phoenix.Socket.Message{event: "diff", payload: diff}, _} ->
+        collect_diffs([diff | diffs])
+
+      {:trace, _, :send, %Phoenix.Socket.Reply{payload: %{diff: diff}}, _} ->
+        collect_diffs([diff | diffs])
+
+      {:trace, _, :send, _, _} ->
+        collect_diffs(diffs)
+    after
+      0 -> diffs
+    end
   end
 
   test "list and detail share sibling colors from all known paths, not just visible traces", %{

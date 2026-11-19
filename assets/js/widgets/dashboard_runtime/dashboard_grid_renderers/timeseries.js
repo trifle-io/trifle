@@ -17,10 +17,6 @@ export const createDashboardGridTimeseriesRendererMethods = ({
     const isDarkMode = document.documentElement.classList.contains('dark');
     const colors = this.colors || [];
     items.forEach((payload) => {
-      if (payload.presentation === 'trace_overview') {
-        this._render_trace_overview([payload]);
-        return;
-      }
       const it = timeseriesWeightedAverages(payload);
       const item = this.el.querySelector(`.grid-stack-item[gs-id="${it.id}"]`);
       const body = item && item.querySelector('.grid-widget-body');

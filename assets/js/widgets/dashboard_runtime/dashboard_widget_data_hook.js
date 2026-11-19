@@ -176,7 +176,7 @@ Hooks.DashboardWidgetData = {
 
   updateWidgetTitle(title, type) {
     if (!this.widgetId) return;
-    if (!title || type === 'text' || type === 'trace_overview') return;
+    if (!title || type === 'text') return;
     const trimmed = title.trim();
     if (trimmed === '') return;
     const gridHook = findDashboardGridHook(this.el);

@@ -19,78 +19,75 @@ defmodule Trifle.Traces.Overview do
   end
 
   def build(input, path, state, params) do
-    controls = controls(params)
-    activity = Activity.build(input, path, state)
-    series = activity.series |> Enum.filter(&Map.has_key?(&1, :state)) |> Enum.group_by(& &1.path)
+    activity = Activity.build(input, path)
+    page = input |> prepare(path, state, activity) |> paginate(params)
+    %{page | rows: Enum.map(page.rows, &expand(&1, input, state, activity))}
+  end
+
+  def prepare(input, path, state, activity) do
     metrics = (input || %{})[:metrics] || %{}
+    all_series = state_series(activity) |> Enum.group_by(& &1.path)
 
-    all_series =
-      Activity.build(input, path).series
-      |> Enum.filter(&Map.has_key?(&1, :state))
-      |> Enum.group_by(& &1.path)
+    matching_paths(input, path, state, activity)
+    |> Enum.map(fn key ->
+      counts = Map.get(all_series, key, [])
+      timeline = Enum.filter(counts, &(state in [nil, "", &1.state]))
 
-    keys =
-      activity.paths
-      |> Enum.filter(
-        &(Activity.matches?(&1, path) and (Map.has_key?(metrics, &1) or Map.has_key?(series, &1)))
-      )
+      total =
+        timeline |> Enum.flat_map(& &1.data) |> Enum.reduce(0, fn [_, n], sum -> sum + n end)
+
+      buckets = metric_buckets(metrics[key])
+
+      success_rate =
+        counts
+        |> Enum.reduce(%{}, fn series, buckets ->
+          Enum.reduce(series.data, buckets, fn [at, count], acc ->
+            successes = if series.state == "success", do: count, else: 0
+            Map.update(acc, at, {successes, count}, fn {s, c} -> {s + successes, c + count} end)
+          end)
+        end)
+        |> Enum.map(fn {at, {successes, count}} -> {at, successes * 100, count} end)
+        |> MeasurementSummary.summarize()
+
+      duration =
+        Enum.map(buckets, fn {at, values} ->
+          sample = values["duration"] || %{}
+
+          sample =
+            if state in [nil, ""], do: sample, else: get_in(sample, ["states", state]) || %{}
+
+          {at, sample["sum"], sample["count"]}
+        end)
+        |> MeasurementSummary.summarize()
+
+      lines =
+        if state in [nil, ""] do
+          Enum.map(buckets, fn {at, values} ->
+            {at, get_in(values, ["entries", "count"]), values["count"]}
+          end)
+          |> MeasurementSummary.summarize()
+        else
+          MeasurementSummary.summarize([])
+        end
+
+      %{
+        path: key,
+        count: total,
+        success: success_rate.average,
+        success_rate: success_rate,
+        state_distribution: state_distribution(counts),
+        duration: duration,
+        lines: lines,
+        series: timeline
+      }
+    end)
+  end
+
+  def paginate(rows, params) do
+    controls = controls(params)
 
     rows =
-      keys
-      |> Enum.map(fn key ->
-        timeline = Map.get(series, key, [])
-
-        total =
-          timeline |> Enum.flat_map(& &1.data) |> Enum.reduce(0, fn [_, n], sum -> sum + n end)
-
-        buckets = metric_buckets(metrics[key])
-        counts = Map.get(all_series, key, [])
-
-        success_rate =
-          counts
-          |> Enum.reduce(%{}, fn series, buckets ->
-            Enum.reduce(series.data, buckets, fn [at, count], acc ->
-              successes = if series.state == "success", do: count, else: 0
-              Map.update(acc, at, {successes, count}, fn {s, c} -> {s + successes, c + count} end)
-            end)
-          end)
-          |> Enum.map(fn {at, {successes, count}} -> {at, successes * 100, count} end)
-          |> MeasurementSummary.summarize()
-
-        duration =
-          Enum.map(buckets, fn {at, values} ->
-            sample = values["duration"] || %{}
-
-            sample =
-              if state in [nil, ""], do: sample, else: get_in(sample, ["states", state]) || %{}
-
-            {at, sample["sum"], sample["count"]}
-          end)
-          |> MeasurementSummary.summarize()
-
-        lines =
-          if state in [nil, ""] do
-            Enum.map(buckets, fn {at, values} ->
-              {at, get_in(values, ["entries", "count"]), values["count"]}
-            end)
-            |> MeasurementSummary.summarize()
-          else
-            MeasurementSummary.summarize([])
-          end
-
-        %{
-          path: key,
-          count: total,
-          success: success_rate.average,
-          success_rate: success_rate,
-          state_distribution: state_distribution(counts),
-          points: timeline_points(counts, buckets, state),
-          duration: duration,
-          lines: lines,
-          series: timeline
-        }
-      end)
-      |> Enum.filter(&(state in [nil, ""] or &1.count > 0))
+      rows
       |> Enum.sort(fn a, b ->
         av = sort_value(a, controls.sort)
         bv = sort_value(b, controls.sort)
@@ -104,7 +101,36 @@ defmodule Trifle.Traces.Overview do
         end
       end)
 
-    total = length(rows)
+    page(rows, length(rows), controls)
+  end
+
+  def collapsed(input, path, state, params, activity) do
+    page([], length(matching_paths(input, path, state, activity)), controls(params))
+  end
+
+  def expand(row, input, state, activity) do
+    counts = Enum.filter(state_series(activity), &(&1.path == row.path))
+    buckets = metric_buckets(get_in(input || %{}, [:metrics, row.path]))
+    Map.put(row, :points, timeline_points(counts, buckets, state))
+  end
+
+  defp matching_paths(input, path, state, activity) do
+    metrics = (input || %{})[:metrics] || %{}
+    series = state_series(activity) |> Enum.filter(&(state in [nil, "", &1.state]))
+    paths = MapSet.new(series, & &1.path)
+
+    Enum.filter(activity.paths, fn key ->
+      Activity.matches?(key, path) &&
+        if(state in [nil, ""],
+          do: Map.has_key?(metrics, key) || MapSet.member?(paths, key),
+          else: MapSet.member?(paths, key)
+        )
+    end)
+  end
+
+  defp state_series(activity), do: Enum.filter(activity.series, &Map.has_key?(&1, :state))
+
+  defp page(rows, total, controls) do
     pages = max(1, ceil(total / controls.size))
     page = min(controls.page, pages)
 

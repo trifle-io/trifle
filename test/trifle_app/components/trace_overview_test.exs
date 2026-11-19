@@ -2,11 +2,10 @@ defmodule TrifleApp.Components.TraceOverviewTest do
   use ExUnit.Case, async: true
   import Phoenix.LiveViewTest
   alias TrifleApp.Components.TraceOverview
-  alias TrifleApp.Components.DashboardWidgets.{Registry, Types}
 
   @endpoint TrifleWeb.Endpoint
 
-  test "read-only dashboard widgets occupy three columns per row and remain internal" do
+  test "HEEx owns the cards and only chart canvases ignore LiveView patches" do
     metrics = Map.new(1..6, &{"jobs/#{&1}", %{at: [1000], values: [%{"count" => 1}]}})
 
     overview =
@@ -26,24 +25,12 @@ defmodule TrifleApp.Components.TraceOverviewTest do
       )
       |> Floki.parse_document!()
 
-    [grid] = Floki.attribute(doc, "#traces-overview-grid", "data-initial-grid")
-    widgets = Jason.decode!(grid)
-
-    assert Enum.map(widgets, &{&1["x"], &1["y"], &1["w"]}) == [
-             {0, 0, 4},
-             {4, 0, 4},
-             {8, 0, 4},
-             {0, 10, 4},
-             {4, 10, 4},
-             {8, 10, 4}
-           ]
-
-    assert Floki.attribute(doc, "#traces-overview-grid", "data-editable") == ["false"]
-    assert length(Floki.find(doc, ".grid-widget-expand")) == 6
-    assert Floki.find(doc, ".grid-widget-edit") == []
-    assert Registry.type_module("trace_overview") == Types.TraceOverview
-    refute Types.TraceOverview in Registry.modules()
-    assert Registry.editor_module("trace_overview") == nil
+    assert length(Floki.find(doc, "#traces-overview-grid > article")) == 6
+    assert length(Floki.find(doc, "[phx-hook='CompactChart']")) == 36
+    assert length(Floki.find(doc, "[data-compact-canvas][phx-update='ignore']")) == 36
+    assert Floki.find(doc, "#traces-overview-grid[phx-update='ignore']") == []
+    assert Floki.find(doc, "[data-widget-payload], [phx-hook='DashboardGrid']") == []
+    assert length(Floki.find(doc, ".grid-widget-expand[phx-click='expand_widget']")) == 6
   end
 
   test "expanded chart puts counts on the main axis and duration on the right, keeping lines in raw points" do
@@ -90,6 +77,34 @@ defmodule TrifleApp.Components.TraceOverviewTest do
 
     refute Enum.any?(chart["series"], &(&1["name"] == "Average lines"))
     assert hd(chart["points"])["lines"] == 9
+  end
+
+  test "customer-controlled paths remain escaped in normal LiveView markup" do
+    path = ~s|jobs/<img src=x onerror="alert(1)">|
+
+    overview =
+      Trifle.Traces.Overview.build(
+        %{
+          catalog: %{at: [1000], values: [%{}]},
+          metrics: %{path => %{at: [1000], values: [%{"count" => 1}]}}
+        },
+        nil,
+        nil,
+        %{}
+      )
+
+    doc =
+      render_component(&TraceOverview.content/1,
+        overview: overview,
+        params: %{},
+        path_colors: %{},
+        timezone: "UTC"
+      )
+      |> Floki.parse_document!()
+
+    assert Floki.find(doc, "img, script") == []
+    assert Floki.attribute(doc, "[data-trace-path]", "data-trace-path") == [path]
+    assert Floki.find(doc, "[data-trace-path]") |> Floki.text() == path
   end
 
   test "trace and line counts use compact formatting and duration labels adapt units" do

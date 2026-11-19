@@ -12,44 +12,20 @@ defmodule TrifleApp.Components.TraceOverview do
   attr :state, :any, default: nil
 
   def content(assigns) do
-    widgets =
-      assigns.overview.rows
-      |> Enum.with_index()
-      |> Enum.map(fn {row, index} ->
-        %{
-          "id" => widget_id(row.path),
-          "type" => "trace_overview",
-          "title" => row.path,
-          "x" => rem(index, 3) * 4,
-          "y" => div(index, 3) * 10,
-          "w" => 4,
-          "h" => 10
-        }
-      end)
-
-    datasets =
-      Map.new(assigns.overview.rows, fn row ->
-        widget_assigns =
-          assigns
-          |> Map.take([:params, :path_colors, :timezone, :state])
-          |> Map.merge(%{row: row, __changed__: nil})
-
-        html = widget(widget_assigns) |> Phoenix.HTML.Safe.to_iodata() |> IO.iodata_to_binary()
-        id = widget_id(row.path)
-        {id, %{id: id, presentation: "trace_overview", html: html}}
-      end)
-
-    assigns =
-      assigns
-      |> assign(:dashboard, %{id: "traces-overview", payload: %{"grid" => widgets}})
-      |> assign(:datasets, datasets)
-
     ~H"""
     <section
       id="trace-overview"
       aria-label="Overview"
-      class="shrink-0 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+      class="relative shrink-0 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
     >
+      <div
+        :if={@loading}
+        class="grid-widget-refresh-indicator"
+        data-role="widget-refresh-indicator"
+        role="status"
+        aria-label="Refreshing overview"
+      >
+      </div>
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
         <button
           type="button"
@@ -109,7 +85,7 @@ defmodule TrifleApp.Components.TraceOverview do
             </select>
           </label>
           <nav
-            :if={!@loading && !@error && @overview.total > 0}
+            :if={@overview.total > 0}
             aria-label="Overview pagination"
             class="ml-2 flex items-center gap-3 border-l border-slate-200 pl-4 dark:border-slate-700"
           >
@@ -120,7 +96,7 @@ defmodule TrifleApp.Components.TraceOverview do
               type="button"
               phx-click="overview_page"
               phx-value-page={@overview.page - 1}
-              disabled={@overview.page <= 1}
+              disabled={@loading || @overview.page <= 1}
               class="disabled:opacity-40"
             >
               Previous
@@ -129,7 +105,7 @@ defmodule TrifleApp.Components.TraceOverview do
               type="button"
               phx-click="overview_page"
               phx-value-page={@overview.page + 1}
-              disabled={@overview.page >= @overview.pages}
+              disabled={@loading || @overview.page >= @overview.pages}
               class="disabled:opacity-40"
             >
               Next
@@ -138,21 +114,23 @@ defmodule TrifleApp.Components.TraceOverview do
         </form>
       </div>
       <div :if={!@overview.collapsed} id="job-overview-body" aria-busy={to_string(@loading)}>
-        <p :if={@loading} class="p-6 text-sm text-slate-500">Loading job activity…</p>
+        <p :if={@loading && @overview.rows == []} class="p-6 text-sm text-slate-500">
+          Loading trace activity…
+        </p>
         <p :if={@error} role="alert" class="p-6 text-sm text-red-600">{@error}</p>
         <p :if={!@loading && !@error && @overview.rows == []} class="p-6 text-sm text-slate-500">
-          No recorded jobs match this path, state and timeframe.
+          No traces match this path, state and timeframe.
         </p>
-        <div :if={!@loading && !@error} class="job-overview-grid">
-          <TrifleApp.Components.DashboardWidgets.WidgetView.grid
-            grid_dom_id="traces-overview-grid"
-            dashboard={@dashboard}
-            min_rows={1}
-            compact={true}
-            timeseries={@datasets}
-            hide_on_patch={false}
-            widget_export={%{type: :disabled}}
-          />
+        <div id="traces-overview-grid" class="job-overview-grid">
+          <article :for={row <- @overview.rows} id={widget_id(row.path)} class="job-overview-row">
+            <.widget
+              row={row}
+              params={@params}
+              path_colors={@path_colors}
+              timezone={@timezone}
+              state={@state}
+            />
+          </article>
         </div>
       </div>
     </section>
@@ -251,6 +229,8 @@ defmodule TrifleApp.Components.TraceOverview do
             label="Expand trace overview"
             class="grid-widget-expand"
             data-widget-id={widget_id(@row.path)}
+            phx-click="expand_widget"
+            phx-value-id={widget_id(@row.path)}
           />
         </div>
       </div>
@@ -305,7 +285,8 @@ defmodule TrifleApp.Components.TraceOverview do
 
     success_tooltip =
       if is_number(success),
-        do: "Success rate: #{percentage(success)}%",
+        do:
+          "Success rate: #{percentage(success)}% of all traces, including running and unclassified traces",
         else: "Success rate: No traces in this timeframe"
 
     state_tooltip =
@@ -467,6 +448,7 @@ defmodule TrifleApp.Components.TraceOverview do
     ~H"""
     <div
       id={@id}
+      phx-hook="CompactChart"
       data-compact-chart
       data-chart={Jason.encode!(@payload)}
       role="img"

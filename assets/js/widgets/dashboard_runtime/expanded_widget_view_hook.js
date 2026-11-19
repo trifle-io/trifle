@@ -5,6 +5,8 @@ import { timeseriesTimeFormatters } from "./shared/timeseries_timezone.mjs";
 import { timeseriesLabels, timeseriesTooltipName } from "./shared/timeseries_identity.mjs";
 import { timeseriesAxisIndex, timeseriesSeriesOptions, timeseriesYAxes, timeseriesPointValue, formatTimeseriesValue, timeseriesWeightedAverages, bindTimeseriesAverageLegend } from "./shared/timeseries_axes.mjs";
 
+const TRACE_TABLE_PAGE_SIZE = 48;
+
 export const registerExpandedWidgetViewHook = (Hooks, deps) => {
   const {
     echarts,
@@ -53,6 +55,12 @@ Hooks.ExpandedWidgetView = {
     this.summaryGridRoot = null;
     this.summaryResizeObserver = null;
     this.summaryRenderToken = 0;
+    this.traceTablePage = 0;
+    this.handleTimelinePage = event => {
+      const button = event.target.closest('[data-timeline-page]');
+      if (button && this.el.contains(button)) this.changeTraceTablePage(Number(button.dataset.timelinePage));
+    };
+    this.el.addEventListener('click', this.handleTimelinePage);
     this.colors = [];
     this.handleResize = () => {
       if (this.chart && typeof this.chart.resize === 'function') {
@@ -82,6 +90,7 @@ Hooks.ExpandedWidgetView = {
   },
 
   destroyed() {
+    this.el.removeEventListener('click', this.handleTimelinePage);
     this.disposeChart();
     this.destroySummaryGrid();
     if (this.retryTimer) {
@@ -1080,9 +1089,22 @@ Hooks.ExpandedWidgetView = {
   renderTimeseriesTable(data) {
     if (!this.tableRoot) return;
     if (data?.presentation === 'trace_overview') {
+      this._traceTableData = data;
       const timezone = data.timezone || 'UTC';
       const formatter = new Intl.DateTimeFormat('en-GB', {timeZone: timezone, dateStyle: 'short', timeStyle: 'medium'});
-      const points = data.points || [];
+      const allPoints = data.points || [];
+      const lastPage = Math.max(0, Math.ceil(allPoints.length / TRACE_TABLE_PAGE_SIZE) - 1);
+      this.traceTablePage = Math.min(Math.max(0, this.traceTablePage || 0), lastPage);
+      const start = this.traceTablePage * TRACE_TABLE_PAGE_SIZE;
+      const points = allPoints.slice(start, start + TRACE_TABLE_PAGE_SIZE);
+      const controls = this.el?.querySelector?.('[data-role="timeline-controls"]');
+      if (controls) {
+        controls.hidden = allPoints.length <= TRACE_TABLE_PAGE_SIZE;
+        controls.querySelector('[data-role="timeline-range"]').textContent =
+          `Points ${(start + 1).toLocaleString()}–${(start + points.length).toLocaleString()} of ${allPoints.length.toLocaleString()} · ${timezone}`;
+        controls.querySelector('[data-timeline-page="-1"]').disabled = this.traceTablePage === 0;
+        controls.querySelector('[data-timeline-page="1"]').disabled = this.traceTablePage === lastPage;
+      }
       const measurements = [
         ['count', 'Traces'], ...((data.states || []).map(state => [`states.${state}`, state[0].toUpperCase() + state.slice(1)])),
         ['success', 'Success (%)'], ['duration', 'Avg duration (ms)'], ['duration_sum', 'Duration sum (ms)'],
@@ -1092,12 +1114,12 @@ Hooks.ExpandedWidgetView = {
         path,
         color: this.seriesColor(index),
         ...Object.fromEntries(points.map((point, index) => [
-          `point_${index}`, field.split('.').reduce((value, key) => value?.[key], point)
+          `point_${start + index}`, field.split('.').reduce((value, key) => value?.[key], point)
         ]))
       }));
       const columns = [this.summaryPathColumn('Measurement'), ...points.map((point, index) => {
         const label = formatter.format(new Date(point.at));
-        return {...this.summaryNumericColumn(`point_${index}`, label),
+        return {...this.summaryNumericColumn(`point_${start + index}`, label),
           minWidth: 180,
           headerTooltip: `${label} (${timezone})`,
           valueFormatter: params => Number.isFinite(params.value) ? String(params.value) : '—'
@@ -1117,6 +1139,12 @@ Hooks.ExpandedWidgetView = {
       : [];
 
     this.renderSeriesSummary(entries, 'No series data available yet.');
+  },
+
+  changeTraceTablePage(delta) {
+    if (!this._traceTableData || !Number.isInteger(delta)) return;
+    this.traceTablePage = (this.traceTablePage || 0) + delta;
+    this.renderTimeseriesTable(this._traceTableData);
   },
 
   renderSeriesSummary(seriesEntries, emptyMessage) {
