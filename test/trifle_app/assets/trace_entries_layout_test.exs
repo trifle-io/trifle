@@ -1,5 +1,8 @@
 defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
   use ExUnit.Case, async: true
+  import Phoenix.LiveViewTest
+
+  @endpoint TrifleWeb.Endpoint
 
   @source_path Path.expand("../../../assets/css/app.css", __DIR__)
 
@@ -35,7 +38,7 @@ defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
     assert source =~ ".trace-entry-timestamp {\n    grid-column: 3;\n    grid-row: 1;"
   end
 
-  test "activity has equal compact gaps without stacking the widget bottom margin" do
+  test "overview uses the page section gap without adding a widget bottom margin" do
     source = File.read!(@source_path)
 
     assert source =~ "--traces-section-gap: 0.75rem;"
@@ -45,8 +48,20 @@ defmodule TrifleApp.Assets.TraceEntriesLayoutTest do
 
     assert source =~ "gap: var(--traces-section-gap);"
 
-    assert source =~
-             ".traces-content > [aria-label=\"Trace activity\"] > .mb-6 {\n  margin-bottom: 0;"
+    overview = Trifle.Traces.Overview.build(nil, nil, nil, %{})
+
+    doc =
+      render_component(&TrifleApp.Components.TraceOverview.content/1,
+        overview: overview,
+        params: %{},
+        path_colors: %{},
+        timezone: "UTC"
+      )
+      |> Floki.parse_document!()
+
+    [classes] = Floki.attribute(doc, "#trace-overview", "class")
+    refute Enum.any?(String.split(classes), &Regex.match?(~r/^(?:.*:)?m[by]?-/, &1))
+    assert Floki.find(doc, "#traces-dashboard-grid") == []
   end
 
   test "native sticky controls leave room for entries without JavaScript offsets" do
