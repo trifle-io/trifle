@@ -223,6 +223,24 @@ defmodule TrifleApp.TracesLiveTest do
     end
   end
 
+  defmodule FakeManyActivity do
+    def fetch(a, b, c, d, e) do
+      {:ok, input} = FakeActivity.fetch(a, b, c, d, e)
+      metric = input.metrics["jobs/App.Worker"]
+      metrics = Map.new(1..105, &{"jobs/worker-#{&1}", metric})
+
+      {:ok,
+       %{
+         input
+         | metrics: metrics,
+           catalog: %{
+             input.catalog
+             | values: [%{"keys" => Map.new(metrics, fn {key, _} -> {key, 1} end)}, %{}]
+           }
+       }}
+    end
+  end
+
   setup %{conn: conn} do
     previous =
       for key <- [:trace_reader, :trace_activity, :trace_test_pid],
@@ -263,6 +281,148 @@ defmodule TrifleApp.TracesLiveTest do
       })
 
     %{conn: log_in_user(conn, user), user: user, database: database, organization: org}
+  end
+
+  test "overview keeps trace navigation and controls on its separate route", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    html = render_async(view)
+    assert html =~ "Overview"
+    assert has_element?(view, "#trace-overview .grid-stack-item", "jobs/App.Worker")
+
+    assert has_element?(
+             view,
+             "#trace-overview .job-overview-status-circle[data-tooltip='Success rate: 33.3%'][tabindex='0']"
+           )
+
+    assert has_element?(
+             view,
+             "#trace-overview .job-overview-status-circle[data-tooltip='State mix · Success: 33.3% · Warning: 33.3% · Error: 33.3%'][tabindex='0']"
+           )
+
+    refute has_element?(view, "#trace-overview .job-overview-status-circle[title]")
+
+    assert has_element?(
+             view,
+             "#trace-overview [id^='job-state-pie-'][data-tooltip='State slices · Success: 33.3% · Warning: 33.3% · Error: 33.3%']"
+           )
+
+    refute has_element?(view, "section[aria-label='Trace activity']")
+    assert_receive {:trace_activity, "1h"}
+    assert_receive {:trace_search, _}
+
+    view
+    |> form("#trace-overview form", %{jobs_sort: "name", jobs_direction: "asc", jobs_size: "15"})
+    |> render_change()
+
+    render_async(view)
+    refute_receive {:trace_activity, _}
+    refute_receive {:trace_search, _}
+
+    view |> element("#trace-list a[href*='reference=first']") |> render_click()
+    render_async(view)
+    assert has_element?(view, "#trace-detail")
+    assert_patch(view) =~ "/traces/overview?"
+
+    view |> element("button[phx-click='toggle_overview']") |> render_click()
+    refute has_element?(view, "#job-overview-body")
+    refute has_element?(view, "#trace-overview form[phx-change='overview_controls']")
+    assert has_element?(view, "#trace-detail")
+
+    view |> element("button[phx-click='toggle_overview']") |> render_click()
+    assert has_element?(view, "#trace-overview form[phx-change='overview_controls']")
+
+    assert has_element?(
+             view,
+             "#trace-overview select[name='jobs_size'] option[value='15'][selected]"
+           )
+  end
+
+  test "overview sends only the current 3, 9, 15 or 30 rows and paginates without fetching again",
+       %{conn: conn, database: database} do
+    Application.put_env(:trifle, :trace_activity, FakeManyActivity)
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    html = render_async(view)
+
+    assert length(overview_payloads(html)) == 9
+
+    assert_receive {:trace_activity, _}
+
+    for size <- [3, 15, 30] do
+      view |> form("#trace-overview form", %{jobs_size: to_string(size)}) |> render_change()
+      html = render_async(view)
+      payloads = overview_payloads(html)
+      assert length(payloads) == size
+
+      assert Enum.all?(payloads, fn payload ->
+               length(
+                 Floki.find(
+                   Floki.parse_fragment!(payload["payload"]["html"]),
+                   "[data-compact-chart]"
+                 )
+               ) == 6
+             end)
+
+      refute_receive {:trace_activity, _}
+    end
+
+    for page <- [2, 3, 4] do
+      view
+      |> element("button[phx-click='overview_page'][phx-value-page='#{page}']")
+      |> render_click()
+
+      html = render_async(view)
+      expected_size = if page == 4, do: 15, else: 30
+
+      assert length(overview_payloads(html)) == expected_size
+
+      refute_receive {:trace_activity, _}
+    end
+  end
+
+  test "overview honors path and state filters without refetching Stats", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}&jobs_page=2")
+    render_async(view)
+    assert_receive {:trace_activity, _}
+    view |> form("#trace-filters", %{path: "jobs", state: "error"}) |> render_submit()
+    [payload] = overview_payloads(render_async(view))
+    assert payload["title"] == "jobs/App.Worker"
+    assert payload["payload"]["html"] =~ "Available with Any state."
+    refute_receive {:trace_activity, _}
+    assert_patch(view) =~ "/traces/overview?"
+  end
+
+  test "overview widgets expand through the dashboard modal without fetching again", %{
+    conn: conn,
+    database: database
+  } do
+    {:ok, view, _} = live(conn, ~p"/traces/overview?source_id=#{database.id}")
+    [payload | _] = overview_payloads(render_async(view))
+    assert_receive {:trace_activity, _}
+
+    render_click(view, "expand_widget", %{"id" => payload["id"]})
+    assert has_element?(view, "#traces-overview-expanded-widget")
+    assert has_element?(view, "[phx-hook='ExpandedWidgetView'][data-type='trace_overview']")
+    refute_receive {:trace_activity, _}
+
+    render_click(view, "close_expanded_widget")
+    refute has_element?(view, "#traces-overview-expanded-widget")
+    render_click(view, "expand_widget", %{"id" => "missing"})
+    refute has_element?(view, "#traces-overview-expanded-widget")
+  end
+
+  # GridStack owns the ignored visible DOM. LiveView transports subsequent
+  # pagination/filter updates through these hidden widget data elements.
+  defp overview_payloads(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.attribute("#trace-overview [phx-hook='DashboardWidgetData']", "data-widget-payload")
+    |> Enum.map(&Jason.decode!/1)
   end
 
   test "list and detail share sibling colors from all known paths, not just visible traces", %{

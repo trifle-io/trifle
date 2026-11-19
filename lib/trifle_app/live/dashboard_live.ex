@@ -869,7 +869,7 @@ defmodule TrifleApp.DashboardLive do
   def handle_event("set_widget_type", params, socket) do
     with id when not is_nil(id) <- param(params, "widget_id"),
          type when not is_nil(type) <- param(params, "type"),
-         true <- type in ~w(kpi timeseries category distribution heatmap table list text) do
+         true <- type in ~w(kpi gauge timeseries category distribution heatmap table list text) do
       socket = ensure_widget_path_options(socket)
       path_options = socket.assigns[:widget_path_options] || []
 
@@ -1600,6 +1600,11 @@ defmodule TrifleApp.DashboardLive do
       is_nil(stats) ->
         base
 
+      type == "gauge" ->
+        stats
+        |> TrifleApp.Components.DashboardWidgets.Gauge.dataset(widget)
+        |> maybe_put_chart(base)
+
       type == "timeseries" ->
         stats
         |> Timeseries.dataset(widget)
@@ -1658,6 +1663,7 @@ defmodule TrifleApp.DashboardLive do
       true ->
         widget
         |> MetricSeries.normalize_widget()
+        |> TrifleApp.Components.DashboardWidgets.Gauge.prefix_count_path(group_path)
         |> Map.update("series", [], fn rows ->
           Enum.map(rows, fn row ->
             if MetricSeries.nested_row?(row) do
@@ -3539,12 +3545,24 @@ defmodule TrifleApp.DashboardLive do
               |> Map.put("timeseries", Map.has_key?(params, "kpi_timeseries"))
           end
 
+        "gauge" ->
+          widget
+          |> put_metric_series(params, widget, preserve_empty: true)
+          |> put_gauge_options(params, widget)
+
         "timeseries" ->
           widget
           |> put_metric_series(params, widget, preserve_empty: true)
           |> Map.put(
             "chart_type",
             Map.get(params, "ts_chart_type", Map.get(widget, "chart_type") || "line")
+          )
+          |> Map.put(
+            "sparkline",
+            normalize_widget_checkbox(
+              Map.get(params, "ts_sparkline", Map.get(widget, "sparkline", false)),
+              false
+            )
           )
           |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
           |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
@@ -4043,6 +4061,7 @@ defmodule TrifleApp.DashboardLive do
       when current_type in [
              "kpi",
              "timeseries",
+             "gauge",
              "category",
              "distribution",
              "heatmap",
@@ -4139,12 +4158,24 @@ defmodule TrifleApp.DashboardLive do
             |> Map.delete("goal_invert")
         end
 
+      "gauge" ->
+        base
+        |> put_metric_series(params, item)
+        |> put_gauge_options(params, item)
+
       "timeseries" ->
         base
         |> put_metric_series(params, item)
         |> Map.put(
           "chart_type",
           Map.get(params, "ts_chart_type", Map.get(item, "chart_type") || "line")
+        )
+        |> Map.put(
+          "sparkline",
+          normalize_widget_checkbox(
+            Map.get(params, "ts_sparkline", Map.get(item, "sparkline", false)),
+            false
+          )
         )
         |> Map.put("stacked", Map.has_key?(params, "ts_stacked"))
         |> Map.put("normalized", Map.has_key?(params, "ts_normalized"))
@@ -4365,6 +4396,7 @@ defmodule TrifleApp.DashboardLive do
              "group",
              "kpi",
              "timeseries",
+             "gauge",
              "category",
              "distribution",
              "heatmap",
@@ -4836,6 +4868,16 @@ defmodule TrifleApp.DashboardLive do
       v when v in ["sum", "max", "min", "mean", "oldest", "latest"] -> v
       _ -> "mean"
     end
+  end
+
+  defp put_gauge_options(widget, params, fallback) do
+    widget
+    |> Map.put(
+      "gauge_count_path",
+      Map.get(params, "gauge_count_path", fallback["gauge_count_path"]) || ""
+    )
+    |> Map.put("gauge_max", Map.get(params, "gauge_max", fallback["gauge_max"]) || "")
+    |> Map.put("unit", Map.get(params, "gauge_unit", fallback["unit"]) || "")
   end
 
   defp normalize_kpi_unit(value) do

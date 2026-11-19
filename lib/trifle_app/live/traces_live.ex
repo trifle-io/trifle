@@ -3,7 +3,7 @@ defmodule TrifleApp.TracesLive do
 
   alias Trifle.Accounts
   alias Trifle.Stats.Source
-  alias Trifle.Traces.{Activity, Reader}
+  alias Trifle.Traces.{Activity, Overview, Reader}
   alias TrifleApp.TracesLive.{Query, Timestamps}
   alias TrifleApp.Components.Traces, as: View
   alias TrifleApp.DesignSystem.PathColors
@@ -24,6 +24,7 @@ defmodule TrifleApp.TracesLive do
        params: %{},
        query_error: nil,
        tokens: %{},
+       overview: nil,
        activity_input: nil,
        activity: Activity.build(nil),
        activity_error: nil,
@@ -57,6 +58,12 @@ defmodule TrifleApp.TracesLive do
   @impl true
   def handle_params(params, _uri, socket) do
     params = Query.params(params)
+
+    params =
+      if socket.assigns.live_action == :overview,
+        do: Map.put(params, "_view", "overview"),
+        else: params
+
     id = params["source_id"] || List.first(socket.assigns.sources) |> source_id()
     params = if id, do: Map.put(params, "source_id", id), else: params
 
@@ -116,6 +123,29 @@ defmodule TrifleApp.TracesLive do
   end
 
   @impl true
+  def handle_event("overview_controls", params, socket) do
+    patch(
+      socket,
+      socket.assigns.params
+      |> Map.merge(Map.take(params, ~w(jobs_sort jobs_direction jobs_size)))
+      |> Map.delete("jobs_page")
+    )
+  end
+
+  def handle_event("overview_page", %{"page" => page}, socket),
+    do: patch(socket, Map.put(socket.assigns.params, "jobs_page", page))
+
+  def handle_event("toggle_overview", _, socket),
+    do:
+      patch(
+        socket,
+        Map.put(
+          socket.assigns.params,
+          "jobs_collapsed",
+          to_string(socket.assigns.params["jobs_collapsed"] != "true")
+        )
+      )
+
   def handle_event("apply_activity_filters", params, socket) do
     apply_scoped_filters(socket, Map.take(params, ~w(path state)))
   end
@@ -146,6 +176,15 @@ defmodule TrifleApp.TracesLive do
   def handle_event("expand_widget", %{"id" => "trace-activity"}, socket) do
     {:noreply,
      assign(socket, expanded_widget: if(socket.assigns.source, do: "trace-activity", else: nil))}
+  end
+
+  def handle_event("expand_widget", %{"id" => id}, socket) do
+    rows = if socket.assigns.overview, do: socket.assigns.overview.rows, else: []
+
+    if socket.assigns.live_action == :overview &&
+         Enum.any?(rows, &(TrifleApp.Components.TraceOverview.widget_id(&1.path) == id)),
+       do: {:noreply, assign(socket, expanded_widget: id)},
+       else: {:noreply, socket}
   end
 
   def handle_event("expand_widget", _, socket), do: {:noreply, socket}
@@ -400,11 +439,12 @@ defmodule TrifleApp.TracesLive do
       activity_error: nil,
       activity_loading: true
     )
+    |> rebuild_activity()
     |> task(:activity, fn -> activity.fetch(membership, id, q.from, q.to, q.granularity) end)
   end
 
-  defp rebuild_activity(socket),
-    do:
+  defp rebuild_activity(socket) do
+    socket =
       assign(socket,
         activity:
           Activity.build(
@@ -413,6 +453,21 @@ defmodule TrifleApp.TracesLive do
             socket.assigns.query.filters[:state]
           )
       )
+
+    if socket.assigns.live_action == :overview do
+      assign(socket,
+        overview:
+          Overview.build(
+            socket.assigns.activity_input,
+            socket.assigns.query.path,
+            socket.assigns.query.filters[:state],
+            socket.assigns.params
+          )
+      )
+    else
+      socket
+    end
+  end
 
   defp load_list(socket, append) do
     {membership, id, reader} = context(socket)
@@ -501,7 +556,19 @@ defmodule TrifleApp.TracesLive do
       {socket.assigns.current_membership, Source.id(socket.assigns.source),
        Application.get_env(:trifle, :trace_reader, Reader)}
 
-  defp patch(socket, params), do: {:noreply, push_patch(socket, to: Query.url(params))}
+  defp patch(socket, params) do
+    params =
+      if socket.assigns.live_action == :overview,
+        do: Map.put(params, "_view", "overview"),
+        else: params
+
+    changed =
+      Map.take(params, ~w(source_id path state timeframe granularity from to)) !=
+        Map.take(socket.assigns.params, ~w(source_id path state timeframe granularity from to))
+
+    params = if changed, do: Map.delete(params, "jobs_page"), else: params
+    {:noreply, push_patch(socket, to: Query.url(params))}
+  end
 
   defp apply_scoped_filters(socket, filters) do
     filters = Map.new(filters, fn {key, value} -> {key, String.trim(value)} end)
@@ -523,6 +590,16 @@ defmodule TrifleApp.TracesLive do
     paths = assigns.activity.paths ++ Enum.map(assigns.traces, & &1.key)
     paths = if assigns.record, do: [assigns.record.key | paths], else: paths
     assigns = assign(assigns, :path_colors, PathColors.build(paths, "/"))
+
+    expanded_row =
+      if assigns.live_action == :overview && assigns.overview do
+        Enum.find(
+          assigns.overview.rows,
+          &(TrifleApp.Components.TraceOverview.widget_id(&1.path) == assigns.expanded_widget)
+        )
+      end
+
+    assigns = assign(assigns, :expanded_overview_row, expanded_row)
 
     ~H"""
     <div
@@ -555,7 +632,18 @@ defmodule TrifleApp.TracesLive do
         </.live_component>
         <div class="traces-scrollport">
           <div class="traces-content">
+            <TrifleApp.Components.TraceOverview.content
+              :if={@live_action == :overview}
+              overview={@overview}
+              params={@params}
+              path_colors={@path_colors}
+              loading={@activity_loading}
+              error={@activity_error}
+              timezone={@query.config.time_zone}
+              state={@query.filters[:state]}
+            />
             <View.activity
+              :if={@live_action != :overview}
               activity={@activity}
               path={@query.path}
               state={@query.filters[:state]}
@@ -607,6 +695,12 @@ defmodule TrifleApp.TracesLive do
           </div>
         </div>
         <%!-- Keep the fixed modal outside size containment and the scrollport. --%>
+        <TrifleApp.Components.TraceOverview.expanded
+          :if={@expanded_overview_row}
+          row={@expanded_overview_row}
+          timezone={@query.config.time_zone}
+          path_colors={@path_colors}
+        />
         <View.activity
           :if={@expanded_widget == "trace-activity"}
           activity={@activity}

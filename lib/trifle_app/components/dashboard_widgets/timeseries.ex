@@ -12,9 +12,13 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
     items =
       grid_items
       |> Enum.filter(fn item ->
-        String.downcase(to_string(item["type"] || "")) == "timeseries"
+        String.downcase(to_string(item["type"] || "")) in ["timeseries", "gauge"]
       end)
-      |> Enum.map(&dataset(series_struct, &1))
+      |> Enum.map(fn item ->
+        if item["type"] == "gauge",
+          do: TrifleApp.Components.DashboardWidgets.Gauge.dataset(series_struct, item),
+          else: dataset(series_struct, item)
+      end)
       |> Enum.reject(&is_nil/1)
 
     Logger.debug(fn ->
@@ -100,6 +104,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Timeseries do
 
     %{
       id: id,
+      presentation: if(item["sparkline"] == true, do: "sparkline", else: "standard"),
       chart_type: chart_type,
       stacked: stacked,
       normalized: normalized,

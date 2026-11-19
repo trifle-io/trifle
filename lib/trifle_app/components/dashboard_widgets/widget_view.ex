@@ -38,6 +38,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
   attr :hide_on_patch, :boolean, default: true
   attr :grid_dom_id, :string, default: nil
   attr :min_rows, :integer, default: 8
+  attr :compact, :boolean, default: false
 
   def grid(assigns) do
     assigns =
@@ -76,7 +77,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
     ~H"""
     <div class={[
-      "mb-6",
+      if(@compact, do: "", else: "mb-6"),
       if(@has_grid_items, do: nil, else: "hidden")
     ]}>
       <div
@@ -94,6 +95,7 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
             else: "false"
         }
         data-cols="12"
+        data-compact={to_string(@compact)}
         data-min-rows={@min_rows}
         data-add-btn-id={"dashboard-" <> @dashboard.id <> "-add-widget"}
         data-add-group-btn-id={"dashboard-" <> @dashboard.id <> "-add-group"}
@@ -181,6 +183,8 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     case assigns.widget_type do
       "kpi" -> render_kpi_body(assigns)
       "timeseries" -> render_timeseries_body(assigns)
+      "gauge" -> render_timeseries_body(assigns)
+      "trace_overview" -> Phoenix.HTML.raw(value_for(assigns.timeseries_dataset, :html) || "")
       "category" -> render_category_body(assigns)
       "table" -> render_table_body(assigns)
       "text" -> render_text_body(assigns)
@@ -782,6 +786,9 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
     """
   end
 
+  defp content_classnames("trace_overview"),
+    do: ["grid-stack-item-content", "job-overview-row", "group/widget-panel"]
+
   defp content_classnames(_widget_type) do
     [
       "grid-stack-item-content",
@@ -1183,7 +1190,11 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
         data-widget-loading-state={@widget_loading_state || "idle"}
         style={content_style(@widget_type, @text_dataset)}
       >
-        <div class={@header_classnames} style={header_style(@widget_type)}>
+        <div
+          :if={@widget_type != "trace_overview"}
+          class={@header_classnames}
+          style={header_style(@widget_type)}
+        >
           <div class={[
             "grid-widget-handle cursor-move flex-1 flex items-center gap-2 py-1 min-w-0",
             @handle_class
@@ -1686,15 +1697,26 @@ defmodule TrifleApp.Components.DashboardWidgets.WidgetView do
 
   defp dynamic_widget?(widget_type),
     do:
-      widget_type in ["kpi", "timeseries", "category", "table", "list", "distribution", "heatmap"]
+      widget_type in [
+        "kpi",
+        "gauge",
+        "trace_overview",
+        "timeseries",
+        "category",
+        "table",
+        "list",
+        "distribution",
+        "heatmap"
+      ]
 
   defp widget_has_renderable_data?("kpi", datasets) do
     present_dataset?(Map.get(datasets, :kpi_value)) ||
       present_dataset?(Map.get(datasets, :kpi_visual))
   end
 
-  defp widget_has_renderable_data?("timeseries", datasets),
-    do: present_dataset?(Map.get(datasets, :timeseries))
+  defp widget_has_renderable_data?(type, datasets)
+       when type in ["timeseries", "gauge", "trace_overview"],
+       do: present_dataset?(Map.get(datasets, :timeseries))
 
   defp widget_has_renderable_data?("category", datasets),
     do: present_dataset?(Map.get(datasets, :category))

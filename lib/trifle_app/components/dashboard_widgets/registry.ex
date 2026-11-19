@@ -7,6 +7,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
     Types.Group,
     Types.Kpi,
     Types.Timeseries,
+    Types.Gauge,
     Types.Category,
     Types.Table,
     Types.Text,
@@ -56,7 +57,7 @@ defmodule TrifleApp.Components.DashboardWidgets.Registry do
   def type_module(type_or_widget) do
     normalized_type = widget_type(type_or_widget)
 
-    Enum.find(@widget_types, Types.Kpi, fn module ->
+    Enum.find(@widget_types ++ [Types.TraceOverview], Types.Kpi, fn module ->
       module.type() == normalized_type
     end)
   end

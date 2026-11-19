@@ -52,4 +52,24 @@ defmodule TrifleApp.FormatTest do
       assert Format.duration_ms(nil) == nil
     end
   end
+
+  describe "compact_duration_ms/1" do
+    test "adapts units and rounds without leaving 60 seconds or 1000 milliseconds" do
+      for {milliseconds, value, unit} <- [
+            {nil, "—", "ms"},
+            {0, "0", "ms"},
+            {125.25, "125.3", "ms"},
+            {999.99, "1", "s"},
+            {4_125, "4.1", "s"},
+            {59_999, "1", "m"},
+            {150_000, "2.5", "m"},
+            {3_599_999, "1", "h"},
+            {5_400_000, "1.5", "h"},
+            {216_000_000, "2.5", "d"},
+            {-4_125, "-4.1", "s"}
+          ] do
+        assert Format.compact_duration_ms(milliseconds) == %{value: value, unit: unit}
+      end
+    end
+  end
 end

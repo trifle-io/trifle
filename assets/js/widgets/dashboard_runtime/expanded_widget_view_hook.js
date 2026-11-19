@@ -1,3 +1,4 @@
+import { compactChartOptions } from "./shared/compact_charts.mjs";
 import { TIMESERIES_TOOLTIP_RESPONSIVE_CSS, annotationGroupForAxisValue, buildAnnotationMarkLineSeries, escapeTimeseriesTooltipHtml, renderAnnotationTooltipSection, renderTimeseriesTooltipLines, resolveHoveredTimeseriesParam } from "./shared/timeseries_annotations";
 
 import { timeseriesTimeFormatters } from "./shared/timeseries_timezone.mjs";
@@ -145,7 +146,7 @@ Hooks.ExpandedWidgetView = {
     const visualRaw = this.el.dataset.visual || '';
     const textRaw = this.el.dataset.text || '';
     const key = [type, tab, chartRaw, paletteRaw, visualRaw, textRaw].join('||');
-    const chartWidgetTypes = ['timeseries', 'category', 'distribution', 'heatmap', 'kpi'];
+    const chartWidgetTypes = ['trace_overview', 'gauge', 'timeseries', 'category', 'distribution', 'heatmap', 'kpi'];
     const chartContentMissing =
       chartWidgetTypes.includes(type) &&
       !!this.chartTarget &&
@@ -206,7 +207,23 @@ Hooks.ExpandedWidgetView = {
     const visualData = parseJsonSafe(visualRaw);
     const textData = parseJsonSafe(textRaw);
 
-    if (type === 'timeseries') {
+    if (type === 'gauge') {
+      const chart = this.ensureChart();
+      if (chart) chart.setOption(compactChartOptions(chartData || {presentation: 'gauge'}, this.getTheme() === 'dark', undefined, chart.getDom()), {notMerge: true});
+      const gauge = chartData?.gauge || {};
+      this.renderSummaryGrid([
+        {path: 'Timeframe average', value: gauge.average, unit: gauge.unit},
+        {path: 'Latest populated bucket', value: gauge.latest, unit: gauge.unit}
+      ], [this.summaryPathColumn('Measurement'), this.summaryNumericColumn('value', 'Value')]);
+      return;
+    }
+    if (type === 'timeseries' && chartData?.presentation === 'sparkline') {
+      const chart = this.ensureChart();
+      if (chart) chart.setOption(compactChartOptions(chartData, this.getTheme() === 'dark', undefined, chart.getDom()), {notMerge: true});
+      this.renderTimeseriesTable(chartData);
+      return;
+    }
+    if (type === 'timeseries' || type === 'trace_overview') {
       this.renderTimeseries(chartData);
       return;
     }
@@ -1062,6 +1079,33 @@ Hooks.ExpandedWidgetView = {
 
   renderTimeseriesTable(data) {
     if (!this.tableRoot) return;
+    if (data?.presentation === 'trace_overview') {
+      const timezone = data.timezone || 'UTC';
+      const formatter = new Intl.DateTimeFormat('en-GB', {timeZone: timezone, dateStyle: 'short', timeStyle: 'medium'});
+      const points = data.points || [];
+      const measurements = [
+        ['count', 'Traces'], ...((data.states || []).map(state => [`states.${state}`, state[0].toUpperCase() + state.slice(1)])),
+        ['success', 'Success (%)'], ['duration', 'Avg duration (ms)'], ['duration_sum', 'Duration sum (ms)'],
+        ['duration_count', 'Duration samples'], ['lines', 'Avg lines'], ['lines_sum', 'Total lines (all states)'], ['total_count', 'Total traces (all states)']
+      ];
+      const rows = measurements.map(([field, path], index) => ({
+        path,
+        color: this.seriesColor(index),
+        ...Object.fromEntries(points.map((point, index) => [
+          `point_${index}`, field.split('.').reduce((value, key) => value?.[key], point)
+        ]))
+      }));
+      const columns = [this.summaryPathColumn('Measurement'), ...points.map((point, index) => {
+        const label = formatter.format(new Date(point.at));
+        return {...this.summaryNumericColumn(`point_${index}`, label),
+          minWidth: 180,
+          headerTooltip: `${label} (${timezone})`,
+          valueFormatter: params => Number.isFinite(params.value) ? String(params.value) : '—'
+        };
+      })];
+      this.renderSummaryGrid(rows, columns);
+      return;
+    }
     const entries = Array.isArray(data?.series)
       ? data.series.map((series, idx) => ({
           name: series.name || `Series ${idx + 1}`,

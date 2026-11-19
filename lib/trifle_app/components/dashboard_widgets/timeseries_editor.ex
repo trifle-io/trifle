@@ -72,6 +72,15 @@ defmodule TrifleApp.Components.DashboardWidgets.TimeseriesEditor do
           </.button_group>
         </div>
 
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+          <input type="hidden" name="ts_sparkline" value="false" />
+          <input
+            type="checkbox"
+            name="ts_sparkline"
+            value="true"
+            checked={@widget["sparkline"] == true}
+          /> Compact sparkline
+        </label>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
             <input type="checkbox" name="ts_stacked" checked={@stacked} /> Stacked

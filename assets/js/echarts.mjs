@@ -10,7 +10,7 @@
 // `node --test assets/test/echarts_registration_test.mjs`, which compares this build
 // against the full library for every option shape the app uses.
 import * as echarts from "echarts/core";
-import { BarChart, HeatmapChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
+import { BarChart, GaugeChart, HeatmapChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
 import {
   AriaComponent,
   AxisPointerComponent,
@@ -44,6 +44,7 @@ echarts.use([
   PieChart,
   ScatterChart,
   HeatmapChart,
+  GaugeChart,
   // Components referenced by chart options.
   GridComponent, // xAxis / yAxis / grid, including time and category axes
   CalendarComponent,
